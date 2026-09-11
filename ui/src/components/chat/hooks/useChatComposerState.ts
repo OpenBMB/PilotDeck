@@ -338,7 +338,7 @@ export function useChatComposerState({
   // A cancelled upload can resolve after the user removes a file. Keep object-
   // identity tombstones so that late promises can never resurrect it.
   const removedAttachmentFilesRef = useRef(new WeakSet<File>());
-  const attachmentSubmitPendingRef = useRef(false);
+  const submitPendingRef = useRef(false);
   const handleImageFilesRef = useRef<(files: File[]) => void>(() => undefined);
   const lastDropKeyRef = useRef({ key: '', at: 0 });
 
@@ -350,18 +350,24 @@ export function useChatComposerState({
     if (record.status === 'completed') {
       setUploadingImages((previous) => {
         const next = new Map(previous);
-        files.forEach((file) => next.set(file, 100));
+        // Transport completion can precede attachment metadata. Only advertise
+        // readiness after metadata is available; late events cannot undo it.
+        files.forEach((file) => next.set(file, completedAttachmentUploadsRef.current.has(file) ? 100 : 99));
         return next;
       });
       return;
     }
     const rawPercent = Number(record.percent);
     const nextPercent = rawPercent >= 100
-      ? 100
+      ? 99
       : Math.max(0, Math.min(99, Number.isFinite(rawPercent) ? rawPercent : 0));
     setUploadingImages((previous) => {
       const next = new Map(previous);
       files.forEach((file) => {
+        if (completedAttachmentUploadsRef.current.has(file)) {
+          next.set(file, 100);
+          return;
+        }
         const current = next.get(file);
         next.set(file, current === undefined ? nextPercent : Math.max(current, nextPercent));
       });
@@ -1125,7 +1131,7 @@ export function useChatComposerState({
     noDragEventsBubbling: true,
   });
 
-  const handleSubmit = useCallback(
+  const performSubmit = useCallback(
     async (
       event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
     ) => {
@@ -1294,78 +1300,30 @@ export function useChatComposerState({
       let uploadedFiles: UploadedAttachmentFile[] = [];
       let uploadedAttachmentRefs: UploadedAttachmentRef[] = [];
       if (submitAttachedImages.length > 0) {
-        // The button is disabled while uploading, but Enter can still reach
-        // this handler. Serialize attachment preparation so repeated key
-        // presses cannot dispatch the same completed upload twice.
-        if (attachmentSubmitPendingRef.current) return;
-        attachmentSubmitPendingRef.current = true;
-        try {
-          const pendingFiles = submitAttachedImages.filter((file) => (
-            !completedAttachmentUploadsRef.current.has(file)
-            && !activeAttachmentUploadsRef.current.some((batch) => batch.files.includes(file))
-          ));
-          if (pendingFiles.length > 0) {
-            startAttachmentUploads(pendingFiles);
-          }
-          // A removal cancels its entire multi-file upload and starts a clean
-          // batch for the survivors. Follow replacement batches until the
-          // submitted files have settled, then re-read the live attachment set.
-          const awaitedBatches = new Set<AttachmentUploadBatch>();
-          while (true) {
-            const currentCandidates = submitAttachedImages.filter((file) => (
-              attachedImagesRef.current.includes(file)
-              && !removedAttachmentFilesRef.current.has(file)
-            ));
-            const pendingBatches = activeAttachmentUploadsRef.current.filter((batch) => (
-              !batch.cancelled
-              && !awaitedBatches.has(batch)
-              && batch.files.some((file) => currentCandidates.includes(file))
-            ));
-            if (pendingBatches.length === 0) break;
-            pendingBatches.forEach((batch) => awaitedBatches.add(batch));
-            await Promise.all(pendingBatches.map((batch) => batch.promise));
-          }
-          submittedAttachmentFiles = submitAttachedImages.filter((file) => (
-            attachedImagesRef.current.includes(file)
-            && !removedAttachmentFilesRef.current.has(file)
-          ));
-          const failedFiles = submittedAttachmentFiles.filter((file) => (
-            !completedAttachmentUploadsRef.current.has(file)
-          ));
-          if (failedFiles.length > 0) {
-            const message = failedFiles.map((file) => file.name).join(', ');
-            addMessage({
-              type: 'error',
-              content: `Failed to upload attachments: ${message}`,
-              timestamp: new Date(),
-            }, submitTargetSessionId);
-            return;
-          }
-
-          const refsByUploadId = new Map<string, string[]>();
-          uploadedFiles = submittedAttachmentFiles.flatMap((file) => {
-            const completed = completedAttachmentUploadsRef.current.get(file);
-            if (!completed) return [];
-            const attachmentIds = refsByUploadId.get(completed.uploadId) ?? [];
-            attachmentIds.push(completed.attachmentId);
-            refsByUploadId.set(completed.uploadId, attachmentIds);
-            return [{
-              kind: 'file' as const,
-              name: completed.name,
-              path: completed.relativePath,
-              size: completed.bytes,
-              mimeType: completed.mimeType,
-              uploadId: completed.uploadId,
-              attachmentId: completed.attachmentId,
-            }];
-          });
-          uploadedAttachmentRefs = [...refsByUploadId.entries()].map(([uploadId, attachmentIds]) => ({
-            uploadId,
-            attachmentIds,
-          }));
-        } finally {
-          attachmentSubmitPendingRef.current = false;
-        }
+        submittedAttachmentFiles = submitAttachedImages.filter(file =>
+          attachedImagesRef.current.includes(file) && !removedAttachmentFilesRef.current.has(file));
+        if (submittedAttachmentFiles.some(file => !completedAttachmentUploadsRef.current.has(file))) return;
+        const refsByUploadId = new Map<string, string[]>();
+        uploadedFiles = submittedAttachmentFiles.flatMap((file) => {
+          const completed = completedAttachmentUploadsRef.current.get(file);
+          if (!completed) return [];
+          const attachmentIds = refsByUploadId.get(completed.uploadId) ?? [];
+          attachmentIds.push(completed.attachmentId);
+          refsByUploadId.set(completed.uploadId, attachmentIds);
+          return [{
+            kind: 'file' as const,
+            name: completed.name,
+            path: completed.relativePath,
+            size: completed.bytes,
+            mimeType: completed.mimeType,
+            uploadId: completed.uploadId,
+            attachmentId: completed.attachmentId,
+          }];
+        });
+        uploadedAttachmentRefs = [...refsByUploadId.entries()].map(([uploadId, attachmentIds]) => ({
+          uploadId,
+          attachmentIds,
+        }));
       }
 
       if (
@@ -1583,11 +1541,24 @@ export function useChatComposerState({
       slashCommands,
       thinkingMode,
       referenceOnlyPrompt,
-      startAttachmentUploads,
       cancelActiveAttachmentUpload,
       t,
     ],
   );
+
+  const handleSubmit = useCallback(async (event: Parameters<typeof performSubmit>[0]) => {
+    event.preventDefault();
+    // Both entry points reject unready attachments; completion never sends a
+    // hidden pending draft. Keep the lock through the actual queue dispatch.
+    if (submitPendingRef.current
+      || attachedImagesRef.current.some(file => !completedAttachmentUploadsRef.current.has(file))) return;
+    submitPendingRef.current = true;
+    try {
+      await performSubmit(event);
+    } finally {
+      submitPendingRef.current = false;
+    }
+  }, [performSubmit]);
 
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
@@ -2102,6 +2073,7 @@ export function useChatComposerState({
       });
     },
     uploadingImages,
+    hasPendingAttachments: attachedImages.some(file => !completedAttachmentUploadsRef.current.has(file)),
     imageErrors,
     getRootProps,
     getInputProps,

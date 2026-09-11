@@ -37,6 +37,7 @@ export type MessageKind =
   | 'file_artifacts';
 
 export interface CompactProgress {
+  compaction_id?: string;
   level: number;
   stage: string;
   label: string;
@@ -124,6 +125,7 @@ export interface NormalizedMessage {
   outputFile?: string;
   taskResult?: string;
   compactionId?: string;
+  compactState?: 'running' | 'completed' | 'failed' | 'cancelled';
   trigger?: string;
   preTokens?: number;
   postTokens?: number;
@@ -859,6 +861,27 @@ const PERSISTED_RENDERABLE_KINDS = new Set<MessageKind>([
   'task_notification',
 ]);
 
+/** Convert live compression progress into the same transcript entity as its result. */
+export function normalizeCompactionMessage(message: NormalizedMessage): NormalizedMessage {
+  const progress = message.compactProgress;
+  const id = message.compactionId || progress?.compaction_id;
+  if (message.kind === 'status' && id && progress) {
+    return {
+      ...message,
+      id: `compact_boundary:${message.sessionId}:${getMessageTurnId(message) || 'unknown-run'}:${id}`,
+      kind: 'compact_boundary', compactionId: id,
+      compactState: progress.state === 'failed' ? 'failed' : progress.state === 'completed' ? 'completed' : 'running',
+      preTokens: progress.pre_tokens, trigger: progress.reason,
+      compactStage: progress.stage, compactStageLabel: progress.label,
+    };
+  }
+  if (message.kind === 'compact_boundary' && !message.compactState) {
+    const metadata = message.compactMetadata as { status?: string } | undefined;
+    return { ...message, compactState: metadata?.status === 'failed' ? 'failed' : 'completed' };
+  }
+  return message;
+}
+
 export function getUnpersistedRealtimeTurnMessages(
   realtimeMessages: NormalizedMessage[],
   serverMessages: NormalizedMessage[],
@@ -1270,6 +1293,7 @@ export function upsertRealtimeMessages(
   const updated = [...existing];
   const indexByKey = new Map(updated.map((message, index) => [getUpsertKey(message), index]));
   for (let message of incoming) {
+    message = normalizeCompactionMessage(message);
     if (message.kind === 'tool_result' && message.toolId && message.resultPath) {
       const existingToolResultIndex = findLatestToolResultIndex(updated, message.toolId);
       if (existingToolResultIndex >= 0) {
@@ -1298,6 +1322,19 @@ export function upsertRealtimeMessages(
       indexByKey.set(key, updated.length);
       updated.push(message);
     } else {
+      const previous = updated[existingIndex];
+      if (message.kind === 'compact_boundary') {
+        // Replayed starts cannot undo a result. Updates keep the insertion
+        // position, original timestamp, render identity and history anchors.
+        if (message.compactState === 'running' && previous.compactState !== 'running') continue;
+        updated[existingIndex] = {
+          ...previous, ...message, id: previous.id, timestamp: previous.timestamp,
+          renderKey: previous.renderKey ?? previous.id,
+          serverPredecessorId: previous.serverPredecessorId,
+          serverSuccessorId: previous.serverSuccessorId,
+        };
+        continue;
+      }
       message = preserveUserInputs(message, updated[existingIndex]);
       const existingTailId = updated[existingIndex].serverTailIdAtStart;
       const existingHistoryPending = updated[existingIndex].serverHistoryPendingAtStart;
@@ -1681,6 +1718,7 @@ export function useSessionStore() {
    * This works regardless of which session is actively viewed.
    */
   const appendRealtime = useCallback((sessionId: string, msg: NormalizedMessage) => {
+    msg = normalizeCompactionMessage(msg);
     const slot = getSlot(sessionId);
     const capturedMessage = captureOptimisticUserServerTail(
       captureRealtimePosition(msg, slot.serverMessages),
@@ -1968,8 +2006,14 @@ export function useSessionStore() {
     const slot = storeRef.current.get(sessionId);
     if (!slot) return;
     const activities = cancelRunningAgentActivities(slot.activityMessages, new Date().toISOString());
-    if (activities === slot.activityMessages) return;
+    const hasRunningCompact = slot.realtimeMessages.some(message => message.kind === 'compact_boundary' && message.compactState === 'running');
+    if (activities === slot.activityMessages && !hasRunningCompact) return;
     slot.activityMessages = activities;
+    if (hasRunningCompact) {
+      slot.realtimeMessages = slot.realtimeMessages.map(message => message.kind === 'compact_boundary' && message.compactState === 'running'
+        ? { ...message, compactState: 'cancelled' } : message);
+      recomputeMergedIfNeeded(slot);
+    }
     notify(sessionId);
   }, [notify]);
 

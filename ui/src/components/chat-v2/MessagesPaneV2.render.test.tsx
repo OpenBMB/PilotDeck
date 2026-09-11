@@ -1533,6 +1533,19 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(document.querySelectorAll('.process-live-status')).toHaveLength(1);
   });
 
+  it('updates the same live compression row from running to completed without a second status', () => {
+    const timestamp = new Date().toISOString();
+    const user: ChatMessage = { id: 'user', type: 'user', content: 'Continue', timestamp };
+    const compact: ChatMessage = { id: 'compact-start', type: 'system', content: '', timestamp,
+      isCompactBoundary: true, compactionId: 'c1', compactState: 'running' };
+    const view = renderPane({ messages: [user, compact], isAssistantWorking: true });
+    const row = screen.getByText('Compacting context...');
+    expect(screen.queryByText('Compacted context')).toBeNull();
+    view.rerender(createPaneElement({ messages: [user, { ...compact, id: 'compact-history', compactState: 'completed' }], isAssistantWorking: true }));
+    expect(screen.queryByText('Compacting context...')).toBeNull();
+    expect(screen.getByText('Compacted context')).toBe(row);
+  });
+
   it('keeps thinking before mid-turn compaction inside the completed trace', () => {
     const now = new Date().toISOString();
     renderPane({ messages: [

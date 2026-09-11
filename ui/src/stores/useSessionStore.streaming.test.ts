@@ -1297,7 +1297,7 @@ describe('turn-scoped server reconciliation', () => {
     const upserted = upsertRealtimeMessages([firstBoundary], [replayedBoundary]);
 
     expect(upserted).toHaveLength(1);
-    expect(upserted[0]).toBe(replayedBoundary);
+    expect(upserted[0]).toMatchObject({ ...firstBoundary, compactState: 'completed' });
   });
 });
 

@@ -39,7 +39,7 @@ describe('useChatComposerState attachment submission', () => {
     vi.restoreAllMocks();
   });
 
-  it.each([false, true])('snapshots the selected model before attachment preparation (queued=%s)', async (queued) => {
+  it.each([false, true])('ignores sends during upload and uses the model selected after completion (queued=%s)', async (queued) => {
     let finishUpload!: () => void;
     const uploadGate = new Promise<void>((resolve) => { finishUpload = resolve; });
     mocks.uploadAttachmentBatch.mockImplementation(async ({ files }: { files: File[] }) => {
@@ -72,10 +72,21 @@ describe('useChatComposerState attachment submission', () => {
     await waitFor(() => expect(result.current.attachedImages).toHaveLength(1));
     let submitting!: Promise<void>;
     act(() => { submitting = result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    await act(async () => { await submitting; });
+    act(() => {
+      result.current.handleKeyDown({ key: 'Enter', preventDefault: vi.fn() } as never);
+      result.current.handleKeyDown({ key: 'Enter', preventDefault: vi.fn() } as never);
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(enqueuePreparedInput).not.toHaveBeenCalled();
     rerender({ modelSelection: { mode: 'auto' } });
-    await act(async () => { finishUpload(); await submitting; });
+    await act(async () => { finishUpload(); });
+    await waitFor(() => expect(result.current.hasPendingAttachments).toBe(false));
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(enqueuePreparedInput).not.toHaveBeenCalled();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
     expect(queued ? enqueuePreparedInput : sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-      options: expect.objectContaining({ modelSelection: initialChoice }),
+      options: expect.objectContaining({ modelSelection: { mode: 'auto' } }),
     }));
   });
 
@@ -132,13 +143,9 @@ describe('useChatComposerState attachment submission', () => {
     await result.current.handleSubmit({ preventDefault: vi.fn() } as never);
 
     expect(onSessionActivityBump).not.toHaveBeenCalled();
-    expect(addMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'error',
-        content: 'Failed to upload attachments: broken.txt',
-      }),
-      null,
-    );
+    expect(addMessage).not.toHaveBeenCalled();
+    expect(result.current.hasPendingAttachments).toBe(true);
+    expect(result.current.imageErrors.size).toBeGreaterThan(0);
   });
 
   it('keeps the draft and avoids loading state when a new-session command is disconnected', async () => {
@@ -232,7 +239,7 @@ describe('useChatComposerState attachment submission', () => {
 
     const sendMessage = vi.fn(() => true);
     const addMessage = vi.fn();
-    const { result } = renderHook(() => useChatComposerState({
+    const options: Parameters<typeof useChatComposerState>[0] = {
       selectedProject: { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' },
       selectedSession: null,
       currentSessionId: null,
@@ -257,7 +264,8 @@ describe('useChatComposerState attachment submission', () => {
       setIsUserScrolledUp: vi.fn(),
       pendingPermissionRequests: [],
       setPendingPermissionRequests: vi.fn(),
-    }));
+    };
+    const { result } = renderHook(() => useChatComposerState(options));
     const first = new File(['a'], 'a.txt', { type: 'text/plain', lastModified: 1 });
     const second = new File(['b'], 'b.txt', { type: 'text/plain', lastModified: 2 });
 
@@ -274,6 +282,9 @@ describe('useChatComposerState attachment submission', () => {
     act(() => result.current.removeAttachedImage(0));
     await waitFor(() => expect(mocks.uploadAttachmentBatch).toHaveBeenCalledTimes(2));
     await submitting;
+    await waitFor(() => expect(result.current.hasPendingAttachments).toBe(false));
+    expect(sendMessage).not.toHaveBeenCalled();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
 
     expect(mocks.cancelAttachmentUpload).toHaveBeenCalledWith('upload-old');
     expect(mocks.uploadAttachmentBatch).toHaveBeenCalledTimes(2);

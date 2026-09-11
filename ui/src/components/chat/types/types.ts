@@ -121,6 +121,7 @@ export interface ChatMessage {
   parentRunId?: string;
   turnId?: string;
   compactionId?: string;
+  compactState?: 'running' | 'completed' | 'failed' | 'cancelled';
   compactTrigger?: string;
   preTokens?: number;
   postTokens?: number;

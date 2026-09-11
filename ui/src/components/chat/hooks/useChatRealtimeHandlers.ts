@@ -10,6 +10,7 @@ import type {
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
 import {
   getUnpersistedRealtimeTurnMessages,
+  normalizeCompactionMessage,
   isRealtimeMessageRepresentedOnServer,
   type SessionStore,
   type NormalizedMessage,
@@ -421,7 +422,7 @@ export function useChatRealtimeHandlers({
     /*  Legacy messages (no `kind` field) — handle and return           */
     /* ---------------------------------------------------------------- */
 
-    const msg: LatestChatMessage = latestMessage;
+    let msg: LatestChatMessage = latestMessage;
     const clearAccumulators = () => {
       thinkingBySessionRef.current.clear();
     };
@@ -592,11 +593,18 @@ export function useChatRealtimeHandlers({
           const status = msg.status;
           if (status) {
             if (!isCurrentSession) return;
+            const compactProgress = status.compactProgress || status.compact_progress || null;
+            if (compactProgress?.compaction_id && statusActiveRunId) {
+              // A reconnect may provide only current status, without the start
+              // event. Restore the same entity; completed history wins over it.
+              handleMessage({ kind: 'status', sessionId: statusSessionId, runId: statusActiveRunId,
+                provider, timestamp: new Date().toISOString(), compactProgress }, statusSessionId);
+            }
             const statusInfo = {
-              text: status.text || 'Working...',
+              text: compactProgress?.compaction_id ? 'Working...' : status.text || 'Working...',
               tokens: status.tokens || 0,
               can_interrupt: status.can_interrupt !== undefined ? status.can_interrupt : true,
-              compactProgress: status.compactProgress || status.compact_progress || null,
+              compactProgress: compactProgress?.compaction_id ? null : compactProgress,
             };
             setClaudeStatus(statusInfo);
             setPilotDeckStatus(statusInfo);
@@ -656,6 +664,7 @@ export function useChatRealtimeHandlers({
       warnDroppedFrame(msg);
       return;
     }
+    msg = normalizeCompactionMessage({ ...msg, sessionId: sid } as NormalizedMessage);
     const msgRunId = typeof msg.runId === 'string' && msg.runId.trim() ? msg.runId.trim() : undefined;
     const streamKey = msgRunId ? `${sid}_${msgRunId}` : sid;
 

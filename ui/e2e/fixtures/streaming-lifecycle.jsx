@@ -118,23 +118,26 @@ function TranscriptFixture({ reconcile = false }) {
       store.appendRealtime('s', { ...user, id: 'text_gateway_echo', queueItemId: 'queued-image' });
       store.updateStreamingThinking('s', thought.content, 'pilotdeck', 'run');
       store.finalizeStreamingThinking('s', 'run');
+      store.appendRealtime('s', { ...base, id: 'started', kind: 'status', compactProgress: { compaction_id: compact.compactionId, state: 'running', level: 1, stage: 'summary', label: '正在生成摘要' } });
+    } else if (replayStage === 1) {
       store.appendRealtime('s', compact);
       store.appendRealtime('s', answer);
+      store.appendRealtime('s', { ...base, id: 'replayed-start', kind: 'status', compactProgress: { compaction_id: compact.compactionId, state: 'running', level: 1, stage: 'summary', label: '重复开始事件' } });
     } else {
       const status = { ...base, id: 'next-status', runId: 'next-run', kind: 'status' };
-      replayHistory = replayStage === 1
+      replayHistory = replayStage === 2
         ? [user, status, { ...thought, content: '压缩前：已确认' }, { ...answer, id: 'persisted-answer' }]
         : [user, status, thought, { ...compact, id: 'persisted-compact' }, { ...answer, id: 'persisted-answer' }];
       await store.refreshFromServer('s', { provider: 'pilotdeck' });
-      if (replayStage === 2) set(value => ({ ...value, working: false }));
+      if (replayStage === 3) set(value => ({ ...value, working: false }));
     }
     setReplayStage(replayStage + 1);
   };
   return <FindShortcutProvider activeScope="chat">
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {params.has('manual-reconcile') && <div style={{ padding: 12, borderBottom: '1px solid #ddd' }}>
-        <button onClick={advanceReplay} disabled={replayStage >= 3}>
-          {['1. 回放实时消息', '2. 合并滞后历史', '3. 合并完整历史', '回放完成'][replayStage]}
+        <button onClick={advanceReplay} disabled={replayStage >= 4}>
+          {['1. 开始压缩', '2. 完成压缩并重放开始事件', '3. 合并滞后历史', '4. 合并完整历史', '回放完成'][replayStage]}
         </button>
         <p>预期：一份图片提问 → 思考 → 压缩 → 回答；各阶段顺序不变。</p>
       </div>}

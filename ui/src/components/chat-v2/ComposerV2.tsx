@@ -113,6 +113,7 @@ export type ComposerV2Props = {
   onRemoveDocumentReference: (id: string) => void;
   onOpenDocumentReference?: (filePath: string) => void;
   uploadingImages: Map<File, number>;
+  hasPendingAttachments?: boolean;
   imageErrors: Map<File | string, string>;
 
   showFileDropdown: boolean;
@@ -480,6 +481,7 @@ export default function ComposerV2({
   onRemoveDocumentReference,
   onOpenDocumentReference,
   uploadingImages,
+  hasPendingAttachments = false,
   imageErrors,
   showFileDropdown,
   fileMentionQuery,
@@ -660,7 +662,7 @@ export default function ComposerV2({
   const hasUploadingImages = [...uploadingImages.values()].some((percent) => percent < 100);
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
   const modelBlocksSubmission = !isModelSelectionReady && !canSubmitWithoutModel;
-  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages || modelBlocksSubmission || !isPermissionModeReady;
+  const disabled = !hasDraftContent || isSubmitPending || hasPendingAttachments || hasUploadingImages || modelBlocksSubmission || !isPermissionModeReady;
   const primaryAction = getComposerPrimaryAction({
     isLoading,
     isInputQueuePaused,

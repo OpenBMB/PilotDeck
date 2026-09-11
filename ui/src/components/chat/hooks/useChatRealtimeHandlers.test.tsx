@@ -46,7 +46,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     });
   });
 
-  it.each(['thinking', 'stream_delta'])('starts a separate %s block after a compaction', (kind) => {
+  it.each(['thinking', 'stream_delta'])('starts a separate %s block when compaction begins', (kind) => {
     const { result } = renderHook(() => useSessionStore());
     const sessionStore = result.current;
     renderHook(() => useChatRealtimeHandlers({
@@ -71,7 +71,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     act(() => {
       const base = { sessionId: 'web:s_test', runId: 'run-1', provider };
       mocks.listener?.({ ...base, kind, content: 'Before compact' });
-      mocks.listener?.({ ...base, id: 'compact', kind: 'compact_boundary', compactionId: 'c1' });
+      mocks.listener?.({ ...base, id: 'compact', kind: 'status', text: 'compacting', compactProgress: { compaction_id: 'c1', state: 'running', stage: 'summary', label: 'Summarizing', level: 1 } });
       mocks.listener?.({ ...base, kind, content: 'After compact' });
     });
     const messages = sessionStore.getMessages('web:s_test');

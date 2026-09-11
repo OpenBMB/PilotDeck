@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { normalizedToChatMessages } from '../components/chat/hooks/useChatMessages';
 import { getIntrinsicMessageKey } from '../components/chat/utils/messageKeys';
 import { authenticatedFetch } from '../utils/api';
-import { computeMerged, upsertRealtimeMessages, useSessionStore, type NormalizedMessage } from './useSessionStore';
+import { computeMerged, normalizeCompactionMessage, upsertRealtimeMessages, useSessionStore, type NormalizedMessage } from './useSessionStore';
 
 vi.mock('../utils/api', () => ({ authenticatedFetch: vi.fn(), readAgentStatusErrorFromResponse: vi.fn() }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -21,6 +21,50 @@ async function refresh(store: ReturnType<typeof useSessionStore>, messages: Norm
 }
 
 describe('live and persisted message reconciliation', () => {
+  it('updates compression in place and ignores replayed starts after completion', async () => {
+    const { result } = renderHook(() => useSessionStore());
+    await refresh(result.current, [user]);
+    const started = msg('start-event', 'status', '', { compactProgress: {
+      compaction_id: 'compact-lifecycle', level: 1, stage: 'summary', label: 'Summarizing', state: 'running',
+    } });
+    act(() => result.current.appendRealtime(session, started));
+    const initial = result.current.getMessages(session)[1];
+    expect(initial).toMatchObject({ kind: 'compact_boundary', compactState: 'running' });
+    const answer = msg('answer', 'text', 'After compression', { role: 'assistant' });
+    act(() => {
+      result.current.appendRealtime(session, answer);
+      result.current.appendRealtime(session, msg('completion-event', 'compact_boundary', '', {
+        compactionId: 'compact-lifecycle', postTokens: 20, timestamp: '2026-09-10T10:00:30Z',
+      }));
+      result.current.appendRealtime(session, started);
+    });
+    expect(result.current.getMessages(session).map(m => m.id)).toEqual([user.id, initial.id, answer.id]);
+    expect(result.current.getMessages(session)[1]).toMatchObject({ compactState: 'completed', postTokens: 20, timestamp: initial.timestamp });
+    const stableKey = normalizedToChatMessages(result.current.getMessages(session))[1].renderKey;
+    await refresh(result.current, [user, msg('history-compact', 'compact_boundary', '', { compactionId: 'compact-lifecycle', postTokens: 20 }), answer]);
+    expect(result.current.getMessages(session)).toHaveLength(3);
+    expect(normalizedToChatMessages(result.current.getMessages(session))[1].renderKey).toBe(stableKey);
+  });
+
+  it('handles a completed-only replay and distinguishes separate compressions', () => {
+    const done = msg('done', 'compact_boundary', '', { compactionId: 'c1' });
+    const next = msg('next', 'compact_boundary', '', { compactionId: 'c2', compactState: 'running' });
+    expect(upsertRealtimeMessages([], [done, done, next]).map(m => m.compactState)).toEqual(['completed', 'running']);
+    expect(normalizeCompactionMessage({ ...done, compactMetadata: { status: 'failed' } }).compactState).toBe('failed');
+  });
+
+  it('stops unfinished compression with the run and accepts a late completion', () => {
+    const { result } = renderHook(() => useSessionStore());
+    const compact = msg('compact', 'compact_boundary', '', { compactionId: 'c1', compactState: 'running' });
+    act(() => {
+      result.current.appendRealtime(session, compact);
+      result.current.cancelRunningActivities(session);
+    });
+    expect(result.current.getMessages(session)[0].compactState).toBe('cancelled');
+    act(() => result.current.appendRealtime(session, { ...compact, compactState: 'completed' }));
+    expect(result.current.getMessages(session)).toHaveLength(1);
+    expect(result.current.getMessages(session)[0].compactState).toBe('completed');
+  });
   it('reconciles a queued image echo and its answer with the attachment-bearing transcript', async () => {
     const { result } = renderHook(() => useSessionStore());
     const prior = msg('previous-answer', 'text', 'Previous answer', { role: 'assistant', runId: 'previous' });

@@ -295,6 +295,7 @@ function ChatInterfaceV2({
     documentReferences,
     removeDocumentReference,
     uploadingImages,
+    hasPendingAttachments,
     imageErrors,
     getRootProps,
     getInputProps,
@@ -763,6 +764,7 @@ function ChatInterfaceV2({
       onRemoveDocumentReference={removeDocumentReference}
       onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
       uploadingImages={uploadingImages}
+      hasPendingAttachments={hasPendingAttachments}
       imageErrors={imageErrors}
       showFileDropdown={showFileDropdown}
       fileMentionQuery={fileMentionQuery}
