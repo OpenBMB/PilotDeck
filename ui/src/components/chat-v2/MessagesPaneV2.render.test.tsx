@@ -1703,3 +1703,28 @@ it('shows a provisional send without writing a duplicate transcript message on a
   expect(screen.getAllByText('My next message')).toHaveLength(1);
   expect(view.container.querySelector('[data-sending-input]')).toBeNull();
 });
+
+
+describe('uploaded image preview lifecycle', () => {
+  it('shows images immediately during generation and only once when history arrives, keeping ordinary files', () => {
+    const preview = 'data:image/png;base64,aW1hZ2U=';
+    const user: ChatMessage = { id: 'local-image', type: 'user', content: 'Describe these', timestamp: new Date(),
+      attachments: [
+        { name: 'photo.png', uploadId: 'u1', attachmentId: 'a1', mimeType: 'image/png', previewData: preview },
+        { name: 'notes.txt', mimeType: 'text/plain', size: 42 },
+      ],
+    };
+    const view = renderPane({ messages: [user], isAssistantWorking: true });
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+    expect(screen.getByRole('img').getAttribute('src')).toBe(preview);
+    expect(screen.queryByText('photo.png')).toBeNull();
+    expect(screen.getByText('notes.txt')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview photo.png' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    view.rerender(createPaneElement({ messages: [{ ...user, id: 'confirmed-image', images: [{ name: 'photo.png', data: preview }] }] }));
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+    expect(screen.queryByText('photo.png')).toBeNull();
+    expect(screen.getByText('notes.txt')).toBeTruthy();
+  });
+});

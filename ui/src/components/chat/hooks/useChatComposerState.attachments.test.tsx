@@ -90,6 +90,45 @@ describe('useChatComposerState attachment submission', () => {
     }));
   });
 
+  it.each([false, true])('keeps an immediate display preview without adding model image payloads (queued=%s)', async (queued) => {
+    mocks.uploadAttachmentBatch.mockImplementation(async ({ files }: { files: File[] }) => ({
+      uploadId: 'preview-upload', attachmentIds: ['preview-image'],
+      attachments: files.map(file => ({ attachmentId: 'preview-image', name: file.name,
+        relativePath: `.tmp/chat-uploads/preview-upload/${file.name}`, bytes: file.size, mimeType: file.type })),
+    }));
+    const addMessage = vi.fn();
+    const sendMessage = vi.fn((_message: any) => true);
+    const enqueuePreparedInput = vi.fn(async (_item: any) => ({ ok: true }));
+    const options = {
+      selectedProject: { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' },
+      selectedSession: queued ? { id: 'web:queue' } : null, currentSessionId: queued ? 'web:queue' : null,
+      model: 'provider/model', permissionMode: 'default', runMode: 'agent', cycleRunMode: vi.fn(),
+      isLoading: queued, canAbortSession: queued, tokenBudget: null, sendMessage, enqueuePreparedInput,
+      pendingViewSessionRef: { current: null }, scrollToBottom: vi.fn(), addMessage,
+      clearMessages: vi.fn(), rewindMessages: vi.fn(), setIsLoading: vi.fn(), setCanAbortSession: vi.fn(),
+      setIsAborting: vi.fn(), setClaudeStatus: vi.fn(), setPilotDeckStatus: vi.fn(), setIsUserScrolledUp: vi.fn(),
+      pendingPermissionRequests: [], setPendingPermissionRequests: vi.fn(),
+    };
+    const { result } = renderHook(() => useChatComposerState(options));
+    act(() => {
+      result.current.setInput('describe this image');
+      result.current.addAttachmentFiles([new File(['image-bytes'], 'preview.png', { type: 'image/png' })]);
+    });
+    await waitFor(() => expect(result.current.uploadingImages.size).toBe(1));
+    await waitFor(() => expect(result.current.hasPendingAttachments).toBe(false));
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    const dispatched = queued ? enqueuePreparedInput.mock.calls[0][0] : sendMessage.mock.calls[0][0];
+    expect(dispatched.options.images ?? []).toEqual([]);
+    expect(dispatched.options.attachments ?? []).toEqual([]);
+    expect(dispatched.options.uploadedAttachments).toEqual([{ uploadId: 'preview-upload', attachmentIds: ['preview-image'] }]);
+    const attachments = queued ? dispatched.options.displayAttachments : addMessage.mock.calls[0][0].attachments;
+    expect(attachments).toEqual([expect.objectContaining({
+      uploadId: 'preview-upload', attachmentId: 'preview-image',
+      previewData: 'data:image/png;base64,aW1hZ2UtYnl0ZXM=',
+    })]);
+    if (queued) expect(addMessage).not.toHaveBeenCalled(); // A waiting input must not jump into the transcript.
+  });
+
   it('does not create an optimistic sidebar session when attachment upload fails', async () => {
     mocks.uploadAttachmentBatch.mockRejectedValue(new Error('upload failed'));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);

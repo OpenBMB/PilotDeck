@@ -38,6 +38,8 @@ export interface ChatAttachment {
   /** Stable identity for a transient browser upload, not a workspace path. */
   uploadId?: string;
   attachmentId?: string;
+  /** Display-only preview; uploadedAttachments supplies the model's image. */
+  previewData?: string;
 }
 
 export interface ChatFileArtifact {

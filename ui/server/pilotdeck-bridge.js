@@ -1722,7 +1722,7 @@ export async function runChatViaGateway(
                         ...eventForFrames,
                         displayText: queuedItem.displayText,
                         images: hydratedOptions.images,
-                        attachments: hydratedOptions.attachments,
+                        attachments: hydratedOptions.displayAttachments ?? hydratedOptions.attachments,
                     };
                     state.inputQueue = state.inputQueue.filter((item) => item.id !== event.itemId);
                     mutateInputQueue(state);
@@ -1853,7 +1853,7 @@ export function queuedInputDispositionAfterTurn(finishReason, queuePaused) {
     return 'keep';
 }
 
-function queuedUserFrame(item, sessionKey, runId, provider) {
+export function queuedUserFrame(item, sessionKey, runId, provider) {
     return createNormalizedMessage({
         provider,
         sessionId: sessionKey,
@@ -1863,7 +1863,7 @@ function queuedUserFrame(item, sessionKey, runId, provider) {
         content: item.displayText,
         queueItemId: item.id,
         images: (item.options?.images || []).map((image) => image?.data).filter(Boolean),
-        attachments: item.options?.attachments || [],
+        attachments: item.options?.displayAttachments ?? item.options?.attachments ?? [],
     });
 }
 

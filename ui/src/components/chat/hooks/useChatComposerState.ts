@@ -151,6 +151,7 @@ type UploadedAttachmentFile = {
   path: string;
   size?: number;
   mimeType?: string;
+  previewData?: string;
 };
 
 type UploadedAttachmentRef = {
@@ -173,7 +174,18 @@ type CompletedAttachmentUpload = {
   relativePath: string;
   bytes?: number;
   mimeType?: string;
+  previewData?: string;
 };
+
+function readAttachmentPreview(file: File): Promise<string | undefined> {
+  if (!file.type.startsWith('image/')) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : undefined);
+    reader.onerror = reader.onabort = () => resolve(undefined);
+    reader.readAsDataURL(file);
+  });
+}
 
 export function shouldCycleRunModeOnKeyDown(
   event: Pick<KeyboardEvent<HTMLTextAreaElement>, 'key' | 'shiftKey'>,
@@ -498,6 +510,9 @@ export function useChatComposerState({
             });
             continue;
           }
+          const previewData = await readAttachmentPreview(file);
+          if (batch.cancelled || removedAttachmentFilesRef.current.has(file)
+            || !attachedImagesRef.current.includes(file)) continue;
           completedAttachmentUploadsRef.current.set(file, {
             uploadId: result.uploadId,
             attachmentId: attachment.attachmentId,
@@ -505,6 +520,7 @@ export function useChatComposerState({
             relativePath: attachment.relativePath || attachment.name || file.name,
             bytes: attachment.bytes,
             mimeType: attachment.mimeType,
+            previewData,
           });
         }
       } catch (error) {
@@ -1318,6 +1334,7 @@ export function useChatComposerState({
             mimeType: completed.mimeType,
             uploadId: completed.uploadId,
             attachmentId: completed.attachmentId,
+            previewData: completed.previewData,
           }];
         });
         uploadedAttachmentRefs = [...refsByUploadId.entries()].map(([uploadId, attachmentIds]) => ({
@@ -1416,6 +1433,7 @@ export function useChatComposerState({
             userVisibleInput,
             images: uploadedImages,
             attachments: turnAttachments,
+            displayAttachments: [...uploadedFiles, ...turnAttachments],
             uploadedAttachments: uploadedAttachmentRefs,
             modelSelection: submittedModelSelection,
           },
