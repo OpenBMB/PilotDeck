@@ -18,6 +18,7 @@ import {
   type RouterModelRef,
   type RouterScenariosConfig,
   type RouterStatsConfig,
+  type RouterTokenSaverCacheAwareSwitchingUpgradePolicy,
   type RouterTokenSaverConfig,
   type RouterPricingUnit,
 } from "./schema.js";
@@ -405,6 +406,7 @@ function parseTokenSaver(
   let cacheAwareSwitching: RouterTokenSaverConfig["cacheAwareSwitching"] = {
     enabled: true,
     minSavingsRatio: 0,
+    upgradePolicy: "guard",
   };
   if (raw.cacheAwareSwitching !== undefined) {
     if (!isRecord(raw.cacheAwareSwitching)) {
@@ -432,7 +434,25 @@ function parseTokenSaver(
           });
         }
       }
-      cacheAwareSwitching = { enabled, minSavingsRatio };
+      const upgradePolicyRaw = raw.cacheAwareSwitching.upgradePolicy;
+      let upgradePolicy: RouterTokenSaverCacheAwareSwitchingUpgradePolicy = "guard";
+      if (upgradePolicyRaw !== undefined) {
+        if (
+          upgradePolicyRaw === "guard" ||
+          upgradePolicyRaw === "amortized" ||
+          upgradePolicyRaw === "exempt"
+        ) {
+          upgradePolicy = upgradePolicyRaw;
+        } else {
+          diagnostics.push({
+            code: "ROUTER_TOKEN_SAVER_CACHE_AWARE_SWITCHING_UPGRADE_POLICY_INVALID",
+            severity: "fatal",
+            path: "router.tokenSaver.cacheAwareSwitching.upgradePolicy",
+            message: "cacheAwareSwitching.upgradePolicy must be one of guard / amortized / exempt.",
+          });
+        }
+      }
+      cacheAwareSwitching = { enabled, minSavingsRatio, upgradePolicy };
     }
   }
 
