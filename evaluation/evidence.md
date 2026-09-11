@@ -16,6 +16,7 @@ Baseline inspected: `cfc4d1779228f91fececc5d6705c14dab5b7ef2f` on `feat/d-evalua
 - Anthropic usage already exposes input, output, cache-read, and cache-write as separate categories.
 - `nativeCost` exists in canonical usage and is preferred by the ledger, including an explicit zero.
 - Fallback eligibility excludes context compaction recovery. Compaction is performed in the Agent loop and needs a separate role-aware integration hook; it must not be inferred from a missing router `stats.observe` call.
+- Compaction summaries already traverse `RouterRuntime`; their execute context now overrides the accounting role to `compaction`. Retry and fallback remain relationship fields on the same attempt row, so the summary is not charged twice.
 - Router-disabled passthrough currently bypasses router stats. Baseline experiments therefore require the shared ledger at the provider boundary or an explicit baseline wrapper; absence from router stats is not evidence that the provider was not called.
 - Non-streaming retries in `ModelRuntime.complete` and both OpenAI/Anthropic-compatible and Google retries in `streamModel` now emit distinct content-free provider-attempt callbacks. Judge consumes the non-streaming events without duplicating its logical fallback record. Router ledger de-duplication/wiring still needs to consume streaming callbacks, so a fully provider-reconciled claim remains premature.
 

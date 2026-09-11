@@ -88,4 +88,6 @@ export type RouterExecuteContext = {
   turnId: string;
   projectPath?: string;
   abortSignal?: AbortSignal;
+  /** Accounting role override for internal model calls such as context summaries. */
+  callRole?: "compaction";
 };

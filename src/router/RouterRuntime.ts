@@ -808,7 +808,7 @@ export function createRouterRuntime(
         for (const [providerIndex, providerAttempt] of accountingAttempts.entries()) {
           if (providerIndex > 0) attemptSequence += 1;
           const currentAttemptId = providerIndex === 0 ? ledgerAttemptId : randomUUID();
-          const attemptRole = attemptIndex > 0 ? "fallback" : attemptSequence > 1 ? "retry" : decision.isSubagent ? "subagent" : "main";
+          const attemptRole = ctx.callRole ?? (attemptIndex > 0 ? "fallback" : attemptSequence > 1 ? "retry" : decision.isSubagent ? "subagent" : "main");
           ledger?.append({
             ...ledgerDefaults, sessionId: ctx.sessionId, taskId: config.stats?.taskId ?? ctx.turnId,
             decisionId: ctx.turnId, callId, attemptId: currentAttemptId,
@@ -817,8 +817,8 @@ export function createRouterRuntime(
             attemptNumber: attemptSequence, startedAt: providerAttempt.startedAt, endedAt: providerAttempt.endedAt,
             status: providerAttempt.status, errorType: providerAttempt.errorType, usage: providerAttempt.usage,
             usageSource: providerAttempt.usage ? "provider_reported" : "unknown",
-            retryOfAttemptId: attemptRole === "retry" ? previousAttemptId : undefined,
-            fallbackFromAttemptId: attemptRole === "fallback" ? previousAttemptId : undefined,
+            retryOfAttemptId: attemptSequence > 1 && attemptIndex === 0 ? previousAttemptId : undefined,
+            fallbackFromAttemptId: attemptIndex > 0 ? previousAttemptId : undefined,
           });
           previousAttemptId = currentAttemptId;
         }
