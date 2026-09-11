@@ -15,6 +15,8 @@ const error = (code: string, status?: number): CanonicalModelError => ({
 test("HALO separates service, credential, task, cancellation and unknown signals", () => {
   assert.equal(classifyRecoverySignal(error("rate_limit_error", 429)), "service");
   assert.equal(classifyRecoverySignal(error("server_error", 503)), "service");
+  assert.equal(classifyRecoverySignal(error("provider_error", 408)), "service");
+  assert.equal(classifyRecoverySignal(error("provider_error", 409)), "service");
   assert.equal(classifyRecoverySignal(error("auth_error", 401)), "credential");
   assert.equal(classifyRecoverySignal(error("invalid_tool_arguments")), "task");
   assert.equal(classifyRecoverySignal(error("aborted")), "cancelled");

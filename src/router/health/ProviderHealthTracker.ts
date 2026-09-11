@@ -16,7 +16,13 @@ const TASK_ERROR_CODES = new Set([
 export function classifyRecoverySignal(error: CanonicalModelError): RecoverySignal {
   if (error.code === "aborted" || error.code === "cancelled") return "cancelled";
   if (error.code === "auth_error" || error.code === "billing") return "credential";
-  if (SERVICE_ERROR_CODES.has(error.code) || error.status === 429 || (error.status != null && error.status >= 500)) {
+  if (
+    SERVICE_ERROR_CODES.has(error.code) ||
+    error.status === 408 ||
+    error.status === 409 ||
+    error.status === 429 ||
+    (error.status != null && error.status >= 500)
+  ) {
     return "service";
   }
   if (TASK_ERROR_CODES.has(error.code)) return "task";
