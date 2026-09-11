@@ -24,10 +24,17 @@ for (const task of tasks) {
   });
   fs.writeFileSync(path.join(taskDir, "stdout.txt"), run.stdout ?? "");
   fs.writeFileSync(path.join(taskDir, "stderr.txt"), run.stderr ?? "");
+  const structuredPath = path.join(taskDir, "evaluation-result.json");
+  const structured = fs.existsSync(structuredPath) ? JSON.parse(fs.readFileSync(structuredPath, "utf8")) : {};
   results.push(JSON.stringify({
     taskId: task.id, sessionId: task.sessionId, strategy, repeat,
-    success: run.status === 0, latencyMs: Date.now() - started,
-    exitCode: run.status, errorType: run.error?.name,
+    success: typeof structured.success === "boolean" ? structured.success : run.status === 0,
+    score: typeof structured.score === "number" ? structured.score : undefined,
+    validator: structured.validator ?? "process-exit",
+    latencyMs: structured.latencyMs ?? Date.now() - started,
+    ttftMs: structured.ttftMs, noOutputWaitMs: structured.noOutputWaitMs,
+    fallbackRecoveryMs: structured.fallbackRecoveryMs, cancellationMs: structured.cancellationMs,
+    failureReason: structured.failureReason, exitCode: run.status, errorType: run.error?.name,
   }));
 }
 fs.writeFileSync(path.join(outputDir, "results.jsonl"), results.join("\n") + (results.length ? "\n" : ""));

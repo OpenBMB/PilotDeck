@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-type Result = { taskId: string; sessionId: string; strategy: string; repeat: number; success: boolean; latencyMs: number };
+type Result = { taskId: string; sessionId: string; strategy: string; repeat: number; success: boolean; latencyMs: number; ttftMs?: number; noOutputWaitMs?: number; fallbackRecoveryMs?: number; cancellationMs?: number; failureReason?: string };
 type Call = { taskId: string; strategyVersion: string; cost?: number; costSource: string; role: string };
 const [resultsPath, callsPath, outputDir] = process.argv.slice(2);
 if (!resultsPath || !callsPath || !outputDir) throw new Error("usage: analyze-results.mts <results.jsonl> <calls.jsonl> <new-output-dir>");
@@ -25,6 +25,10 @@ const rows = strategies.map((strategy) => {
     averageTaskCostUsd: rs.length ? knownCost / rs.length : null,
     costPerSuccessUsd: successes ? knownCost / successes : null,
     p50LatencyMs: quantile(latencies, 0.5), p95LatencyMs: quantile(latencies, 0.95),
+    p50TtftMs: quantile(numbers(rs, "ttftMs"), 0.5), p95TtftMs: quantile(numbers(rs, "ttftMs"), 0.95),
+    p95NoOutputWaitMs: quantile(numbers(rs, "noOutputWaitMs"), 0.95),
+    p50FallbackRecoveryMs: quantile(numbers(rs, "fallbackRecoveryMs"), 0.5),
+    p95CancellationMs: quantile(numbers(rs, "cancellationMs"), 0.95),
     judgeCostUsd: cs.filter((x) => x.role === "judge").reduce((n, x) => n + (x.cost ?? 0), 0),
   };
 });
@@ -35,10 +39,14 @@ fs.writeFileSync(path.join(outputDir, "summary.json"), JSON.stringify({ schemaVe
 const csv = [Object.keys(rows[0] ?? {}).join(","), ...rows.map((row) => Object.values(row).map(csvCell).join(","))];
 fs.writeFileSync(path.join(outputDir, "summary.csv"), csv.join("\n") + "\n");
 fs.writeFileSync(path.join(outputDir, "cost-success.svg"), svg(rows));
+fs.writeFileSync(path.join(outputDir, "failures.json"), JSON.stringify(results.filter((x) => !x.success).map((x) => ({ taskId: x.taskId, sessionId: x.sessionId, strategy: x.strategy, repeat: x.repeat, failureReason: x.failureReason ?? "unspecified" })), null, 2) + "\n");
 
 function quantile(values: number[], q: number): number | null {
   if (!values.length) return null;
   return values[Math.min(values.length - 1, Math.floor((values.length - 1) * q))]!;
+}
+function numbers(rows: Result[], key: "ttftMs" | "noOutputWaitMs" | "fallbackRecoveryMs" | "cancellationMs"): number[] {
+  return rows.map((x) => x[key]).filter((x): x is number => typeof x === "number" && Number.isFinite(x)).sort((a, b) => a - b);
 }
 function csvCell(value: unknown): string { return `"${String(value ?? "").replaceAll('"', '""')}"`; }
 function svg(data: typeof rows): string {
