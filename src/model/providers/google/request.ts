@@ -167,6 +167,7 @@ function toGoogleParts(block: CanonicalContentBlock, toolNamesById: Map<string, 
     case "image":
     case "pdf":
     case "audio":
+    case "video":
       return [toGoogleMediaPart(block)];
     case "tool_call":
       return [{
@@ -198,7 +199,7 @@ function toGoogleParts(block: CanonicalContentBlock, toolNamesById: Map<string, 
 }
 
 function toGoogleMediaPart(
-  block: Extract<CanonicalContentBlock, { type: "image" | "pdf" | "audio" }>,
+  block: Extract<CanonicalContentBlock, { type: "image" | "pdf" | "audio" | "video" }>,
 ): Part {
   if (block.source === "url") {
     return { fileData: { fileUri: block.data, mimeType: block.mimeType } };
