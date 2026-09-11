@@ -1,7 +1,7 @@
-import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
-import type { SessionStore } from '../../../stores/useSessionStore';
+import { useSessionStore, type SessionStore } from '../../../stores/useSessionStore';
 import {
   buildSessionStatusRequest,
   resetSessionStatusProtocolForTests,
@@ -20,6 +20,7 @@ vi.mock('../../../contexts/WebSocketContext', () => ({
 
 const provider = 'pilotdeck' as SessionProvider;
 const noop = () => undefined;
+afterEach(cleanup);
 
 function createSessionStore() {
   return {
@@ -43,6 +44,40 @@ describe('useChatRealtimeHandlers terminal errors', () => {
       mocks.listener = listener;
       return noop;
     });
+  });
+
+  it.each(['thinking', 'stream_delta'])('starts a separate %s block after a compaction', (kind) => {
+    const { result } = renderHook(() => useSessionStore());
+    const sessionStore = result.current;
+    renderHook(() => useChatRealtimeHandlers({
+      provider,
+      selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
+      selectedSession: { id: 'web:s_test' } as unknown as ProjectSession,
+      currentSessionId: 'web:s_test',
+      setCurrentSessionId: noop,
+      setIsLoading: noop,
+      setSessionRuntimeState: noop,
+      activeRunId: 'run-1',
+      setActiveRunId: noop,
+      setCanAbortSession: noop,
+      setIsAborting: noop,
+      setClaudeStatus: noop,
+      setPilotDeckStatus: noop,
+      setTokenBudget: noop,
+      setPendingPermissionRequests: noop,
+      pendingViewSessionRef: { current: null },
+      sessionStore,
+    }));
+    act(() => {
+      const base = { sessionId: 'web:s_test', runId: 'run-1', provider };
+      mocks.listener?.({ ...base, kind, content: 'Before compact' });
+      mocks.listener?.({ ...base, id: 'compact', kind: 'compact_boundary', compactionId: 'c1' });
+      mocks.listener?.({ ...base, kind, content: 'After compact' });
+    });
+    const messages = sessionStore.getMessages('web:s_test');
+    expect(messages.map(message => message.kind)).toEqual([kind === 'thinking' ? 'thinking' : 'text', 'compact_boundary', kind]);
+    expect(messages[0]).toMatchObject({ content: 'Before compact', isFinal: true });
+    expect(messages[2].content).toBe('After compact');
   });
 
   it('finalizes assistant streams when applied guidance creates a user boundary in the same run', () => {

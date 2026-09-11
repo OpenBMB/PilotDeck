@@ -84,14 +84,17 @@ function ChildFixture({ direct = false }) {
   </FindShortcutProvider>;
 }
 
-function TranscriptFixture() {
+function TranscriptFixture({ reconcile = false }) {
   const [state, set] = useState({ messages: [], working: true, activities: [], showThinking: true });
+  const store = useSessionStore();
+  useEffect(() => { if (reconcile) store.setActiveSession('s'); }, [reconcile, store]);
+  const messages = reconcile ? normalizedToChatMessages(store.getMessages('s')) : state.messages;
   const ref = useRef(null);
-  window.streamLifecycle = { ...state, set: (update) => set((value) => ({ ...value, ...update })) };
+  window.streamLifecycle = { ...state, store, set: (update) => set((value) => ({ ...value, ...update })) };
   return <FindShortcutProvider activeScope="chat">
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <MessagesPane scrollContainerRef={ref} chatMessages={state.messages} visibleMessages={state.messages}
-        activityMessages={state.activities} visibleMessageCount={state.messages.length} totalMessages={state.messages.length}
+      <MessagesPane scrollContainerRef={ref} chatMessages={messages} visibleMessages={messages}
+        activityMessages={state.activities} visibleMessageCount={messages.length} totalMessages={messages.length}
         isLoadingSessionMessages={false} isLoadingMoreMessages={false} hasMoreMessages={false} allMessagesLoaded
         isLoadingAllMessages={false} loadAllMessages={noop} loadEarlierMessages={noop} provider="pilotdeck"
         selectedProject={null} selectedSession={null} createDiff={diff} showThinking={state.showThinking} inlineThinking
@@ -103,5 +106,6 @@ function TranscriptFixture() {
 
 createRoot(document.getElementById('root')).render(
   params.has('child-direct') ? <ChildFixture direct /> : params.has('child') ? <ChildFixture />
-    : params.has('transcript') ? <TranscriptFixture /> : <SessionFixture />,
+    : params.has('reconcile') ? <TranscriptFixture reconcile />
+      : params.has('transcript') ? <TranscriptFixture /> : <SessionFixture />,
 );

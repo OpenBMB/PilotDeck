@@ -794,7 +794,7 @@ export function useChatRealtimeHandlers({
 
     // Only route certain message kinds to the store append logic.
     const flushKinds = new Set([
-      'tool_use', 'tool_result', 'text', 'complete', 'error', 'permission_request',
+      'tool_use', 'tool_result', 'text', 'complete', 'error', 'permission_request', 'compact_boundary',
     ]);
     if (flushKinds.has(msg.kind as string) && (msg.kind !== 'error' || isTerminalError)) {
       // Finalize thinking if still active (model moved past thinking)
@@ -805,7 +805,7 @@ export function useChatRealtimeHandlers({
       // Finalize content stream on tool_use / complete / terminal error.
       // The gateway may not send stream_end, so tool_use is the
       // reliable signal that the text block has ended.
-      if (msg.kind === 'tool_use' || msg.kind === 'complete' || msg.kind === 'error') {
+      if (msg.kind === 'tool_use' || msg.kind === 'complete' || msg.kind === 'error' || msg.kind === 'compact_boundary') {
         sessionStore.finalizeStreaming(sid, msgRunId);
       }
       if (msg.kind === 'complete' || msg.kind === 'error') {
