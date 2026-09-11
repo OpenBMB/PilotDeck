@@ -351,10 +351,13 @@ function getSameTurnServerCandidates(
   return serverMessages.filter((message) => getMessageTurnId(message) === realtimeTurnId);
 }
 
-function isOptimisticUserMessage(message: NormalizedMessage): boolean {
+function isUnconfirmedUserMessage(message: NormalizedMessage): boolean {
+  // Queue delivery emits a gateway text_<uuid> row, not a local_* bubble.
+  // Both represent the initial user input of a turn; steers remain distinct.
   return message.kind === 'text'
     && message.role === 'user'
-    && message.id.startsWith('local_');
+    && !message.isSteer
+    && (message.id.startsWith('local_') || Boolean(message.queueItemId));
 }
 
 function captureOptimisticUserServerTail(
@@ -363,7 +366,7 @@ function captureOptimisticUserServerTail(
   serverHistoryPending: boolean,
 ): NormalizedMessage {
   if (
-    !isOptimisticUserMessage(message)
+    !isUnconfirmedUserMessage(message)
     || message.serverTailIdAtStart !== undefined
   ) {
     return message;
@@ -435,7 +438,7 @@ function findConfirmedUserMessageDuplicateIndex(
   realtimeMessage: NormalizedMessage,
   serverMessages: NormalizedMessage[],
 ): number {
-  if (!isOptimisticUserMessage(realtimeMessage)) return -1;
+  if (!isUnconfirmedUserMessage(realtimeMessage)) return -1;
 
   const realtimeTurnId = getMessageTurnId(realtimeMessage);
   if (realtimeTurnId) {
@@ -492,7 +495,7 @@ function getConfirmedRealtimeUserIndexes(
   );
   const confirmedRealtimeIndexes = new Set<number>();
   realtimeMessages.forEach((message, index) => {
-    const turnId = isOptimisticUserMessage(message) ? getMessageTurnId(message) : null;
+    const turnId = isUnconfirmedUserMessage(message) ? getMessageTurnId(message) : null;
     if (turnId && persistedUserTurnIds.has(turnId)) {
       confirmedRealtimeIndexes.add(index);
     }
@@ -500,7 +503,7 @@ function getConfirmedRealtimeUserIndexes(
 
   const realtimeCandidates = realtimeMessages
     .map((message, index) => ({ message, index }))
-    .filter(({ message }) => isOptimisticUserMessage(message) && !getMessageTurnId(message))
+    .filter(({ message }) => isUnconfirmedUserMessage(message) && !getMessageTurnId(message))
     .map(({ message, index }) => ({
       message,
       index,
@@ -615,7 +618,7 @@ function settlePendingOptimisticServerTail(
   serverMessages: NormalizedMessage[],
 ): NormalizedMessage {
   if (
-    !isOptimisticUserMessage(message)
+    !isUnconfirmedUserMessage(message)
     || !message.serverHistoryPendingAtStart
     || serverMessages.length === 0
   ) return message;
@@ -796,7 +799,7 @@ export function isRealtimeMessageRepresentedOnServer(
   // Local user bubbles must only match through isConfirmedUserMessageDuplicate,
   // which includes attachment and image input identity. The generic text path
   // below would otherwise collapse distinct queued sends with the same text.
-  if (isOptimisticUserMessage(realtimeMessage)) {
+  if (isUnconfirmedUserMessage(realtimeMessage)) {
     return false;
   }
 
@@ -877,7 +880,7 @@ export function shouldKeepRealtimeAfterServerRefresh(
     return true;
   }
   if (!PERSISTED_RENDERABLE_KINDS.has(realtimeMessage.kind)) return false;
-  if (isOptimisticUserMessage(realtimeMessage)) {
+  if (isUnconfirmedUserMessage(realtimeMessage)) {
     return !isConfirmedUserMessageDuplicate(realtimeMessage, serverMessages);
   }
   return !isRealtimeMessageRepresentedOnServer(realtimeMessage, serverMessages);
@@ -891,11 +894,11 @@ export function getRealtimeMessagesToKeepAfterServerRefresh(
   const anchors = getRealtimeServerAnchors(serverMessages, realtimeMessages);
   return realtimeMessages
     .filter((message, index) => {
-      if (isOptimisticUserMessage(message)) return !confirmedRealtimeIndexes.has(index);
+      if (isUnconfirmedUserMessage(message)) return !confirmedRealtimeIndexes.has(index);
       return shouldKeepRealtimeAfterServerRefresh(message, serverMessages);
     })
     .map((message) => {
-      if (isOptimisticUserMessage(message)) return settlePendingOptimisticServerTail(message, serverMessages);
+      if (isUnconfirmedUserMessage(message)) return settlePendingOptimisticServerTail(message, serverMessages);
       const index = realtimeMessages.indexOf(message);
       const before = anchors.before[index];
       const after = anchors.after[index];
@@ -912,7 +915,7 @@ function findRealtimeServerIndex(server: NormalizedMessage[], message: Normalize
   const byId = server.findIndex(candidate => candidate.id === message.id);
   if (byId >= 0) return byId;
   if (isTrackedStream(message)) return getStreamSnapshotCandidateIndexes(server, message)[0] ?? -1;
-  if (isOptimisticUserMessage(message)) return findConfirmedUserMessageDuplicateIndex(message, server);
+  if (isUnconfirmedUserMessage(message)) return findConfirmedUserMessageDuplicateIndex(message, server);
   return server.findIndex(candidate => isRealtimeMessageRepresentedOnServer(message, [candidate]));
 }
 
@@ -975,7 +978,7 @@ function mergeRealtimeInOrder(
     const predecessor = server.findIndex(candidate => candidate.id === message.serverPredecessorId);
     const after = anchors.after[realtimeIndex] ?? (successor >= 0 ? successor : undefined);
     const before = anchors.before[realtimeIndex] ?? (predecessor >= 0 ? predecessor : undefined);
-    let insertionIndex: number = isOptimisticUserMessage(message)
+    let insertionIndex: number = isUnconfirmedUserMessage(message)
       ? getInsertionIndex(message)
       : after ?? (before !== undefined ? before + 1 : previousInsertionIndex ?? server.length);
     if (previousInsertionIndex != null) {
@@ -1013,7 +1016,7 @@ function matchesBoundary(boundary: NormalizedMessage, candidate: NormalizedMessa
   if (boundary.kind === 'compact_boundary') return hasEquivalentCompactBoundary(boundary, [candidate]);
   return boundary.kind === 'text' && boundary.role === 'user'
     && candidate.kind === 'text' && candidate.role === 'user'
-    && normalizeRealtimeText(boundary.content) === normalizeRealtimeText(candidate.content);
+    && getConfirmedUserMessageIdentity(boundary).text === getConfirmedUserMessageIdentity(candidate).text;
 }
 
 function getStreamSnapshotCandidateIndexes(
@@ -1030,13 +1033,14 @@ function getStreamSnapshotCandidateIndexes(
   } else {
     // The initial request may have been in flight at stream start. Earlier
     // turns in that response are not part of this stream's search range.
-    startIndex = server.findIndex(message => getMessageTurnId(message) === turnId);
+    startIndex = server.findIndex(message => PERSISTED_RENDERABLE_KINDS.has(message.kind)
+      && getMessageTurnId(message) === turnId);
     if (startIndex < 0) return [];
   }
 
   const boundary = stream.streamBoundaryAtStart;
   if (boundary || stream.toolBoundaryIdAtStart) {
-    let boundaryIndex = boundary && isOptimisticUserMessage(boundary)
+    let boundaryIndex = boundary && isUnconfirmedUserMessage(boundary)
       ? findConfirmedUserMessageDuplicateIndex(boundary, server)
       : -1;
     // A boundary can be the captured tail itself, or already before it.
@@ -1070,6 +1074,9 @@ function getStreamSnapshotCandidateIndexes(
   const kind = stream.kind === 'thinking' ? 'thinking' : 'text';
   for (let index = startIndex; index < server.length; index += 1) {
     const message = server[index];
+    // Runtime status events are overlaid independently of transcript order.
+    // A status for the next turn can precede this turn's persisted reasoning.
+    if (!PERSISTED_RENDERABLE_KINDS.has(message.kind)) continue;
     if (getMessageTurnId(message) !== turnId) break;
     if (index === startIndex && stream.serverTailIdAtStart === null && boundary === null
       && message.kind === 'text' && message.role === 'user') continue;
@@ -1129,7 +1136,7 @@ export function computeMerged(server: NormalizedMessage[], realtime: NormalizedM
   server = enrichConfirmedUsers(server, realtime);
   const confirmedRealtimeIndexes = getConfirmedRealtimeUserIndexes(server, realtime);
   let extra = realtime.filter((message, index) => {
-    if (isOptimisticUserMessage(message)) return !confirmedRealtimeIndexes.has(index);
+    if (isUnconfirmedUserMessage(message)) return !confirmedRealtimeIndexes.has(index);
     return (isTrackedStream(message) && Boolean(getMessageTurnId(message)))
       || !isRealtimeMessageRepresentedOnServer(message, server);
   });
@@ -1208,7 +1215,7 @@ function preserveUserInputs(message: NormalizedMessage, previous?: NormalizedMes
 }
 
 function getUpsertKey(message: NormalizedMessage): string {
-  if (isOptimisticUserMessage(message) && getMessageTurnId(message)) {
+  if (isUnconfirmedUserMessage(message) && getMessageTurnId(message)) {
     return `optimistic_user::${getMessageTurnId(message)}`;
   }
   if (message.kind === 'compact_boundary' && message.compactionId) {
@@ -1379,8 +1386,8 @@ function captureStreamBoundary(messages: NormalizedMessage[], runId?: string): N
     if (getMessageTurnId(message) !== runId) continue;
     if (message.kind === 'tool_use' || message.kind === 'tool_result'
       || message.kind === 'compact_boundary' || (message.kind === 'text' && message.role === 'user')) {
-      const { id, sessionId, timestamp, provider, kind, role, content, toolId, compactionId, preTokens, postTokens, turnId } = message;
-      return { id, sessionId, timestamp, provider, kind, role, content, toolId, compactionId, preTokens, postTokens, turnId, runId };
+      const { id, sessionId, timestamp, provider, kind, role, content, toolId, compactionId, preTokens, postTokens, turnId, queueItemId, isSteer } = message;
+      return { id, sessionId, timestamp, provider, kind, role, content, toolId, compactionId, preTokens, postTokens, turnId, runId, queueItemId, isSteer };
     }
   }
   return null;

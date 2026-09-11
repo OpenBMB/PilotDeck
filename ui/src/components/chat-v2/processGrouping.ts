@@ -863,7 +863,10 @@ export function buildRenderableMessageItems(
         : itemsByIndex.get(segment.nextHostIndex);
       const isTrailingCompactOnlySegment = Boolean(
         previousHost
-        && !nextHost
+        && !previousHost.message.isThinking
+        // nextHost is intentionally unset whenever there is a previous host;
+        // that does not mean this segment is at the end of the transcript.
+        && findNextHostIndex(messages, turn, segment.endIndex + 1) === null
         && segment.messages.every((message) => message.isCompactBoundary),
       );
 

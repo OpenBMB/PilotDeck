@@ -4,9 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage, ChatRunMode, SessionRuntimeState } from '../chat/types/types';
+import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import MessagesPaneV2 from './MessagesPaneV2';
 import { ThinkingBlock } from './ThinkingBlock';
-import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import {
   getChatResponseReserveTarget,
   shouldKeepChatResponseReservedSpace,
@@ -1531,6 +1531,22 @@ describe('MessagesPaneV2 render behavior', () => {
 
     expect(screen.getAllByText('Fetching web content...')).toHaveLength(1);
     expect(document.querySelectorAll('.process-live-status')).toHaveLength(1);
+  });
+
+  it('keeps thinking before mid-turn compaction inside the completed trace', () => {
+    const now = new Date().toISOString();
+    renderPane({ messages: [
+      { id: 'user', type: 'user', content: 'Inspect the image', timestamp: now },
+      { id: 'thought', type: 'assistant', content: 'Reasoning before compaction', timestamp: now, isThinking: true },
+      { id: 'compact', type: 'system', content: 'Context compacted', timestamp: now, isCompactBoundary: true },
+      { id: 'answer', type: 'assistant', content: 'Answer after compaction', timestamp: now },
+    ] });
+    fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
+    const thought = screen.getByRole('button', { name: 'Thought process' });
+    const compact = screen.getByText('Compacted context');
+    const answer = screen.getByText('Answer after compaction');
+    expect(thought.compareDocumentPosition(compact) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(compact.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('does not render a completed compact boundary as a plan-mode process row', () => {

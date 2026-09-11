@@ -21,6 +21,42 @@ async function refresh(store: ReturnType<typeof useSessionStore>, messages: Norm
 }
 
 describe('live and persisted message reconciliation', () => {
+  it('reconciles a queued image echo and its answer with the attachment-bearing transcript', async () => {
+    const { result } = renderHook(() => useSessionStore());
+    const prior = msg('previous-answer', 'text', 'Previous answer', { role: 'assistant', runId: 'previous' });
+    await refresh(result.current, [prior]);
+    const echo = msg('text_gateway_uuid', 'text', 'Describe the image', { role: 'user', queueItemId: 'queue-1' });
+    act(() => {
+      result.current.appendRealtime(session, echo);
+      result.current.updateStreamingThinking(session, 'Two shapes.', 'pilotdeck', run);
+      result.current.finalizeStreamingThinking(session, run);
+      result.current.updateStreaming(session, 'Red square and blue circle.', 'pilotdeck', run);
+      result.current.finalizeStreaming(session, run);
+    });
+    const persistedUser = msg('persisted-image-user', 'text', 'Describe the image\n\n[Registered attachment files in this session:]\n- shapes.png: /tmp/shapes.png\nThese are path references for reuse. If an image/PDF is already visible in this turn, do not call read_file just to view it.', { role: 'user', images: ['data:image/png;base64,test'] });
+    const persistedThought = msg('persisted-thought', 'thinking', 'Two shapes.');
+    const persistedAnswer = msg('persisted-answer', 'text', 'Red square and blue circle.', { role: 'assistant' });
+    const history = [prior, persistedUser, persistedThought, persistedAnswer];
+    await refresh(result.current, history);
+    expect(result.current.getMessages(session).map(m => m.id)).toEqual(history.map(m => m.id));
+    expect(result.current.getMessages(session).filter(m => m.role === 'user')[0].images).toHaveLength(1);
+  });
+
+  it('does not treat out-of-band status rows from another turn as transcript boundaries', () => {
+    const status = msg('next-turn-status', 'status', '', { runId: 'next-turn' });
+    const active = msg('__streaming_thinking_session_run', 'thinking', 'The file shows the answer.', {
+      serverTailIdAtStart: null, streamBoundaryAtStart: user,
+    });
+    expect(computeMerged([user, status, snapshot], [active]).filter(m => m.kind === 'thinking').map(m => m.content))
+      .toEqual(['The file shows the answer.']);
+  });
+
+  it('keeps a steer distinct from the queued input in the same run', () => {
+    const queued = msg('text_queue', 'text', 'Question', { role: 'user', queueItemId: 'queue-1' });
+    const steer = msg('text_steer', 'text', 'Question', { role: 'user', queueItemId: 'queue-2', isSteer: true });
+    expect(upsertRealtimeMessages([queued], [steer])).toHaveLength(2);
+  });
+
   it('keeps reconciled thinking in the snapshot position before later assistant text', () => {
     const answer = msg('answer', 'text', 'The answer.', { role: 'assistant' });
     const active = msg('__streaming_thinking_session_run', 'thinking', 'The file shows the answer.', { serverTailIdAtStart: 'user' });
