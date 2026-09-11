@@ -85,3 +85,83 @@ test("non-Anthropic and unsupported models do not receive a cache plan", async (
   assert.equal(unsupported.cachePlan, undefined);
   assert.equal(unsupported.cacheBreakpoints, undefined);
 });
+
+function message(text: string): CanonicalMessage {
+  return { role: "user", content: [{ type: "text", text }] };
+}
+
+function promptDate(context: { systemPrompt?: string }): string | undefined {
+  return context.systemPrompt?.match(/now: (\d{4}-\d{2}-\d{2})/)?.[1];
+}
+
+test("session prompt date survives midnight, retries, and normal appends", async () => {
+  let now = new Date("2026-09-10T23:59:59Z");
+  const runtime = new DefaultContextRuntime({ now: () => now });
+  const first = await runtime.prepareForModel(input());
+  now = new Date("2026-09-11T00:01:00Z");
+  const retry = await runtime.prepareForModel(input());
+  assert.equal(retry.systemPrompt, first.systemPrompt);
+  assert.deepEqual(retry.cachePlan, first.cachePlan);
+  const next = await runtime.prepareForModel(input({
+    turnId: "next-turn",
+    messages: [...input().messages, message("next request")],
+  }));
+  assert.equal(next.systemPrompt, first.systemPrompt);
+  const other = await runtime.prepareForModel(input({ sessionId: "other-session" }));
+  assert.equal(promptDate(other), "2026-09-11");
+});
+
+test("date refreshes after history rewrites, then freezes again", async () => {
+  for (const rewritten of [
+    [message("tail")], // Head truncation / overflow recovery.
+    [message("summary"), message("tail")], // Full compaction.
+    [message("head"), message("short tool result"), message("tail")], // Micro compaction.
+    [message("head"), message("tail")], // Middle snip with stable head.
+  ]) {
+    let now = new Date("2026-09-10T12:00:00Z");
+    const runtime = new DefaultContextRuntime({ now: () => now });
+    await runtime.prepareForModel(input({ messages: [message("head"), message("long tool result"), message("tail")] }));
+    now = new Date("2026-09-11T12:00:00Z");
+    const compacted = await runtime.prepareForModel(input({ messages: rewritten }));
+    assert.equal(promptDate(compacted), "2026-09-11");
+    now = new Date("2026-09-12T12:00:00Z");
+    const next = await runtime.prepareForModel(input({ messages: [...rewritten, message("next")] }));
+    assert.equal(promptDate(next), "2026-09-11");
+  }
+});
+
+test("sliding window refreshes only when the projected history actually changes", async () => {
+  let now = new Date("2026-09-10T12:00:00Z");
+  const runtime = new DefaultContextRuntime({ now: () => now });
+  const messages = [message("old"), message("head"), message("tail")];
+  await runtime.prepareForModel(input({ messages, maxMessages: 2 }));
+  now = new Date("2026-09-11T12:00:00Z");
+  const retry = await runtime.prepareForModel(input({ messages, maxMessages: 2 }));
+  assert.equal(promptDate(retry), "2026-09-10");
+  const advanced = await runtime.prepareForModel(input({ messages: [...messages, message("next")], maxMessages: 2 }));
+  assert.equal(promptDate(advanced), "2026-09-11");
+});
+
+test("discarded budget candidates do not change the live date or cache generation", async () => {
+  let now = new Date("2026-09-10T12:00:00Z");
+  const runtime = new DefaultContextRuntime({ now: () => now });
+  const first = await runtime.prepareForModel(input());
+  now = new Date("2026-09-11T12:00:00Z");
+  const candidate = await runtime.prepareForModel(input({ previewOnly: true, messages: [message("hypothetical summary")] }));
+  assert.equal(promptDate(candidate), "2026-09-10");
+  const unchanged = await runtime.prepareForModel(input());
+  assert.equal(unchanged.systemPrompt, first.systemPrompt);
+  assert.deepEqual(unchanged.cachePlan, first.cachePlan);
+  const committed = await runtime.prepareForModel(input({ messages: candidate.messages }));
+  assert.equal(promptDate(committed), "2026-09-11");
+});
+
+test("date anchoring also applies to providers without an explicit cache plan", async () => {
+  let now = new Date("2026-09-10T12:00:00Z");
+  const runtime = new DefaultContextRuntime({ now: () => now });
+  const first = await runtime.prepareForModel(input({ protocol: "openai" }));
+  now = new Date("2026-09-11T12:00:00Z");
+  const next = await runtime.prepareForModel(input({ protocol: "openai" }));
+  assert.equal(next.systemPrompt, first.systemPrompt);
+  assert.equal(next.cachePlan, undefined);
+});

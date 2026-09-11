@@ -30,6 +30,8 @@
 
 - 新会话先缓存 system；有消息时再按 recent3 标记消息。
 - 每次投影后重新计算计划；消息被裁剪、微压缩或完整压缩后递增 generation。
+- 会话首次正式组装请求时固定 system prompt 的 UTC 日期；正常追加消息、重试和跨天不单独刷新日期。实际投影历史被裁剪、改写或压缩完成后，在下一次正式组装时更新日期，随后再次固定。重复投影同一份已裁剪历史不算新的裁剪。
+- 预算估算使用 `previewOnly` 组装候选请求，不提交日期、历史摘要或 cache generation，也不消费待处理的压缩 reset。日期锚点与会话 runtime 同生命周期，重建 runtime 时重新初始化。
 - plan mode 先对真实对话完成投影和 memory retrieval，再追加 reminder；最终请求的缓存计划以追加后的消息序列为准。
 - continuation request 改变消息数量后清除旧缓存计划，由下一次完整请求重新建立 provider-boundary 断点。
 - Router 将请求切换到不同 provider/model 时清除旧计划，当前请求无缓存降级。
@@ -38,7 +40,7 @@
 ## 测试映射与证据
 
 - `tests/context/cache-plan.spec.ts`：recent3 选择、fingerprint 和关闭条件。
-- `tests/context/cache-runtime.spec.ts`：DefaultContextRuntime 的协议门控、投影截断和 generation。
+- `tests/context/cache-runtime.spec.ts`：协议门控、投影截断、generation、跨天日期固定、会话隔离、历史改写后刷新及预算预演隔离。
 - `tests/model/request/anthropic-cache-plan.spec.ts`：system/recent3、5m TTL、tools 兼容和四断点上限。
 - `tests/agent/loop/model-override-defaults.spec.ts`：plan reminder 不占 projection 配额，memory 使用真实用户请求，最终断点与消息序列一致。
 - `tests/model/streaming/continuation-cache.spec.ts`：续传不复用旧缓存断点。

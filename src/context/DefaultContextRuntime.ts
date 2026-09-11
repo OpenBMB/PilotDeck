@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { CanonicalMessage } from "../model/index.js";
 import { ToolResultBudget } from "./budget/ToolResultBudget.js";
 import type { TokenBudgetManager, TokenBudgetSnapshot } from "./budget/TokenBudgetManager.js";
@@ -8,7 +9,7 @@ import {
   buildPostCompactMessages,
   truncateHeadPreservingCheckpoint,
 } from "./compaction/CompactionEngine.js";
-import { buildCachePlan } from "./cache/CachePlan.js";
+import { buildCachePlan, stableSerialize } from "./cache/CachePlan.js";
 import type { MicroCompactionEngine } from "./compaction/MicroCompactionEngine.js";
 import type { SnipEngine } from "./compaction/SnipEngine.js";
 import { ensureTrailingUserMessage } from "./compaction/toolPairIntegrity.js";
@@ -110,6 +111,7 @@ export class DefaultContextRuntime implements ContextRuntime {
   readonly autoCompactionPolicy?: AutoCompactionPolicy;
   private readonly cachePlanState = new Map<string, { fingerprint: string; generation: number }>();
   private readonly cacheResetSessions = new Set<string>();
+  private readonly promptTimeState = new Map<string, { timestamp: number; messages: string[] }>();
   private readonly microCompaction?: MicroCompactionEngine;
   private readonly snipEngine?: SnipEngine;
   private readonly overflowRecovery?: ContextOverflowRecovery;
@@ -161,6 +163,21 @@ export class DefaultContextRuntime implements ContextRuntime {
       });
     }
 
+    // Ordinary appends advance recent3 but must not advance the prompt date.
+    // Hash projected content to detect committed pruning/compaction, including
+    // changes made by callers, without retaining another copy of large media.
+    const messageFingerprints = projection.messages.map((message) => createHash("sha256")
+      .update(stableSerialize({ role: message.role, content: message.content }))
+      .digest("hex"));
+    const previousTime = this.promptTimeState.get(input.sessionId);
+    const historyRewritten = previousTime !== undefined && (
+      messageFingerprints.length < previousTime.messages.length
+      || previousTime.messages.some((hash, index) => hash !== messageFingerprints[index])
+    );
+    const refreshTime = !input.previewOnly && (
+      historyRewritten || this.cacheResetSessions.has(input.sessionId)
+    );
+    const promptTimestamp = !previousTime || refreshTime ? this.now().getTime() : previousTime.timestamp;
     const prompt = this.promptAssembler.assemble({
       cwd: input.cwd,
       provider: input.provider,
@@ -171,7 +188,7 @@ export class DefaultContextRuntime implements ContextRuntime {
       tools: input.tools,
       customSystemPrompt: input.customSystemPrompt,
       appendSystemPrompt: input.appendSystemPrompt,
-      now: this.now,
+      now: () => new Date(promptTimestamp),
     });
 
     const parts = [...prompt.parts];
@@ -250,12 +267,17 @@ export class DefaultContextRuntime implements ContextRuntime {
     const cachePlanFingerprint = buildCachePlan(cachePlanInput, 0)?.fingerprint;
     const cachePlan = buildCachePlan(
       cachePlanInput,
-      this.nextCachePlanGeneration(
+      input.previewOnly ? (this.cachePlanState.get(input.sessionId)?.generation ?? 0) : this.nextCachePlanGeneration(
         input.sessionId,
         cachePlanFingerprint,
         this.cacheResetSessions.delete(input.sessionId),
       ),
     );
+
+    // Budget probes must not consume resets or commit hypothetical histories.
+    if (!input.previewOnly) {
+      this.promptTimeState.set(input.sessionId, { timestamp: promptTimestamp, messages: messageFingerprints });
+    }
 
     return {
       messages: projection.messages,
