@@ -81,6 +81,7 @@ export class FileHistoryStore {
     trackedFiles: new Set<string>(),
   };
   private readonly mtimeCache = new Map<string, number | null>();
+  private readonly recentTrackedFiles: string[] = [];
   private readonly options: Required<
     Pick<FileHistoryStoreOptions, "backupDir" | "maxFileBytes" | "maxSnapshots" | "now">
   > & {
@@ -110,6 +111,13 @@ export class FileHistoryStore {
     return this.state;
   }
 
+  getRecentTrackedFiles(limit: number): string[] {
+    if (!Number.isFinite(limit)) return [];
+    const normalizedLimit = Math.max(0, Math.floor(limit));
+    if (normalizedLimit === 0) return [];
+    return this.recentTrackedFiles.slice(0, normalizedLimit);
+  }
+
   /**
    * F1 — capture the current file before an edit. Idempotent within a
    * single open snapshot (F2): repeated calls for the same file inside the
@@ -123,6 +131,7 @@ export class FileHistoryStore {
     return this.run(async () => {
       const absPath = path.resolve(filePath);
       this.state.trackedFiles.add(absPath);
+      this.trackRecentFile(absPath);
 
       const snapshot = this.getOrCreateOpenSnapshot(messageId);
       if (snapshot.trackedFileBackups[absPath]) {
@@ -303,6 +312,7 @@ export class FileHistoryStore {
           mode: backup.mode,
         };
         this.state.trackedFiles.add(filePath);
+        this.trackRecentFile(path.resolve(filePath));
       }
       const existingIdx = this.state.snapshots.findIndex(
         (s) => s.messageId === entry.messageId,
@@ -333,6 +343,14 @@ export class FileHistoryStore {
     };
     this.state.snapshots.push(snapshot);
     return snapshot;
+  }
+
+  private trackRecentFile(filePath: string): void {
+    const existingIndex = this.recentTrackedFiles.indexOf(filePath);
+    if (existingIndex >= 0) {
+      this.recentTrackedFiles.splice(existingIndex, 1);
+    }
+    this.recentTrackedFiles.unshift(filePath);
   }
 
   private findSnapshot(messageId: string): FileHistorySnapshot | undefined {

@@ -76,6 +76,15 @@ import {
   createVisibleErrorStatusDetail,
   type AgentStatusI18nDescriptor,
 } from "../../status/agentStatus.js";
+import type {
+  ContinuationRoutingInfo,
+  InvalidateStickyResult,
+  RouterDecisionInput,
+  TaskSnapshot,
+  UpgradeEvidence,
+} from "../../router/index.js";
+import { extractLastUserMessage } from "../../router/tokenSaver/extractLastUserMessage.js";
+import { isShortContinuation } from "../../router/tokenSaver/classifyAndRoute.js";
 
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
 const SUBAGENT_STATUS_HEARTBEAT_MS = 2_000;
@@ -360,7 +369,19 @@ export class AgentLoop {
       return { error, result };
     };
 
-    const stickyInfo = this.dependencies.router.invalidateSticky?.(input.sessionId);
+    const userMessage = extractLastUserMessage(input.messages);
+    const turnSticky = initializeTurnSticky(
+      this.dependencies.router,
+      input.sessionId,
+      Boolean(this.config.isSubagent),
+      userMessage,
+    );
+    const stickyInfo = turnSticky.stickyInfo;
+    const continuation = turnSticky.continuation;
+    const taskRoutingFacts = readTaskRoutingFacts(this.dependencies, input.sessionId);
+    const highReliabilityRequest = hasHighReliabilityRequest(userMessage);
+    let hasRepeatedToolErrorEvidence = false;
+    let hasVerificationFailedEvidence = false;
     let previousTier: string | undefined = stickyInfo?.previousTier;
 
     const continueWithSyntheticPrompt = async (
@@ -532,13 +553,19 @@ export class AgentLoop {
         request,
         sessionId: input.sessionId,
         isMainAgent: !this.config.isSubagent,
-        metadata: stickyInfo
-          ? {
-            previousTier,
-            previousProvider: stickyInfo.previousProvider,
-            previousModel: stickyInfo.previousModel,
-          }
-          : previousTier ? { previousTier } : undefined,
+        metadata: buildTurnRoutingMetadata({
+          previousTier,
+          previousProvider: stickyInfo?.previousProvider,
+          previousModel: stickyInfo?.previousModel,
+          taskSnapshot: taskRoutingFacts.taskSnapshot,
+          continuation,
+          upgradeEvidence: selectUpgradeEvidence({
+            verificationFailed: hasVerificationFailedEvidence,
+            todoExpanded: taskRoutingFacts.todoExpanded,
+            repeatedToolError: hasRepeatedToolErrorEvidence,
+            highReliabilityRequest,
+          }),
+        }),
       });
       const routedLimits = this.getModelTokenLimits(decision.provider, decision.model);
       const routedMaxOutputTokens = routedLimits?.maxOutputTokens;
@@ -1782,10 +1809,16 @@ export class AgentLoop {
         "Tool execution did not produce a result.",
         missingToolResultRecoveryContext(),
       );
+      if (detectVerificationFailure(toolCalls, pairedResults)) {
+        hasVerificationFailedEvidence = true;
+      }
       const repeatedFailure = detectRepeatedToolFailure(
         pairedResults,
         lastToolFailureFingerprint,
       );
+      if (repeatedFailure.repeatedKeys.size > 0) {
+        hasRepeatedToolErrorEvidence = true;
+      }
       pairedResults = annotateRepeatedToolFailures(pairedResults, repeatedFailure.repeatedKeys);
       lastToolFailureFingerprint = repeatedFailure.currentFingerprint;
       const toolResultRepair = largeFileRepair.analyzeToolResults(pairedResults, {
@@ -3022,6 +3055,242 @@ function appendPlanModeReminder(messages: CanonicalMessage[]): CanonicalMessage[
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function initializeTurnSticky(
+  router: AgentRuntimeDependencies["router"],
+  sessionId: string,
+  isSubagent: boolean,
+  userMessage: string | undefined,
+): {
+  stickyInfo?: InvalidateStickyResult;
+  continuation?: ContinuationRoutingInfo;
+} {
+  if (!isSubagent && router.peekSticky) {
+    try {
+      const peeked = router.peekSticky(sessionId);
+      const previousTier = nonEmptyTrimmedString(peeked.previousTier);
+      const previousProvider = nonEmptyTrimmedString(peeked.previousProvider);
+      const previousModel = nonEmptyTrimmedString(peeked.previousModel);
+      if (
+        userMessage !== undefined
+        && isShortContinuation(userMessage)
+        && previousTier
+        && previousProvider
+        && previousModel
+      ) {
+        return {
+          stickyInfo: {
+            ...peeked,
+            previousTier,
+            previousProvider,
+            previousModel,
+          },
+          continuation: {
+            matched: true,
+            previousTier,
+            previousProvider,
+            previousModel,
+          },
+        };
+      }
+    } catch {
+      // A read-only sticky lookup is advisory; the existing invalidation path
+      // remains the fail-soft fallback for this turn.
+    }
+  }
+
+  return { stickyInfo: router.invalidateSticky?.(sessionId) };
+}
+
+function nonEmptyTrimmedString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readTaskRoutingFacts(
+  dependencies: AgentRuntimeDependencies,
+  sessionId: string,
+): { taskSnapshot?: TaskSnapshot; todoExpanded: boolean } {
+  const keyFiles = readRecentTrackedFiles(dependencies.fileHistory);
+  let source: unknown;
+  try {
+    source = dependencies.planTodoManager?.forSession(sessionId).getSnapshot();
+  } catch {
+    source = undefined;
+  }
+
+  if (!isRecord(source)) {
+    return {
+      ...(keyFiles.length > 0
+        ? {
+            taskSnapshot: {
+              requiresInitialization: false,
+              todos: [],
+              activeTodoCount: 0,
+              allCompleted: false,
+              keyFiles,
+            },
+          }
+        : {}),
+      todoExpanded: false,
+    };
+  }
+
+  const sourceTodos = Array.isArray(source.todos) ? source.todos : [];
+  const todos = sourceTodos.flatMap((todo) => {
+    if (!isRecord(todo)) return [];
+    const content = nonEmptyTrimmedString(todo.content);
+    if (!content || !isTaskSnapshotTodoStatus(todo.status)) return [];
+    return [{ content, status: todo.status }];
+  });
+  const approvedPlan = typeof source.approvedPlan === "string"
+    && source.approvedPlan.trim().length > 0
+    ? source.approvedPlan
+    : undefined;
+  const requiresInitialization = source.requiresInitialization === true;
+  const todoDiagnostics = isRecord(source.todoDiagnostics) ? source.todoDiagnostics : undefined;
+  const activeTodoCount = typeof todoDiagnostics?.activeCount === "number"
+    && Number.isFinite(todoDiagnostics.activeCount)
+    ? Math.max(0, Math.floor(todoDiagnostics.activeCount))
+    : 0;
+  const allCompleted = sourceTodos.length > 0 && sourceTodos.every((todo) =>
+    isRecord(todo) && (todo.status === "completed" || todo.status === "cancelled")
+  );
+  const lastWrite = isRecord(todoDiagnostics?.lastWrite) ? todoDiagnostics.lastWrite : undefined;
+  const todoExpanded = typeof lastWrite?.addedCount === "number"
+    && lastWrite.addedCount > 0
+    && lastWrite.allCompleted === false;
+  const hasTaskFacts = approvedPlan !== undefined
+    || requiresInitialization
+    || sourceTodos.length > 0
+    || activeTodoCount > 0
+    || keyFiles.length > 0;
+
+  return {
+    ...(hasTaskFacts
+      ? {
+          taskSnapshot: {
+            ...(approvedPlan ? { approvedPlan } : {}),
+            requiresInitialization,
+            todos,
+            activeTodoCount,
+            allCompleted,
+            keyFiles,
+          },
+        }
+      : {}),
+    todoExpanded,
+  };
+}
+
+function readRecentTrackedFiles(
+  fileHistory: AgentRuntimeDependencies["fileHistory"],
+): string[] {
+  const getter = fileHistory?.getRecentTrackedFiles;
+  if (!getter) return [];
+  try {
+    const recent = getter.call(fileHistory, 5);
+    if (!Array.isArray(recent)) return [];
+    return recent
+      .filter((filePath): filePath is string => typeof filePath === "string")
+      .map((filePath) => filePath.trim())
+      .filter((filePath) => filePath.length > 0)
+      .slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+function isTaskSnapshotTodoStatus(
+  value: unknown,
+): value is TaskSnapshot["todos"][number]["status"] {
+  return value === "pending"
+    || value === "in_progress"
+    || value === "completed"
+    || value === "cancelled";
+}
+
+function buildTurnRoutingMetadata(input: {
+  previousTier?: string;
+  previousProvider?: string;
+  previousModel?: string;
+  taskSnapshot?: TaskSnapshot;
+  continuation?: ContinuationRoutingInfo;
+  upgradeEvidence?: UpgradeEvidence;
+}): RouterDecisionInput["metadata"] {
+  const metadata: NonNullable<RouterDecisionInput["metadata"]> = {};
+  if (input.previousTier !== undefined) metadata.previousTier = input.previousTier;
+  if (input.previousProvider !== undefined) metadata.previousProvider = input.previousProvider;
+  if (input.previousModel !== undefined) metadata.previousModel = input.previousModel;
+  if (input.taskSnapshot) metadata.taskSnapshot = input.taskSnapshot;
+  if (input.continuation) metadata.continuation = input.continuation;
+  if (input.upgradeEvidence) metadata.upgradeEvidence = input.upgradeEvidence;
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function selectUpgradeEvidence(input: {
+  verificationFailed: boolean;
+  todoExpanded: boolean;
+  repeatedToolError: boolean;
+  highReliabilityRequest: boolean;
+}): UpgradeEvidence | undefined {
+  if (input.verificationFailed) return "verification_failed";
+  if (input.todoExpanded) return "todo_expanded";
+  if (input.repeatedToolError) return "repeated_tool_error";
+  if (input.highReliabilityRequest) return "high_reliability_request";
+  return undefined;
+}
+
+const HIGH_RELIABILITY_PHRASES = [
+  "必须完整验证",
+  "完整验证",
+  "不要出错",
+  "高可靠",
+  "production ready",
+  "fully verify",
+  "verify thoroughly",
+  "do not make mistakes",
+];
+
+function hasHighReliabilityRequest(userMessage: string | undefined): boolean {
+  if (!userMessage) return false;
+  const normalized = userMessage.toLocaleLowerCase();
+  return HIGH_RELIABILITY_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+const VERIFICATION_COMMAND_PATTERN = /\b(?:test|pytest|vitest|jest|tsc|lint|typecheck|build)\b/i;
+
+function detectVerificationFailure(
+  toolCalls: CanonicalToolCall[],
+  results: PilotDeckToolResult[],
+): boolean {
+  const failedToolCallIds = new Set(
+    results
+      .filter((result): result is PilotDeckToolErrorResult => result.type === "error")
+      .map((result) => result.toolCallId),
+  );
+  return toolCalls.some((call) => {
+    if (!failedToolCallIds.has(call.id)) return false;
+    if (call.name !== "bash" && call.name !== "execute_code") return false;
+    const source = readVerificationSource(call);
+    return source !== undefined && VERIFICATION_COMMAND_PATTERN.test(source);
+  });
+}
+
+function readVerificationSource(call: CanonicalToolCall): string | undefined {
+  let input = call.input;
+  if (typeof input === "string") {
+    try {
+      input = JSON.parse(input) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  if (!isRecord(input)) return undefined;
+  const source = call.name === "bash" ? input.command : input.code;
+  return typeof source === "string" ? source : undefined;
 }
 
 function cloneReadFileStateMap(

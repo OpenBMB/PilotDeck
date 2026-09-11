@@ -25,6 +25,7 @@ import type { PilotDeckToolInputSchema, PilotDeckToolValidationResult } from "./
  */
 export type PilotDeckToolFileHistorySink = {
   trackEdit(filePath: string, messageId: string): Promise<void>;
+  getRecentTrackedFiles?(limit: number): string[];
 };
 
 /**
