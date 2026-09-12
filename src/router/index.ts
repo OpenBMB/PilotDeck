@@ -60,7 +60,25 @@ export {
   type ClassifyAndRouteInput,
   type TokenSaverDecision,
   type TokenSaverFailure,
+  type TokenSaverResolution,
+  type TokenSaverRoutingDiagnostics,
 } from "./tokenSaver/classifyAndRoute.js";
+export {
+  buildJudgeContext,
+  containsNewTaskSignal,
+  detectExplicitRiskTier,
+  isShortContinuation,
+  type ContinuationKind,
+  type ExplicitRiskTier,
+  type JudgeContext,
+  type JudgeContextFeatures,
+} from "./tokenSaver/buildJudgeContext.js";
+export {
+  parseJudgeDecision,
+  parseJudgeDecisionFromThinking,
+  type JudgeTaskRelation,
+  type ParsedJudgeDecision,
+} from "./tokenSaver/parseJudgeDecision.js";
 export {
   applyOrchestration,
   type OrchestrationInput,

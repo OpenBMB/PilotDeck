@@ -18,6 +18,31 @@ import type {
 } from "../../src/model/index.js";
 import type { AgentEvent } from "../../src/agent/protocol/events.js";
 
+test("compaction exposes a content-free summary attempt with provider usage", async () => {
+  const attempts: Array<Record<string, unknown>> = [];
+  const engine = new CompactionEngine({
+    model: {
+      async *stream(): AsyncIterable<CanonicalModelEvent> {
+        yield { type: "text_delta", text: "## Objective\nContinue.\n\n## Current State\nReady.\n\n## Remaining\nNone.\n\n## Files And Artifacts\nNone." };
+        yield { type: "usage", usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 40 } };
+        yield { type: "message_end", finishReason: "stop" };
+      },
+    },
+    provider: "summary-provider",
+    model_: "summary-model",
+    now: () => new Date("2026-01-01T00:00:00.000Z"),
+    onSummaryAttempt: (attempt) => attempts.push(attempt),
+  });
+
+  await engine.run({ trigger: "auto", messages: compactFixture(), sessionId: "s", turnId: "t" });
+
+  assert.equal(attempts.length, 1);
+  assert.deepEqual(attempts[0]?.usage, { inputTokens: 100, outputTokens: 20, cacheReadTokens: 40 });
+  assert.equal(attempts[0]?.status, "succeeded");
+  assert.equal(attempts[0]?.provider, "summary-provider");
+  assert.equal("messages" in attempts[0]!, false);
+});
+
 test("full compaction can disable protected turn preservation", async () => {
   const summaryRequests: CanonicalModelRequest[] = [];
   const engine = new CompactionEngine({

@@ -31,6 +31,7 @@ export {
   LITELLM_RETRY_JITTER,
   LITELLM_STREAM_MAX_DURATION_MS,
   type ModelRuntimeOptions,
+  type ProviderAttemptEvent,
   type ModelStreamRetryProgress,
   type ModelTransport,
 } from "./streaming/streamModel.js";

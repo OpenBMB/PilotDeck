@@ -11,6 +11,8 @@ export type RouterDecisionResolution =
   | "fallback";
 
 export type RouterMutationsLog = {
+  /** Privacy-safe diagnostics for evaluating judge cost, latency, and guard behavior. */
+  tokenSaverRouting?: import("../tokenSaver/classifyAndRoute.js").TokenSaverRoutingDiagnostics;
   systemPromptSlim?: { from: number; to: number; preservedKeywords: string[] };
   toolsStripped?: { before: number; after: number; mode?: "allowlist" | "blocklist"; patterns: string[] };
   orchestrationPromptInjected?: { tier: string; chars: number };
@@ -29,6 +31,23 @@ export type RouterMutationsLog = {
     cachedCost: number;
     prefillCost: number;
     estimatedInputTokens: number;
+    /** Total estimated stay-side cost (input+cacheRead+cacheWrite+output). */
+    stayTotalCost?: number;
+    /** Total estimated switch-side cost (input+cacheRead+cacheWrite+output). */
+    switchTotalCost?: number;
+    savings?: number;
+    uncertainty?: "low" | "medium" | "high" | "unknown";
+    pricingSource?: string;
+    stayBuckets?: import("../cost/switchCostEstimator.js").CostBuckets;
+    switchBuckets?: import("../cost/switchCostEstimator.js").CostBuckets;
+    usageEvidence?: {
+      provider: string;
+      model: string;
+      inputTokens?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+      observedAt?: number;
+    };
   };
 };
 
@@ -88,4 +107,6 @@ export type RouterExecuteContext = {
   turnId: string;
   projectPath?: string;
   abortSignal?: AbortSignal;
+  /** Accounting role override for internal model calls such as context summaries. */
+  callRole?: "compaction";
 };

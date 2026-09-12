@@ -1,10 +1,14 @@
 import type {
   CanonicalModelEvent,
   CanonicalModelRequest,
+  CachePlan,
+  ModelRuntimeOptions,
   ModelRuntime,
   ModelProtocol,
+  ProviderAttemptEvent,
 } from "../model/index.js";
 import { cloneMessages, downgradeUnsupportedContent, ModelRequestError } from "../model/index.js";
+import { rebuildRoutedCachePlan } from "../context/cache/CachePlan.js";
 import type { InputModality } from "../model/index.js";
 import {
   LITELLM_DEFAULT_MAX_RETRIES,
@@ -36,21 +40,40 @@ import { decideScenario } from "./scenario/decideScenario.js";
 import { stripSubagentTagFromMessages } from "./scenario/subagentDetector.js";
 import { SessionRouterStore } from "./session/SessionRouterStore.js";
 import { SessionUsageCache } from "./session/sessionUsageCache.js";
-import { ProviderHealthTracker } from "./health/ProviderHealthTracker.js";
+import {
+  classifyRecoverySignal,
+  providerFailureDomain,
+  ProviderHealthTracker,
+} from "./health/ProviderHealthTracker.js";
 import {
   createZeroUsageState,
   observeEventForZeroUsage,
   shouldRetryZeroUsage,
 } from "./retry/zeroUsageRetry.js";
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
-import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
-import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
-import { calculateCacheReadCost, calculateInputCost } from "./utils/modelPricing.js";
+import {
+  classifyAndRoute,
+  type TokenSaverRoutingDiagnostics,
+} from "./tokenSaver/classifyAndRoute.js";
+import {
+  countMessagesTokens,
+  countResponseTokens,
+  dispose as disposeTokenizer,
+  estimateRequestInputTokens,
+} from "./utils/countTokens.js";
+import {
+  calculateCacheReadCost,
+  calculateInputCost,
+  type RouterModelPricingMap,
+} from "./utils/modelPricing.js";
+import { compareStayVsSwitch, DEFAULT_CACHE_TTL_MS } from "./cost/switchCostEstimator.js";
 import {
   collectRequiredInputModalities,
   missingInputModalities,
 } from "./utils/mediaRequirements.js";
 import type { TelemetryClient } from "../telemetry/index.js";
+import { randomUUID } from "node:crypto";
+import { CallLedger } from "../evaluation/CallLedger.js";
 
 export type RouterRuntimeDeps = {
   modelRuntime: ModelRuntime;
@@ -104,6 +127,7 @@ export function createRouterRuntime(
   deps: RouterRuntimeDeps,
 ): RouterRuntime {
   const enabled = config.enabled !== false;
+  const cachePlanRebuildEnabled = resolveCachePlanRebuildEnabled(config.cachePlanRebuild?.enabled);
   const stats = new TokenStatsCollector({
     ...config.stats,
     enabled: enabled && (config.stats?.enabled ?? false),
@@ -121,7 +145,20 @@ export function createRouterRuntime(
   const judgeRuntime = deps.judgeRuntime ?? deps.modelRuntime;
   const events = deps.events ?? { emit: () => undefined };
   const telemetry = deps.telemetry;
+  const ledger = config.stats?.ledgerFilePath
+    ? new CallLedger({ filePath: config.stats.ledgerFilePath, modelPricing: config.stats.modelPricing })
+    : undefined;
+  const ledgerDefaults = {
+    runId: config.stats?.runId ?? "unconfigured-run",
+    taskId: config.stats?.taskId ?? "unconfigured-task",
+    strategyVersion: config.stats?.strategyVersion ?? "unknown",
+    baselineCommit: config.stats?.baselineCommit ?? "unknown",
+  };
   const healthTrackers = new Map<string, ProviderHealthTracker>();
+  const endpointHealth = new ProviderHealthTracker({
+    ...config.recovery?.health,
+    now: () => (deps.now?.() ?? new Date()).getTime(),
+  });
   function getHealthTracker(sessionId: string): ProviderHealthTracker {
     let tracker = healthTrackers.get(sessionId);
     if (!tracker) {
@@ -153,6 +190,22 @@ export function createRouterRuntime(
     required: readonly InputModality[],
   ): boolean {
     return missingForModel(ref, required).length === 0;
+  }
+
+  function supportsRequestCapabilities(ref: RouterModelRef, request: CanonicalModelRequest): boolean {
+    try {
+      const capabilities = deps.modelRuntime.getCapabilities(ref.provider, ref.model);
+      if (request.tools?.length && !capabilities.supportsToolUse) return false;
+      if (request.stream && !capabilities.supportsStreaming) return false;
+      if (request.systemPrompt && !capabilities.supportsSystemPrompt) return false;
+      if (request.thinking?.enabled && request.thinking.mode !== "off" && !capabilities.supportsThinking) return false;
+      if (request.outputSchema && !capabilities.supportsJsonSchema) return false;
+      const estimatedInput = countMessagesTokens(request.messages);
+      const requestedOutput = request.maxOutputTokens ?? 0;
+      return estimatedInput + requestedOutput <= capabilities.maxContextTokens;
+    } catch {
+      return false;
+    }
   }
 
   function fallbackCandidatesFor(scenarioType: RouterScenarioType): RouterModelRef[] {
@@ -215,11 +268,29 @@ export function createRouterRuntime(
     };
   }
 
+  /**
+   * Cache-aware stay/switch arbitration between the previous sticky model
+   * (`current`) and the token-saver judge's fresh tier selection (`next`).
+   *
+   * All stay/switch cost math is delegated to the four-bucket estimator
+   * (`compareStayVsSwitch`): both sides are priced as mutually-exclusive
+   * input / cacheRead / cacheWrite buckets plus output. Two contract rules
+   * are encoded there — the SUNK-COST rule (a stay never re-charges the
+   * cache write; it was paid on an earlier turn) and the cold-start rule (a
+   * switch to a cache-capable target pays a full-input cache write, a
+   * non-caching target pays plain input).
+   *
+   * v1 intervention boundary: the estimator may only override the judge when
+   * the stay side has POSITIVE cache evidence (cacheReadTokens or
+   * cacheWriteTokens > 0 in the keyed or session-level usage cache) and the
+   * recommendation is not `"unknown"`; otherwise the judge's tier choice
+   * stands and no mutation is logged.
+   */
   function maybePreserveStickyForCache(
     current: RouterModelRef | undefined,
     next: RouterModelRef,
-    messages: CanonicalModelRequest["messages"],
-    lastUsage: import("../model/index.js").CanonicalUsage | undefined,
+    request: CanonicalModelRequest,
+    sessionId: string,
   ): { selection: RouterModelRef; mutation?: RouterMutationsLog["cacheAwareSwitch"] } {
     const cacheAware = config.tokenSaver?.cacheAwareSwitching;
     if (cacheAware?.enabled === false || !current) {
@@ -229,65 +300,98 @@ export function createRouterRuntime(
       return { selection: next };
     }
 
-    const estimatedInputTokens = countMessagesTokens(messages);
-    const observedInputTokens = lastUsage?.inputTokens ?? 0;
-    const observedCacheReadTokens = lastUsage?.cacheReadTokens ?? 0;
-    const observedCacheHitRatio = observedInputTokens > 0
-      ? Math.min(1, Math.max(0, observedCacheReadTokens / observedInputTokens))
-      : 0;
-    if (observedCacheHitRatio <= 0) {
+    const stayEntry = usageCache.getEntry(sessionId, current.provider, current.model)
+      ?? usageCache.getEntry(sessionId);
+    const stayUsage = stayEntry?.usage;
+    const stayHasCacheEvidence = (stayUsage?.cacheReadTokens ?? 0) > 0
+      || (stayUsage?.cacheWriteTokens ?? 0) > 0;
+    if (!stayEntry || !stayUsage || !stayHasCacheEvidence) {
       return { selection: next };
     }
 
-    const estimatedCacheReadTokens = Math.floor(estimatedInputTokens * observedCacheHitRatio);
-    const estimatedUncachedTokens = Math.max(0, estimatedInputTokens - estimatedCacheReadTokens);
-    const cachedCost = calculateCacheReadCost(
-      estimatedCacheReadTokens,
-      current.provider,
-      current.model,
-      config.stats?.modelPricing,
-    ) + calculateInputCost(
-      estimatedUncachedTokens,
-      current.provider,
-      current.model,
-      config.stats?.modelPricing,
-    );
-    const prefillCost = calculateInputCost(
-      estimatedInputTokens,
-      next.provider,
-      next.model,
-      config.stats?.modelPricing,
-    );
+    const estimatedInputTokens = estimateRequestInputTokens(request);
+    const estimatedOutputTokens = stayUsage.outputTokens ?? 0;
+    const now = (deps.now?.() ?? new Date()).getTime();
+    const modelPricing = config.stats?.modelPricing;
+    const switchEntry = usageCache.getEntry(sessionId, next.provider, next.model);
 
-    const minSavingsRatio = cacheAware?.minSavingsRatio ?? 0;
-    const requiredSavings = cachedCost * minSavingsRatio;
-    const shouldSwitch = prefillCost + Number.EPSILON < cachedCost - requiredSavings;
-    const from = `${current.provider}/${current.model}`;
-    const to = `${next.provider}/${next.model}`;
-
-    if (shouldSwitch) {
-      return {
-        selection: next,
-        mutation: {
-          action: "switched",
-          from,
-          to,
-          cachedCost,
-          prefillCost,
-          estimatedInputTokens,
+    const comparison = compareStayVsSwitch({
+      stay: {
+        provider: current.provider,
+        model: current.model,
+        supportsPromptCache: supportsPromptCacheFor(deps.modelRuntime, current.provider, current.model),
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        cacheEvidence: {
+          provider: current.provider,
+          model: current.model,
+          inputTokens: stayUsage.inputTokens,
+          cacheReadTokens: stayUsage.cacheReadTokens,
+          cacheWriteTokens: stayUsage.cacheWriteTokens,
+          outputTokens: stayUsage.outputTokens,
+          observedAt: stayEntry.observedAt,
         },
-      };
+        cacheTtlMs: DEFAULT_CACHE_TTL_MS,
+        now,
+        modelPricing,
+        role: "stay",
+      },
+      switch: {
+        provider: next.provider,
+        model: next.model,
+        supportsPromptCache: supportsPromptCacheFor(deps.modelRuntime, next.provider, next.model),
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        ...(switchEntry
+          ? {
+            cacheEvidence: {
+              provider: next.provider,
+              model: next.model,
+              inputTokens: switchEntry.usage.inputTokens,
+              cacheReadTokens: switchEntry.usage.cacheReadTokens,
+              cacheWriteTokens: switchEntry.usage.cacheWriteTokens,
+              outputTokens: switchEntry.usage.outputTokens,
+              observedAt: switchEntry.observedAt,
+            },
+          }
+          : {}),
+        cacheTtlMs: DEFAULT_CACHE_TTL_MS,
+        now,
+        modelPricing,
+        role: "switch",
+      },
+      minSavingsRatio: cacheAware?.minSavingsRatio ?? 0,
+    });
+
+    if (comparison.recommendation === "unknown") {
+      return { selection: next };
     }
 
+    const { stay, switch: target } = comparison;
     return {
-      selection: current,
+      selection: comparison.recommendation === "switch" ? next : current,
       mutation: {
-        action: "kept_sticky",
-        from,
-        to,
-        cachedCost,
-        prefillCost,
+        action: comparison.recommendation === "switch" ? "switched" : "kept_sticky",
+        from: `${current.provider}/${current.model}`,
+        to: `${next.provider}/${next.model}`,
+        cachedCost: stay.costs.input + stay.costs.cacheRead + stay.costs.cacheWrite,
+        prefillCost: target.costs.input + target.costs.cacheWrite,
         estimatedInputTokens,
+        stayTotalCost: stay.costs.total,
+        switchTotalCost: target.costs.total,
+        savings: comparison.savings,
+        uncertainty: worseUncertainty(stay.uncertainty, target.uncertainty),
+        pricingSource: `${stay.pricing.source}/${target.pricing.source}`,
+        stayBuckets: stay.buckets,
+        switchBuckets: target.buckets,
+        usageEvidence: stripUndefined({
+          provider: current.provider,
+          model: current.model,
+          inputTokens: stayUsage.inputTokens,
+          cacheReadTokens: stayUsage.cacheReadTokens,
+          cacheWriteTokens: stayUsage.cacheWriteTokens,
+          observedAt: stayEntry.observedAt,
+        }),
       },
     };
   }
@@ -338,7 +442,22 @@ export function createRouterRuntime(
     }
 
     const sticky = sessionStore.get(input.sessionId, !input.isMainAgent);
-    const baseUsage = usageCache.get(input.sessionId);
+    const previousStickySelection = (input.metadata?.previousProvider && input.metadata.previousModel)
+      ? {
+        id: `${input.metadata.previousProvider}/${input.metadata.previousModel}`,
+        provider: input.metadata.previousProvider,
+        model: input.metadata.previousModel,
+      }
+      : sticky?.stickyProvider && sticky.stickyModel
+      ? { id: `${sticky.stickyProvider}/${sticky.stickyModel}`, provider: sticky.stickyProvider, model: sticky.stickyModel }
+      : undefined;
+    // Prefer the usage observed for the model we were actually sticky on; the
+    // session-level slot is the legacy fallback (seeded via observeUsage).
+    const baseUsage = usageCache.get(
+      input.sessionId,
+      previousStickySelection?.provider,
+      previousStickySelection?.model,
+    ) ?? usageCache.get(input.sessionId);
     const inputWithUsage: RouterDecisionInput = {
       ...input,
       metadata: {
@@ -355,15 +474,6 @@ export function createRouterRuntime(
     const scenarioOutcome = decideScenario(inputWithUsage, config.scenarios ?? {} as any);
 
     let scenarioType: RouterScenarioType = scenarioOutcome.scenarioType;
-    const previousStickySelection = (input.metadata?.previousProvider && input.metadata.previousModel)
-      ? {
-        id: `${input.metadata.previousProvider}/${input.metadata.previousModel}`,
-        provider: input.metadata.previousProvider,
-        model: input.metadata.previousModel,
-      }
-      : sticky?.stickyProvider && sticky.stickyModel
-      ? { id: `${sticky.stickyProvider}/${sticky.stickyModel}`, provider: sticky.stickyProvider, model: sticky.stickyModel }
-      : undefined;
     let selection: RouterModelRef | undefined =
       custom?.provider && custom.model
         ? { id: `${custom.provider}/${custom.model}`, provider: custom.provider, model: custom.model }
@@ -376,6 +486,7 @@ export function createRouterRuntime(
         : "scenario";
 
     let tokenSaverTier: string | undefined;
+    let tokenSaverRouting: TokenSaverRoutingDiagnostics | undefined;
     let cacheAwareSwitch: RouterMutationsLog["cacheAwareSwitch"];
     const subagentPolicy = config.tokenSaver?.subagent?.policy ?? DEFAULT_SUBAGENT_POLICY;
     if (
@@ -415,16 +526,38 @@ export function createRouterRuntime(
       }
 
       if (!stickyHit) {
+        const judgeCallId = randomUUID();
+        let judgeAttemptSequence = 0;
         const tokenSaver = await classifyAndRoute({
           config: config.tokenSaver,
           messages: input.request.messages,
           judgeRuntime,
           abortSignal: input.abortSignal,
           previousTier: input.metadata?.previousTier,
+          availableToolCount: input.request.tools?.length ?? 0,
           sessionId: input.sessionId,
           telemetry,
+          onJudgeAttempt: ledger ? (judgeAttempt) => {
+            judgeAttemptSequence += 1;
+            ledger.append({
+              ...ledgerDefaults,
+              sessionId: input.sessionId,
+              callId: judgeCallId,
+              provider: config.tokenSaver!.judge.provider,
+              model: config.tokenSaver!.judge.model,
+              role: "judge",
+              attemptNumber: judgeAttemptSequence,
+              startedAt: judgeAttempt.startedAt,
+              endedAt: judgeAttempt.endedAt,
+              status: judgeAttempt.status,
+              errorType: judgeAttempt.errorType,
+              usage: judgeAttempt.usage,
+              usageSource: judgeAttempt.usage ? "provider_reported" : "unknown",
+            });
+          } : undefined,
         });
         if (tokenSaver) {
+          tokenSaverRouting = tokenSaver.diagnostics;
           if (tokenSaver.failureReason) {
             events.emit({
               type: "pilotdeck_router_token_saver_failed",
@@ -444,8 +577,8 @@ export function createRouterRuntime(
             const cacheAware = maybePreserveStickyForCache(
               previousStickySelection,
               selection,
-              input.request.messages,
-              baseUsage,
+              input.request,
+              input.sessionId,
             );
             selection = cacheAware.selection;
             cacheAwareSwitch = cacheAware.mutation;
@@ -497,6 +630,9 @@ export function createRouterRuntime(
     );
 
     let mutations: RouterMutationsLog = {};
+    if (tokenSaverRouting) {
+      mutations = { ...mutations, tokenSaverRouting };
+    }
     if (cacheAwareSwitch) {
       mutations = { ...mutations, cacheAwareSwitch };
     }
@@ -542,6 +678,67 @@ export function createRouterRuntime(
     return decision;
   }
 
+  /**
+   * Resolve cachePlan/cacheBreakpoints for the request as routed.
+   *
+   * With the rebuild flag ON: a plan-carrying request gets its plan rebuilt
+   * for the final model (explicit clear when the final model fails the
+   * protocol + prompt-cache gate); legacy breakpoints-only requests keep
+   * their breakpoints only when the final model passes the same gate.
+   * With the flag OFF the pre-rebuild drop behavior is preserved
+   * byte-for-byte (experiment control arm).
+   */
+  function resolveRoutedCache(
+    previous: CanonicalModelRequest,
+    routed: Pick<CanonicalModelRequest, "provider" | "model" | "systemPrompt" | "tools" | "messages">,
+  ): { cachePlan?: CachePlan; cacheBreakpoints?: number[] } {
+    if (!cachePlanRebuildEnabled) {
+      const keptPlan = previous.cachePlan &&
+        (previous.cachePlan.provider === undefined || previous.cachePlan.provider === routed.provider) &&
+        (previous.cachePlan.model === undefined || previous.cachePlan.model === routed.model)
+        ? previous.cachePlan
+        : undefined;
+      return {
+        cachePlan: keptPlan,
+        cacheBreakpoints: previous.cachePlan !== undefined
+          ? keptPlan?.messages
+          : previous.cacheBreakpoints,
+      };
+    }
+    if (previous.cachePlan !== undefined) {
+      return rebuildRoutedCachePlan({
+        provider: routed.provider,
+        model: routed.model,
+        protocol: protocolForProvider(deps.modelRuntime, routed.provider),
+        supportsPromptCache: supportsPromptCacheFor(deps.modelRuntime, routed.provider, routed.model),
+        systemPrompt: routed.systemPrompt,
+        tools: routed.tools ?? [],
+        messages: routed.messages,
+      }, previous.cachePlan);
+    }
+    if (previous.cacheBreakpoints !== undefined) {
+      const cacheCapable =
+        protocolForProvider(deps.modelRuntime, routed.provider) === "anthropic" &&
+        supportsPromptCacheFor(deps.modelRuntime, routed.provider, routed.model);
+      return cacheCapable
+        ? { cacheBreakpoints: previous.cacheBreakpoints }
+        : { cacheBreakpoints: undefined };
+    }
+    // No plan and no breakpoints: the prepare-time gate ran for a model that
+    // could not use the prompt cache. Re-evaluate for the finally-routed
+    // model — build a fresh plan (generation 0) when it passes the gate,
+    // keep the explicit clear when it does not.
+    return rebuildRoutedCachePlan({
+      provider: routed.provider,
+      model: routed.model,
+      protocol: protocolForProvider(deps.modelRuntime, routed.provider),
+      supportsPromptCache: supportsPromptCacheFor(deps.modelRuntime, routed.provider, routed.model),
+      systemPrompt: routed.systemPrompt,
+      tools: routed.tools ?? [],
+      messages: routed.messages,
+    }, undefined);
+  }
+
   function applyDecisionToRequest(
     decision: RouterDecision,
     request: CanonicalModelRequest,
@@ -550,21 +747,18 @@ export function createRouterRuntime(
     if (decision.mutations.subagentTagStripped) {
       messages = stripSubagentTagFromMessages(messages);
     }
-    const routedCachePlan = request.cachePlan &&
-      (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
-      (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
-      ? request.cachePlan
-      : undefined;
-    return clampMaxOutputTokensToModelCap({
+    const composed: CanonicalModelRequest = {
       ...request,
       ...decision.requestPatch,
       provider: decision.provider,
       model: decision.model,
       messages,
-      cacheBreakpoints: request.cachePlan !== undefined
-        ? routedCachePlan?.messages
-        : request.cacheBreakpoints,
-      cachePlan: routedCachePlan,
+    };
+    const routedCache = resolveRoutedCache(request, composed);
+    return clampMaxOutputTokensToModelCap({
+      ...composed,
+      cachePlan: routedCache.cachePlan,
+      cacheBreakpoints: routedCache.cacheBreakpoints,
     }, deps.modelRuntime);
   }
 
@@ -574,19 +768,45 @@ export function createRouterRuntime(
     ctx: RouterExecuteContext,
   ): AsyncIterable<CanonicalModelEvent> {
     if (!enabled) {
-      const routedCachePlan = request.cachePlan &&
-        (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
-        (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
-        ? request.cachePlan
-        : undefined;
-      const passthroughRequest: CanonicalModelRequest = {
+      const callId = randomUUID();
+      const logicalStartedAt = (deps.now?.() ?? new Date()).toISOString();
+      let providerAttemptCount = 0;
+      let previousAttemptId: string | undefined;
+      const recordProviderAttempt = (providerAttempt: ProviderAttemptEvent) => {
+        const attemptId = randomUUID();
+        providerAttemptCount += 1;
+        ledger?.append({
+          ...ledgerDefaults,
+          sessionId: ctx.sessionId,
+          taskId: config.stats?.taskId ?? ctx.turnId,
+          decisionId: ctx.turnId,
+          callId,
+          attemptId,
+          parentId: decision.isSubagent ? ctx.sessionId : undefined,
+          provider: providerAttempt.provider,
+          model: providerAttempt.model,
+          role: ctx.callRole ?? (providerAttemptCount > 1 ? "retry" : decision.isSubagent ? "subagent" : "main"),
+          attemptNumber: providerAttemptCount,
+          startedAt: providerAttempt.startedAt,
+          endedAt: providerAttempt.endedAt,
+          status: providerAttempt.status,
+          errorType: providerAttempt.errorType,
+          usage: providerAttempt.usage,
+          usageSource: providerAttempt.usage ? "provider_reported" : "unknown",
+          retryOfAttemptId: providerAttemptCount > 1 ? previousAttemptId : undefined,
+        });
+        previousAttemptId = attemptId;
+      };
+      const passthroughBase: CanonicalModelRequest = {
         ...request,
         provider: decision.provider,
         model: decision.model,
-        cacheBreakpoints: request.cachePlan !== undefined
-          ? routedCachePlan?.messages
-          : request.cacheBreakpoints,
-        cachePlan: routedCachePlan,
+      };
+      const routedCache = resolveRoutedCache(request, passthroughBase);
+      const passthroughRequest: CanonicalModelRequest = {
+        ...passthroughBase,
+        cachePlan: routedCache.cachePlan,
+        cacheBreakpoints: routedCache.cacheBreakpoints,
       };
       const downgradedPassthrough = downgradeRequestForAttempt(
         passthroughRequest,
@@ -595,7 +815,14 @@ export function createRouterRuntime(
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(downgradedPassthrough, deps.modelRuntime);
       let sawErrorEvent = false;
-      for await (const item of streamAttempt(cappedPassthroughRequest, deps.modelRuntime, ctx, events)) {
+      let passthroughOutcome: AttemptOutcome | undefined;
+      for await (const item of streamAttempt(
+        cappedPassthroughRequest,
+        deps.modelRuntime,
+        ctx,
+        events,
+        { onProviderAttempt: recordProviderAttempt },
+      )) {
         if (item.kind === "event") {
           if (item.event.type === "error") {
             sawErrorEvent = true;
@@ -603,9 +830,22 @@ export function createRouterRuntime(
           yield item.event;
           continue;
         }
+        passthroughOutcome = item.outcome;
         if (item.outcome.error && !sawErrorEvent) {
           yield { type: "error", error: item.outcome.error };
         }
+      }
+      if (providerAttemptCount === 0) {
+        recordProviderAttempt({
+          provider: decision.provider,
+          model: decision.model,
+          attempt: 1,
+          startedAt: logicalStartedAt,
+          endedAt: (deps.now?.() ?? new Date()).toISOString(),
+          status: passthroughOutcome?.error ? "failed" : "succeeded",
+          usage: passthroughOutcome?.usage,
+          errorType: passthroughOutcome?.error?.code,
+        });
       }
       return;
     }
@@ -619,6 +859,13 @@ export function createRouterRuntime(
       provider: decision.provider,
       model: decision.model,
     };
+    const recoveryEnabled = config.recovery?.enabled === true;
+    const recoveryStartedMs = (deps.now?.() ?? new Date()).getTime();
+    const recoveryDeadlineAt = recoveryStartedMs + (config.recovery?.deadlineMs ?? 30_000);
+    const recoveryMaxAttempts = config.recovery?.maxAttempts ?? 6;
+    let recoveryAttemptCount = 0;
+    const blockedCredentialProviders = new Set<string>();
+    const blockedFallbackDomains = new Set<string>();
     const candidateAttempts: RouterModelRef[] = [
       requestedAttempt,
       ...fallbackPlan.attempts,
@@ -626,7 +873,7 @@ export function createRouterRuntime(
       all.findIndex((candidate) =>
         candidate.provider === attempt.provider && candidate.model === attempt.model
       ) === index
-    );
+    ).filter((attempt, index) => index === 0 || !recoveryEnabled || supportsRequestCapabilities(attempt, baseRequest));
     const nativeAttempts: RouterModelRef[] = candidateAttempts
       .filter((attempt) => supportsMediaRequirements(attempt, requiredModalities));
     const downgradedAttempts: RouterModelRef[] = requiredModalities.length > 0
@@ -649,6 +896,10 @@ export function createRouterRuntime(
     let lastAttempt: RouterModelRef | undefined;
     let lastDecision: RouterDecision = decision;
     let lastHasYieldedContent = false;
+    let lastErrorYielded = false;
+    const callId = randomUUID();
+    let attemptSequence = 0;
+    let previousAttemptId: string | undefined;
 
     if (attemptPlans.length === 0) {
       const missing = missingForModel(requestedAttempt, requiredModalities);
@@ -671,18 +922,44 @@ export function createRouterRuntime(
       return;
     }
 
-    outer: for (let attemptIndex = 0; attemptIndex < attemptPlans.length; attemptIndex += 1) {
+    let activeHealthDomain: string | undefined;
+    try {
+      outer: for (let attemptIndex = 0; attemptIndex < attemptPlans.length; attemptIndex += 1) {
       if (ctx.abortSignal?.aborted) {
-        return;
+        throwAbortError(ctx.abortSignal.reason);
       }
       const attemptPlan = attemptPlans[attemptIndex];
       const attempt = attemptPlan.attempt;
-      if (
-        attemptIndex > 0 &&
-        getHealthTracker(ctx.sessionId).shouldSkip(attempt.provider) &&
-        attemptIndex < attemptPlans.length - 1
-      ) {
-        continue;
+      const healthDomain = providerFailureDomain(deps.modelRuntime, attempt);
+      if (recoveryEnabled) {
+        if (
+          (attemptIndex > 0 && blockedCredentialProviders.has(attempt.provider)) ||
+          (attemptIndex > 0 && blockedFallbackDomains.has(healthDomain))
+        ) continue;
+        if (!endpointHealth.tryAcquire(healthDomain)) {
+          lastAttempt = attempt;
+          lastDecision = {
+            ...decision,
+            provider: attempt.provider,
+            model: attempt.model,
+            resolvedFrom: attemptIndex === 0 ? decision.resolvedFrom : "fallback",
+          };
+          lastError = {
+            provider: attempt.provider,
+            model: attempt.model,
+            protocol: protocolForProvider(deps.modelRuntime, attempt.provider),
+            code: "provider_circuit_open",
+            message: "HALO deferred this provider because its recovery probe is unavailable.",
+            retryable: true,
+          };
+          continue;
+        }
+        activeHealthDomain = healthDomain;
+      } else if (attemptIndex > 0) {
+        if (
+          getHealthTracker(ctx.sessionId).shouldSkip(attempt.provider) &&
+          attemptIndex < attemptPlans.length - 1
+        ) continue;
       }
       const attemptDecision: RouterDecision = {
         ...decision,
@@ -718,16 +995,133 @@ export function createRouterRuntime(
 
       let zeroUsageAttempt = 0;
       let transientRetryCount = 0;
+      let planHasLedgerAttempt = false;
       while (true) {
+        const dispatchStartedMs = (deps.now?.() ?? new Date()).getTime();
+        const remainingMs = recoveryDeadlineAt - dispatchStartedMs;
+        if (recoveryEnabled && (recoveryAttemptCount >= recoveryMaxAttempts || remainingMs <= 0)) {
+          endpointHealth.release(healthDomain);
+          if (!lastError) {
+            lastError = {
+              provider: attempt.provider,
+              model: attempt.model,
+              protocol: protocolForProvider(deps.modelRuntime, attempt.provider),
+              code: "recovery_budget_exhausted",
+              message: `HALO recovery budget exhausted after ${recoveryAttemptCount} dispatches.`,
+              retryable: false,
+            };
+            lastAttempt = attempt;
+          }
+          break outer;
+        }
+        recoveryAttemptCount++;
+        const dispatchAttempt = recoveryAttemptCount;
         zeroUsageAttempt += 1;
+        const attemptStartedAt = (deps.now?.() ?? new Date()).toISOString();
         // Live-stream events. We track whether we've already surfaced any
         // content event (text/thinking/tool) to the consumer; once we have,
         // fallback / retry is no longer safe (would duplicate text).
         let hasYieldedContent = false;
         const pending: CanonicalModelEvent[] = [];
         let outcome: AttemptOutcome | undefined;
+        let providerAttemptObserved = false;
+        const recordProviderAttempt = (providerAttempt: ProviderAttemptEvent) => {
+          const firstInPlan = !planHasLedgerAttempt;
+          const currentAttemptId = randomUUID();
+          providerAttemptObserved = true;
+          planHasLedgerAttempt = true;
+          attemptSequence += 1;
+          ledger?.append({
+            ...ledgerDefaults,
+            sessionId: ctx.sessionId,
+            taskId: config.stats?.taskId ?? ctx.turnId,
+            decisionId: ctx.turnId,
+            callId,
+            attemptId: currentAttemptId,
+            parentId: decision.isSubagent ? ctx.sessionId : undefined,
+            provider: providerAttempt.provider,
+            model: providerAttempt.model,
+            role: ctx.callRole ?? (firstInPlan
+              ? attemptIndex > 0 ? "fallback" : decision.isSubagent ? "subagent" : "main"
+              : "retry"),
+            attemptNumber: attemptSequence,
+            startedAt: providerAttempt.startedAt,
+            endedAt: providerAttempt.endedAt,
+            status: providerAttempt.status,
+            errorType: providerAttempt.errorType,
+            usage: providerAttempt.usage,
+            usageSource: providerAttempt.usage ? "provider_reported" : "unknown",
+            retryOfAttemptId: firstInPlan ? undefined : previousAttemptId,
+            fallbackFromAttemptId: firstInPlan && attemptIndex > 0 ? previousAttemptId : undefined,
+          });
+          previousAttemptId = currentAttemptId;
+        };
+        let currentDispatchAttempt = dispatchAttempt;
+        let currentDispatchStartedMs = dispatchStartedMs;
+        let currentDispatchEnded = false;
+        let pendingContinuationAttempt: number | undefined;
+        let observedProviderDispatches = 0;
 
-        for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events)) {
+        events.emit({
+          type: "pilotdeck_router_attempt",
+          phase: "start",
+          sessionId: ctx.sessionId,
+          turnId: ctx.turnId,
+          attempt: dispatchAttempt,
+          provider: attempt.provider,
+          model: attempt.model,
+          failureDomain: healthDomain,
+        });
+        for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events, {
+          timeoutMs: recoveryEnabled ? remainingMs : undefined,
+          allowRetry: recoveryEnabled
+            ? (retry) => {
+                if (retry.reason !== "continuation") return false;
+                const retryRemainingMs = recoveryDeadlineAt - (deps.now?.() ?? new Date()).getTime();
+                if (
+                  recoveryAttemptCount >= recoveryMaxAttempts ||
+                  retry.delayMs >= retryRemainingMs
+                ) return false;
+                recoveryAttemptCount++;
+                pendingContinuationAttempt = recoveryAttemptCount;
+                events.emit({
+                  type: "pilotdeck_router_attempt",
+                  phase: "end",
+                  sessionId: ctx.sessionId,
+                  turnId: ctx.turnId,
+                  attempt: currentDispatchAttempt,
+                  provider: attempt.provider,
+                  model: attempt.model,
+                  failureDomain: healthDomain,
+                  latencyMs: Math.max(0, (deps.now?.() ?? new Date()).getTime() - currentDispatchStartedMs),
+                  errorCode: "stream_interrupted",
+                });
+                currentDispatchEnded = true;
+                return true;
+              }
+            : undefined,
+          onProviderDispatchStart: recoveryEnabled
+            ? () => {
+                observedProviderDispatches++;
+                if (observedProviderDispatches === 1 || pendingContinuationAttempt == null) return;
+                currentDispatchAttempt = pendingContinuationAttempt;
+                pendingContinuationAttempt = undefined;
+                currentDispatchStartedMs = (deps.now?.() ?? new Date()).getTime();
+                currentDispatchEnded = false;
+                events.emit({
+                  type: "pilotdeck_router_attempt",
+                  phase: "start",
+                  sessionId: ctx.sessionId,
+                  turnId: ctx.turnId,
+                  attempt: currentDispatchAttempt,
+                  provider: attempt.provider,
+                  model: attempt.model,
+                  failureDomain: healthDomain,
+                });
+              }
+            : undefined,
+          onProviderAttempt: recordProviderAttempt,
+        })) {
           if (item.kind === "outcome") {
             outcome = item.outcome;
             break;
@@ -760,12 +1154,70 @@ export function createRouterRuntime(
 
         lastBuffered = outcome.buffered;
         lastUsage = outcome.usage;
+        if (!providerAttemptObserved) {
+          recordProviderAttempt({
+            provider: attempt.provider,
+            model: attempt.model,
+            attempt: 1,
+            startedAt: attemptStartedAt,
+            endedAt: (deps.now?.() ?? new Date()).toISOString(),
+            status: outcome.error ? "failed" : "succeeded",
+            usage: outcome.usage,
+            errorType: outcome.error?.code,
+          });
+        }
+        const dispatchEndedMs = (deps.now?.() ?? new Date()).getTime();
+        const dispatchLatencyMs = Math.max(0, dispatchEndedMs - currentDispatchStartedMs);
+        if (!currentDispatchEnded) {
+          events.emit({
+            type: "pilotdeck_router_attempt",
+            phase: "end",
+            sessionId: ctx.sessionId,
+            turnId: ctx.turnId,
+            attempt: currentDispatchAttempt,
+            provider: attempt.provider,
+            model: attempt.model,
+            failureDomain: healthDomain,
+            latencyMs: dispatchLatencyMs,
+            errorCode: outcome.error?.code,
+            usage: outcome.usage,
+            finishReason: lastFinishReason(outcome.buffered),
+          });
+        }
 
         if (outcome.error) {
           lastError = outcome.error;
-          getHealthTracker(ctx.sessionId).recordFailure(attempt.provider);
-          if (!hasYieldedContent && isFallbackEligible(outcome.error)) {
-            if (attemptIndex < attemptPlans.length - 1) {
+          const recoverySignal = classifyRecoverySignal(outcome.error);
+          if (recoveryEnabled) {
+            if (recoverySignal === "service") endpointHealth.recordFailure(healthDomain, outcome.error.retryAfterMs, dispatchLatencyMs);
+            else endpointHealth.release(healthDomain);
+            if (recoverySignal === "credential") blockedCredentialProviders.add(attempt.provider);
+            if (outcome.error.code === "rate_limit_error") blockedFallbackDomains.add(healthDomain);
+            rankRemainingAttempts(
+              attemptPlans,
+              attemptIndex + 1,
+              endpointHealth,
+              deps.modelRuntime,
+              healthDomain,
+              countMessagesTokens(attemptRequest.messages),
+              config.stats?.modelPricing,
+            );
+          } else {
+            getHealthTracker(ctx.sessionId).recordFailure(attempt.provider);
+          }
+          const preferFallback = !recoveryEnabled || !transientRetryEnabled || recoverySignal !== "service" || outcome.error.code === "rate_limit_error" || transientRetryCount > 0;
+          if (!hasYieldedContent && isFallbackEligible(outcome.error) && preferFallback) {
+            const nextIndex = recoveryEnabled
+              ? attemptPlans.findIndex((plan, index) => {
+                  if (index <= attemptIndex || blockedCredentialProviders.has(plan.attempt.provider)) return false;
+                  const domain = providerFailureDomain(deps.modelRuntime, plan.attempt);
+                  return !blockedFallbackDomains.has(domain) && !endpointHealth.shouldSkip(domain);
+                })
+              : attemptIndex + 1 < attemptPlans.length ? attemptIndex + 1 : -1;
+            if (nextIndex >= 0) {
+              if (nextIndex !== attemptIndex + 1) {
+                [attemptPlans[attemptIndex + 1], attemptPlans[nextIndex]] = [attemptPlans[nextIndex], attemptPlans[attemptIndex + 1]];
+              }
               const next = attemptPlans[attemptIndex + 1].attempt;
               events.emit({
                 type: "pilotdeck_router_fallback",
@@ -804,11 +1256,17 @@ export function createRouterRuntime(
             !hasYieldedContent &&
             isFallbackEligible(outcome.error) &&
             transientRetryEnabled &&
-            transientRetryCount < transientRetryMax
+            transientRetryCount < transientRetryMax &&
+            (!recoveryEnabled || recoverySignal === "service" || outcome.error.code === "invalid_tool_arguments") &&
+            (!recoveryEnabled || recoveryAttemptCount < recoveryMaxAttempts)
           ) {
             const delay = outcome.error.retryAfterMs != null
-              ? Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
+              ? recoveryEnabled ? outcome.error.retryAfterMs : Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
               : calculateLiteLLMRetryDelay(transientRetryCount, transientBaseDelayMs, transientMaxDelayMs);
+            const retryRemainingMs = recoveryDeadlineAt - (deps.now?.() ?? new Date()).getTime();
+            if (recoveryEnabled && (delay >= retryRemainingMs || delay < 0)) {
+              continue outer;
+            }
             console.warn(
               `[PilotDeck] transientRetry: ${outcome.error.code} (attempt ${transientRetryCount + 1}/${transientRetryMax}, delay=${Math.round(delay)}ms)`,
             );
@@ -854,9 +1312,10 @@ export function createRouterRuntime(
             continue;
           }
           for (const queued of pending) {
-            yield queued;
+            if (queued.type !== "error") yield queued;
           }
           lastHasYieldedContent = hasYieldedContent;
+          lastErrorYielded = hasYieldedContent;
           break outer;
         }
 
@@ -864,8 +1323,12 @@ export function createRouterRuntime(
           !hasYieldedContent &&
           zeroUsageEnabled &&
           outcome.shouldRetryZeroUsage &&
-          zeroUsageAttempt < zeroUsageMax
+          zeroUsageAttempt < zeroUsageMax &&
+          (!recoveryEnabled || recoveryAttemptCount < recoveryMaxAttempts)
         ) {
+          const zeroUsageDelayMs = 500 * zeroUsageAttempt;
+          const zeroUsageRemainingMs = recoveryDeadlineAt - (deps.now?.() ?? new Date()).getTime();
+          if (recoveryEnabled && zeroUsageDelayMs >= zeroUsageRemainingMs) continue outer;
           console.warn(
             `[PilotDeck] zeroUsageRetry: empty response from ${attempt.provider}/${attempt.model} ` +
             `(attempt ${zeroUsageAttempt}/${zeroUsageMax}, session=${ctx.sessionId})`,
@@ -884,7 +1347,7 @@ export function createRouterRuntime(
             turnId: ctx.turnId,
             attempt: zeroUsageAttempt,
             maxAttempts: zeroUsageMax,
-            delayMs: 500 * zeroUsageAttempt,
+            delayMs: zeroUsageDelayMs,
             reason: "zero_usage",
             provider: attempt.provider,
             model: attempt.model,
@@ -903,11 +1366,26 @@ export function createRouterRuntime(
               model: attempt.model,
             },
           });
-          await abortableDelay(500 * zeroUsageAttempt, ctx.abortSignal);
+          await abortableDelay(zeroUsageDelayMs, ctx.abortSignal);
           continue;
         }
 
-        getHealthTracker(ctx.sessionId).recordSuccess(attempt.provider);
+        if (!hasYieldedContent && zeroUsageEnabled && outcome.shouldRetryZeroUsage) {
+          endpointHealth.release(healthDomain);
+          lastError = {
+            provider: attempt.provider,
+            model: attempt.model,
+            protocol: protocolForProvider(deps.modelRuntime, attempt.provider),
+            code: "empty_response",
+            message: "Provider returned no content, tool call, finish reason, or usage after the retry budget.",
+            retryable: false,
+          };
+          lastAttempt = attempt;
+          break outer;
+        }
+
+        if (recoveryEnabled) endpointHealth.recordSuccess(healthDomain, dispatchLatencyMs);
+        else getHealthTracker(ctx.sessionId).recordSuccess(attempt.provider);
 
         if (!hasYieldedContent) {
           for (const queued of pending) {
@@ -915,14 +1393,19 @@ export function createRouterRuntime(
           }
         }
 
-        const endedAt = (deps.now?.() ?? new Date()).toISOString();
+        const endedAtDate = deps.now?.() ?? new Date();
+        const endedAt = endedAtDate.toISOString();
         let finalUsage = outcome.usage;
         if (!finalUsage || (!finalUsage.inputTokens && !finalUsage.outputTokens)) {
           const inputEst = countMessagesTokens(attemptRequest.messages);
           const outputEst = countResponseTokens(outcome.buffered);
           finalUsage = { inputTokens: inputEst, outputTokens: outputEst, totalTokens: inputEst + outputEst };
         }
-        usageCache.observe(ctx.sessionId, finalUsage);
+        usageCache.observe(ctx.sessionId, finalUsage, {
+          provider: attempt.provider,
+          model: attempt.model,
+          observedAt: endedAtDate.getTime(),
+        });
         stats.observe({
           sessionId: ctx.sessionId,
           turnId: ctx.turnId,
@@ -933,12 +1416,16 @@ export function createRouterRuntime(
           model: attempt.model,
           tier: decision.tokenSaverTier,
           role: decision.isSubagent ? "subagent" : "main",
+          tokenSaverRouting: attemptDecision.mutations.tokenSaverRouting,
           usage: finalUsage,
           startedAt,
           endedAt,
         });
         return;
       }
+    }
+    } finally {
+      if (activeHealthDomain) endpointHealth.release(activeHealthDomain);
     }
 
     if (lastError && lastAttempt) {
@@ -968,6 +1455,7 @@ export function createRouterRuntime(
         model: lastAttempt.model,
         tier: decision.tokenSaverTier,
         role: decision.isSubagent ? "subagent" : "main",
+        tokenSaverRouting: lastDecision.mutations.tokenSaverRouting,
         usage: failUsage,
         startedAt,
         endedAt,
@@ -979,7 +1467,9 @@ export function createRouterRuntime(
           }
         }
       }
-      yield { type: "error", error: { ...lastError, provider: lastAttempt.provider, model: lastAttempt.model } };
+      if (!lastErrorYielded) {
+        yield { type: "error", error: { ...lastError, provider: lastAttempt.provider, model: lastAttempt.model } };
+      }
     }
   }
 
@@ -1044,10 +1534,12 @@ export function createRouterRuntime(
     async shutdown() {
       await stats.flush();
       stats.dispose();
+      ledger?.dispose();
       disposeTokenizer();
       if (!externalStore) sessionStore.clear();
       usageCache.clear();
       healthTrackers.clear();
+      endpointHealth.resetAll();
     },
   };
 }
@@ -1056,6 +1548,42 @@ type AttemptPlan = {
   attempt: RouterModelRef;
   downgradeUnsupportedMedia: boolean;
 };
+
+function rankRemainingAttempts(
+  plans: AttemptPlan[],
+  start: number,
+  health: ProviderHealthTracker,
+  runtime: ModelRuntime,
+  failedDomain: string,
+  estimatedInputTokens: number,
+  pricing?: RouterModelPricingMap,
+): void {
+  const ranked = plans.slice(start).map((plan, order) => {
+    const domain = providerFailureDomain(runtime, plan.attempt);
+    const state = health.getState(domain);
+    const statePenalty = state === "open" ? 1_000_000 : state === "half_open" ? 20 : state === "degraded" ? 10 : 0;
+    const sharedDomainPenalty = domain === failedDomain ? 100 : 0;
+    const reliabilityPenalty = (1 - health.getSuccessRate(domain)) * 4;
+    const latencyPenalty = (health.getLatencyEwmaMs(domain) ?? 0) / 10_000;
+    const costPenalty = calculateInputCost(
+      estimatedInputTokens,
+      plan.attempt.provider,
+      plan.attempt.model,
+      pricing,
+    );
+    return { plan, order, score: statePenalty + sharedDomainPenalty + reliabilityPenalty + latencyPenalty + costPenalty };
+  });
+  ranked.sort((a, b) => a.score - b.score || a.order - b.order);
+  plans.splice(start, ranked.length, ...ranked.map(({ plan }) => plan));
+}
+
+function lastFinishReason(events: CanonicalModelEvent[]): import("../model/index.js").CanonicalFinishReason | undefined {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (event.type === "message_end") return event.finishReason;
+  }
+  return undefined;
+}
 
 type AttemptOutcome = {
   buffered: CanonicalModelEvent[];
@@ -1134,6 +1662,13 @@ async function* streamAttempt(
   modelRuntime: ModelRuntime,
   ctx: RouterExecuteContext,
   events: RouterEventBus,
+  options?: {
+    maxRetries?: number;
+    timeoutMs?: number;
+    allowRetry?: ModelRuntimeOptions["allowRetry"];
+    onProviderDispatchStart?: () => void;
+    onProviderAttempt?: (attempt: ProviderAttemptEvent) => void;
+  },
 ): AsyncGenerator<
   | { kind: "event"; event: CanonicalModelEvent }
   | { kind: "outcome"; outcome: AttemptOutcome }
@@ -1141,11 +1676,18 @@ async function* streamAttempt(
   const buffered: CanonicalModelEvent[] = [];
   const state = createZeroUsageState();
   let providerError: import("../model/index.js").CanonicalModelError | undefined;
-  const abortSignal = ctx.abortSignal;
+  const timeoutSignal = options?.timeoutMs != null
+    ? AbortSignal.timeout(Math.max(1, Math.ceil(options.timeoutMs)))
+    : undefined;
+  const abortSignal = timeoutSignal && ctx.abortSignal
+    ? AbortSignal.any([ctx.abortSignal, timeoutSignal])
+    : timeoutSignal ?? ctx.abortSignal;
 
   try {
     for await (const event of modelRuntime.stream(request, {
       signal: abortSignal,
+      maxRetries: options?.maxRetries,
+      allowRetry: options?.allowRetry,
       onRetryProgress(progress) {
         events.emit({
           type: "pilotdeck_router_retry_progress",
@@ -1159,11 +1701,13 @@ async function* streamAttempt(
           model: progress.model,
         });
       },
+      onProviderAttempt: options?.onProviderAttempt,
     })) {
       if (abortSignal?.aborted) {
         throwAbortError(abortSignal.reason);
       }
       observeEventForZeroUsage(state, event);
+      if (event.type === "request_started") options?.onProviderDispatchStart?.();
       buffered.push(event);
       if (event.type === "error") {
         providerError = event.error;
@@ -1171,7 +1715,7 @@ async function* streamAttempt(
       yield { kind: "event", event };
     }
   } catch (error) {
-    if (abortSignal?.aborted) {
+    if (ctx.abortSignal?.aborted) {
       throw error;
     }
     const fromError = (error as { error?: import("../model/index.js").CanonicalModelError })?.error;
@@ -1221,6 +1765,42 @@ function protocolForProvider(modelRuntime: ModelRuntime, providerId: string): Mo
   } catch {
     return "openai";
   }
+}
+
+function supportsPromptCacheFor(modelRuntime: ModelRuntime, providerId: string, modelId: string): boolean {
+  try {
+    return modelRuntime.getCapabilities(providerId, modelId).supportsPromptCache === true;
+  } catch {
+    return false;
+  }
+}
+
+const UNCERTAINTY_SEVERITY = { low: 0, medium: 1, high: 2, unknown: 3 } as const;
+
+type UncertaintyLevel = keyof typeof UNCERTAINTY_SEVERITY;
+
+/** The more severe of two uncertainty labels (low < medium < high < unknown). */
+function worseUncertainty(a: UncertaintyLevel, b: UncertaintyLevel): UncertaintyLevel {
+  return UNCERTAINTY_SEVERITY[a] >= UNCERTAINTY_SEVERITY[b] ? a : b;
+}
+
+/** Drops undefined-valued keys so logged evidence carries observed values only. */
+function stripUndefined<T extends object>(input: T): T {
+  return Object.fromEntries(
+    Object.entries(input).filter((entry) => entry[1] !== undefined),
+  ) as T;
+}
+
+/**
+ * PILOTDECK_CACHE_PLAN_REBUILD env override for experiment A/B control:
+ * "0" forces the feature OFF, "1" forces it ON, unset defers to the config
+ * value (default on). Read once per runtime creation, never per request.
+ */
+function resolveCachePlanRebuildEnabled(configEnabled: boolean | undefined): boolean {
+  const override = process.env.PILOTDECK_CACHE_PLAN_REBUILD;
+  if (override === "0") return false;
+  if (override === "1") return true;
+  return configEnabled !== false;
 }
 
 function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {

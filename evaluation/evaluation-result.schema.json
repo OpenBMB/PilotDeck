@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["success", "validator"],
+  "properties": {
+    "success": {"type": "boolean"},
+    "score": {"type": "number", "minimum": 0, "maximum": 1},
+    "validator": {"enum": ["automated", "llm-judge", "hybrid", "process-exit"]},
+    "latencyMs": {"type": "number", "minimum": 0},
+    "ttftMs": {"type": "number", "minimum": 0},
+    "noOutputWaitMs": {"type": "number", "minimum": 0},
+    "fallbackRecoveryMs": {"type": "number", "minimum": 0},
+    "cancellationMs": {"type": "number", "minimum": 0},
+    "failureReason": {"type": "string", "maxLength": 500}
+  },
+  "additionalProperties": false
+}

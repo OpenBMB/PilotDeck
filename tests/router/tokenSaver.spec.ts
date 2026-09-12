@@ -123,6 +123,7 @@ test("omits temperature for an Anthropic judge", async () => {
 
   assert.equal(result?.tier, "medium");
   assert.equal(request?.temperature, undefined);
+  assert.deepEqual(request?.thinking, { enabled: false, mode: "off" });
 });
 
 test("omits temperature for an OpenAI-compatible judge", async () => {

@@ -3,6 +3,9 @@ import {
   DEFAULT_ALLOWED_TOOLS,
   DEFAULT_BLOCKED_TOOLS,
   DEFAULT_JUDGE_TIMEOUT_MS,
+  DEFAULT_TOKEN_SAVER_CONTEXT,
+  DEFAULT_RECOVERY_DEADLINE_MS,
+  DEFAULT_RECOVERY_MAX_ATTEMPTS,
   DEFAULT_TIER_DESCRIPTIONS,
   DEFAULT_TIER_NAME,
   DEFAULT_TIER_RULES,
@@ -12,6 +15,7 @@ import {
   resolveProviderRef,
   ROUTER_PRICING_UNITS,
   type RouterAutoOrchestrateConfig,
+  type RouterCachePlanRebuildConfig,
   type RouterConfig,
   type RouterCustomRouterConfig,
   type RouterFallbackConfig,
@@ -19,6 +23,7 @@ import {
   type RouterScenariosConfig,
   type RouterStatsConfig,
   type RouterTokenSaverConfig,
+  type RouterTokenSaverContextConfig,
   type RouterPricingUnit,
 } from "./schema.js";
 import type { RouterScenarioType } from "../protocol/decision.js";
@@ -95,10 +100,12 @@ export function parseRouterConfig(
 
   const fallback = parseFallback(raw.fallback, modelConfig, diagnostics);
   const zeroUsageRetry = parseZeroUsageRetry(raw.zeroUsageRetry, diagnostics);
+  const recovery = parseRecovery(raw.recovery, diagnostics);
   const tokenSaver = parseTokenSaver(raw.tokenSaver, modelConfig, diagnostics);
   const autoOrchestrate = parseAutoOrchestrate(raw.autoOrchestrate, modelConfig, tokenSaver, diagnostics);
   const stats = parseStats(raw.stats, modelConfig, diagnostics);
   const customRouter = parseCustomRouter(raw.customRouter, diagnostics);
+  const cachePlanRebuild = parseCachePlanRebuild(raw.cachePlanRebuild, diagnostics);
 
   return {
     config: {
@@ -106,10 +113,12 @@ export function parseRouterConfig(
       ...(scenarios ? { scenarios } : {}),
       fallback,
       zeroUsageRetry,
+      recovery,
       tokenSaver,
       autoOrchestrate,
       stats,
       customRouter,
+      cachePlanRebuild,
     },
     diagnostics,
   };
@@ -251,6 +260,65 @@ function parseZeroUsageRetry(
     }
   }
   return { enabled, maxAttempts };
+}
+
+function parseRecovery(
+  raw: unknown,
+  diagnostics: RouterConfigDiagnostic[],
+): RouterConfig["recovery"] {
+  if (raw === undefined) return { enabled: false, maxAttempts: DEFAULT_RECOVERY_MAX_ATTEMPTS, deadlineMs: DEFAULT_RECOVERY_DEADLINE_MS };
+  if (!isRecord(raw)) {
+    diagnostics.push({
+      code: "ROUTER_RECOVERY_INVALID", severity: "fatal", path: "router.recovery",
+      message: "router.recovery must be an object.",
+    });
+    return { enabled: false, maxAttempts: DEFAULT_RECOVERY_MAX_ATTEMPTS, deadlineMs: DEFAULT_RECOVERY_DEADLINE_MS };
+  }
+  const enabled = typeof raw.enabled === "boolean" ? raw.enabled : false;
+  const positiveInt = (key: string, fallback: number): number => {
+    const value = raw[key];
+    if (value === undefined) return fallback;
+    if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+    diagnostics.push({
+      code: `ROUTER_RECOVERY_${key.toUpperCase()}_INVALID`, severity: "fatal",
+      path: `router.recovery.${key}`, message: `router.recovery.${key} must be a positive integer.`,
+    });
+    return fallback;
+  };
+  let health: NonNullable<RouterConfig["recovery"]>["health"];
+  if (raw.health !== undefined) {
+    if (!isRecord(raw.health)) {
+      diagnostics.push({
+        code: "ROUTER_RECOVERY_HEALTH_INVALID", severity: "fatal", path: "router.recovery.health",
+        message: "router.recovery.health must be an object.",
+      });
+    } else {
+      health = {};
+      const defaults: Record<string, number> = {
+        capacity: 128, recordTtlMs: 900_000, openDurationMs: 30_000,
+        maxOpenDurationMs: 300_000, degradeThreshold: 2, openThreshold: 3, windowSize: 20,
+      };
+      for (const [key, fallback] of Object.entries(defaults)) {
+        const value = raw.health[key];
+        if (value === undefined) continue;
+        if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+          (health as Record<string, number>)[key] = value;
+        } else {
+          diagnostics.push({
+            code: `ROUTER_RECOVERY_HEALTH_${key.toUpperCase()}_INVALID`, severity: "fatal",
+            path: `router.recovery.health.${key}`,
+            message: `router.recovery.health.${key} must be a positive integer (default ${fallback}).`,
+          });
+        }
+      }
+    }
+  }
+  return {
+    enabled,
+    maxAttempts: positiveInt("maxAttempts", DEFAULT_RECOVERY_MAX_ATTEMPTS),
+    deadlineMs: positiveInt("deadlineMs", DEFAULT_RECOVERY_DEADLINE_MS),
+    ...(health ? { health } : {}),
+  };
 }
 
 function parseTokenSaver(
@@ -436,6 +504,8 @@ function parseTokenSaver(
     }
   }
 
+  const contextAware = parseTokenSaverContext(raw.contextAware, diagnostics);
+
   return {
     enabled,
     judge: judgeRef,
@@ -444,8 +514,78 @@ function parseTokenSaver(
     rules,
     subagent,
     judgeTimeoutMs,
+    contextAware,
     cacheAwareSwitching,
   };
+}
+
+function parseTokenSaverContext(
+  raw: unknown,
+  diagnostics: RouterConfigDiagnostic[],
+): RouterTokenSaverContextConfig {
+  const result = { ...DEFAULT_TOKEN_SAVER_CONTEXT };
+  if (raw === undefined) return result;
+  if (!isRecord(raw)) {
+    diagnostics.push({
+      code: "ROUTER_TOKEN_SAVER_CONTEXT_INVALID",
+      severity: "fatal",
+      path: "router.tokenSaver.contextAware",
+      message: "contextAware must be an object.",
+    });
+    return result;
+  }
+
+  for (const key of ["enabled", "continuationGate"] as const) {
+    if (raw[key] === undefined) continue;
+    if (typeof raw[key] === "boolean") {
+      result[key] = raw[key];
+    } else {
+      diagnostics.push({
+        code: "ROUTER_TOKEN_SAVER_CONTEXT_BOOLEAN_INVALID",
+        severity: "fatal",
+        path: `router.tokenSaver.contextAware.${key}`,
+        message: `${key} must be a boolean.`,
+      });
+    }
+  }
+
+  if (raw.confidenceThreshold !== undefined) {
+    if (
+      typeof raw.confidenceThreshold === "number" &&
+      Number.isFinite(raw.confidenceThreshold) &&
+      raw.confidenceThreshold >= 0 &&
+      raw.confidenceThreshold <= 1
+    ) {
+      result.confidenceThreshold = raw.confidenceThreshold;
+    } else {
+      diagnostics.push({
+        code: "ROUTER_TOKEN_SAVER_CONTEXT_CONFIDENCE_INVALID",
+        severity: "fatal",
+        path: "router.tokenSaver.contextAware.confidenceThreshold",
+        message: "confidenceThreshold must be a number between 0 and 1.",
+      });
+    }
+  }
+
+  for (const key of [
+    "maxCurrentMessageChars",
+    "maxPreviousTaskChars",
+    "maxAssistantTailChars",
+  ] as const) {
+    if (raw[key] === undefined) continue;
+    if (typeof raw[key] === "number" && Number.isInteger(raw[key]) && raw[key] > 0) {
+      result[key] = raw[key];
+    } else {
+      diagnostics.push({
+        code: "ROUTER_TOKEN_SAVER_CONTEXT_LIMIT_INVALID",
+        severity: "fatal",
+        path: `router.tokenSaver.contextAware.${key}`,
+        message: `${key} must be a positive integer.`,
+      });
+    }
+  }
+
+  return result;
 }
 
 function parseAutoOrchestrate(
@@ -677,6 +817,34 @@ function parseCustomRouter(
     return undefined;
   }
   return { extensionId: raw.extensionId };
+}
+
+function parseCachePlanRebuild(
+  raw: unknown,
+  diagnostics: RouterConfigDiagnostic[],
+): RouterCachePlanRebuildConfig {
+  if (raw === undefined) {
+    return { enabled: true };
+  }
+  if (!isRecord(raw)) {
+    diagnostics.push({
+      code: "ROUTER_CACHE_PLAN_REBUILD_INVALID",
+      severity: "fatal",
+      path: "router.cachePlanRebuild",
+      message: "router.cachePlanRebuild must be an object.",
+    });
+    return { enabled: true };
+  }
+  if (raw.enabled === undefined || typeof raw.enabled === "boolean") {
+    return { enabled: raw.enabled ?? true };
+  }
+  diagnostics.push({
+    code: "ROUTER_CACHE_PLAN_REBUILD_ENABLED_INVALID",
+    severity: "fatal",
+    path: "router.cachePlanRebuild.enabled",
+    message: "router.cachePlanRebuild.enabled must be a boolean.",
+  });
+  return { enabled: true };
 }
 
 function consumeRef(

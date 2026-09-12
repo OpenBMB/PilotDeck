@@ -2114,6 +2114,10 @@ export class AgentLoop {
     const finalMessages = this.config.permissionMode === "plan"
       ? appendPlanModeReminder(materialized.messages)
       : materialized.messages;
+    // Derive cache enablement from the same gate prepareForModel used, so the
+    // loop cannot resurrect a plan the context runtime disabled.
+    const cacheProtocol = this.dependencies.getModelProtocol?.(requestProvider);
+    const cacheSupported = this.dependencies.getModelSupportsPromptCache?.(requestProvider, requestModel) === true;
     const finalCachePlan = prepared.cachePlan
       ? buildCachePlan({
           provider: requestProvider,
@@ -2121,7 +2125,7 @@ export class AgentLoop {
           systemPrompt: prepared.systemPrompt,
           tools: prepared.tools,
           messages: finalMessages,
-          enabled: true,
+          enabled: cacheProtocol === "anthropic" && cacheSupported,
         }, prepared.cachePlan.generation)
       : undefined;
     const finalCacheBreakpoints = finalCachePlan?.messages ?? (

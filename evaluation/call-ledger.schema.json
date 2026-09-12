@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pilotroute.local/schemas/call-ledger.schema.json",
+  "title": "PilotRoute provider attempt ledger row",
+  "type": "object",
+  "required": [
+    "schemaVersion", "eventType", "runId", "taskId", "sessionId", "callId", "attemptId",
+    "strategyVersion", "baselineCommit", "provider", "model", "role", "attemptNumber",
+    "startedAt", "endedAt", "durationMs", "status", "usageSource", "costCurrency", "costSource"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventType": { "const": "model_attempt" },
+    "runId": { "type": "string", "minLength": 1 },
+    "taskId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "decisionId": { "type": "string" },
+    "callId": { "type": "string", "minLength": 1 },
+    "attemptId": { "type": "string", "minLength": 1 },
+    "parentId": { "type": "string" },
+    "strategyVersion": { "type": "string", "minLength": 1 },
+    "baselineCommit": { "type": "string", "minLength": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "model": { "type": "string", "minLength": 1 },
+    "role": { "enum": ["judge", "main", "subagent", "retry", "fallback", "compaction"] },
+    "attemptNumber": { "type": "integer", "minimum": 1 },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": "string", "format": "date-time" },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "status": { "enum": ["succeeded", "failed", "cancelled", "unknown"] },
+    "errorType": { "type": "string" },
+    "usage": { "type": "object" },
+    "usageSource": { "enum": ["provider_reported", "estimated", "unknown"] },
+    "cost": { "type": "number", "minimum": 0 },
+    "costCurrency": { "const": "USD" },
+    "costSource": { "enum": ["provider_reported", "price_table_calculated", "estimated", "unknown"] },
+    "retryOfAttemptId": { "type": "string" },
+    "fallbackFromAttemptId": { "type": "string" }
+  },
+  "additionalProperties": false
+}

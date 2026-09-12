@@ -26,10 +26,14 @@ export function normalizeOpenAIUsage(raw: unknown): CanonicalUsage | undefined {
 
   const promptTokens = readNumber(raw.prompt_tokens) ?? readNumber(raw.input_tokens);
   const outputTokens = readNumber(raw.completion_tokens) ?? readNumber(raw.output_tokens);
-  const nativeCost =
-    readNumber(raw.cost) ??
-    readNumber(raw.total_cost) ??
-    readNumber(raw.estimated_cost);
+  const reportedCost = readNumber(raw.cost) ?? readNumber(raw.total_cost);
+  const estimatedCost = readNumber(raw.estimated_cost);
+  const nativeCost = reportedCost ?? estimatedCost;
+  const nativeCostSource = reportedCost != null
+    ? "provider_reported" as const
+    : estimatedCost != null
+      ? "estimated" as const
+      : undefined;
 
   const details = isRecord(raw.prompt_tokens_details)
     ? raw.prompt_tokens_details
@@ -40,7 +44,7 @@ export function normalizeOpenAIUsage(raw: unknown): CanonicalUsage | undefined {
   const cacheWriteTokens = readNumber(details?.cache_write_tokens) ?? readNumber(raw.cache_creation_input_tokens);
 
   const inputTokens = promptTokens != null
-    ? promptTokens - (cacheReadTokens ?? 0) - (cacheWriteTokens ?? 0)
+    ? Math.max(0, promptTokens - (cacheReadTokens ?? 0) - (cacheWriteTokens ?? 0))
     : undefined;
 
   const totalTokens = readNumber(raw.total_tokens) ?? sumDefined(promptTokens, outputTokens);
@@ -52,6 +56,7 @@ export function normalizeOpenAIUsage(raw: unknown): CanonicalUsage | undefined {
     cacheWriteTokens,
     totalTokens,
     nativeCost,
+    nativeCostSource,
   });
 }
 
