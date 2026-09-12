@@ -79,6 +79,10 @@ export type RouterCustomRouterConfig = {
   extensionId: string;
 };
 
+export type RouterCachePlanRebuildConfig = {
+  enabled: boolean;
+};
+
 export type RouterConfig = {
   /**
    * Master switch for all router behavior. When false, router-specific
@@ -102,6 +106,11 @@ export type RouterConfig = {
   autoOrchestrate?: RouterAutoOrchestrateConfig;
   stats?: RouterStatsConfig;
   customRouter?: RouterCustomRouterConfig;
+  /**
+   * Rebuild the prompt-cache plan for the finally-routed model instead of
+   * dropping it when routing changes provider or model. Defaults to enabled.
+   */
+  cachePlanRebuild?: RouterCachePlanRebuildConfig;
 };
 
 export const DEFAULT_JUDGE_TIMEOUT_MS = 15_000;

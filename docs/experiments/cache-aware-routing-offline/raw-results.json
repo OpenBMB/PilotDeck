@@ -1,0 +1,5208 @@
+{
+  "metadata": {
+    "experimentId": "pilotroute-cache-aware-routing-offline",
+    "experimentDate": "2026-09-11",
+    "evidenceKind": "offline-deterministic-simulation",
+    "executionMode": "deterministic-offline-no-network",
+    "disclaimer": "No real provider API was called. Usage, cache hits, costs, and savings are deterministic simulation; latency and quality are not measured. Wire correctness is real local code execution.",
+    "networkRequests": 0,
+    "paidApiCalls": 0,
+    "minSavingsRatio": 0.05,
+    "cacheTtlMs": 300000,
+    "judgeCostTreatment": "excluded-unmeasured-shared-across-arms-and-common-to-candidate-ranking",
+    "exploratoryTarget": "20% multi-turn input-cost reduction in this synthetic suite only"
+  },
+  "fixtures": {
+    "pricing": {
+      "source": "experiment-fixture",
+      "date": "2026-09-11",
+      "unit": "USD per million tokens",
+      "resolution": "Exact custom entries resolved through production lookupModelPricingDetailed.",
+      "models": {
+        "anthropic/claude-opus-sim": {
+          "protocol": "anthropic",
+          "supportsPromptCache": true,
+          "input": 15,
+          "output": 75,
+          "cacheRead": 1.5,
+          "cacheWrite": 18.75,
+          "productionQuoteSource": "user"
+        },
+        "anthropic/claude-sonnet-sim": {
+          "protocol": "anthropic",
+          "supportsPromptCache": true,
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75,
+          "productionQuoteSource": "user"
+        },
+        "anthropic/claude-haiku-sim": {
+          "protocol": "anthropic",
+          "supportsPromptCache": true,
+          "input": 0.8,
+          "output": 4,
+          "cacheRead": 0.08,
+          "cacheWrite": 1,
+          "productionQuoteSource": "user"
+        },
+        "local/edge-small-sim": {
+          "protocol": "openai",
+          "supportsPromptCache": false,
+          "input": 0.5,
+          "output": 1.5,
+          "cacheRead": 0.5,
+          "cacheWrite": 0.5,
+          "productionQuoteSource": "user"
+        }
+      }
+    },
+    "mechanisms": {
+      "original": "Frozen cfc4d177 pre-routing default-model plan/drop-on-mismatch behavior and messages-only two-bucket legacy cost formula.",
+      "plan_fix_only": "Production rebuildRoutedCachePlan for the final model plus the frozen cfc4d177 legacy cost formula.",
+      "plan_and_full_cost": "Production rebuildRoutedCachePlan plus production compareStayVsSwitch at the current integration evidence boundary."
+    },
+    "scenarios": [
+      {
+        "id": "cold_start",
+        "description": "Single cold Sonnet request.",
+        "defaultModel": "anthropic/claude-sonnet-sim",
+        "turns": [
+          {
+            "atSeconds": 0,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 50000,
+            "cacheablePrefixTokens": 45000,
+            "messagesOnlyTokens": 20000,
+            "outputTokens": 2000,
+            "prefixLineage": "cold-v1",
+            "contentVariant": "cold-v1",
+            "generation": 1
+          }
+        ]
+      },
+      {
+        "id": "same_model_stable_prefix",
+        "description": "Three Sonnet turns sharing one stable prefix lineage.",
+        "defaultModel": "anthropic/claude-sonnet-sim",
+        "turns": [
+          {
+            "atSeconds": 0,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 100000,
+            "cacheablePrefixTokens": 95000,
+            "messagesOnlyTokens": 50000,
+            "outputTokens": 2000,
+            "prefixLineage": "stable-v1",
+            "contentVariant": "stable-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 60,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 105000,
+            "cacheablePrefixTokens": 100000,
+            "messagesOnlyTokens": 55000,
+            "outputTokens": 2000,
+            "prefixLineage": "stable-v1",
+            "contentVariant": "stable-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 120,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 110000,
+            "cacheablePrefixTokens": 105000,
+            "messagesOnlyTokens": 60000,
+            "outputTokens": 2000,
+            "prefixLineage": "stable-v1",
+            "contentVariant": "stable-v1",
+            "generation": 1
+          }
+        ]
+      },
+      {
+        "id": "hot_strong_then_simple",
+        "description": "Warm Opus prefix followed by two Haiku judge targets.",
+        "defaultModel": "anthropic/claude-opus-sim",
+        "turns": [
+          {
+            "atSeconds": 0,
+            "judgeTarget": "anthropic/claude-opus-sim",
+            "totalInputTokens": 180000,
+            "cacheablePrefixTokens": 175000,
+            "messagesOnlyTokens": 90000,
+            "outputTokens": 4000,
+            "prefixLineage": "strong-v1",
+            "contentVariant": "strong-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 60,
+            "judgeTarget": "anthropic/claude-opus-sim",
+            "totalInputTokens": 190000,
+            "cacheablePrefixTokens": 185000,
+            "messagesOnlyTokens": 100000,
+            "outputTokens": 4000,
+            "prefixLineage": "strong-v1",
+            "contentVariant": "strong-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 120,
+            "judgeTarget": "anthropic/claude-haiku-sim",
+            "totalInputTokens": 195000,
+            "cacheablePrefixTokens": 190000,
+            "messagesOnlyTokens": 105000,
+            "outputTokens": 500,
+            "prefixLineage": "strong-v1",
+            "contentVariant": "strong-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 180,
+            "judgeTarget": "anthropic/claude-haiku-sim",
+            "totalInputTokens": 200000,
+            "cacheablePrefixTokens": 195000,
+            "messagesOnlyTokens": 110000,
+            "outputTokens": 500,
+            "prefixLineage": "strong-v1",
+            "contentVariant": "strong-v1",
+            "generation": 1
+          }
+        ]
+      },
+      {
+        "id": "lower_output_cost",
+        "description": "A large observed output makes Haiku's output rate relevant.",
+        "defaultModel": "anthropic/claude-sonnet-sim",
+        "turns": [
+          {
+            "atSeconds": 0,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 100000,
+            "cacheablePrefixTokens": 95000,
+            "messagesOnlyTokens": 50000,
+            "outputTokens": 2000,
+            "prefixLineage": "output-v1",
+            "contentVariant": "output-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 60,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 105000,
+            "cacheablePrefixTokens": 100000,
+            "messagesOnlyTokens": 55000,
+            "outputTokens": 100000,
+            "prefixLineage": "output-v1",
+            "contentVariant": "output-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 120,
+            "judgeTarget": "anthropic/claude-haiku-sim",
+            "totalInputTokens": 110000,
+            "cacheablePrefixTokens": 105000,
+            "messagesOnlyTokens": 60000,
+            "outputTokens": 100000,
+            "prefixLineage": "output-v1",
+            "contentVariant": "output-v1",
+            "generation": 1
+          }
+        ]
+      },
+      {
+        "id": "prefix_changed_compaction",
+        "description": "The third turn changes system, tools, messages, and prefix lineage.",
+        "defaultModel": "anthropic/claude-sonnet-sim",
+        "turns": [
+          {
+            "atSeconds": 0,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 100000,
+            "cacheablePrefixTokens": 95000,
+            "messagesOnlyTokens": 50000,
+            "outputTokens": 2000,
+            "prefixLineage": "v1",
+            "contentVariant": "compaction-before",
+            "generation": 1
+          },
+          {
+            "atSeconds": 60,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 100000,
+            "cacheablePrefixTokens": 95000,
+            "messagesOnlyTokens": 50000,
+            "outputTokens": 2000,
+            "prefixLineage": "v1",
+            "contentVariant": "compaction-before",
+            "generation": 1
+          },
+          {
+            "atSeconds": 120,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 70000,
+            "cacheablePrefixTokens": 65000,
+            "messagesOnlyTokens": 35000,
+            "outputTokens": 2000,
+            "prefixLineage": "v2",
+            "contentVariant": "compaction-after",
+            "generation": 2
+          }
+        ]
+      },
+      {
+        "id": "ttl_expired",
+        "description": "The final request arrives 340 seconds after the last hit.",
+        "defaultModel": "anthropic/claude-sonnet-sim",
+        "turns": [
+          {
+            "atSeconds": 0,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 100000,
+            "cacheablePrefixTokens": 95000,
+            "messagesOnlyTokens": 50000,
+            "outputTokens": 2000,
+            "prefixLineage": "ttl-v1",
+            "contentVariant": "ttl-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 60,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 100000,
+            "cacheablePrefixTokens": 95000,
+            "messagesOnlyTokens": 50000,
+            "outputTokens": 2000,
+            "prefixLineage": "ttl-v1",
+            "contentVariant": "ttl-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 400,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 100000,
+            "cacheablePrefixTokens": 95000,
+            "messagesOnlyTokens": 50000,
+            "outputTokens": 2000,
+            "prefixLineage": "ttl-v1",
+            "contentVariant": "ttl-v1",
+            "generation": 1
+          }
+        ]
+      },
+      {
+        "id": "unsupported_candidate",
+        "description": "A cache-capable Sonnet session receives a non-cache local judge target.",
+        "defaultModel": "anthropic/claude-sonnet-sim",
+        "turns": [
+          {
+            "atSeconds": 0,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 120000,
+            "cacheablePrefixTokens": 115000,
+            "messagesOnlyTokens": 60000,
+            "outputTokens": 2000,
+            "prefixLineage": "unsupported-v1",
+            "contentVariant": "unsupported-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 60,
+            "judgeTarget": "anthropic/claude-sonnet-sim",
+            "totalInputTokens": 120000,
+            "cacheablePrefixTokens": 115000,
+            "messagesOnlyTokens": 60000,
+            "outputTokens": 2000,
+            "prefixLineage": "unsupported-v1",
+            "contentVariant": "unsupported-v1",
+            "generation": 1
+          },
+          {
+            "atSeconds": 120,
+            "judgeTarget": "local/edge-small-sim",
+            "totalInputTokens": 120000,
+            "cacheablePrefixTokens": 115000,
+            "messagesOnlyTokens": 60000,
+            "outputTokens": 1000,
+            "prefixLineage": "unsupported-v1",
+            "contentVariant": "unsupported-v1",
+            "generation": 1
+          }
+        ]
+      }
+    ]
+  },
+  "turnRecords": [
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "cold_start",
+      "arm": "original",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "cold-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "c677d131658cd64fccc3263ab09a904131f589a2a5093958eddace84379446f7",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 45000,
+        "totalTokens": 52000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 45000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.16875,
+        "output": 0.03,
+        "inputSide": 0.18375,
+        "total": 0.21375
+      },
+      "simulatedCostUsd": 0.21375,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "cold_start",
+      "arm": "plan_fix_only",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "cold-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "c677d131658cd64fccc3263ab09a904131f589a2a5093958eddace84379446f7",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 45000,
+        "totalTokens": 52000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 45000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.16875,
+        "output": 0.03,
+        "inputSide": 0.18375,
+        "total": 0.21375
+      },
+      "simulatedCostUsd": 0.21375,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "cold_start",
+      "arm": "plan_and_full_cost",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "cold-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "c677d131658cd64fccc3263ab09a904131f589a2a5093958eddace84379446f7",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 45000,
+        "totalTokens": 52000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 45000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.16875,
+        "output": 0.03,
+        "inputSide": 0.18375,
+        "total": 0.21375
+      },
+      "simulatedCostUsd": 0.21375,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "original",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "original",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 107000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.904761905,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0.01875,
+        "output": 0.03,
+        "inputSide": 0.06225,
+        "total": 0.09225
+      },
+      "simulatedCostUsd": 0.09225,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "original",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 100000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 112000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 100000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.909090909,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.03,
+        "cacheWrite": 0.01875,
+        "output": 0.03,
+        "inputSide": 0.06375,
+        "total": 0.09375
+      },
+      "simulatedCostUsd": 0.09375,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "plan_fix_only",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "plan_fix_only",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 107000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.904761905,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0.01875,
+        "output": 0.03,
+        "inputSide": 0.06225,
+        "total": 0.09225
+      },
+      "simulatedCostUsd": 0.09225,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "plan_fix_only",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 100000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 112000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 100000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.909090909,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.03,
+        "cacheWrite": 0.01875,
+        "output": 0.03,
+        "inputSide": 0.06375,
+        "total": 0.09375
+      },
+      "simulatedCostUsd": 0.09375,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "plan_and_full_cost",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "plan_and_full_cost",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 107000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.904761905,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0.01875,
+        "output": 0.03,
+        "inputSide": 0.06225,
+        "total": 0.09225
+      },
+      "simulatedCostUsd": 0.09225,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "same_model_stable_prefix",
+      "arm": "plan_and_full_cost",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "stable-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "0ac45154e15c7e31e73a02b02ab1de301cc7f8b9966722f3b1efe4a6daace3bc",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 100000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 112000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 100000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.909090909,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.03,
+        "cacheWrite": 0.01875,
+        "output": 0.03,
+        "inputSide": 0.06375,
+        "total": 0.09375
+      },
+      "simulatedCostUsd": 0.09375,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "original",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-opus-sim",
+      "finalModel": "anthropic/claude-opus-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-opus-sim",
+        "fingerprint": "d831d85b6b13e7510fb683871f32a322e26b558eb8341a69224d8a124b6da20d",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 4000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 175000,
+        "totalTokens": 184000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 4000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 175000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.075,
+        "cacheRead": 0,
+        "cacheWrite": 3.28125,
+        "output": 0.3,
+        "inputSide": 3.35625,
+        "total": 3.65625
+      },
+      "simulatedCostUsd": 3.65625,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 15,
+          "output": 75,
+          "cacheRead": 1.5,
+          "cacheWrite": 18.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "original",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-opus-sim",
+      "finalModel": "anthropic/claude-opus-sim",
+      "previousModel": "anthropic/claude-opus-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-opus-sim",
+        "fingerprint": "d831d85b6b13e7510fb683871f32a322e26b558eb8341a69224d8a124b6da20d",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 4000,
+        "cacheReadTokens": 175000,
+        "cacheWriteTokens": 10000,
+        "totalTokens": 194000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 4000,
+        "cache_read_input_tokens": 175000,
+        "cache_creation_input_tokens": 10000
+      },
+      "cacheReadRatio": 0.921052632,
+      "simulatedCostsUsd": {
+        "input": 0.075,
+        "cacheRead": 0.2625,
+        "cacheWrite": 0.1875,
+        "output": 0.3,
+        "inputSide": 0.525,
+        "total": 0.825
+      },
+      "simulatedCostUsd": 0.825,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 15,
+          "output": 75,
+          "cacheRead": 1.5,
+          "cacheWrite": 18.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "original",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-haiku-sim",
+      "previousModel": "anthropic/claude-opus-sim",
+      "switchOccurred": true,
+      "decisionReason": "legacy_cost_recommends_switch",
+      "costComparison": {
+        "mechanism": "frozen-cfc4d177-legacy",
+        "estimatedInputTokens": 105000,
+        "estimatedOutputTokens": 0,
+        "stay": {
+          "model": "anthropic/claude-opus-sim",
+          "buckets": {
+            "inputTokens": 0,
+            "cacheReadTokens": 105000,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0,
+            "cacheRead": 0.1575,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.1575,
+            "total": 0.1575
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "switch": {
+          "model": "anthropic/claude-haiku-sim",
+          "buckets": {
+            "inputTokens": 105000,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0.084,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.084,
+            "total": 0.084
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "recommendation": "switch",
+        "savingsUsd": 0.0735,
+        "requiredSavingsUsd": 0.007875,
+        "uncertainty": "legacy-omits-cache-write-output-ttl-and-model-keying"
+      },
+      "cachePlan": {
+        "present": false,
+        "provider": null,
+        "model": null,
+        "fingerprint": null,
+        "generation": null
+      },
+      "cachePlanMatchesFinal": false,
+      "wire": {
+        "systemMarker": false,
+        "messageMarkerCount": 0,
+        "markerCount": 0
+      },
+      "cacheRequestCorrect": false,
+      "canonicalUsage": {
+        "inputTokens": 195000,
+        "outputTokens": 500,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 195500
+      },
+      "rawUsage": {
+        "input_tokens": 195000,
+        "output_tokens": 500,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.156,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 0.002,
+        "inputSide": 0.156,
+        "total": 0.158
+      },
+      "simulatedCostUsd": 0.158,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 0.8,
+          "output": 4,
+          "cacheRead": 0.08,
+          "cacheWrite": 1
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "original",
+      "turn": 4,
+      "timestamp": "2026-09-11T00:03:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-haiku-sim",
+      "previousModel": "anthropic/claude-haiku-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": false,
+        "provider": null,
+        "model": null,
+        "fingerprint": null,
+        "generation": null
+      },
+      "cachePlanMatchesFinal": false,
+      "wire": {
+        "systemMarker": false,
+        "messageMarkerCount": 0,
+        "markerCount": 0
+      },
+      "cacheRequestCorrect": false,
+      "canonicalUsage": {
+        "inputTokens": 200000,
+        "outputTokens": 500,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 200500
+      },
+      "rawUsage": {
+        "input_tokens": 200000,
+        "output_tokens": 500,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.16,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 0.002,
+        "inputSide": 0.16,
+        "total": 0.162
+      },
+      "simulatedCostUsd": 0.162,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 0.8,
+          "output": 4,
+          "cacheRead": 0.08,
+          "cacheWrite": 1
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_fix_only",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-opus-sim",
+      "finalModel": "anthropic/claude-opus-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-opus-sim",
+        "fingerprint": "d831d85b6b13e7510fb683871f32a322e26b558eb8341a69224d8a124b6da20d",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 4000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 175000,
+        "totalTokens": 184000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 4000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 175000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.075,
+        "cacheRead": 0,
+        "cacheWrite": 3.28125,
+        "output": 0.3,
+        "inputSide": 3.35625,
+        "total": 3.65625
+      },
+      "simulatedCostUsd": 3.65625,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 15,
+          "output": 75,
+          "cacheRead": 1.5,
+          "cacheWrite": 18.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_fix_only",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-opus-sim",
+      "finalModel": "anthropic/claude-opus-sim",
+      "previousModel": "anthropic/claude-opus-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-opus-sim",
+        "fingerprint": "d831d85b6b13e7510fb683871f32a322e26b558eb8341a69224d8a124b6da20d",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 4000,
+        "cacheReadTokens": 175000,
+        "cacheWriteTokens": 10000,
+        "totalTokens": 194000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 4000,
+        "cache_read_input_tokens": 175000,
+        "cache_creation_input_tokens": 10000
+      },
+      "cacheReadRatio": 0.921052632,
+      "simulatedCostsUsd": {
+        "input": 0.075,
+        "cacheRead": 0.2625,
+        "cacheWrite": 0.1875,
+        "output": 0.3,
+        "inputSide": 0.525,
+        "total": 0.825
+      },
+      "simulatedCostUsd": 0.825,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 15,
+          "output": 75,
+          "cacheRead": 1.5,
+          "cacheWrite": 18.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_fix_only",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-haiku-sim",
+      "previousModel": "anthropic/claude-opus-sim",
+      "switchOccurred": true,
+      "decisionReason": "legacy_cost_recommends_switch",
+      "costComparison": {
+        "mechanism": "frozen-cfc4d177-legacy",
+        "estimatedInputTokens": 105000,
+        "estimatedOutputTokens": 0,
+        "stay": {
+          "model": "anthropic/claude-opus-sim",
+          "buckets": {
+            "inputTokens": 0,
+            "cacheReadTokens": 105000,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0,
+            "cacheRead": 0.1575,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.1575,
+            "total": 0.1575
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "switch": {
+          "model": "anthropic/claude-haiku-sim",
+          "buckets": {
+            "inputTokens": 105000,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0.084,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.084,
+            "total": 0.084
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "recommendation": "switch",
+        "savingsUsd": 0.0735,
+        "requiredSavingsUsd": 0.007875,
+        "uncertainty": "legacy-omits-cache-write-output-ttl-and-model-keying"
+      },
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-haiku-sim",
+        "fingerprint": "ae1d53d0d5ffcecaadb337976f263d4962eaa885d29cf7d92481fae45829ca11",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 500,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 190000,
+        "totalTokens": 195500
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 500,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 190000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.004,
+        "cacheRead": 0,
+        "cacheWrite": 0.19,
+        "output": 0.002,
+        "inputSide": 0.194,
+        "total": 0.196
+      },
+      "simulatedCostUsd": 0.196,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 0.8,
+          "output": 4,
+          "cacheRead": 0.08,
+          "cacheWrite": 1
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_fix_only",
+      "turn": 4,
+      "timestamp": "2026-09-11T00:03:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-haiku-sim",
+      "previousModel": "anthropic/claude-haiku-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-haiku-sim",
+        "fingerprint": "ae1d53d0d5ffcecaadb337976f263d4962eaa885d29cf7d92481fae45829ca11",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 500,
+        "cacheReadTokens": 190000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 200500
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 500,
+        "cache_read_input_tokens": 190000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.95,
+      "simulatedCostsUsd": {
+        "input": 0.004,
+        "cacheRead": 0.0152,
+        "cacheWrite": 0.005,
+        "output": 0.002,
+        "inputSide": 0.0242,
+        "total": 0.0262
+      },
+      "simulatedCostUsd": 0.0262,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 0.8,
+          "output": 4,
+          "cacheRead": 0.08,
+          "cacheWrite": 1
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_and_full_cost",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-opus-sim",
+      "finalModel": "anthropic/claude-opus-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-opus-sim",
+        "fingerprint": "d831d85b6b13e7510fb683871f32a322e26b558eb8341a69224d8a124b6da20d",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 4000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 175000,
+        "totalTokens": 184000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 4000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 175000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.075,
+        "cacheRead": 0,
+        "cacheWrite": 3.28125,
+        "output": 0.3,
+        "inputSide": 3.35625,
+        "total": 3.65625
+      },
+      "simulatedCostUsd": 3.65625,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 15,
+          "output": 75,
+          "cacheRead": 1.5,
+          "cacheWrite": 18.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_and_full_cost",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-opus-sim",
+      "finalModel": "anthropic/claude-opus-sim",
+      "previousModel": "anthropic/claude-opus-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-opus-sim",
+        "fingerprint": "d831d85b6b13e7510fb683871f32a322e26b558eb8341a69224d8a124b6da20d",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 4000,
+        "cacheReadTokens": 175000,
+        "cacheWriteTokens": 10000,
+        "totalTokens": 194000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 4000,
+        "cache_read_input_tokens": 175000,
+        "cache_creation_input_tokens": 10000
+      },
+      "cacheReadRatio": 0.921052632,
+      "simulatedCostsUsd": {
+        "input": 0.075,
+        "cacheRead": 0.2625,
+        "cacheWrite": 0.1875,
+        "output": 0.3,
+        "inputSide": 0.525,
+        "total": 0.825
+      },
+      "simulatedCostUsd": 0.825,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 15,
+          "output": 75,
+          "cacheRead": 1.5,
+          "cacheWrite": 18.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_and_full_cost",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-haiku-sim",
+      "previousModel": "anthropic/claude-opus-sim",
+      "switchOccurred": true,
+      "decisionReason": "full_cost_recommends_switch",
+      "costComparison": {
+        "mechanism": "production-four-bucket",
+        "estimatedInputTokens": 195000,
+        "estimatedOutputTokens": 4000,
+        "stay": {
+          "model": "anthropic/claude-opus-sim",
+          "buckets": {
+            "inputTokens": 5132,
+            "cacheReadTokens": 189868,
+            "cacheWriteTokens": 0,
+            "outputTokens": 4000
+          },
+          "costsUsd": {
+            "input": 0.07698,
+            "cacheRead": 0.284802,
+            "cacheWrite": 0,
+            "output": 0.3,
+            "inputSide": 0.361782,
+            "total": 0.661782
+          },
+          "uncertainty": "low",
+          "notes": [],
+          "pricingSource": "experiment-fixture"
+        },
+        "switch": {
+          "model": "anthropic/claude-haiku-sim",
+          "buckets": {
+            "inputTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 195000,
+            "outputTokens": 4000
+          },
+          "costsUsd": {
+            "input": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0.195,
+            "output": 0.016,
+            "inputSide": 0.195,
+            "total": 0.211
+          },
+          "uncertainty": "medium",
+          "notes": [
+            "no usage evidence for candidate",
+            "cold prefill with cache write"
+          ],
+          "pricingSource": "experiment-fixture"
+        },
+        "recommendation": "switch",
+        "savingsUsd": 0.450782,
+        "requiredSavingsUsd": 0.0330891,
+        "uncertainty": "medium"
+      },
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-haiku-sim",
+        "fingerprint": "ae1d53d0d5ffcecaadb337976f263d4962eaa885d29cf7d92481fae45829ca11",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 500,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 190000,
+        "totalTokens": 195500
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 500,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 190000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.004,
+        "cacheRead": 0,
+        "cacheWrite": 0.19,
+        "output": 0.002,
+        "inputSide": 0.194,
+        "total": 0.196
+      },
+      "simulatedCostUsd": 0.196,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 0.8,
+          "output": 4,
+          "cacheRead": 0.08,
+          "cacheWrite": 1
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_and_full_cost",
+      "turn": 4,
+      "timestamp": "2026-09-11T00:03:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "strong-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-haiku-sim",
+      "previousModel": "anthropic/claude-haiku-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-haiku-sim",
+        "fingerprint": "ae1d53d0d5ffcecaadb337976f263d4962eaa885d29cf7d92481fae45829ca11",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 500,
+        "cacheReadTokens": 190000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 200500
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 500,
+        "cache_read_input_tokens": 190000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.95,
+      "simulatedCostsUsd": {
+        "input": 0.004,
+        "cacheRead": 0.0152,
+        "cacheWrite": 0.005,
+        "output": 0.002,
+        "inputSide": 0.0242,
+        "total": 0.0262
+      },
+      "simulatedCostUsd": 0.0262,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 0.8,
+          "output": 4,
+          "cacheRead": 0.08,
+          "cacheWrite": 1
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "original",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "b2fd5d10c31fd7ff6f3976bd061c18e4dfb942fb6f0967b9fdcb98d449357051",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "original",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "b2fd5d10c31fd7ff6f3976bd061c18e4dfb942fb6f0967b9fdcb98d449357051",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 100000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 205000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 100000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.904761905,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0.01875,
+        "output": 1.5,
+        "inputSide": 0.06225,
+        "total": 1.56225
+      },
+      "simulatedCostUsd": 1.56225,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "original",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "legacy_cost_keeps_sticky",
+      "costComparison": {
+        "mechanism": "frozen-cfc4d177-legacy",
+        "estimatedInputTokens": 60000,
+        "estimatedOutputTokens": 0,
+        "stay": {
+          "model": "anthropic/claude-sonnet-sim",
+          "buckets": {
+            "inputTokens": 0,
+            "cacheReadTokens": 60000,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0,
+            "cacheRead": 0.018,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.018,
+            "total": 0.018
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "switch": {
+          "model": "anthropic/claude-haiku-sim",
+          "buckets": {
+            "inputTokens": 60000,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0.048,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.048,
+            "total": 0.048
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "recommendation": "keep",
+        "savingsUsd": -0.03,
+        "requiredSavingsUsd": 0.0009,
+        "uncertainty": "legacy-omits-cache-write-output-ttl-and-model-keying"
+      },
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "b2fd5d10c31fd7ff6f3976bd061c18e4dfb942fb6f0967b9fdcb98d449357051",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 100000,
+        "cacheReadTokens": 100000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 210000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 100000,
+        "cache_read_input_tokens": 100000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.909090909,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.03,
+        "cacheWrite": 0.01875,
+        "output": 1.5,
+        "inputSide": 0.06375,
+        "total": 1.56375
+      },
+      "simulatedCostUsd": 1.56375,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "plan_fix_only",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "b2fd5d10c31fd7ff6f3976bd061c18e4dfb942fb6f0967b9fdcb98d449357051",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "plan_fix_only",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "b2fd5d10c31fd7ff6f3976bd061c18e4dfb942fb6f0967b9fdcb98d449357051",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 100000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 205000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 100000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.904761905,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0.01875,
+        "output": 1.5,
+        "inputSide": 0.06225,
+        "total": 1.56225
+      },
+      "simulatedCostUsd": 1.56225,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "plan_fix_only",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "legacy_cost_keeps_sticky",
+      "costComparison": {
+        "mechanism": "frozen-cfc4d177-legacy",
+        "estimatedInputTokens": 60000,
+        "estimatedOutputTokens": 0,
+        "stay": {
+          "model": "anthropic/claude-sonnet-sim",
+          "buckets": {
+            "inputTokens": 0,
+            "cacheReadTokens": 60000,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0,
+            "cacheRead": 0.018,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.018,
+            "total": 0.018
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "switch": {
+          "model": "anthropic/claude-haiku-sim",
+          "buckets": {
+            "inputTokens": 60000,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0.048,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.048,
+            "total": 0.048
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "recommendation": "keep",
+        "savingsUsd": -0.03,
+        "requiredSavingsUsd": 0.0009,
+        "uncertainty": "legacy-omits-cache-write-output-ttl-and-model-keying"
+      },
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "b2fd5d10c31fd7ff6f3976bd061c18e4dfb942fb6f0967b9fdcb98d449357051",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 100000,
+        "cacheReadTokens": 100000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 210000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 100000,
+        "cache_read_input_tokens": 100000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.909090909,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.03,
+        "cacheWrite": 0.01875,
+        "output": 1.5,
+        "inputSide": 0.06375,
+        "total": 1.56375
+      },
+      "simulatedCostUsd": 1.56375,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "plan_and_full_cost",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "b2fd5d10c31fd7ff6f3976bd061c18e4dfb942fb6f0967b9fdcb98d449357051",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "plan_and_full_cost",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "b2fd5d10c31fd7ff6f3976bd061c18e4dfb942fb6f0967b9fdcb98d449357051",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 100000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 5000,
+        "totalTokens": 205000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 100000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 5000
+      },
+      "cacheReadRatio": 0.904761905,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0.01875,
+        "output": 1.5,
+        "inputSide": 0.06225,
+        "total": 1.56225
+      },
+      "simulatedCostUsd": 1.56225,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "lower_output_cost",
+      "arm": "plan_and_full_cost",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "output-v1",
+      "judgeTarget": "anthropic/claude-haiku-sim",
+      "finalModel": "anthropic/claude-haiku-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": true,
+      "decisionReason": "full_cost_recommends_switch",
+      "costComparison": {
+        "mechanism": "production-four-bucket",
+        "estimatedInputTokens": 110000,
+        "estimatedOutputTokens": 100000,
+        "stay": {
+          "model": "anthropic/claude-sonnet-sim",
+          "buckets": {
+            "inputTokens": 5238,
+            "cacheReadTokens": 104762,
+            "cacheWriteTokens": 0,
+            "outputTokens": 100000
+          },
+          "costsUsd": {
+            "input": 0.015714,
+            "cacheRead": 0.0314286,
+            "cacheWrite": 0,
+            "output": 1.5,
+            "inputSide": 0.0471426,
+            "total": 1.5471426
+          },
+          "uncertainty": "low",
+          "notes": [],
+          "pricingSource": "experiment-fixture"
+        },
+        "switch": {
+          "model": "anthropic/claude-haiku-sim",
+          "buckets": {
+            "inputTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 110000,
+            "outputTokens": 100000
+          },
+          "costsUsd": {
+            "input": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0.11,
+            "output": 0.4,
+            "inputSide": 0.11,
+            "total": 0.51
+          },
+          "uncertainty": "medium",
+          "notes": [
+            "no usage evidence for candidate",
+            "cold prefill with cache write"
+          ],
+          "pricingSource": "experiment-fixture"
+        },
+        "recommendation": "switch",
+        "savingsUsd": 1.0371426,
+        "requiredSavingsUsd": 0.07735713,
+        "uncertainty": "medium"
+      },
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-haiku-sim",
+        "fingerprint": "64c030f68807b2d957c892c82827fe788f7ac400e9f837c4e547fad1bf0884ec",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 100000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 105000,
+        "totalTokens": 210000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 100000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 105000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.004,
+        "cacheRead": 0,
+        "cacheWrite": 0.105,
+        "output": 0.4,
+        "inputSide": 0.109,
+        "total": 0.509
+      },
+      "simulatedCostUsd": 0.509,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 0.8,
+          "output": 4,
+          "cacheRead": 0.08,
+          "cacheWrite": 1
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "original",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "f2510aee1807afe0bbf3bcd195ad7c49f1a19ba4fbd3f2f9fa00faeb7b7c21af",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "original",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "f2510aee1807afe0bbf3bcd195ad7c49f1a19ba4fbd3f2f9fa00faeb7b7c21af",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.95,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0435,
+        "total": 0.0735
+      },
+      "simulatedCostUsd": 0.0735,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "original",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v2",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "e4df054a3a43b04a3cfb92fd21f6add4c2326911684a1015da9fcd93e0ff7d91",
+        "generation": 2
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 65000,
+        "totalTokens": 72000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 65000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.24375,
+        "output": 0.03,
+        "inputSide": 0.25875,
+        "total": 0.28875
+      },
+      "simulatedCostUsd": 0.28875,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "plan_fix_only",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "f2510aee1807afe0bbf3bcd195ad7c49f1a19ba4fbd3f2f9fa00faeb7b7c21af",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "plan_fix_only",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "f2510aee1807afe0bbf3bcd195ad7c49f1a19ba4fbd3f2f9fa00faeb7b7c21af",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.95,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0435,
+        "total": 0.0735
+      },
+      "simulatedCostUsd": 0.0735,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "plan_fix_only",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v2",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "e4df054a3a43b04a3cfb92fd21f6add4c2326911684a1015da9fcd93e0ff7d91",
+        "generation": 2
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 65000,
+        "totalTokens": 72000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 65000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.24375,
+        "output": 0.03,
+        "inputSide": 0.25875,
+        "total": 0.28875
+      },
+      "simulatedCostUsd": 0.28875,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "plan_and_full_cost",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "f2510aee1807afe0bbf3bcd195ad7c49f1a19ba4fbd3f2f9fa00faeb7b7c21af",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "plan_and_full_cost",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "f2510aee1807afe0bbf3bcd195ad7c49f1a19ba4fbd3f2f9fa00faeb7b7c21af",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.95,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0435,
+        "total": 0.0735
+      },
+      "simulatedCostUsd": 0.0735,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "prefix_changed_compaction",
+      "arm": "plan_and_full_cost",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "v2",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "e4df054a3a43b04a3cfb92fd21f6add4c2326911684a1015da9fcd93e0ff7d91",
+        "generation": 2
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 65000,
+        "totalTokens": 72000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 65000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.24375,
+        "output": 0.03,
+        "inputSide": 0.25875,
+        "total": 0.28875
+      },
+      "simulatedCostUsd": 0.28875,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "original",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "original",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.95,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0435,
+        "total": 0.0735
+      },
+      "simulatedCostUsd": 0.0735,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "original",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:06:40.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "plan_fix_only",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "plan_fix_only",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.95,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0435,
+        "total": 0.0735
+      },
+      "simulatedCostUsd": 0.0735,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "plan_fix_only",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:06:40.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "plan_and_full_cost",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "plan_and_full_cost",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 95000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 95000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.95,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0285,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0435,
+        "total": 0.0735
+      },
+      "simulatedCostUsd": 0.0735,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "ttl_expired",
+      "arm": "plan_and_full_cost",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:06:40.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "ttl-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "cb06ba5dc408831bfb15b9e31d779713bcbb6043dac85cc23dbdf888df2f630e",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 95000,
+        "totalTokens": 102000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 95000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.35625,
+        "output": 0.03,
+        "inputSide": 0.37125,
+        "total": 0.40125
+      },
+      "simulatedCostUsd": 0.40125,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "original",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "512201f8f626d839fcae0b21e5f2ddc1094650bd76c014a006c15619d427fdc2",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 115000,
+        "totalTokens": 122000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 115000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.43125,
+        "output": 0.03,
+        "inputSide": 0.44625,
+        "total": 0.47625
+      },
+      "simulatedCostUsd": 0.47625,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "original",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "512201f8f626d839fcae0b21e5f2ddc1094650bd76c014a006c15619d427fdc2",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 115000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 122000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 115000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.958333333,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0345,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0495,
+        "total": 0.0795
+      },
+      "simulatedCostUsd": 0.0795,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "original",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "local/edge-small-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "legacy_cost_keeps_sticky",
+      "costComparison": {
+        "mechanism": "frozen-cfc4d177-legacy",
+        "estimatedInputTokens": 60000,
+        "estimatedOutputTokens": 0,
+        "stay": {
+          "model": "anthropic/claude-sonnet-sim",
+          "buckets": {
+            "inputTokens": 0,
+            "cacheReadTokens": 60000,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0,
+            "cacheRead": 0.018,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.018,
+            "total": 0.018
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "switch": {
+          "model": "local/edge-small-sim",
+          "buckets": {
+            "inputTokens": 60000,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0.03,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.03,
+            "total": 0.03
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "recommendation": "keep",
+        "savingsUsd": -0.012,
+        "requiredSavingsUsd": 0.0009,
+        "uncertainty": "legacy-omits-cache-write-output-ttl-and-model-keying"
+      },
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "512201f8f626d839fcae0b21e5f2ddc1094650bd76c014a006c15619d427fdc2",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 1000,
+        "cacheReadTokens": 115000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 121000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 1000,
+        "cache_read_input_tokens": 115000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.958333333,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0345,
+        "cacheWrite": 0,
+        "output": 0.015,
+        "inputSide": 0.0495,
+        "total": 0.0645
+      },
+      "simulatedCostUsd": 0.0645,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "plan_fix_only",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "512201f8f626d839fcae0b21e5f2ddc1094650bd76c014a006c15619d427fdc2",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 115000,
+        "totalTokens": 122000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 115000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.43125,
+        "output": 0.03,
+        "inputSide": 0.44625,
+        "total": 0.47625
+      },
+      "simulatedCostUsd": 0.47625,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "plan_fix_only",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "512201f8f626d839fcae0b21e5f2ddc1094650bd76c014a006c15619d427fdc2",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 115000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 122000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 115000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.958333333,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0345,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0495,
+        "total": 0.0795
+      },
+      "simulatedCostUsd": 0.0795,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "plan_fix_only",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "local/edge-small-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "legacy_cost_keeps_sticky",
+      "costComparison": {
+        "mechanism": "frozen-cfc4d177-legacy",
+        "estimatedInputTokens": 60000,
+        "estimatedOutputTokens": 0,
+        "stay": {
+          "model": "anthropic/claude-sonnet-sim",
+          "buckets": {
+            "inputTokens": 0,
+            "cacheReadTokens": 60000,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0,
+            "cacheRead": 0.018,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.018,
+            "total": 0.018
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "switch": {
+          "model": "local/edge-small-sim",
+          "buckets": {
+            "inputTokens": 60000,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "outputTokens": 0
+          },
+          "costsUsd": {
+            "input": 0.03,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "inputSide": 0.03,
+            "total": 0.03
+          },
+          "uncertainty": "legacy-unmodeled"
+        },
+        "recommendation": "keep",
+        "savingsUsd": -0.012,
+        "requiredSavingsUsd": 0.0009,
+        "uncertainty": "legacy-omits-cache-write-output-ttl-and-model-keying"
+      },
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "512201f8f626d839fcae0b21e5f2ddc1094650bd76c014a006c15619d427fdc2",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 1000,
+        "cacheReadTokens": 115000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 121000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 1000,
+        "cache_read_input_tokens": 115000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.958333333,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0345,
+        "cacheWrite": 0,
+        "output": 0.015,
+        "inputSide": 0.0495,
+        "total": 0.0645
+      },
+      "simulatedCostUsd": 0.0645,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "plan_and_full_cost",
+      "turn": 1,
+      "timestamp": "2026-09-11T00:00:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": null,
+      "switchOccurred": false,
+      "decisionReason": "no_previous_model_judge_target_stands",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "512201f8f626d839fcae0b21e5f2ddc1094650bd76c014a006c15619d427fdc2",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 115000,
+        "totalTokens": 122000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 115000
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0,
+        "cacheWrite": 0.43125,
+        "output": 0.03,
+        "inputSide": 0.44625,
+        "total": 0.47625
+      },
+      "simulatedCostUsd": 0.47625,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "plan_and_full_cost",
+      "turn": 2,
+      "timestamp": "2026-09-11T00:01:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "anthropic/claude-sonnet-sim",
+      "finalModel": "anthropic/claude-sonnet-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": false,
+      "decisionReason": "judge_target_matches_current_model",
+      "costComparison": null,
+      "cachePlan": {
+        "present": true,
+        "provider": "anthropic",
+        "model": "claude-sonnet-sim",
+        "fingerprint": "512201f8f626d839fcae0b21e5f2ddc1094650bd76c014a006c15619d427fdc2",
+        "generation": 1
+      },
+      "cachePlanMatchesFinal": true,
+      "wire": {
+        "systemMarker": true,
+        "messageMarkerCount": 3,
+        "markerCount": 4
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 5000,
+        "outputTokens": 2000,
+        "cacheReadTokens": 115000,
+        "cacheWriteTokens": 0,
+        "totalTokens": 122000
+      },
+      "rawUsage": {
+        "input_tokens": 5000,
+        "output_tokens": 2000,
+        "cache_read_input_tokens": 115000,
+        "cache_creation_input_tokens": 0
+      },
+      "cacheReadRatio": 0.958333333,
+      "simulatedCostsUsd": {
+        "input": 0.015,
+        "cacheRead": 0.0345,
+        "cacheWrite": 0,
+        "output": 0.03,
+        "inputSide": 0.0495,
+        "total": 0.0795
+      },
+      "simulatedCostUsd": 0.0795,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 3,
+          "output": 15,
+          "cacheRead": 0.3,
+          "cacheWrite": 3.75
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    },
+    {
+      "evidenceKind": "offline-deterministic-simulation",
+      "scenario": "unsupported_candidate",
+      "arm": "plan_and_full_cost",
+      "turn": 3,
+      "timestamp": "2026-09-11T00:02:00.000Z",
+      "ttlMs": 300000,
+      "prefixLineage": "unsupported-v1",
+      "judgeTarget": "local/edge-small-sim",
+      "finalModel": "local/edge-small-sim",
+      "previousModel": "anthropic/claude-sonnet-sim",
+      "switchOccurred": true,
+      "decisionReason": "full_cost_recommends_switch",
+      "costComparison": {
+        "mechanism": "production-four-bucket",
+        "estimatedInputTokens": 120000,
+        "estimatedOutputTokens": 2000,
+        "stay": {
+          "model": "anthropic/claude-sonnet-sim",
+          "buckets": {
+            "inputTokens": 5000,
+            "cacheReadTokens": 115000,
+            "cacheWriteTokens": 0,
+            "outputTokens": 2000
+          },
+          "costsUsd": {
+            "input": 0.015,
+            "cacheRead": 0.0345,
+            "cacheWrite": 0,
+            "output": 0.03,
+            "inputSide": 0.0495,
+            "total": 0.0795
+          },
+          "uncertainty": "low",
+          "notes": [],
+          "pricingSource": "experiment-fixture"
+        },
+        "switch": {
+          "model": "local/edge-small-sim",
+          "buckets": {
+            "inputTokens": 120000,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "outputTokens": 2000
+          },
+          "costsUsd": {
+            "input": 0.06,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "output": 0.003,
+            "inputSide": 0.06,
+            "total": 0.063
+          },
+          "uncertainty": "medium",
+          "notes": [
+            "no usage evidence for candidate",
+            "model does not support prompt caching"
+          ],
+          "pricingSource": "experiment-fixture"
+        },
+        "recommendation": "switch",
+        "savingsUsd": 0.0165,
+        "requiredSavingsUsd": 0.003975,
+        "uncertainty": "medium"
+      },
+      "cachePlan": {
+        "present": false,
+        "provider": null,
+        "model": null,
+        "fingerprint": null,
+        "generation": null
+      },
+      "cachePlanMatchesFinal": false,
+      "wire": {
+        "systemMarker": false,
+        "messageMarkerCount": 0,
+        "markerCount": 0
+      },
+      "cacheRequestCorrect": true,
+      "canonicalUsage": {
+        "inputTokens": 120000,
+        "outputTokens": 1000,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "totalTokens": 121000
+      },
+      "rawUsage": {
+        "prompt_tokens": 120000,
+        "completion_tokens": 1000,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "cacheReadRatio": 0,
+      "simulatedCostsUsd": {
+        "input": 0.06,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 0.0015,
+        "inputSide": 0.06,
+        "total": 0.0615
+      },
+      "simulatedCostUsd": 0.0615,
+      "pricing": {
+        "source": "experiment-fixture",
+        "date": "2026-09-11",
+        "productionQuoteSource": "user",
+        "ratesUsdPerMillionTokens": {
+          "input": 0.5,
+          "output": 1.5,
+          "cacheRead": 0.5,
+          "cacheWrite": 0.5
+        }
+      },
+      "latencyMs": null,
+      "qualityScore": null,
+      "realProviderHit": null,
+      "realBilledCostUsd": null
+    }
+  ],
+  "scenarioSummaries": [
+    {
+      "scenario": "cold_start",
+      "arm": "original",
+      "requestCount": 1,
+      "eligibleCacheRequestCount": 1,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0,
+      "simulatedInputSideCostUsd": 0.18375,
+      "simulatedOutputCostUsd": 0.03,
+      "simulatedTotalCandidateExecutionCostUsd": 0.21375,
+      "coldRequestCount": 1,
+      "hotRequestCount": 0,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "cold_start",
+      "arm": "plan_fix_only",
+      "requestCount": 1,
+      "eligibleCacheRequestCount": 1,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0,
+      "simulatedInputSideCostUsd": 0.18375,
+      "simulatedOutputCostUsd": 0.03,
+      "simulatedTotalCandidateExecutionCostUsd": 0.21375,
+      "coldRequestCount": 1,
+      "hotRequestCount": 0,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "cold_start",
+      "arm": "plan_and_full_cost",
+      "requestCount": 1,
+      "eligibleCacheRequestCount": 1,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0,
+      "simulatedInputSideCostUsd": 0.18375,
+      "simulatedOutputCostUsd": 0.03,
+      "simulatedTotalCandidateExecutionCostUsd": 0.21375,
+      "coldRequestCount": 1,
+      "hotRequestCount": 0,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "same_model_stable_prefix",
+      "arm": "original",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.619047619,
+      "simulatedInputSideCostUsd": 0.49725,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.58725,
+      "coldRequestCount": 1,
+      "hotRequestCount": 2,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "same_model_stable_prefix",
+      "arm": "plan_fix_only",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.619047619,
+      "simulatedInputSideCostUsd": 0.49725,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.58725,
+      "coldRequestCount": 1,
+      "hotRequestCount": 2,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "same_model_stable_prefix",
+      "arm": "plan_and_full_cost",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.619047619,
+      "simulatedInputSideCostUsd": 0.49725,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.58725,
+      "coldRequestCount": 1,
+      "hotRequestCount": 2,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "hot_strong_then_simple",
+      "arm": "original",
+      "requestCount": 4,
+      "eligibleCacheRequestCount": 4,
+      "cachePlanFinalModelMatchRate": 0.5,
+      "cacheRequestCorrectRate": 0.5,
+      "simulatedCacheReadRatio": 0.22875817,
+      "simulatedInputSideCostUsd": 4.19725,
+      "simulatedOutputCostUsd": 0.604,
+      "simulatedTotalCandidateExecutionCostUsd": 4.80125,
+      "coldRequestCount": 1,
+      "hotRequestCount": 1,
+      "switchCount": 1,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_fix_only",
+      "requestCount": 4,
+      "eligibleCacheRequestCount": 4,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.477124183,
+      "simulatedInputSideCostUsd": 4.09945,
+      "simulatedOutputCostUsd": 0.604,
+      "simulatedTotalCandidateExecutionCostUsd": 4.70345,
+      "coldRequestCount": 2,
+      "hotRequestCount": 2,
+      "switchCount": 1,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "hot_strong_then_simple",
+      "arm": "plan_and_full_cost",
+      "requestCount": 4,
+      "eligibleCacheRequestCount": 4,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.477124183,
+      "simulatedInputSideCostUsd": 4.09945,
+      "simulatedOutputCostUsd": 0.604,
+      "simulatedTotalCandidateExecutionCostUsd": 4.70345,
+      "coldRequestCount": 2,
+      "hotRequestCount": 2,
+      "switchCount": 1,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "lower_output_cost",
+      "arm": "original",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.619047619,
+      "simulatedInputSideCostUsd": 0.49725,
+      "simulatedOutputCostUsd": 3.03,
+      "simulatedTotalCandidateExecutionCostUsd": 3.52725,
+      "coldRequestCount": 1,
+      "hotRequestCount": 2,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "lower_output_cost",
+      "arm": "plan_fix_only",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.619047619,
+      "simulatedInputSideCostUsd": 0.49725,
+      "simulatedOutputCostUsd": 3.03,
+      "simulatedTotalCandidateExecutionCostUsd": 3.52725,
+      "coldRequestCount": 1,
+      "hotRequestCount": 2,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "lower_output_cost",
+      "arm": "plan_and_full_cost",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.301587302,
+      "simulatedInputSideCostUsd": 0.5425,
+      "simulatedOutputCostUsd": 1.93,
+      "simulatedTotalCandidateExecutionCostUsd": 2.4725,
+      "coldRequestCount": 2,
+      "hotRequestCount": 1,
+      "switchCount": 1,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "prefix_changed_compaction",
+      "arm": "original",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.351851852,
+      "simulatedInputSideCostUsd": 0.6735,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.7635,
+      "coldRequestCount": 2,
+      "hotRequestCount": 1,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "prefix_changed_compaction",
+      "arm": "plan_fix_only",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.351851852,
+      "simulatedInputSideCostUsd": 0.6735,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.7635,
+      "coldRequestCount": 2,
+      "hotRequestCount": 1,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "prefix_changed_compaction",
+      "arm": "plan_and_full_cost",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.351851852,
+      "simulatedInputSideCostUsd": 0.6735,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.7635,
+      "coldRequestCount": 2,
+      "hotRequestCount": 1,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "ttl_expired",
+      "arm": "original",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.316666667,
+      "simulatedInputSideCostUsd": 0.786,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.876,
+      "coldRequestCount": 2,
+      "hotRequestCount": 1,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "ttl_expired",
+      "arm": "plan_fix_only",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.316666667,
+      "simulatedInputSideCostUsd": 0.786,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.876,
+      "coldRequestCount": 2,
+      "hotRequestCount": 1,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "ttl_expired",
+      "arm": "plan_and_full_cost",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.316666667,
+      "simulatedInputSideCostUsd": 0.786,
+      "simulatedOutputCostUsd": 0.09,
+      "simulatedTotalCandidateExecutionCostUsd": 0.876,
+      "coldRequestCount": 2,
+      "hotRequestCount": 1,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "unsupported_candidate",
+      "arm": "original",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.638888889,
+      "simulatedInputSideCostUsd": 0.54525,
+      "simulatedOutputCostUsd": 0.075,
+      "simulatedTotalCandidateExecutionCostUsd": 0.62025,
+      "coldRequestCount": 1,
+      "hotRequestCount": 2,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "unsupported_candidate",
+      "arm": "plan_fix_only",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 3,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.638888889,
+      "simulatedInputSideCostUsd": 0.54525,
+      "simulatedOutputCostUsd": 0.075,
+      "simulatedTotalCandidateExecutionCostUsd": 0.62025,
+      "coldRequestCount": 1,
+      "hotRequestCount": 2,
+      "switchCount": 0,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    },
+    {
+      "scenario": "unsupported_candidate",
+      "arm": "plan_and_full_cost",
+      "requestCount": 3,
+      "eligibleCacheRequestCount": 2,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.319444444,
+      "simulatedInputSideCostUsd": 0.55575,
+      "simulatedOutputCostUsd": 0.0615,
+      "simulatedTotalCandidateExecutionCostUsd": 0.61725,
+      "coldRequestCount": 1,
+      "hotRequestCount": 1,
+      "switchCount": 1,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline"
+    }
+  ],
+  "overallSummaries": [
+    {
+      "arm": "original",
+      "requestCount": 20,
+      "eligibleCacheRequestCount": 20,
+      "cachePlanFinalModelMatchRate": 0.9,
+      "cacheRequestCorrectRate": 0.9,
+      "simulatedCacheReadRatio": 0.414736842,
+      "simulatedInputSideCostUsd": 7.38025,
+      "simulatedOutputCostUsd": 4.009,
+      "simulatedTotalCandidateExecutionCostUsd": 11.38925,
+      "coldRequestCount": 9,
+      "hotRequestCount": 9,
+      "switchCount": 1,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline",
+      "costDeltaVsOriginalUsd": 0,
+      "costDeltaPercentVsOriginal": 0,
+      "inputCostReductionVsOriginalPercent": 0,
+      "targetStatus": "not_met_in_this_synthetic_suite"
+    },
+    {
+      "arm": "plan_fix_only",
+      "requestCount": 20,
+      "eligibleCacheRequestCount": 20,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.494736842,
+      "simulatedInputSideCostUsd": 7.28245,
+      "simulatedOutputCostUsd": 4.009,
+      "simulatedTotalCandidateExecutionCostUsd": 11.29145,
+      "coldRequestCount": 10,
+      "hotRequestCount": 10,
+      "switchCount": 1,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline",
+      "costDeltaVsOriginalUsd": -0.0978,
+      "costDeltaPercentVsOriginal": -0.8587045,
+      "inputCostReductionVsOriginalPercent": 1.325158362,
+      "targetStatus": "not_met_in_this_synthetic_suite"
+    },
+    {
+      "arm": "plan_and_full_cost",
+      "requestCount": 20,
+      "eligibleCacheRequestCount": 19,
+      "cachePlanFinalModelMatchRate": 1,
+      "cacheRequestCorrectRate": 1,
+      "simulatedCacheReadRatio": 0.404210526,
+      "simulatedInputSideCostUsd": 7.3382,
+      "simulatedOutputCostUsd": 2.8955,
+      "simulatedTotalCandidateExecutionCostUsd": 10.2337,
+      "coldRequestCount": 11,
+      "hotRequestCount": 8,
+      "switchCount": 3,
+      "actualLatency": "not_measured_offline",
+      "actualQuality": "not_measured_offline",
+      "costDeltaVsOriginalUsd": -1.15555,
+      "costDeltaPercentVsOriginal": -10.145971,
+      "inputCostReductionVsOriginalPercent": 0.569763897,
+      "targetStatus": "not_met_in_this_synthetic_suite"
+    }
+  ],
+  "limitations": [
+    "All usage buckets and provider-shaped rawUsage are deterministic simulation, not provider observations.",
+    "simulatedCostUsd applies fixture prices to simulated buckets; it is not billed or provider-reported cost.",
+    "Cache TTL, prefix lineage, token counts, outputs, and judge targets are controlled fixtures, not production traffic.",
+    "Request-level Anthropic cache marker inspection executes the real local buildAnthropicRequest code, but no request is sent.",
+    "The original arm reimplements and freezes cfc4d177 semantics inside this harness; it does not execute a separate cfc4d177 checkout or binary.",
+    "Latency, quality, real cache hits, and real billed cost are deliberately unmeasured and null.",
+    "Judge cost is excluded and unmeasured; it is shared across arms and common to candidate ranking in this harness.",
+    "The 20% input-cost target is exploratory and can only be met or missed in this synthetic suite; it is not a production savings claim."
+  ]
+}

@@ -1,10 +1,12 @@
 import type {
   CanonicalModelEvent,
   CanonicalModelRequest,
+  CachePlan,
   ModelRuntime,
   ModelProtocol,
 } from "../model/index.js";
 import { cloneMessages, downgradeUnsupportedContent, ModelRequestError } from "../model/index.js";
+import { rebuildRoutedCachePlan } from "../context/cache/CachePlan.js";
 import type { InputModality } from "../model/index.js";
 import {
   LITELLM_DEFAULT_MAX_RETRIES,
@@ -44,8 +46,13 @@ import {
 } from "./retry/zeroUsageRetry.js";
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
 import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
-import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
-import { calculateCacheReadCost, calculateInputCost } from "./utils/modelPricing.js";
+import {
+  countMessagesTokens,
+  countResponseTokens,
+  dispose as disposeTokenizer,
+  estimateRequestInputTokens,
+} from "./utils/countTokens.js";
+import { compareStayVsSwitch, DEFAULT_CACHE_TTL_MS } from "./cost/switchCostEstimator.js";
 import {
   collectRequiredInputModalities,
   missingInputModalities,
@@ -104,6 +111,7 @@ export function createRouterRuntime(
   deps: RouterRuntimeDeps,
 ): RouterRuntime {
   const enabled = config.enabled !== false;
+  const cachePlanRebuildEnabled = resolveCachePlanRebuildEnabled(config.cachePlanRebuild?.enabled);
   const stats = new TokenStatsCollector({
     ...config.stats,
     enabled: enabled && (config.stats?.enabled ?? false),
@@ -215,11 +223,29 @@ export function createRouterRuntime(
     };
   }
 
+  /**
+   * Cache-aware stay/switch arbitration between the previous sticky model
+   * (`current`) and the token-saver judge's fresh tier selection (`next`).
+   *
+   * All stay/switch cost math is delegated to the four-bucket estimator
+   * (`compareStayVsSwitch`): both sides are priced as mutually-exclusive
+   * input / cacheRead / cacheWrite buckets plus output. Two contract rules
+   * are encoded there — the SUNK-COST rule (a stay never re-charges the
+   * cache write; it was paid on an earlier turn) and the cold-start rule (a
+   * switch to a cache-capable target pays a full-input cache write, a
+   * non-caching target pays plain input).
+   *
+   * v1 intervention boundary: the estimator may only override the judge when
+   * the stay side has POSITIVE cache evidence (cacheReadTokens or
+   * cacheWriteTokens > 0 in the keyed or session-level usage cache) and the
+   * recommendation is not `"unknown"`; otherwise the judge's tier choice
+   * stands and no mutation is logged.
+   */
   function maybePreserveStickyForCache(
     current: RouterModelRef | undefined,
     next: RouterModelRef,
-    messages: CanonicalModelRequest["messages"],
-    lastUsage: import("../model/index.js").CanonicalUsage | undefined,
+    request: CanonicalModelRequest,
+    sessionId: string,
   ): { selection: RouterModelRef; mutation?: RouterMutationsLog["cacheAwareSwitch"] } {
     const cacheAware = config.tokenSaver?.cacheAwareSwitching;
     if (cacheAware?.enabled === false || !current) {
@@ -229,65 +255,98 @@ export function createRouterRuntime(
       return { selection: next };
     }
 
-    const estimatedInputTokens = countMessagesTokens(messages);
-    const observedInputTokens = lastUsage?.inputTokens ?? 0;
-    const observedCacheReadTokens = lastUsage?.cacheReadTokens ?? 0;
-    const observedCacheHitRatio = observedInputTokens > 0
-      ? Math.min(1, Math.max(0, observedCacheReadTokens / observedInputTokens))
-      : 0;
-    if (observedCacheHitRatio <= 0) {
+    const stayEntry = usageCache.getEntry(sessionId, current.provider, current.model)
+      ?? usageCache.getEntry(sessionId);
+    const stayUsage = stayEntry?.usage;
+    const stayHasCacheEvidence = (stayUsage?.cacheReadTokens ?? 0) > 0
+      || (stayUsage?.cacheWriteTokens ?? 0) > 0;
+    if (!stayEntry || !stayUsage || !stayHasCacheEvidence) {
       return { selection: next };
     }
 
-    const estimatedCacheReadTokens = Math.floor(estimatedInputTokens * observedCacheHitRatio);
-    const estimatedUncachedTokens = Math.max(0, estimatedInputTokens - estimatedCacheReadTokens);
-    const cachedCost = calculateCacheReadCost(
-      estimatedCacheReadTokens,
-      current.provider,
-      current.model,
-      config.stats?.modelPricing,
-    ) + calculateInputCost(
-      estimatedUncachedTokens,
-      current.provider,
-      current.model,
-      config.stats?.modelPricing,
-    );
-    const prefillCost = calculateInputCost(
-      estimatedInputTokens,
-      next.provider,
-      next.model,
-      config.stats?.modelPricing,
-    );
+    const estimatedInputTokens = estimateRequestInputTokens(request);
+    const estimatedOutputTokens = stayUsage.outputTokens ?? 0;
+    const now = (deps.now?.() ?? new Date()).getTime();
+    const modelPricing = config.stats?.modelPricing;
+    const switchEntry = usageCache.getEntry(sessionId, next.provider, next.model);
 
-    const minSavingsRatio = cacheAware?.minSavingsRatio ?? 0;
-    const requiredSavings = cachedCost * minSavingsRatio;
-    const shouldSwitch = prefillCost + Number.EPSILON < cachedCost - requiredSavings;
-    const from = `${current.provider}/${current.model}`;
-    const to = `${next.provider}/${next.model}`;
-
-    if (shouldSwitch) {
-      return {
-        selection: next,
-        mutation: {
-          action: "switched",
-          from,
-          to,
-          cachedCost,
-          prefillCost,
-          estimatedInputTokens,
+    const comparison = compareStayVsSwitch({
+      stay: {
+        provider: current.provider,
+        model: current.model,
+        supportsPromptCache: supportsPromptCacheFor(deps.modelRuntime, current.provider, current.model),
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        cacheEvidence: {
+          provider: current.provider,
+          model: current.model,
+          inputTokens: stayUsage.inputTokens,
+          cacheReadTokens: stayUsage.cacheReadTokens,
+          cacheWriteTokens: stayUsage.cacheWriteTokens,
+          outputTokens: stayUsage.outputTokens,
+          observedAt: stayEntry.observedAt,
         },
-      };
+        cacheTtlMs: DEFAULT_CACHE_TTL_MS,
+        now,
+        modelPricing,
+        role: "stay",
+      },
+      switch: {
+        provider: next.provider,
+        model: next.model,
+        supportsPromptCache: supportsPromptCacheFor(deps.modelRuntime, next.provider, next.model),
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        ...(switchEntry
+          ? {
+            cacheEvidence: {
+              provider: next.provider,
+              model: next.model,
+              inputTokens: switchEntry.usage.inputTokens,
+              cacheReadTokens: switchEntry.usage.cacheReadTokens,
+              cacheWriteTokens: switchEntry.usage.cacheWriteTokens,
+              outputTokens: switchEntry.usage.outputTokens,
+              observedAt: switchEntry.observedAt,
+            },
+          }
+          : {}),
+        cacheTtlMs: DEFAULT_CACHE_TTL_MS,
+        now,
+        modelPricing,
+        role: "switch",
+      },
+      minSavingsRatio: cacheAware?.minSavingsRatio ?? 0,
+    });
+
+    if (comparison.recommendation === "unknown") {
+      return { selection: next };
     }
 
+    const { stay, switch: target } = comparison;
     return {
-      selection: current,
+      selection: comparison.recommendation === "switch" ? next : current,
       mutation: {
-        action: "kept_sticky",
-        from,
-        to,
-        cachedCost,
-        prefillCost,
+        action: comparison.recommendation === "switch" ? "switched" : "kept_sticky",
+        from: `${current.provider}/${current.model}`,
+        to: `${next.provider}/${next.model}`,
+        cachedCost: stay.costs.input + stay.costs.cacheRead + stay.costs.cacheWrite,
+        prefillCost: target.costs.input + target.costs.cacheWrite,
         estimatedInputTokens,
+        stayTotalCost: stay.costs.total,
+        switchTotalCost: target.costs.total,
+        savings: comparison.savings,
+        uncertainty: worseUncertainty(stay.uncertainty, target.uncertainty),
+        pricingSource: `${stay.pricing.source}/${target.pricing.source}`,
+        stayBuckets: stay.buckets,
+        switchBuckets: target.buckets,
+        usageEvidence: stripUndefined({
+          provider: current.provider,
+          model: current.model,
+          inputTokens: stayUsage.inputTokens,
+          cacheReadTokens: stayUsage.cacheReadTokens,
+          cacheWriteTokens: stayUsage.cacheWriteTokens,
+          observedAt: stayEntry.observedAt,
+        }),
       },
     };
   }
@@ -338,7 +397,22 @@ export function createRouterRuntime(
     }
 
     const sticky = sessionStore.get(input.sessionId, !input.isMainAgent);
-    const baseUsage = usageCache.get(input.sessionId);
+    const previousStickySelection = (input.metadata?.previousProvider && input.metadata.previousModel)
+      ? {
+        id: `${input.metadata.previousProvider}/${input.metadata.previousModel}`,
+        provider: input.metadata.previousProvider,
+        model: input.metadata.previousModel,
+      }
+      : sticky?.stickyProvider && sticky.stickyModel
+      ? { id: `${sticky.stickyProvider}/${sticky.stickyModel}`, provider: sticky.stickyProvider, model: sticky.stickyModel }
+      : undefined;
+    // Prefer the usage observed for the model we were actually sticky on; the
+    // session-level slot is the legacy fallback (seeded via observeUsage).
+    const baseUsage = usageCache.get(
+      input.sessionId,
+      previousStickySelection?.provider,
+      previousStickySelection?.model,
+    ) ?? usageCache.get(input.sessionId);
     const inputWithUsage: RouterDecisionInput = {
       ...input,
       metadata: {
@@ -355,15 +429,6 @@ export function createRouterRuntime(
     const scenarioOutcome = decideScenario(inputWithUsage, config.scenarios ?? {} as any);
 
     let scenarioType: RouterScenarioType = scenarioOutcome.scenarioType;
-    const previousStickySelection = (input.metadata?.previousProvider && input.metadata.previousModel)
-      ? {
-        id: `${input.metadata.previousProvider}/${input.metadata.previousModel}`,
-        provider: input.metadata.previousProvider,
-        model: input.metadata.previousModel,
-      }
-      : sticky?.stickyProvider && sticky.stickyModel
-      ? { id: `${sticky.stickyProvider}/${sticky.stickyModel}`, provider: sticky.stickyProvider, model: sticky.stickyModel }
-      : undefined;
     let selection: RouterModelRef | undefined =
       custom?.provider && custom.model
         ? { id: `${custom.provider}/${custom.model}`, provider: custom.provider, model: custom.model }
@@ -444,8 +509,8 @@ export function createRouterRuntime(
             const cacheAware = maybePreserveStickyForCache(
               previousStickySelection,
               selection,
-              input.request.messages,
-              baseUsage,
+              input.request,
+              input.sessionId,
             );
             selection = cacheAware.selection;
             cacheAwareSwitch = cacheAware.mutation;
@@ -542,6 +607,67 @@ export function createRouterRuntime(
     return decision;
   }
 
+  /**
+   * Resolve cachePlan/cacheBreakpoints for the request as routed.
+   *
+   * With the rebuild flag ON: a plan-carrying request gets its plan rebuilt
+   * for the final model (explicit clear when the final model fails the
+   * protocol + prompt-cache gate); legacy breakpoints-only requests keep
+   * their breakpoints only when the final model passes the same gate.
+   * With the flag OFF the pre-rebuild drop behavior is preserved
+   * byte-for-byte (experiment control arm).
+   */
+  function resolveRoutedCache(
+    previous: CanonicalModelRequest,
+    routed: Pick<CanonicalModelRequest, "provider" | "model" | "systemPrompt" | "tools" | "messages">,
+  ): { cachePlan?: CachePlan; cacheBreakpoints?: number[] } {
+    if (!cachePlanRebuildEnabled) {
+      const keptPlan = previous.cachePlan &&
+        (previous.cachePlan.provider === undefined || previous.cachePlan.provider === routed.provider) &&
+        (previous.cachePlan.model === undefined || previous.cachePlan.model === routed.model)
+        ? previous.cachePlan
+        : undefined;
+      return {
+        cachePlan: keptPlan,
+        cacheBreakpoints: previous.cachePlan !== undefined
+          ? keptPlan?.messages
+          : previous.cacheBreakpoints,
+      };
+    }
+    if (previous.cachePlan !== undefined) {
+      return rebuildRoutedCachePlan({
+        provider: routed.provider,
+        model: routed.model,
+        protocol: protocolForProvider(deps.modelRuntime, routed.provider),
+        supportsPromptCache: supportsPromptCacheFor(deps.modelRuntime, routed.provider, routed.model),
+        systemPrompt: routed.systemPrompt,
+        tools: routed.tools ?? [],
+        messages: routed.messages,
+      }, previous.cachePlan);
+    }
+    if (previous.cacheBreakpoints !== undefined) {
+      const cacheCapable =
+        protocolForProvider(deps.modelRuntime, routed.provider) === "anthropic" &&
+        supportsPromptCacheFor(deps.modelRuntime, routed.provider, routed.model);
+      return cacheCapable
+        ? { cacheBreakpoints: previous.cacheBreakpoints }
+        : { cacheBreakpoints: undefined };
+    }
+    // No plan and no breakpoints: the prepare-time gate ran for a model that
+    // could not use the prompt cache. Re-evaluate for the finally-routed
+    // model — build a fresh plan (generation 0) when it passes the gate,
+    // keep the explicit clear when it does not.
+    return rebuildRoutedCachePlan({
+      provider: routed.provider,
+      model: routed.model,
+      protocol: protocolForProvider(deps.modelRuntime, routed.provider),
+      supportsPromptCache: supportsPromptCacheFor(deps.modelRuntime, routed.provider, routed.model),
+      systemPrompt: routed.systemPrompt,
+      tools: routed.tools ?? [],
+      messages: routed.messages,
+    }, undefined);
+  }
+
   function applyDecisionToRequest(
     decision: RouterDecision,
     request: CanonicalModelRequest,
@@ -550,21 +676,18 @@ export function createRouterRuntime(
     if (decision.mutations.subagentTagStripped) {
       messages = stripSubagentTagFromMessages(messages);
     }
-    const routedCachePlan = request.cachePlan &&
-      (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
-      (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
-      ? request.cachePlan
-      : undefined;
-    return clampMaxOutputTokensToModelCap({
+    const composed: CanonicalModelRequest = {
       ...request,
       ...decision.requestPatch,
       provider: decision.provider,
       model: decision.model,
       messages,
-      cacheBreakpoints: request.cachePlan !== undefined
-        ? routedCachePlan?.messages
-        : request.cacheBreakpoints,
-      cachePlan: routedCachePlan,
+    };
+    const routedCache = resolveRoutedCache(request, composed);
+    return clampMaxOutputTokensToModelCap({
+      ...composed,
+      cachePlan: routedCache.cachePlan,
+      cacheBreakpoints: routedCache.cacheBreakpoints,
     }, deps.modelRuntime);
   }
 
@@ -574,19 +697,16 @@ export function createRouterRuntime(
     ctx: RouterExecuteContext,
   ): AsyncIterable<CanonicalModelEvent> {
     if (!enabled) {
-      const routedCachePlan = request.cachePlan &&
-        (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
-        (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
-        ? request.cachePlan
-        : undefined;
-      const passthroughRequest: CanonicalModelRequest = {
+      const passthroughBase: CanonicalModelRequest = {
         ...request,
         provider: decision.provider,
         model: decision.model,
-        cacheBreakpoints: request.cachePlan !== undefined
-          ? routedCachePlan?.messages
-          : request.cacheBreakpoints,
-        cachePlan: routedCachePlan,
+      };
+      const routedCache = resolveRoutedCache(request, passthroughBase);
+      const passthroughRequest: CanonicalModelRequest = {
+        ...passthroughBase,
+        cachePlan: routedCache.cachePlan,
+        cacheBreakpoints: routedCache.cacheBreakpoints,
       };
       const downgradedPassthrough = downgradeRequestForAttempt(
         passthroughRequest,
@@ -915,14 +1035,19 @@ export function createRouterRuntime(
           }
         }
 
-        const endedAt = (deps.now?.() ?? new Date()).toISOString();
+        const endedAtDate = deps.now?.() ?? new Date();
+        const endedAt = endedAtDate.toISOString();
         let finalUsage = outcome.usage;
         if (!finalUsage || (!finalUsage.inputTokens && !finalUsage.outputTokens)) {
           const inputEst = countMessagesTokens(attemptRequest.messages);
           const outputEst = countResponseTokens(outcome.buffered);
           finalUsage = { inputTokens: inputEst, outputTokens: outputEst, totalTokens: inputEst + outputEst };
         }
-        usageCache.observe(ctx.sessionId, finalUsage);
+        usageCache.observe(ctx.sessionId, finalUsage, {
+          provider: attempt.provider,
+          model: attempt.model,
+          observedAt: endedAtDate.getTime(),
+        });
         stats.observe({
           sessionId: ctx.sessionId,
           turnId: ctx.turnId,
@@ -1221,6 +1346,42 @@ function protocolForProvider(modelRuntime: ModelRuntime, providerId: string): Mo
   } catch {
     return "openai";
   }
+}
+
+function supportsPromptCacheFor(modelRuntime: ModelRuntime, providerId: string, modelId: string): boolean {
+  try {
+    return modelRuntime.getCapabilities(providerId, modelId).supportsPromptCache === true;
+  } catch {
+    return false;
+  }
+}
+
+const UNCERTAINTY_SEVERITY = { low: 0, medium: 1, high: 2, unknown: 3 } as const;
+
+type UncertaintyLevel = keyof typeof UNCERTAINTY_SEVERITY;
+
+/** The more severe of two uncertainty labels (low < medium < high < unknown). */
+function worseUncertainty(a: UncertaintyLevel, b: UncertaintyLevel): UncertaintyLevel {
+  return UNCERTAINTY_SEVERITY[a] >= UNCERTAINTY_SEVERITY[b] ? a : b;
+}
+
+/** Drops undefined-valued keys so logged evidence carries observed values only. */
+function stripUndefined<T extends object>(input: T): T {
+  return Object.fromEntries(
+    Object.entries(input).filter((entry) => entry[1] !== undefined),
+  ) as T;
+}
+
+/**
+ * PILOTDECK_CACHE_PLAN_REBUILD env override for experiment A/B control:
+ * "0" forces the feature OFF, "1" forces it ON, unset defers to the config
+ * value (default on). Read once per runtime creation, never per request.
+ */
+function resolveCachePlanRebuildEnabled(configEnabled: boolean | undefined): boolean {
+  const override = process.env.PILOTDECK_CACHE_PLAN_REBUILD;
+  if (override === "0") return false;
+  if (override === "1") return true;
+  return configEnabled !== false;
 }
 
 function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {

@@ -12,6 +12,7 @@ import {
   resolveProviderRef,
   ROUTER_PRICING_UNITS,
   type RouterAutoOrchestrateConfig,
+  type RouterCachePlanRebuildConfig,
   type RouterConfig,
   type RouterCustomRouterConfig,
   type RouterFallbackConfig,
@@ -99,6 +100,7 @@ export function parseRouterConfig(
   const autoOrchestrate = parseAutoOrchestrate(raw.autoOrchestrate, modelConfig, tokenSaver, diagnostics);
   const stats = parseStats(raw.stats, modelConfig, diagnostics);
   const customRouter = parseCustomRouter(raw.customRouter, diagnostics);
+  const cachePlanRebuild = parseCachePlanRebuild(raw.cachePlanRebuild, diagnostics);
 
   return {
     config: {
@@ -110,6 +112,7 @@ export function parseRouterConfig(
       autoOrchestrate,
       stats,
       customRouter,
+      cachePlanRebuild,
     },
     diagnostics,
   };
@@ -677,6 +680,34 @@ function parseCustomRouter(
     return undefined;
   }
   return { extensionId: raw.extensionId };
+}
+
+function parseCachePlanRebuild(
+  raw: unknown,
+  diagnostics: RouterConfigDiagnostic[],
+): RouterCachePlanRebuildConfig {
+  if (raw === undefined) {
+    return { enabled: true };
+  }
+  if (!isRecord(raw)) {
+    diagnostics.push({
+      code: "ROUTER_CACHE_PLAN_REBUILD_INVALID",
+      severity: "fatal",
+      path: "router.cachePlanRebuild",
+      message: "router.cachePlanRebuild must be an object.",
+    });
+    return { enabled: true };
+  }
+  if (raw.enabled === undefined || typeof raw.enabled === "boolean") {
+    return { enabled: raw.enabled ?? true };
+  }
+  diagnostics.push({
+    code: "ROUTER_CACHE_PLAN_REBUILD_ENABLED_INVALID",
+    severity: "fatal",
+    path: "router.cachePlanRebuild.enabled",
+    message: "router.cachePlanRebuild.enabled must be a boolean.",
+  });
+  return { enabled: true };
 }
 
 function consumeRef(
