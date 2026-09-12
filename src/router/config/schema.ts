@@ -79,6 +79,12 @@ export type RouterStatsConfig = {
   filePath?: string;
   /** Provider/model ref used as the "no-router" baseline for savedCost calculation. */
   baselineModel?: { provider: string; model: string };
+  /** Optional append-only, per-provider-attempt evaluation ledger. */
+  ledgerFilePath?: string;
+  runId?: string;
+  taskId?: string;
+  strategyVersion?: string;
+  baselineCommit?: string;
 };
 
 export type RouterFallbackConfig = Partial<Record<RouterScenarioType, RouterModelRef[]>> & {

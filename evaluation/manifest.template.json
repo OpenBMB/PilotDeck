@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "runId": "REPLACE_WITH_UNIQUE_RUN_ID",
+  "createdAt": "REPLACE_WITH_UTC_TIMESTAMP",
+  "baselineCommit": "cfc4d1779228f91fececc5d6705c14dab5b7ef2f",
+  "codeCommit": "REPLACE_WITH_HEAD",
+  "strategy": "pilotroute-full",
+  "repeat": 1,
+  "taskSet": "evaluation/tasks/pilot.json",
+  "taskSetSha256": "REPLACE_WITH_HASH",
+  "models": [],
+  "providerConfigurationRedacted": true,
+  "priceTable": {},
+  "priceTableVersion": "REPLACE_WITH_FROZEN_VERSION_OR_HASH",
+  "costProvenancePolicy": "provider_reported|price_table_calculated|estimated|unknown",
+  "currency": "USD",
+  "cacheIsolationPrefix": "REPLACE_WITH_RUN_STRATEGY_TASK_PREFIX",
+  "taskBudget": {},
+  "stopRule": "REPLACE_WITH_FROZEN_RULE",
+  "paidRunAuthorized": false
+}

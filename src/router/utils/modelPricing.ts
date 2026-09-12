@@ -39,6 +39,11 @@ export type PricingQuote = {
   notes: string[];
 };
 
+export type RouterModelPricingResolution = {
+  pricing: RouterModelPricing;
+  source: "configured" | "builtin" | "generic_fallback";
+};
+
 // $/million tokens – fallback when neither nativeCost nor user modelPricing is available
 const DEFAULT_PRICING: Array<{
   pattern: RegExp;
@@ -97,20 +102,39 @@ export function lookupModelPricing(
   model: string,
   modelPricing?: RouterModelPricingMap,
 ): RouterModelPricing {
+  return resolveModelPricing(provider, model, modelPricing).pricing;
+}
+
+/** Resolve pricing together with its provenance so accounting can expose confidence. */
+export function resolveModelPricing(
+  provider: string,
+  model: string,
+  modelPricing?: RouterModelPricingMap,
+): RouterModelPricingResolution {
   const combined = `${provider}/${model}`;
   if (modelPricing) {
     const exact = modelPricing[combined];
-    if (exact) return exact;
+    if (exact) return { pricing: exact, source: "configured" };
     for (const [key, val] of Object.entries(modelPricing)) {
-      if (model.includes(key) || key.includes(model)) return val;
+      if (model.includes(key) || key.includes(model)) {
+        return { pricing: val, source: "configured" };
+      }
     }
   }
   for (const entry of DEFAULT_PRICING) {
     if (entry.pattern.test(combined) || entry.pattern.test(model)) {
-      return { input: entry.input, output: entry.output, cacheRead: entry.cacheRead, cacheWrite: entry.cacheWrite };
+      return {
+        pricing: {
+          input: entry.input,
+          output: entry.output,
+          cacheRead: entry.cacheRead,
+          cacheWrite: entry.cacheWrite,
+        },
+        source: "builtin",
+      };
     }
   }
-  return FALLBACK_PRICING;
+  return { pricing: FALLBACK_PRICING, source: "generic_fallback" };
 }
 
 /**

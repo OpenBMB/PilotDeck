@@ -92,6 +92,14 @@ export type ClassifyAndRouteInput = {
   availableToolCount?: number;
   sessionId?: string;
   telemetry?: TelemetryClient;
+  onJudgeAttempt?: (attempt: {
+    attempt: number;
+    startedAt: string;
+    endedAt: string;
+    status: "succeeded" | "failed" | "cancelled";
+    usage?: import("../../model/index.js").CanonicalUsage;
+    errorType?: string;
+  }) => void;
 };
 
 export async function classifyAndRoute(
@@ -232,7 +240,8 @@ export async function classifyAndRoute(
     const forwardAbort = () => judgeAbortController.abort(input.abortSignal?.reason);
     input.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
     if (input.abortSignal?.aborted) forwardAbort();
-
+    const attemptStartedAt = new Date().toISOString();
+    let providerAttemptObserved = false;
     try {
       input.telemetry?.trackFeatureLoopStage({
         module: "router",
@@ -249,8 +258,22 @@ export async function classifyAndRoute(
           model: config.judge.model,
         },
       });
+      const judgeRequestPromise = input.judgeRuntime.complete(judgeRequest, {
+        signal: judgeAbortController.signal,
+        onProviderAttempt: (providerAttempt) => {
+          providerAttemptObserved = true;
+          input.onJudgeAttempt?.({
+            attempt: providerAttempt.attempt,
+            startedAt: providerAttempt.startedAt,
+            endedAt: providerAttempt.endedAt,
+            status: providerAttempt.status,
+            usage: providerAttempt.usage,
+            errorType: providerAttempt.errorType,
+          });
+        },
+      });
       const response = await Promise.race([
-        input.judgeRuntime.complete(judgeRequest, { signal: judgeAbortController.signal }),
+        judgeRequestPromise,
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => {
             timedOut = true;
@@ -261,6 +284,13 @@ export async function classifyAndRoute(
         }),
       ]);
       judgeUsage = addUsage(judgeUsage, response.usage);
+      if (!providerAttemptObserved) input.onJudgeAttempt?.({
+        attempt,
+        startedAt: attemptStartedAt,
+        endedAt: new Date().toISOString(),
+        status: "succeeded",
+        usage: response.usage,
+      });
       const text = response.content
         .filter((block) => block.type === "text")
         .map((block) => block.text)
@@ -364,6 +394,14 @@ export async function classifyAndRoute(
         }),
       };
     } catch (error) {
+      const endedAt = new Date().toISOString();
+      if (!providerAttemptObserved) input.onJudgeAttempt?.({
+        attempt,
+        startedAt: attemptStartedAt,
+        endedAt,
+        status: input.abortSignal?.aborted ? "cancelled" : "failed",
+        errorType: error instanceof Error ? error.name : "unknown_error",
+      });
       if (input.abortSignal?.aborted) throw error;
       const failure = timedOut ? new TokenSaverTimeoutError() : error;
       if (attempt < maxAttempts && shouldRetryJudgeFailure(failure)) continue;

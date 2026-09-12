@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "primary": ["pilotdeck-fixed-baseline", "pilotroute-full"],
+  "supplemental": ["fixed-strong", "fixed-cheap"],
+  "ablations": ["pilotroute-no-gate", "pilotroute-no-cache", "pilotroute-no-dynamic-recovery"],
+  "rules": {
+    "sameModelPoolForPrimary": true,
+    "allTiersSameModelIsDiagnosticOnly": true,
+    "interleaveOrderWithinRepeat": true,
+    "isolateCachePrefixByRunStrategyTask": true,
+    "freezeModelsToolsBudgetsAndStopRules": true
+  }
+}

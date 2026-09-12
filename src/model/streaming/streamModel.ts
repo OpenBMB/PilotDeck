@@ -7,6 +7,7 @@ import { validateModelRequest } from "../request/validateModelRequest.js";
 import type {
   CanonicalModelEvent,
   CanonicalModelRequest,
+  CanonicalUsage,
   ModelConfig,
   ModelProtocol,
   ProviderConfig,
@@ -36,8 +37,20 @@ export type ModelRuntimeOptions = {
    * Optional admission gate for an internal retry. HALO uses this to keep
    * pre-content retries in RouterRuntime while preserving safe text
    * continuation under the same chain-wide budget.
-   */
+  */
   allowRetry?: (retry: ModelStreamRetryProgress) => boolean;
+  onProviderAttempt?: (attempt: ProviderAttemptEvent) => void;
+};
+
+export type ProviderAttemptEvent = {
+  provider: string;
+  model: string;
+  attempt: number;
+  startedAt: string;
+  endedAt: string;
+  status: "succeeded" | "failed" | "cancelled";
+  usage?: CanonicalUsage;
+  errorType?: string;
 };
 
 export type ModelStreamRetryProgress = {
@@ -83,6 +96,7 @@ export async function complete(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     throwIfAborted(options.signal);
+    const attemptStartedAt = new Date().toISOString();
     if (provider.protocol === "google") {
       try {
         const raw = await sendGoogleCompleteRequest(
@@ -90,8 +104,11 @@ export async function complete(
           nonStreamingRequest,
           options,
         );
-        return parseGoogleResponse(raw, provider.id);
+        const parsed = parseGoogleResponse(raw, provider.id);
+        emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, "succeeded", parsed.usage);
+        return parsed;
       } catch (error) {
+        emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, options.signal?.aborted ? "cancelled" : "failed", undefined, providerAttemptErrorType(error));
         if (attempt < maxRetries && isRetryableRequestError(error)) {
           const delayMs = retryBaseDelay * (attempt + 1);
           console.warn(
@@ -110,6 +127,7 @@ export async function complete(
     try {
       response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal);
     } catch (error) {
+      emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, options.signal?.aborted ? "cancelled" : "failed", undefined, providerAttemptErrorType(error));
       if (attempt < maxRetries && isRetryableRequestError(error)) {
         const delayMs = retryBaseDelay * (attempt + 1);
         console.warn(
@@ -124,16 +142,35 @@ export async function complete(
 
     if (!response.ok) {
       const raw = await safeReadJson(response);
-      throw new ModelProviderError(
-        normalizeModelError(provider.id, provider.protocol, raw, response.status),
-      );
+      const normalized = normalizeModelError(provider.id, provider.protocol, raw, response.status);
+      emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, "failed", undefined, normalized.code);
+      throw new ModelProviderError(normalized);
     }
 
     const raw = await response.json();
-    return parseModelResponse(provider.protocol, raw, provider.id);
+    const parsed = parseModelResponse(provider.protocol, raw, provider.id);
+    emitProviderAttempt(options, provider.id, request.model, attempt, attemptStartedAt, "succeeded", parsed.usage);
+    return parsed;
   }
 
   throw new Error("complete() exhausted all retry attempts without a result.");
+}
+
+function emitProviderAttempt(
+  options: ModelRuntimeOptions,
+  provider: string,
+  model: string,
+  attempt: number,
+  startedAt: string,
+  status: ProviderAttemptEvent["status"],
+  usage?: CanonicalUsage,
+  errorType?: string,
+): void {
+  options.onProviderAttempt?.({ provider, model, attempt: attempt + 1, startedAt, endedAt: new Date().toISOString(), status, usage, errorType });
+}
+
+function providerAttemptErrorType(error: unknown): string {
+  return error instanceof ModelProviderError ? error.error.code : error instanceof Error ? error.name : "unknown_error";
 }
 
 const DEFAULT_STREAM_MAX_RETRIES = LITELLM_DEFAULT_MAX_RETRIES;
@@ -165,6 +202,8 @@ export async function* streamModel(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     throwIfAborted(options.signal);
+    const attemptStartedAt = new Date().toISOString();
+    let attemptUsage: CanonicalUsage | undefined;
     yield {
       type: "request_started",
       provider: provider.id,
@@ -186,6 +225,7 @@ export async function* streamModel(
     try {
       response = await sendProviderRequest(provider, body, true, options.fetch ?? fetch, options.signal, options);
     } catch (error) {
+      emitProviderAttempt(options, provider.id, currentRequest.model, attempt, attemptStartedAt, options.signal?.aborted ? "cancelled" : "failed", attemptUsage, providerAttemptErrorType(error));
       if (attempt < maxRetries && isRetryableStreamError(error)) {
         const delayMs = calculateRetryDelay(provider, attempt);
         if (emitModelRetryProgress(options, "network_error", attempt, maxRetries, delayMs, provider, currentRequest.model)) {
@@ -212,6 +252,7 @@ export async function* streamModel(
           error.retryAfterMs = headerMs;
         }
       }
+      emitProviderAttempt(options, provider.id, currentRequest.model, attempt, attemptStartedAt, "failed", attemptUsage, error.code);
       if (error.retryable && attempt < maxRetries) {
         const delayMs = calculateRetryDelay(provider, attempt, error.retryAfterMs);
         if (emitModelRetryProgress(options, retryReasonForError(error.code), attempt, maxRetries, delayMs, provider, currentRequest.model)) {
@@ -231,6 +272,7 @@ export async function* streamModel(
     }
 
     if (!response.body) {
+      emitProviderAttempt(options, provider.id, currentRequest.model, attempt, attemptStartedAt, "failed", attemptUsage, "missing_response_body");
       yield {
         type: "error",
         error: normalizeModelError(provider.id, provider.protocol, new Error("Missing response body.")),
@@ -260,6 +302,7 @@ export async function* streamModel(
             throw new ModelProviderError(event.error);
           }
           streamGuard.observe(event);
+          if (event.type === "usage") attemptUsage = event.usage;
           checkpoint.onEvent(event);
           yield event;
         }
@@ -270,6 +313,16 @@ export async function* streamModel(
       }
       streamCompleted = true;
     } catch (error) {
+      emitProviderAttempt(
+        options,
+        provider.id,
+        currentRequest.model,
+        attempt,
+        attemptStartedAt,
+        options.signal?.aborted ? "cancelled" : "failed",
+        attemptUsage,
+        providerAttemptErrorType(error),
+      );
       if (
         attempt < maxRetries &&
         isRetryableStreamError(error) &&
@@ -306,6 +359,7 @@ export async function* streamModel(
     }
 
     if (streamCompleted) {
+      emitProviderAttempt(options, provider.id, currentRequest.model, attempt, attemptStartedAt, "succeeded", attemptUsage);
       return;
     }
   }
@@ -340,6 +394,8 @@ async function* streamGoogleProviderRequest(params: {
 
   for (let attempt = 0; attempt <= params.maxRetries; attempt++) {
     throwIfAborted(params.options.signal);
+    const attemptStartedAt = new Date().toISOString();
+    let attemptUsage: CanonicalUsage | undefined;
     yield {
       type: "request_started",
       provider: params.provider.id,
@@ -404,9 +460,11 @@ async function* streamGoogleProviderRequest(params: {
           }
           streamGuard.observe(event);
           params.checkpoint.onEvent(event);
+          if (event.type === "usage") attemptUsage = event.usage;
           yield event;
           if (terminalEvent) {
             void stream.return(undefined).catch(() => undefined);
+            emitProviderAttempt(params.options, params.provider.id, currentRequest.model, attempt, attemptStartedAt, "succeeded", attemptUsage);
             return;
           }
         }
@@ -416,10 +474,21 @@ async function* streamGoogleProviderRequest(params: {
       if (!sawTerminalEvent && !state.ended) {
         throw new IncompleteStreamError();
       }
+      emitProviderAttempt(params.options, params.provider.id, currentRequest.model, attempt, attemptStartedAt, "succeeded", attemptUsage);
       return;
     } catch (error) {
-      throwIfGoogleAbort(error, params.options.signal);
       const providerError = toProviderError(params.provider, error);
+      emitProviderAttempt(
+        params.options,
+        params.provider.id,
+        currentRequest.model,
+        attempt,
+        attemptStartedAt,
+        params.options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed",
+        attemptUsage,
+        providerError.error.code,
+      );
+      throwIfGoogleAbort(error, params.options.signal);
       const retryable = isRetryableGoogleStreamError(providerError, error);
       if (
         attempt < params.maxRetries &&
