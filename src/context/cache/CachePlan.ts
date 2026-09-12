@@ -61,3 +61,41 @@ export function buildCachePlan(input: CachePlanInput, generation: number): Cache
     generation,
   };
 }
+
+export type RoutedCachePlanInput = {
+  provider: string;
+  model: string;
+  /** ModelProtocol value from modelRuntime.getProviderProtocol. */
+  protocol: string;
+  /** From modelRuntime.getCapabilities(provider, model). */
+  supportsPromptCache: boolean;
+  systemPrompt?: string;
+  tools: CanonicalToolSchema[];
+  messages: CanonicalMessage[];
+};
+
+export type RoutedCachePlanResult = {
+  cachePlan?: CachePlan;
+  cacheBreakpoints?: number[];
+};
+
+/**
+ * Rebuild the cache plan for the model a routing decision actually selected.
+ * Non-Anthropic protocols and models without prompt-cache support get an
+ * explicit clear (no plan, no breakpoints) — the same gate the context
+ * runtime applies before routing. The previous plan's generation is carried
+ * over, never bumped; bumping stays the context runtime's job.
+ */
+export function rebuildRoutedCachePlan(
+  input: RoutedCachePlanInput,
+  previousPlan: CachePlan | undefined,
+): RoutedCachePlanResult {
+  if (input.protocol !== "anthropic" || input.supportsPromptCache !== true) {
+    return { cachePlan: undefined, cacheBreakpoints: undefined };
+  }
+  const cachePlan = buildCachePlan(
+    { ...input, enabled: true },
+    previousPlan?.generation ?? 0,
+  );
+  return { cachePlan, cacheBreakpoints: cachePlan?.messages };
+}
