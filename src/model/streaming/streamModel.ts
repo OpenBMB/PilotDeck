@@ -30,6 +30,14 @@ export type ModelRuntimeOptions = {
   signal?: AbortSignal;
   streamTimeoutMs?: number;
   onRetryProgress?: (progress: ModelStreamRetryProgress) => void;
+  /** Per-call transport retry cap. */
+  maxRetries?: number;
+  /**
+   * Optional admission gate for an internal retry. HALO uses this to keep
+   * pre-content retries in RouterRuntime while preserving safe text
+   * continuation under the same chain-wide budget.
+   */
+  allowRetry?: (retry: ModelStreamRetryProgress) => boolean;
 };
 
 export type ModelStreamRetryProgress = {
@@ -70,7 +78,7 @@ export async function complete(
 ) {
   const nonStreamingRequest = { ...request, stream: false };
   const { provider } = validateModelRequest(nonStreamingRequest, config);
-  const maxRetries = provider.retry?.requestMaxRetries ?? DEFAULT_REQUEST_MAX_RETRIES;
+  const maxRetries = options.maxRetries ?? provider.retry?.requestMaxRetries ?? DEFAULT_REQUEST_MAX_RETRIES;
   const retryBaseDelay = provider.retry?.baseDelayMs ?? LITELLM_INITIAL_RETRY_DELAY_MS;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -137,7 +145,7 @@ export async function* streamModel(
 ): AsyncIterable<CanonicalModelEvent> {
   const streamingRequest = { ...request, stream: true };
   const { provider } = validateModelRequest(streamingRequest, config);
-  const maxRetries = provider.retry?.streamMaxRetries ?? DEFAULT_STREAM_MAX_RETRIES;
+  const maxRetries = options.maxRetries ?? provider.retry?.streamMaxRetries ?? DEFAULT_STREAM_MAX_RETRIES;
   const retryBaseDelay = provider.retry?.baseDelayMs ?? LITELLM_INITIAL_RETRY_DELAY_MS;
 
   let currentRequest = streamingRequest;
@@ -180,9 +188,10 @@ export async function* streamModel(
     } catch (error) {
       if (attempt < maxRetries && isRetryableStreamError(error)) {
         const delayMs = calculateRetryDelay(provider, attempt);
-        emitModelRetryProgress(options, "network_error", attempt, maxRetries, delayMs, provider, currentRequest.model);
-        await delay(delayMs, options.signal);
-        continue;
+        if (emitModelRetryProgress(options, "network_error", attempt, maxRetries, delayMs, provider, currentRequest.model)) {
+          await delay(delayMs, options.signal);
+          continue;
+        }
       }
       if (isRetryableStreamError(error) && checkpoint.interruption().phase !== "empty") {
         yield {
@@ -205,9 +214,10 @@ export async function* streamModel(
       }
       if (error.retryable && attempt < maxRetries) {
         const delayMs = calculateRetryDelay(provider, attempt, error.retryAfterMs);
-        emitModelRetryProgress(options, retryReasonForError(error.code), attempt, maxRetries, delayMs, provider, currentRequest.model);
-        await delay(delayMs, options.signal);
-        continue;
+        if (emitModelRetryProgress(options, retryReasonForError(error.code), attempt, maxRetries, delayMs, provider, currentRequest.model)) {
+          await delay(delayMs, options.signal);
+          continue;
+        }
       }
       if (error.retryable && checkpoint.interruption().phase !== "empty") {
         yield {
@@ -265,11 +275,12 @@ export async function* streamModel(
         isRetryableStreamError(error) &&
         checkpoint.canContinueText()
       ) {
-        currentRequest = buildLiteLLMContinuationRequest(currentRequest, checkpoint.get().partialText);
         const delayMs = calculateRetryDelay(provider, attempt, retryAfterMsForError(error));
-        emitModelRetryProgress(options, "continuation", attempt, maxRetries, delayMs, provider, currentRequest.model);
-        await delay(delayMs, options.signal);
-        continue;
+        if (emitModelRetryProgress(options, "continuation", attempt, maxRetries, delayMs, provider, currentRequest.model)) {
+          currentRequest = buildLiteLLMContinuationRequest(currentRequest, checkpoint.get().partialText);
+          await delay(delayMs, options.signal);
+          continue;
+        }
       }
 
       if (
@@ -278,9 +289,10 @@ export async function* streamModel(
         checkpoint.interruption().phase === "empty"
       ) {
         const delayMs = calculateRetryDelay(provider, attempt, retryAfterMsForError(error));
-        emitModelRetryProgress(options, retryReasonForThrownError(error), attempt, maxRetries, delayMs, provider, currentRequest.model);
-        await delay(delayMs, options.signal);
-        continue;
+        if (emitModelRetryProgress(options, retryReasonForThrownError(error), attempt, maxRetries, delayMs, provider, currentRequest.model)) {
+          await delay(delayMs, options.signal);
+          continue;
+        }
       }
 
       if (isRetryableStreamError(error)) {
@@ -414,11 +426,12 @@ async function* streamGoogleProviderRequest(params: {
         retryable &&
         params.checkpoint.canContinueText()
       ) {
-        currentRequest = buildLiteLLMContinuationRequest(currentRequest, params.checkpoint.get().partialText);
         const delayMs = calculateRetryDelay(params.provider, attempt);
-        emitModelRetryProgress(params.options, "continuation", attempt, params.maxRetries, delayMs, params.provider, currentRequest.model);
-        await delay(delayMs, params.options.signal);
-        continue;
+        if (emitModelRetryProgress(params.options, "continuation", attempt, params.maxRetries, delayMs, params.provider, currentRequest.model)) {
+          currentRequest = buildLiteLLMContinuationRequest(currentRequest, params.checkpoint.get().partialText);
+          await delay(delayMs, params.options.signal);
+          continue;
+        }
       }
 
       if (
@@ -427,9 +440,10 @@ async function* streamGoogleProviderRequest(params: {
         params.checkpoint.interruption().phase === "empty"
       ) {
         const delayMs = calculateRetryDelay(params.provider, attempt);
-        emitModelRetryProgress(params.options, "network_error", attempt, params.maxRetries, delayMs, params.provider, currentRequest.model);
-        await delay(delayMs, params.options.signal);
-        continue;
+        if (emitModelRetryProgress(params.options, "network_error", attempt, params.maxRetries, delayMs, params.provider, currentRequest.model)) {
+          await delay(delayMs, params.options.signal);
+          continue;
+        }
       }
 
       yield {
@@ -600,15 +614,18 @@ function emitModelRetryProgress(
   delayMs: number,
   provider: ProviderConfig,
   model: string,
-): void {
-  options.onRetryProgress?.({
+): boolean {
+  const progress: ModelStreamRetryProgress = {
     reason,
     attempt: attempt + 1,
     maxAttempts,
     delayMs: Math.round(delayMs),
     provider: provider.id,
     model,
-  });
+  };
+  if (options.allowRetry && !options.allowRetry(progress)) return false;
+  options.onRetryProgress?.(progress);
+  return true;
 }
 
 type StreamGuard = {

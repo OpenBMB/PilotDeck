@@ -96,6 +96,24 @@ export type RouterCachePlanRebuildConfig = {
   enabled: boolean;
 };
 
+export type RouterRecoveryConfig = {
+  /** Opt-in HALO health-aware recovery. Existing routing is unchanged when false. */
+  enabled: boolean;
+  /** Provider dispatches across retries and fallbacks, covering the whole chain. */
+  maxAttempts: number;
+  /** Wall-clock budget for the entire execute recovery chain. */
+  deadlineMs: number;
+  health?: {
+    capacity?: number;
+    recordTtlMs?: number;
+    openDurationMs?: number;
+    maxOpenDurationMs?: number;
+    degradeThreshold?: number;
+    openThreshold?: number;
+    windowSize?: number;
+  };
+};
+
 export type RouterConfig = {
   /**
    * Master switch for all router behavior. When false, router-specific
@@ -115,6 +133,7 @@ export type RouterConfig = {
   fallback?: RouterFallbackConfig;
   zeroUsageRetry?: { enabled: boolean; maxAttempts: number };
   transientRetry?: { enabled: boolean; maxAttempts: number; baseDelayMs: number; maxDelayMs: number };
+  recovery?: RouterRecoveryConfig;
   tokenSaver?: RouterTokenSaverConfig;
   autoOrchestrate?: RouterAutoOrchestrateConfig;
   stats?: RouterStatsConfig;
@@ -136,6 +155,8 @@ export const DEFAULT_TOKEN_SAVER_CONTEXT: RouterTokenSaverContextConfig = {
   maxAssistantTailChars: 400,
 };
 export const DEFAULT_ZERO_USAGE_MAX_ATTEMPTS = 2;
+export const DEFAULT_RECOVERY_MAX_ATTEMPTS = 6;
+export const DEFAULT_RECOVERY_DEADLINE_MS = 30_000;
 export const DEFAULT_TRIGGER_TIERS = ["complex"];
 
 /**

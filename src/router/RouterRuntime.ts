@@ -2,6 +2,7 @@ import type {
   CanonicalModelEvent,
   CanonicalModelRequest,
   CachePlan,
+  ModelRuntimeOptions,
   ModelRuntime,
   ModelProtocol,
 } from "../model/index.js";
@@ -38,7 +39,11 @@ import { decideScenario } from "./scenario/decideScenario.js";
 import { stripSubagentTagFromMessages } from "./scenario/subagentDetector.js";
 import { SessionRouterStore } from "./session/SessionRouterStore.js";
 import { SessionUsageCache } from "./session/sessionUsageCache.js";
-import { ProviderHealthTracker } from "./health/ProviderHealthTracker.js";
+import {
+  classifyRecoverySignal,
+  providerFailureDomain,
+  ProviderHealthTracker,
+} from "./health/ProviderHealthTracker.js";
 import {
   createZeroUsageState,
   observeEventForZeroUsage,
@@ -55,7 +60,11 @@ import {
   dispose as disposeTokenizer,
   estimateRequestInputTokens,
 } from "./utils/countTokens.js";
-import { calculateCacheReadCost, calculateInputCost } from "./utils/modelPricing.js";
+import {
+  calculateCacheReadCost,
+  calculateInputCost,
+  type RouterModelPricingMap,
+} from "./utils/modelPricing.js";
 import { compareStayVsSwitch, DEFAULT_CACHE_TTL_MS } from "./cost/switchCostEstimator.js";
 import {
   collectRequiredInputModalities,
@@ -134,6 +143,10 @@ export function createRouterRuntime(
   const events = deps.events ?? { emit: () => undefined };
   const telemetry = deps.telemetry;
   const healthTrackers = new Map<string, ProviderHealthTracker>();
+  const endpointHealth = new ProviderHealthTracker({
+    ...config.recovery?.health,
+    now: () => (deps.now?.() ?? new Date()).getTime(),
+  });
   function getHealthTracker(sessionId: string): ProviderHealthTracker {
     let tracker = healthTrackers.get(sessionId);
     if (!tracker) {
@@ -165,6 +178,22 @@ export function createRouterRuntime(
     required: readonly InputModality[],
   ): boolean {
     return missingForModel(ref, required).length === 0;
+  }
+
+  function supportsRequestCapabilities(ref: RouterModelRef, request: CanonicalModelRequest): boolean {
+    try {
+      const capabilities = deps.modelRuntime.getCapabilities(ref.provider, ref.model);
+      if (request.tools?.length && !capabilities.supportsToolUse) return false;
+      if (request.stream && !capabilities.supportsStreaming) return false;
+      if (request.systemPrompt && !capabilities.supportsSystemPrompt) return false;
+      if (request.thinking?.enabled && request.thinking.mode !== "off" && !capabilities.supportsThinking) return false;
+      if (request.outputSchema && !capabilities.supportsJsonSchema) return false;
+      const estimatedInput = countMessagesTokens(request.messages);
+      const requestedOutput = request.maxOutputTokens ?? 0;
+      return estimatedInput + requestedOutput <= capabilities.maxContextTokens;
+    } catch {
+      return false;
+    }
   }
 
   function fallbackCandidatesFor(scenarioType: RouterScenarioType): RouterModelRef[] {
@@ -749,6 +778,13 @@ export function createRouterRuntime(
       provider: decision.provider,
       model: decision.model,
     };
+    const recoveryEnabled = config.recovery?.enabled === true;
+    const recoveryStartedMs = (deps.now?.() ?? new Date()).getTime();
+    const recoveryDeadlineAt = recoveryStartedMs + (config.recovery?.deadlineMs ?? 30_000);
+    const recoveryMaxAttempts = config.recovery?.maxAttempts ?? 6;
+    let recoveryAttemptCount = 0;
+    const blockedCredentialProviders = new Set<string>();
+    const blockedFallbackDomains = new Set<string>();
     const candidateAttempts: RouterModelRef[] = [
       requestedAttempt,
       ...fallbackPlan.attempts,
@@ -756,7 +792,7 @@ export function createRouterRuntime(
       all.findIndex((candidate) =>
         candidate.provider === attempt.provider && candidate.model === attempt.model
       ) === index
-    );
+    ).filter((attempt, index) => index === 0 || !recoveryEnabled || supportsRequestCapabilities(attempt, baseRequest));
     const nativeAttempts: RouterModelRef[] = candidateAttempts
       .filter((attempt) => supportsMediaRequirements(attempt, requiredModalities));
     const downgradedAttempts: RouterModelRef[] = requiredModalities.length > 0
@@ -779,6 +815,7 @@ export function createRouterRuntime(
     let lastAttempt: RouterModelRef | undefined;
     let lastDecision: RouterDecision = decision;
     let lastHasYieldedContent = false;
+    let lastErrorYielded = false;
 
     if (attemptPlans.length === 0) {
       const missing = missingForModel(requestedAttempt, requiredModalities);
@@ -801,18 +838,44 @@ export function createRouterRuntime(
       return;
     }
 
-    outer: for (let attemptIndex = 0; attemptIndex < attemptPlans.length; attemptIndex += 1) {
+    let activeHealthDomain: string | undefined;
+    try {
+      outer: for (let attemptIndex = 0; attemptIndex < attemptPlans.length; attemptIndex += 1) {
       if (ctx.abortSignal?.aborted) {
-        return;
+        throwAbortError(ctx.abortSignal.reason);
       }
       const attemptPlan = attemptPlans[attemptIndex];
       const attempt = attemptPlan.attempt;
-      if (
-        attemptIndex > 0 &&
-        getHealthTracker(ctx.sessionId).shouldSkip(attempt.provider) &&
-        attemptIndex < attemptPlans.length - 1
-      ) {
-        continue;
+      const healthDomain = providerFailureDomain(deps.modelRuntime, attempt);
+      if (recoveryEnabled) {
+        if (
+          (attemptIndex > 0 && blockedCredentialProviders.has(attempt.provider)) ||
+          (attemptIndex > 0 && blockedFallbackDomains.has(healthDomain))
+        ) continue;
+        if (!endpointHealth.tryAcquire(healthDomain)) {
+          lastAttempt = attempt;
+          lastDecision = {
+            ...decision,
+            provider: attempt.provider,
+            model: attempt.model,
+            resolvedFrom: attemptIndex === 0 ? decision.resolvedFrom : "fallback",
+          };
+          lastError = {
+            provider: attempt.provider,
+            model: attempt.model,
+            protocol: protocolForProvider(deps.modelRuntime, attempt.provider),
+            code: "provider_circuit_open",
+            message: "HALO deferred this provider because its recovery probe is unavailable.",
+            retryable: true,
+          };
+          continue;
+        }
+        activeHealthDomain = healthDomain;
+      } else if (attemptIndex > 0) {
+        if (
+          getHealthTracker(ctx.sessionId).shouldSkip(attempt.provider) &&
+          attemptIndex < attemptPlans.length - 1
+        ) continue;
       }
       const attemptDecision: RouterDecision = {
         ...decision,
@@ -849,6 +912,25 @@ export function createRouterRuntime(
       let zeroUsageAttempt = 0;
       let transientRetryCount = 0;
       while (true) {
+        const dispatchStartedMs = (deps.now?.() ?? new Date()).getTime();
+        const remainingMs = recoveryDeadlineAt - dispatchStartedMs;
+        if (recoveryEnabled && (recoveryAttemptCount >= recoveryMaxAttempts || remainingMs <= 0)) {
+          endpointHealth.release(healthDomain);
+          if (!lastError) {
+            lastError = {
+              provider: attempt.provider,
+              model: attempt.model,
+              protocol: protocolForProvider(deps.modelRuntime, attempt.provider),
+              code: "recovery_budget_exhausted",
+              message: `HALO recovery budget exhausted after ${recoveryAttemptCount} dispatches.`,
+              retryable: false,
+            };
+            lastAttempt = attempt;
+          }
+          break outer;
+        }
+        recoveryAttemptCount++;
+        const dispatchAttempt = recoveryAttemptCount;
         zeroUsageAttempt += 1;
         // Live-stream events. We track whether we've already surfaced any
         // content event (text/thinking/tool) to the consumer; once we have,
@@ -856,8 +938,71 @@ export function createRouterRuntime(
         let hasYieldedContent = false;
         const pending: CanonicalModelEvent[] = [];
         let outcome: AttemptOutcome | undefined;
+        let currentDispatchAttempt = dispatchAttempt;
+        let currentDispatchStartedMs = dispatchStartedMs;
+        let currentDispatchEnded = false;
+        let pendingContinuationAttempt: number | undefined;
+        let observedProviderDispatches = 0;
 
-        for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events)) {
+        events.emit({
+          type: "pilotdeck_router_attempt",
+          phase: "start",
+          sessionId: ctx.sessionId,
+          turnId: ctx.turnId,
+          attempt: dispatchAttempt,
+          provider: attempt.provider,
+          model: attempt.model,
+          failureDomain: healthDomain,
+        });
+        for await (const item of streamAttempt(attemptRequest, deps.modelRuntime, ctx, events, {
+          timeoutMs: recoveryEnabled ? remainingMs : undefined,
+          allowRetry: recoveryEnabled
+            ? (retry) => {
+                if (retry.reason !== "continuation") return false;
+                const retryRemainingMs = recoveryDeadlineAt - (deps.now?.() ?? new Date()).getTime();
+                if (
+                  recoveryAttemptCount >= recoveryMaxAttempts ||
+                  retry.delayMs >= retryRemainingMs
+                ) return false;
+                recoveryAttemptCount++;
+                pendingContinuationAttempt = recoveryAttemptCount;
+                events.emit({
+                  type: "pilotdeck_router_attempt",
+                  phase: "end",
+                  sessionId: ctx.sessionId,
+                  turnId: ctx.turnId,
+                  attempt: currentDispatchAttempt,
+                  provider: attempt.provider,
+                  model: attempt.model,
+                  failureDomain: healthDomain,
+                  latencyMs: Math.max(0, (deps.now?.() ?? new Date()).getTime() - currentDispatchStartedMs),
+                  errorCode: "stream_interrupted",
+                });
+                currentDispatchEnded = true;
+                return true;
+              }
+            : undefined,
+          onProviderDispatchStart: recoveryEnabled
+            ? () => {
+                observedProviderDispatches++;
+                if (observedProviderDispatches === 1 || pendingContinuationAttempt == null) return;
+                currentDispatchAttempt = pendingContinuationAttempt;
+                pendingContinuationAttempt = undefined;
+                currentDispatchStartedMs = (deps.now?.() ?? new Date()).getTime();
+                currentDispatchEnded = false;
+                events.emit({
+                  type: "pilotdeck_router_attempt",
+                  phase: "start",
+                  sessionId: ctx.sessionId,
+                  turnId: ctx.turnId,
+                  attempt: currentDispatchAttempt,
+                  provider: attempt.provider,
+                  model: attempt.model,
+                  failureDomain: healthDomain,
+                });
+              }
+            : undefined,
+        })) {
           if (item.kind === "outcome") {
             outcome = item.outcome;
             break;
@@ -890,12 +1035,58 @@ export function createRouterRuntime(
 
         lastBuffered = outcome.buffered;
         lastUsage = outcome.usage;
+        const dispatchEndedMs = (deps.now?.() ?? new Date()).getTime();
+        const dispatchLatencyMs = Math.max(0, dispatchEndedMs - currentDispatchStartedMs);
+        if (!currentDispatchEnded) {
+          events.emit({
+            type: "pilotdeck_router_attempt",
+            phase: "end",
+            sessionId: ctx.sessionId,
+            turnId: ctx.turnId,
+            attempt: currentDispatchAttempt,
+            provider: attempt.provider,
+            model: attempt.model,
+            failureDomain: healthDomain,
+            latencyMs: dispatchLatencyMs,
+            errorCode: outcome.error?.code,
+            usage: outcome.usage,
+            finishReason: lastFinishReason(outcome.buffered),
+          });
+        }
 
         if (outcome.error) {
           lastError = outcome.error;
-          getHealthTracker(ctx.sessionId).recordFailure(attempt.provider);
-          if (!hasYieldedContent && isFallbackEligible(outcome.error)) {
-            if (attemptIndex < attemptPlans.length - 1) {
+          const recoverySignal = classifyRecoverySignal(outcome.error);
+          if (recoveryEnabled) {
+            if (recoverySignal === "service") endpointHealth.recordFailure(healthDomain, outcome.error.retryAfterMs, dispatchLatencyMs);
+            else endpointHealth.release(healthDomain);
+            if (recoverySignal === "credential") blockedCredentialProviders.add(attempt.provider);
+            if (outcome.error.code === "rate_limit_error") blockedFallbackDomains.add(healthDomain);
+            rankRemainingAttempts(
+              attemptPlans,
+              attemptIndex + 1,
+              endpointHealth,
+              deps.modelRuntime,
+              healthDomain,
+              countMessagesTokens(attemptRequest.messages),
+              config.stats?.modelPricing,
+            );
+          } else {
+            getHealthTracker(ctx.sessionId).recordFailure(attempt.provider);
+          }
+          const preferFallback = !recoveryEnabled || !transientRetryEnabled || recoverySignal !== "service" || outcome.error.code === "rate_limit_error" || transientRetryCount > 0;
+          if (!hasYieldedContent && isFallbackEligible(outcome.error) && preferFallback) {
+            const nextIndex = recoveryEnabled
+              ? attemptPlans.findIndex((plan, index) => {
+                  if (index <= attemptIndex || blockedCredentialProviders.has(plan.attempt.provider)) return false;
+                  const domain = providerFailureDomain(deps.modelRuntime, plan.attempt);
+                  return !blockedFallbackDomains.has(domain) && !endpointHealth.shouldSkip(domain);
+                })
+              : attemptIndex + 1 < attemptPlans.length ? attemptIndex + 1 : -1;
+            if (nextIndex >= 0) {
+              if (nextIndex !== attemptIndex + 1) {
+                [attemptPlans[attemptIndex + 1], attemptPlans[nextIndex]] = [attemptPlans[nextIndex], attemptPlans[attemptIndex + 1]];
+              }
               const next = attemptPlans[attemptIndex + 1].attempt;
               events.emit({
                 type: "pilotdeck_router_fallback",
@@ -934,11 +1125,17 @@ export function createRouterRuntime(
             !hasYieldedContent &&
             isFallbackEligible(outcome.error) &&
             transientRetryEnabled &&
-            transientRetryCount < transientRetryMax
+            transientRetryCount < transientRetryMax &&
+            (!recoveryEnabled || recoverySignal === "service" || outcome.error.code === "invalid_tool_arguments") &&
+            (!recoveryEnabled || recoveryAttemptCount < recoveryMaxAttempts)
           ) {
             const delay = outcome.error.retryAfterMs != null
-              ? Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
+              ? recoveryEnabled ? outcome.error.retryAfterMs : Math.min(outcome.error.retryAfterMs, transientMaxDelayMs)
               : calculateLiteLLMRetryDelay(transientRetryCount, transientBaseDelayMs, transientMaxDelayMs);
+            const retryRemainingMs = recoveryDeadlineAt - (deps.now?.() ?? new Date()).getTime();
+            if (recoveryEnabled && (delay >= retryRemainingMs || delay < 0)) {
+              continue outer;
+            }
             console.warn(
               `[PilotDeck] transientRetry: ${outcome.error.code} (attempt ${transientRetryCount + 1}/${transientRetryMax}, delay=${Math.round(delay)}ms)`,
             );
@@ -984,9 +1181,10 @@ export function createRouterRuntime(
             continue;
           }
           for (const queued of pending) {
-            yield queued;
+            if (queued.type !== "error") yield queued;
           }
           lastHasYieldedContent = hasYieldedContent;
+          lastErrorYielded = hasYieldedContent;
           break outer;
         }
 
@@ -994,8 +1192,12 @@ export function createRouterRuntime(
           !hasYieldedContent &&
           zeroUsageEnabled &&
           outcome.shouldRetryZeroUsage &&
-          zeroUsageAttempt < zeroUsageMax
+          zeroUsageAttempt < zeroUsageMax &&
+          (!recoveryEnabled || recoveryAttemptCount < recoveryMaxAttempts)
         ) {
+          const zeroUsageDelayMs = 500 * zeroUsageAttempt;
+          const zeroUsageRemainingMs = recoveryDeadlineAt - (deps.now?.() ?? new Date()).getTime();
+          if (recoveryEnabled && zeroUsageDelayMs >= zeroUsageRemainingMs) continue outer;
           console.warn(
             `[PilotDeck] zeroUsageRetry: empty response from ${attempt.provider}/${attempt.model} ` +
             `(attempt ${zeroUsageAttempt}/${zeroUsageMax}, session=${ctx.sessionId})`,
@@ -1014,7 +1216,7 @@ export function createRouterRuntime(
             turnId: ctx.turnId,
             attempt: zeroUsageAttempt,
             maxAttempts: zeroUsageMax,
-            delayMs: 500 * zeroUsageAttempt,
+            delayMs: zeroUsageDelayMs,
             reason: "zero_usage",
             provider: attempt.provider,
             model: attempt.model,
@@ -1033,11 +1235,26 @@ export function createRouterRuntime(
               model: attempt.model,
             },
           });
-          await abortableDelay(500 * zeroUsageAttempt, ctx.abortSignal);
+          await abortableDelay(zeroUsageDelayMs, ctx.abortSignal);
           continue;
         }
 
-        getHealthTracker(ctx.sessionId).recordSuccess(attempt.provider);
+        if (!hasYieldedContent && zeroUsageEnabled && outcome.shouldRetryZeroUsage) {
+          endpointHealth.release(healthDomain);
+          lastError = {
+            provider: attempt.provider,
+            model: attempt.model,
+            protocol: protocolForProvider(deps.modelRuntime, attempt.provider),
+            code: "empty_response",
+            message: "Provider returned no content, tool call, finish reason, or usage after the retry budget.",
+            retryable: false,
+          };
+          lastAttempt = attempt;
+          break outer;
+        }
+
+        if (recoveryEnabled) endpointHealth.recordSuccess(healthDomain, dispatchLatencyMs);
+        else getHealthTracker(ctx.sessionId).recordSuccess(attempt.provider);
 
         if (!hasYieldedContent) {
           for (const queued of pending) {
@@ -1075,6 +1292,9 @@ export function createRouterRuntime(
         });
         return;
       }
+    }
+    } finally {
+      if (activeHealthDomain) endpointHealth.release(activeHealthDomain);
     }
 
     if (lastError && lastAttempt) {
@@ -1116,7 +1336,9 @@ export function createRouterRuntime(
           }
         }
       }
-      yield { type: "error", error: { ...lastError, provider: lastAttempt.provider, model: lastAttempt.model } };
+      if (!lastErrorYielded) {
+        yield { type: "error", error: { ...lastError, provider: lastAttempt.provider, model: lastAttempt.model } };
+      }
     }
   }
 
@@ -1185,6 +1407,7 @@ export function createRouterRuntime(
       if (!externalStore) sessionStore.clear();
       usageCache.clear();
       healthTrackers.clear();
+      endpointHealth.resetAll();
     },
   };
 }
@@ -1193,6 +1416,42 @@ type AttemptPlan = {
   attempt: RouterModelRef;
   downgradeUnsupportedMedia: boolean;
 };
+
+function rankRemainingAttempts(
+  plans: AttemptPlan[],
+  start: number,
+  health: ProviderHealthTracker,
+  runtime: ModelRuntime,
+  failedDomain: string,
+  estimatedInputTokens: number,
+  pricing?: RouterModelPricingMap,
+): void {
+  const ranked = plans.slice(start).map((plan, order) => {
+    const domain = providerFailureDomain(runtime, plan.attempt);
+    const state = health.getState(domain);
+    const statePenalty = state === "open" ? 1_000_000 : state === "half_open" ? 20 : state === "degraded" ? 10 : 0;
+    const sharedDomainPenalty = domain === failedDomain ? 100 : 0;
+    const reliabilityPenalty = (1 - health.getSuccessRate(domain)) * 4;
+    const latencyPenalty = (health.getLatencyEwmaMs(domain) ?? 0) / 10_000;
+    const costPenalty = calculateInputCost(
+      estimatedInputTokens,
+      plan.attempt.provider,
+      plan.attempt.model,
+      pricing,
+    );
+    return { plan, order, score: statePenalty + sharedDomainPenalty + reliabilityPenalty + latencyPenalty + costPenalty };
+  });
+  ranked.sort((a, b) => a.score - b.score || a.order - b.order);
+  plans.splice(start, ranked.length, ...ranked.map(({ plan }) => plan));
+}
+
+function lastFinishReason(events: CanonicalModelEvent[]): import("../model/index.js").CanonicalFinishReason | undefined {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (event.type === "message_end") return event.finishReason;
+  }
+  return undefined;
+}
 
 type AttemptOutcome = {
   buffered: CanonicalModelEvent[];
@@ -1271,6 +1530,12 @@ async function* streamAttempt(
   modelRuntime: ModelRuntime,
   ctx: RouterExecuteContext,
   events: RouterEventBus,
+  recovery?: {
+    maxRetries?: number;
+    timeoutMs?: number;
+    allowRetry?: ModelRuntimeOptions["allowRetry"];
+    onProviderDispatchStart?: () => void;
+  },
 ): AsyncGenerator<
   | { kind: "event"; event: CanonicalModelEvent }
   | { kind: "outcome"; outcome: AttemptOutcome }
@@ -1278,11 +1543,18 @@ async function* streamAttempt(
   const buffered: CanonicalModelEvent[] = [];
   const state = createZeroUsageState();
   let providerError: import("../model/index.js").CanonicalModelError | undefined;
-  const abortSignal = ctx.abortSignal;
+  const timeoutSignal = recovery?.timeoutMs != null
+    ? AbortSignal.timeout(Math.max(1, Math.ceil(recovery.timeoutMs)))
+    : undefined;
+  const abortSignal = timeoutSignal && ctx.abortSignal
+    ? AbortSignal.any([ctx.abortSignal, timeoutSignal])
+    : timeoutSignal ?? ctx.abortSignal;
 
   try {
     for await (const event of modelRuntime.stream(request, {
       signal: abortSignal,
+      maxRetries: recovery?.maxRetries,
+      allowRetry: recovery?.allowRetry,
       onRetryProgress(progress) {
         events.emit({
           type: "pilotdeck_router_retry_progress",
@@ -1301,6 +1573,7 @@ async function* streamAttempt(
         throwAbortError(abortSignal.reason);
       }
       observeEventForZeroUsage(state, event);
+      if (event.type === "request_started") recovery?.onProviderDispatchStart?.();
       buffered.push(event);
       if (event.type === "error") {
         providerError = event.error;
@@ -1308,7 +1581,7 @@ async function* streamAttempt(
       yield { kind: "event", event };
     }
   } catch (error) {
-    if (abortSignal?.aborted) {
+    if (ctx.abortSignal?.aborted) {
       throw error;
     }
     const fromError = (error as { error?: import("../model/index.js").CanonicalModelError })?.error;

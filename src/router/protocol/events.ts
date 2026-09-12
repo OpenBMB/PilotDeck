@@ -1,4 +1,4 @@
-import type { CanonicalModelError } from "../../model/index.js";
+import type { CanonicalFinishReason, CanonicalModelError, CanonicalUsage } from "../../model/index.js";
 import type { RouterDecision, RouterScenarioType } from "./decision.js";
 
 export type RouterDecisionEvent = {
@@ -88,6 +88,23 @@ export type RouterRetryProgressEvent = {
   model: string;
 };
 
+/** Stable per-dispatch trace consumed by evaluation and routing integrations. */
+export type RouterAttemptEvent = {
+  type: "pilotdeck_router_attempt";
+  phase: "start" | "end";
+  sessionId: string;
+  turnId?: string;
+  attempt: number;
+  provider: string;
+  model: string;
+  /** Protocol + normalized endpoint; never includes credentials or query strings. */
+  failureDomain: string;
+  latencyMs?: number;
+  errorCode?: string;
+  usage?: CanonicalUsage;
+  finishReason?: CanonicalFinishReason;
+};
+
 export type RouterEvent =
   | RouterDecisionEvent
   | RouterFallbackEvent
@@ -96,7 +113,8 @@ export type RouterEvent =
   | RouterCustomFailedEvent
   | RouterExecuteFailedEvent
   | RouterTransientRetryEvent
-  | RouterRetryProgressEvent;
+  | RouterRetryProgressEvent
+  | RouterAttemptEvent;
 
 export type RouterEventBus = {
   emit(event: RouterEvent): void;

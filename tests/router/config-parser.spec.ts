@@ -161,3 +161,31 @@ test("parses context-aware judge controls and rejects unsafe limits", () => {
     ],
   );
 });
+
+test("parses opt-in HALO recovery budgets and bounded health options", () => {
+  const result = parseRouterConfig({
+    recovery: {
+      enabled: true,
+      maxAttempts: 4,
+      deadlineMs: 12_000,
+      health: { capacity: 32, recordTtlMs: 60_000, openThreshold: 2 },
+    },
+  }, modelConfig);
+
+  assert.equal(result.diagnostics.filter((item) => item.severity === "fatal").length, 0);
+  assert.deepEqual(result.config?.recovery, {
+    enabled: true,
+    maxAttempts: 4,
+    deadlineMs: 12_000,
+    health: { capacity: 32, recordTtlMs: 60_000, openThreshold: 2 },
+  });
+});
+
+test("keeps HALO disabled by default and rejects non-positive budgets", () => {
+  assert.equal(parseRouterConfig({}, modelConfig).config?.recovery?.enabled, false);
+  const invalid = parseRouterConfig({ recovery: { enabled: true, maxAttempts: 0, deadlineMs: -1 } }, modelConfig);
+  assert.deepEqual(
+    invalid.diagnostics.filter((item) => item.severity === "fatal").map((item) => item.code),
+    ["ROUTER_RECOVERY_MAXATTEMPTS_INVALID", "ROUTER_RECOVERY_DEADLINEMS_INVALID"],
+  );
+});
