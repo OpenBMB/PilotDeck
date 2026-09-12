@@ -14,6 +14,7 @@ import {
   type CreateAgentSessionOptions,
 } from "../agent/index.js";
 import { resolveRoutedModelMaxContextTokens } from "../agent/runtime/modelContextWindow.js";
+import { listSubagentModels } from "../agent/sub/subagentModels.js";
 import {
   AutoCompactionPolicy,
   CompactionEngine,
@@ -1251,6 +1252,7 @@ class ProjectRuntimeRegistry {
     const eventBuf = createAgentEventBuffer();
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
+      getSubagentModels: () => listSubagentModels(runtime.snapshot.config.model, runtime.snapshot.config.router),
       router: runtime.router,
       tools: { registry: sessionTools },
       lifecycle,

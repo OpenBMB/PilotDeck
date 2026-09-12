@@ -78,6 +78,8 @@ export type AgentToolInput = {
   description: string;
   prompt: string;
   subagent_type?: string;
+  /** Exact configured provider/model reference for this invocation only. */
+  model?: string;
   /** @deprecated camelCase alias retained for backwards compatibility. */
   subagentType?: string;
 };
@@ -111,6 +113,10 @@ const DEFAULT_PROVIDER_FALLBACK = "pilotdeck";
 const DEFAULT_MODEL_FALLBACK = "moonshotai/kimi-k2.6";
 const DEFAULT_SUBAGENT_TIMEOUT_MS = 60 * 60_000;
 const PUBLIC_SUBAGENT_TYPES = ["general-purpose", "explore", "plan"] as const;
+const MODEL_INPUT_SCHEMA = {
+  type: "string",
+  description: "Optional exact provider/model reference from Available subagent models. Overrides automatic model selection for this invocation. Omit to use the configured default and routing policy.",
+};
 
 export function createAgentTool(
   options: CreateAgentToolOptions = {},
@@ -128,6 +134,7 @@ export function createAgentTool(
       required: ["description", "prompt"],
       additionalProperties: false,
       properties: {
+        model: MODEL_INPUT_SCHEMA,
         description: {
           type: "string",
           description: "Short 3-5 word task summary used to label the subagent run.",
@@ -161,6 +168,12 @@ export function createAgentTool(
       },
     }),
     execute: async (input, context) => {
+      if (input.model !== undefined && (typeof input.model !== "string" || !input.model.trim())) {
+        throw new PilotDeckToolRuntimeError("invalid_tool_input", "model must be a non-empty provider/model reference.");
+      }
+      if (input.model !== undefined && !context.subagent) {
+        throw new PilotDeckToolRuntimeError("unsupported_tool", "Explicit model selection requires a full subagent runtime.");
+      }
       const explicit = normalizeRequestedSubagentType(
         input.subagent_type ?? input.subagentType,
       );
@@ -269,6 +282,7 @@ export function buildAskModeAgentToolSchema(): {
     required: ["description", "prompt"],
     additionalProperties: false,
     properties: {
+      model: MODEL_INPUT_SCHEMA,
       description: {
         type: "string",
         description: "Short 3-5 word task summary used to label the subagent run.",
@@ -350,8 +364,12 @@ async function runFullFork(args: {
       toolCallId: context.currentToolCallId,
       abortSignal: context.abortSignal,
       timeoutMs,
+      ...(input.model !== undefined ? { model: input.model.trim() } : {}),
     });
   } catch (error) {
+    if (error instanceof PilotDeckToolRuntimeError && error.code === "invalid_tool_input") {
+      throw error;
+    }
     if (context.abortSignal?.aborted) {
       throw new PilotDeckToolRuntimeError(
         "tool_aborted",

@@ -24,6 +24,7 @@ import type {
 import { messageContent } from "../../model/protocol/clone.js";
 import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
+import type { SubagentModel } from "./subagentModels.js";
 import { ToolRegistry } from "../../tool/registry/ToolRegistry.js";
 import type {
   PilotDeckReadFileStateMap,
@@ -50,6 +51,8 @@ import {
 const SUMMARY_FIELDS = ["Scope", "Result", "Key files", "Files changed", "Issues"] as const;
 
 export type SubAgentSessionOptions = {
+  /** Validated explicit selection for this fork only. Omission preserves automatic routing. */
+  model?: SubagentModel;
   /** The subagent preset (general-purpose / explore / plan). */
   definition: SubagentDefinition;
   /** Free-text directive from the parent (becomes the subagent's user prompt). */
@@ -136,6 +139,9 @@ export class SubAgentSession {
       );
     }
     const generator = loop.run({
+      modelOverride: this.options.model
+        ? { provider: this.options.model.provider, model: this.options.model.model }
+        : undefined,
       sessionId: this.options.subagentSessionId,
       turnId,
       messages,
@@ -280,7 +286,7 @@ export class SubAgentSession {
 
   private buildConfig(): AgentRuntimeConfig {
     const parent = this.options.parentConfig;
-    const subagentModel = parent.subagentModel;
+    const subagentModel = this.options.model ?? parent.subagentModel;
     const {
       maxContextTokens: _parentMaxContextTokens,
       maxOutputTokens: _parentMaxOutputTokens,
@@ -305,6 +311,14 @@ export class SubAgentSession {
               : {}),
           }
         : {}),
+      ...(this.options.model ? {
+        // Explicit selections use their own limits, including when selecting
+        // the same model as the configured default with different baseline caps.
+        subagentModel: undefined,
+        maxContextTokens: this.options.model.maxContextTokens,
+        maxOutputTokens: this.options.model.maxOutputTokens,
+        modelMultimodal: this.options.model.modelMultimodal,
+      } : {}),
       // Ask mode performs read-only checks against each tool call's real
       // input. Do not probe dynamic isReadOnly implementations with a dummy
       // object while constructing the registry.

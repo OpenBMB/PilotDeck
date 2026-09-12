@@ -36,6 +36,7 @@ import {
   getSubagentDefinition,
 } from "../sub/builtinSubagentTypes.js";
 import { agentError } from "../protocol/errors.js";
+import { PilotDeckToolRuntimeError } from "../../tool/protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
 import type { AgentPermissionDenial, AgentTurnResult } from "../protocol/result.js";
 import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
@@ -2070,6 +2071,16 @@ export class AgentLoop {
     if (this.config.runMode === "ask") {
       tools = filterAskModeTools(toolDefinitions);
     }
+    if (tools.some(tool => tool.name === "agent")) {
+      const models = this.dependencies.getSubagentModels?.() ?? [];
+      if (models.length > 0) {
+        const guidance = "\n\nAvailable subagent models (optional `model`; omit to retain default routing):\n"
+          + models.map(model => `- ${model.id}: ${model.description}`).join("\n");
+        tools = tools.map(tool => tool.name === "agent"
+          ? { ...tool, description: tool.description + guidance }
+          : tool);
+      }
+    }
     const requestProvider = input.modelOverride?.provider ?? this.config.provider;
     const requestModel = input.modelOverride?.model ?? this.config.model;
     const prepared = await contextRuntime.prepareForModel({
@@ -2494,7 +2505,13 @@ export class AgentLoop {
           description: d.description,
         })),
       isAllowedDefinition: (id: string) => getSubagentDefinition(id) !== undefined,
-      fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs }) => {
+      fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs, model }) => {
+        const models = model !== undefined ? this.dependencies.getSubagentModels?.() ?? [] : [];
+        const selectedModel = models.find(candidate => candidate.id === model);
+        if (model !== undefined && !selectedModel) {
+          throw new PilotDeckToolRuntimeError("invalid_tool_input",
+            `Unavailable subagent model "${model}". Available: ${models.map(candidate => candidate.id).join(", ") || "none"}. Omit model to use default routing.`);
+        }
         // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
         const { SubAgentSession } = await import("../sub/SubAgentSession.js");
         const def = getSubagentDefinition(definitionId);
@@ -2532,6 +2549,7 @@ export class AgentLoop {
         });
 
         const subSession = new SubAgentSession({
+          model: selectedModel,
           definition: def,
           directive,
           parentConfig: {
