@@ -11,6 +11,13 @@ type UseLlmSetupOptions = {
   onSaved?: () => void | Promise<void>;
 };
 
+type TestRetryCode = 'RATE_LIMITED' | 'TEST_BUSY';
+
+function readRetryAfterSeconds(response: Response): number {
+  const value = Number.parseInt(response.headers.get('Retry-After') || '', 10);
+  return Number.isFinite(value) && value > 0 ? value : 60;
+}
+
 export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSetupController {
   const { t } = useTranslation('onboarding');
   const [selectedProvider, setSelectedProvider] = useState<CatalogProvider | null>(DEFAULT_PROVIDER);
@@ -19,6 +26,8 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const [customUrl, setCustomUrl] = useState('');
   const [testStatus, setTestStatus] = useState<TestStatus>('idle');
   const [testMessage, setTestMessage] = useState('');
+  const [testRetryAfterSeconds, setTestRetryAfterSeconds] = useState(0);
+  const [testRetryCode, setTestRetryCode] = useState<TestRetryCode | null>(null);
   const [modelImageSupport, setModelImageSupport] = useState<Record<string, ModelImageSupport>>({});
   const [manualModelIds, setManualModelIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -80,6 +89,14 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     setModelImageSupport({});
     setManualModelIds([]);
   }, []);
+
+  useEffect(() => {
+    if (testRetryAfterSeconds <= 0) return;
+    const timer = window.setTimeout(() => {
+      setTestRetryAfterSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [testRetryAfterSeconds]);
 
   useEffect(() => {
     (async () => {
@@ -224,7 +241,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   }, [resetTest]);
 
   const handleTest = useCallback(async () => {
-    if (testStatus === 'testing') return;
+    if (testStatus === 'testing' || testAbortRef.current || testRetryAfterSeconds > 0) return;
     if (!selectedProvider) return;
     if (!effectiveModelId) {
       setTestStatus('error');
@@ -247,6 +264,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     testAbortRef.current = controller;
     setTestStatus('testing');
     setTestMessage('');
+    setTestRetryCode(null);
     setConnectionTestId('');
     setManualModelIds([]);
     try {
@@ -265,6 +283,14 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       if (controller.signal.aborted || generation !== testGenerationRef.current) return;
       const data = await res.json();
       if (controller.signal.aborted || generation !== testGenerationRef.current) return;
+      if (res.status === 429 && (data.code === 'RATE_LIMITED' || data.code === 'TEST_BUSY')) {
+        const retryAfterSeconds = readRetryAfterSeconds(res);
+        setTestRetryAfterSeconds(retryAfterSeconds);
+        setTestRetryCode(data.code);
+        setTestStatus('error');
+        setTestMessage('');
+        return;
+      }
       if (!res.ok || data.status === 'failed' || typeof data.testId !== 'string') {
         const message = typeof data.error === 'string'
           ? data.error
@@ -309,7 +335,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     } finally {
       if (testAbortRef.current === controller) testAbortRef.current = null;
     }
-  }, [apiKey, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, hasEnvironmentApiKeyFallback, isCustomMode, selectedProvider, selectedProviderRequiresApiKey, t, testStatus]);
+  }, [apiKey, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, hasEnvironmentApiKeyFallback, isCustomMode, selectedProvider, selectedProviderRequiresApiKey, t, testRetryAfterSeconds, testStatus]);
 
   const submitManualImageSupport = useCallback(async (values: Record<string, boolean>) => {
     if (!connectionTestId) return;
@@ -468,13 +494,21 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     }
   }, [apiKey, connectionTestId, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, modelImageSupport, onSaved, selectedProvider]);
 
+  const visibleTestMessage = testRetryCode && testRetryAfterSeconds > 0
+    ? t(
+        testRetryCode === 'TEST_BUSY' ? 'connection.testBusy' : 'connection.testRateLimited',
+        { seconds: testRetryAfterSeconds },
+      )
+    : testMessage;
+
   return {
     selectedProvider,
     modelIds,
     apiKey,
     customUrl,
     testStatus,
-    testMessage,
+    testMessage: visibleTestMessage,
+    testRetryAfterSeconds,
     saving,
     apiModels,
     modelListStatus,

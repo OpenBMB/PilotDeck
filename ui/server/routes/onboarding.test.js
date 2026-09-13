@@ -212,12 +212,90 @@ describe('onboarding routes', () => {
     const signal = probe.mock.calls[0][0].signal;
     expect(signal).toBeInstanceOf(AbortSignal);
 
-    const limited = await request('/api/v1/model-connection-tests', { method: 'POST', headers: { 'x-user': 'busy-user' }, body });
-    expect(limited).toMatchObject({ status: 429, body: { code: 'RATE_LIMITED' } });
+    for (let index = 0; index < 21; index += 1) {
+      const limited = await request('/api/v1/model-connection-tests', { method: 'POST', headers: { 'x-user': 'busy-user' }, body });
+      expect(limited).toMatchObject({ status: 429, body: { code: 'TEST_BUSY' } });
+      expect(limited.headers['retry-after']).toBe('60');
+    }
 
     finishFirstProbe({ ok: true });
     expect((await first).status).toBe(200);
     expect(signal.aborted).toBe(false);
+    expect((await request('/api/v1/model-connection-tests', {
+      method: 'POST', headers: { 'x-user': 'busy-user' }, body,
+    })).status).toBe(200);
+  });
+
+  it('returns the earliest global probe slot in Retry-After when the pool is full', async () => {
+    const finishProbes = [];
+    const probe = vi.fn();
+    for (let index = 0; index < 3; index += 1) {
+      probe.mockImplementationOnce(() => new Promise((resolve) => finishProbes.push(resolve)));
+    }
+    probe.mockResolvedValue({ ok: true });
+    const { request } = await createOnboardingApp({ probe });
+    const body = JSON.stringify({ providerId: 'openai', apiKey: 'key', models: ['model-a'], retryPolicy: retryPolicy() });
+    const activeRequests = ['global-user-1', 'global-user-2', 'global-user-3'].map((userId) => request(
+      '/api/v1/model-connection-tests', { method: 'POST', headers: { 'x-user': userId }, body },
+    ));
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(3));
+
+    const limited = await request('/api/v1/model-connection-tests', {
+      method: 'POST', headers: { 'x-user': 'global-user-4' }, body,
+    });
+    expect(limited).toMatchObject({ status: 429, body: { code: 'TEST_BUSY' } });
+    expect(limited.headers['retry-after']).toBe('60');
+
+    finishProbes.splice(0).forEach((finish) => finish({ ok: true }));
+    expect((await Promise.all(activeRequests)).every((response) => response.status === 200)).toBe(true);
+  });
+
+  it('times out a stalled connection test and releases its per-user slot', async () => {
+    const probe = vi.fn()
+      .mockImplementationOnce(({ signal }) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }))
+      .mockResolvedValue({ ok: false, code: 'MODEL_NOT_FOUND', error: 'unknown model' });
+    const { prepareConnectionTest } = await createOnboardingApp({ probe });
+    const body = { providerId: 'ollama', apiKey: '', models: ['local'], retryPolicy: retryPolicy() };
+    vi.useFakeTimers();
+    try {
+      const run = prepareConnectionTest(body, 'timeout-user');
+      const pending = run(new AbortController().signal);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const result = await pending;
+      expect(result).toMatchObject({
+        status: 'failed',
+        models: [{ error: { message: 'Connection test timed out after 60 seconds.' } }],
+      });
+
+      const retry = prepareConnectionTest(body, 'timeout-user');
+      await expect(retry(new AbortController().signal)).resolves.toMatchObject({ status: 'failed' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('allows connection tests again after the request-rate window resets', async () => {
+    const probe = vi.fn().mockResolvedValue({ ok: false, code: 'MODEL_NOT_FOUND', error: 'unknown model' });
+    const { request } = await createOnboardingApp({ probe });
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    const body = JSON.stringify({ providerId: 'ollama', apiKey: '', models: ['local'], retryPolicy: retryPolicy() });
+
+    for (let index = 0; index < 20; index += 1) {
+      expect((await request('/api/v1/model-connection-tests', {
+        method: 'POST', headers: { 'x-user': 'rate-window-user' }, body,
+      })).status).toBe(200);
+    }
+    const limited = await request('/api/v1/model-connection-tests', {
+      method: 'POST', headers: { 'x-user': 'rate-window-user' }, body,
+    });
+    expect(limited).toMatchObject({ status: 429, body: { code: 'RATE_LIMITED' } });
+
+    now.mockReturnValue(1_060_000);
+    expect((await request('/api/v1/model-connection-tests', {
+      method: 'POST', headers: { 'x-user': 'rate-window-user' }, body,
+    })).status).toBe(200);
   });
 
   it('cancels model probes and releases their slot when the client disconnects', async () => {
@@ -398,7 +476,12 @@ async function createOnboardingApp(overrides = {}) {
   app.use(express.json());
   app.use((req, _res, next) => { req.user = { id: req.headers['x-user'] || 'one' }; next(); });
   app.use('/api/v1', routes);
-  return { app, request: (url, init = {}) => requestStatusJson(app, url, init), tests: onboardingModule.tests };
+  return {
+    app,
+    request: (url, init = {}) => requestStatusJson(app, url, init),
+    tests: onboardingModule.tests,
+    prepareConnectionTest: onboardingModule.prepareConnectionTest,
+  };
 }
 
 function retryPolicy() {
@@ -409,7 +492,9 @@ async function requestStatusJson(app, url, init) {
   const server = app.listen(0);
   try {
     const response = await nativeFetch(`http://127.0.0.1:${server.address().port}${url}`, { ...init, headers: { 'content-type': 'application/json', ...(init.headers || {}) } });
-    return { status: response.status, body: await response.json() };
+    const result = { status: response.status, body: await response.json() };
+    Object.defineProperty(result, 'headers', { value: Object.fromEntries(response.headers) });
+    return result;
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

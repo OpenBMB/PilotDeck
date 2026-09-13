@@ -367,9 +367,14 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
           onClick={() => {
             void llm.handleTest();
           }}
-          disabled={llm.testStatus === 'testing' || llm.saving}
+          disabled={llm.testStatus === 'testing' || llm.testRetryAfterSeconds > 0 || llm.saving}
         >
-          {llm.testStatus === 'testing' ? (
+          {llm.testRetryAfterSeconds > 0 ? (
+            <>
+              <WarningCircleFillIcon />
+              <span>{t('connection.testRetryCountdown', { seconds: llm.testRetryAfterSeconds })}</span>
+            </>
+          ) : llm.testStatus === 'testing' ? (
             <>
               <span className="spin" aria-hidden="true" />
               <span>{t('connection.testing')}</span>
