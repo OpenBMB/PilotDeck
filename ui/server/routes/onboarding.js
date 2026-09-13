@@ -57,31 +57,36 @@ const PROVIDER_CATALOG = [
 const PROTOCOLS = new Set(['openai', 'openai-responses', 'anthropic', 'google']);
 
 function createInFlightLimiter(globalLimit, perUserLimit) {
-  let total = 0;
   const perUser = new Map();
+  const active = new Set();
   return {
     tryAcquire(userId) {
       const key = String(userId);
       const current = perUser.get(key);
       const userCount = current?.count || 0;
-      if (total >= globalLimit || userCount >= perUserLimit) return null;
-      total += 1;
-      perUser.set(key, { count: userCount + 1, startedAt: current?.startedAt ?? Date.now() });
+      if (active.size >= globalLimit || userCount >= perUserLimit) return null;
+      const entry = { startedAt: Date.now(), userId: key };
+      active.add(entry);
+      perUser.set(key, { count: userCount + 1, startedAt: current?.startedAt ?? entry.startedAt });
       let released = false;
       return () => {
         if (released) return;
         released = true;
-        total -= 1;
-        const active = perUser.get(key);
-        const remaining = (active?.count || 1) - 1;
-        if (remaining > 0) perUser.set(key, { ...active, count: remaining });
+        active.delete(entry);
+        const perUserActive = perUser.get(key);
+        const remaining = (perUserActive?.count || 1) - 1;
+        if (remaining > 0) perUser.set(key, { ...perUserActive, count: remaining });
         else perUser.delete(key);
       };
     },
     retryAfterSeconds(userId, maxDurationMs) {
-      const active = perUser.get(String(userId));
-      if (!active) return 1;
-      return Math.max(1, Math.ceil((active.startedAt + maxDurationMs - Date.now()) / 1000));
+      const userActive = perUser.get(String(userId));
+      const startedAt = userActive?.startedAt ?? [...active].reduce(
+        (earliest, entry) => Math.min(earliest, entry.startedAt),
+        Number.POSITIVE_INFINITY,
+      );
+      if (!Number.isFinite(startedAt)) return 1;
+      return Math.max(1, Math.ceil((startedAt + maxDurationMs - Date.now()) / 1000));
     },
   };
 }

@@ -226,6 +226,30 @@ describe('onboarding routes', () => {
     })).status).toBe(200);
   });
 
+  it('returns the earliest global probe slot in Retry-After when the pool is full', async () => {
+    const finishProbes = [];
+    const probe = vi.fn();
+    for (let index = 0; index < 3; index += 1) {
+      probe.mockImplementationOnce(() => new Promise((resolve) => finishProbes.push(resolve)));
+    }
+    probe.mockResolvedValue({ ok: true });
+    const { request } = await createOnboardingApp({ probe });
+    const body = JSON.stringify({ providerId: 'openai', apiKey: 'key', models: ['model-a'], retryPolicy: retryPolicy() });
+    const activeRequests = ['global-user-1', 'global-user-2', 'global-user-3'].map((userId) => request(
+      '/api/v1/model-connection-tests', { method: 'POST', headers: { 'x-user': userId }, body },
+    ));
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(3));
+
+    const limited = await request('/api/v1/model-connection-tests', {
+      method: 'POST', headers: { 'x-user': 'global-user-4' }, body,
+    });
+    expect(limited).toMatchObject({ status: 429, body: { code: 'TEST_BUSY' } });
+    expect(limited.headers['retry-after']).toBe('60');
+
+    finishProbes.splice(0).forEach((finish) => finish({ ok: true }));
+    expect((await Promise.all(activeRequests)).every((response) => response.status === 200)).toBe(true);
+  });
+
   it('times out a stalled connection test and releases its per-user slot', async () => {
     const probe = vi.fn()
       .mockImplementationOnce(({ signal }) => new Promise((_resolve, reject) => {
