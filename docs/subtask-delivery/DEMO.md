@@ -1,5 +1,7 @@
 # Demo — minimal steps
 
+[Watch or download the 1:57 demo](https://github.com/changer-changer/PilotDeck/releases/download/delivery-demo-20260913/pilotdeck-delivery-demo.mp4) · [Video and provenance](https://github.com/changer-changer/PilotDeck/releases/tag/delivery-demo-20260913). The recording shows the real interface and retained model results, shortened at 1.5× speed, with deliberately seeded initial faults.
+
 Requires Node 22, pnpm and a working OpenAI-compatible endpoint with tool support. Defaults: child `glm-5.3-flash`, main/reviewer `glm-5.3`. Set `DELIVERY_DEMO_MAIN` / `DELIVERY_DEMO_CHILD` for other available models.
 
 ```sh
