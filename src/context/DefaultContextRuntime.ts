@@ -119,7 +119,7 @@ export class DefaultContextRuntime implements ContextRuntime {
   private readonly truncateFirstKeepRatio: number;
   private readonly truncateSecondKeepRatio: number;
   private readonly memoryRetrievalTimeoutMs: number;
-  private readonly promptDate: Date;
+  private readonly now: () => Date;
 
   constructor(options: DefaultContextRuntimeOptions = {}) {
     this.extension = options.extension ?? new NullExtensionResolver();
@@ -142,11 +142,7 @@ export class DefaultContextRuntime implements ContextRuntime {
     this.truncateFirstKeepRatio = options.truncateFirstKeepRatio ?? DEFAULT_TRUNCATE_FIRST_RATIO;
     this.truncateSecondKeepRatio = options.truncateSecondKeepRatio ?? DEFAULT_TRUNCATE_SECOND_RATIO;
     this.memoryRetrievalTimeoutMs = options.memoryRetrievalTimeoutMs ?? DEFAULT_MEMORY_RETRIEVAL_TIMEOUT_MS;
-    const now = options.now ?? (() => new Date());
-    // Keep the system-prompt date stable for the lifetime of this session
-    // runtime. Time-sensitive work can use get_current_time without
-    // invalidating the cached system-prompt prefix at midnight.
-    this.promptDate = new Date(now().getTime());
+    this.now = options.now ?? (() => new Date());
   }
 
   async prepareForModel(input: ContextPrepareInput): Promise<ModelContext> {
@@ -175,7 +171,7 @@ export class DefaultContextRuntime implements ContextRuntime {
       tools: input.tools,
       customSystemPrompt: input.customSystemPrompt,
       appendSystemPrompt: input.appendSystemPrompt,
-      now: () => this.promptDate,
+      now: this.now,
     });
 
     const parts = [...prompt.parts];

@@ -75,20 +75,6 @@ test("cache generation changes when the projected cache prefix changes", async (
   assert.ok((second.cachePlan?.generation ?? 0) > (first.cachePlan?.generation ?? 0));
 });
 
-test("system prompt date stays fixed when a session crosses midnight", async () => {
-  let current = new Date("2026-09-10T23:59:00.000Z");
-  const runtime = new DefaultContextRuntime({ now: () => current });
-  const first = await runtime.prepareForModel(input());
-
-  current = new Date("2026-09-11T00:01:00.000Z");
-  const second = await runtime.prepareForModel(input());
-
-  assert.match(first.systemPrompt ?? "", /now: 2026-09-10/);
-  assert.equal(second.systemPrompt, first.systemPrompt);
-  assert.equal(second.cachePlan?.fingerprint, first.cachePlan?.fingerprint);
-  assert.equal(second.cachePlan?.generation, first.cachePlan?.generation);
-});
-
 test("non-Anthropic and unsupported models do not receive a cache plan", async () => {
   const runtime = new DefaultContextRuntime();
   const openai = await runtime.prepareForModel(input({ protocol: "openai" }));
