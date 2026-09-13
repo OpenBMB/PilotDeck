@@ -55,10 +55,21 @@ import type {
 } from "../../context/index.js";
 import { actualInputTokensFromUsage } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
+import { PilotDeckToolRuntimeError } from "../../tool/index.js";
 import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import type { AgentSteerMessage } from "../session/SteerMailbox.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
+import {
+  buildBackgroundSubagentResultMessage,
+  createOwnedBackgroundAgentState,
+  boundBackgroundOutcome,
+  isTerminalBackgroundTaskStatus,
+  pendingOwnedBackgroundAgentIds,
+  type BackgroundSubagentOutcome,
+  type OwnedBackgroundAgent,
+  type OwnedBackgroundAgentState,
+} from "./backgroundSubagents.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
 import { resolveOutputTokenRetryBump } from "./outputTokenRetry.js";
 import { projectToolResults } from "./projectToolResults.js";
@@ -192,7 +203,54 @@ export class AgentLoop {
     };
   }
 
+  /**
+   * Public run wrapper. Each invocation gets a fresh owned-background-agent
+   * state; owned children are cancelled when the run exits (result, abort,
+   * error, or abandonment) — active-request lifetime only.
+   */
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+    const backgroundAgents = createOwnedBackgroundAgentState();
+    const iterator = this.runInternal(input, backgroundAgents);
+    try {
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) return next.value;
+        if (next.value.type === "turn_completed") {
+          // Finish child UI status before the parent turn closes. Waiting until
+          // finally would leave buffered cancellation events for the next turn.
+          await this.cancelOwnedBackgroundAgents(backgroundAgents);
+          backgroundAgents.closed = true;
+          yield* this.drainEventBuffer();
+          for (const owned of backgroundAgents.owned.values()) {
+            if (backgroundAgents.completedEvents.has(owned.subagentId)) continue;
+            backgroundAgents.completedEvents.add(owned.subagentId);
+            yield {
+              type: "subagent_completed",
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              subagentId: owned.subagentId,
+              subagentType: owned.subagentType,
+              success: false,
+              aborted: true,
+              durationMs: 0,
+            };
+          }
+        }
+        yield next.value;
+      }
+    } finally {
+      await this.cancelOwnedBackgroundAgents(backgroundAgents);
+      backgroundAgents.closed = true;
+      await iterator.return(undefined as never);
+      // A consumer may abandon the generator before turn_completed.
+      this.dependencies.drainEvents?.();
+    }
+  }
+
+  private async *runInternal(
+    input: AgentLoopInput,
+    backgroundAgents: OwnedBackgroundAgentState,
+  ): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
     this.clearTurnScopedTokenCaps();
     this.applyRunModeOverride(input.runMode);
     this.applyPermissionOverrides(input.permissionMode, input.permissionRules, input.basePermissionMode);
@@ -439,6 +497,10 @@ export class AgentLoop {
       for await (const event of applySteerMessages(pendingSteers)) {
         yield event;
       }
+
+      // C5: deliver finished owned background subagent reports at every model
+      // boundary so the parent incorporates them as soon as they exist.
+      yield* this.deliverFinishedBackgroundAgents(input, backgroundAgents, messages);
 
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
       const ctx = this.dependencies.context;
@@ -1652,6 +1714,70 @@ export class AgentLoop {
           };
         }
 
+        // C5 terminal boundary: the parent must not produce its final answer
+        // while background subagents it owns are still outstanding. Join
+        // them (when the turn budget allows), then spend one more model turn
+        // incorporating the delivered reports. No extra deadline timer here —
+        // each child already carries its own configured subagent timeout, and
+        // the join stays cancellable via the run's abort signal.
+        const pendingBackgroundAgentIds = pendingOwnedBackgroundAgentIds(backgroundAgents);
+        if (this.dependencies.backgroundTasks && pendingBackgroundAgentIds.length > 0) {
+          if (!input.maxTurns || turnCount < input.maxTurns) {
+            yield await emitStatus({
+              event: "waiting_background_subagents",
+              kind: "status",
+              text: "Waiting for background subagents to finish before the final answer.",
+              detail: { taskIds: pendingBackgroundAgentIds },
+            });
+            const joined = yield* this.awaitBackgroundAgentResults(input, backgroundAgents, messages);
+            if (!joined) {
+              // Aborted mid-join: the loop-top abort handling produces the
+              // aborted result and the run() finally cancels the children.
+              continue;
+            }
+            turnCount += 1;
+            yield {
+              type: "turn_continued",
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              reason: "background_subagent_results",
+            };
+            continue;
+          }
+
+          // Turn budget exhausted with children still outstanding: surface an
+          // explicit max_turns failure (never a silent success). The run()
+          // finally cancels the owned children.
+          const unjoinedIds = pendingOwnedBackgroundAgentIds(backgroundAgents);
+          const maxTurnsError = agentError(
+            "agent_max_turns_reached",
+            `Reached maximum number of turns (${input.maxTurns}) while background subagents were still running; cancelled pending background subagents (${unjoinedIds.join(", ")}).`,
+            undefined,
+            "Max turn limit reached while waiting for background subagents. Increase maxTurns, or stop background tasks explicitly.",
+          );
+          const result = this.createTurnResult(input, {
+            type: "max_turns",
+            stopReason: "max_turns",
+            usage,
+            permissionDenials,
+            turns: turnCount,
+            startedAt,
+            finalMessage,
+            structuredOutput,
+            errors: [maxTurnsError],
+          });
+          yield await emitStatus({
+            event: "background_subagents_cancelled_max_turns",
+            kind: "status",
+            text: "Cancelled background subagents because the turn limit was reached.",
+            detail: { taskIds: unjoinedIds },
+          });
+          yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error: maxTurnsError };
+          await captureTurn(true);
+          yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
+          return { result, messages };
+        }
+
         // A steer starts another model iteration, so it must obey the same
         // turn budget as tool-driven continuation. Leave guidance in the
         // mailbox when the budget is exhausted; TurnRunner will report it as
@@ -1740,7 +1866,7 @@ export class AgentLoop {
 
       let results: PilotDeckToolResult[];
       try {
-        const toolContext = this.createToolContext(input, messages);
+        const toolContext = this.createToolContext(input, messages, backgroundAgents);
         if (assembled.finishReason === "length" || assembled.hasRepairedToolCalls) {
           toolContext.outputTruncated = true;
         }
@@ -2408,6 +2534,7 @@ export class AgentLoop {
   private createToolContext(
     input: AgentLoopInput,
     messages: CanonicalMessage[],
+    backgroundAgents?: OwnedBackgroundAgentState,
   ): PilotDeckToolRuntimeContext {
     const planDirectoryPath = this.dependencies.planFileManager?.getPlanDirectoryPath();
     const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
@@ -2459,7 +2586,7 @@ export class AgentLoop {
       elicitation: this.dependencies.elicitation,
       fileHistory: this.dependencies.fileHistory,
       subagentDepth: this.config.subagentDepth ?? 0,
-      subagent: this.buildSubagentForkApi(input, messages),
+      subagent: this.buildSubagentForkApi(input, messages, backgroundAgents),
       modelMultimodal: this.config.modelMultimodal,
       maxOutputTokens: this.config.maxOutputTokens,
       readFileState: this.readFileState,
@@ -2484,10 +2611,18 @@ export class AgentLoop {
   private buildSubagentForkApi(
     input: AgentLoopInput,
     messages: CanonicalMessage[],
+    backgroundAgents?: OwnedBackgroundAgentState,
   ): PilotDeckSubagentForkApi {
     const depth = this.config.subagentDepth ?? 0;
     const maxDepth = this.config.maxSubagentDepth ?? 1;
-    return {
+    const emitChildEvent = (event: AgentEvent): void => {
+      if (backgroundAgents?.closed) return;
+      if (event.type === "subagent_completed") {
+        backgroundAgents?.completedEvents.add(event.subagentId);
+      }
+      this.dependencies.eventEmitter?.(event);
+    };
+    const api: PilotDeckSubagentForkApi = {
       depth,
       maxSubagentDepth: maxDepth,
       listDefinitions: () =>
@@ -2524,7 +2659,7 @@ export class AgentLoop {
           subagentId,
           subagentType: def.id,
         });
-        this.dependencies.eventEmitter?.({
+        emitChildEvent({
           type: "subagent_started",
           sessionId: input.sessionId,
           turnId: input.turnId,
@@ -2541,7 +2676,7 @@ export class AgentLoop {
             subagentDepth: depth + 1,
             isSubagent: true,
           },
-          parentDependencies: this.dependencies,
+          parentDependencies: { ...this.dependencies, eventEmitter: emitChildEvent },
           parentReadFileState: this.readFileState,
           parentWriteSnapshots: this.writeSnapshots,
           parentSessionId: input.sessionId,
@@ -2590,7 +2725,7 @@ export class AgentLoop {
             subagentType: def.id,
             success: false,
           });
-          this.dependencies.eventEmitter?.({
+          emitChildEvent({
             type: "subagent_completed",
             sessionId: input.sessionId,
             turnId: input.turnId,
@@ -2620,7 +2755,7 @@ export class AgentLoop {
           subagentType: def.id,
           success: !errored,
         });
-        this.dependencies.eventEmitter?.({
+        emitChildEvent({
           type: "subagent_completed",
           sessionId: input.sessionId,
           turnId: input.turnId,
@@ -2639,6 +2774,222 @@ export class AgentLoop {
         };
       },
     };
+    // Expose background queueing only when a runtime and active-run ownership exist.
+    if (this.dependencies.backgroundTasks && backgroundAgents) {
+      api.startBackground = (args) =>
+        this.startBackgroundSubagent(input, backgroundAgents, api, args);
+    }
+    return api;
+  }
+
+  /**
+   * Queue a subagent fork as a managed (`local_agent`) background task.
+   * Validation happens before queueing so a rejected call never leaves an
+   * orphan task. One stable id is used everywhere: `taskId === subagentId`.
+   */
+  private async startBackgroundSubagent(
+    input: AgentLoopInput,
+    backgroundAgents: OwnedBackgroundAgentState,
+    api: PilotDeckSubagentForkApi,
+    args: {
+      definitionId: string;
+      directive: string;
+      description: string;
+      subagentId: string;
+      toolCallId?: string;
+    },
+  ): Promise<{ taskId: string; subagentId: string; subagentType: string }> {
+    const bg = this.dependencies.backgroundTasks;
+    if (!bg) {
+      throw new PilotDeckToolRuntimeError(
+        "unsupported_tool",
+        "run_in_background requires a BackgroundTaskRuntime. This runtime cannot queue background subagents.",
+      );
+    }
+    const def = getSubagentDefinition(args.definitionId);
+    if (!def) {
+      const allowed = Object.values(SUBAGENT_DEFINITIONS).map((d) => d.id).join(", ");
+      throw new PilotDeckToolRuntimeError(
+        "invalid_tool_input",
+        `Unknown subagent type "${args.definitionId}". Available: ${allowed}.`,
+      );
+    }
+    const depth = this.config.subagentDepth ?? 0;
+    const maxDepth = this.config.maxSubagentDepth ?? 1;
+    if (depth >= maxDepth) {
+      throw new PilotDeckToolRuntimeError(
+        "tool_execution_failed",
+        `subagent_depth_exceeded (depth=${depth}, max=${maxDepth}); nested background fork rejected.`,
+        { errorCode: "subagent_depth_exceeded" },
+      );
+    }
+
+    // The existing configurable subagent timeout applies; no extra timer.
+    const timeoutMs = this.config.subagentTimeoutMs ?? 3_600_000;
+    const owned: OwnedBackgroundAgent = {
+      taskId: args.subagentId,
+      subagentId: args.subagentId,
+      subagentType: def.id,
+    };
+    const captureOutcome = (outcome: BackgroundSubagentOutcome): void => {
+      if (!backgroundAgents.closed) owned.snapshot = boundBackgroundOutcome(outcome);
+    };
+
+    await bg.startManaged({
+      subagentId: args.subagentId,
+      label: args.description,
+      sessionId: input.sessionId,
+      originTurnId: input.turnId,
+      subagentType: def.id,
+      run: async (signal) => {
+        try {
+          const report = await api.fork({
+            definitionId: args.definitionId,
+            directive: args.directive,
+            subagentId: args.subagentId,
+            toolCallId: args.toolCallId,
+            abortSignal: signal,
+            timeoutMs,
+          });
+          captureOutcome({ status: "completed", report: report.markdown });
+          return report.markdown;
+        } catch (err) {
+          captureOutcome({
+            status: signal.aborted ? "cancelled" : "failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
+        }
+      },
+    });
+
+    backgroundAgents.owned.set(args.subagentId, owned);
+    return { taskId: args.subagentId, subagentId: args.subagentId, subagentType: def.id };
+  }
+
+  /**
+   * Deliver every newly-terminal owned background task exactly once: push
+   * the durable user-role result message, persist it, and emit one event.
+   * Undelivered terminal outcomes survive runtime retention pruning via the
+   * bounded snapshot captured at settlement time.
+   */
+  private async *deliverFinishedBackgroundAgents(
+    input: AgentLoopInput,
+    backgroundAgents: OwnedBackgroundAgentState,
+    messages: CanonicalMessage[],
+  ): AsyncGenerator<AgentEvent, void, unknown> {
+    const bg = this.dependencies.backgroundTasks;
+    if (!bg) return;
+    for (const owned of backgroundAgents.owned.values()) {
+      if (backgroundAgents.delivered.has(owned.taskId)) continue;
+      let outcome: BackgroundSubagentOutcome | undefined;
+      const task = bg.get(owned.taskId);
+      if (task) {
+        if (!isTerminalBackgroundTaskStatus(task.status)) continue;
+        outcome = this.backgroundOutcomeFor(owned, task.status);
+      } else if (owned.snapshot) {
+        // Runtime record pruned — the owned snapshot keeps the result deliverable.
+        outcome = owned.snapshot;
+      } else {
+        continue;
+      }
+      // Mark delivered BEFORE persisting so a persistence failure can never
+      // double-deliver; late output/events after settlement are suppressed.
+      backgroundAgents.delivered.add(owned.taskId);
+      const message = buildBackgroundSubagentResultMessage({
+        taskId: owned.taskId,
+        subagentId: owned.subagentId,
+        subagentType: owned.subagentType,
+        status: outcome.status,
+        report: outcome.report,
+        truncated: outcome.truncated,
+        error: outcome.error,
+      });
+      messages.push(message);
+      await input.onDurableMessage?.(message);
+      yield {
+        type: "background_subagent_result",
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        taskId: owned.taskId,
+        subagentId: owned.subagentId,
+        subagentType: owned.subagentType,
+        status: outcome.status,
+        message,
+      };
+    }
+  }
+
+  /** Resolve the deliverable outcome: runtime status first, snapshot as fallback. */
+  private backgroundOutcomeFor(
+    owned: OwnedBackgroundAgent,
+    status: "completed" | "failed" | "cancelled",
+  ): BackgroundSubagentOutcome {
+    const snapshot = owned.snapshot;
+    if (snapshot && snapshot.status === status) {
+      return snapshot;
+    }
+    if (status === "completed" && snapshot?.report !== undefined) {
+      return { status, report: snapshot.report, truncated: snapshot.truncated };
+    }
+    if (status === "failed" || status === "cancelled") {
+      return {
+        status,
+        error: snapshot?.error
+          ?? (status === "cancelled"
+            ? "Background subagent was cancelled before completion."
+            : "Background subagent failed without an error message."),
+      };
+    }
+    return { status };
+  }
+
+  /**
+   * Wait until no undelivered owned background task remains. Returns `false`
+   * only when the run was aborted mid-join. There is deliberately no join
+   * deadline timer: each child enforces its own configured subagent timeout,
+   * and the join remains cancellable through the run's abort signal.
+   */
+  private async *awaitBackgroundAgentResults(
+    input: AgentLoopInput,
+    backgroundAgents: OwnedBackgroundAgentState,
+    messages: CanonicalMessage[],
+  ): AsyncGenerator<AgentEvent, boolean, unknown> {
+    const bg = this.dependencies.backgroundTasks;
+    if (!bg) return true;
+    while (true) {
+      if (input.abortSignal?.aborted) return false;
+      yield* this.deliverFinishedBackgroundAgents(input, backgroundAgents, messages);
+      const pending = pendingOwnedBackgroundAgentIds(backgroundAgents);
+      if (pending.length === 0) return true;
+      yield* this.drainEventBuffer();
+      await Promise.race([
+        Promise.all(pending.map((taskId) =>
+          bg.wait(taskId, { timeoutMs: 100, abortSignal: input.abortSignal })
+        )),
+        sleep(100),
+      ]);
+    }
+  }
+
+  /**
+   * Cancel owned background children that are still running when the active
+   * request ends (abort, abandonment, or error). Cooperative stop with the
+   * runtime's grace window; a non-cooperative callback is marked cancelled
+   * and its late events are suppressed, but JavaScript cannot be forcibly stopped. Already-terminal tasks are left untouched.
+   */
+  private async cancelOwnedBackgroundAgents(
+    backgroundAgents: OwnedBackgroundAgentState,
+  ): Promise<void> {
+    const bg = this.dependencies.backgroundTasks;
+    if (!bg || backgroundAgents.owned.size === 0) return;
+    const stops: Promise<unknown>[] = [];
+    for (const taskId of backgroundAgents.owned.keys()) {
+      const task = bg.get(taskId);
+      if (task && task.status !== "running" && task.status !== "pending") continue;
+      stops.push(bg.stop(taskId, { graceMs: 5_000 }).catch(() => {}));
+    }
+    await Promise.all(stops);
   }
 
   private async dispatchLifecycle(

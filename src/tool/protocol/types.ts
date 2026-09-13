@@ -66,6 +66,20 @@ export type PilotDeckSubagentForkApi = {
     durationMs: number;
     parsed?: Record<string, string>;
   }>;
+  /**
+   * Optional background fork (C5): queue a subagent without blocking the
+   * parent. Present only when the loop has a `BackgroundTaskRuntime` and an
+   * owned-background-agent state for the active run. Returns one stable id
+   * pair — `taskId === subagentId` — shared by the `task_*` tools and the
+   * `background_subagent_result` delivery message.
+   */
+  startBackground?(args: {
+    definitionId: string;
+    directive: string;
+    description: string;
+    subagentId: string;
+    toolCallId?: string;
+  }): Promise<{ taskId: string; subagentId: string; subagentType: string }>;
 };
 
 export type PilotDeckToolKind =

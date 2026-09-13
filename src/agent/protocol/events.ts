@@ -102,6 +102,17 @@ export type AgentEvent =
       durationMs?: number;
     }
   | { type: "subagent_model_event"; sessionId: string; turnId: string; subagentId: string; subagentType: string; event: CanonicalModelEvent }
+  | {
+      type: "background_subagent_result";
+      sessionId: string;
+      turnId: string;
+      taskId: string;
+      subagentId: string;
+      subagentType: string;
+      status: "completed" | "failed" | "cancelled";
+      /** The durable user-role message that was injected into the transcript. */
+      message: CanonicalMessage;
+    }
   | { type: "subagent_tool_calls_detected"; sessionId: string; turnId: string; subagentId: string; subagentType: string; calls: CanonicalToolCall[] }
   | { type: "subagent_tool_result"; sessionId: string; turnId: string; subagentId: string; subagentType: string; result: PilotDeckToolResult }
   | { type: "elicitation_requested"; sessionId: string; turnId: string; requestId: string; toolName: string }

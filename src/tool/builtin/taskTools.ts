@@ -14,7 +14,9 @@
 
 import type { BackgroundTaskRuntime } from "../../task/runtime/BackgroundTaskRuntime.js";
 import type {
+  PilotDeckBackgroundAgentTask,
   PilotDeckBackgroundBashTask,
+  PilotDeckBackgroundTask,
   PilotDeckBackgroundTaskKind,
   PilotDeckBackgroundTaskListFilter,
   PilotDeckBackgroundTaskStatus,
@@ -23,6 +25,7 @@ import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type {
   PilotDeckToolDefinition,
   PilotDeckToolExecutionOutput,
+  PilotDeckToolRuntimeContext,
 } from "../protocol/types.js";
 
 export type TaskCreateInput = {
@@ -43,21 +46,37 @@ export type TaskListInput = {
   kind?: PilotDeckBackgroundTaskKind;
 };
 
+export type TaskListBashEntry = Pick<
+  PilotDeckBackgroundBashTask,
+  | "taskId"
+  | "agentId"
+  | "kind"
+  | "command"
+  | "status"
+  | "pid"
+  | "exitCode"
+  | "interrupted"
+  | "outputBytes"
+> & { type: "local_bash"; startedAt: string; endedAt?: string };
+
+export type TaskListAgentEntry = Pick<
+  PilotDeckBackgroundAgentTask,
+  | "taskId"
+  | "agentId"
+  | "kind"
+  | "command"
+  | "status"
+  | "interrupted"
+  | "outputBytes"
+  | "subagentId"
+  | "subagentType"
+  | "originTurnId"
+> & { type: "local_agent"; startedAt: string; endedAt?: string };
+
+export type TaskListEntry = TaskListBashEntry | TaskListAgentEntry;
+
 export type TaskListOutput = {
-  tasks: Array<
-    Pick<
-      PilotDeckBackgroundBashTask,
-      | "taskId"
-      | "agentId"
-      | "kind"
-      | "command"
-      | "status"
-      | "pid"
-      | "exitCode"
-      | "interrupted"
-      | "outputBytes"
-    > & { startedAt: string; endedAt?: string }
-  >;
+  tasks: TaskListEntry[];
 };
 
 export type TaskOutputInput = {
@@ -114,6 +133,24 @@ function ensureRuntime(runtime: BackgroundTaskRuntime | undefined): BackgroundTa
     );
   }
   return runtime;
+}
+
+/**
+ * Managed `local_agent` tasks are private to their owning session: another
+ * session must not be able to inspect, wait on, or stop them. The error is
+ * the same "Unknown taskId" as a missing task so foreign task ids do not leak.
+ * Bash tasks keep their existing cross-session-visible semantics.
+ */
+function ensureTaskSessionAccess(
+  task: PilotDeckBackgroundTask,
+  context: PilotDeckToolRuntimeContext,
+): void {
+  if (task.type === "local_agent" && task.sessionId !== undefined && task.sessionId !== context.sessionId) {
+    throw new PilotDeckToolRuntimeError(
+      "invalid_tool_input",
+      `Unknown taskId: ${task.taskId}`,
+    );
+  }
 }
 
 function isTerminalTaskStatus(status: PilotDeckBackgroundTaskStatus): boolean {
@@ -237,26 +274,46 @@ export function createTaskListTool(
     },
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    execute: async (input): Promise<PilotDeckToolExecutionOutput<TaskListOutput>> => {
+    execute: async (input, context): Promise<PilotDeckToolExecutionOutput<TaskListOutput>> => {
       const rt = ensureRuntime(runtime);
       const filter: PilotDeckBackgroundTaskListFilter = {
         agentId: input.agentId,
         status: input.status,
         kind: input.kind,
       };
-      const tasks = rt.list(filter).map((t) => ({
-        taskId: t.taskId,
-        agentId: t.agentId,
-        kind: t.kind,
-        command: t.command,
-        status: t.status,
-        pid: t.pid,
-        exitCode: t.exitCode ?? undefined,
-        interrupted: t.interrupted,
-        outputBytes: t.outputBytes,
-        startedAt: t.startedAt.toISOString(),
-        endedAt: t.endedAt?.toISOString(),
-      }));
+      const tasks = rt.list(filter)
+        .filter((task) => task.type !== "local_agent"
+          || task.sessionId === undefined
+          || task.sessionId === context.sessionId)
+        .map((task): TaskListEntry => {
+          const base = {
+            taskId: task.taskId,
+            agentId: task.agentId,
+            command: task.command,
+            status: task.status,
+            interrupted: task.interrupted,
+            outputBytes: task.outputBytes,
+            startedAt: task.startedAt.toISOString(),
+            endedAt: task.endedAt?.toISOString(),
+          };
+          if (task.type === "local_agent") {
+            return {
+              ...base,
+              type: "local_agent" as const,
+              kind: task.kind,
+              subagentId: task.subagentId,
+              subagentType: task.subagentType,
+              originTurnId: task.originTurnId,
+            };
+          }
+          return {
+            ...base,
+            type: "local_bash" as const,
+            kind: task.kind,
+            pid: task.pid,
+            exitCode: task.exitCode ?? undefined,
+          };
+        });
       return {
         content: [{ type: "text", text: formatTaskListText(tasks) }],
         data: { tasks },
@@ -265,7 +322,7 @@ export function createTaskListTool(
   };
 }
 
-function formatTaskListText(tasks: TaskListOutput["tasks"]): string {
+function formatTaskListText(tasks: TaskListEntry[]): string {
   const lines = [`task_list count=${tasks.length}`];
   if (tasks.length === 0) {
     lines.push("No background tasks matched the filter.");
@@ -273,9 +330,20 @@ function formatTaskListText(tasks: TaskListOutput["tasks"]): string {
   }
 
   for (const task of tasks) {
+    const command = task.command.length > 160 ? `${task.command.slice(0, 157)}...` : task.command;
+    if (task.type === "local_agent") {
+      lines.push(
+        `- taskId=${task.taskId} status=${task.status} kind=${task.kind} subagentId=${task.subagentId} subagentType=${task.subagentType ?? "unknown"} originTurnId=${task.originTurnId ?? "unknown"} outputBytes=${task.outputBytes} interrupted=${task.interrupted} command=${JSON.stringify(command)}`,
+      );
+      if (!isTerminalTaskStatus(task.status)) {
+        lines.push(`  next: the final report is delivered automatically before this turn ends; use task_output({ taskId: "${task.taskId}" }) to peek, task_wait to block, or task_stop to cancel.`);
+      } else {
+        lines.push(`  next: use task_output({ taskId: "${task.taskId}", offset: 0 }) to read the final report.`);
+      }
+      continue;
+    }
     const exitCode = task.exitCode ?? "null";
     const pid = task.pid ?? "null";
-    const command = task.command.length > 160 ? `${task.command.slice(0, 157)}...` : task.command;
     lines.push(
       `- taskId=${task.taskId} status=${task.status} kind=${task.kind} pid=${pid} exitCode=${exitCode} outputBytes=${task.outputBytes} interrupted=${task.interrupted} command=${JSON.stringify(command)}`,
     );
@@ -317,7 +385,7 @@ export function createTaskOutputTool(
     maxResultBytes: 200_000,
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    execute: async (input): Promise<PilotDeckToolExecutionOutput<TaskOutputResult>> => {
+    execute: async (input, context): Promise<PilotDeckToolExecutionOutput<TaskOutputResult>> => {
       const rt = ensureRuntime(runtime);
       const task = rt.get(input.taskId);
       if (!task) {
@@ -326,6 +394,7 @@ export function createTaskOutputTool(
           `Unknown taskId: ${input.taskId}`,
         );
       }
+      ensureTaskSessionAccess(task, context);
       const requestedOffset = input.offset ?? 0;
       const slice = rt.getOutput(input.taskId, requestedOffset, input.maxBytes);
       const data: TaskOutputResult = {
@@ -335,7 +404,7 @@ export function createTaskOutputTool(
         totalBytes: slice.totalBytes,
         truncated: slice.truncated,
         status: task.status,
-        exitCode: task.exitCode,
+        exitCode: task.type === "local_bash" ? task.exitCode : undefined,
       };
       return {
         content: [{ type: "text", text: formatTaskOutputText(data, requestedOffset) }],
@@ -410,6 +479,7 @@ export function createTaskWaitTool(
           `Unknown taskId: ${input.taskId}`,
         );
       }
+      ensureTaskSessionAccess(task, context);
       const requestedOffset = input.offset ?? 0;
       const waited = await rt.wait(input.taskId, {
         timeoutMs: input.timeoutMs ?? DEFAULT_TASK_WAIT_TIMEOUT_MS,
@@ -435,7 +505,7 @@ export function createTaskWaitTool(
         totalBytes: slice.totalBytes,
         truncated: slice.truncated,
         status: waited.task.status,
-        exitCode: waited.task.exitCode,
+        exitCode: waited.task.type === "local_bash" ? waited.task.exitCode : undefined,
         waitedMs: waited.waitedMs,
         timedOut: waited.timedOut,
       };
@@ -473,7 +543,7 @@ export function createTaskStopTool(
     isReadOnly: () => false,
     isConcurrencySafe: () => true,
     isDestructive: () => true,
-    execute: async (input): Promise<PilotDeckToolExecutionOutput<TaskStopResult>> => {
+    execute: async (input, context): Promise<PilotDeckToolExecutionOutput<TaskStopResult>> => {
       const rt = ensureRuntime(runtime);
       const task = rt.get(input.taskId);
       if (!task) {
@@ -482,6 +552,7 @@ export function createTaskStopTool(
           `Unknown taskId: ${input.taskId}`,
         );
       }
+      ensureTaskSessionAccess(task, context);
       await rt.stop(input.taskId, { graceMs: input.graceMs });
       const after = rt.get(input.taskId)!;
       return {

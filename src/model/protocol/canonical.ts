@@ -151,6 +151,14 @@ export type CanonicalMessageMetadata = {
   purpose?: string;
   /** Stable queued-input id for a user message injected during an active turn. */
   queueItemId?: string;
+  /** Background task id for a delivered `background_subagent_result` message. */
+  taskId?: string;
+  /** Subagent id for a delivered `background_subagent_result` message (equals `taskId`). */
+  subagentId?: string;
+  /** Subagent type for a delivered `background_subagent_result` message. */
+  subagentType?: string;
+  /** Terminal status for a delivered `background_subagent_result` message. */
+  status?: string;
   forkCarryover?: {
     sourceSessionId: string;
     sourceTurnId?: string;
