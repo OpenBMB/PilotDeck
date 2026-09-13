@@ -1,5 +1,3 @@
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -80,31 +78,10 @@ test("task_stop and task_wait from another session cannot touch a local_agent ta
   await runtime.waitFor("owned-by-s1");
 });
 
-test("task_list filters foreign local_agent tasks but keeps same-session ones and bash tasks", async () => {
+test("task_list filters foreign local_agent tasks but keeps same-session ones", async () => {
   const { runtime, release } = createGatedRuntime();
-  const foreignBash = new BackgroundTaskRuntime({
-    spawn: (() => {
-      const child = new EventEmitter() as EventEmitter & {
-        stdout: PassThrough;
-        stderr: PassThrough;
-        pid: number;
-        unref(): void;
-        kill(): boolean;
-      };
-      child.stdout = new PassThrough();
-      child.stderr = new PassThrough();
-      child.pid = 7;
-      child.unref = () => {};
-      child.kill = () => true;
-      return child;
-    }) as never,
-  });
-  const bashTask = await foreignBash.start({ command: "echo", cwd: "/tmp", sessionId: "s1" });
-
   const s1View = createTaskListTool(runtime).execute({}, contextFor("s1"));
   const s2View = createTaskListTool(runtime).execute({}, contextFor("s2"));
-  void bashTask;
-  void foreignBash;
 
   release();
   await runtime.waitFor("owned-by-s1");
@@ -126,4 +103,24 @@ test("owning session keeps full task_output / task_stop access", async () => {
 
   const stopped = await createTaskStopTool(runtime).execute({ taskId: "owned-by-s1" }, contextFor("s1"));
   assert.equal(stopped.data?.status, "completed"); // stop on a terminal task is a no-op
+});
+
+test("task_stop returns the settled status even if new work prunes its record", async () => {
+  const runtime = new BackgroundTaskRuntime({
+    maxRetainedAgentTasks: 1,
+    onCompletion: event => {
+      if (event.taskId === "pruned-on-stop") {
+        void runtime.startManaged({ subagentId: "newer-task", label: "new work", sessionId: "s1", run: async () => "done" });
+      }
+    },
+  });
+  await runtime.startManaged({
+    subagentId: "pruned-on-stop", label: "stop me", sessionId: "s1",
+    run: signal => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
+  });
+  const result = await createTaskStopTool(runtime).execute({ taskId: "pruned-on-stop" }, contextFor("s1"));
+  assert.equal(runtime.get("pruned-on-stop"), undefined, "new work really pruned the old record");
+  assert.equal(result.data?.status, "cancelled");
 });

@@ -554,7 +554,8 @@ export function createTaskStopTool(
       }
       ensureTaskSessionAccess(task, context);
       await rt.stop(input.taskId, { graceMs: input.graceMs });
-      const after = rt.get(input.taskId)!;
+      // A new managed task may prune this terminal record while stop awaits.
+      const after = rt.get(input.taskId) ?? task;
       return {
         content: [{ type: "text", text: `task_stop taskId=${input.taskId} status=${after.status}` }],
         data: { taskId: input.taskId, status: after.status },
