@@ -1,0 +1,255 @@
+[
+  {
+    "id": "code-env",
+    "family": "code",
+    "output": "env.mjs",
+    "task": "Implement and save env.mjs exporting parseEnv(text). Parse KEY=value lines; trim whitespace around key/value; skip blank lines and lines starting #; split only the first =; strip one matching surrounding single/double quote pair without unescaping; keep # inside values; ignore lines without = and empty keys; duplicate keys use last value. Return a plain object, including safe handling of the key __proto__. Read rules.md for details. Do not add dependencies.",
+    "files": {
+      "rules.md": "parseEnv must accept CRLF and LF. An empty value is valid. Values may contain =. The literal __proto__ must be an own enumerable property, not mutate the object's prototype."
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "code-merge",
+    "family": "code",
+    "output": "merge.mjs",
+    "task": "Implement and save merge.mjs exporting mergeIntervals(intervals). Input is an array of [start,end] finite-number closed intervals with start<=end. Merge touching/overlapping intervals, return ascending sorted intervals, never mutate input or its inner arrays. Empty input returns []. Throw TypeError on malformed intervals, NaN/Infinity, or reversed endpoints. Read usage.md. No dependencies.",
+    "files": {
+      "usage.md": "Negative and decimal endpoints are valid. [1,2] and [2,3] merge to [1,3]. Disjoint intervals stay separate. An outer non-array is invalid."
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "data-revenue",
+    "family": "data",
+    "output": "result.json",
+    "voteable": true,
+    "task": "Read orders.csv and policy.md. Save result.json with net_cents and included_ids, applying the stated accounting policy exactly. Explain the calculation briefly in your final report. Do not modify the inputs.",
+    "files": {
+      "orders.csv": "id,status,amount_cents,refund_cents\na,paid,1200,0\nb,cancelled,2000,0\nc,paid,3600,600\nd,paid,0,0\ne,pending,700,0\nf,paid,900,900\ng,paid,1500,200\n",
+      "policy.md": "Include only paid orders. Net = amount minus refund. Zero-net paid orders remain in included_ids, in original input order. Amounts are integer cents; do not convert to floating currency units."
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "data-sla",
+    "family": "data",
+    "output": "result.json",
+    "voteable": true,
+    "task": "Read incidents.csv and policy.md. Save result.json containing total_minutes, eligible_count, breach_ids. Calculate from the supplied timestamps and policy, not from unstated assumptions. Include a short explanation in your final report.",
+    "files": {
+      "incidents.csv": "id,start,end,status\na,2026-09-01T23:50:00+08:00,2026-09-02T00:20:00+08:00,closed\nb,2026-09-02T01:00:00Z,2026-09-02T09:45:00+08:00,closed\nc,2026-09-02T10:00:00+08:00,2026-09-02T11:00:00+08:00,test\nd,2026-09-02T12:00:00+08:00,2026-09-02T12:30:00+08:00,closed\ne,2026-09-02T13:00:00+08:00,,open\n",
+      "policy.md": "Only closed incidents with both timestamps count. Durations use actual instants, accounting for time-zone offsets. An incident breaches only if duration is strictly greater than 30 minutes. Preserve input order in breach_ids."
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "research-launch",
+    "family": "research",
+    "output": "decision.md",
+    "task": "Produce decision.md, an English recommendation of at most 180 words on whether to launch payment feature Aurora to all users today. Read all three supplied files. State the most recent decision, rollout scope, two unresolved blockers, responsible teams and what evidence would permit expansion. Cite source filenames. Distinguish proposed dates from commitments. No external sources. The three supplied files are plan.md, update.md and meeting.md.",
+    "files": {
+      "plan.md": "Sep 1 draft: propose full launch Sep 15 if reconciliation and rollback drills pass. Payments owns reconciliation; SRE owns rollback. This draft is not a commitment.",
+      "update.md": "Sep 10 update supersedes the rollout scope in plan.md: remain at 5% internal users. Reconciliation mismatch remains at 0.7% (target <=0.1%). Rollback drill has not been completed. Do not expand until both have passed.",
+      "meeting.md": "Sep 11: Payments will produce a new reconciliation report; SRE will run a rollback drill. No full-launch date is committed. Sales asked whether Sep 15 can still be advertised; answer: no."
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "research-vendor",
+    "family": "research",
+    "output": "decision.md",
+    "task": "Write decision.md in English, <=160 words. Choose a document-indexing vendor for a team requiring on-prem deployment, no external data transfer, and at least 10000 documents. Read brief.md, vendor-a.md and vendor-b.md. State a conditional recommendation, disqualify unsupported claims, identify missing evidence and cite filenames. Do not infer undocumented performance.",
+    "files": {
+      "brief.md": "Hard requirements: on-prem deployment, no external data transfer, >=10000 documents. Budget is secondary. A promised feature is not available evidence.",
+      "vendor-a.md": "Atlas: current cloud-only service, documented 50000 documents. On-prem edition planned next quarter, no release date.",
+      "vendor-b.md": "Birch: current on-prem edition, documentation claims indexing stays local. Tested sample 2000 documents; no 10000-document test yet. Optional telemetry is enabled by default; disable it before sensitive deployment and verify outbound traffic."
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "text-runbook",
+    "family": "text",
+    "output": "runbook.md",
+    "task": "Read service.md. Save an English runbook.md with exactly five numbered steps for responding to this service alarm. Include checking impact, checking last deployment, rollback only if linked to a deployment and approved by incident commander, verifying recovery, and recording follow-up. Include an explicit stop condition for suspected data loss. Do not advise deleting data or unconditional rollback. Keep <=140 words.",
+    "files": {
+      "service.md": "Checkout alarm: payment errors >2% for 5 minutes. Impact is measured from checkout success rate and affected customers. The incident commander approves rollback. If data loss is suspected, stop automated recovery, preserve evidence and escalate to storage on-call. Recovery requires error rate <0.5% for 10 minutes."
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "text-reply",
+    "family": "text",
+    "output": null,
+    "task": "Read policy.md. Draft a customer reply in English, 60-110 words, as the final result text. A customer asks for a refund after 19 days and says the item is unused. Acknowledge the request, explain the applicable return window, ask for the order number and proof of purchase, state approval follows inspection, and do not promise a refund or invent an exception. No separate business-output file is required.",
+    "files": {
+      "policy.md": "Unused items may be returned within 30 calendar days from delivery, with order number and proof of purchase. Refund approval follows inspection. Used/damaged items are reviewed separately. Never promise approval before inspection."
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+]

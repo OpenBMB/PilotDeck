@@ -2427,6 +2427,7 @@ export class AgentLoop {
       cwd: this.config.cwd,
       abortSignal: input.abortSignal,
       subagentTimeoutMs: this.config.subagentTimeoutMs,
+      subtaskDelivery: this.config.delivery,
       toolAliases: this.config.toolAliases,
       runMode: this.config.runMode ?? "agent",
       permissionMode: this.config.permissionMode,
@@ -2494,7 +2495,8 @@ export class AgentLoop {
           description: d.description,
         })),
       isAllowedDefinition: (id: string) => getSubagentDefinition(id) !== undefined,
-      fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs }) => {
+      deliveryMode: this.config.delivery?.mode ?? 'auto',
+      fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs, delivery }) => {
         // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
         const { SubAgentSession } = await import("../sub/SubAgentSession.js");
         const def = getSubagentDefinition(definitionId);
@@ -2536,6 +2538,8 @@ export class AgentLoop {
           directive,
           parentConfig: {
             ...this.config,
+            provider: input.modelOverride?.provider ?? this.config.provider,
+            model: input.modelOverride?.model ?? this.config.model,
             subagentDepth: depth + 1,
             isSubagent: true,
           },
@@ -2546,6 +2550,7 @@ export class AgentLoop {
           parentTurnId: input.turnId,
           subagentSessionId,
           subagentId,
+          delivery,
           abortSignal: composedAbort.signal,
           sidechainTranscript: sidechain
             ? {
@@ -2602,6 +2607,7 @@ export class AgentLoop {
         }
         composedAbort.cleanup();
 
+        const deliveryFailed = report.delivery?.status === 'failed' || report.delivery?.status === 'error';
         await transcriptHooks?.recordSubagentCompleted?.({
           sessionId: input.sessionId,
           turnId: input.turnId,
@@ -2611,12 +2617,12 @@ export class AgentLoop {
           usage: report.usage,
           turns: report.turns,
           durationMs: report.durationMs,
-          errored,
+          errored: errored || deliveryFailed,
         });
         await this.dispatchLifecycle(input, "SubagentStop", {
           subagentId,
           subagentType: def.id,
-          success: !errored,
+          success: !errored && !deliveryFailed,
         });
         this.dependencies.eventEmitter?.({
           type: "subagent_completed",
@@ -2624,7 +2630,7 @@ export class AgentLoop {
           turnId: input.turnId,
           subagentId,
           subagentType: def.id,
-          success: !errored,
+          success: !errored && !deliveryFailed,
           durationMs: report.durationMs,
         });
 
@@ -2634,6 +2640,7 @@ export class AgentLoop {
           turns: report.turns,
           durationMs: report.durationMs,
           parsed: report.parsed as unknown as Record<string, string> | undefined,
+          delivery: report.delivery,
         };
       },
     };

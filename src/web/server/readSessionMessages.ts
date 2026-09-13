@@ -637,6 +637,7 @@ function flushBlock(
       const toolName = readToolResultToolName(block.raw);
       const planData = readPlanData(block.raw);
       const searchData = readSearchToolData(block.raw);
+      const deliveryData = readDeliveryData(block.raw);
       const resultImages: NonNullable<WebMessage["images"]> = [];
       for (const sub of block.content) {
         if (sub.type === "image") {
@@ -656,7 +657,7 @@ function flushBlock(
         ok: !block.isError,
         text: resultText,
         ...(errorCode ? { errorCode } : {}),
-        ...(planData || searchData ? { payload: planData ?? searchData } : {}),
+        ...(planData || searchData || deliveryData ? { payload: planData ?? searchData ?? deliveryData } : {}),
         ...(resultImages.length > 0 ? { images: resultImages } : {}),
         source: "history",
       });
@@ -1257,6 +1258,15 @@ function readSearchToolData(raw: unknown): Record<string, unknown> | undefined {
   return record.data && typeof record.data === "object"
     ? record.data as Record<string, unknown>
     : undefined;
+}
+
+function readDeliveryData(raw: unknown): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const record = raw as { toolName?: unknown; data?: unknown };
+  if (!['agent', 'task'].includes(String(record.toolName ?? '').toLowerCase())) return undefined;
+  if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) return undefined;
+  const data = record.data as Record<string, unknown>;
+  return data.delivery && typeof data.delivery === 'object' ? data : undefined;
 }
 
 function isSearchToolName(name: unknown): boolean {

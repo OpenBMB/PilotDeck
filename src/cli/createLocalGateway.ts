@@ -1,3 +1,5 @@
+import { createDeliveryReviewer } from "../agent/sub/delivery/reviewer.js";
+import { createDeliveryMemoryObserver } from "../context/memory/DeliveryMemory.js";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync as mkdirSyncFs, renameSync } from "node:fs";
 import { dirname, resolve, join as joinPath } from "node:path";
@@ -1251,6 +1253,8 @@ class ProjectRuntimeRegistry {
     const eventBuf = createAgentEventBuffer();
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
+      deliveryReviewer: createDeliveryReviewer({ modelRuntime: runtime.model }),
+      ...(runtime.memoryService ? { deliveryObserver: createDeliveryMemoryObserver(runtime.memoryService) } : {}),
       router: runtime.router,
       tools: { registry: sessionTools },
       lifecycle,
@@ -1539,6 +1543,7 @@ class ProjectRuntimeRegistry {
       jsonSelfCorrect: true,
       ...(subagentRuntimeModel ? { subagentModel: subagentRuntimeModel } : {}),
       subagentTimeoutMs: agent.subagents?.timeoutMs,
+      delivery: agent.delivery,
       maxContextTokens,
       maxOutputTokens,
       thinking: agent.thinking,

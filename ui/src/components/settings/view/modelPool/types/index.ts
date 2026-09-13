@@ -14,11 +14,23 @@ export type V2Provider = {
   };
 };
 
+export type AgentDeliveryConfig = {
+  mode?: "auto" | "off";
+  prompt?: string;
+  reviewerModel?: string;
+  maxRepairs?: number;
+  maxTurns?: number;
+  reviewTimeoutMs?: number;
+  maxReviewInputTokens?: number;
+  maxReviewOutputTokens?: number;
+};
+
 export type PilotDeckConfig = {
   agent?: {
     model?: string;
     maxContextTokens?: number;
     subagents?: { default?: string };
+    delivery?: AgentDeliveryConfig;
   };
   model?: {
     providers?: Record<string, V2Provider>;

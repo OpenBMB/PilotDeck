@@ -156,7 +156,7 @@ test("history does not duplicate a persisted subagent tool result", async () => 
         type: "tool_result",
         toolCallId,
         content: [{ type: "text", text: "persisted full result" }],
-        raw: { toolName: "agent" },
+        raw: { toolName: "agent", data: { delivery_file: ".pilotdeck/deliveries/child/attempt-1.json", delivery: { status: "skipped", attempts: [], repairs: 0 } } },
       }],
     });
 
@@ -167,6 +167,7 @@ test("history does not duplicate a persisted subagent tool result", async () => 
 
     assert.equal(results.length, 1);
     assert.equal(results[0]?.text, "persisted full result");
+    assert.deepEqual(results[0]?.payload, { delivery_file: ".pilotdeck/deliveries/child/attempt-1.json", delivery: { status: "skipped", attempts: [], repairs: 0 } });
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
     await rm(pilotHome, { recursive: true, force: true });

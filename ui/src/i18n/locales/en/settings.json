@@ -70,6 +70,7 @@
       "agentResident": "Always-On",
       "agentSearch": "Search",
       "agentSchedule": "Scheduled Tasks",
+      "agentDelivery": "Delivery",
       "integrations": "Integrations",
       "messageChannels": "Message Channels",
       "external": "External Systems",
@@ -90,6 +91,7 @@
       "agentResident": "Keep watching workspace changes after you leave, and advance work or sync progress at the right time.",
       "agentSearch": "Let agents retrieve real-time web information and add current external facts to their answers.",
       "agentSchedule": "Wake agents automatically at scheduled times to run tasks without requiring you to stay online.",
+      "agentDelivery": "Control how subagents report finished work back to the parent task, with an optional reviewer model.",
       "integrations": "Connect Feishu, WeChat, and WeCom message channels.",
       "mcpServers": "Connect local tools and remote services so agents can safely use external capabilities and context.",
       "officePreview": "Configure Office file preview.",
@@ -107,6 +109,7 @@
       "agentResident": "Agents / Always-On",
       "agentSearch": "Agents / Search",
       "agentSchedule": "Agents / Scheduled Tasks",
+      "agentDelivery": "Agents / Delivery",
       "integrations": "Integrations",
       "extensions": "Extensions",
       "mcpServers": "Extensions / MCP Servers",
@@ -208,9 +211,45 @@
       "agentResident": "The config file is not valid YAML, so the Agents / Always-On form is unavailable.",
       "agentSearch": "The config file is not valid YAML, so the Agents / Search form is unavailable.",
       "agentSchedule": "The config file is not valid YAML, so the Agents / Scheduled Tasks form is unavailable.",
+      "agentDelivery": "The config file is not valid YAML, so the Agents / Delivery form is unavailable.",
       "integrations": "The config file is not valid YAML, so the Integrations form is unavailable.",
       "officePreview": "The config file is not valid YAML, so the Office Preview form is unavailable.",
       "modelPool": "The config file is not valid YAML, so the Model Pool form is unavailable."
+    },
+    "delivery": {
+      "effect": "Changes apply to newly started subtasks after saving. Auto checks only meaningful fields supplied in each delivery; omitted fields are skipped.",
+      "configAria": "Delivery settings",
+      "mode": {
+        "label": "Auto delivery",
+        "description": "Auto collects structured deliveries and checks supplied fields. Off disables delivery checks, model reviews and receipts; your saved settings are retained."
+      },
+      "reviewer": {
+        "label": "Reviewer model",
+        "description": "Reviews the delivered result only when the parent requests it. The original child handles repairs. By default, use the main conversation model.",
+        "conversationModel": "Use conversation model"
+      },
+      "prompt": {
+        "label": "Delivery prompt",
+        "description": "Editable guidance sent to subagents on top of the fixed delivery protocol. The built-in default is shown until a prompt is stored.",
+        "usingDefault": "Previewing the built-in default prompt. Nothing is stored in your config until you edit it.",
+        "blankStored": "Prompt is blank: only the fixed delivery protocol is sent and the editable example is omitted.",
+        "customStored": "Custom prompt ({{bytes}} / {{max}} UTF-8 bytes).",
+        "restore": "Restore default"
+      },
+      "budgets": {
+        "summary": "Review limits and timeouts",
+        "maxRepairs": "Max repairs (0–5)",
+        "maxTurns": "Max turns (1–100)",
+        "reviewTimeoutMs": "Review timeout in ms (1000–180000)",
+        "maxReviewInputTokens": "Max review input tokens (256–16384, estimated)",
+        "maxReviewOutputTokens": "Max review output tokens (64–2048)"
+      },
+      "unsaved": "Unsaved changes — click Save to apply them.",
+      "saving": "Saving…",
+      "validationTitle": "Fix the highlighted fields before saving.",
+      "invalidPrompt": "Delivery prompt must be at most {{max}} UTF-8 bytes (currently {{bytes}}).",
+      "invalidNumber": "{{field}} must be an integer between {{min}} and {{max}}.",
+      "invalidReviewer": "Reviewer model must reference a configured provider model, e.g. provider/model."
     }
   },
   "quickSettings": {

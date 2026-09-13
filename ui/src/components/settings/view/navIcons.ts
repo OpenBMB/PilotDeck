@@ -23,6 +23,9 @@ export const SETTINGS_NAV_ICONS: Partial<Record<SettingsMenuKey, string>> = {
   general: generalIcon,
   modelPool: modelPoolIcon,
   agentModel: agentModelIcon,
+  // No dedicated nav asset ships for this page yet; reuse the agent icon so
+  // the sidebar entry stays visually consistent (partial map is type-safe).
+  agentDelivery: agentModelIcon,
   agentRoute: agentRouteIcon,
   agentMemory: agentMemoryIcon,
   agentResident: agentResidentIcon,

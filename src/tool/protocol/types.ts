@@ -48,6 +48,7 @@ export type PilotDeckToolModelClient = {
  * `subagent_depth_exceeded` when `depth >= maxSubagentDepth`.
  */
 export type PilotDeckSubagentForkApi = {
+  deliveryMode?: 'auto' | 'off';
   depth: number;
   maxSubagentDepth: number;
   listDefinitions(): { id: string; description: string }[];
@@ -59,12 +60,14 @@ export type PilotDeckSubagentForkApi = {
     toolCallId?: string;
     abortSignal?: AbortSignal;
     timeoutMs?: number;
+    delivery?: import('../../agent/sub/delivery/types.js').DeliveryContract;
   }): Promise<{
     markdown: string;
     usage: CanonicalUsage;
     turns: number;
     durationMs: number;
     parsed?: Record<string, string>;
+    delivery?: import('../../agent/sub/delivery/types.js').DeliveryResult;
   }>;
 };
 
@@ -307,6 +310,7 @@ export type PilotDeckToolRuntimeContext = {
    * call so unit tests still work.
    */
   subagent?: PilotDeckSubagentForkApi;
+  subtaskDelivery?: Partial<import('../../agent/sub/delivery/types.js').DeliveryRuntimeConfig>;
   /**
    * Plan directory handle for plan-mode tools (`enter_plan_mode` /
    * `exit_plan_mode`). When plan mode is active the model may create and

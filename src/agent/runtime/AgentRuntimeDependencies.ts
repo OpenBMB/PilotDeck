@@ -15,6 +15,8 @@ import type { TokenAccountingRuntime } from "../../context/index.js";
 import type { RouterRuntime } from "../../router/index.js";
 import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
 import type { ModelProtocol } from "../../model/index.js";
+import type { DeliveryReviewer } from "../sub/delivery/reviewer.js";
+import type { DeliveryResult } from "../sub/delivery/types.js";
 
 /**
  * Narrow view of the router that the agent loop actually consumes. Tests can
@@ -84,6 +86,9 @@ export type AgentSubagentTranscriptHooks = {
 };
 
 export type AgentRuntimeDependencies = {
+  deliveryReviewer?: DeliveryReviewer;
+  /** Bounded metadata observation; failure must not alter the delivery outcome. */
+  deliveryObserver?: (observation: { subagentId: string; sessionId: string; definitionId: string; result: DeliveryResult }) => void;
   router: AgentRouterRuntime;
   tools: {
     scheduler: PilotDeckToolScheduler;

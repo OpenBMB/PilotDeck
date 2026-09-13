@@ -481,7 +481,7 @@ test("explore registry ignores an unallowed dynamic execute_code tool without pr
   const session = sessionFor(SUBAGENT_DEFINITIONS.explore, registry);
   const scoped = session.buildScopedRegistry();
 
-  assert.deepEqual(scoped.list().map((tool) => tool.name), ["bash"]);
+  assert.deepEqual(scoped.list().map((tool) => tool.name), ["bash", "structured_output"]);
   assert.equal(session.buildConfig().runMode, "ask");
 });
 

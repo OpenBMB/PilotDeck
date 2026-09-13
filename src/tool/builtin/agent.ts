@@ -3,6 +3,11 @@ import type { CanonicalModelRequest, CanonicalUsage } from "../../model/index.js
 import type { PermissionResult } from "../../permission/index.js";
 import { SUBAGENT_DEFINITIONS } from "../../agent/sub/builtinSubagentTypes.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
+import type { DeliveryContract, DeliveryResult } from '../../agent/sub/delivery/types.js';
+import { validateDeliveryContract } from '../../agent/sub/delivery/checks.js';
+import { deliveryConfig } from '../../agent/sub/delivery/config.js';
+import { buildDeliveryPrompt } from '../../agent/sub/delivery/prompt.js';
+import { runDelivery } from '../../agent/sub/delivery/run.js';
 import type {
   PilotDeckSubagentForkApi,
   PilotDeckToolDefinition,
@@ -75,6 +80,7 @@ export const BUILTIN_SUBAGENTS: Record<string, AgentSubagentDefinition> = {
 };
 
 export type AgentToolInput = {
+  delivery?: DeliveryContract;
   description: string;
   prompt: string;
   subagent_type?: string;
@@ -83,6 +89,8 @@ export type AgentToolInput = {
 };
 
 export type AgentToolOutput = {
+  delivery?: DeliveryResult;
+  delivery_file?: string;
   subagentType: string;
   description: string;
   text: string;
@@ -111,6 +119,14 @@ const DEFAULT_PROVIDER_FALLBACK = "pilotdeck";
 const DEFAULT_MODEL_FALLBACK = "moonshotai/kimi-k2.6";
 const DEFAULT_SUBAGENT_TIMEOUT_MS = 60 * 60_000;
 const PUBLIC_SUBAGENT_TYPES = ["general-purpose", "explore", "plan"] as const;
+const DELIVERY_INPUT_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  description: 'Optional delivery expectations. Auto already checks supplied file declarations. Add a sparse schema for this task or review:true for one bounded model review. Omitted fields are skipped; no answer key is needed. Off bypasses delivery checks.',
+  properties: {
+    schema: { type: 'object', description: 'Optional incremental structure for the submitted report: type/properties/items/title/description/x-file only. All fields optional, extra fields allowed. Use x-file:true on a string to declare a file path. No required, const or answer ranges.' },
+    review: { type: 'boolean', description: 'Request model review when result quality needs judgment, e.g. code, consequential calculations or a complex report. Leave omitted for simple tasks. Reviewer sees only bounded delivery content.' },
+  },
+} as const;
 
 export function createAgentTool(
   options: CreateAgentToolOptions = {},
@@ -128,6 +144,7 @@ export function createAgentTool(
       required: ["description", "prompt"],
       additionalProperties: false,
       properties: {
+        delivery: DELIVERY_INPUT_SCHEMA,
         description: {
           type: "string",
           description: "Short 3-5 word task summary used to label the subagent run.",
@@ -161,6 +178,10 @@ export function createAgentTool(
       },
     }),
     execute: async (input, context) => {
+      if ((context.subagent?.deliveryMode ?? context.subtaskDelivery?.mode) !== 'off') {
+        try { validateDeliveryContract(input.delivery); }
+        catch (error) { throw new PilotDeckToolRuntimeError('invalid_tool_input', error instanceof Error ? error.message : String(error)); }
+      }
       const explicit = normalizeRequestedSubagentType(
         input.subagent_type ?? input.subagentType,
       );
@@ -226,7 +247,7 @@ function buildAgentToolDescription(): string {
     "Available built-in subagent types:",
     publicTypes,
     "",
-    "The subagent returns one structured report with these sections: `Scope`, `Result`, `Key files`, `Files changed`, and `Issues`.",
+    "In Auto, the child receives an editable delivery example and returns a delivery_file plus actual check/review status. Use delivery.schema for incremental task expectations and delivery.review=true when semantic result review is worth its cost. Missing fields are skipped. In Off the original text-report flow applies.",
     "",
     "Runtime behavior:",
     "- Multiple independent agent calls in one assistant message may run concurrently; batch sibling investigations when their scopes do not depend on each other.",
@@ -261,7 +282,7 @@ export function buildAskModeAgentToolSchema(): {
     "Available subagent types:",
     typeLines,
     "",
-    "The subagent returns one structured report with these sections: `Scope`, `Result`, `Key files`, `Files changed`, and `Issues`.",
+    "Auto records the result in delivery_file and checks supplied declarations. Optional delivery.schema adds task structure; delivery.review=true requests bounded model review. The host archives the report even for a read-only child. Off preserves the original text flow.",
   ].join("\n");
 
   const inputSchema: Record<string, unknown> = {
@@ -269,6 +290,7 @@ export function buildAskModeAgentToolSchema(): {
     required: ["description", "prompt"],
     additionalProperties: false,
     properties: {
+      delivery: DELIVERY_INPUT_SCHEMA,
       description: {
         type: "string",
         description: "Short 3-5 word task summary used to label the subagent run.",
@@ -350,6 +372,7 @@ async function runFullFork(args: {
       toolCallId: context.currentToolCallId,
       abortSignal: context.abortSignal,
       timeoutMs,
+      delivery: input.delivery,
     });
   } catch (error) {
     if (context.abortSignal?.aborted) {
@@ -379,12 +402,13 @@ async function runFullFork(args: {
     turns: report.turns,
     durationMs: report.durationMs,
     parsed: report.parsed,
+    ...(report.delivery ? { delivery: report.delivery, delivery_file: report.delivery.deliveryFile } : {}),
   };
   return {
     content: [
       {
         type: "text",
-        text: `[${requestedType}] ${input.description}\n\n${report.markdown}`,
+        text: `[${requestedType}] ${input.description}\n\n${report.markdown}${report.delivery ? formatDelivery(report.delivery) : ''}`,
       },
       { type: "json", value: output },
     ],
@@ -395,6 +419,7 @@ async function runFullFork(args: {
       forkMode: "full",
       turns: report.turns,
       durationMs: report.durationMs,
+      ...(report.delivery ? { delivery: report.delivery, delivery_file: report.delivery.deliveryFile } : {}),
     },
   };
 }
@@ -444,7 +469,8 @@ async function runFallback(args: {
     provider,
     model: modelId,
     messages: [{ role: "user", content: [{ type: "text", text: directive }] }],
-    systemPrompt: preset.systemPrompt,
+    systemPrompt: context.subtaskDelivery?.mode === 'off' ? preset.systemPrompt
+      : `${preset.systemPrompt}\n\n${buildDeliveryPrompt({ prompt: context.subtaskDelivery?.prompt, schema: input.delivery?.schema })}`,
     maxOutputTokens,
     temperature,
     stream: true,
@@ -483,11 +509,28 @@ async function runFallback(args: {
     text: trimmed.length > 0 ? trimmed : "(empty subagent response)",
     usage,
   };
+  if (context.subtaskDelivery?.mode !== 'off') {
+    const subagentId = randomUUID();
+    const now = new Date().toISOString();
+    const recorded = await runDelivery({
+      cwd: context.cwd, subagentId, task: directive,
+      config: { ...deliveryConfig(context.subtaskDelivery), maxRepairs: 0 },
+      contract: validateDeliveryContract(input.delivery), initialMessages: request.messages,
+      mainModel: { provider, model: modelId }, signal: context.abortSignal,
+      execute: async () => ({
+        messages: [...request.messages, { role: 'assistant' as const, content: [{ type: 'text' as const, text }] }],
+        result: { type: 'success' as const, sessionId: context.sessionId, turnId: context.turnId,
+          stopReason: 'completed' as const, usage: usage ?? {}, permissionDenials: [], turns: 1, startedAt: now, completedAt: now },
+      }),
+    });
+    output.delivery = recorded.delivery;
+    output.delivery_file = recorded.delivery.deliveryFile;
+  }
   return {
     content: [
       {
         type: "text",
-        text: `[${requestedType}] ${input.description}\n\n${output.text}`,
+        text: `[${requestedType}] ${input.description}\n\n${output.text}${output.delivery ? formatDelivery(output.delivery) : ''}`,
       },
       { type: "json", value: output },
     ],
@@ -498,6 +541,15 @@ async function runFallback(args: {
       provider,
       model: modelId,
       promptBytes: Buffer.byteLength(directive, "utf8"),
+      ...(output.delivery ? { delivery: output.delivery, delivery_file: output.delivery.deliveryFile, repairSupported: false } : {}),
     },
   };
+}
+
+function formatDelivery(result: DeliveryResult): string {
+  const last = result.attempts.at(-1);
+  const issues = [...(last?.checks.issues ?? []), ...(last?.review?.issues ?? [])];
+  return `\n\nDelivery file: ${result.deliveryFile}\nDeclared-field checks: ${last?.checks.status ?? 'skipped'}; model review: ${last?.review?.status ?? 'not requested'}; repairs: ${result.repairs}.`
+    + (issues.length ? `\n${issues.slice(0, 8).map(issue => `${issue.path}: ${issue.message}`).join('\n')}` : '')
+    + '\nRead delivery_file for full results; skipped checks are not evidence of completion.';
 }

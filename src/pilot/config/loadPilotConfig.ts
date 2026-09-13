@@ -8,6 +8,7 @@ import { ModelConfigError } from "../../model/protocol/errors.js";
 import { getPilotConfigFilePath, getPilotMemoryRootDir, resolvePilotHome } from "../paths.js";
 import { sha256, stableStringify } from "./hash.js";
 import { mergeConfigSources } from "./merge.js";
+import { parseDeliveryConfig } from "./parseDeliveryConfig.js";
 import { parseMemoryConfig } from "./parseMemoryConfig.js";
 import { parseAdaptersConfig, parseGatewayConfig } from "./parseGatewayConfig.js";
 import { parseToolsConfig } from "./parseToolsConfig.js";
@@ -353,6 +354,11 @@ function parseAgent(
 
   const model = parseAgentModelSelection(rawAgent.model, "agent.model", modelConfig, diagnostics);
   const subagents = parseAgentSubagents(rawAgent.subagents, modelConfig, diagnostics);
+  const delivery = parseDeliveryConfig(
+    rawAgent.delivery,
+    (value, path) => parseAgentModelSelection(value, path, modelConfig, diagnostics),
+    diagnostics,
+  );
   const maxContextTokens = readOptionalPositiveInteger(rawAgent.maxContextTokens, "agent.maxContextTokens");
   const maxOutputTokens = readOptionalPositiveInteger(rawAgent.maxOutputTokens, "agent.maxOutputTokens");
   const thinking = parseAgentThinking(rawAgent.thinking);
@@ -374,6 +380,7 @@ function parseAgent(
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     ...(thinking ? { thinking } : {}),
     ...(subagents ? { subagents } : {}),
+    ...(delivery ? { delivery } : {}),
   };
 }
 

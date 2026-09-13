@@ -229,7 +229,7 @@ function mapWebMessageToNormalized(message, sessionId) {
       const planPayload = message.payload && typeof message.payload === 'object'
           ? message.payload
           : {};
-      const searchPayload = isSearchToolName(message.toolName) && message.payload && typeof message.payload === 'object'
+      const structuredPayload = (isSearchToolName(message.toolName) || ['agent', 'task'].includes(String(message.toolName || '').toLowerCase())) && message.payload && typeof message.payload === 'object'
           ? message.payload
           : null;
       return createNormalizedMessage({
@@ -255,7 +255,7 @@ function mapWebMessageToNormalized(message, sessionId) {
             planTitle: planPayload.planTitle,
             planSummary: planPayload.planSummary,
         } : {}),
-        ...(searchPayload ? { toolUseResult: searchPayload } : {}),
+        ...(structuredPayload ? { toolUseResult: structuredPayload } : {}),
       });
     }
     case 'permission_request':

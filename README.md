@@ -485,6 +485,10 @@ PilotDeck has an open plugin architecture with a strict boundary between the ope
 
 ---
 
+## Subtask delivery and optional review
+
+PilotDeck can archive structured subagent deliveries, check supplied file references, and ask a separately configurable model to review the result when the parent requests it. Edit the example prompt or disable the workflow in **Settings → Agents → Delivery**. See the [usage and architecture guide](docs/subtask-delivery/README.md), [engineering evidence and limitations](docs/subtask-delivery/EXPERIMENTS.md), and [demo](docs/subtask-delivery/DEMO.md).
+
 ## 🤝 Contributing
 
 Thanks to everyone who has contributed code, feedback, and ideas. New contributors are warmly welcome — let's build the next-gen agent OS together.

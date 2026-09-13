@@ -11,6 +11,7 @@ import AgentResidentSections from "./agentResident";
 import AgentRouteSections from "./agentRoute";
 import AgentScheduleSections from "./agentSchedule";
 import AgentSearchSections from "./agentSearch";
+import AgentDeliverySections from "./agentDelivery";
 import AdvancedSections from "./advanced";
 import McpServersSection from "./extensions";
 import GeneralSections from "./general";
@@ -40,6 +41,7 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   agentResident: "settingsPage.titles.agentResident",
   agentSearch: "settingsPage.titles.agentSearch",
   agentSchedule: "settingsPage.titles.agentSchedule",
+  agentDelivery: "settingsPage.titles.agentDelivery",
   integrations: "settingsPage.titles.integrations",
   extensions: "settingsPage.titles.extensions",
   mcpServers: "settingsPage.titles.mcpServers",
@@ -59,6 +61,7 @@ const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
   agentResident: "settingsPage.menu.agentResident",
   agentSearch: "settingsPage.menu.agentSearch",
   agentSchedule: "settingsPage.menu.agentSchedule",
+  agentDelivery: "settingsPage.menu.agentDelivery",
   integrations: "settingsPage.menu.messageChannels",
   extensions: "settingsPage.menu.extensions",
   mcpServers: "settingsPage.menu.mcpServers",
@@ -77,6 +80,7 @@ const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
   agentResident: "settingsPage.descriptions.agentResident",
   agentSearch: "settingsPage.descriptions.agentSearch",
   agentSchedule: "settingsPage.descriptions.agentSchedule",
+  agentDelivery: "settingsPage.descriptions.agentDelivery",
   integrations: "settingsPage.descriptions.integrations",
   mcpServers: "settingsPage.descriptions.mcpServers",
   officePreview: "settingsPage.descriptions.officePreview",
@@ -94,6 +98,7 @@ const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
   agentResident: "agent-resident-page",
   agentSearch: "agent-search-page",
   agentSchedule: "agent-scheduled-page",
+  agentDelivery: "agent-delivery-page",
   integrations: "integration-settings-page",
   mcpServers: "mcp-settings-page",
   officePreview: "office-settings-page",
@@ -180,6 +185,8 @@ export default function SettingsContent({
           <AgentSearchSections title={title} />
         ) : selectedKey === "agentSchedule" ? (
           <AgentScheduleSections title={title} />
+        ) : selectedKey === "agentDelivery" ? (
+          <AgentDeliverySections title={title} />
         ) : selectedKey === "integrations" ? (
           <IntegrationsSections title={title} />
         ) : selectedKey === "mcpServers" ? (

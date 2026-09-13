@@ -589,6 +589,42 @@
       "thinking": "Thinking",
       "executingTool": "Executing {{toolName}}",
       "connecting": "Connecting…"
+    },
+    "delivery": {
+      "title": "Delivery review",
+      "summaryLine": "Program checks {{checks}} · Model review {{review}}",
+      "status": {
+        "passedScoped": "Applicable checks passed",
+        "passed": "Applicable checks passed",
+        "failed": "Checks failed",
+        "skipped": "Skipped",
+        "inconclusive": "Inconclusive",
+        "error": "Check error"
+      },
+      "checkStatus": {
+        "passed": "passed",
+        "failed": "failed",
+        "skipped": "skipped",
+        "error": "error"
+      },
+      "reviewStatus": {
+        "accepted": "accepted",
+        "rejected": "rejected",
+        "inconclusive": "inconclusive",
+        "error": "error",
+        "skipped": "skipped"
+      },
+      "reviewNotRequested": "not requested",
+      "noAttempts": "No attempt records",
+      "programChecks": "Program checks",
+      "modelReview": "Model review",
+      "checkedCount": "{{count}} checks",
+      "repairs": "Repairs",
+      "producerTokens": "Generated {{count}} tokens",
+      "reviewTokens": "Review {{count}} tokens",
+      "copyReceipt": "Copy receipt path",
+      "showHistory": "Show all {{count}} attempts",
+      "hideHistory": "Hide earlier attempts"
     }
   },
   "agentStatus": {

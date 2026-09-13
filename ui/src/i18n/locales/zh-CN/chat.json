@@ -583,6 +583,42 @@
       "thinking": "思考中",
       "executingTool": "正在执行 {{toolName}}",
       "connecting": "连接中…"
+    },
+    "delivery": {
+      "title": "交付验收",
+      "summaryLine": "程序检查 {{checks}} · 模型评审 {{review}}",
+      "status": {
+        "passedScoped": "已执行检查通过",
+        "passed": "已执行检查通过",
+        "failed": "检查未通过",
+        "skipped": "已跳过",
+        "inconclusive": "证据不足",
+        "error": "检查出错"
+      },
+      "checkStatus": {
+        "passed": "通过",
+        "failed": "未通过",
+        "skipped": "已跳过",
+        "error": "出错"
+      },
+      "reviewStatus": {
+        "accepted": "通过",
+        "rejected": "不通过",
+        "inconclusive": "证据不足",
+        "error": "评审出错",
+        "skipped": "已跳过"
+      },
+      "reviewNotRequested": "未请求",
+      "noAttempts": "无尝试记录",
+      "programChecks": "程序检查",
+      "modelReview": "模型评审",
+      "checkedCount": "{{count}} 项",
+      "repairs": "修复次数",
+      "producerTokens": "生成 {{count}} tokens",
+      "reviewTokens": "评审 {{count}} tokens",
+      "copyReceipt": "复制回执路径",
+      "showHistory": "查看全部 {{count}} 次尝试",
+      "hideHistory": "收起历史尝试"
     }
   },
   "agentStatus": {

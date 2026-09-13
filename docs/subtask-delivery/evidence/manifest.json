@@ -1,0 +1,9 @@
+{
+  "format": "gzip-compressed JSON map from relative artifact path to JSON value",
+  "sha256": "178cf09b937b195da5993ed8e10965e3d9d12f2f01555cc1cab7d4810a103f86",
+  "redactions": [
+    "local evidence root replaced with <evidence-root>",
+    "local checkout root replaced with <repo>"
+  ],
+  "contains": "All 79 completed arm runs, messages, original grades, model usage/verdicts, selectors, protocols, and separate adjudication. Workspace file contents are in each result.files. Initial transport preflights and native demo runs are described separately."
+}

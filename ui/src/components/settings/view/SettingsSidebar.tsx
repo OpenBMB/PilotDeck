@@ -32,6 +32,7 @@ const AGENT_ITEMS: NavItem[] = [
   { key: "agentResident", labelKey: "settingsPage.menu.agentResident" },
   { key: "agentSearch", labelKey: "settingsPage.menu.agentSearch" },
   { key: "agentSchedule", labelKey: "settingsPage.menu.agentSchedule" },
+  { key: "agentDelivery", labelKey: "settingsPage.menu.agentDelivery" },
 ];
 
 const EXTERNAL_ITEMS: NavItem[] = [

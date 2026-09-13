@@ -137,7 +137,13 @@ export function getSubagentDefinition(id: string): SubagentDefinition | undefine
   return (SUBAGENT_DEFINITIONS as Record<string, SubagentDefinition>)[id];
 }
 
-export function buildSubagentSystemPrompt(definition: SubagentDefinition): string {
+export function buildSubagentSystemPrompt(definition: SubagentDefinition, deliveryPrompt?: string): string {
+  if (deliveryPrompt !== undefined) {
+    const prefix = SHARED_PREFIX.slice(0, SHARED_PREFIX.indexOf('\nOutput format (mandatory;'))
+      .replace('You always have the full context of the parent task and can inspect the parent\'s tool history.', 'You receive the parent\'s bounded task directive and the context explicitly supplied with it.')
+      .replace('6. The final assistant message MUST follow the output format below verbatim.', '6. Follow the delivery guidance below; adapt the example to this task.');
+    return `${prefix}\n\n${definition.systemPromptSuffix}\n\n${deliveryPrompt}`;
+  }
   return `${SHARED_PREFIX}\n\n${definition.systemPromptSuffix}`;
 }
 

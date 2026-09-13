@@ -926,3 +926,126 @@ describe('validatePilotDeckConfig web search settings', () => {
         }
     });
 });
+
+describe('validatePilotDeckConfig agent.delivery settings', () => {
+    const base = {
+        agent: { model: 'openai/gpt-test' },
+        model: {
+            providers: {
+                openai: {
+                    protocol: 'openai',
+                    url: 'https://api.example.test/v1',
+                    apiKey: 'test-key',
+                    models: { 'gpt-test': {} },
+                },
+            },
+        },
+    };
+
+    it('accepts a fully configured valid delivery section', () => {
+        const validation = validatePilotDeckConfig({
+            ...base,
+            agent: {
+                ...base.agent,
+                delivery: {
+                    mode: 'auto',
+                    prompt: 'Custom guidance',
+                    reviewerModel: 'openai/gpt-test',
+                    maxRepairs: 3,
+                    maxTurns: 40,
+                    reviewTimeoutMs: 30000,
+                    maxReviewInputTokens: 8192,
+                    maxReviewOutputTokens: 1024,
+                },
+            },
+        });
+        expect(validation.valid).toBe(true);
+    });
+
+    it('accepts boundary values and a blank prompt', () => {
+        const validation = validatePilotDeckConfig({
+            ...base,
+            agent: {
+                ...base.agent,
+                delivery: {
+                    mode: 'off',
+                    prompt: '',
+                    maxRepairs: 0,
+                    maxTurns: 1,
+                    reviewTimeoutMs: 1000,
+                    maxReviewInputTokens: 256,
+                    maxReviewOutputTokens: 64,
+                },
+            },
+        });
+        expect(validation.valid).toBe(true);
+    });
+
+    it('rejects invalid mode and out-of-bounds or non-integer fields', () => {
+        const validation = validatePilotDeckConfig({
+            ...base,
+            agent: {
+                ...base.agent,
+                delivery: {
+                    mode: 'strict',
+                    maxRepairs: 6,
+                    maxTurns: 0,
+                    reviewTimeoutMs: 180001,
+                    maxReviewInputTokens: 255,
+                    maxReviewOutputTokens: 1.5,
+                },
+            },
+        });
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toEqual(expect.arrayContaining([
+            'agent.delivery.mode must be "auto" or "off"',
+            'agent.delivery.maxRepairs must be an integer between 0 and 5',
+            'agent.delivery.maxTurns must be an integer between 1 and 100',
+            'agent.delivery.reviewTimeoutMs must be an integer between 1000 and 180000',
+            'agent.delivery.maxReviewInputTokens must be an integer between 256 and 16384',
+            'agent.delivery.maxReviewOutputTokens must be an integer between 64 and 2048',
+        ]));
+    });
+
+    it('rejects an oversized prompt', () => {
+        const validation = validatePilotDeckConfig({
+            ...base,
+            agent: {
+                ...base.agent,
+                delivery: { prompt: '佩'.repeat(10923) },
+            },
+        });
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toContain('agent.delivery.prompt must be at most 32768 bytes');
+    });
+
+    it('rejects a reviewer model that does not resolve instead of silently falling back', () => {
+        const validation = validatePilotDeckConfig({
+            ...base,
+            agent: {
+                ...base.agent,
+                delivery: { reviewerModel: 'openai/missing-model' },
+            },
+        });
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toContain(
+            'agent.delivery.reviewerModel="openai/missing-model" doesn\'t resolve to a configured provider/model',
+        );
+    });
+
+    it('rejects a non-string prompt and a non-object delivery section', () => {
+        const validation = validatePilotDeckConfig({
+            ...base,
+            agent: { ...base.agent, delivery: { prompt: 42 } },
+        });
+        expect(validation.valid).toBe(false);
+        expect(validation.errors).toContain('agent.delivery.prompt must be a string');
+
+        const invalid = validatePilotDeckConfig({
+            ...base,
+            agent: { ...base.agent, delivery: 'off' },
+        });
+        expect(invalid.valid).toBe(false);
+        expect(invalid.errors).toContain('agent.delivery must be an object');
+    });
+});

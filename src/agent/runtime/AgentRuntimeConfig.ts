@@ -1,8 +1,11 @@
 import type { CanonicalThinkingConfig, CanonicalToolChoice, MultimodalConstraints } from "../../model/index.js";
 import type { PermissionContext, PermissionMode } from "../../permission/index.js";
 import type { AgentRunMode } from "../protocol/input.js";
+import type { DeliveryRuntimeConfig } from "../sub/delivery/types.js";
 
 export type AgentRuntimeConfig = {
+  /** Auto records/checks supplied subtask deliveries; Off preserves the original return path. */
+  delivery?: Partial<DeliveryRuntimeConfig>;
   provider: string;
   model: string;
   /** Multimodal constraints of the selected model (absent = text-only). */

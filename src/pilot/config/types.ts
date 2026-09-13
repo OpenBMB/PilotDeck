@@ -2,6 +2,7 @@ import type { AlwaysOnConfig } from "../../always-on/config/parseAlwaysOnConfig.
 import type { CronConfig } from "../../cron/config/parseCronConfig.js";
 import type { ModelConfig } from "../../model/protocol/canonical.js";
 import type { RouterConfig } from "../../router/config/schema.js";
+import type { DeliveryRuntimeConfig } from "../../agent/sub/delivery/types.js";
 
 export type PilotConfigSourceKind = "default" | "project" | "env";
 export type PilotConfigSourcePhase = "bootstrap" | "merge";
@@ -61,6 +62,20 @@ export type PilotAgentModelSelection = {
   model: string;
 };
 
+/**
+ * User-configurable subset of the delivery runtime (`agent.delivery` in
+ * pilotdeck.yaml). Every field is optional; omitted fields keep the runtime
+ * defaults from `DeliveryRuntimeConfig`. `reviewerModel` is the raw
+ * "provider/model" string parsed with the existing agent model-selection
+ * parser, so the parsed shape additionally carries the canonical `id`.
+ */
+export type PilotAgentDeliveryConfig = Omit<
+  Partial<DeliveryRuntimeConfig>,
+  "reviewerModel"
+> & {
+  reviewerModel?: PilotAgentModelSelection;
+};
+
 export type PilotAgentConfig = {
   model: PilotAgentModelSelection;
   /**
@@ -77,6 +92,7 @@ export type PilotAgentConfig = {
     default?: PilotAgentModelSelection;
     timeoutMs?: number;
   };
+  delivery?: PilotAgentDeliveryConfig;
 };
 
 /**

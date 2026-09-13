@@ -1029,6 +1029,14 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...(isSearchToolName(event.toolName) && event.data
                         ? { toolUseResult: event.data }
                         : {}),
+                    // Agent/subagent tools return a structured output whose
+                    // `delivery` + `delivery_file` fields carry the subtask
+                    // delivery receipt (checks/review/attempts). Forward it
+                    // exactly like search tools so SubagentCard can render
+                    // real acceptance status instead of guessing from text.
+                    ...((event.toolName === 'agent' || event.toolName === 'task') && event.data
+                        ? { toolUseResult: event.data }
+                        : {}),
                 }),
             ];
         }

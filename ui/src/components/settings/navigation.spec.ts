@@ -42,6 +42,7 @@ describe("mapInitialTabToMenuKey", () => {
   it("maps URL slugs used by the settings route", () => {
     expect(mapInitialTabToMenuKey("models")).toBe("modelPool");
     expect(mapInitialTabToMenuKey("agent-search")).toBe("agentSearch");
+    expect(mapInitialTabToMenuKey("agent-delivery")).toBe("agentDelivery");
     expect(mapInitialTabToMenuKey("privacy")).toBe("privacy");
   });
 });
@@ -55,6 +56,7 @@ describe("settings route paths", () => {
   it("maps menu keys and legacy tabs onto dedicated settings URLs", () => {
     expect(getSettingsPath("modelPool")).toBe("/settings/models");
     expect(getSettingsPath("agentSearch")).toBe("/settings/agent-search");
+    expect(getSettingsPath("agentDelivery")).toBe("/settings/agent-delivery");
     expect(getSettingsPathFromTab("config:tools")).toBe("/settings/agent-search");
     expect(getSettingsPathFromTab("permissions")).toBe("/settings/privacy");
   });

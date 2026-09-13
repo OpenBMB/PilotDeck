@@ -340,6 +340,53 @@ function validateOptionalSubagentDefault(config, warnings) {
   }
 }
 
+// Bounds mirror DeliveryRuntimeConfig (src/agent/sub/delivery/types.ts) and
+// the gateway-side parser (src/pilot/config/parseDeliveryConfig.ts). Invalid
+// values are hard errors — in particular an invalid configured reviewer
+// model must never silently fall back to the conversation model.
+const DELIVERY_FIELD_LIMITS = {
+  maxRepairs: { min: 0, max: 5 },
+  maxTurns: { min: 1, max: 100 },
+  reviewTimeoutMs: { min: 1000, max: 180000 },
+  maxReviewInputTokens: { min: 256, max: 16384 },
+  maxReviewOutputTokens: { min: 64, max: 2048 },
+};
+const DELIVERY_PROMPT_MAX_BYTES = 32768;
+
+function validateDeliveryConfig(config, errors) {
+  const delivery = config.agent?.delivery;
+  if (delivery === undefined || delivery === null) return;
+  if (!isRecord(delivery)) {
+    errors.push('agent.delivery must be an object');
+    return;
+  }
+  if (delivery.mode !== undefined && delivery.mode !== null && !['auto', 'off'].includes(delivery.mode)) {
+    errors.push('agent.delivery.mode must be "auto" or "off"');
+  }
+  if (delivery.prompt !== undefined && delivery.prompt !== null) {
+    if (typeof delivery.prompt !== 'string') {
+      errors.push('agent.delivery.prompt must be a string');
+    } else if (Buffer.byteLength(delivery.prompt, 'utf8') > DELIVERY_PROMPT_MAX_BYTES) {
+      errors.push(`agent.delivery.prompt must be at most ${DELIVERY_PROMPT_MAX_BYTES} bytes`);
+    }
+  }
+  for (const [field, limit] of Object.entries(DELIVERY_FIELD_LIMITS)) {
+    const value = delivery[field];
+    if (value === undefined || value === null) continue;
+    if (!Number.isInteger(value) || value < limit.min || value > limit.max) {
+      errors.push(`agent.delivery.${field} must be an integer between ${limit.min} and ${limit.max}`);
+    }
+  }
+  const reviewerModel = delivery.reviewerModel;
+  if (reviewerModel !== undefined && reviewerModel !== null) {
+    if (typeof reviewerModel !== 'string' || !normalizeString(reviewerModel)) {
+      errors.push('agent.delivery.reviewerModel must use provider/model format');
+    } else {
+      validateModelRef(config, reviewerModel, 'agent.delivery.reviewerModel', errors);
+    }
+  }
+}
+
 function validateRouterModelRefs(config, errors) {
   const router = config.router;
   if (!isRecord(router)) return;
@@ -502,6 +549,7 @@ export function validatePilotDeckConfig(config) {
   }
 
   validateOptionalSubagentDefault(normalized, warnings);
+  validateDeliveryConfig(normalized, errors);
   validateRouterModelRefs(normalized, errors);
   validateGatewayConfig(normalized, errors, warnings);
   validateToolsConfig(normalized, errors, warnings);

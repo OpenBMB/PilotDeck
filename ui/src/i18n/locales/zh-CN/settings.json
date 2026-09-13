@@ -70,6 +70,7 @@
       "agentResident": "常驻",
       "agentSearch": "搜索",
       "agentSchedule": "定时任务",
+      "agentDelivery": "交付",
       "integrations": "外部集成",
       "messageChannels": "消息渠道",
       "external": "外部集成",
@@ -90,6 +91,7 @@
       "agentResident": "在用户离开后持续关注工作区变化，并在合适时机主动推进任务与同步进展。",
       "agentSearch": "让智能体能够检索实时网页信息，为回答补充最新内容与外部事实。",
       "agentSchedule": "按设定的时间自动唤起智能体执行任务，无需你持续在线。",
+      "agentDelivery": "控制子智能体如何向父任务汇报完成成果，可选择审查模型。",
       "integrations": "连接常用通讯工具，让智能体可以从飞书、微信与企业微信接收消息并回复。",
       "mcpServers": "连接本地工具与远程服务，让智能体可以安全使用外部能力和上下文。",
       "officePreview": "选择 Office 文档的只读预览方式。PDF 始终使用 PilotDeck 内置浏览器，不受此设置影响。",
@@ -107,6 +109,7 @@
       "agentResident": "智能体 / 常驻",
       "agentSearch": "智能体 / 搜索",
       "agentSchedule": "智能体 / 定时任务",
+      "agentDelivery": "智能体 / 交付",
       "integrations": "外部集成",
       "extensions": "扩展",
       "mcpServers": "扩展 / MCP 服务器",
@@ -208,9 +211,45 @@
       "agentResident": "配置文件当前不是有效 YAML，暂时无法加载智能体常驻表单。",
       "agentSearch": "配置文件当前不是有效 YAML，暂时无法加载智能体搜索表单。",
       "agentSchedule": "配置文件当前不是有效 YAML，暂时无法加载智能体定时任务表单。",
+      "agentDelivery": "配置文件当前不是有效 YAML，暂时无法加载智能体交付表单。",
       "integrations": "配置文件当前不是有效 YAML，暂时无法加载网关配置表单。",
       "officePreview": "配置文件当前不是有效 YAML，暂时无法加载 Office 预览表单。",
       "modelPool": "配置文件当前不是有效 YAML，暂时无法加载模型池表单。"
+    },
+    "delivery": {
+      "effect": "保存后对新启动的子任务生效。Auto 只检查交付报告中实际填写的有效字段；未填写的字段跳过。",
+      "configAria": "交付设置",
+      "mode": {
+        "label": "自动交付",
+        "description": "Auto 收集结构化交付并检查已填写的字段。Off 关闭交付检查、模型评审和回执保存，保留已有设置。"
+      },
+      "reviewer": {
+        "label": "审查模型",
+        "description": "只有主代理请求时才评审交付结果，修复仍由原子代理完成。默认使用主对话模型。",
+        "conversationModel": "使用主对话模型"
+      },
+      "prompt": {
+        "label": "交付提示词",
+        "description": "在固定交付协议之外附加给子智能体的可编辑指引。未保存提示词时显示内置默认值。",
+        "usingDefault": "当前预览内置默认提示词，编辑前不会写入配置文件。",
+        "blankStored": "提示词为空：仅发送固定交付协议，省略可编辑示例。",
+        "customStored": "自定义提示词（{{bytes}} / {{max}} UTF-8 字节）。",
+        "restore": "恢复默认"
+      },
+      "budgets": {
+        "summary": "审查限制与超时",
+        "maxRepairs": "最大修复次数（0–5）",
+        "maxTurns": "最大轮数（1–100）",
+        "reviewTimeoutMs": "审查超时（毫秒，1000–180000）",
+        "maxReviewInputTokens": "审查输入 token 上限（256–16384，按估算）",
+        "maxReviewOutputTokens": "审查输出 token 上限（64–2048）"
+      },
+      "unsaved": "有未保存的更改——点击“保存”后生效。",
+      "saving": "保存中…",
+      "validationTitle": "请先修正标红的字段再保存。",
+      "invalidPrompt": "交付提示词不能超过 {{max}} 个 UTF-8 字节（当前 {{bytes}}）。",
+      "invalidNumber": "{{field}} 必须是 {{min}} 到 {{max}} 之间的整数。",
+      "invalidReviewer": "审查模型必须引用已配置的提供商模型，例如 provider/model。"
     }
   },
   "quickSettings": {

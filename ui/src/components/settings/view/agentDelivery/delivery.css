@@ -1,0 +1,24 @@
+:where(.pilotdeck-settings-app) .settings-page.agent-delivery-page { overflow-y: auto; scrollbar-width: thin; }
+:where(.pilotdeck-settings-app) .delivery-page-content { width: 100%; padding-bottom: 24px; }
+:where(.pilotdeck-settings-app) .delivery-page-content > [role="note"] { margin-bottom: 16px; }
+:where(.pilotdeck-settings-app) .agent-delivery-page .delivery-prompt-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+:where(.pilotdeck-settings-app) .delivery-prompt-textarea {
+  width: 100%; min-height: 280px; resize: vertical; border: 1px solid var(--line);
+  border-radius: 9px; padding: 14px; color: inherit; background: transparent;
+  font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.65;
+}
+:where(.pilotdeck-settings-app) .delivery-prompt-textarea:focus-visible { outline: 2px solid #8b83d5; outline-offset: 2px; }
+:where(.pilotdeck-settings-app) .delivery-save-row { display: flex; align-items: center; gap: 14px; padding-top: 16px; }
+:where(.pilotdeck-settings-app) .delivery-budget-details > summary { padding: 16px 20px; cursor: pointer; font-size: 13px; }
+:where(.pilotdeck-settings-app) .delivery-budget-details input {
+  width: 150px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: transparent;
+}
+
+:where(.pilotdeck-settings-app) .agent-delivery-page .button {
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 16px; font-size: 13px; cursor: pointer;
+}
+:where(.pilotdeck-settings-app) .agent-delivery-page .button:disabled { opacity: .45; cursor: default; }
+:where(.pilotdeck-settings-app) .agent-delivery-page .button.primary { background: #6259d6; color: white; }
+:where(.pilotdeck-settings-app) .agent-delivery-page .search-setting-copy { font-size: 13px; }
+:where(.pilotdeck-settings-app) .agent-delivery-page .route-card-heading h2 { font-size: 16px; }
+:where(.pilotdeck-settings-app) .agent-delivery-page .route-card-heading p { font-size: 13px; }

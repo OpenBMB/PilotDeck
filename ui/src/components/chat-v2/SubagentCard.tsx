@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Loader2, XCircle, Bot } from 'lucide-react';
 import type { ChatMessage, SessionRuntimeState } from '../chat/types/types';
+import { parseAgentDelivery } from './agentDelivery/deliveryStatus';
+import DeliveryStatusPanel from './agentDelivery/DeliveryStatusPanel';
 
 function parseToolInput(toolInput: unknown): Record<string, unknown> {
   if (typeof toolInput === 'string') {
@@ -29,6 +31,7 @@ export default function SubagentCard({
 }: SubagentCardProps) {
   const { t } = useTranslation('chat');
   const parsed = useMemo(() => parseToolInput(message.toolInput), [message.toolInput]);
+  const deliveryInfo = useMemo(() => parseAgentDelivery(message.toolResult), [message.toolResult]);
 
   const subagentType = (parsed.subagent_type || parsed.subagentType || 'agent') as string;
   const description = (parsed.description || t('subagent.defaultDescription')) as string;
@@ -142,6 +145,16 @@ export default function SubagentCard({
             {statusLine.text}
           </span>
         </div>
+
+        {/* Delivery receipt: separate acceptance evidence, not task completion.
+            Completion alone (hasToolResult) never implies acceptance — the
+            panel shows its own passed/failed/skipped verdict. */}
+        {deliveryInfo.delivery ? (
+          <DeliveryStatusPanel
+            delivery={deliveryInfo.delivery}
+            {...(deliveryInfo.deliveryFile ? { deliveryFile: deliveryInfo.deliveryFile } : {})}
+          />
+        ) : null}
 
         {/* Thinking content preview */}
         {showThinking && thinkingLines.length > 0 ? (

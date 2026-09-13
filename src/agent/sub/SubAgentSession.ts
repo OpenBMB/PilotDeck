@@ -22,6 +22,12 @@ import type {
   CanonicalUsage,
 } from "../../model/index.js";
 import { messageContent } from "../../model/protocol/clone.js";
+import { createStructuredOutputTool } from "../../tool/builtin/structuredOutput.js";
+import { deliveryConfig } from "./delivery/config.js";
+import { buildDeliveryPrompt } from "./delivery/prompt.js";
+import { validateDeliveryContract } from "./delivery/checks.js";
+import { runDelivery } from "./delivery/run.js";
+import type { DeliveryContract, DeliveryResult } from "./delivery/types.js";
 import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
 import { ToolRegistry } from "../../tool/registry/ToolRegistry.js";
@@ -50,6 +56,7 @@ import {
 const SUMMARY_FIELDS = ["Scope", "Result", "Key files", "Files changed", "Issues"] as const;
 
 export type SubAgentSessionOptions = {
+  delivery?: DeliveryContract;
   /** The subagent preset (general-purpose / explore / plan). */
   definition: SubagentDefinition;
   /** Free-text directive from the parent (becomes the subagent's user prompt). */
@@ -97,6 +104,7 @@ export type SidechainTranscriptWriter = {
 };
 
 export type SubagentReport = {
+  delivery?: DeliveryResult;
   subagentId: string;
   definitionId: string;
   /** Final assistant text (the 5-field report). */
@@ -115,6 +123,14 @@ export class SubAgentSession {
 
   async run(): Promise<SubagentReport> {
     const startedAt = Date.now();
+
+    if (deliveryConfig(this.options.parentConfig.delivery).mode === 'auto') {
+      try { return await this.runWithDelivery(startedAt); }
+      catch (error) {
+        if (this.options.abortSignal?.aborted) throw new Error('SubAgentSession: subagent turn aborted', { cause: error });
+        throw error;
+      }
+    }
 
     const messages = this.buildInitialMessages();
     const subRegistry = this.buildScopedRegistry();
@@ -192,6 +208,51 @@ export class SubAgentSession {
     return buildForkedMessages(this.options.directive);
   }
 
+  private async runWithDelivery(startedAt: number): Promise<SubagentReport> {
+    const config = deliveryConfig(this.options.parentConfig.delivery);
+    const contract = validateDeliveryContract(this.options.delivery);
+    const registry = this.buildScopedRegistry();
+    const loop = new AgentLoop(this.buildConfig(), this.cloneDependencies(registry), {
+      readFileState: cloneReadFileState(this.options.parentReadFileState),
+      writeSnapshots: cloneWriteSnapshots(this.options.parentWriteSnapshots),
+    });
+    const result = await runDelivery({
+      cwd: this.options.parentConfig.cwd,
+      subagentId: this.options.subagentId,
+      task: this.options.directive,
+      config,
+      contract,
+      initialMessages: this.buildInitialMessages(),
+      maxTurns: this.options.maxTurns,
+      signal: this.options.abortSignal,
+      reviewer: this.options.parentDependencies.deliveryReviewer,
+      mainModel: { provider: this.options.parentConfig.provider, model: this.options.parentConfig.model },
+      execute: async (messages, maxTurns, attempt) => {
+        const turnId = `${this.options.subagentId}-t${attempt - 1}`;
+        await this.options.sidechainTranscript?.recordAcceptedInput(this.options.subagentSessionId, turnId, messages);
+        const generator = loop.run({ sessionId: this.options.subagentSessionId, turnId, messages, maxTurns, abortSignal: this.options.abortSignal });
+        while (true) {
+          const next = await generator.next();
+          if (next.done) return next.value;
+          const event = next.value;
+          this.forwardActivity(event);
+          if (event.type === 'assistant_message' || event.type === 'tool_results_projected') {
+            await this.options.sidechainTranscript?.recordDurableMessage(this.options.subagentSessionId, turnId, event.message);
+          }
+        }
+      },
+    });
+    try {
+      this.options.parentDependencies.deliveryObserver?.({
+        subagentId: this.options.subagentId, sessionId: this.options.parentSessionId,
+        definitionId: this.options.definition.id, result: result.delivery,
+      });
+    } catch { /* Optional observation does not change the checked result. */ }
+    return { subagentId: this.options.subagentId, definitionId: this.options.definition.id,
+      markdown: result.text, parsed: parseSummary(result.text), usage: result.usage,
+      turns: result.turns, durationMs: Date.now() - startedAt, delivery: result.delivery };
+  }
+
   private buildScopedRegistry(): ToolRegistry {
     const scoped = new ToolRegistry();
     const allowedSet = new Set(this.options.definition.allowedTools);
@@ -213,6 +274,9 @@ export class SubAgentSession {
         continue; // Subagents have no elicitation channel.
       }
       scoped.register(tool as PilotDeckToolDefinition);
+    }
+    if (deliveryConfig(this.options.parentConfig.delivery).mode === 'auto' && !scoped.get('structured_output')) {
+      scoped.register(createStructuredOutputTool());
     }
     return scoped;
   }
@@ -286,7 +350,9 @@ export class SubAgentSession {
       maxOutputTokens: _parentMaxOutputTokens,
       ...parentWithoutTokenCaps
     } = parent;
-    const subagentSystem = buildSubagentSystemPrompt(this.options.definition);
+    const config = deliveryConfig(parent.delivery);
+    const subagentSystem = buildSubagentSystemPrompt(this.options.definition, config.mode === 'auto'
+      ? buildDeliveryPrompt({ prompt: config.prompt, schema: this.options.delivery?.schema }) : undefined);
     const filteredParentSystem = applySystemPromptFilters(
       parent.systemPrompt ?? "",
       this.options.definition,
@@ -319,7 +385,7 @@ export class SubAgentSession {
         },
       },
       systemPrompt,
-      stopOnStructuredOutput: false,
+      stopOnStructuredOutput: config.mode === 'auto',
       metadata: {
         ...(parent.metadata ?? {}),
         subagentId: this.options.subagentId,

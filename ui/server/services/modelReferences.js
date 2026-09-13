@@ -42,6 +42,7 @@ export function findModelReferences(config, { providerId = '', modelId = '' } = 
   const agent = config?.agent;
   collectReference(references, 'agent.model', agent?.model);
   collectReference(references, 'agent.subagents.default', agent?.subagents?.default);
+  collectReference(references, 'agent.delivery.reviewerModel', agent?.delivery?.reviewerModel);
   collectReference(references, 'memory.model', config?.memory?.model);
 
   const router = config?.router;
@@ -98,6 +99,7 @@ export function rewriteModelReferences(config, { providerRenames = new Map(), mo
   if (agent) {
     agent.model = renameRef(agent.model, providerRenames, modelRenames);
     if (agent.subagents) agent.subagents.default = renameRef(agent.subagents.default, providerRenames, modelRenames);
+    if (agent.delivery) agent.delivery.reviewerModel = renameRef(agent.delivery.reviewerModel, providerRenames, modelRenames);
   }
   if (config?.memory) config.memory.model = renameRef(config.memory.model, providerRenames, modelRenames);
 
