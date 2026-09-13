@@ -31,10 +31,11 @@ export async function filterAvailableTools(
     Promise<PilotDeckToolAvailability>
   >();
 
-  for (const tool of registry.list()) {
+  for (const tool of registry.listAll()) {
     const availability = await resolveToolAvailability(tool, context, checkCache);
     if (availability.ok) {
       filtered.register(tool);
+      if (registry.isHidden(tool.name)) filtered.hide(tool.name);
       continue;
     }
 

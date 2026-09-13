@@ -12,7 +12,11 @@ import {
 } from "../../model/index.js";
 import { buildOpenAIResponsesRequest } from "../../model/providers/openai-responses/request.js";
 import { buildProviderHeaders } from "../../model/streaming/streamModel.js";
-import { TokenBudgetManager, type TokenBudgetSnapshot } from "./TokenBudgetManager.js";
+import {
+  TokenBudgetManager,
+  type TokenBudgetBreakdown,
+  type TokenBudgetSnapshot,
+} from "./TokenBudgetManager.js";
 
 export type TokenCountSource = "provider" | "calibrated" | "local";
 
@@ -129,6 +133,7 @@ export class TokenAccountingRuntime {
       localEstimateTokens: counted.localEstimateTokens,
       calibrationActualInputTokens: counted.calibration?.actualInputTokens,
       calibrationEstimatedInputTokens: counted.calibration?.estimatedInputTokens,
+      breakdown: this.estimateRequestBreakdown(request),
     });
   }
 
@@ -145,6 +150,7 @@ export class TokenAccountingRuntime {
       displayTokens?: number;
       calibrationActualInputTokens?: number;
       calibrationEstimatedInputTokens?: number;
+      breakdown?: TokenBudgetBreakdown;
     } = {},
   ): TokenBudgetSnapshot {
     return this.tokenBudget.snapshotFromTokens(tokens, maxContextTokens, metadata);
@@ -168,10 +174,37 @@ export class TokenAccountingRuntime {
   }
 
   estimateRequestInput(request: CanonicalModelRequest): number {
+    return this.estimateRequestBreakdown(request).total;
+  }
+
+  /**
+   * Produce an exclusive breakdown of the request composition. MCP and
+   * memory are rendered into the native system prompt, so stable delimiters
+   * are used instead of guessing at a provider aggregate count.
+   */
+  estimateRequestBreakdown(request: CanonicalModelRequest): TokenBudgetBreakdown {
+    const systemPrompt = request.systemPrompt ?? "";
+    const systemTokens = systemPrompt ? this.tokenBudget.estimateTextTokens(systemPrompt) : 0;
+    const estimatedMcp = estimateDelimitedBlocks(this.tokenBudget, systemPrompt, "mcp-instructions");
+    const estimatedMemory = estimateDelimitedBlocks(this.tokenBudget, systemPrompt, "memory-context");
+    // BPE tokenization is not strictly additive at arbitrary string
+    // boundaries. Clamp independently estimated blocks to the full system
+    // count so the public breakdown always has an exact additive invariant.
+    const mcp = Math.min(systemTokens, estimatedMcp);
+    const memory = Math.min(systemTokens - mcp, estimatedMemory);
     const messages = this.tokenBudget.estimateMessagesTokens(request.messages);
-    const system = request.systemPrompt ? this.tokenBudget.estimateTextTokens(request.systemPrompt) : 0;
     const tools = estimateToolSchemas(this.tokenBudget, request.tools ?? []);
-    return messages + system + tools;
+    return {
+      source: "local_estimate",
+      total: systemTokens + messages + tools,
+      // Keep boundary-tokenization remainder in `system` so consumers can
+      // rely on an additive total.
+      system: systemTokens - mcp - memory,
+      tools,
+      messages,
+      mcp,
+      memory,
+    };
   }
 
   private async countWithProvider(
@@ -336,6 +369,26 @@ function estimateToolSchemas(tokenBudget: TokenBudgetManager, tools: CanonicalTo
   let total = 0;
   for (const tool of tools) {
     total += tokenBudget.estimateTextTokens(`${tool.name}${tool.description ?? ""}${safeJsonStringify(tool.inputSchema)}`);
+  }
+  return total;
+}
+
+function estimateDelimitedBlocks(
+  tokenBudget: TokenBudgetManager,
+  text: string,
+  name: string,
+): number {
+  const open = `<${name}>`;
+  const close = `</${name}>`;
+  let total = 0;
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf(open, cursor);
+    if (start < 0) break;
+    const end = text.indexOf(close, start + open.length);
+    if (end < 0) break;
+    total += tokenBudget.estimateTextTokens(text.slice(start, end + close.length));
+    cursor = end + close.length;
   }
   return total;
 }

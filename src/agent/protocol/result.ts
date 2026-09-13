@@ -10,6 +10,8 @@ export type AgentPermissionDenial = {
 export type AgentStopReason =
   | "completed"
   | "max_turns"
+  | "max_budget"
+  | "task_budget"
   | "aborted_streaming"
   | "aborted_tools"
   | "model_error"
@@ -30,4 +32,10 @@ export type AgentTurnResult = {
   completedAt: string;
   structuredOutput?: unknown;
   errors?: AgentError[];
+  /** Gateway accounting metadata, present only when a budget was requested. */
+  budget?: {
+    turnSpentUsd: number;
+    taskBudgetUsd?: number;
+    taskSpentUsd?: number;
+  };
 };

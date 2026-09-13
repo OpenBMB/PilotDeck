@@ -19,6 +19,8 @@ export class ToolRegistry {
   private readonly toolsByName = new Map<string, PilotDeckToolDefinition>();
   private readonly aliases = new Map<string, string>();
   private readonly unavailable = new Map<string, ToolUnavailableDiagnostic>();
+  /** Deferred tools remain executable only after search_tools reveals them. */
+  private readonly hidden = new Set<string>();
 
   register(tool: PilotDeckToolDefinition): void {
     if (this.toolsByName.has(tool.name)) {
@@ -56,7 +58,30 @@ export class ToolRegistry {
   }
 
   list(): PilotDeckToolDefinition[] {
+    return this.listAll().filter((tool) => !this.hidden.has(tool.name));
+  }
+
+  /** Includes deferred tools so host setup can validate and reveal them. */
+  listAll(): PilotDeckToolDefinition[] {
     return [...this.toolsByName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  hide(name: string): boolean {
+    const tool = this.get(name);
+    if (!tool) return false;
+    this.hidden.add(tool.name);
+    return true;
+  }
+
+  reveal(name: string): boolean {
+    const tool = this.get(name);
+    if (!tool) return false;
+    return this.hidden.delete(tool.name);
+  }
+
+  isHidden(name: string): boolean {
+    const tool = this.get(name);
+    return tool !== undefined && this.hidden.has(tool.name);
   }
 
   markUnavailable(diagnostic: ToolUnavailableDiagnostic, aliases: readonly string[] = []): void {
@@ -116,6 +141,9 @@ export class ToolRegistry {
     for (const [name, diagnostic] of this.unavailable) {
       copy.unavailable.set(name, diagnostic);
     }
+    for (const name of this.hidden) {
+      copy.hidden.add(name);
+    }
     return copy;
   }
 
@@ -132,6 +160,7 @@ export class ToolRegistry {
     }
     this.toolsByName.delete(name);
     this.unavailable.delete(name);
+    this.hidden.delete(name);
     return true;
   }
 

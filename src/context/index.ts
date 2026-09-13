@@ -56,6 +56,7 @@ export {
 export {
   IMAGE_MAX_TOKEN_SIZE,
   TokenBudgetManager,
+  type TokenBudgetBreakdown,
   type TokenBudgetEvaluateOptions,
   type TokenBudgetManagerOptions,
   type TokenBudgetSnapshot,

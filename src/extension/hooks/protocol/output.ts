@@ -38,6 +38,10 @@ export type PilotDeckHookSyncOutput = {
 
 export type PilotDeckHookAsyncOutput = {
   type: "async";
+  /** SDK callback-generated id used by the Gateway deferred-result registry. */
+  invocationId?: string;
+  /** Caller-selected deferred-result deadline in milliseconds. */
+  timeoutMs?: number;
   raw?: unknown;
 };
 

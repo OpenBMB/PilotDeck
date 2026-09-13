@@ -15,8 +15,10 @@ import type { CanonicalContentBlock, CanonicalMessage } from "../../model/index.
 import { getPilotProjectChatDir } from "../../pilot/index.js";
 import { readTranscript } from "../../session/transcript/TranscriptReader.js";
 import {
+  readAgentProjectSessionTranscript,
   sanitizeSessionIdForPath,
 } from "../../session/storage/ProjectSessionStorage.js";
+import type { AgentProjectSessionStorage } from "../../session/storage/ProjectSessionStorage.js";
 import type {
   AgentAcceptedInputTranscriptEntry,
   AgentSessionMetadataTranscriptEntry,
@@ -27,6 +29,8 @@ import type { WebAgentRunMode, WebGatewayMode, WebForkSessionInput, WebForkSessi
 export type ForkWebSessionOptions = {
   projectRoot: string;
   pilotHome: string;
+  /** Gateway-only resolver for a native session-storage layout. */
+  storageForSession?: (sessionId: string) => AgentProjectSessionStorage;
   now?: () => Date;
 };
 
@@ -89,13 +93,14 @@ type ForkPoint = {
 function findForkPoint(
   entries: AgentTranscriptEntry[],
   fromEntryId: string,
+  preserveAcceptedInput = false,
 ): ForkPoint {
   const target = entries.find((entry) => entry.entryId === fromEntryId);
   if (!target) {
     throw new ForkSessionError("fork_entry_not_found", `Transcript entry not found: ${fromEntryId}`);
   }
 
-  if (target.type === "accepted_input") {
+  if (target.type === "accepted_input" && !preserveAcceptedInput) {
     return {
       target,
       acceptedInput: target,
@@ -165,12 +170,31 @@ function shouldPreserveSourceEntry(entry: AgentTranscriptEntry, forkPoint: ForkP
   );
 }
 
+type ForkAuxiliaryPaths = {
+  sourceSessionDir: string;
+  targetSessionDir: string;
+  sourceToolResultsDir?: string;
+  targetToolResultsDir?: string;
+};
+
 function retargetAuxiliaryPath(
   path: string,
   sourceSessionDir: string,
   targetSessionDir: string,
+  sourceToolResultsDir?: string,
+  targetToolResultsDir?: string,
 ): string {
   const absolutePath = resolve(path);
+  if (sourceToolResultsDir && targetToolResultsDir) {
+    const toolResultRelativePath = relative(sourceToolResultsDir, absolutePath);
+    if (
+      toolResultRelativePath !== ""
+      && !toolResultRelativePath.startsWith("..")
+      && !isAbsolute(toolResultRelativePath)
+    ) {
+      return resolve(targetToolResultsDir, toolResultRelativePath);
+    }
+  }
   const relativePath = relative(sourceSessionDir, absolutePath);
   if (
     relativePath === "" ||
@@ -196,13 +220,18 @@ function retargetRelativeSessionPath(
 
 function retargetContentBlock(
   block: CanonicalContentBlock,
-  sourceSessionDir: string,
-  targetSessionDir: string,
+  paths: ForkAuxiliaryPaths,
 ): CanonicalContentBlock {
   if (block.type === "tool_result_reference" || block.type === "media_reference") {
     return {
       ...block,
-      path: retargetAuxiliaryPath(block.path, sourceSessionDir, targetSessionDir),
+      path: retargetAuxiliaryPath(
+        block.path,
+        paths.sourceSessionDir,
+        paths.targetSessionDir,
+        paths.sourceToolResultsDir,
+        paths.targetToolResultsDir,
+      ),
     };
   }
   return block;
@@ -227,8 +256,7 @@ function markMessageAsForkCarryover(
 
 function retargetTranscriptEntryAuxiliaryPaths(
   entry: AgentTranscriptEntry,
-  sourceSessionDir: string,
-  targetSessionDir: string,
+  paths: ForkAuxiliaryPaths,
 ): AgentTranscriptEntry {
   if (entry.type === "accepted_input") {
     return {
@@ -236,7 +264,7 @@ function retargetTranscriptEntryAuxiliaryPaths(
       messages: entry.messages.map((message) => ({
         ...message,
         content: message.content.map((block) =>
-          retargetContentBlock(block, sourceSessionDir, targetSessionDir),
+          retargetContentBlock(block, paths),
         ),
       })),
     };
@@ -251,12 +279,33 @@ function retargetTranscriptEntryAuxiliaryPaths(
       message: {
         ...entry.message,
         content: entry.message.content.map((block) =>
-          retargetContentBlock(block, sourceSessionDir, targetSessionDir),
+          retargetContentBlock(block, paths),
         ),
       },
     };
   }
   return entry;
+}
+
+function retargetForkSidechainEntry(
+  entry: AgentTranscriptEntry,
+  options: ForkAuxiliaryPaths & {
+    sourceSafeId: string;
+    targetSafeId: string;
+  },
+): AgentTranscriptEntry {
+  const retargeted = retargetTranscriptEntryAuxiliaryPaths(entry, options);
+  if (retargeted.type !== "subagent_started") {
+    return retargeted;
+  }
+  return {
+    ...retargeted,
+    transcriptRelativePath: retargetRelativeSessionPath(
+      retargeted.transcriptRelativePath,
+      options.sourceSafeId,
+      options.targetSafeId,
+    ),
+  };
 }
 
 function markTranscriptEntryAsForkCarryover(
@@ -287,14 +336,9 @@ function markTranscriptEntryAsForkCarryover(
 function retargetAcceptedInputEntry(
   entry: AgentAcceptedInputTranscriptEntry,
   sessionId: string,
-  sourceSessionDir: string,
-  targetSessionDir: string,
+  paths: ForkAuxiliaryPaths,
 ): AgentAcceptedInputTranscriptEntry {
-  const retargeted = retargetTranscriptEntryAuxiliaryPaths(
-    entry,
-    sourceSessionDir,
-    targetSessionDir,
-  );
+  const retargeted = retargetTranscriptEntryAuxiliaryPaths(entry, paths);
   if (retargeted.type !== "accepted_input") {
     return entry;
   }
@@ -306,12 +350,10 @@ function retargetAcceptedInputEntry(
 
 function retargetEntriesToSession(
   entries: AgentTranscriptEntry[],
-  options: {
+  options: ForkAuxiliaryPaths & {
     sessionId: string;
     sourceSafeId: string;
     targetSafeId: string;
-    sourceSessionDir: string;
-    targetSessionDir: string;
   },
 ): AgentTranscriptEntry[] {
   return entries.map((entry) => {
@@ -319,8 +361,7 @@ function retargetEntriesToSession(
       const retargeted = retargetAcceptedInputEntry(
         entry,
         options.sessionId,
-        options.sourceSessionDir,
-        options.targetSessionDir,
+        options,
       );
       return markTranscriptEntryAsForkCarryover(retargeted, entry.sessionId);
     }
@@ -332,8 +373,7 @@ function retargetEntriesToSession(
       const retargeted = {
         ...retargetTranscriptEntryAuxiliaryPaths(
           entry,
-          options.sourceSessionDir,
-          options.targetSessionDir,
+          options,
         ),
         sessionId: options.sessionId,
       };
@@ -380,8 +420,7 @@ async function pathExists(path: string): Promise<boolean> {
 
 async function retargetCopiedSubagentTranscripts(
   targetSubagentsDir: string,
-  sourceSessionDir: string,
-  targetSessionDir: string,
+  paths: ForkAuxiliaryPaths,
 ): Promise<void> {
   let entries: Dirent<string>[];
   try {
@@ -396,7 +435,7 @@ async function retargetCopiedSubagentTranscripts(
   for (const entry of entries) {
     const path = join(targetSubagentsDir, entry.name);
     if (entry.isDirectory()) {
-      await retargetCopiedSubagentTranscripts(path, sourceSessionDir, targetSessionDir);
+      await retargetCopiedSubagentTranscripts(path, paths);
       continue;
     }
     if (!entry.isFile() || !entry.name.endsWith(".jsonl")) {
@@ -412,7 +451,7 @@ async function retargetCopiedSubagentTranscripts(
         try {
           const parsed = JSON.parse(line) as AgentTranscriptEntry;
           return JSON.stringify(
-            retargetTranscriptEntryAuxiliaryPaths(parsed, sourceSessionDir, targetSessionDir),
+            retargetTranscriptEntryAuxiliaryPaths(parsed, paths),
           );
         } catch {
           return line;
@@ -423,17 +462,24 @@ async function retargetCopiedSubagentTranscripts(
   }
 }
 
-async function copySessionAuxDirs(sourceSessionDir: string, targetSessionDir: string): Promise<void> {
-  for (const subdir of ["tool-results", "file-history", "subagents"] as const) {
-    const source = join(sourceSessionDir, subdir);
-    const target = join(targetSessionDir, subdir);
+async function copySessionAuxDirs(paths: ForkAuxiliaryPaths): Promise<void> {
+  for (const subdir of ["file-history", "subagents"] as const) {
+    const source = join(paths.sourceSessionDir, subdir);
+    const target = join(paths.targetSessionDir, subdir);
     if (!(await pathExists(source))) {
       continue;
     }
     await cp(source, target, { recursive: true, force: true });
     if (subdir === "subagents") {
-      await retargetCopiedSubagentTranscripts(target, sourceSessionDir, targetSessionDir);
+      await retargetCopiedSubagentTranscripts(target, paths);
     }
+  }
+  if (
+    paths.sourceToolResultsDir
+    && paths.targetToolResultsDir
+    && await pathExists(paths.sourceToolResultsDir)
+  ) {
+    await cp(paths.sourceToolResultsDir, paths.targetToolResultsDir, { recursive: true, force: true });
   }
 }
 
@@ -452,17 +498,21 @@ export async function forkWebSession(
   options: ForkWebSessionOptions,
 ): Promise<WebForkSessionResult> {
   const effectiveProjectRoot = input.projectKey ?? options.projectRoot;
-  const chatDir = getPilotProjectChatDir(effectiveProjectRoot, options.pilotHome);
+  const sourceStorage = options.storageForSession?.(input.sessionKey);
+  const chatDir = sourceStorage?.chatDir ?? getPilotProjectChatDir(effectiveProjectRoot, options.pilotHome);
   const sourceSafeId = sanitizeSessionIdForPath(input.sessionKey);
-  const sourceTranscriptPath = resolve(chatDir, `${sourceSafeId}.jsonl`);
-  const sourceSessionDir = resolve(chatDir, sourceSafeId);
+  const sourceTranscriptPath = sourceStorage?.transcriptPath ?? resolve(chatDir, `${sourceSafeId}.jsonl`);
+  const sourceSessionDir = sourceStorage ? dirname(sourceStorage.subagentsDir) : resolve(chatDir, sourceSafeId);
 
-  const { entries } = await readTranscript(sourceTranscriptPath);
+  const { entries } = sourceStorage
+    ? await readAgentProjectSessionTranscript(sourceStorage)
+    : await readTranscript(sourceTranscriptPath);
   if (entries.length === 0) {
     throw new ForkSessionError("fork_empty_transcript", "Cannot fork an empty session transcript.");
   }
 
-  const forkPoint = findForkPoint(entries, input.fromEntryId);
+  const forkPoint = findForkPoint(entries, input.fromEntryId, input.resumeAt === true);
+  validateResumeDropsTurn(entries, forkPoint, input.resumeDropsTurn);
   const forkAcceptedInput = forkPoint.acceptedInput;
   if (!forkPoint.preserveTarget && hasUnsupportedPrefillContent(forkAcceptedInput)) {
     throw new ForkSessionError(
@@ -479,19 +529,61 @@ export async function forkWebSession(
 
   const newSessionKey = newWebSessionKey();
   const newSafeId = sanitizeSessionIdForPath(newSessionKey);
-  const newTranscriptPath = resolve(chatDir, `${newSafeId}.jsonl`);
-  const newSessionDir = resolve(chatDir, newSafeId);
+  const targetStorage = options.storageForSession?.(newSessionKey);
+  const newTranscriptPath = targetStorage?.transcriptPath ?? resolve(chatDir, `${newSafeId}.jsonl`);
+  const newSessionDir = targetStorage ? dirname(targetStorage.subagentsDir) : resolve(chatDir, newSafeId);
+  const auxiliaryPaths: ForkAuxiliaryPaths = {
+    sourceSessionDir,
+    targetSessionDir: newSessionDir,
+    ...(sourceStorage && targetStorage
+      ? {
+          sourceToolResultsDir: sourceStorage.toolResultsDir,
+          targetToolResultsDir: targetStorage.toolResultsDir,
+        }
+      : {}),
+  };
+  if (targetStorage?.externalTranscriptStore && !targetStorage.replaceTranscript) {
+    throw new ForkSessionError(
+      "fork_unsupported_storage",
+      "The configured external transcript store does not support atomic fork creation.",
+    );
+  }
   const preserved = retargetEntriesToSession(preservedSourceEntries, {
     sessionId: newSessionKey,
     sourceSafeId,
     targetSafeId: newSafeId,
-    sourceSessionDir,
-    targetSessionDir: newSessionDir,
+    ...auxiliaryPaths,
   });
 
-  await mkdir(chatDir, { recursive: true, mode: 0o700 });
-  await mkdir(newSessionDir, { recursive: true, mode: 0o700 });
-  await copySessionAuxDirs(sourceSessionDir, newSessionDir);
+  if (targetStorage?.externalTranscriptStore && sourceStorage && targetStorage.copyTranscriptSidechains) {
+    await targetStorage.copyTranscriptSidechains({
+      sourceStorage,
+      sourceTranscriptEntries: entries,
+      transformEntry: (entry) => retargetForkSidechainEntry(entry, {
+        ...auxiliaryPaths,
+        sourceSafeId,
+        targetSafeId: newSafeId,
+      }),
+    });
+  }
+  if (targetStorage?.externalTranscriptStore && sourceStorage && targetStorage.copyFileHistoryBackups) {
+    await targetStorage.copyFileHistoryBackups({
+      sourceStorage,
+      sourceTranscriptEntries: entries,
+    });
+  }
+  if (targetStorage?.externalTranscriptStore && sourceStorage && targetStorage.copyToolResultArtifacts) {
+    await targetStorage.copyToolResultArtifacts({
+      sourceStorage,
+      sourceTranscriptEntries: entries,
+    });
+  }
+
+  if (!targetStorage?.externalTranscriptStore) {
+    await mkdir(chatDir, { recursive: true, mode: 0o700 });
+    await mkdir(newSessionDir, { recursive: true, mode: 0o700 });
+    await copySessionAuxDirs(auxiliaryPaths);
+  }
 
   const preservedLines = preserved.map((entry) => `${JSON.stringify(entry)}\n`).join("");
   const lastPreserved = preserved[preserved.length - 1];
@@ -527,9 +619,13 @@ export async function forkWebSession(
     },
   };
 
-  const body = preservedLines + `${JSON.stringify(metadataEntry)}\n`;
-  await writeFile(newTranscriptPath, body, { encoding: "utf8", mode: 0o600 });
-  await chmod(dirname(newTranscriptPath), 0o700);
+  if (targetStorage?.replaceTranscript) {
+    await targetStorage.replaceTranscript([...preserved, metadataEntry]);
+  } else {
+    const body = preservedLines + `${JSON.stringify(metadataEntry)}\n`;
+    await writeFile(newTranscriptPath, body, { encoding: "utf8", mode: 0o600 });
+    await chmod(dirname(newTranscriptPath), 0o700);
+  }
 
   return {
     newSessionKey,
@@ -538,4 +634,40 @@ export async function forkWebSession(
     ...(forkRunMode ? { runMode: forkRunMode } : {}),
     ...(forkMode ? { mode: forkMode } : {}),
   };
+}
+
+/**
+ * Validate Claude's optional resume-drops-turn guard before writing the fork.
+ * The guard is deliberately fail-closed: every chain entry after the kept
+ * fork point must belong to the one accepted-input turn named by the caller.
+ * This prevents silently discarding a queued user message or another
+ * side-effecting append that the caller may not have observed.
+ */
+function validateResumeDropsTurn(
+  entries: AgentTranscriptEntry[],
+  forkPoint: ForkPoint,
+  resumeDropsTurn: string | undefined,
+): void {
+  if (resumeDropsTurn === undefined) return;
+  const prefix = "Resume rejected by --resume-drops-turn: ";
+  const droppedPrompt = entries.find((entry) => entry.entryId === resumeDropsTurn);
+  if (!droppedPrompt || droppedPrompt.type !== "accepted_input") {
+    throw new ForkSessionError(
+      "resume_drops_turn_invalid",
+      `${prefix}the supplied UUID is not an accepted-input entry.`,
+    );
+  }
+  if (droppedPrompt.sequence <= forkPoint.target.sequence) {
+    throw new ForkSessionError(
+      "resume_drops_turn_invalid",
+      `${prefix}the dropped turn must occur after the resume point.`,
+    );
+  }
+  const discarded = entries.filter((entry) => entry.sequence > forkPoint.target.sequence);
+  if (discarded.length === 0 || discarded.some((entry) => entry.turnId !== droppedPrompt.turnId)) {
+    throw new ForkSessionError(
+      "resume_drops_turn_mismatch",
+      `${prefix}entries after the resume point are not attributable solely to the requested turn.`,
+    );
+  }
 }

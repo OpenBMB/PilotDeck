@@ -76,6 +76,80 @@ test("router drops cache plan when explicit routing changes provider or model", 
   await router.shutdown();
 });
 
+test("Gateway model policy rejects a selected model before invoking a provider", async () => {
+  let invocations = 0;
+  const guardedRuntime: ModelRuntime = {
+    ...runtime,
+    async *stream() {
+      invocations += 1;
+      yield { type: "request_started", provider: "primary", model: "main" } as any;
+    },
+  };
+  const router = createRouterRuntime(config, {
+    modelRuntime: guardedRuntime,
+    isModelAllowed: () => false,
+  });
+  const request: CanonicalModelRequest = {
+    provider: "primary",
+    model: "main",
+    messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+  };
+  const decision = await router.decide({ request, sessionId: "model-policy-denied", isMainAgent: true });
+
+  await assert.rejects(async () => {
+    for await (const _event of router.execute(decision, request, {
+      sessionId: "model-policy-denied",
+      turnId: "turn-1",
+    })) { /* consume */ }
+  }, (error: any) => error?.code === "MODEL_POLICY_DENIED");
+  assert.equal(invocations, 0);
+  await router.shutdown();
+});
+
+test("Gateway model policy excludes disallowed fallback attempts", async () => {
+  const invocations: string[] = [];
+  const fallbackRuntime: ModelRuntime = {
+    ...runtime,
+    async *stream(request) {
+      invocations.push(`${request.provider}/${request.model}`);
+      yield { type: "request_started", provider: request.provider, model: request.model } as any;
+      yield {
+        type: "error",
+        error: {
+          provider: request.provider,
+          model: request.model,
+          protocol: "openai",
+          code: "rate_limit",
+          message: "retryable test error",
+          retryable: true,
+        },
+      } as any;
+    },
+  };
+  const router = createRouterRuntime({
+    ...config,
+    fallback: {
+      default: [{ id: "secondary/backup", provider: "secondary", model: "backup" }],
+    },
+  }, {
+    modelRuntime: fallbackRuntime,
+    isModelAllowed: ({ provider, model }) => provider === "primary" && model === "main",
+  });
+  const request: CanonicalModelRequest = {
+    provider: "primary",
+    model: "main",
+    messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+  };
+  const decision = await router.decide({ request, sessionId: "model-policy-fallback", isMainAgent: true });
+  for await (const _event of router.execute(decision, request, {
+    sessionId: "model-policy-fallback",
+    turnId: "turn-1",
+  })) { /* consume */ }
+
+  assert.deepEqual(invocations, ["primary/main"]);
+  await router.shutdown();
+});
+
 test("pricing unit is metadata and does not change cost calculations", () => {
   const pricing = {
     "primary/main": { input: 2, cacheRead: 0.5, unit: "¥/百万 Token" as const },

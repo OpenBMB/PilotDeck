@@ -12,6 +12,7 @@ export type AgentTranscriptEntryType =
   | "turn_result"
   | "control_boundary"
   | "session_metadata"
+  | "file_snapshot_recorded"
   | "subagent_started"
   | "subagent_completed";
 
@@ -144,6 +145,24 @@ export type AgentSessionMetadataTranscriptEntry = AgentTranscriptEntryBase & {
 };
 
 /**
+ * Durable file-history checkpoint metadata. Backup bytes live beside the
+ * session transcript; this entry makes the index reconstructable after a
+ * Gateway restart without changing the native edit execution path.
+ */
+export type AgentFileSnapshotRecordedTranscriptEntry = AgentTranscriptEntryBase & {
+  type: "file_snapshot_recorded";
+  messageId: string;
+  trackedFileBackups: Record<string, {
+    backupFileName: string | null;
+    version: number;
+    mode?: number;
+    backupTime: string;
+  }>;
+  expectedFileStates?: Record<string, import("../filesystem/types.js").FileHistoryExpectedFileState>;
+  snapshotTimestamp: string;
+};
+
+/**
  * Soft caps for sidechain reference fields. The full directive / final report
  * lives in the sidechain transcript; the parent records only a truncated
  * preview so the parent transcript stays bounded.
@@ -202,6 +221,7 @@ export type AgentTranscriptEntry =
   | AgentTurnResultTranscriptEntry
   | AgentControlBoundaryTranscriptEntry
   | AgentSessionMetadataTranscriptEntry
+  | AgentFileSnapshotRecordedTranscriptEntry
   | AgentSubagentStartedTranscriptEntry
   | AgentSubagentCompletedTranscriptEntry;
 

@@ -13,7 +13,11 @@ import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
 import { mergeMetadata } from "../../session/metadata/SessionMetadataStore.js";
-import { sanitizeSessionIdForPath } from "../../session/storage/ProjectSessionStorage.js";
+import {
+  readAgentProjectSessionTranscript,
+  sanitizeSessionIdForPath,
+} from "../../session/storage/ProjectSessionStorage.js";
+import type { AgentProjectSessionStorage } from "../../session/storage/ProjectSessionStorage.js";
 import { readTranscript } from "../../session/transcript/TranscriptReader.js";
 import type {
   AgentAcceptedInputTranscriptEntry,
@@ -31,6 +35,8 @@ import type {
 export type ReplaceLastWebSessionTurnOptions = {
   projectRoot: string;
   pilotHome: string;
+  /** Gateway-resolved native storage for this session's transcript layout. */
+  storage?: AgentProjectSessionStorage;
   now?: () => Date;
   /** Identifies the live Gateway process that owns a prepared transaction. */
   transactionOwner?: ReplacementTransactionOwner;
@@ -61,6 +67,11 @@ export type RecoverLastTurnReplacementsResult = {
 export type RecoverLastTurnReplacementsOptions = {
   /** @internal Injectable process probe for deterministic recovery tests. */
   isProcessAlive?: (pid: number) => boolean;
+  /**
+   * Gateway-resolved native chat directories to recover. When omitted, the
+   * historical `$PILOT_HOME/projects/<project>/chats` scan is retained.
+   */
+  chatDirs?: readonly string[];
 };
 
 export class ReplaceLastTurnError extends Error {
@@ -85,8 +96,9 @@ function replacementPaths(
   projectKey: string,
   pilotHome: string,
   transactionId?: string,
+  chatDirOverride?: string,
 ): { transcriptPath: string; safeId: string; backupPath?: string; journalPath?: string } {
-  const chatDir = getPilotProjectChatDir(projectKey, pilotHome);
+  const chatDir = chatDirOverride ?? getPilotProjectChatDir(projectKey, pilotHome);
   const safeId = sanitizeSessionIdForPath(sessionKey);
   const transcriptPath = resolve(chatDir, `${safeId}.jsonl`);
   return {
@@ -303,18 +315,8 @@ export function recoverPendingLastTurnReplacements(
   };
   const processIsAlive = options.isProcessAlive ?? isProcessAlive;
   const groups = new Map<string, { transcriptPath: string; artifacts: ReplacementArtifact[] }>();
-  const projectsDir = resolve(pilotHome, "projects");
-  let projectDirNames: string[];
-  try {
-    projectDirNames = readdirSync(projectsDir, { withFileTypes: true, encoding: "utf8" })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-  } catch {
-    return result;
-  }
-
-  for (const projectDirName of projectDirNames) {
-    const chatDir = resolve(projectsDir, projectDirName, "chats");
+  const chatDirs = resolveRecoveryChatDirs(pilotHome, options.chatDirs);
+  for (const chatDir of chatDirs) {
     let names: string[];
     try {
       names = readdirSync(chatDir);
@@ -420,6 +422,21 @@ export function recoverPendingLastTurnReplacements(
   return result;
 }
 
+function resolveRecoveryChatDirs(pilotHome: string, configuredChatDirs?: readonly string[]): string[] {
+  if (configuredChatDirs) {
+    return [...new Set(configuredChatDirs.map((chatDir) => resolve(chatDir)))];
+  }
+
+  const projectsDir = resolve(pilotHome, "projects");
+  try {
+    return readdirSync(projectsDir, { withFileTypes: true, encoding: "utf8" })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => resolve(projectsDir, entry.name, "chats"));
+  } catch {
+    return [];
+  }
+}
+
 export async function replaceLastWebSessionTurn(
   input: WebReplaceLastTurnInput,
   options: ReplaceLastWebSessionTurnOptions,
@@ -439,12 +456,18 @@ export async function replaceLastWebSessionTurn(
   }
 
   const effectiveProjectRoot = input.projectKey ?? options.projectRoot;
-  const { transcriptPath, safeId } = replacementPaths(
+  const initialPaths = replacementPaths(
     input.sessionKey,
     effectiveProjectRoot,
     options.pilotHome,
+    undefined,
+    options.storage?.chatDir,
   );
-  const { entries, diagnostics } = await readTranscript(transcriptPath);
+  const transcriptPath = options.storage?.transcriptPath ?? initialPaths.transcriptPath;
+  const { safeId } = initialPaths;
+  const { entries, diagnostics } = options.storage
+    ? await readAgentProjectSessionTranscript(options.storage)
+    : await readTranscript(transcriptPath);
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
     throw new ReplaceLastTurnError(
       "replace_invalid_transcript",
@@ -475,14 +498,35 @@ export async function replaceLastWebSessionTurn(
     options.now?.() ?? new Date(),
   );
   const rewrittenEntries = metadataEntry ? [...preserved, metadataEntry] : preserved;
+  const transactionId = randomUUID();
+  if (options.storage?.externalTranscriptStore) {
+    if (!options.storage.prepareTranscriptReplacement || !options.storage.finalizeTranscriptReplacement) {
+      throw new ReplaceLastTurnError(
+        "replace_unsupported_storage",
+        "The configured external transcript store does not support durable last-turn replacement.",
+      );
+    }
+    await options.storage.prepareTranscriptReplacement({
+      transactionId,
+      replacementTurnId: input.replacementTurnId,
+      entries: rewrittenEntries,
+      ...(options.transactionOwner ? { owner: options.transactionOwner } : {}),
+    });
+    return {
+      sessionKey: input.sessionKey,
+      replacedTurnId: latestInput.turnId,
+      removedEntryCount: entries.length - latestInputIndex,
+      transactionId,
+    };
+  }
   const body = rewrittenEntries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
   const originalBody = await readFile(transcriptPath, "utf8");
-  const transactionId = randomUUID();
   const { backupPath, journalPath } = replacementPaths(
     input.sessionKey,
     effectiveProjectRoot,
     options.pilotHome,
     transactionId,
+    options.storage?.chatDir,
   );
   if (!backupPath || !journalPath) throw new Error("Replacement transaction paths were not created.");
   const temporaryPath = resolve(dirname(transcriptPath), `.${safeId}.${randomUUID()}.replace.tmp`);
@@ -542,12 +586,32 @@ export async function finalizeLastWebSessionTurnReplacement(
   }
 
   const effectiveProjectRoot = input.projectKey ?? options.projectRoot;
-  const { transcriptPath, safeId, backupPath, journalPath } = replacementPaths(
+  const paths = replacementPaths(
     input.sessionKey,
     effectiveProjectRoot,
     options.pilotHome,
     input.transactionId,
+    options.storage?.chatDir,
   );
+  const transcriptPath = options.storage?.transcriptPath ?? paths.transcriptPath;
+  if (options.storage?.externalTranscriptStore) {
+    if (!options.storage.finalizeTranscriptReplacement) {
+      throw new ReplaceLastTurnError(
+        "replace_unsupported_storage",
+        "The configured external transcript store does not support durable last-turn replacement.",
+      );
+    }
+    await options.storage.finalizeTranscriptReplacement({
+      transactionId: input.transactionId,
+      action: input.action,
+    });
+    return {
+      sessionKey: input.sessionKey,
+      transactionId: input.transactionId,
+      action: input.action,
+    };
+  }
+  const { safeId, backupPath, journalPath } = paths;
   if (!backupPath || !journalPath) throw new Error("Replacement transaction paths were not created.");
 
   if (input.action === "commit") {

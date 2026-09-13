@@ -88,4 +88,19 @@ export type RouterExecuteContext = {
   turnId: string;
   projectPath?: string;
   abortSignal?: AbortSignal;
+  /**
+   * Optional Gateway-resolved, session-scoped fallback candidates. These
+   * supplement the project router only for this execution and are tried only
+   * before the primary attempt emits user-visible content.
+   */
+  fallbackModels?: ReadonlyArray<{ provider: string; model: string }>;
+  /**
+   * Optional Gateway-resolved SDK policy for this execution. It is evaluated
+   * in addition to the Router's host-wide policy and cannot select a model
+   * that was not otherwise routable.
+   */
+  managedModelPolicy?: {
+    allow: readonly string[];
+    deny: readonly string[];
+  };
 };

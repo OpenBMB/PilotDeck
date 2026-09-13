@@ -1,6 +1,7 @@
 packages:
   - 'apps/desktop'
   - 'ui'
+  - 'packages/sdk'
 
 allowBuilds:
   '@google/genai': true

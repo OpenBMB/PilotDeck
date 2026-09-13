@@ -5,8 +5,7 @@
  *
  * - M1 connect() is memoized internally (calling `start` twice yields the
  *   same connection).
- * - M2 transports: `stdio` + `streamable_http` (SSE / WebSocket are
- *   intentionally unsupported in this PR; D-tier).
+ * - M2 transports: `stdio`, `streamable_http`, and legacy `sse`.
  * - M3 wraps `callTool` / `listTools` with a configurable timeout
  *   (default 60s; cf. legacy 27.8h — see `intentional_difference`).
  * - M5 / M15 detects `mcp_session_expired` and triggers exactly one
@@ -26,6 +25,7 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -54,7 +54,7 @@ export type McpClientOptions = {
   handshakeTimeoutMs?: number;
   /** Optional override for testing — supply a pre-built Transport instance. */
   transportFactory?: (spec: PilotDeckMcpServerSpec) => Transport;
-  /** Optional fetch override for testing streamable HTTP transports. */
+  /** Optional fetch override for testing HTTP and legacy SSE transports. */
   fetch?: typeof fetch;
 };
 
@@ -196,6 +196,15 @@ export class McpClient {
             },
           });
         },
+      });
+    }
+    if (this.spec.transport === "sse") {
+      const fetchImpl = this.options.fetch ?? fetch;
+      return new SSEClientTransport(new URL(this.spec.url), {
+        // SSE uses the same headers for its event stream and JSON-RPC POST endpoint.
+        requestInit: { headers: this.spec.headers ?? {} },
+        eventSourceInit: { fetch: fetchImpl },
+        fetch: fetchImpl,
       });
     }
     const fallback = this.spec as PilotDeckMcpServerSpec;

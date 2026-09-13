@@ -28,6 +28,15 @@ export type PilotDeckMcpServerSpec =
       headers?: Record<string, string>;
       /** Optional per-server tool timeout for slow first-load operations. */
       callTimeoutMs?: number;
+    }
+  | {
+      id: string;
+      /** Legacy MCP Server-Sent Events transport. New integrations should prefer streamable_http. */
+      transport: "sse";
+      url: string;
+      headers?: Record<string, string>;
+      /** Optional per-server tool timeout for slow first-load operations. */
+      callTimeoutMs?: number;
     };
 
 export type PilotDeckMcpToolAnnotations = {

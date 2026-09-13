@@ -31,13 +31,15 @@ export type SessionInfo = {
 export type ListProjectSessionsOptions = {
   projectRoot: string;
   pilotHome: string;
+  /** Gateway-native storage may supply a non-default per-project chat directory. */
+  chatDir?: string;
   limit?: number;
   offset?: number;
   includeInternal?: boolean;
 };
 
 export async function listProjectSessions(options: ListProjectSessionsOptions): Promise<SessionInfo[]> {
-  const chatDir = getPilotProjectChatDir(options.projectRoot, options.pilotHome);
+  const chatDir = options.chatDir ?? getPilotProjectChatDir(options.projectRoot, options.pilotHome);
   let names: string[];
   try {
     names = await readdir(chatDir);

@@ -1,11 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { FileHistoryBackup } from "./types.js";
+import type { FileHistoryBackup, FileHistoryBackupStorage } from "./types.js";
 
 export type RestoreBackupOptions = {
   filePath: string;
   backup: FileHistoryBackup;
   backupDir: string;
+  /** Optional host-owned byte store. Omitting it preserves filesystem backup files. */
+  backupStorage?: FileHistoryBackupStorage;
 };
 
 export type RestoreBackupResult = {
@@ -38,17 +41,39 @@ export async function restoreBackup(
     return { outcome: "deleted" };
   }
 
-  const backupPath = path.join(backupDir, backup.backupFileName);
-  try {
-    await fs.access(backupPath);
-  } catch (err) {
-    if (isNotFoundError(err)) return { outcome: "missing" };
-    throw err;
+  const backupBytes = options.backupStorage
+    ? await options.backupStorage.read(backup.backupFileName)
+    : undefined;
+  const backupPath = options.backupStorage ? undefined : path.join(backupDir, backup.backupFileName);
+  if (options.backupStorage && !backupBytes) return { outcome: "missing" };
+  if (backupPath) {
+    try {
+      await fs.access(backupPath);
+    } catch (err) {
+      if (isNotFoundError(err)) return { outcome: "missing" };
+      throw err;
+    }
   }
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.copyFile(backupPath, filePath);
-  if (typeof backup.mode === "number" && process.platform !== "win32") {
-    await fs.chmod(filePath, backup.mode & 0o777);
+  const targetDir = path.dirname(filePath);
+  const temporaryPath = path.join(targetDir, `.${path.basename(filePath)}.pilotdeck-rewind-${randomUUID()}`);
+  await fs.mkdir(targetDir, { recursive: true });
+  try {
+    // Copy beside the target so rename is atomic on the same filesystem.
+    if (backupBytes) {
+      await fs.writeFile(temporaryPath, backupBytes);
+    } else if (backupPath) {
+      await fs.copyFile(backupPath, temporaryPath);
+    }
+    if (typeof backup.mode === "number" && process.platform !== "win32") {
+      await fs.chmod(temporaryPath, backup.mode & 0o777);
+    }
+    await fs.rename(temporaryPath, filePath);
+  } finally {
+    // `rename` removes the temporary name on success. On any failed copy or
+    // rename, cleanup must not leave a retry-visible partial artifact.
+    await fs.unlink(temporaryPath).catch((error: unknown) => {
+      if (!isNotFoundError(error)) throw error;
+    });
   }
   return { outcome: "restored" };
 }

@@ -1,3 +1,5 @@
+import type { MultimodalConstraints } from "../../model/index.js";
+
 /**
  * Built-in subagent presets, mirroring legacy `src/tools/AgentTool/built-in/*Agent.ts`.
  *
@@ -19,9 +21,19 @@
 
 export type SubagentDefinitionId = "general-purpose" | "explore" | "plan" | "verify";
 
+/**
+ * A narrow, transport-free MCP configuration retained on a dynamic subagent
+ * definition. The fork starts it through the ordinary McpRuntime and tool
+ * scheduler, then disposes it when the fork ends.
+ */
+export type SubagentMcpServerConfig =
+  | { type: "stdio"; command: string; args?: string[]; env?: Record<string, string>; cwd?: string; timeout?: number }
+  | { type: "streamable_http"; url: string; headers?: Record<string, string>; timeout?: number }
+  | { type: "sse"; url: string; headers?: Record<string, string>; timeout?: number };
+
 export type SubagentDefinition = {
   /** Stable identifier exposed via `agent` tool's `subagent_type` input. */
-  id: SubagentDefinitionId;
+  id: string;
   /** Short, single-line summary used in tool descriptions. */
   description: string;
   /**
@@ -29,6 +41,8 @@ export type SubagentDefinition = {
    * full access. Empty array means *no* tools (degenerate).
    */
   allowedTools: readonly string[];
+  /** Explicit exclusions apply even when allowedTools contains `*`. */
+  disallowedTools?: readonly string[];
   /** S7 — drop `<project-instructions>` from the assembled system prompt. */
   omitProjectInstructions: boolean;
   /** S8 — drop `<git-status>` from the assembled system prompt. */
@@ -42,6 +56,35 @@ export type SubagentDefinition = {
   systemPromptSuffix: string;
   /** Optional reasoning-effort override (S12). `undefined` keeps parent setting. */
   effort?: "low" | "medium" | "high";
+  /**
+   * A Gateway-resolved model for this definition. Built-in definitions leave
+   * this absent and retain the native subagent-model/parent-model inheritance.
+   */
+  modelOverride?: {
+    provider: string;
+    model: string;
+    modelMultimodal?: MultimodalConstraints;
+  };
+  /** Optional per-definition cap used by the existing forked AgentLoop. */
+  maxTurns?: number;
+  /** Session-scoped mode override for this fork only. */
+  permissionMode?: "default" | "plan" | "bypassPermissions";
+  /** Fork-local MCP endpoints. They never alter the parent session registry. */
+  mcpServers?: Record<string, SubagentMcpServerConfig>;
+  /** Gateway-resolved skill projection used only while the fork assembles context. */
+  skills?: readonly string[] | "all";
+  /** Disable the existing project memory resolver for this fork only. */
+  memory?: "inherit" | "disabled";
+  /** Static user context injected before the parent agent's fork directive. */
+  initialPrompt?: string;
+  /** Named sibling definition that receives this fork's read-only activity digest. */
+  observer?: string;
+  /** Optional postamble appended after the harness-owned activity digest. */
+  observerMessage?: string;
+  /** Optional SDK-owned system addendum scoped to this child fork. */
+  criticalSystemReminder?: string;
+  /** Run this SDK-defined fork as a Gateway-owned non-blocking task. */
+  background?: boolean;
 };
 
 const SHARED_PREFIX = `You are a subagent of PilotDeck — a focused agent dispatched by the parent agent to handle a bounded research, planning, or verification task.

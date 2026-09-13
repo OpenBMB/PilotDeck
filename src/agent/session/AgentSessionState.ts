@@ -38,6 +38,7 @@ export function mergeSessionUsage(first: CanonicalUsage, second: CanonicalUsage)
     cacheReadTokens: add(first.cacheReadTokens, second.cacheReadTokens),
     cacheWriteTokens: add(first.cacheWriteTokens, second.cacheWriteTokens),
     totalTokens: add(first.totalTokens, second.totalTokens),
+    nativeCost: add(first.nativeCost, second.nativeCost),
   };
 }
 

@@ -8,7 +8,17 @@ export function parseHookOutput(stdout: string): PilotDeckHookOutput {
 
   const record = parsed as Record<string, unknown>;
   if (record.async === true) {
-    return { type: "async", raw: parsed };
+    const asyncTimeout = record.asyncTimeout;
+    return {
+      type: "async",
+      ...(typeof record.asyncHookId === "string" && record.asyncHookId.trim()
+        ? { invocationId: record.asyncHookId }
+        : {}),
+      ...(typeof asyncTimeout === "number" && Number.isFinite(asyncTimeout) && asyncTimeout > 0
+        ? { timeoutMs: Math.ceil(asyncTimeout * 1_000) }
+        : {}),
+      raw: parsed,
+    };
   }
 
   return {

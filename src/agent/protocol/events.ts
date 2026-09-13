@@ -18,11 +18,24 @@ export type AgentEvent =
   | { type: "model_event"; sessionId: string; turnId: string; event: CanonicalModelEvent }
   | { type: "instructions_loaded"; sessionId: string; turnId: string; hasSystemPrompt: boolean }
   | { type: "assistant_message"; sessionId: string; turnId: string; message: CanonicalMessage }
+  /** Gateway-owned, opt-in post-turn suggestion; never persisted as conversation state. */
+  | { type: "prompt_suggestion"; sessionId: string; turnId: string; suggestion: string }
   | { type: "steer_applied"; sessionId: string; turnId: string; itemId: string; message: CanonicalMessage }
   | { type: "steer_unapplied"; sessionId: string; turnId: string; itemId: string; reason: "turn_ended" }
   | { type: "tool_calls_detected"; sessionId: string; turnId: string; calls: CanonicalToolCall[] }
   | { type: "pre_tool_execute"; sessionId: string; turnId: string; toolCallId: string; toolName: string }
   | { type: "post_tool_execute"; sessionId: string; turnId: string; toolCallId: string; toolName: string; success: boolean }
+  /** Transient incremental tool output; deliberately excluded from transcripts. */
+  | {
+      type: "tool_progress";
+      sessionId: string;
+      turnId: string;
+      toolCallId: string;
+      toolName: string;
+      message: string;
+      metadata?: Record<string, unknown>;
+      createdAt: string;
+    }
   | { type: "permission_requested"; sessionId: string; turnId: string; toolCallId: string; toolName: string }
   | { type: "permission_denied"; sessionId: string; turnId: string; toolName: string; reason: string }
   | { type: "tool_result"; sessionId: string; turnId: string; result: PilotDeckToolResult }
@@ -87,6 +100,20 @@ export type AgentEvent =
       subagentType: string;
       success: boolean;
       aborted?: boolean;
+      durationMs: number;
+    }
+  /** Detached read-only report from an AgentDefinition observer. */
+  | {
+      type: "observer_report";
+      sessionId: string;
+      turnId: string;
+      observedSubagentId: string;
+      observedSubagentType: string;
+      observerSubagentId: string;
+      observerSubagentType: string;
+      success: boolean;
+      report?: string;
+      error?: string;
       durationMs: number;
     }
   | {

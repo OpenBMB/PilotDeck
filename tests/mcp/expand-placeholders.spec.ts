@@ -176,6 +176,23 @@ test("parsePluginMcpServers expands ${env:*} in streamable_http headers", () => 
   }
 });
 
+test("parsePluginMcpServers keeps explicit legacy SSE transport while preserving URL and headers", () => {
+  const { servers, diagnostics } = parsePluginMcpServers({
+    legacy: {
+      transport: "sse",
+      url: "https://mcp.example.com/events",
+      headers: { Authorization: "Bearer legacy" },
+    },
+  });
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(servers, [{
+    id: "legacy",
+    transport: "sse",
+    url: "https://mcp.example.com/events",
+    headers: { Authorization: "Bearer legacy" },
+  }]);
+});
+
 test("user config and plugin config resolve same placeholders consistently", () => {
   process.env.PILOTDECK_TEST_CONSISTENCY = "same_value";
   try {

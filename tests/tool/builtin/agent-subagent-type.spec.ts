@@ -78,6 +78,31 @@ test("agent tool defaults general-purpose to explore in ask mode", async () => {
   assert.deepEqual(calls, ["explore"]);
 });
 
+test("agent tool launches a background definition without awaiting the synchronous fork", async () => {
+  const calls: string[] = [];
+  const fork: PilotDeckSubagentForkApi = {
+    ...createFork(calls),
+    isAllowedDefinition: (id) => id === "reviewer",
+    isBackgroundDefinition: (id) => id === "reviewer",
+    launchBackground: async ({ definitionId, directive, toolCallId }) => {
+      calls.push(`background:${definitionId}:${directive}:${toolCallId}`);
+      return { taskId: "background-review-1" };
+    },
+    fork: async () => {
+      throw new Error("a background definition must not use the synchronous fork");
+    },
+  };
+  const tool = createAgentTool();
+  const result = await tool.execute(
+    { description: "review in background", prompt: "inspect later", subagent_type: "reviewer" },
+    baseContext(fork, { currentToolCallId: "tool-background" }),
+  );
+
+  assert.equal(result.data?.backgroundTaskId, "background-review-1");
+  assert.match(result.data?.text ?? "", /background-review-1/);
+  assert.deepEqual(calls, ["background:reviewer:inspect later:tool-background"]);
+});
+
 test("agent tool preserves unknown custom fallback subagent names", async () => {
   const requests: string[] = [];
   const model: PilotDeckToolModelClient = {

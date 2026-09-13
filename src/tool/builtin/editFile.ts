@@ -202,6 +202,10 @@ export function createEditFileTool(): PilotDeckToolDefinition<EditFileInput> {
 
       const action = await writeTextFile(resolved.absolutePath, nextContent, { allowOverwrite: true });
       const fileStat = await stat(resolved.absolutePath);
+      await context.fileHistory?.markEditCommitted?.(
+        resolved.absolutePath,
+        context.messageId ?? context.turnId,
+      );
       invalidateReadFileState(context, resolved.absolutePath);
       recordWriteSnapshot(context, resolved.absolutePath, nextContent, Math.floor(fileStat.mtimeMs));
 

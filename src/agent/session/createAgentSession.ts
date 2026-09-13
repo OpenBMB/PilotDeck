@@ -7,6 +7,7 @@ import { InMemoryTranscriptWriter } from "../../session/transcript/InMemoryTrans
 import type { AgentTranscriptWriter } from "../../session/transcript/TranscriptWriter.js";
 import { SessionMetadataStore } from "../../session/metadata/SessionMetadataStore.js";
 import type { SessionTitleGenerator } from "../../session/title/SessionTitleGenerator.js";
+import type { PromptSuggestionGenerator } from "../../session/prompt/PromptSuggestionGenerator.js";
 import type { SessionMetadataValue } from "../../session/transcript/TranscriptEntry.js";
 import { TurnRunner } from "../turn/TurnRunner.js";
 import { AgentSession } from "./AgentSession.js";
@@ -31,9 +32,17 @@ export type CreateAgentSessionOptions = {
   seedState?: AgentLoopSeedState;
   replayEvents?: AgentEvent[];
   sessionTitleGenerator?: SessionTitleGenerator;
+  /** Gateway-owned generator used only when the SDK session opts into promptSuggestions. */
+  promptSuggestionGenerator?: PromptSuggestionGenerator;
   initialMetadata?: SessionMetadataValue;
   /** Whether Agent-created or modified workspace files should become message artifacts. */
   collectFileArtifacts?: boolean;
+  /** @internal Allows deployment tests to inject an AgentLoop-compatible runner. */
+  __agentLoopFactory?: (input: {
+    config: AgentRuntimeConfig;
+    dependencies: AgentRuntimeDependencies;
+    seedState?: AgentLoopSeedState;
+  }) => import("../turn/TurnRunner.js").AgentLoopRunner;
 };
 
 export function createAgentSession(options: CreateAgentSessionOptions): AgentSession {
@@ -58,7 +67,9 @@ export function createAgentSessionWithStorage(options: CreateAgentSessionOptions
     eventEmitter: emitter,
     drainEvents: options.dependencies.drainEvents ?? eventBuf?.drain,
   };
-  const loop = new AgentLoop(options.config, dependencies, options.seedState);
+  const loop = options.__agentLoopFactory
+    ? options.__agentLoopFactory({ config: options.config, dependencies, seedState: options.seedState })
+    : new AgentLoop(options.config, dependencies, options.seedState);
   const storage = options.storage ?? (
     options.projectStorage
       ? createAgentProjectSessionStorage({
@@ -92,6 +103,7 @@ export function createAgentSessionWithStorage(options: CreateAgentSessionOptions
     {
       metadataStore,
       sessionTitleGenerator: options.sessionTitleGenerator,
+      promptSuggestionGenerator: options.promptSuggestionGenerator,
       autoGenerateSessionTitle: options.config.isSubagent !== true,
     },
   );

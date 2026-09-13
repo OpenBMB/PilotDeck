@@ -5,7 +5,8 @@
  *
  * Behaviour parity with the legacy upstream plugin manifest schema:
  *   - `command` ⇒ stdio transport (`args`/`env`/`cwd` optional).
- *   - `url` (or `httpUrl`) ⇒ streamable_http transport.
+ *   - `url` (or `httpUrl`) ⇒ streamable_http transport unless an explicit
+ *     `transport: "sse"` selects the legacy SSE client.
  *   - Anything else is silently dropped — we do **not** throw at startup so
  *     a single misconfigured plugin entry can't take down the gateway.
  */
@@ -62,7 +63,7 @@ export function parsePluginMcpServers(
     if (url) {
       servers.push({
         id,
-        transport: "streamable_http",
+        transport: v.transport === "sse" ? "sse" : "streamable_http",
         url: expandMcpString(url),
         headers: isStringRecord(v.headers) ? expandStringRecord(v.headers as Record<string, string>) : undefined,
       });
