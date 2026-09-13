@@ -1,20 +1,57 @@
-# Selecting a model for a subagent
+# Configuring subagents
 
-The parent agent can choose a model for an individual `agent` tool call:
+Open **Settings → Agent → Subagents** to see the available subagent types, edit their descriptions, and bind each type to a model. The parent chooses a `subagent_type` based on its description; the runtime applies the model configured for that type. Model names are not added to the parent-facing catalog.
+
+The built-in types are `general-purpose`, `explore`, `plan`, and `verify`. Existing configurations keep their defaults. You can override a built-in type, disable it, or add a custom type such as `vision` or `consultant`. Resetting a built-in type restores its preset. Custom types can be deleted.
+
+The editor previews the enabled type IDs and descriptions that form the subagent catalog. This is the catalog section of the tool description, not the entire system prompt. Changes are applied on save; descriptions should explain when a type is useful and what it can do. For example, distinguish careful review from routine extraction even when both use the same tools.
+
+## Configuration
+
+Settings are stored under the existing `agent.subagents` section:
+
+```yaml
+agent:
+  subagents:
+    # Existing default and timeoutMs settings continue to work.
+    maxDepth: 1
+    profiles:
+      vision:
+        description: Read image files and report visible text, shapes, and layout. Use when visual evidence is needed.
+        model: my-provider/my-vision-model
+        tools: [read_file]
+        readOnly: true
+      consultant:
+        description: Review difficult questions, identify assumptions, and test conclusions with counterexamples. Prioritize completeness over speed.
+        model: my-provider/my-reasoning-model
+        tools: [read_file, grep, glob]
+        readOnly: true
+      explore:
+        enabled: false
+```
+
+Replace model references with exact configured `provider/model` IDs. Model IDs may contain additional slashes. Omit `model`, or select **Inherit / automatic**, to keep the existing configured subagent default and automatic routing. A bound model remains selected throughout that child's tool loop, with its own token limits and input capabilities. Judge routing and cross-model fallback do not replace it; an unavailable binding produces a visible error.
+
+Type IDs start with a lowercase letter and contain only lowercase letters, digits, and hyphens (1–64 characters). Custom types require a nonempty description and default to enabled, read-only, and the tools `read_file`, `grep`, and `glob`. Built-in overrides preserve omitted fields. Descriptions are limited to 2,000 characters.
+
+## Tools and nested delegation
+
+A profile's tool list is an allowlist intersected with the parent's available tools. A child cannot regain a tool excluded by its parent. Read-only profiles cannot write, and the built-in read-only presets cannot be widened to allow writes. Ancestor ask/plan restrictions continue to apply.
+
+`maxDepth` is the maximum number of child levels below the main agent: `0` disables delegation, `1` allows direct children, and `2` also allows grandchildren. The default is `1`; the maximum is `5`. To allow a child to delegate, include `agent` in its tool list and set a sufficient depth. The runtime enforces the depth even if a caller bypasses the model-facing schema. Nested work shares the ancestor's cancellation and permission boundaries.
+
+## Image tasks
+
+Bind an image-reading profile to a model that actually accepts images, and ensure that model's `multimodal.input` configuration includes `image`. Describing a text-only model as visual does not add image support.
+
+The parent passes the relevant file paths and task context in `prompt`; the child uses `read_file` to obtain the image. Uploaded files explicitly registered for reading by the parent remain readable by its children. Other files outside the workspace do not gain access through delegation.
 
 ```json
 {
-  "description": "Review screenshot layout",
-  "prompt": "Read /workspace/screenshot.png and review the layout, spacing, and visual hierarchy.",
-  "subagent_type": "explore",
-  "model": "my-provider/my-vision-model"
+  "description": "Inspect screenshot",
+  "prompt": "Read /path/to/uploaded-screenshot.png and report the visible error message.",
+  "subagent_type": "vision"
 }
 ```
 
-Replace `my-provider/my-vision-model` with an exact reference listed under **Available subagent models** in the tool description. Model IDs containing additional slashes are supported. The list includes models from the configured model pool whose provider has an API key and whose capabilities support streaming and tool use. Descriptions use matching `router.tokenSaver.tiers.<name>.description` (or `label`), otherwise the model display name, alongside configured input modalities. Capability descriptions do not infer quality, cost, or latency from model names.
-
-`model` is optional. Omitting it preserves the configured subagent default and existing automatic routing. Providing it uses the existing explicit model override path: the child uses that model throughout its tool loop, with its own context/output limits and multimodal capabilities. Judge routing and cross-model fallback do not override the selection. The parent session and other subagents keep their own model settings.
-
-The same selection is available in ask mode; read-only tool restrictions, permissions, timeouts, and cancellation still apply. An unknown or unavailable model returns an `invalid_tool_input` error before a child starts. Standalone legacy single-shot tool runtimes do not have a model catalog and reject explicit selection with `unsupported_tool`; calls that omit `model` still work as before.
-
-Choosing a vision model does not forward the parent's images automatically. Include the relevant file paths and task context in `prompt` so the subagent can read them with its existing tools. Custom model definitions must declare their actual `multimodal.input` capabilities.
+This feature uses PilotDeck's existing synchronous child sessions. Resuming a completed child by `task_id` and background task management are outside its scope.

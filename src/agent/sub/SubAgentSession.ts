@@ -27,7 +27,6 @@ import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependenci
 import type { SubagentModel } from "./subagentModels.js";
 import { ToolRegistry } from "../../tool/registry/ToolRegistry.js";
 import type {
-  PilotDeckReadFileStateMap,
   PilotDeckToolDefinition,
   PilotDeckWriteSnapshotMap,
 } from "../../tool/index.js";
@@ -43,7 +42,6 @@ import {
 } from "./builtinSubagentTypes.js";
 import {
   applySystemPromptFilters,
-  cloneReadFileState,
   cloneWriteSnapshots,
 } from "./contextInheritance.js";
 
@@ -61,8 +59,8 @@ export type SubAgentSessionOptions = {
   parentConfig: AgentRuntimeConfig;
   /** Parent agent's runtime dependencies (model, scheduler factory, ...). */
   parentDependencies: AgentRuntimeDependencies;
-  /** Parent agent's read-file deduplication cache (cloned into the child). */
-  parentReadFileState?: PilotDeckReadFileStateMap;
+  /** Explicit file-read grants for attachments, cloned into the child. */
+  parentAllowedReadFiles?: readonly string[];
   /** Parent agent's write snapshots (cloned into the child). */
   parentWriteSnapshots?: PilotDeckWriteSnapshotMap;
   /** Parent session/turn scope used for forwarding child activity to hosts. */
@@ -125,7 +123,10 @@ export class SubAgentSession {
     const subConfig = this.buildConfig();
 
     const loop = new AgentLoop(subConfig, subDependencies, {
-      readFileState: cloneReadFileState(this.options.parentReadFileState),
+      // Child messages contain the directive, not the parent's tool results.
+      // A fresh cache lets the child read contents it has not actually seen.
+      readFileState: new Map(),
+      allowedReadFiles: [...(this.options.parentAllowedReadFiles ?? [])],
       writeSnapshots: cloneWriteSnapshots(this.options.parentWriteSnapshots),
     });
 
@@ -202,6 +203,7 @@ export class SubAgentSession {
     const scoped = new ToolRegistry();
     const allowedSet = new Set(this.options.definition.allowedTools);
     const wildcard = allowedSet.has("*");
+    const nestedAllowed = this.allowsNestedDispatch(allowedSet, wildcard);
     for (const tool of this.options.parentDependencies.tools.registry.list()) {
       if (!wildcard && !allowedSet.has(tool.name)) {
         continue;
@@ -210,7 +212,9 @@ export class SubAgentSession {
         continue; // Subagents must not participate in the plan-mode workflow.
       }
       if (tool.name === "agent") {
-        continue; // Subagents must never nest-fork.
+        // Nested dispatch only when the profile allows `agent` and this child
+        // sits below the global depth cap. Never widen ancestor permissions.
+        if (!nestedAllowed) continue;
       }
       if (tool.name.startsWith("always_on_")) {
         continue; // Always-On tools require a RunContext unavailable in subagents.
@@ -221,6 +225,20 @@ export class SubAgentSession {
       scoped.register(tool as PilotDeckToolDefinition);
     }
     return scoped;
+  }
+
+  /**
+   * Nested `agent` dispatch is allowed only when the child's tool list
+   * permits it (wildcard or explicit `agent`) AND the child still sits
+   * strictly below the global depth cap.
+   */
+  private allowsNestedDispatch(allowedSet: Set<string>, wildcard: boolean): boolean {
+    if (!wildcard && !allowedSet.has("agent")) {
+      return false;
+    }
+    const childDepth = this.options.parentConfig.subagentDepth ?? 0;
+    const maxDepth = this.options.parentConfig.maxSubagentDepth ?? 1;
+    return childDepth < maxDepth;
   }
 
   private forwardActivity(event: AgentEvent): void {
@@ -280,7 +298,23 @@ export class SubAgentSession {
       getModelTokenLimits: this.options.parentDependencies.getModelTokenLimits,
       getModelProtocol: this.options.parentDependencies.getModelProtocol,
       getModelSupportsPromptCache: this.options.parentDependencies.getModelSupportsPromptCache,
+      getSubagentModels: this.options.parentDependencies.getSubagentModels,
       subagentTranscript: this.options.parentDependencies.subagentTranscript,
+      eventEmitter: (event) => {
+        // Hosts watch the root turn. Keep each descendant's identity while
+        // forwarding its activity through the enclosing session.
+        if (event.type === "subagent_started" || event.type === "subagent_completed"
+          || event.type === "subagent_status" || event.type === "subagent_model_event"
+          || event.type === "subagent_tool_calls_detected" || event.type === "subagent_tool_result") {
+          this.options.parentDependencies.eventEmitter?.({
+            ...event,
+            sessionId: this.options.parentSessionId,
+            turnId: this.options.parentTurnId,
+          });
+        }
+        // Other child setup events are local to its synthetic session. The
+        // host receives child activity through the subagent events above.
+      },
     };
   }
 

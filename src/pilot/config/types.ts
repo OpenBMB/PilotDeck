@@ -1,5 +1,6 @@
 import type { AlwaysOnConfig } from "../../always-on/config/parseAlwaysOnConfig.js";
 import type { CronConfig } from "../../cron/config/parseCronConfig.js";
+import type { SubagentProfileConfig } from "../../agent/sub/subagentProfiles.js";
 import type { ModelConfig } from "../../model/protocol/canonical.js";
 import type { RouterConfig } from "../../router/config/schema.js";
 
@@ -76,6 +77,13 @@ export type PilotAgentConfig = {
   subagents?: {
     default?: PilotAgentModelSelection;
     timeoutMs?: number;
+    /**
+     * Global nesting cap for the `agent` tool (0..MAX_SUBAGENT_DEPTH).
+     * Defaults to 1 (no nesting) when omitted.
+     */
+    maxDepth?: number;
+    /** Custom/builtin role profiles merged with the built-in presets by id. */
+    profiles?: Record<string, SubagentProfileConfig>;
   };
 };
 

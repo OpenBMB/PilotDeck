@@ -42,6 +42,11 @@ export function findModelReferences(config, { providerId = '', modelId = '' } = 
   const agent = config?.agent;
   collectReference(references, 'agent.model', agent?.model);
   collectReference(references, 'agent.subagents.default', agent?.subagents?.default);
+  if (isRecord(agent?.subagents?.profiles)) {
+    for (const [id, profile] of Object.entries(agent.subagents.profiles)) {
+      collectReference(references, `agent.subagents.profiles.${id}.model`, profile?.model);
+    }
+  }
   collectReference(references, 'memory.model', config?.memory?.model);
 
   const router = config?.router;
@@ -98,6 +103,13 @@ export function rewriteModelReferences(config, { providerRenames = new Map(), mo
   if (agent) {
     agent.model = renameRef(agent.model, providerRenames, modelRenames);
     if (agent.subagents) agent.subagents.default = renameRef(agent.subagents.default, providerRenames, modelRenames);
+    if (isRecord(agent.subagents?.profiles)) {
+      for (const profile of Object.values(agent.subagents.profiles)) {
+        if (isRecord(profile) && Object.hasOwn(profile, 'model')) {
+          profile.model = renameRef(profile.model, providerRenames, modelRenames);
+        }
+      }
+    }
   }
   if (config?.memory) config.memory.model = renameRef(config.memory.model, providerRenames, modelRenames);
 

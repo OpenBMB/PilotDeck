@@ -5,6 +5,11 @@ import { parseCronConfig } from "../../cron/config/parseCronConfig.js";
 import { parseModelConfig } from "../../model/config/parseModelConfig.js";
 import { isRecord } from "../../model/config/schema.js";
 import { ModelConfigError } from "../../model/protocol/errors.js";
+import {
+  MAX_SUBAGENT_DEPTH,
+  parseSubagentProfiles,
+  type SubagentProfileConfig,
+} from "../../agent/sub/subagentProfiles.js";
 import { getPilotConfigFilePath, getPilotMemoryRootDir, resolvePilotHome } from "../paths.js";
 import { sha256, stableStringify } from "./hash.js";
 import { mergeConfigSources } from "./merge.js";
@@ -392,7 +397,7 @@ function parseAgentSubagents(
   modelConfig: ReturnType<typeof parseModel>,
   diagnostics: PilotConfigDiagnostic[],
 ): PilotAgentConfig["subagents"] | undefined {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return undefined;
   }
   if (!isRecord(value)) {
@@ -410,7 +415,7 @@ function parseAgentSubagents(
         path: "agent.subagents.params",
         recoverable: true,
       });
-    } else if (key !== "timeoutMs" && key !== "default" && key !== "params") {
+    } else if (key !== "timeoutMs" && key !== "default" && key !== "params" && key !== "maxDepth" && key !== "profiles") {
       diagnostics.push({
         code: "CONFIG_AGENT_UNKNOWN_FIELD",
         severity: "warning",
@@ -432,10 +437,102 @@ function parseAgentSubagents(
       );
     }
   }
+  const maxDepth = parseSubagentMaxDepth(value.maxDepth);
+  const profiles = parseProfiles(value.profiles, modelConfig);
   return {
     ...(defaultModel ? { default: defaultModel } : {}),
     timeoutMs: readOptionalPositiveInteger(value.timeoutMs, "agent.subagents.timeoutMs"),
+    ...(maxDepth !== undefined ? { maxDepth } : {}),
+    ...(profiles !== undefined ? { profiles } : {}),
   };
+}
+
+function parseSubagentMaxDepth(value: unknown): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const path = "agent.subagents.maxDepth";
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > MAX_SUBAGENT_DEPTH) {
+    throw new PilotConfigError(
+      "CONFIG_AGENT_SUBAGENTS_MAX_DEPTH_INVALID",
+      `${path} must be an integer between 0 and ${MAX_SUBAGENT_DEPTH}.`,
+      [{
+        code: "CONFIG_AGENT_SUBAGENTS_MAX_DEPTH_INVALID",
+        severity: "error",
+        message: `${path} must be an integer between 0 and ${MAX_SUBAGENT_DEPTH}.`,
+        path,
+        recoverable: false,
+      }],
+    );
+  }
+  return value;
+}
+
+function parseProfiles(
+  value: unknown,
+  modelConfig: ReturnType<typeof parseModel>,
+): Record<string, SubagentProfileConfig> | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  let parsed: Record<string, SubagentProfileConfig> | undefined;
+  try {
+    parsed = parseSubagentProfiles(value);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // `parseSubagentProfiles` embeds the offending config path in its
+    // message; surface it as a structured diagnostic as well.
+    const pathMatch = /agent\.subagents\.profiles(?:\.[A-Za-z0-9_-]+)*/.exec(message);
+    throw new PilotConfigError(
+      "CONFIG_AGENT_SUBAGENTS_PROFILES_INVALID",
+      message,
+      [{
+        code: "CONFIG_AGENT_SUBAGENTS_PROFILES_INVALID",
+        severity: "error",
+        message,
+        path: pathMatch?.[0] ?? "agent.subagents.profiles",
+        recoverable: false,
+      }],
+    );
+  }
+  if (parsed === undefined) {
+    return undefined;
+  }
+  for (const [id, profile] of Object.entries(parsed)) {
+    if (profile.model !== undefined && profile.model !== "inherit") {
+      validateProfileModelReference(profile.model, modelConfig, `agent.subagents.profiles.${id}.model`);
+    }
+  }
+  return parsed;
+}
+
+function validateProfileModelReference(
+  reference: string,
+  modelConfig: ReturnType<typeof parseModel>,
+  path: string,
+): void {
+  const separatorIndex = reference.indexOf("/");
+  const providerId = separatorIndex >= 0 ? reference.slice(0, separatorIndex) : "";
+  const modelId = separatorIndex >= 0 ? reference.slice(separatorIndex + 1) : "";
+  if (!providerId || !modelId) {
+    throw new PilotConfigError(
+      "CONFIG_AGENT_SUBAGENT_PROFILE_MODEL_INVALID",
+      `${path} must use an exact "provider/model" reference (model ids may contain slashes).`,
+    );
+  }
+  const provider = modelConfig.providers[providerId];
+  if (!provider) {
+    throw new PilotConfigError(
+      "CONFIG_AGENT_SUBAGENT_PROFILE_PROVIDER_NOT_FOUND",
+      `${path} references unknown provider ${providerId}.`,
+    );
+  }
+  if (!provider.models[modelId]) {
+    throw new PilotConfigError(
+      "CONFIG_AGENT_SUBAGENT_PROFILE_MODEL_NOT_FOUND",
+      `${path} references unknown model ${modelId} for provider ${providerId}.`,
+    );
+  }
 }
 
 function parseSubagentDefaultModelSelection(
