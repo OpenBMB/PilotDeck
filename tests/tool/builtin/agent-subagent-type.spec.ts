@@ -30,7 +30,7 @@ function baseContext(
   };
 }
 
-function createFork(calls: string[]): PilotDeckSubagentForkApi {
+function createFork(calls: Array<string | undefined>): PilotDeckSubagentForkApi {
   return {
     depth: 0,
     maxSubagentDepth: 1,

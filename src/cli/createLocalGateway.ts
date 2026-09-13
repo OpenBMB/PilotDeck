@@ -31,6 +31,7 @@ import {
 } from "../context/index.js";
 import { FileHistoryStore } from "../session/filesystem/FileHistoryStore.js";
 import type { AgentSubagentTranscriptHooks } from "../agent/runtime/AgentRuntimeDependencies.js";
+import { createStorageSubagentTranscriptHooks } from "../session/storage/subagentTranscriptHooks.js";
 import { createPlanTodoStateManager } from "../agent/runtime/PlanTodoState.js";
 import { HookRuntime, PluginRuntime } from "../extension/index.js";
 import { LifecycleRuntime } from "../lifecycle/index.js";
@@ -1281,6 +1282,13 @@ class ProjectRuntimeRegistry {
         }
       },
       getModelProtocol: (provider) => runtime.model.getProviderProtocol(provider),
+      getModelMultimodal: (provider, model) => {
+        try {
+          return runtime.model.getMultimodal(provider, model);
+        } catch {
+          return undefined;
+        }
+      },
       getModelSupportsPromptCache: (provider, model) => {
         try {
           return runtime.model.getCapabilities(provider, model).supportsPromptCache;
@@ -1394,36 +1402,11 @@ class ProjectRuntimeRegistry {
               },
             })
           : undefined;
-      const subagentTranscript: AgentSubagentTranscriptHooks = {
-        recordSubagentStarted: (args) =>
-          storage.transcript.recordSubagentStarted(args.sessionId, args.turnId, {
-            subagentId: args.subagentId,
-            subagentType: args.subagentType,
-            prompt: args.prompt,
-            transcriptRelativePath: args.transcriptRelativePath,
-            subagentSessionId: args.subagentSessionId,
-          }),
-        recordSubagentCompleted: (args) =>
-          storage.transcript.recordSubagentCompleted(args.sessionId, args.turnId, {
-            subagentId: args.subagentId,
-            subagentType: args.subagentType,
-            summary: args.summary,
-            usage: args.usage,
-            turns: args.turns,
-            durationMs: args.durationMs,
-            errored: args.errored,
-          }),
-        subagentTranscriptResolver: (subagentId) => {
-          const handle = storage.transcript.forSubagent(subagentId, this.options.now);
-          return {
-            recordAcceptedInput: (sessionId, turnId, messages) =>
-              handle.writer.recordAcceptedInput(sessionId, turnId, messages),
-            recordDurableMessage: (sessionId, turnId, message) =>
-              handle.writer.recordDurableMessage(sessionId, turnId, message),
-            transcriptRelativePath: storage.transcript.relativeSubagentPath(subagentId),
-          };
-        },
-      };
+      // Storage-level subagent transcript hooks: sidechain writes plus the
+      // task_id continuation loader, all scoped to THIS parent session's
+      // storage directory (a foreign parent's task has no file here).
+      const subagentTranscript: AgentSubagentTranscriptHooks =
+        createStorageSubagentTranscriptHooks(storage, this.options.now);
       const planFileManager = createPlanFileManager({
         projectRoot,
         pilotHome: this.options.pilotHome,
