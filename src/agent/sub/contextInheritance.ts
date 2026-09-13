@@ -1,8 +1,9 @@
 /**
  * S5-S8 — partial context inheritance for forked subagents.
  *
- * - **S5**: clone the parent's `readFileState` (file-staleness cache) so the
- *   subagent's read_file freshness checks don't poison the parent.
+ * - **S5**: provide an isolated cache-copy helper for callers that also carry
+ *   the corresponding read results. Directive-only subagent sessions start
+ *   with an empty cache so their first read returns the actual file contents.
  * - **S6**: re-use `getUserContext()` / `getSystemContext()` snapshots from
  *   the parent unless explicitly overridden.
  * - **S7**: drop the `<project-instructions>` block when `omitProjectInstructions: true`.

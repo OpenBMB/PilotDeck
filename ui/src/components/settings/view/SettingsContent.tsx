@@ -9,6 +9,7 @@ import AgentModelSections from "./agentModel";
 import AgentMemorySections from "./agentMemory";
 import AgentResidentSections from "./agentResident";
 import AgentRouteSections from "./agentRoute";
+import AgentSubagentsSections from "./agentSubagents";
 import AgentScheduleSections from "./agentSchedule";
 import AgentSearchSections from "./agentSearch";
 import AdvancedSections from "./advanced";
@@ -36,6 +37,7 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   agent: "settingsPage.titles.agent",
   agentModel: "settingsPage.titles.agentModel",
   agentRoute: "settingsPage.titles.agentRoute",
+  agentSubagents: "settingsPage.titles.agentSubagents",
   agentMemory: "settingsPage.titles.agentMemory",
   agentResident: "settingsPage.titles.agentResident",
   agentSearch: "settingsPage.titles.agentSearch",
@@ -55,6 +57,7 @@ const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
   agent: "settingsPage.menu.agent",
   agentModel: "settingsPage.menu.agentModel",
   agentRoute: "settingsPage.menu.agentRoute",
+  agentSubagents: "settingsPage.menu.agentSubagents",
   agentMemory: "settingsPage.menu.agentMemory",
   agentResident: "settingsPage.menu.agentResident",
   agentSearch: "settingsPage.menu.agentSearch",
@@ -73,6 +76,7 @@ const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
   modelPool: "settingsPage.descriptions.modelPool",
   agentModel: "settingsPage.descriptions.agentModel",
   agentRoute: "settingsPage.descriptions.agentRoute",
+  agentSubagents: "settingsPage.descriptions.agentSubagents",
   agentMemory: "settingsPage.descriptions.agentMemory",
   agentResident: "settingsPage.descriptions.agentResident",
   agentSearch: "settingsPage.descriptions.agentSearch",
@@ -90,6 +94,7 @@ const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
   modelPool: "model-pool-page",
   agentModel: "agent-model-page",
   agentRoute: "agent-route-page",
+  agentSubagents: "agent-subagents-page",
   agentMemory: "agent-memory-page",
   agentResident: "agent-resident-page",
   agentSearch: "agent-search-page",
@@ -172,6 +177,8 @@ export default function SettingsContent({
           <AgentModelSections title={title} />
         ) : selectedKey === "agentRoute" ? (
           <AgentRouteSections title={title} />
+        ) : selectedKey === "agentSubagents" ? (
+          <AgentSubagentsSections title={title} />
         ) : selectedKey === "agentMemory" ? (
           <AgentMemorySections title={title} projects={projects} />
         ) : selectedKey === "agentResident" ? (

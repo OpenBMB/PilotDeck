@@ -91,11 +91,7 @@ export function buildOpenAIRequest(
       ? mapSpeedToOpenAIServiceTier(request.speed)
       : undefined,
     stream: request.stream,
-    metadata: request.metadata
-      ? Object.fromEntries(
-          Object.entries(request.metadata).map(([k, v]) => [k, String(v)]),
-        )
-      : undefined,
+    metadata: toOpenAIMetadata(request.metadata),
   };
 
   if (request.outputSchema) {
@@ -140,6 +136,16 @@ export function buildOpenAIRequest(
   }
 
   return body;
+}
+
+function toOpenAIMetadata(metadata: Record<string, unknown> | undefined): Record<string, string> | undefined {
+  if (!metadata) return undefined;
+  // These identifiers belong to PilotDeck's internal tracing. Sending them
+  // creates a metadata field even for endpoints that do not support it.
+  const entries = Object.entries(metadata)
+    .filter(([key]) => key !== "subagentId" && key !== "subagentType")
+    .map(([key, value]) => [key, String(value)]);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function toOpenAIMessages(

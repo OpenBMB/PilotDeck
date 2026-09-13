@@ -32,10 +32,15 @@ import type {
   PilotDeckWriteSnapshotMap,
 } from "../../tool/index.js";
 import {
-  SUBAGENT_DEFINITIONS,
-  getSubagentDefinition,
-} from "../sub/builtinSubagentTypes.js";
+  MAX_SUBAGENT_DEPTH,
+  formatSubagentCatalog,
+  resolveSubagentProfiles,
+  selectDispatchableSubagentProfiles,
+  type ResolvedSubagentProfile,
+} from "../sub/subagentProfiles.js";
+import type { SubagentModel } from "../sub/subagentModels.js";
 import { agentError } from "../protocol/errors.js";
+import { PilotDeckToolRuntimeError } from "../../tool/protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
 import type { AgentPermissionDenial, AgentTurnResult } from "../protocol/result.js";
 import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
@@ -2070,6 +2075,34 @@ export class AgentLoop {
     if (this.config.runMode === "ask") {
       tools = filterAskModeTools(toolDefinitions);
     }
+    if (tools.some(tool => tool.name === "agent")) {
+      const profiles = this.config.subagentProfiles ?? resolveSubagentProfiles();
+      const askMode = this.config.runMode === "ask" || this.config.permissionMode === "plan";
+      const dispatchable = selectDispatchableSubagentProfiles(profiles, { askMode });
+      const atDepthLimit = (this.config.subagentDepth ?? 0) >= clampSubagentDepth(this.config.maxSubagentDepth ?? 1);
+      if (atDepthLimit || dispatchable.length === 0) {
+        tools = tools.filter(tool => tool.name !== "agent");
+      } else {
+        const catalog = formatSubagentCatalog(dispatchable);
+        tools = tools.map(tool => tool.name === "agent"
+          ? {
+              ...tool,
+              description: `${tool.description}\n\n${catalog}`,
+              inputSchema: {
+                ...tool.inputSchema,
+                properties: {
+                  ...(isRecord(tool.inputSchema.properties) ? tool.inputSchema.properties : {}),
+                  subagent_type: {
+                    type: "string",
+                    enum: dispatchable.map(profile => profile.id),
+                    description: "Choose an available type by its description. Omit only to use the default type if it is enabled.",
+                  },
+                },
+              },
+            }
+          : tool);
+      }
+    }
     const requestProvider = input.modelOverride?.provider ?? this.config.provider;
     const requestModel = input.modelOverride?.model ?? this.config.model;
     const prepared = await contextRuntime.prepareForModel({
@@ -2481,26 +2514,76 @@ export class AgentLoop {
     };
   }
 
+  /**
+   * Resolve the concrete model for a fork. A profile-bound model overrides
+   * routing for every child turn and is re-validated at dispatch — never
+   * silently replaced by another model. `requestedModel` is the internal
+   * override plumbing (no longer fed by the model-facing agent schema).
+   */
+  private resolveSubagentModel(
+    profile: ResolvedSubagentProfile,
+    requestedModel?: string,
+  ): SubagentModel | undefined {
+    const models = this.dependencies.getSubagentModels?.() ?? [];
+    if (requestedModel !== undefined) {
+      const selected = models.find((candidate) => candidate.id === requestedModel);
+      if (!selected) {
+        throw new PilotDeckToolRuntimeError("invalid_tool_input",
+          `Unavailable subagent model "${requestedModel}". Available: ${models.map((candidate) => candidate.id).join(", ") || "none"}.`);
+      }
+      return selected;
+    }
+    if (profile.model === undefined) {
+      return undefined; // Unbound profile: keep automatic routing.
+    }
+    const selected = models.find((candidate) => candidate.id === profile.model);
+    if (!selected) {
+      throw new PilotDeckToolRuntimeError("tool_execution_failed",
+        `Subagent profile "${profile.id}" is bound to unavailable model "${profile.model}". Configure the provider/model (with tool use and streaming enabled) or unbind it to retain automatic routing.`,
+        { errorCode: "subagent_model_unavailable" });
+    }
+    return selected;
+  }
+
   private buildSubagentForkApi(
     input: AgentLoopInput,
     messages: CanonicalMessage[],
   ): PilotDeckSubagentForkApi {
     const depth = this.config.subagentDepth ?? 0;
-    const maxDepth = this.config.maxSubagentDepth ?? 1;
+    const maxDepth = clampSubagentDepth(this.config.maxSubagentDepth ?? 1);
+    const profiles = this.config.subagentProfiles ?? resolveSubagentProfiles();
+    const askMode = this.config.runMode === "ask" || this.config.permissionMode === "plan";
+    const dispatchable = selectDispatchableSubagentProfiles(profiles, { askMode });
     return {
       depth,
       maxSubagentDepth: maxDepth,
       listDefinitions: () =>
-        Object.values(SUBAGENT_DEFINITIONS).map((d) => ({
-          id: d.id,
-          description: d.description,
+        dispatchable.map((profile) => ({
+          id: profile.id,
+          description: profile.description,
         })),
-      isAllowedDefinition: (id: string) => getSubagentDefinition(id) !== undefined,
-      fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs }) => {
+      isAllowedDefinition: (id: string) =>
+        dispatchable.some((profile) => profile.id === id),
+      fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs, model }) => {
+        // Depth is re-checked here so nesting is refused at runtime even when
+        // the caller bypasses the model-facing schema (defense in depth).
+        if (depth >= maxDepth) {
+          throw new PilotDeckToolRuntimeError(
+            "tool_execution_failed",
+            `subagent_depth_exceeded (depth=${depth}, max=${maxDepth}); nested fork rejected.`,
+            { errorCode: "subagent_depth_exceeded" },
+          );
+        }
+        const profile = dispatchable.find((candidate) => candidate.id === definitionId);
+        if (!profile) {
+          const available = dispatchable.map((candidate) => candidate.id).join(", ") || "none";
+          throw new PilotDeckToolRuntimeError("invalid_tool_input",
+            `Unknown subagent_type "${definitionId}". Available: ${available}.`);
+        }
+        const selectedModel = this.resolveSubagentModel(profile, model);
         // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
         const { SubAgentSession } = await import("../sub/SubAgentSession.js");
-        const def = getSubagentDefinition(definitionId);
-        if (!def) throw new Error(`Unknown subagent type: ${definitionId}`);
+        const def = profile;
         const composedAbort = composeAbortSignal({
           parent: abortSignal,
           timeoutMs,
@@ -2534,15 +2617,17 @@ export class AgentLoop {
         });
 
         const subSession = new SubAgentSession({
+          model: selectedModel,
           definition: def,
           directive,
           parentConfig: {
             ...this.config,
             subagentDepth: depth + 1,
             isSubagent: true,
+            maxSubagentDepth: maxDepth,
           },
           parentDependencies: this.dependencies,
-          parentReadFileState: this.readFileState,
+          parentAllowedReadFiles: [...this.allowedReadFiles],
           parentWriteSnapshots: this.writeSnapshots,
           parentSessionId: input.sessionId,
           parentTurnId: input.turnId,
@@ -2879,6 +2964,16 @@ function safeWorkPathSegment(value: string): string {
 function mergeUserRules(target: PermissionRule[], userRules: PermissionRule[] | undefined): void {
   const nonUserRules = target.filter((rule) => rule.source !== "user");
   target.splice(0, target.length, ...nonUserRules, ...(userRules ?? []));
+}
+
+/**
+ * Clamp the configured global subagent depth into the supported 0..MAX range.
+ */
+function clampSubagentDepth(value: number): number {
+  if (!Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  return Math.min(Math.floor(value), MAX_SUBAGENT_DEPTH);
 }
 
 function filterAskModeTools(tools: PilotDeckToolDefinition[]): CanonicalToolSchema[] {

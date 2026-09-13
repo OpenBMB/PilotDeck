@@ -12,6 +12,7 @@ import {
   resolveCatalogProviderDefaultUrl,
 } from '../../../src/model/config/providerCredentialScope.js';
 import { findModelReferences } from './modelReferences.js';
+import { validateSubagentProfileSettings } from './subagentProfileSettings.js';
 
 // Source of truth: ~/.pilotdeck/pilotdeck.yaml. The disk format and the
 // "internal" config object are the same V2 schema — no more adapter layer.
@@ -502,6 +503,7 @@ export function validatePilotDeckConfig(config) {
   }
 
   validateOptionalSubagentDefault(normalized, warnings);
+  validateSubagentProfileSettings(normalized, errors);
   validateRouterModelRefs(normalized, errors);
   validateGatewayConfig(normalized, errors, warnings);
   validateToolsConfig(normalized, errors, warnings);

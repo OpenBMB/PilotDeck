@@ -66,6 +66,7 @@
       "agent": "Agents",
       "agentModel": "Model",
       "agentRoute": "Route",
+      "agentSubagents": "Subagents",
       "agentMemory": "Memory",
       "agentResident": "Always-On",
       "agentSearch": "Search",
@@ -86,6 +87,7 @@
       "modelPool": "Centrally manage model providers, connection credentials, and available models. Enabled models are used by agents, routing, and memory.",
       "agentModel": "Choose which models each agent uses.",
       "agentRoute": "Configure agent routing, model tiers, and fallbacks.",
+      "agentSubagents": "Manage built-in and custom subagent roles, their model bindings and tools, and the allowed nesting depth.",
       "agentMemory": "Manage memory, summarization intervals, and project memory data.",
       "agentResident": "Keep watching workspace changes after you leave, and advance work or sync progress at the right time.",
       "agentSearch": "Let agents retrieve real-time web information and add current external facts to their answers.",
@@ -103,6 +105,7 @@
       "agent": "Agents",
       "agentModel": "Agents / Model",
       "agentRoute": "Agents / Route",
+      "agentSubagents": "Agents / Subagents",
       "agentMemory": "Agents / Memory",
       "agentResident": "Agents / Always-On",
       "agentSearch": "Agents / Search",
@@ -204,6 +207,7 @@
       "advanced": "The config file is not valid YAML, so the Advanced settings form is unavailable.",
       "agentModel": "The config file is not valid YAML, so the Agents / Model form is unavailable.",
       "agentRoute": "The config file is not valid YAML, so the Agents / Route form is unavailable.",
+      "agentSubagents": "The config file is not valid YAML, so the Agents / Subagents form is unavailable.",
       "agentMemory": "The config file is not valid YAML, so the Agents / Memory form is unavailable.",
       "agentResident": "The config file is not valid YAML, so the Agents / Always-On form is unavailable.",
       "agentSearch": "The config file is not valid YAML, so the Agents / Search form is unavailable.",
@@ -887,6 +891,93 @@
       }
     },
     "panels": {
+      "agentSubagents": {
+        "description": "The parent agent picks a subagent role by description. Built-in roles can be disabled, bound to a model, or narrowed; custom roles can be added.",
+        "listTitle": "Roles",
+        "count": "{{count}} roles",
+        "addProfile": "Add custom role",
+        "badgeBuiltin": "Built-in",
+        "badgeCustom": "Custom",
+        "badgeDisabled": "Disabled",
+        "badgeReadOnly": "Read-only",
+        "badgeNew": "New",
+        "modelInherit": "Inherit routing",
+        "maxDepth": {
+          "label": "Max nesting depth",
+          "description": "How many levels of nested subagent dispatch are allowed. 0 disables subagent dispatch, 1 allows direct children only."
+        },
+        "editor": {
+          "title": "Role settings",
+          "emptyTitle": "Select a role to edit",
+          "emptyDescription": "Pick a built-in or custom role from the list, or add a new custom role.",
+          "id": {
+            "label": "ID",
+            "description": "Lowercase letters, digits, and hyphens starting with a letter. The ID is fixed once the role is saved."
+          },
+          "description": {
+            "label": "Description",
+            "description": "The parent agent chooses roles by this text, so describe when to use the role.",
+            "placeholder": "Read image files and report visual details; routine reasoning."
+          },
+          "model": {
+            "label": "Model",
+            "description": "A bound model overrides automatic routing for this role and stays fixed across its turns. Inherit keeps existing routing.",
+            "inherit": "Inherit (follow routing)"
+          },
+          "tools": {
+            "label": "Tools",
+            "description": "Tools this role may use. A subagent's tools can never exceed the parent's permissions.",
+            "customPlaceholder": "Add tool ID",
+            "add": "Add",
+            "empty": "No tools selected — this role will not be able to use any tools.",
+            "agentNote": "The agent tool lets this role dispatch further subagents.",
+            "narrowNote": "Built-in read-only roles can only narrow their preset tools; explicitly adding agent enables nested dispatch.",
+            "generalNote": "Turn off All available tools to select individual tools. Parent permissions and the depth limit always apply.",
+            "all": "All available tools"
+          },
+          "readOnly": {
+            "label": "Read-only",
+            "description": "Read-only roles cannot modify files. Built-in read-only presets always stay read-only."
+          },
+          "enabled": {
+            "label": "Enabled",
+            "description": "Disabled roles are hidden from the parent agent."
+          },
+          "reset": "Reset to preset",
+          "resetAria": "Reset this built-in role to its preset",
+          "delete": "Delete role",
+          "deleteConfirm": "Confirm delete"
+        },
+        "save": "Save changes",
+        "cancel": "Cancel changes",
+        "dirtyHint": "Unsaved changes — save to apply or cancel to discard.",
+        "saveFailed": "Saving failed. Your changes are kept — fix the error and save again.",
+        "errors": {
+          "idRequired": "Enter an ID.",
+          "idInvalid": "IDs start with a lowercase letter and use lowercase letters, digits, or hyphens (max 64).",
+          "idReserved": "This ID is reserved.",
+          "idTaken": "A role with this ID already exists.",
+          "descriptionRequired": "Description is required.",
+          "descriptionTooLong": "Keep the description at most 2000 characters.",
+          "modelUnconfigured": "Pick a model from the configured model pool.",
+          "toolWhitespace": "Tool IDs cannot be empty.",
+          "toolDuplicate": "Tool IDs must be unique.",
+          "toolWidening": "Read-only built-in roles can only narrow their preset tools (adding agent is allowed).",
+          "depthInvalid": "Depth must be an integer between 0 and 5."
+        },
+        "preview": {
+          "title": "Injected role list preview",
+          "description": "The enabled role catalog for a normal parent session, without model names. Ask/plan mode filters it to read-only roles; the depth limit can hide delegation. This is not the full system prompt.",
+          "empty": "No enabled roles — the parent agent will not be able to dispatch subagents.",
+          "invalid": "Fix the invalid role to see the exact preview.",
+          "disabled": "Delegation is disabled (depth 0), so no agent tool or role catalog is injected."
+        },
+        "help": {
+          "depth": "Depth 1 means the parent may dispatch direct subagent children only; deeper nesting is refused. Depth 0 disables subagent dispatch.",
+          "permissions": "A subagent's tools never exceed the parent's permissions, and read-only restrictions propagate to children.",
+          "selection": "The parent picks a role from the injected list by description; model names are never shown to the parent."
+        }
+      },
       "advancedPage": {
         "configFilePrefix": "PILOTDECK configuration is stored at",
         "configFileSuffix": " and can be edited directly when needed."

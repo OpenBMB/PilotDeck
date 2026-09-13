@@ -1,6 +1,7 @@
 import type { CanonicalThinkingConfig, CanonicalToolChoice, MultimodalConstraints } from "../../model/index.js";
 import type { PermissionContext, PermissionMode } from "../../permission/index.js";
 import type { AgentRunMode } from "../protocol/input.js";
+import type { ResolvedSubagentProfile } from "../sub/subagentProfiles.js";
 
 export type AgentRuntimeConfig = {
   provider: string;
@@ -42,6 +43,12 @@ export type AgentRuntimeConfig = {
    * but no nested forks). Increase only when intentional.
    */
   maxSubagentDepth?: number;
+  /**
+   * Resolved subagent profiles (builtins merged with configured customs).
+   * Populated from `agent.subagents.profiles`; omitted means native
+   * builtin-only behavior. Nested subagents inherit this list unchanged.
+   */
+  subagentProfiles?: readonly ResolvedSubagentProfile[];
   /** Optional default model/caps for forked subagents. Omitted means inherit this agent's model. */
   subagentModel?: {
     provider: string;

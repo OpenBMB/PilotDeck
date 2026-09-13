@@ -5,6 +5,7 @@ import agentMemoryIcon from "../assets/nav/agent-memory.svg?raw";
 import agentModelIcon from "../assets/nav/agent-model.svg?raw";
 import agentResidentIcon from "../assets/nav/agent-resident.svg?raw";
 import agentRouteIcon from "../assets/nav/agent-route.svg?raw";
+import agentSubagentsIcon from "../assets/nav/agent-subagents.svg?raw";
 import agentScheduleIcon from "../assets/nav/agent-schedule.svg?raw";
 import agentSearchIcon from "../assets/nav/agent-search.svg?raw";
 import backIcon from "../assets/nav/back.svg?raw";
@@ -24,6 +25,7 @@ export const SETTINGS_NAV_ICONS: Partial<Record<SettingsMenuKey, string>> = {
   modelPool: modelPoolIcon,
   agentModel: agentModelIcon,
   agentRoute: agentRouteIcon,
+  agentSubagents: agentSubagentsIcon,
   agentMemory: agentMemoryIcon,
   agentResident: agentResidentIcon,
   agentSearch: agentSearchIcon,

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CanonicalModelRequest, CanonicalUsage } from "../../model/index.js";
 import type { PermissionResult } from "../../permission/index.js";
-import { SUBAGENT_DEFINITIONS } from "../../agent/sub/builtinSubagentTypes.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type {
   PilotDeckSubagentForkApi,
@@ -78,6 +77,8 @@ export type AgentToolInput = {
   description: string;
   prompt: string;
   subagent_type?: string;
+  /** @deprecated Removed from the model-facing schema. Bind models to profiles in config. */
+  model?: string;
   /** @deprecated camelCase alias retained for backwards compatibility. */
   subagentType?: string;
 };
@@ -110,7 +111,6 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
 const DEFAULT_PROVIDER_FALLBACK = "pilotdeck";
 const DEFAULT_MODEL_FALLBACK = "moonshotai/kimi-k2.6";
 const DEFAULT_SUBAGENT_TIMEOUT_MS = 60 * 60_000;
-const PUBLIC_SUBAGENT_TYPES = ["general-purpose", "explore", "plan"] as const;
 
 export function createAgentTool(
   options: CreateAgentToolOptions = {},
@@ -161,6 +161,13 @@ export function createAgentTool(
       },
     }),
     execute: async (input, context) => {
+      if (input.model !== undefined) {
+        // Models are bound to subagent profiles in config, not chosen per call.
+        throw new PilotDeckToolRuntimeError(
+          "invalid_tool_input",
+          "model is not an agent tool argument. Bind models to subagent profiles under agent.subagents.profiles in the config and select a subagent_type instead.",
+        );
+      }
       const explicit = normalizeRequestedSubagentType(
         input.subagent_type ?? input.subagentType,
       );
@@ -202,17 +209,9 @@ export function createAgentTool(
 }
 
 function buildAgentToolDescription(): string {
-  const publicTypes = PUBLIC_SUBAGENT_TYPES
-    .map((id) => {
-      const definition = SUBAGENT_DEFINITIONS[id];
-      const tools =
-        definition.allowedTools[0] === "*"
-          ? "all parent tools except nested agent launch"
-          : definition.allowedTools.join(", ");
-      return `- ${id}: ${definition.description} Tools: ${tools}.`;
-    })
-    .join("\n");
-
+  // The exact available subagent types are appended per-request by the
+  // AgentLoop via `formatSubagentCatalog` (single source, enabled profiles
+  // only) — do not duplicate a static list here.
   return [
     "Launch a new subagent to handle a focused multi-step task.",
     "",
@@ -221,10 +220,9 @@ function buildAgentToolDescription(): string {
     "Provide:",
     "- `description`: a short 3-5 word label for the task.",
     "- `prompt`: the full directive for the subagent. Write it like a complete briefing: include the goal, relevant context, constraints, and what good output looks like.",
-    "- `subagent_type` (optional): choose a built-in preset. If omitted, `general-purpose` is used.",
+    "- `subagent_type` (optional): pick the subagent type whose description best matches the task; omit for the default type.",
     "",
-    "Available built-in subagent types:",
-    publicTypes,
+    "The exact available subagent types (ids and descriptions) are listed in the 'Available subagent types' section at the end of this description.",
     "",
     "The subagent returns one structured report with these sections: `Scope`, `Result`, `Key files`, `Files changed`, and `Issues`.",
     "",
@@ -235,31 +233,24 @@ function buildAgentToolDescription(): string {
   ].join("\n");
 }
 
-const ASK_MODE_SUBAGENT_TYPES = ["explore", "plan", "verify"] as const;
-
 export function buildAskModeAgentToolSchema(): {
   description: string;
   inputSchema: Record<string, unknown>;
 } {
-  const typeLines = ASK_MODE_SUBAGENT_TYPES
-    .map((id) => {
-      const definition = SUBAGENT_DEFINITIONS[id];
-      return `- ${id}: ${definition.description} Tools: ${definition.allowedTools.join(", ")}.`;
-    })
-    .join("\n");
-
+  // The exact available subagent types are appended per-request by the
+  // AgentLoop via `formatSubagentCatalog` (single source, read-only enabled
+  // profiles only) — do not duplicate a static list here.
   const description = [
     "Launch a read-only subagent for investigation, planning, or verification.",
     "",
-    "In ask mode, subagents inherit ask mode and the same permission setting. Only read-only subagent types are available; 'general-purpose' is treated as 'explore'.",
+    "In ask mode, subagents inherit ask mode and the same permission setting. Only read-only subagent types are available.",
     "",
     "Provide:",
     "- `description`: a short 3-5 word label for the task.",
     "- `prompt`: the full directive for the subagent. Include goal, context, constraints, and what good output looks like. The subagent can only read and search; it cannot modify files.",
-    "- `subagent_type` (optional): 'explore', 'plan', or 'verify'. Defaults to 'explore'.",
+    "- `subagent_type` (optional): pick the read-only subagent type whose description best matches the task; omit only when the default type is enabled.",
     "",
-    "Available subagent types:",
-    typeLines,
+    "The exact available subagent types (ids and descriptions) are listed in the 'Available subagent types' section at the end of this description.",
     "",
     "The subagent returns one structured report with these sections: `Scope`, `Result`, `Key files`, `Files changed`, and `Issues`.",
   ].join("\n");
@@ -276,12 +267,12 @@ export function buildAskModeAgentToolSchema(): {
       prompt: {
         type: "string",
         description:
-          "Detailed directive for the subagent. Include the goal, relevant context, constraints, and desired output. The subagent can only read and search; it cannot modify files.",
+          "Detailed directive for the subagent. Include goal, context, constraints, and what good output looks like. The subagent can only read and search; it cannot modify files.",
       },
       subagent_type: {
         type: "string",
         description:
-          "Subagent preset. In ask mode only 'explore', 'plan', and 'verify' are available. Defaults to 'explore'.",
+          "Choose an available read-only subagent type from the catalog by its description.",
       },
       subagentType: {
         type: "string",
@@ -352,6 +343,9 @@ async function runFullFork(args: {
       timeoutMs,
     });
   } catch (error) {
+    if (error instanceof PilotDeckToolRuntimeError && error.code === "invalid_tool_input") {
+      throw error;
+    }
     if (context.abortSignal?.aborted) {
       throw new PilotDeckToolRuntimeError(
         "tool_aborted",

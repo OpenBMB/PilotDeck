@@ -2,8 +2,8 @@
  * Built-in subagent presets, mirroring legacy `src/tools/AgentTool/built-in/*Agent.ts`.
  *
  * Four presets:
- *   - `general-purpose` — broad parent-tool access except nested `agent`
- *                         dispatch; project instructions retained, full read/write.
+ *   - `general-purpose` — broad parent-tool access within configured depth
+ *                         limits; project instructions retained, full read/write.
  *   - `explore`         — read-only file inspection (read / grep / glob / bash);
  *                         omits project instructions & gitStatus from system context.
  *   - `plan`            — read-only planning (read / grep / glob, no bash);
@@ -20,8 +20,13 @@
 export type SubagentDefinitionId = "general-purpose" | "explore" | "plan" | "verify";
 
 export type SubagentDefinition = {
-  /** Stable identifier exposed via `agent` tool's `subagent_type` input. */
-  id: SubagentDefinitionId;
+  /**
+   * Stable identifier exposed via `agent` tool's `subagent_type` input.
+   * Builtin presets use the {@link SubagentDefinitionId} union; resolved
+   * profiles may carry custom string ids, so the shared definition type
+   * widens this to `string`.
+   */
+  id: string;
   /** Short, single-line summary used in tool descriptions. */
   description: string;
   /**
@@ -47,7 +52,7 @@ export type SubagentDefinition = {
 const SHARED_PREFIX = `You are a subagent of PilotDeck — a focused agent dispatched by the parent agent to handle a bounded research, planning, or verification task.
 
 Strengths:
-- You always have the full context of the parent task and can inspect the parent's tool history.
+- You receive the parent's directive and the context included in it. Read relevant files when you need further evidence.
 - You return a single concise final report (no follow-up questions).
 - You never ask clarifying questions back; do your best with the information given.
 
@@ -77,7 +82,7 @@ export const SUBAGENT_DEFINITIONS: Record<SubagentDefinitionId, SubagentDefiniti
   "general-purpose": {
     id: "general-purpose",
     description:
-      "General-purpose subagent for complex research/synthesis tasks. Has broad parent-tool access except nested subagent launch.",
+      "General-purpose subagent for complex research/synthesis tasks. Has broad parent-tool access within configured permissions and delegation depth limits.",
     allowedTools: ["*"],
     omitProjectInstructions: false,
     omitGitStatus: false,

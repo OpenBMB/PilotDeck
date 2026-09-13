@@ -14,6 +14,8 @@ import {
   type CreateAgentSessionOptions,
 } from "../agent/index.js";
 import { resolveRoutedModelMaxContextTokens } from "../agent/runtime/modelContextWindow.js";
+import { listSubagentModels } from "../agent/sub/subagentModels.js";
+import { resolveSubagentProfiles } from "../agent/sub/subagentProfiles.js";
 import {
   AutoCompactionPolicy,
   CompactionEngine,
@@ -1251,6 +1253,7 @@ class ProjectRuntimeRegistry {
     const eventBuf = createAgentEventBuffer();
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
+      getSubagentModels: () => listSubagentModels(runtime.snapshot.config.model, runtime.snapshot.config.router),
       router: runtime.router,
       tools: { registry: sessionTools },
       lifecycle,
@@ -1538,6 +1541,13 @@ class ProjectRuntimeRegistry {
       permissionMode,
       jsonSelfCorrect: true,
       ...(subagentRuntimeModel ? { subagentModel: subagentRuntimeModel } : {}),
+      // Global nesting cap for the `agent` tool; defaults to 1 (no nesting).
+      maxSubagentDepth: agent.subagents?.maxDepth ?? 1,
+      // Resolved profiles (builtins merged with configured customs) only when
+      // profiles are configured; omitted keeps native builtin-only behavior.
+      ...(agent.subagents?.profiles !== undefined
+        ? { subagentProfiles: resolveSubagentProfiles(agent.subagents.profiles) }
+        : {}),
       subagentTimeoutMs: agent.subagents?.timeoutMs,
       maxContextTokens,
       maxOutputTokens,
