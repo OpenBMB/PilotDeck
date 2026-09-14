@@ -2,6 +2,7 @@ import {
   flattenToolResultBlockText,
   type CanonicalMessage,
   type CanonicalModelEvent,
+  type CanonicalModelRequest,
 } from "../../model/index.js";
 import { countTokens } from "../../context/budget/tokenizer.js";
 
@@ -43,6 +44,22 @@ export function countResponseTokens(events: CanonicalModelEvent[]): number {
   }
   if (chunks.length === 0) return 0;
   return countTokens(chunks.join(""));
+}
+
+/**
+ * Estimates the full input size of an upcoming request: messages + system
+ * prompt + tool schemas. Message-only counts under-price the stable cache
+ * prefix (system + tools), so cache-aware cost comparisons must use this.
+ */
+export function estimateRequestInputTokens(request: CanonicalModelRequest): number {
+  let total = countMessagesTokens(request.messages);
+  if (request.systemPrompt) {
+    total += countTokens(request.systemPrompt);
+  }
+  for (const tool of request.tools ?? []) {
+    total += countTokens(`${tool.name}${tool.description ?? ""}${JSON.stringify(tool.inputSchema)}`);
+  }
+  return total;
 }
 
 /** No-op retained for API compatibility (js-tiktoken needs no manual free). */

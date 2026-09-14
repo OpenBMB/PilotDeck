@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "notes": "Public deterministic starter fixtures. Dev tasks may calibrate policy; test tasks must remain frozen.",
+  "tasks": [
+    {"id":"single-json-01","split":"dev","category":"single-step","sessionId":"s01","validator":"json-schema"},
+    {"id":"single-json-02","split":"dev","category":"single-step","sessionId":"s02","validator":"exact-fields"},
+    {"id":"single-code-01","split":"dev","category":"single-step","sessionId":"s03","validator":"unit-test"},
+    {"id":"single-code-02","split":"dev","category":"single-step","sessionId":"s04","validator":"unit-test"},
+    {"id":"tool-files-01","split":"dev","category":"tool-file","sessionId":"s05","validator":"file-hash"},
+    {"id":"tool-files-02","split":"dev","category":"tool-file","sessionId":"s06","validator":"unit-test"},
+    {"id":"tool-files-03","split":"dev","category":"tool-file","sessionId":"s07","validator":"exact-files"},
+    {"id":"multiturn-01a","split":"dev","category":"multiturn","sessionId":"s08","validator":"exact-fields"},
+    {"id":"multiturn-01b","split":"dev","category":"multiturn","sessionId":"s08","validator":"exact-fields"},
+    {"id":"cache-cold-01","split":"dev","category":"long-prefix-cold","sessionId":"s09","validator":"exact-fields"},
+    {"id":"cache-hot-01","split":"dev","category":"long-prefix-hot","sessionId":"s09","validator":"exact-fields"},
+    {"id":"fault-timeout-01","split":"dev","category":"fault-injection","sessionId":"s10","validator":"recovery-contract"},
+    {"id":"single-json-03","split":"test","category":"single-step","sessionId":"s11","validator":"json-schema"},
+    {"id":"single-code-03","split":"test","category":"single-step","sessionId":"s12","validator":"unit-test"},
+    {"id":"single-code-04","split":"test","category":"single-step","sessionId":"s13","validator":"unit-test"},
+    {"id":"tool-files-04","split":"test","category":"tool-file","sessionId":"s14","validator":"file-hash"},
+    {"id":"tool-files-05","split":"test","category":"tool-file","sessionId":"s15","validator":"unit-test"},
+    {"id":"tool-files-06","split":"test","category":"tool-file","sessionId":"s16","validator":"exact-files"},
+    {"id":"multiturn-02a","split":"test","category":"multiturn","sessionId":"s17","validator":"exact-fields"},
+    {"id":"multiturn-02b","split":"test","category":"multiturn","sessionId":"s17","validator":"exact-fields"},
+    {"id":"cache-cold-02","split":"test","category":"long-prefix-cold","sessionId":"s18","validator":"exact-fields"},
+    {"id":"cache-hot-02","split":"test","category":"long-prefix-hot","sessionId":"s18","validator":"exact-fields"},
+    {"id":"fault-rate-limit-01","split":"test","category":"fault-injection","sessionId":"s19","validator":"recovery-contract"},
+    {"id":"fault-context-01","split":"test","category":"fault-injection","sessionId":"s20","validator":"compaction-contract"}
+  ]
+}

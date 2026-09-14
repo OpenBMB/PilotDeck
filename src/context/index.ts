@@ -80,6 +80,7 @@ export {
   buildPostCompactMessages,
   truncateHead,
   type CompactionEngineOptions,
+  type CompactionSummaryAttempt,
   type CompactionInput,
   type CompactionResult,
   type CompactionTrigger,

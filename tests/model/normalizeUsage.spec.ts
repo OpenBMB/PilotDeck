@@ -18,6 +18,28 @@ test("OpenAI Responses usage reads cached tokens from input token details", () =
   assert.equal(usage?.totalTokens, 107);
 });
 
+test("OpenAI usage never produces negative uncached input when cache details overlap", () => {
+  const usage = normalizeOpenAIUsage({
+    prompt_tokens: 10,
+    prompt_tokens_details: { cached_tokens: 10, cache_write_tokens: 4 },
+    completion_tokens: 1,
+  });
+
+  assert.equal(usage?.inputTokens, 0);
+  assert.equal(usage?.cacheReadTokens, 10);
+  assert.equal(usage?.cacheWriteTokens, 4);
+});
+
+test("OpenAI usage distinguishes reported cost from provider-side estimated cost", () => {
+  const reported = normalizeOpenAIUsage({ prompt_tokens: 1, cost: 0.01, estimated_cost: 9 });
+  const estimated = normalizeOpenAIUsage({ prompt_tokens: 1, estimated_cost: 0.02 });
+
+  assert.equal(reported?.nativeCost, 0.01);
+  assert.equal(reported?.nativeCostSource, "provider_reported");
+  assert.equal(estimated?.nativeCost, 0.02);
+  assert.equal(estimated?.nativeCostSource, "estimated");
+});
+
 test("Gemini usage counts thoughts tokens as output consumption", () => {
   const usage = normalizeGoogleUsage({
     promptTokenCount: 9,

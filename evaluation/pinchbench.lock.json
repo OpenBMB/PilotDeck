@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/pinchbench/skill.git",
+  "revision": "REPLACE_WITH_REVIEWED_COMMIT_SHA",
+  "benchmarkVersion": "REPLACE_WITH_BENCHMARK_VERSION",
+  "suite": "REPLACE_WITH_FROZEN_TASK_IDS",
+  "importPolicy": "Reference upstream tasks and graders; do not silently copy or modify them.",
+  "notes": "Pin before calibration. Keep PilotDeck cache, compaction, and injected-failure fixtures as a separate supplemental suite."
+}

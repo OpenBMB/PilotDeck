@@ -28,6 +28,18 @@ export type RouterTokenSaverSubagentPolicy = "skip" | "judge";
 
 export const DEFAULT_SUBAGENT_POLICY: RouterTokenSaverSubagentPolicy = "judge";
 
+export type RouterTokenSaverContextConfig = {
+  /** Include a bounded task anchor, assistant tail, and structural features in the judge request. */
+  enabled: boolean;
+  /** Resolve high-confidence continuation commands locally without an LLM judge call. */
+  continuationGate: boolean;
+  /** Below this confidence, ambiguous classifications preserve prior task complexity or use defaultTier. */
+  confidenceThreshold: number;
+  maxCurrentMessageChars: number;
+  maxPreviousTaskChars: number;
+  maxAssistantTailChars: number;
+};
+
 export type RouterTokenSaverConfig = {
   enabled: boolean;
   judge: RouterModelRef;
@@ -38,6 +50,7 @@ export type RouterTokenSaverConfig = {
     policy: RouterTokenSaverSubagentPolicy;
   };
   judgeTimeoutMs: number;
+  contextAware?: RouterTokenSaverContextConfig;
   /**
    * Preserve the session's current model when its cache-read input cost is
    * cheaper than switching models and re-prefilling the full prompt.
@@ -66,6 +79,12 @@ export type RouterStatsConfig = {
   filePath?: string;
   /** Provider/model ref used as the "no-router" baseline for savedCost calculation. */
   baselineModel?: { provider: string; model: string };
+  /** Optional append-only, per-provider-attempt evaluation ledger. */
+  ledgerFilePath?: string;
+  runId?: string;
+  taskId?: string;
+  strategyVersion?: string;
+  baselineCommit?: string;
 };
 
 export type RouterFallbackConfig = Partial<Record<RouterScenarioType, RouterModelRef[]>> & {
@@ -77,6 +96,28 @@ export const LITELLM_ROUTER_MAX_FALLBACKS = 5;
 
 export type RouterCustomRouterConfig = {
   extensionId: string;
+};
+
+export type RouterCachePlanRebuildConfig = {
+  enabled: boolean;
+};
+
+export type RouterRecoveryConfig = {
+  /** Opt-in HALO health-aware recovery. Existing routing is unchanged when false. */
+  enabled: boolean;
+  /** Provider dispatches across retries and fallbacks, covering the whole chain. */
+  maxAttempts: number;
+  /** Wall-clock budget for the entire execute recovery chain. */
+  deadlineMs: number;
+  health?: {
+    capacity?: number;
+    recordTtlMs?: number;
+    openDurationMs?: number;
+    maxOpenDurationMs?: number;
+    degradeThreshold?: number;
+    openThreshold?: number;
+    windowSize?: number;
+  };
 };
 
 export type RouterConfig = {
@@ -98,14 +139,30 @@ export type RouterConfig = {
   fallback?: RouterFallbackConfig;
   zeroUsageRetry?: { enabled: boolean; maxAttempts: number };
   transientRetry?: { enabled: boolean; maxAttempts: number; baseDelayMs: number; maxDelayMs: number };
+  recovery?: RouterRecoveryConfig;
   tokenSaver?: RouterTokenSaverConfig;
   autoOrchestrate?: RouterAutoOrchestrateConfig;
   stats?: RouterStatsConfig;
   customRouter?: RouterCustomRouterConfig;
+  /**
+   * Rebuild the prompt-cache plan for the finally-routed model instead of
+   * dropping it when routing changes provider or model. Defaults to enabled.
+   */
+  cachePlanRebuild?: RouterCachePlanRebuildConfig;
 };
 
 export const DEFAULT_JUDGE_TIMEOUT_MS = 15_000;
+export const DEFAULT_TOKEN_SAVER_CONTEXT: RouterTokenSaverContextConfig = {
+  enabled: true,
+  continuationGate: true,
+  confidenceThreshold: 0.7,
+  maxCurrentMessageChars: 2_000,
+  maxPreviousTaskChars: 800,
+  maxAssistantTailChars: 400,
+};
 export const DEFAULT_ZERO_USAGE_MAX_ATTEMPTS = 2;
+export const DEFAULT_RECOVERY_MAX_ATTEMPTS = 6;
+export const DEFAULT_RECOVERY_DEADLINE_MS = 30_000;
 export const DEFAULT_TRIGGER_TIERS = ["complex"];
 
 /**

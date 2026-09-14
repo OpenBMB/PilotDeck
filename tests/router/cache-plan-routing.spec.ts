@@ -45,6 +45,14 @@ const runtime: ModelRuntime = {
   },
 };
 
+/** Same stub but declaring an Anthropic-protocol provider. */
+const anthropicRuntime: ModelRuntime = {
+  ...runtime,
+  getProviderProtocol() {
+    return "anthropic";
+  },
+};
+
 test("router drops cache plan when explicit routing changes provider or model", async () => {
   const router = createRouterRuntime(config, { modelRuntime: runtime });
   const request: CanonicalModelRequest = {
@@ -71,6 +79,82 @@ test("router drops cache plan when explicit routing changes provider or model", 
   });
   const materialized = router.materializeRequest(decision, request);
 
+  // The stub provider declares an openai protocol, so the rebuild gate clears
+  // the mismatched plan: cache markers never reach a non-Anthropic protocol.
+  assert.equal(materialized.cachePlan, undefined);
+  assert.equal(materialized.cacheBreakpoints, undefined);
+  await router.shutdown();
+});
+
+test("router rebuilds cache plan for the routed model when it supports prompt caching", async () => {
+  const router = createRouterRuntime(config, { modelRuntime: anthropicRuntime });
+  const request: CanonicalModelRequest = {
+    provider: "primary",
+    model: "main",
+    messages: [
+      { role: "user", content: [{ type: "text", text: "hello" }] },
+      { role: "assistant", content: [{ type: "text", text: "hi there" }] },
+      { role: "user", content: [{ type: "text", text: "summarize" }] },
+    ],
+    cacheBreakpoints: [0],
+    cachePlan: {
+      provider: "primary",
+      model: "main",
+      system: true,
+      tools: false,
+      messages: [0],
+      fingerprint: "primary-main",
+      generation: 1,
+    },
+  };
+
+  const decision = await router.decide({
+    request,
+    sessionId: "cache-route-rebuild",
+    isMainAgent: true,
+    metadata: { explicitProvider: "other", explicitModel: "fast" },
+  });
+  const materialized = router.materializeRequest(decision, request);
+
+  assert.equal(materialized.cachePlan?.provider, "other");
+  assert.equal(materialized.cachePlan?.model, "fast");
+  assert.equal(materialized.cachePlan?.generation, 1, "generation is carried from the previous plan, not bumped");
+  assert.deepEqual(materialized.cacheBreakpoints, [0, 1, 2], "breakpoints are recent3 of the final messages");
+  await router.shutdown();
+});
+
+test("router keeps the legacy plan-drop behavior when cachePlanRebuild is disabled", async () => {
+  const router = createRouterRuntime(
+    { ...config, cachePlanRebuild: { enabled: false } },
+    { modelRuntime: anthropicRuntime },
+  );
+  const request: CanonicalModelRequest = {
+    provider: "primary",
+    model: "main",
+    messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+    cacheBreakpoints: [0],
+    cachePlan: {
+      provider: "primary",
+      model: "main",
+      system: true,
+      tools: false,
+      messages: [0],
+      fingerprint: "primary-main",
+      generation: 1,
+    },
+  };
+
+  const decision = await router.decide({
+    request,
+    sessionId: "cache-route-flag-off",
+    isMainAgent: true,
+    metadata: { explicitProvider: "other", explicitModel: "fast" },
+  });
+  const materialized = router.materializeRequest(decision, request);
+
+  // Experiment control arm: with the flag OFF (and an Anthropic-protocol
+  // runtime where the rebuild would otherwise fire), the pre-rebuild drop
+  // behavior is preserved byte-for-byte.
   assert.equal(materialized.cachePlan, undefined);
   assert.equal(materialized.cacheBreakpoints, undefined);
   await router.shutdown();

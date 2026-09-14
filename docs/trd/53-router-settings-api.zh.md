@@ -114,6 +114,12 @@
 | 任务层级说明 | `router.tokenSaver.tiers.<name>.description` | string；缺省时使用内置 tier 描述 |
 | 子智能体策略 | `router.tokenSaver.subagent.policy` | 仅允许 `skip` 或 `judge` |
 | 判定超时 | `router.tokenSaver.judgeTimeoutMs` | 正整数，单位毫秒 |
+| 上下文判定 | `router.tokenSaver.contextAware.enabled` | boolean；缺省为 `true`；开启后向 Judge 提供有界的当前请求、前序任务锚点、助手尾部与结构化特征 |
+| 继续门控 | `router.tokenSaver.contextAware.continuationGate` | boolean；缺省为 `true`；仅纯继续命令或对待执行操作的纯确认会继承上一 tier 并跳过 Judge，附加了新任务内容时仍会重新判定 |
+| 置信度阈值 | `router.tokenSaver.contextAware.confidenceThreshold` | 0 到 1 的有限 number；缺省为 `0.7`；低于阈值时采用保守 tier，避免错误降档 |
+| 当前请求上限 | `router.tokenSaver.contextAware.maxCurrentMessageChars` | 正整数；缺省为 `2000` 字符 |
+| 前序任务锚点上限 | `router.tokenSaver.contextAware.maxPreviousTaskChars` | 正整数；缺省为 `800` 字符 |
+| 助手尾部上限 | `router.tokenSaver.contextAware.maxAssistantTailChars` | 正整数；缺省为 `400` 字符 |
 | 统计开关 | `router.stats.enabled` | boolean；缺省为 `true` |
 | 输入价格 | `router.stats.modelPricing.<provider/model>.input` | 有限 number；非法类型不会生成有效价格值 |
 | 输出价格 | `router.stats.modelPricing.<provider/model>.output` | 有限 number；非法类型不会生成有效价格值 |
@@ -125,6 +131,8 @@
 统计基准模型 `router.stats.baselineModel` 在运行时优先于 `router.scenarios.default`，用于无路由基准成本计算；仅当未配置基准模型时才回退到场景默认模型。对象 `{ provider, model }` 与历史 `provider/model` 字符串均会解析为同一模型引用。
 
 `agent.subagents.default` 属于 agent 配置而非 router 配置。值为 `inherit` 或缺省时继承 `agent.model`；显式值若无法解析，保存校验返回 warning 并继续按继承运行，不升级为 fatal。`router.tokenSaver.subagent.policy=judge` 时子智能体进入 Token Saver 判定，`skip` 时绕过判定并允许继承 `agent.model`。
+
+上下文判定只向 Judge 发送有界文本片段和计数特征，不复制工具结果正文。Judge 在同一次响应中返回 `tier`、`confidence` 和 `task_relation`，不会为了置信度再调用第二个模型。运行时统计记录 Judge 实际尝试次数、跳过次数、延迟、token、原生费用和最终解析路径。真实 provider A/B 基准通过 `npm run e2e:real-router-context` 显式执行；该命令会产生模型费用，结果写入 `artifacts/router-context-benchmark-*.json`，因此不属于普通 `npm test`。
 
 ## 模型池变更时的引用同步
 

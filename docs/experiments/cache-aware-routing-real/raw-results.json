@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "experimentId": "pilotroute-cache-aware-routing-real",
+    "startedAt": "2026-09-12T03:36:17.579Z",
+    "completedAt": "2026-09-12T03:36:20.519Z",
+    "endpoint": "https://lab.cs.tsinghua.edu.cn/ai-platform/api/v1",
+    "model": "glm-5.3-flash",
+    "maxRequests": 12,
+    "requestsMade": 2,
+    "maxOutputTokensPerRequest": 16,
+    "approximatePrefixWordsPerRequest": 6000,
+    "modelOutputPersisted": false,
+    "apiKeyPersisted": false
+  },
+  "status": "stopped_cache_usage_not_verifiable",
+  "stopReason": "The smoke pair did not report a positive Anthropic cache write followed by a positive cache read.",
+  "records": [
+    {
+      "phase": "smoke",
+      "arm": "plan_fix_only",
+      "repetition": 1,
+      "model": "glm-5.3-flash",
+      "httpStatus": 200,
+      "latencyMs": 1458,
+      "markerCount": 4,
+      "responseId": "202609121136179ffb7cab1ed4430d",
+      "usage": {
+        "inputTokens": 6082,
+        "outputTokens": 14,
+        "cacheReadTokens": null,
+        "cacheWriteTokens": null,
+        "hasAnthropicCacheFields": true
+      }
+    },
+    {
+      "phase": "smoke",
+      "arm": "plan_fix_only",
+      "repetition": 2,
+      "model": "glm-5.3-flash",
+      "httpStatus": 200,
+      "latencyMs": 1478,
+      "markerCount": 4,
+      "responseId": "20260912113618d1216a8c627d415a",
+      "usage": {
+        "inputTokens": 6082,
+        "outputTokens": 16,
+        "cacheReadTokens": null,
+        "cacheWriteTokens": null,
+        "hasAnthropicCacheFields": true
+      }
+    }
+  ],
+  "summaries": [
+    {
+      "arm": "original",
+      "scope": "smoke",
+      "requests": 0,
+      "cacheReadTokens": null,
+      "cacheWriteTokens": null,
+      "cacheReadRatio": null,
+      "medianLatencyMs": null
+    },
+    {
+      "arm": "plan_fix_only",
+      "scope": "smoke",
+      "requests": 2,
+      "cacheReadTokens": null,
+      "cacheWriteTokens": null,
+      "cacheReadRatio": null,
+      "medianLatencyMs": 1468
+    }
+  ],
+  "limitations": [
+    "This endpoint exposes Anthropic-compatible request syntax but does not expose Claude models.",
+    "cache_control acceptance does not prove that the upstream non-Claude model implements Anthropic prompt caching.",
+    "Only provider-reported Anthropic cache usage fields are treated as evidence of a cache write or read.",
+    "The endpoint did not provide pricing, so this experiment makes no billed-cost or savings claim.",
+    "Model output is intentionally omitted; quality is not measured."
+  ]
+}

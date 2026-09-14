@@ -16,6 +16,7 @@ export type RouterStatsRecord = {
   model: string;
   tier?: string;
   role?: "main" | "subagent";
+  tokenSaverRouting?: RouterDecision["mutations"]["tokenSaverRouting"];
   usage: CanonicalUsage;
   cost?: { input: number; output: number; cacheRead: number; total: number };
   baselineCost?: number;
@@ -30,11 +31,18 @@ export type RouterStatsAggregate = {
   totalCost: number;
   totalBaselineCost: number;
   totalSavedCost: number;
+  judgeRequests: number;
+  judgeSkipped: number;
+  totalJudgeLatencyMs: number;
+  totalJudgeInputTokens: number;
+  totalJudgeOutputTokens: number;
+  totalJudgeNativeCost: number;
   perScenario: Record<string, number>;
   perModel: Record<string, number>;
   perProvider: Record<string, number>;
   perTier: Record<string, number>;
   perRole: Record<string, number>;
+  perTokenSaverResolution: Record<string, number>;
 };
 
 type HourlyBucket = RouterStatsAggregate & { hour: string };
@@ -322,11 +330,18 @@ function createAggregate(): RouterStatsAggregate {
     totalCost: 0,
     totalBaselineCost: 0,
     totalSavedCost: 0,
+    judgeRequests: 0,
+    judgeSkipped: 0,
+    totalJudgeLatencyMs: 0,
+    totalJudgeInputTokens: 0,
+    totalJudgeOutputTokens: 0,
+    totalJudgeNativeCost: 0,
     perScenario: {},
     perModel: {},
     perProvider: {},
     perTier: {},
     perRole: {},
+    perTokenSaverResolution: {},
   };
 }
 
@@ -342,6 +357,7 @@ function copyAggregate(a: RouterStatsAggregate): RouterStatsAggregate {
     perProvider: { ...a.perProvider },
     perTier: { ...a.perTier },
     perRole: { ...a.perRole },
+    perTokenSaverResolution: { ...(a.perTokenSaverResolution ?? {}) },
   };
 }
 
@@ -368,6 +384,24 @@ function bumpAggregate(agg: RouterStatsAggregate, record: RouterStatsRecord): vo
   }
   if (record.role) {
     agg.perRole[record.role] = (agg.perRole[record.role] ?? 0) + 1;
+  }
+  const routing = record.tokenSaverRouting;
+  if (routing) {
+    if (typeof agg.judgeRequests !== "number") agg.judgeRequests = 0;
+    if (typeof agg.judgeSkipped !== "number") agg.judgeSkipped = 0;
+    if (typeof agg.totalJudgeLatencyMs !== "number") agg.totalJudgeLatencyMs = 0;
+    if (typeof agg.totalJudgeInputTokens !== "number") agg.totalJudgeInputTokens = 0;
+    if (typeof agg.totalJudgeOutputTokens !== "number") agg.totalJudgeOutputTokens = 0;
+    if (typeof agg.totalJudgeNativeCost !== "number") agg.totalJudgeNativeCost = 0;
+    if (!agg.perTokenSaverResolution) agg.perTokenSaverResolution = {};
+    if (routing.judgeInvoked) agg.judgeRequests += Math.max(1, routing.judgeAttempts);
+    else agg.judgeSkipped += 1;
+    agg.totalJudgeLatencyMs += routing.judgeLatencyMs;
+    agg.totalJudgeInputTokens += routing.judgeUsage?.inputTokens ?? 0;
+    agg.totalJudgeOutputTokens += routing.judgeUsage?.outputTokens ?? 0;
+    agg.totalJudgeNativeCost += routing.judgeUsage?.nativeCost ?? 0;
+    agg.perTokenSaverResolution[routing.resolution] =
+      (agg.perTokenSaverResolution[routing.resolution] ?? 0) + 1;
   }
 }
 

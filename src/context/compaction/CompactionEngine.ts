@@ -59,6 +59,21 @@ export type CompactionEngineOptions = {
   /** Stable identity factory for correlating live and persisted compaction events. */
   uuid?: () => string;
   eventEmitter?: AgentEventEmitter;
+  /** Evaluation hook for the logical LLM summary call; never includes prompt content. */
+  onSummaryAttempt?: (attempt: CompactionSummaryAttempt) => void;
+};
+
+export type CompactionSummaryAttempt = {
+  compactionId: string;
+  sessionId?: string;
+  turnId?: string;
+  provider: string;
+  model: string;
+  startedAt: string;
+  endedAt: string;
+  status: "succeeded" | "failed" | "cancelled";
+  usage?: CanonicalUsage;
+  errorType?: string;
 };
 
 export const COMPACT_SYSTEM_PROMPT_DEFAULT =
@@ -259,6 +274,7 @@ export class CompactionEngine {
       if (this.isSummaryFailureCooldownActive()) {
         summaryError = this.summaryFailureError ?? "context summary is in cooldown";
       } else {
+        const summaryStartedAt = (this.options.now?.() ?? new Date()).toISOString();
         try {
           const result = await this.summarize(
             summaryInput,
@@ -270,10 +286,32 @@ export class CompactionEngine {
           );
           summaryMessage = wrapSummaryMessage(result.message);
           summaryUsage = result.usage;
+          this.options.onSummaryAttempt?.({
+            compactionId,
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            provider: this.options.provider,
+            model: this.options.model_,
+            startedAt: summaryStartedAt,
+            endedAt: (this.options.now?.() ?? new Date()).toISOString(),
+            status: "succeeded",
+            usage: result.usage,
+          });
           this.summaryFailureCooldownUntil = 0;
           this.summaryFailureError = undefined;
         } catch (error) {
           summaryError = error instanceof Error ? error.message : String(error);
+          this.options.onSummaryAttempt?.({
+            compactionId,
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            provider: this.options.provider,
+            model: this.options.model_,
+            startedAt: summaryStartedAt,
+            endedAt: (this.options.now?.() ?? new Date()).toISOString(),
+            status: input.signal?.aborted ? "cancelled" : "failed",
+            errorType: error instanceof Error ? error.name : "unknown_error",
+          });
           this.summaryFailureCooldownUntil = Date.now() + COMPACT_SUMMARY_FAILURE_COOLDOWN_MS;
           this.summaryFailureError = summaryError;
         }
