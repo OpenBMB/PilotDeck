@@ -5,7 +5,7 @@
 ## 1. 文档分层
 
 - `public/`：应用开发者使用的安装、指南、Reference、示例、运维和排障文档。
-- 开发者 SOP/Roadmap：SDK 产品的设计、实现、测试和发布流程。
+- SDK 开发 SOP 与实现 Roadmap：SDK 产品的设计、实现、测试、发布流程和能力状态。
 - 维护者 SOP：贡献边界、协议适配、parity 和 PR 验收。
 - 审计/映射：Claude Agent SDK 与 PilotDeck 的语义证据，不直接承诺 public API。
 
@@ -49,5 +49,4 @@ node docs/sdk/tools/check-public-docs.mjs
 
 - [文档建设 Roadmap](pilotdeck-sdk-documentation-roadmap.zh.md)
 - [公开 SDK 文档](public/overview.zh.md)
-- [SDK 开发者 SOP](pilotdeck-sdk-developer-sop.zh.md)
 - [SDK 维护者版 SOP](pilotdeck-sdk-development-sop.zh.md)

@@ -1,6 +1,6 @@
 # PilotDeck SDK 文档建设 Roadmap
 
-本文规划 SDK 文档资产和质量建设，不维护 SDK 功能状态。功能的已实现能力、P0/P1/P2 和不支持项统一以[实现 Roadmap](pilotdeck-sdk-implementation-roadmap.zh.md)为准；SDK 代码研发约束见[开发者 SOP](pilotdeck-sdk-developer-sop.zh.md)和[维护者版 SOP](pilotdeck-sdk-development-sop.zh.md)。
+本文规划 SDK 文档资产和质量建设，不维护 SDK 功能状态。功能的已实现能力、P0/P1/P2 和不支持项统一以[实现 Roadmap](pilotdeck-sdk-implementation-roadmap.zh.md)为准；SDK 代码研发、测试和发布约束见[维护者版开发 SOP](pilotdeck-sdk-development-sop.zh.md)。
 
 ## 当前状态
 
@@ -84,5 +84,4 @@
 
 - [SDK 文档建设 SOP](pilotdeck-sdk-documentation-sop.zh.md)
 - [公开 SDK 文档](public/overview.zh.md)
-- [SDK 开发者 SOP](pilotdeck-sdk-developer-sop.zh.md)
 - [SDK 实现 Roadmap](pilotdeck-sdk-implementation-roadmap.zh.md)
