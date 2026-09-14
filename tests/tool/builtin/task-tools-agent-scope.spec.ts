@@ -124,3 +124,23 @@ test("task_stop returns the settled status even if new work prunes its record", 
   assert.equal(runtime.get("pruned-on-stop"), undefined, "new work really pruned the old record");
   assert.equal(result.data?.status, "cancelled");
 });
+
+test("task_wait returns the final output even if new work prunes its record", async () => {
+  const runtime = new BackgroundTaskRuntime({
+    maxRetainedAgentTasks: 1,
+    onCompletion: event => {
+      if (event.taskId === "pruned-on-wait") {
+        void runtime.startManaged({ subagentId: "newer-task", label: "new work", sessionId: "s1", run: async () => "done" });
+      }
+    },
+  });
+  const started = runtime.startManaged({
+    subagentId: "pruned-on-wait", label: "wait for me", sessionId: "s1",
+    run: async () => "waited final report",
+  });
+  const result = await createTaskWaitTool(runtime).execute({ taskId: "pruned-on-wait" }, contextFor("s1"));
+  await started;
+  assert.equal(runtime.get("pruned-on-wait"), undefined, "new work really pruned the old record");
+  assert.equal(result.data?.status, "completed");
+  assert.equal(result.data?.content, "waited final report");
+});

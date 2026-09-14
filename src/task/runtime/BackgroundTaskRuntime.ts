@@ -107,6 +107,9 @@ export type StopTaskOptions = {
 export type WaitTaskOptions = {
   timeoutMs?: number;
   abortSignal?: AbortSignal;
+  /** Captured from the entry the wait holds, so retention pruning cannot lose it. */
+  outputOffset?: number;
+  outputMaxBytes?: number;
 };
 
 export type WaitTaskResult = {
@@ -114,6 +117,7 @@ export type WaitTaskResult = {
   timedOut: boolean;
   outcome: "completed" | "timeout" | "aborted";
   waitedMs: number;
+  outputSlice?: PilotDeckTaskOutputSlice;
 };
 
 type RuntimeEntry = {
@@ -215,11 +219,15 @@ export class BackgroundTaskRuntime {
       : result === "aborted"
         ? "aborted"
         : "completed";
+    const outputSlice = options.outputOffset !== undefined
+      ? entry.output.readSlice(Math.max(0, options.outputOffset), options.outputMaxBytes)
+      : undefined;
     return {
       task: entry.task,
       timedOut: outcome === "timeout" || outcome === "aborted",
       outcome,
       waitedMs: Date.now() - startedAt,
+      outputSlice,
     };
   }  /**
    * Spawn the command in the background. Resolves once the child has been

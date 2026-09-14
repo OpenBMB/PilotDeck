@@ -484,6 +484,8 @@ export function createTaskWaitTool(
       const waited = await rt.wait(input.taskId, {
         timeoutMs: input.timeoutMs ?? DEFAULT_TASK_WAIT_TIMEOUT_MS,
         abortSignal: context.abortSignal,
+        outputOffset: requestedOffset,
+        outputMaxBytes: input.maxBytes,
       });
       if (!waited) {
         throw new PilotDeckToolRuntimeError(
@@ -497,7 +499,13 @@ export function createTaskWaitTool(
           `task_wait aborted before task ${input.taskId} finished.`,
         );
       }
-      const slice = rt.getOutput(input.taskId, requestedOffset, input.maxBytes);
+      const slice = waited.outputSlice;
+      if (!slice) {
+        throw new PilotDeckToolRuntimeError(
+          "tool_execution_failed",
+          `task_wait could not read output for task ${input.taskId}.`,
+        );
+      }
       const data: TaskWaitResult = {
         taskId: input.taskId,
         content: slice.content,
