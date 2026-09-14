@@ -128,19 +128,27 @@ test("continues a pure text stream after interruption", async () => {
   assert.equal(events.some((event) => event.type === "error"), false);
 });
 
-test("does not continue text-encoded tool calls across an interruption", async () => {
+test("continues literal tool examples as text across an interruption", async () => {
   const config = createConfig();
   const requestBodies: Array<Record<string, unknown>> = [];
+  const prefix = '<tool_call>{"name":"write_file","arguments":{"path":"example.mjs"';
+  const suffix = '}}</tool_call>';
   const events = await collect(streamModel(createRequest(), config, {
     fetch: async (_input, init) => {
       requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return sse('data: {"choices":[{"delta":{"content":"<tool_call>{\\"name\\":\\"write_file\\",\\"arguments\\":{\\"path\\":\\"secret.mjs\\""}}]}\n\n');
+      const choice = requestBodies.length === 1
+        ? { delta: { content: prefix } }
+        : { delta: { content: suffix }, finish_reason: "stop" };
+      return sse(`data: ${JSON.stringify({ choices: [choice] })}\n\n`);
     },
   }));
 
-  const error = events.find((event): event is Extract<CanonicalModelEvent, { type: "error" }> => event.type === "error");
-  assert.equal(requestBodies.length, 1);
-  assert.equal(error?.error.streamInterruption?.phase, "text");
+  assert.equal(requestBodies.length, 2);
+  const messages = requestBodies[1]!.messages as Array<{ role: string; content: string }>;
+  assert.equal(messages.at(-2)?.role, "assistant");
+  assert.equal(messages.at(-2)?.content, prefix);
+  assert.equal(events.some((event) => event.type === "error" || event.type === "tool_call_end"), false);
+  assert.equal(events.filter((event) => event.type === "text_delta").map((event) => event.text).join(""), prefix + suffix);
 });
 
 test("retains partial text if its continuation disconnects before output", async () => {
@@ -294,9 +302,11 @@ test("Google recovers a stream ending without a finish event", async () => {
   assert.equal(events.some((event) => event.type === "message_end"), false);
 });
 
-test("Google does not continue text-encoded tool calls across an interruption", async () => {
+test("Google continues literal tool examples as text across an interruption", async () => {
   const config = createGoogleConfig({ streamMaxRetries: 1 });
   let requests = 0;
+  const prefix = '<tool_call>{"name":"write_file","arguments":{"path":"example.mjs"';
+  const suffix = '}}</tool_call>';
   const googleClientFactory: GoogleClientFactory = () => ({
     models: {
       generateContent: async () => ({} as never),
@@ -305,9 +315,8 @@ test("Google does not continue text-encoded tool calls across an interruption", 
         return (async function* () {
           yield {
             candidates: [{
-              content: {
-                parts: [{ text: '<tool_call>{"name":"write_file","arguments":{"path":"secret.mjs"' }],
-              },
+              content: { parts: [{ text: requests === 1 ? prefix : suffix }] },
+              ...(requests === 1 ? {} : { finishReason: "STOP" }),
             }],
           } as never;
         })();
@@ -317,9 +326,9 @@ test("Google does not continue text-encoded tool calls across an interruption", 
 
   const events = await collect(streamModel(createRequest(), config, { googleClientFactory }));
 
-  const error = events.find((event): event is Extract<CanonicalModelEvent, { type: "error" }> => event.type === "error");
-  assert.equal(requests, 1);
-  assert.equal(error?.error.streamInterruption?.phase, "text");
+  assert.equal(requests, 2);
+  assert.equal(events.some((event) => event.type === "error" || event.type === "tool_call_end"), false);
+  assert.equal(events.filter((event) => event.type === "text_delta").map((event) => event.text).join(""), prefix + suffix);
 });
 
 test("Google stops reading once it emits a terminal event", async () => {

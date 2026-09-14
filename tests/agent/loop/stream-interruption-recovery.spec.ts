@@ -4,7 +4,8 @@ import test from "node:test";
 import { AgentLoop } from "../../../src/agent/loop/AgentLoop.js";
 import type { AgentRuntimeConfig } from "../../../src/agent/runtime/AgentRuntimeConfig.js";
 import type { AgentRouterRuntime, AgentRuntimeDependencies } from "../../../src/agent/runtime/AgentRuntimeDependencies.js";
-import type { CanonicalModelEvent, CanonicalModelRequest } from "../../../src/model/protocol/canonical.js";
+import type { CanonicalMessage, CanonicalModelEvent, CanonicalModelRequest, CanonicalToolCall } from "../../../src/model/protocol/canonical.js";
+import { createOpenAIStreamState, normalizeOpenAIStreamEvent } from "../../../src/model/providers/openai/stream.js";
 import { createDefaultPermissionContext } from "../../../src/permission/protocol/types.js";
 import { ToolRegistry } from "../../../src/tool/registry/ToolRegistry.js";
 
@@ -90,7 +91,7 @@ test("agent loop recovers an unknown finish reason before treating the turn as s
   assert.match(recoveryText?.type === "text" ? recoveryText.text : "", /without a recognized finish reason/);
 });
 
-test("unknown finish with partial Hermes tool text uses the specialized recovery", async () => {
+test("unknown finish with literal tool syntax uses ordinary finish recovery", async () => {
   const requests: CanonicalModelRequest[] = [];
   let scheduledToolCalls = 0;
   const partialToolText = '<tool_call>{"name":"write_file","arguments":{"path":"deck.mjs"';
@@ -119,12 +120,12 @@ test("unknown finish with partial Hermes tool text uses the specialized recovery
   assert.equal(scheduledToolCalls, 0);
   const recoveryText = requests[1]!.messages.at(-1)?.content[0];
   assert.equal(recoveryText?.type, "text");
-  assert.match(recoveryText?.type === "text" ? recoveryText.text : "", /partial tool-call XML\/text/);
+  assert.match(recoveryText?.type === "text" ? recoveryText.text : "", /without a recognized finish reason/);
   assert.doesNotMatch(recoveryText?.type === "text" ? recoveryText.text : "", /deck\.mjs|partial-secret/);
-  assert.equal(requests[1]!.messages.some((message) => message.role === "assistant"), false);
+  assert.ok(requests[1]!.messages.some((message) => message.role === "assistant" && message.content.some((block) => block.type === "text" && block.text === partialToolText)));
 });
 
-test("stream interruption with partial Hermes tool text does not persist the fragment", async () => {
+test("stream interruption preserves incomplete tool examples as text", async () => {
   const requests: CanonicalModelRequest[] = [];
   const partialToolText = '<tool_call>{"name":"write_file","arguments":{"path":"secret.mjs"';
   const loop = createLoop(async function* (_decision, request) {
@@ -159,14 +160,14 @@ test("stream interruption with partial Hermes tool text does not persist the fra
   }
 
   assert.equal(requests.length, 2);
-  assert.equal(requests[1]!.messages.some((message) => message.role === "assistant"), false);
+  assert.ok(requests[1]!.messages.some((message) => message.role === "assistant" && message.content.some((block) => block.type === "text" && block.text === partialToolText)));
   const recoveryText = requests[1]!.messages.at(-1)?.content[0];
   assert.equal(recoveryText?.type, "text");
-  assert.match(recoveryText?.type === "text" ? recoveryText.text : "", /partial tool-call XML\/text/);
+  assert.match(recoveryText?.type === "text" ? recoveryText.text : "", /Continue exactly where the visible response ended/);
   assert.doesNotMatch(recoveryText?.type === "text" ? recoveryText.text : "", /deck\.mjs|partial-secret/);
 });
 
-test("cancelling stream interruption recovery does not expose the partial tool call", async () => {
+test("cancelling stream interruption recovery preserves literal tool syntax", async () => {
   const controller = new AbortController();
   const partialToolText = '<tool_call>{"name":"write_file","arguments":{"path":"secret.mjs"';
   const loop = createLoop(async function* (_decision, _request, context) {
@@ -188,7 +189,7 @@ test("cancelling stream interruption recovery does not expose the partial tool c
     };
   }, () => undefined);
 
-  const events: Array<{ type: string; result?: { finalMessage?: unknown } }> = [];
+  const events: Array<{ type: string; result?: { finalMessage?: CanonicalMessage } }> = [];
   for await (const event of loop.run({
     sessionId: "cancel-interrupted-partial-tool",
     turnId: "turn-1",
@@ -202,10 +203,10 @@ test("cancelling stream interruption recovery does not expose the partial tool c
   }
 
   const completed = events.find((event) => event.type === "turn_completed");
-  assert.equal(completed?.result?.finalMessage, undefined);
+  assert.equal(completed?.result?.finalMessage?.content.find((block) => block.type === "text")?.text, partialToolText);
 });
 
-test("cancelling partial text tool-call recovery does not expose the partial tool call", async () => {
+test("incomplete tool syntax with stop completes without recovery", async () => {
   const controller = new AbortController();
   const partialToolText = '<tool_call>{"name":"write_file","arguments":{"path":"secret.mjs"';
   const loop = createLoop(async function* (_decision, _request, context) {
@@ -217,7 +218,7 @@ test("cancelling partial text tool-call recovery does not expose the partial too
     yield { type: "message_end", finishReason: "stop" };
   }, () => undefined);
 
-  const events: Array<{ type: string; result?: { finalMessage?: unknown } }> = [];
+  const events: Array<{ type: string; result?: { finalMessage?: CanonicalMessage } }> = [];
   for await (const event of loop.run({
     sessionId: "cancel-partial-tool-recovery",
     turnId: "turn-1",
@@ -231,10 +232,11 @@ test("cancelling partial text tool-call recovery does not expose the partial too
   }
 
   const completed = events.find((event) => event.type === "turn_completed");
-  assert.equal(completed?.result?.finalMessage, undefined);
+  assert.equal(completed?.result?.finalMessage?.content.find((block) => block.type === "text")?.text, partialToolText);
+  assert.equal(events.some((event) => event.type === "turn_continued"), false);
 });
 
-test("stream interruption with complete text fallback tool call does not persist it as text", async () => {
+test("stream interruption preserves complete tool examples as text", async () => {
   const requests: CanonicalModelRequest[] = [];
   const completeToolText = 'Prefix <tool_call>{"name":"write_file","arguments":{"path":"safe.mjs","content":"secret"}}</tool_call>';
   const loop = createLoop(async function* (_decision, request) {
@@ -269,10 +271,10 @@ test("stream interruption with complete text fallback tool call does not persist
   }
 
   assert.equal(requests.length, 2);
-  assert.equal(requests[1]!.messages.some((message) => message.role === "assistant"), false);
+  assert.ok(requests[1]!.messages.some((message) => message.role === "assistant" && message.content.some((block) => block.type === "text" && block.text === completeToolText)));
   const recoveryText = requests[1]!.messages.at(-1)?.content[0];
   assert.equal(recoveryText?.type, "text");
-  assert.match(recoveryText?.type === "text" ? recoveryText.text : "", /partial tool-call XML\/text/);
+  assert.match(recoveryText?.type === "text" ? recoveryText.text : "", /Continue exactly where the visible response ended/);
   assert.doesNotMatch(recoveryText?.type === "text" ? recoveryText.text : "", /safe\.mjs|secret/);
 });
 
@@ -334,7 +336,7 @@ test("unknown finish exhaustion persists the final safe text fragment", async ()
   assert.ok(durable.some((text) => text.includes("unknown-fragment-3")));
 });
 
-test("partial text tool-call exhaustion clears unsafe finalMessage", async () => {
+test("literal tool syntax without message_end does not trigger tool recovery", async () => {
   const partialToolText = '<tool_call>{"name":"write_file","arguments":{"path":"secret.mjs","content":"partial-secret"';
   let attempt = 0;
   const loop = createLoop(async function* () {
@@ -343,7 +345,7 @@ test("partial text tool-call exhaustion clears unsafe finalMessage", async () =>
     yield { type: "text_delta", text: partialToolText };
   }, () => undefined);
 
-  const events: Array<{ type: string; result?: { finalMessage?: unknown } }> = [];
+  const events: Array<{ type: string; result?: { finalMessage?: CanonicalMessage } }> = [];
   for await (const event of loop.run({
     sessionId: "partial-tool-exhausted",
     turnId: "turn-1",
@@ -352,12 +354,12 @@ test("partial text tool-call exhaustion clears unsafe finalMessage", async () =>
     events.push(event as typeof events[number]);
   }
 
-  assert.equal(attempt, 51);
+  assert.equal(attempt, 1);
   const completed = events.find((event) => event.type === "turn_completed");
-  assert.equal(completed?.result?.finalMessage, undefined);
+  assert.equal(completed?.result?.finalMessage?.content.find((block) => block.type === "text")?.text, partialToolText);
 });
 
-test("stream interruption exhaustion clears unsafe finalMessage tool text", async () => {
+test("stream interruption exhaustion preserves literal tool syntax", async () => {
   const partialToolText = '<tool_call>{"name":"write_file","arguments":{"path":"secret.mjs","content":"partial-secret-3"';
   const loop = createLoop(async function* () {
     yield { type: "message_start", role: "assistant" };
@@ -375,7 +377,7 @@ test("stream interruption exhaustion clears unsafe finalMessage tool text", asyn
     };
   }, () => undefined);
 
-  const events: Array<{ type: string; result?: { finalMessage?: unknown } }> = [];
+  const events: Array<{ type: string; result?: { finalMessage?: CanonicalMessage } }> = [];
   for await (const event of loop.run({
     sessionId: "interrupted-unsafe-final",
     turnId: "turn-1",
@@ -385,12 +387,104 @@ test("stream interruption exhaustion clears unsafe finalMessage tool text", asyn
   }
 
   const completed = events.find((event) => event.type === "turn_completed");
-  assert.equal(completed?.result?.finalMessage, undefined);
+  assert.equal(completed?.result?.finalMessage?.content.find((block) => block.type === "text")?.text, partialToolText);
+});
+
+const literalToolExamples = {
+  think: '<think>I considered <tool_call>{"name":"read_file","arguments":{"path":"README.md"}}</tool_call> but do not need it.</think>Answer without using tools.',
+  bare: '<tool_call>{"name":"read_file","arguments":{"path":"README.md"}}</tool_call>',
+  fenced: '```xml\n<tool_call>{"name":"read_file","arguments":{"path":"README.md"}}</tool_call>\n```',
+  inline: 'Example: `<tool_call>{"name":"read_file","arguments":{"path":"README.md"}}</tool_call>`.',
+  incomplete: '<think>The opening tag is <tool_call>.</think>Answer without using tools.',
+  malformed: '<tool_call>{invalid json}</tool_call>',
+  qwen: '<tool_call><function=read_file><parameter=path>README.md</parameter></function></tool_call>',
+  deepseek: '<｜DSML｜tool_calls><｜DSML｜invoke name="read_file"><｜DSML｜parameter name="path" string="true">README.md</｜DSML｜parameter></｜DSML｜invoke></｜DSML｜tool_calls>',
+  mistral: '[TOOL_CALLS] [{"name":"read_file","arguments":{"path":"README.md"}}]',
+  llama: '<|python_tag|>{"name":"read_file","parameters":{"path":"README.md"}}',
+};
+
+for (const [name, text] of Object.entries(literalToolExamples)) {
+  for (const chunked of [false, true]) {
+    test(`OpenAI ${name} text stays literal through assembler and AgentLoop (${chunked ? "character chunks" : "whole chunk"})`, async () => {
+      let requests = 0;
+      const scheduled: CanonicalToolCall[] = [];
+      const durable: CanonicalMessage[] = [];
+      const reasoning = `Native reasoning can quote examples too: ${literalToolExamples.bare}`;
+      const loop = createLoop(async function* () {
+        requests++;
+        // Bound failures if a future regression starts retrying this example.
+        assert.equal(requests, 1, "literal text must not trigger another model request");
+        const state = createOpenAIStreamState();
+        if (chunked) {
+          yield* normalizeOpenAIStreamEvent({ choices: [{ delta: { reasoning_content: reasoning } }] }, state);
+        }
+        for (const content of chunked ? [...text] : [text]) {
+          yield* normalizeOpenAIStreamEvent({ choices: [{ delta: { content } }] }, state);
+        }
+        yield* normalizeOpenAIStreamEvent({ choices: [{ delta: {}, finish_reason: "stop" }] }, state);
+      }, (calls) => { scheduled.push(...calls); });
+
+      const events = [];
+      for await (const event of loop.run({
+        sessionId: `literal-${name}`,
+        turnId: "turn-1",
+        messages: [{ role: "user", content: [{ type: "text", text: "Explain special tokens and tool-call formats." }] }],
+        onDurableMessage: async (message) => { durable.push(message); },
+      })) events.push(event);
+
+      assert.equal(requests, 1);
+      assert.deepEqual(scheduled, []);
+      assert.equal(events.some((event) => ["turn_continued", "turn_failed", "warning", "tool_result_message"].includes(event.type)), false);
+      assert.equal(events.find((event) => event.type === "turn_completed")?.result.type, "success");
+      assert.equal(durable.length, 1);
+      assert.deepEqual(durable[0]!.content, [
+        ...(chunked ? [{ type: "thinking", text: reasoning, reasoningContent: reasoning }] : []),
+        { type: "text", text },
+      ]);
+    });
+  }
+}
+
+test("native OpenAI tool calls still dispatch exactly once alongside literal examples", async () => {
+  let requests = 0;
+  const scheduled: CanonicalToolCall[] = [];
+  const durable: CanonicalMessage[] = [];
+  const loop = createLoop(async function* () {
+    requests++;
+    assert.ok(requests <= 2);
+    const state = createOpenAIStreamState();
+    if (requests === 1) {
+      yield* normalizeOpenAIStreamEvent({ choices: [{ delta: { content: literalToolExamples.think } }] }, state);
+      yield* normalizeOpenAIStreamEvent({ choices: [{ delta: { tool_calls: [{
+        index: 0, id: "native-read", type: "function", function: { name: "read_file", arguments: '{"path":' },
+      }] } }] }, state);
+      yield* normalizeOpenAIStreamEvent({ choices: [{ delta: { tool_calls: [{
+        index: 0, function: { arguments: '"actual.txt"}' },
+      }] }, finish_reason: "tool_calls" }] }, state);
+    } else {
+      yield* normalizeOpenAIStreamEvent({ choices: [{ delta: { content: "Done." }, finish_reason: "stop" }] }, state);
+    }
+  }, (calls) => { scheduled.push(...calls); });
+
+  const events = [];
+  for await (const event of loop.run({
+    sessionId: "native-with-example",
+    turnId: "turn-1",
+    messages: [{ role: "user", content: [{ type: "text", text: "Read actual.txt." }] }],
+    onDurableMessage: async (message) => { durable.push(message); },
+  })) events.push(event);
+
+  assert.equal(requests, 2);
+  assert.deepEqual(scheduled.map(({ id, name, input }) => ({ id, name, input })), [
+    { id: "native-read", name: "read_file", input: { path: "actual.txt" } },
+  ]);
+  assert.equal(durable[0]!.content.find((block) => block.type === "text")?.text, literalToolExamples.think);
+  assert.equal(events.find((event) => event.type === "turn_completed")?.result.type, "success");
 });
 
 function createLoop(
   execute: AgentRouterRuntime["execute"],
-  onSchedule: () => void,
+  onSchedule: (calls: CanonicalToolCall[]) => void,
 ): AgentLoop {
   const router: AgentRouterRuntime = {
     invalidateSticky: () => ({ orchestrating: false }),
@@ -441,9 +535,16 @@ function createLoop(
     tools: {
       registry: new ToolRegistry(),
       scheduler: {
-        async executeAll() {
-          onSchedule();
-          return [];
+        async executeAll(calls) {
+          onSchedule(calls);
+          return calls.map((call) => ({
+            type: "success" as const,
+            toolCallId: call.id,
+            toolName: call.name,
+            content: [{ type: "text" as const, text: "fixture tool result" }],
+            startedAt: new Date(0).toISOString(),
+            completedAt: new Date(0).toISOString(),
+          }));
         },
       },
     },

@@ -12,9 +12,11 @@ export function getTokenizer(): Tiktoken {
 
 /**
  * Count the number of tokens in a text string using o200k_base encoding.
+ * Treat special-token spellings in user text, history, and tool output as
+ * ordinary text rather than rejecting them or counting them as control tokens.
  * Returns 0 for empty strings without invoking the tokenizer.
  */
 export function countTokens(text: string): number {
   if (text.length === 0) return 0;
-  return getTokenizer().encode(text).length;
+  return getTokenizer().encode(text, [], []).length;
 }
