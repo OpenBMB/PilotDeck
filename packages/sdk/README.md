@@ -2,6 +2,8 @@
 
 Claude Agent SDK-like 的 PilotDeck Gateway 客户端 alpha。
 
+完整文档入口：[`docs/sdk/public/overview.zh.md`](../../docs/sdk/public/overview.zh.md)。公开文档按 Overview、Quickstart、能力 Guides、TypeScript API Reference、错误/兼容性、Migration 和 Troubleshooting 组织；本文保留包内可复制的最小示例与实现限制。
+
 ```ts
 import { query } from "@pilotdeck/sdk";
 

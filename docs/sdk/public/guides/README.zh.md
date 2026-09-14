@@ -1,0 +1,15 @@
+# Capability Guides
+
+- [添加自定义工具](custom-tools.zh.md)
+- [MCP](mcp.zh.md)
+- [Permissions](permissions.zh.md)
+- [Session 管理](sessions.zh.md)
+- [Hooks](hooks.zh.md)
+- [Settings](settings.zh.md)
+- [Structured Output](structured-output.zh.md)
+- [Usage 与 Budget](usage-and-budget.zh.md)
+- [Checkpoint 与 Rewind](checkpoint.zh.md)
+- [Dialog 与 Elicitation](dialogs.zh.md)
+- [Plugins、Skills 与 Subagents](plugins-skills-subagents.zh.md)
+- [Transports](transports.zh.md)
+- [Output Styles 与 Prompt Suggestions](output-styles.zh.md)

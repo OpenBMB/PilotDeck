@@ -33,7 +33,7 @@
 5. 最小可运行示例或更新现有 `packages/sdk/examples/`；
 6. 更新 [PilotDeck SDK 实现 Roadmap](pilotdeck-sdk-implementation-roadmap.zh.md) 中对应能力条目的状态和交付范围；如公共语义或证据发生变化，同时更新逐函数映射、能力差距矩阵或 changelog，并记录 `unsupported_capability` 行为。
 
-在上述交付物和第 13 节发布门槛全部满足前，新能力只能标记为 alpha/experimental；不得因某个方法名存在就宣称该能力已达到 Claude 语义等价或稳定发布。
+在上述交付物和第 16 节发布门槛全部满足前，新能力只能标记为 alpha/experimental；不得因某个方法名存在就宣称该能力已达到 Claude 语义等价或稳定发布。
 
 ## 2. SDK 的职责边界
 
@@ -607,7 +607,7 @@ const run = client.runs.start({
 
 不得把 JavaScript function 放入 WebSocket frame，也不得把 descriptor 当作“已注册工具”而不启动可达的 MCP endpoint。若 Gateway 不可访问 SDK 进程的 endpoint，初始化必须以 `unsupported_capability` 或明确连接错误失败；不得伪造 tool call 成功。
 
-只有在明确建设 Embedded SDK 时，才提供 `tools.register()`。Embedded 模式应使用独立入口，例如 `@pilotdeck/sdk/embedded`，并明确：
+Embedded 工具注册只能通过独立入口 `@pilotdeck/sdk/embedded` 提供，并明确：
 
 - 工具运行在哪个进程；
 - permission 和 sandbox 由谁实现；
@@ -838,7 +838,7 @@ examples/
 - SDK 版本不等于 Gateway protocol version，两者分别维护；
 - 每个 SDK 版本声明支持的 Gateway protocol 范围。
 
-建议初期在 `0.x` 中标记 API 稳定级别：`stable`、`experimental`、`internal`。只有 `stable` 进入根 package exports。
+建议初期在 `0.x` 中标记 API 稳定级别：`stable`、`experimental`、`internal`。`stable` 和明确声明的 `experimental` 能力都可以进入对应的 public exports；`internal` 能力不得进入 exports。当前 `@pilotdeck/sdk` 的 `./embedded` 是已发布但仍属 experimental 的 public subpath，不能按稳定契约使用。
 
 ## 16. 第十二步：发布流程
 
@@ -871,21 +871,20 @@ examples/
 }
 ```
 
-`./embedded` 仅在实现并验证本地运行模式后发布；第一阶段可以只发布根 Gateway Client 入口。
+当前 `./embedded` 已随 alpha 包作为 experimental public subpath 发布。后续发布必须继续验证本地运行、host ownership、tool registry、资源关闭和与 Gateway transport 的等价性；不得把该入口描述为稳定 1.0 契约。
 
-## 17. 人类应用接入 SOP
+## 17. SDK Consumer Smoke Checklist
 
-第三方或产品应用按以下步骤接入：
+应用接入的完整说明见[开发经验与接入指南](pilotdeck-sdk-development-experience.zh.md)。SDK 发布验收只保留以下最小外部消费者检查：
 
-### 17.1 准备
+### 17.1 安装与连接
 
-1. 获取 Gateway URL、认证方式和支持的 protocol version；
-2. 确认 project id 与工作目录由谁创建；
-3. 决定 permission 和 elicitation 由 UI、后台策略还是人工队列处理；
-4. 明确应用是否允许写文件、执行命令和访问网络；
-5. 确认断线后的用户体验和恢复策略。
+1. 使用 `pnpm pack` 生成的 tarball 安装到仓库外的空白 TypeScript fixture；
+2. 只从 `@pilotdeck/sdk` 或 `@pilotdeck/sdk/embedded` 导入；
+3. 使用目标 Gateway URL、认证方式和 protocol version 完成 handshake；
+4. 记录 SDK/Gateway 版本和 capability snapshot。
 
-### 17.2 建立连接
+### 17.2 最小调用
 
 ```ts
 const client = createPilotDeckClient({
@@ -899,75 +898,15 @@ await client.connect();
 
 认证 token 不写入日志、浏览器 bundle 或 transcript。
 
-### 17.3 创建或恢复 session
+### 17.3 必测行为
 
-```ts
-const session = existingSessionId
-  ? await client.sessions.resume(existingSessionId)
-  : await client.sessions.create({ projectKey });
-```
+1. `query()` 或 `client.runs.start()` 能消费事件并取得唯一 `result()`；
+2. 至少验证一个自定义工具的 schema、permission、tool lifecycle 和真实副作用；
+3. 验证 `completed`、`failed`、`aborted`、`result_unknown` 的区别，以及 `close()` 不等于 `abort()`；
+4. 验证 session resume/fork、断线和不支持能力的 `unsupported_capability`；
+5. Embedded 路径若被使用，额外验证 local registry 的 scope、host ownership 和关闭顺序。
 
-应用持久化 PilotDeck `session.id`，不要用 UI tab id、用户 id 或本地随机 id 替代。
-
-### 17.4 注册审批处理器
-
-```ts
-const canUseTool = async (toolName, input, context) => {
-  const decision = await renderPermissionDialog({ toolName, input, context });
-  return decision === "allow"
-    ? { behavior: "allow" }
-    : { behavior: "deny", message: "用户拒绝" };
-};
-```
-
-没有审批 UI 的后台服务不得提供 `canUseTool`，并必须配置明确的服务端 permission rules。
-
-### 17.5 提交并消费 run
-
-```ts
-const run = client.runs.start({
-  sessionId: session.id,
-  input: { type: "text", text: userText },
-  options: { canUseTool },
-});
-
-for await (const event of run.events()) {
-  renderEvent(event);
-}
-
-const result = await run.result();
-```
-
-UI 应根据 event type 更新状态，不通过解析 assistant 文本猜测工具、权限或完成状态。
-
-### 17.6 处理终态
-
-```ts
-switch (result.status) {
-  case "completed":
-    showResult(result.output);
-    break;
-  case "failed":
-    showError(result.error);
-    break;
-  case "aborted":
-    showCancelled(result.reason);
-    break;
-  case "result_unknown":
-    offerStatusRefresh(result.recovery);
-    break;
-}
-```
-
-`result_unknown` 后不得自动再次提交相同写操作。应先查询 session/run 状态或让用户确认。
-
-### 17.7 关闭
-
-```ts
-await client.close();
-```
-
-应用关闭前决定是否 abort 活跃 run。断开客户端连接不等于终止服务端 run。
+应用不得通过解析 assistant 文本猜测工具、权限或完成状态，也不得在 `result_unknown` 后自动重放有副作用的请求。
 
 ## 18. Code Review 检查表
 
@@ -1018,4 +957,4 @@ SDK PR 必须逐项检查：
 - [Claude Agent SDK 与 PilotDeck 语义映射](claude-agent-sdk-pilotdeck-mapping.zh.md)
 - [PilotDeck 当前可复用表面](pilotdeck-sdk-current-surface.zh.md)
 - [SDK 能力差距矩阵](sdk-capability-gap-matrix.zh.md)
-- [AgentLoop 模块接入开发 SOP](../agent-loop-development-sop.zh.md)
+- AgentLoop 模块协议不属于本 SDK 文档范围；需要了解原生边界时请参阅[当前可复用表面](pilotdeck-sdk-current-surface.zh.md)。

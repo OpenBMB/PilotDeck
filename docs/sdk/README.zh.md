@@ -13,14 +13,38 @@ Claude 版本证据：[npm package `0.3.263`](https://www.npmjs.com/package/@ant
 
 ## 阅读顺序
 
+公开 SDK 文档入口：
+
+1. [Overview](public/overview.zh.md)
+2. [Quickstart](public/quickstart.zh.md)
+3. [架构与所有权](public/concepts/architecture.zh.md)
+4. [Sessions、Runs 和恢复](public/concepts/sessions-and-runs.zh.md)
+5. [能力 Guides](public/guides/README.zh.md)
+6. [TypeScript API Reference](public/reference/README.zh.md)
+7. [Public Exports 清单](public/reference/exports.zh.md)
+8. [Examples](public/examples/README.zh.md)
+9. [Errors 与 Compatibility](public/reference/errors.zh.md)
+10. [Migration 与 Changelog](public/migration/README.zh.md)
+11. [Troubleshooting](public/troubleshooting.zh.md)
+12. [Operations](public/operations/README.zh.md)
+
+内部审计和维护文档：
+
 1. [Claude TypeScript API 全量清单](claude-agent-sdk-ts-api-inventory.zh.md)
 2. [Claude → PilotDeck 语义映射](claude-agent-sdk-pilotdeck-mapping.zh.md)
 3. [PilotDeck 当前可复用表面](pilotdeck-sdk-current-surface.zh.md)
 4. [能力差距矩阵](sdk-capability-gap-matrix.zh.md)
 5. [PilotDeck SDK 与原生模块：简单说明](pilotdeck-sdk-vs-native-modules.zh.md)
-6. [PilotDeck SDK 开发与接入 SOP](pilotdeck-sdk-development-sop.zh.md)
+6. [PilotDeck SDK 维护者版详细 SOP](pilotdeck-sdk-development-sop.zh.md)
 7. [Claude Agent SDK 与 PilotDeck：逐函数代码对应表](claude-agent-sdk-pilotdeck-function-map.zh.md)
-8. [PilotDeck SDK 实现 Roadmap](pilotdeck-sdk-implementation-roadmap.zh.md)
+8. [PilotDeck SDK 实现 Roadmap（能力状态）](pilotdeck-sdk-implementation-roadmap.zh.md)
+9. [PilotDeck SDK 与 Native 扩展对拍报告](pilotdeck-sdk-e2e-parity-expansion-report-20260914.zh.md)
+10. [PilotDeck SDK 开发经验与接入指南](pilotdeck-sdk-development-experience.zh.md)
+11. [PilotDeck SDK 开发者 SOP](pilotdeck-sdk-developer-sop.zh.md)
+12. [PilotDeck SDK 文档建设 Roadmap](pilotdeck-sdk-documentation-roadmap.zh.md)
+13. [PilotDeck SDK 文档建设 SOP](pilotdeck-sdk-documentation-sop.zh.md)
+
+文档职责区分：开发经验文档说明业务应用如何接入；开发者 SOP 规定 SDK 如何设计、实现、测试和发布；实现 Roadmap 同时维护 SDK 产品研发阶段、能力状态和 P0/P1/P2；维护者版 SOP 规定贡献和协议适配门槛。
 
 ## 结论摘要
 

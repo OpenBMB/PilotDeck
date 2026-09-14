@@ -1,9 +1,9 @@
 # PilotDeck SDK 实现 Roadmap
 
-状态：实施中。能力状态、P0/P1/P2 backlog 与版本排期只在本 Roadmap 维护；当前已实现能力和待实现能力的唯一汇总见 [4.1.1 能力状态总览](#411-能力状态总览唯一状态来源)，4.2 给出逐项边界与验收口径。SOP 只规定开发约束和验收流程，不重复这些状态。
+状态：发布稳定化中。能力状态、P0/P1/P2 backlog 与版本排期只在本 Roadmap 维护；当前已实现能力和待实现能力的唯一汇总见 [4.1.1 能力状态总览](#411-能力状态总览唯一状态来源)，4.2 给出逐项边界与验收口径。SOP 只规定开发约束和验收流程，不重复这些状态。
 目标读者：PilotDeck Runtime、Gateway、SDK、测试和应用接入团队
 基线：PilotDeck `origin/main@cfc4d177`，Claude Agent SDK TypeScript 0.3.263 作为 API 体验参考
-更新日期：2026-09-11
+更新日期：2026-09-14
 
 ## 0. 一页结论
 
@@ -18,6 +18,19 @@
 `promptSuggestions: true` 同样已脱离 P2 backlog：Gateway 只在成功、非 abort 的 turn 后发起隔离辅助模型调用，成功时在 `turn_completed` 前投递一次 transient `prompt_suggestion`。该建议不写入 transcript 或模型对话状态；生成失败或超时时只省略该事件，原 turn 的结果与终态不变。
 
 P2 的 `onUserDialog` 已从单一 `input` 扩展为受限的 `input`、`select`、`confirm` 和 schema-backed `form`。它们分别注册 session-local 的 `request_user_input`、`request_user_choice`、`request_user_confirmation`、`request_user_form`：`select` 的返回值必须匹配该次请求声明的 option value，`confirm` 的返回值必须为 boolean，`form` 必须返回匹配 Gateway form-schema subset 的 object。显式声明 `$schema: "https://json-schema.org/draft/2020-12/schema"` 时，Gateway 使用标准 Draft 2020-12 validator 进行本地 schema 编译和 answer validation，并对外部引用 fail closed；SDK 已提供 Node terminal、browser-native 和 framework-free DOM renderer。browser 版本可使用原生 `prompt`/`confirm` 和 JSON object form、`createDomBrowserDialogDriver()` 的原生 form control，也可注入异步 `driver.render(request, { signal })`，让应用自己的 React/Web Component/modal 拿到完整 typed request 与 schema；DOM renderer 对 object、标量、可递归解析的 local `$ref`、`items` 数组和 `prefixItems` tuple 提供 typed controls，并按默认值、`minItems`/`maxItems` 约束追加或移除可变 item；未声明 `items` 的 prefix tail、`patternProperties` 和显式 additional field 使用 JSON editor。它还会安全合并无冲突的 root/field `allOf`，并为不含条件/否定约束的 `oneOf`/`anyOf` 提供 typed branch selector；其他 composition 与未知 field 继续回退 JSON editor。SDK 只接受标准 answer envelope，Gateway 仍做最终验证。未声明 `$schema` 时继续使用历史 PilotDeck subset：它校验 object/array/string/number 的常用约束、schema 型 `additionalProperties`、`patternProperties`、`contains`/`minContains`/`maxContains`、`propertyNames`、tuple `prefixItems`、`email`/`uri`/`uuid`/`date`/`time`/`date-time` 字符串 format，以及受全局 schema 深度/节点、每分支 32 条与每个依赖映射 64 条限制的 `allOf`/`anyOf`/`oneOf`/`not`、`if`/`then`/`else`、`dependentRequired`/`dependentSchemas`。历史路径还支持根 `$defs` 内至多 64 个简单命名的定义，以及精确的 `#/$defs/<name>` 本地引用；未知 definition、循环、外部 URI 和任意 JSON Pointer 会拒绝。未知 keyword、format 也会拒绝。Gateway 持有 pending request、类型/选项/schema 校验、取消、turn-end cleanup 和重复/迟到回包拒绝；SDK 可托管 callback，或以 `userDialogMode: "manual"` 让调用者消费事件、经 `Query.respondUserDialog()` 或 `client.dialogs.list/respond()` 回包。persistent session 的 Gateway 在发出请求前以 transcript 旁的原子 journal 记录 pending request；重启后 `dialogs.list()` 将其投影为带 `recovery: "next_turn_context"` 的 `user_dialog_terminated`/`gateway_restarted`。对原始 contract 校验通过的 `respond()` 会返回 `{ delivered: true, recovered: true, reason: "gateway_restarted" }`，并将合成的 durable user message 写入 transcript，供下一次显式提交的新 turn 作为正常上下文读取；无效答案不会消耗 journal，已处理记录不会重复投递。embedding host 还可提供 `GatewayUserDialogStore`：基础 store 只增强 durable recovery；仅完整的 `listLive`/`claimLive`/`releaseLive`/`submitLiveAnswer`/`takeLiveAnswer` 原子协议允许第二个 Gateway 协作 renderer lease 与 answer handoff，原始 Gateway 保持旧 AgentLoop/tool promise 的 continuation。它不恢复重启后的旧 AgentLoop、turn、tool promise 或 transcript run state，仍不是全量、多宿主 JSON Schema UI 或可恢复的 dialog 状态机。
+
+## 0.1 SDK 开发阶段与依赖顺序
+
+本节是 SDK 产品开发顺序的唯一摘要；具体能力状态、P0/P1/P2 和验收明细仍以本文件 4.1.1/4.2 为准。
+
+1. **基线与契约**：冻结 `@pilotdeck/sdk`、`/embedded` public exports、Claude 逐函数映射、ownership、capability 和错误模型。
+2. **核心 façade/transport**：完成 Remote/Embedded handshake、query streaming、唯一 final、abort/timeout、session/run client 和 `result_unknown`。
+3. **工具与扩展**：完成 `tool()`、SDK-hosted MCP、Embedded registry、permission、hooks、dialog 和工具 scope；不重复实现 ToolRuntime 或 PermissionRuntime。
+4. **session 与可靠性**：完成 resume/continue/fork、transcript、checkpoint、disconnect/reconnect、Gateway restart、budget 和 dialog recovery 边界；active turn/tool promise 不自动恢复。
+5. **控制面收敛**：按依赖接入 managed settings、setting sources、model/fallback、structured output/JSON Schema、usage/budget、plugins/skills/subagents、output styles 等能力；先完成 managed settings，再完成 JSON Schema。host/OS sandbox、Bubblewrap 和容器隔离不纳入本 SDK。
+6. **Parity 与发布**：完成 fake Gateway、真实 Gateway、外部 tarball fixture、Native before/after parity、版本矩阵、Migration/Changelog 和回滚方案。
+
+每个阶段的退出条件都是：public types、Gateway wire contract、真实测试、错误/取消/重启边界和文档证据齐全；不支持能力显式返回 `unsupported_capability`，不能用客户端缓存或静默降级冒充实现。
 
 ## 1. Roadmap 目标
 
@@ -195,7 +208,6 @@ Gateway 仍拥有 session、run、resume、fork、export/restore、delete 和 ch
 - **P2 受限 dialogs（experimental）**：仅在 `onUserDialog` 与 `supportedDialogKinds` 同时声明时，Gateway 才在 session-local cloned registry 中按需注册 `request_user_input`、`request_user_choice`、`request_user_confirmation`、`request_user_form`。`input` 经 `user_dialog_request` 投递 `prompt`、可选 `placeholder` 和 `allowEmpty`，回传短文本或取消；`select` 声明 2--12 个 choice value，回传必须为其中之一；`confirm` 只能回传 boolean；`form` 使用 Gateway 专属、显式关键字的 object schema subset：properties/`patternProperties`/required、boolean 或 schema 型 `additionalProperties`、items/`prefixItems`、enum/const、字符串 length/pattern、`email`/`uri`/`uuid`/`date`/`time`/`date-time` format、数值 range/multipleOf、array items/uniqueItems、`contains`/`minContains`/`maxContains`、object property-count/`propertyNames`，以及有全局深度/节点、每分支 32 条和每个依赖映射 64 条限制的 `allOf`/`anyOf`/`oneOf`/`not`、`if`/`then`/`else`、`dependentRequired`/`dependentSchemas` 都会在 Gateway 消费 pending response 前校验。根 schema 还可声明最多 64 个简单命名 `$defs`，并在字段或定义中用 `#/$defs/<name>` 引用；循环、未知定义、外部 URI、任意 JSON Pointer、嵌套 `$defs`、未知关键字和 format 都会明确拒绝。request id、pending lifecycle、类型/choice/schema 校验、abort/turn-end cleanup、重放过滤与重复/迟到回包都由 Gateway 持有。普通 tool call/result 仍照常进入 transcript 和下一次模型请求，没有隐藏 UI transcript。它不提供全量 JSON Schema、完整 schema-driven host UI 或可持久化 dialog state；未 opt-in 的 session 不会暴露这些工具或改变工具 schema。
 - **瞬态工具进度**：`agentProgressSummaries: true` 使 `bash` 等会发出 `PilotDeckToolRuntimeContext.progress` 的原生工具输出 `tool.progress`；Gateway 负责 session 开关和 event stream，SDK 只做 wire 序列化和类型化投影。该事件不持久化、不替代最终 tool result，未开启时不会改变原生 AgentLoop 的输出。
 - **生命周期与资源**：原生 lifecycle hooks HTTP bridge、`includeHookEvents` 的 started/response 事件，以及 experimental `Query.submitAsyncHookResult()`。SDK hook callback 返回 `{ async: true }` 时，Gateway 为当前 session/run 登记 `asyncHookId`；随后只能提交同一 hook event 的 `additionalContext`，Gateway 将它作为 active-turn steer mailbox 的上下文。deadline、turn 结束、重复提交和短期幂等结果均由 Gateway 管理；任意迟到结果不会改变已完成 turn。该切片不能回写 hook input、block/allow 工具或修改 permission，均显式返回 `UNSUPPORTED_ASYNC_HOOK_EFFECT`。SDK 显式配置 `FileChanged` 时，`write_file`、`edit_file`、`edit_notebook` 成功写入后会在独立 SDK Hook runtime 派发该事件，并投影 callback 与 hook stream；它不能阻止或回滚已经完成的写入，也不会激活项目原有的未接线 FileChanged Hook。SDK 显式配置 `ConfigChange` 时，Gateway 的 `PilotConfigStore` reload 会向当前存活 session 的独立 SDK lifecycle 派发 `changedPaths`/`changeClasses`，并投影 hook stream；它不会激活 project hook，不能改变 reload、runtime invalidation 或 AgentLoop。该观察事件不登记 `asyncHookId`，因此任何异步 result 都由 Gateway 返回 `unknown`，不会注入 active turn。`AgentDefinition.background: true` 会把现有 `agent` fork 变为 Gateway-owned non-blocking task：任务 id 立即作为 tool result 返回，子 Agent 不随父 turn 结束，sidechain transcript、abort/timeout 与关闭均由 Gateway runtime 持有，`Query.stopTask()`/`backgroundTasks()` 只允许同一 session 控制。`observer: "<agent-name>"` 在被观察 child 完成后启动独立、无工具、read-only 的 Gateway-owned sidechain；它接收限长活动摘要和可选 `observerMessage`，报告只保存在 observer sidechain，既不进入 parent/observed child 的模型上下文，也不进入 `backgroundTasks()`/`stopTask()`。它不复用 Bash background runtime，也不是 Claude 的持续观察工具循环。此外包含 durable `rewindFiles()`（Gateway 重启后可从 transcript 惰性恢复，外部变更 fail-closed）、当前 SDK session 所拥有的 background task stop/status；PilotDeck 专有 `client.cron.*` 定时任务资源。
-- **查询、计量与配置**：`usage()` 优先读取 Gateway `usage_snapshot`，返回 session/project aggregate 的请求数、token、成本、model/provider/role 维度和 `costSources`；`modelUsage()` 读取独立的 `model_usage_snapshot`，由 Gateway/Router stats 分组返回每个 provider/model 的 token、成本、成本来源计数和 main/subagent 维度，不做 SDK 侧拼账。`provider_reported`、`configured_price`、`built_in_estimate`、`fallback_estimate` 与 `legacy_unknown` 明确区分，成本不得被统一伪装为精确账单。`getContextUsage({ detail: "full" })` 还返回 Gateway token accountant 的 local-estimate `system/tools/messages/MCP/memory` 分类；provider 总量仍不被伪装为精确分类。旧 Gateway 对 `usage()` 回退到当前 turn event snapshot，`modelUsage()` 则显式返回 `unsupported_capability`。`reloadPlugins()`/`reloadSkills()`、受限的 `updateSettings("localSettings", …)`/`resolveSettings()`；其中 local settings 已安全覆盖 agent context/output/thinking、subagent default/timeout/maxDepth、hook event、builtin-plugin enablement 与 web-search enablement，但不能改 provider、凭据、plugin path 或 managed source。`options.settings` 与 `settingSources` 是 Gateway-owned、只作用于本次 session 构造的非持久 overlay：Gateway 按固定 `user < project < local` 优先级，从自身 `$PILOT_HOME/pilotdeck.yaml`、`$PROJECT_ROOT/.pilotdeck/pilotdeck.yaml`、`$PROJECT_ROOT/.pilotdeck/pilotdeck.local.yaml` 的完整配置中只提取 allowlist `agent.model`、`agent.fallbackModel`、`agent.maxContextTokens`、`agent.maxOutputTokens`、`agent.thinking`、`agent.subagents.default`、`.timeoutMs` 和 `.maxDepth`，再由显式 `options.settings` 覆盖；`maxDepth: 0` 禁止 fork，正整数按现有 AgentLoop 深度语义生效，并受 host `organizationPolicy.limits.maxSubagentDepth` 只收紧的 cap 约束。两类 model 与 fallback 均经 Gateway catalog 校验，primary/fallback `null` 分别恢复 host default/禁用 source fallback，subagent default 的 `null`/`"inherit"` 恢复 parent-model 继承；显式 `Options.model` 与 `.fallbackModel` 仍是更高优先级的 per-turn/session override。provider 配置/凭据、插件、路径、工具及 permission grant 仍永不进入 overlay。另有 session-scoped、只收紧的 `managedSettings`：除 tool pattern 的 deny/ask 和 `defaultMode: "plan"` 外，还可设 `canPrompt: false` 使 Gateway native `PermissionContext` 拒绝交互式 permission prompt；三者均不能 grant access，且 managed `canPrompt: false` 优先于普通 session override。独立 `@pilotdeck/sdk` ESM exports、可安装 tarball 示例，以及 transport/SDK contract tests。
 - **查询、计量与配置**：`usage()` 优先读取 Gateway `usage_snapshot`，返回 session/project aggregate 的请求数、token、成本、model/provider/role 维度和 `costSources`；`modelUsage()` 读取独立的 `model_usage_snapshot`，由 Gateway/Router stats 分组返回每个 provider/model 的 token、成本、成本来源计数和 main/subagent 维度，不做 SDK 侧拼账。`provider_reported`、`configured_price`、`built_in_estimate`、`fallback_estimate` 与 `legacy_unknown` 明确区分，成本不得被统一伪装为精确账单。`getContextUsage({ detail: "full" })` 还返回 Gateway token accountant 的 local-estimate `system/tools/messages/MCP/memory` 分类；provider 总量仍不被伪装为精确分类。旧 Gateway 对 `usage()` 回退到当前 turn event snapshot，`modelUsage()` 则显式返回 `unsupported_capability`。`reloadPlugins()`/`reloadSkills()`、受限的 `updateSettings("localSettings", …)`/`resolveSettings()`；其中 local settings 已安全覆盖 agent context/output/thinking、subagent default/timeout/maxDepth、hook event、builtin-plugin enablement 与 web-search enablement，但不能改 provider、凭据、plugin path 或 managed source。`options.settings` 与 `settingSources` 是 Gateway-owned、只作用于本次 session 构造的非持久 overlay：Gateway 按固定 `user < project < local` 优先级，从自身 `$PILOT_HOME/pilotdeck.yaml`、`$PROJECT_ROOT/.pilotdeck/pilotdeck.yaml`、`$PROJECT_ROOT/.pilotdeck/pilotdeck.local.yaml` 的完整配置中只提取 allowlist `agent.model`、`agent.fallbackModel`、`agent.maxContextTokens`、`agent.maxOutputTokens`、`agent.thinking`、`agent.subagents.default`、`.timeoutMs` 和 `.maxDepth`，再由显式 `options.settings` 覆盖；`maxDepth: 0` 禁止 fork，且 host `organizationPolicy.limits.maxSubagentDepth` 只能压低该值。两类 model 与 fallback 均经 Gateway catalog 校验，primary/fallback `null` 分别恢复 host default/禁用 source fallback，subagent `null`/`"inherit"` 恢复 parent-model 继承；显式 `Options.model` 与 `.fallbackModel` 仍是更高优先级的 per-turn/session override。provider 配置/凭据、插件、路径、工具及 permission grant 仍永不进入 overlay。另有 session-scoped、只收紧的 `managedSettings`：除 tool pattern 的 deny/ask 和 `defaultMode: "plan"` 外，还可设 `canPrompt: false` 使 Gateway native `PermissionContext` 拒绝交互式 permission prompt；三者均不能 grant access，且 managed `canPrompt: false` 优先于普通 session override。Gateway embedding host 还可通过 `createLocalGateway({ organizationPolicy })` 配置不经 SDK wire 传输的组织级 restrictive policy：`permissions` 可合并 deny/ask、强制 plan 或禁用 prompt，`models` 可用 `*`、`provider/*`、`provider/model` allow/deny selector 收紧 primary、dynamic subagent、SDK fallback 与 Router fallback；`tools.deny` 可用 exact-name/`prefix*`/`*` 在 native、SDK MCP、plugin/custom、动态 AgentDefinition fork-local MCP 及延迟 MCP search contribution 合入后剔除 model-visible 工具。被拒绝的 deferred target 不会被 catalog/reveal 重新暴露；若策略拒绝后注册的 `search_tools`，Gateway 也会在该 session 中移除它。deny 优先，Router 在 provider 请求前过滤，若 Gateway 默认模型不允许则不发起 session title/prompt-suggestion 的 best-effort 直接请求。规则在 session policy、remembered allow 与 bypass mode 之前生效，且不提供 provider 配置、credential、allow grant 或完整 source cascade。独立 `@pilotdeck/sdk` ESM exports、可安装 tarball 示例，以及 transport/SDK contract tests。
 - **跨 turn task budget（P1 experimental）**：`taskBudget: { total, scope?: "session" | "project", projectRetentionMs?: number }` 将正 USD ceiling 放入 `sdkSessionConfig`。默认 `session` scope 以 `projectRoot + sessionKey` 键控；显式 `project` scope 将同一 Gateway project 的 SDK sessions 合并到一个 durable ledger。Gateway 在每个 turn 开始读取 ledger，并将 AgentLoop 实际记账的每个 `runId` 成本幂等写回；session scope 的 Router aggregate 只作补充诊断来源，snapshot 取两者较大值。统计关闭时两种 scope 都可跨 Gateway restart 恢复；project budget 不会因任一 session 删除而清除。记录达到阈值后，Gateway 将 journal 原子重写为 snapshot，保留 spent cost、project total、retention contract 和 settled `runId`，从而保持重启后的幂等性。模型调用跨限会在任何恢复、工具和副作用前终止为 `agent_task_budget_reached`/`task_budget`；随后的 turn 在 native session 创建前拒绝，SDK 从不上传 spent/cost。`projectRetentionMs` 是可选正整数毫秒值，只允许 `project` scope；Gateway 以首次配置的 total/retention 固定合约，按创建或已结算 spend 更新活动时间，超时后的下一次配置原子清除旧 ledger 并开始新周期。未配置时保持永久保留。
   第一个成功配置的 `project` scope 会将 `total` 和可选 `projectRetentionMs` 写入 Gateway durable ledger；后续 session 必须使用同一 contract，较大的 total 也不能抬高额度，冲突会在创建 native session 前返回 `SDK_PROJECT_TASK_BUDGET_TOTAL_CONFLICT` 或 `SDK_PROJECT_TASK_BUDGET_RETENTION_CONFLICT`。
@@ -295,7 +307,7 @@ Gateway 仍拥有 session、run、resume、fork、export/restore、delete 和 ch
 | Phase 4 | 已完成 | 完成交互与资源 API | permission、elicitation、messages、models、files、commands |
 | Phase 5 | 已完成 | MCP 和工具控制面 | MCP config/status、SDK-hosted tools、tool allow/deny |
 | Phase 6 | 已完成（P1；alpha experimental） | 可靠性、恢复与 Claude-like 兼容补齐 | reconnect、result_unknown、P1 durable checkpoint、compatibility matrix |
-| Phase 7 | 进行中 | Alpha 验证并推进 Beta | `0.1.0-alpha.0`、安装黑盒、示例、迁移和真实应用验证 |
+| Phase 7 | 进行中（发布回归） | Alpha 发布回归并推进 Beta gate | 安装黑盒、示例、迁移、兼容矩阵、故障注入和真实应用验证 |
 | Phase 8 | 已交付（experimental） | Embedded SDK | 已交付 local tool registry、`createEmbeddedPilotDeckHost()` 宿主组合、`createEmbeddedSessionStore()` SDK mirror storage adapter、复用 Gateway dispatcher 的 in-process Query/WarmQuery transport 与 typed resource client；共享 Gateway host 还可通过 `nativeSessionStorage` 选择 native filesystem layout，或用 `createGatewayAsyncTranscriptStorageAdapter()` 将 transcript、file-history checkpoint 与 tool-result payload 接入 host store。host/OS sandbox 不属于本阶段范围。 |
 
 Phase 0--5 作为已落地基线保留在下文，便于追溯公共契约。后续排期不再按原始周数推进，而以 4.2 的 P0/P1/P2 和对应验收门槛为准。
@@ -800,7 +812,7 @@ Beta 门槛：
 
 当前已交付 `createEmbeddedGatewayEndpoint()`、`PilotDeckEmbeddedTransport`、`createEmbeddedQuery()`、`startupEmbedded()`、`createEmbeddedPilotDeckClient()`、`createEmbeddedToolRegistry()`、`createEmbeddedPilotDeckHost()` 和 `createEmbeddedSessionStore()`。前五者把 Query/WarmQuery 与完整 typed resource client 接入现有 Gateway 的常规 wire dispatcher，registry 注册 local Gateway 工具；`createEmbeddedPilotDeckHost()` 将 client、可选 local tools 和 registry attachment 组合成可关闭 surface，关闭只 detach SDK registry/endpoint，不 dispose host Gateway；`createEmbeddedSessionStore()` 则使用宿主提供的 snapshot persistence 保存 SDK event mirror，不写 Gateway transcript/checkpoint。需要指定 Gateway-native filesystem layout 时，宿主在 `createLocalGateway()` 处提供 `nativeSessionStorage`；要把 primary/subagent transcript 接入 DB 或 object store，可把 `createGatewayAsyncTranscriptStorageAdapter({ store })` 作为该 host adapter。store 的可选 `list`/`has`/`delete`/`deleteSession`/`replace` 接管 session list/delete、portable archive restore 和包含递归 sidechain payload 的 transcript-only fork；`fileHistoryBackups` 接管 checkpoint backup blob 的写入、重启后 rewind、eviction、session delete 和 fork copy；`toolResultArtifacts.write/read/delete/deleteAll` 保存大文本和媒体 tool-result payload，并在重启时重建仅供 `read_file` 与媒体 materialization 使用的 workspace cache；fork 会复制被引用 payload 并重写 target reference，delete 会清理 session payload。`prepareReplacement`/`finalizeReplacement`/`recoverReplacements` 接管 last-turn replacement 的 rollback、commit 和 dead-Gateway recovery，owner/lease 判定仍由 host store 负责。SDK 不暴露 host storage handle，Gateway 仍是 session、run、checkpoint 和 transcript 语义的唯一所有者；这些能力不绕过 Gateway 或直接运行 AgentLoop。
 
-### 可能 API
+### 当前 API 形态（已交付）
 
 ~~~ts
 const endpoint = createEmbeddedGatewayEndpoint({ gateway: local.gateway, token });
@@ -814,10 +826,10 @@ const run = embedded.client.query("Summarize the incident.");
 await embedded.close(); // Does not dispose `local`.
 ~~~
 
-### 必须先解决的问题
+### 后续稳定化关注点
 
-- host/OS sandbox；
-- local model/provider、MCP、hooks/plugins/skills 的显式宿主配置；
+- host/OS-native sandbox 不属于当前产品范围，不作为 Embedded 发布前置条件；
+- local model/provider、MCP、hooks/plugins/skills 的显式宿主配置；若未来需要，另立 host adapter，不计入当前 P0/P1/P2 backlog；
 - endpoint close、资源清理与 failure/abort 的长期运行回归；
 - 与远程 Gateway SDK 公共类型的一致性。
 
@@ -895,7 +907,7 @@ Runtime Integration 和测试框架可以从 Phase 1 开始并行。
 
 ## 16. 建议的 Epic 拆分
 
-Epic 1--9 已形成当前 alpha 基线，保留如下用于追溯；新增工作从 Epic 10 开始。
+Epic 1--13 已形成当前 alpha 基线，保留如下用于追溯；后续新增工作以 Epic 14 的 Beta gate 和发布稳定化为主。
 
 ### Epic 1：SDK Contract
 
@@ -980,20 +992,20 @@ Epic 1--9 已形成当前 alpha 基线，保留如下用于追溯；新增工作
 
 - title、transcript-boundary resume、strict MCP、load timeout、`dontAsk`、`acceptEdits`、禁止 permission prompt、hook events、custom prompt 和 plan instructions。
 
-### Epic 11：Durable Session Recovery
+### Epic 11：Durable Session Recovery（已交付，持续回归）
 
 - checkpoint manifest/transcript；
 - restart replay、conflict、lock 和 GC；
 - restart E2E。
 
-### Epic 12：Usage And Budget
+### Epic 12：Usage And Budget（已交付，持续回归）
 
 - run/session/model usage；
 - cost accounting；
 - Gateway-owned USD budget；
 - context category accounting。
 
-### Epic 13：Extension Parity
+### Epic 13：Extension Parity（已交付，持续回归）
 
 - output style registry、selection 和 reload；
 - session-scoped plugins/skills（experimental 已交付）；
@@ -1056,24 +1068,20 @@ Epic 1--9 已形成当前 alpha 基线，保留如下用于追溯；新增工作
 
 ### 0.2 Beta
 
-增加：
+不新增当前已完成的 P1/P2 能力，转入发布稳定化：
 
-- durable checkpoint 的 retention/GC、legacy snapshot 兼容和重复 rewind 回归；
-- output style 选择和独立 reload 的真实项目验收与资源隔离；
-- `AgentDefinition.background` 与已交付 `observer`/`observerMessage` 的取消、timeout、runtime invalidation、隔离和 sidechain transcript 回归；
-- context-only async hook result 的补充 hook 发射点与稳定化；
-- compatibility matrix 和至少两个真实应用接入。
+- 对 durable checkpoint retention/GC、legacy snapshot、重复 rewind 和冲突恢复做持续回归；
+- 对 output style 选择/reload、`background`、`observer`/`observerMessage`、context-only async hook 做真实项目验收、隔离和取消/超时回归；
+- 固化 compatibility matrix，完成至少两个真实应用接入，并执行 packed-package black-box 验收。
 
 ### 0.3
 
-增加：
+以兼容性、迁移和 API ergonomics 为主，不把已交付能力重新列为待实现功能：
 
-- portable transcript archive/restore 的 schema version、size limit、fresh target 冲突与 Gateway restart 回归维护（client-mirror `FileSessionStore` 已完成）；
-- advanced extension/config/sandbox APIs；
-- 补充 MCP transport；
-- browser-compatible transport feasibility；
-- telemetry hooks；
-- API ergonomics 优化。
+- 维护 portable transcript archive/restore 的 schema version、size limit、fresh-target 冲突和 Gateway restart 回归；
+- 补充 extension/config API 的文档、迁移和兼容性说明；host/OS-native sandbox 仍不实施；
+- 评估额外 MCP transport、browser-compatible transport 和 telemetry hooks，只有完成 ownership、协议和安全评审后才单独立项；
+- 优化 API ergonomics、错误诊断和升级迁移。
 
 ### 1.0
 
