@@ -2,7 +2,6 @@ export * from "./types.js";
 export * from "./transport.js";
 export * from "./session-store.js";
 export * from "./compat.js";
-export * from "./embedded.js";
 export * from "./terminal-dialog.js";
 export * from "./browser-dialog.js";
 export * from "./browser-dom-dialog.js";
@@ -24,7 +23,6 @@ export {
   defineTool,
   createPilotDeckMcpServer,
   createSdkMcpServer,
-  toEmbeddedTool,
   deleteSession,
   getSubagentMessages,
   listSubagents,

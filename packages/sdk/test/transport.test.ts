@@ -6,10 +6,6 @@ import {
   AbortError,
   createDomBrowserDialogDriver,
   createBrowserUserDialogHandler,
-  createEmbeddedPilotDeckHost,
-  PilotDeckEmbeddedTransport,
-  createEmbeddedPilotDeckClient,
-  createEmbeddedToolRegistry,
   createPilotDeckClient,
   createSdkMcpServer,
   createWindowBrowserDialogDriver,
@@ -24,8 +20,14 @@ import {
   renderTerminalUserDialog,
   renderBrowserUserDialog,
   tool,
-  toEmbeddedTool,
 } from "../src/index.js";
+import {
+  createEmbeddedPilotDeckHost,
+  PilotDeckEmbeddedTransport,
+  createEmbeddedPilotDeckClient,
+  createEmbeddedToolRegistry,
+  toEmbeddedTool,
+} from "../src/embedded.js";
 import { HostedHookServer } from "../src/hook-server.js";
 import { InMemorySessionStore } from "../src/index.js";
 import { GatewayTransport } from "../src/transport.js";

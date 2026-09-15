@@ -72,10 +72,10 @@
 | --- | --- |
 | root | `query`、`startup`、`createQuery`、`createWarmQuery`、`createPilotDeckClient` |
 | root | `listSessions`、`getSessionInfo`、`getSessionMessages`、`exportSessionTranscript`、`restoreSessionTranscript`、`renameSession`、`tagSession`、`forkSession`、`deleteSession` |
-| root | `prepareLastTurnReplacement`、`resolveSettings`、`defineTool`/`tool`、`toEmbeddedTool`、`createPilotDeckMcpServer`/`createSdkMcpServer`、`getSubagentMessages`、`listSubagents` |
+| root | `prepareLastTurnReplacement`、`resolveSettings`、`defineTool`/`tool`、`createPilotDeckMcpServer`/`createSdkMcpServer`、`getSubagentMessages`、`listSubagents` |
 | root | `GatewayTransport`、`AsyncEventQueue`、`PilotDeckError`、`AbortError`、`InMemorySessionStore`、`FileSessionStore`、`SessionStoreError` |
 | root | `createTerminalUserDialogHandler`、`renderTerminalUserDialog`、`createBrowserUserDialogHandler`、`renderBrowserUserDialog`、`createDomBrowserDialogDriver`、`renderDomBrowserUserDialog`、`createManualUserDialogRenderer` |
-| `/embedded` | `PilotDeckEmbeddedTransport`、`createEmbeddedQuery`、`startupEmbedded`、`createEmbeddedPilotDeckClient`、`PilotDeckEmbeddedToolRegistry`、`createEmbeddedToolRegistry`、`createEmbeddedPilotDeckHost`、`createEmbeddedSessionStore` |
+| `/embedded` | `PilotDeckEmbeddedTransport`、`createEmbeddedQuery`、`startupEmbedded`、`createEmbeddedPilotDeckClient`、`PilotDeckEmbeddedToolRegistry`、`createEmbeddedToolRegistry`、`createEmbeddedPilotDeckHost`、`createEmbeddedSessionStore`、`toEmbeddedTool` |
 
 ### Type groups
 

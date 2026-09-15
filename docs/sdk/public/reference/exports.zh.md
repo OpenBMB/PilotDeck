@@ -11,13 +11,13 @@
 
 ## Root runtime
 
-Root 入口公开 `query`、`startup`、`createQuery`、`createWarmQuery`、`createPilotDeckClient`、会话 helper、`resolveSettings`、`defineTool`/`tool`、`toEmbeddedTool`、MCP server helper、subagent helper、`GatewayTransport`、`AsyncEventQueue`、`mapError`、`PilotDeckError`、`AbortError`、SessionStore 实现，以及终端/浏览器/DOM/manual dialog renderer。
+Root 入口公开 `query`、`startup`、`createQuery`、`createWarmQuery`、`createPilotDeckClient`、会话 helper、`resolveSettings`、`defineTool`/`tool`、MCP server helper、subagent helper、`GatewayTransport`、`AsyncEventQueue`、`mapError`、`PilotDeckError`、`AbortError`、SessionStore 实现，以及终端/浏览器/DOM/manual dialog renderer。
 
 `createPilotDeckClientWithTransportFactory`、`createQueryWithTransport`、`createWarmQueryWithTransport`、`HostedHookServer` 和 `PilotDeckMcpServerImpl` 是内部组合点。虽然它们存在于 `dist`，但没有通过 root `index.d.ts` 的 public export 暴露，应用不得依赖。
 
 ## Embedded runtime
 
-`@pilotdeck/sdk/embedded` 公开 `PilotDeckEmbeddedTransport`、`createEmbeddedQuery`、`startupEmbedded`、`createEmbeddedPilotDeckClient`、`PilotDeckEmbeddedToolRegistry`、`createEmbeddedToolRegistry`、`createEmbeddedPilotDeckHost` 和 `createEmbeddedSessionStore`，以及对应的 endpoint、host、connection、registry 和 persistence adapter 类型。
+`@pilotdeck/sdk/embedded` 公开 `PilotDeckEmbeddedTransport`、`createEmbeddedQuery`、`startupEmbedded`、`createEmbeddedPilotDeckClient`、`PilotDeckEmbeddedToolRegistry`、`createEmbeddedToolRegistry`、`createEmbeddedPilotDeckHost`、`createEmbeddedSessionStore` 和 `toEmbeddedTool`，以及对应的 endpoint、host、connection、registry 和 persistence adapter 类型。Embedded runtime 只从此入口导入，root 不重导出这些符号。
 
 ## 类型范围
 

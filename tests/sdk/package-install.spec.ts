@@ -20,6 +20,26 @@ import type { MultimodalConstraints } from "../../src/model/protocol/multimodal.
 
 const execFile = promisify(execFileCallback);
 
+const ROOT_RUNTIME_EXPORTS = [
+  "AbortError", "AsyncEventQueue", "FileSessionStore", "GatewayTransport", "HOOK_EVENTS",
+  "InMemorySessionStore", "PilotDeckError", "SessionStoreError", "createBrowserUserDialogHandler",
+  "createDomBrowserDialogDriver", "createManualUserDialogRenderer", "createNodeTerminalDialogIO",
+  "createPilotDeckClient", "createPilotDeckMcpServer", "createQuery", "createSdkMcpServer",
+  "createSessionStoreFromAdapter", "createTerminalUserDialogHandler", "createWarmQuery",
+  "createWindowBrowserDialogDriver", "defineTool", "deleteSession", "exportSessionTranscript",
+  "filterEscalatingDefaultMode", "foldSessionSummary", "forkSession", "getSessionInfo",
+  "getSessionMessages", "getSubagentMessages", "importSessionToStore", "listSessions",
+  "listSubagents", "mapError", "prepareLastTurnReplacement", "query", "renameSession",
+  "renderBrowserUserDialog", "renderDomBrowserUserDialog", "renderTerminalUserDialog", "resolveSettings",
+  "restoreSessionTranscript", "startup", "summaryToSessionInfo", "tagSession", "tool",
+].sort();
+
+const EMBEDDED_RUNTIME_EXPORTS = [
+  "PilotDeckEmbeddedToolRegistry", "PilotDeckEmbeddedTransport", "createEmbeddedPilotDeckClient",
+  "createEmbeddedPilotDeckHost", "createEmbeddedQuery", "createEmbeddedSessionStore",
+  "createEmbeddedToolRegistry", "startupEmbedded", "toEmbeddedTool",
+].sort();
+
 const TEST_CONFIG = `
 schemaVersion: 1
 agent:
@@ -233,6 +253,8 @@ test("packed @pilotdeck/sdk installs and queries a real local Gateway", { timeou
       events: string[];
       result: { status: string; output?: string; error?: { code?: string; message?: string } };
       resolved: { schemaVersion: number; apiKey?: string };
+      rootSurface: Record<string, boolean>;
+      rootExports: string[];
     };
     assert.equal(result.resolved.schemaVersion, 1, stdout);
     assert.equal(result.resolved.apiKey, "<redacted>", stdout);
@@ -241,6 +263,15 @@ test("packed @pilotdeck/sdk installs and queries a real local Gateway", { timeou
     assert.equal(result.events.at(-1), "result", stdout);
     assert.equal(result.result.status, "completed", JSON.stringify(result));
     assert.equal(result.result.output, "installed SDK response", JSON.stringify(result));
+    assert.deepEqual(result.rootSurface, {
+      query: true,
+      createPilotDeckClient: true,
+      createEmbeddedQuery: false,
+      createEmbeddedPilotDeckClient: false,
+      createEmbeddedToolRegistry: false,
+      toEmbeddedTool: false,
+    }, stdout);
+    assert.deepEqual(result.rootExports, ROOT_RUNTIME_EXPORTS, stdout);
   } finally {
     await server.close();
     local.dispose();
@@ -280,6 +311,8 @@ test("packed @pilotdeck/sdk embedded export queries an authoritative in-process 
       run(endpoint: ReturnType<typeof createEmbeddedGatewayEndpoint>, token: string, projectKey: string): Promise<{
         events: string[];
         result: { status: string; output?: string; error?: { code?: string; message?: string } };
+        embeddedSurface: Record<string, boolean>;
+        embeddedExports: string[];
       }>;
     };
     const result = await consumer.run(endpoint, token, pilotHome);
@@ -288,6 +321,13 @@ test("packed @pilotdeck/sdk embedded export queries an authoritative in-process 
     assert.equal(result.result.status, "completed", JSON.stringify(result));
     assert.equal(result.result.output, "installed SDK response", JSON.stringify(result));
     assert.equal((await local.gateway.listSessions({ projectKey: pilotHome })).sessions.length, 1);
+    assert.deepEqual(result.embeddedSurface, {
+      createEmbeddedQuery: true,
+      createEmbeddedPilotDeckClient: true,
+      createEmbeddedToolRegistry: true,
+      toEmbeddedTool: true,
+    }, JSON.stringify(result));
+    assert.deepEqual(result.embeddedExports, EMBEDDED_RUNTIME_EXPORTS, JSON.stringify(result));
   } finally {
     endpoint.close();
     local.dispose();
@@ -433,7 +473,9 @@ test("packed @pilotdeck/sdk preserves an explicit empty tool allow-list", { time
 });
 
 const INSTALLED_CONSUMER = `
-import { query, resolveSettings } from "@pilotdeck/sdk";
+import * as sdk from "@pilotdeck/sdk";
+
+const { query, resolveSettings } = sdk;
 
 const resolved = await resolveSettings({
   gatewayUrl: process.env.PILOTDECK_SDK_GATEWAY_URL,
@@ -461,11 +503,22 @@ console.log(JSON.stringify({
     schemaVersion: resolved.schemaVersion,
     apiKey: resolved.config?.model?.providers?.test?.apiKey,
   },
+  rootSurface: {
+    query: typeof sdk.query === "function",
+    createPilotDeckClient: typeof sdk.createPilotDeckClient === "function",
+    createEmbeddedQuery: "createEmbeddedQuery" in sdk,
+    createEmbeddedPilotDeckClient: "createEmbeddedPilotDeckClient" in sdk,
+    createEmbeddedToolRegistry: "createEmbeddedToolRegistry" in sdk,
+    toEmbeddedTool: "toEmbeddedTool" in sdk,
+  },
+  rootExports: Object.keys(sdk).sort(),
 }));
 `;
 
 const INSTALLED_EMBEDDED_CONSUMER = `
-import { createEmbeddedQuery } from "@pilotdeck/sdk/embedded";
+import * as embedded from "@pilotdeck/sdk/embedded";
+
+const { createEmbeddedQuery } = embedded;
 
 export async function run(endpoint, token, projectKey) {
   const query = createEmbeddedQuery({
@@ -482,6 +535,13 @@ export async function run(endpoint, token, projectKey) {
     result: result.status === "failed" && result.error
       ? { ...result, error: { code: result.error.code, message: result.error.message } }
       : result,
+    embeddedSurface: {
+      createEmbeddedQuery: typeof embedded.createEmbeddedQuery === "function",
+      createEmbeddedPilotDeckClient: typeof embedded.createEmbeddedPilotDeckClient === "function",
+      createEmbeddedToolRegistry: typeof embedded.createEmbeddedToolRegistry === "function",
+      toEmbeddedTool: typeof embedded.toEmbeddedTool === "function",
+    },
+    embeddedExports: Object.keys(embedded).sort(),
   };
 }
 `;

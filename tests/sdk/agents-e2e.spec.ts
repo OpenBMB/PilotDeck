@@ -25,17 +25,19 @@ import {
 } from "../../src/tool/dialog/FormDialogSchema.js";
 import { PermissionRuntime } from "../../src/permission/index.js";
 import {
-  createEmbeddedSessionStore,
-  createEmbeddedPilotDeckHost,
-  createEmbeddedPilotDeckClient,
-  createEmbeddedQuery,
-  createEmbeddedToolRegistry,
   createManualUserDialogRenderer,
   createPilotDeckClient,
   createSdkMcpServer,
   query,
   tool,
 } from "../../packages/sdk/src/index.js";
+import {
+  createEmbeddedSessionStore,
+  createEmbeddedPilotDeckHost,
+  createEmbeddedPilotDeckClient,
+  createEmbeddedQuery,
+  createEmbeddedToolRegistry,
+} from "../../packages/sdk/src/embedded.js";
 import { HostedHookServer } from "../../packages/sdk/src/hook-server.js";
 import {
   createAgentProjectSessionStorage,

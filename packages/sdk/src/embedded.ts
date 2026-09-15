@@ -30,6 +30,7 @@ import {
  */
 export { createSessionStoreFromAdapter as createEmbeddedSessionStore } from "./session-store.js";
 export type { SessionStorePersistenceAdapter as PilotDeckEmbeddedSessionStoreAdapter } from "./session-store.js";
+export { toEmbeddedTool } from "./client.js";
 
 /**
  * The narrow host capability needed to publish local SDK tools into an

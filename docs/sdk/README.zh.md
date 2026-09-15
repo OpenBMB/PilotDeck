@@ -42,6 +42,7 @@ Claude 版本证据：[npm package `0.3.263`](https://www.npmjs.com/package/@ant
 10. [PilotDeck SDK 开发经验与接入指南](pilotdeck-sdk-development-experience.zh.md)
 11. [PilotDeck SDK 文档建设 Roadmap](pilotdeck-sdk-documentation-roadmap.zh.md)
 12. [PilotDeck SDK 文档建设 SOP](pilotdeck-sdk-documentation-sop.zh.md)
+13. [PilotDeck SDK Public API 验收报告（2026-09-15）](pilotdeck-sdk-public-api-validation-report-20260915.zh.md)
 
 文档职责区分：开发经验文档说明业务应用如何接入；维护者版开发 SOP 规定 SDK 如何设计、实现、测试、发布以及协议适配门槛；实现 Roadmap 维护 SDK 产品研发阶段、能力状态和 P0/P1/P2；文档建设 Roadmap/SOP 只约束文档资产。
 
