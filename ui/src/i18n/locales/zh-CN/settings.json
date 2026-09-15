@@ -66,6 +66,7 @@
       "agent": "智能体",
       "agentModel": "模型",
       "agentRoute": "路由",
+      "agentSubagents": "子智能体",
       "agentMemory": "记忆",
       "agentResident": "常驻",
       "agentSearch": "搜索",
@@ -86,6 +87,7 @@
       "modelPool": "集中管理模型提供商、连接凭据和可用模型。已启用模型将供智能体、路由和记忆功能使用。",
       "agentModel": "为智能体选择默认模型。",
       "agentRoute": "按任务复杂度选择模型，在保证效果的基础上节省token成本。",
+      "agentSubagents": "管理内置与自定义子智能体角色、绑定的模型与工具，以及允许的嵌套深度。",
       "agentMemory": "持续整理并记住项目重要信息，在后续任务中自动使用。",
       "agentResident": "在用户离开后持续关注工作区变化，并在合适时机主动推进任务与同步进展。",
       "agentSearch": "让智能体能够检索实时网页信息，为回答补充最新内容与外部事实。",
@@ -103,6 +105,7 @@
       "agent": "智能体",
       "agentModel": "智能体 / 模型",
       "agentRoute": "智能体 / 路由",
+      "agentSubagents": "智能体 / 子智能体",
       "agentMemory": "智能体 / 记忆",
       "agentResident": "智能体 / 常驻",
       "agentSearch": "智能体 / 搜索",
@@ -204,6 +207,7 @@
       "advanced": "配置文件当前不是有效 YAML，暂时无法加载高级配置表单。",
       "agentModel": "配置文件当前不是有效 YAML，暂时无法加载智能体模型表单。",
       "agentRoute": "配置文件当前不是有效 YAML，暂时无法加载智能体路由表单。",
+      "agentSubagents": "配置文件当前不是有效 YAML，暂时无法加载子智能体表单。",
       "agentMemory": "配置文件当前不是有效 YAML，暂时无法加载智能体记忆表单。",
       "agentResident": "配置文件当前不是有效 YAML，暂时无法加载智能体常驻表单。",
       "agentSearch": "配置文件当前不是有效 YAML，暂时无法加载智能体搜索表单。",
@@ -887,6 +891,93 @@
       }
     },
     "panels": {
+      "agentSubagents": {
+        "description": "父智能体根据描述选择子智能体角色。内置角色可停用、绑定模型或收窄工具；也可添加自定义角色。",
+        "listTitle": "角色列表",
+        "count": "{{count}} 个角色",
+        "addProfile": "添加自定义角色",
+        "badgeBuiltin": "内置",
+        "badgeCustom": "自定义",
+        "badgeDisabled": "已停用",
+        "badgeReadOnly": "只读",
+        "badgeNew": "新建",
+        "modelInherit": "继承路由",
+        "maxDepth": {
+          "label": "最大嵌套深度",
+          "description": "允许子智能体再派生子智能体的层数。0 表示禁止派生子智能体，1 表示仅允许直接子级。"
+        },
+        "editor": {
+          "title": "角色设置",
+          "emptyTitle": "选择要编辑的角色",
+          "emptyDescription": "从列表中选择内置或自定义角色，或添加新的自定义角色。",
+          "id": {
+            "label": "ID",
+            "description": "以小写字母开头，仅含小写字母、数字和中划线。保存后 ID 不可修改。"
+          },
+          "description": {
+            "label": "描述",
+            "description": "父智能体根据这段描述选择角色，请说明何时使用该角色。",
+            "placeholder": "读取图片文件并汇报视觉细节；适合常规推理。"
+          },
+          "model": {
+            "label": "模型",
+            "description": "绑定的模型会覆盖该角色的自动路由，并在其所有子轮次中保持不变；选择继承则保留现有路由。",
+            "inherit": "继承（沿用路由）"
+          },
+          "tools": {
+            "label": "工具",
+            "description": "该角色可以使用的工具。子智能体的工具不能超出父智能体的权限。",
+            "customPlaceholder": "添加工具 ID",
+            "add": "添加",
+            "empty": "未选择任何工具——该角色将无法使用任何工具。",
+            "agentNote": "agent 工具允许该角色继续派生子智能体。",
+            "narrowNote": "内置只读角色只能收窄预设工具；显式添加 agent 可启用嵌套派生。",
+            "generalNote": "关闭“全部可用工具”后可逐项选择。父代理的权限和嵌套深度限制始终生效。",
+            "all": "全部可用工具"
+          },
+          "readOnly": {
+            "label": "只读",
+            "description": "只读角色不能修改文件。内置只读预设始终保持只读。"
+          },
+          "enabled": {
+            "label": "启用",
+            "description": "停用后父智能体不会看到该角色。"
+          },
+          "reset": "恢复预设",
+          "resetAria": "将此内置角色恢复为预设",
+          "delete": "删除角色",
+          "deleteConfirm": "确认删除"
+        },
+        "save": "保存更改",
+        "cancel": "放弃更改",
+        "dirtyHint": "有未保存的更改——点击保存生效，或点击放弃还原。",
+        "saveFailed": "保存失败，更改已保留。请修正错误后重试。",
+        "errors": {
+          "idRequired": "请输入 ID。",
+          "idInvalid": "ID 需以小写字母开头，仅含小写字母、数字或中划线，最长 64 位。",
+          "idReserved": "该 ID 为保留名称。",
+          "idTaken": "已存在同 ID 的角色。",
+          "descriptionRequired": "描述不能为空。",
+          "descriptionTooLong": "描述不能超过 2000 字。",
+          "modelUnconfigured": "请从已配置的模型池中选择模型。",
+          "toolWhitespace": "工具 ID 不能为空。",
+          "toolDuplicate": "工具 ID 不能重复。",
+          "toolWidening": "内置只读角色只能收窄预设工具（仅允许额外添加 agent）。",
+          "depthInvalid": "深度必须是 0 到 5 之间的整数。"
+        },
+        "preview": {
+          "title": "注入的角色列表预览",
+          "description": "普通主会话中可见的已启用代理列表，不包含模型名称。问答或计划模式只展示只读代理，达到深度上限时会隐藏派发工具。这不是完整系统提示词。",
+          "empty": "没有启用的角色——父智能体将无法派生子智能体。",
+          "invalid": "请先修正无效的角色，再查看精确预览。",
+          "disabled": "嵌套深度为 0，已关闭派发，不会向主代理注入派发工具或代理列表。"
+        },
+        "help": {
+          "depth": "深度 1 表示父智能体只能派生直接子级，更深的嵌套会被拒绝；深度 0 则完全禁止派生子智能体。",
+          "permissions": "子智能体的工具永远不会超过父智能体的权限，只读限制也会向子级传递。",
+          "selection": "父智能体根据注入列表中的描述选择角色，模型名称不会展示给父智能体。"
+        }
+      },
       "advancedPage": {
         "configFilePrefix": "PILOTDECK 的配置文件存放于",
         "configFileSuffix": "，若有需求可直接编辑。"
