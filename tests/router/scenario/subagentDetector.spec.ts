@@ -56,7 +56,7 @@ test("detectSubagent: explicit subagent tag in user message reclassifies main ag
     /* isMainAgent */ true,
   );
   assert.equal(result.isSubagent, true);
-  assert.equal(result.subagentModelHint, "haiku");
+  assert.equal(result.modelHint, "haiku");
   assert.equal(result.taggedInUserMessage, true);
 });
 
@@ -67,7 +67,7 @@ test("detectSubagent: CCR-style tag is also accepted", () => {
     /* isMainAgent */ true,
   );
   assert.equal(result.isSubagent, true);
-  assert.equal(result.subagentModelHint, "qwen-coder");
+  assert.equal(result.modelHint, "qwen-coder");
 });
 
 test("detectSubagent: spawned_agent / launch-agent / spawn_agent name patterns also satisfy the heuristic", () => {

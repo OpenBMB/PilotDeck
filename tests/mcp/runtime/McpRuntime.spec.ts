@@ -8,7 +8,6 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
 const baseSpec: PilotDeckMcpServerSpec = {
   id: "server",
-  name: "Server",
   transport: "stdio",
   command: "node",
 };
