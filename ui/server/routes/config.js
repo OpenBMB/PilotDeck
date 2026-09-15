@@ -45,7 +45,6 @@ import {
   connectionTestMatchesProvider,
   getConnectionTestRecord,
   modelConnectionTestsHandler,
-  modelTestRateLimiter,
 } from './onboarding.js';
 import {
   OFFICE_PREVIEW_SERVICE_BUILTIN,
@@ -544,9 +543,12 @@ router.get('/connection-test-tasks', (req, res) => {
 
 const taskAction = (action) => (req, res) => {
   try { res.status(202).json({ task: action(req), tasks: connectionTasks.list(req.user.id) }); }
-  catch (error) { res.status(error.status || 500).json({ code: error.code || 'TEST_FAILED', message: error.message, tasks: connectionTasks.list(req.user.id) }); }
+  catch (error) {
+    if (error.status === 429) res.setHeader('Retry-After', String(error.retryAfterSeconds || 1));
+    res.status(error.status || 500).json({ code: error.code || 'TEST_FAILED', message: error.message, tasks: connectionTasks.list(req.user.id) });
+  }
 };
-router.post('/connection-test-tasks', modelTestRateLimiter, taskAction((req) => {
+router.post('/connection-test-tasks', taskAction((req) => {
   const providerId = typeof req.body?.providerId === 'string' ? req.body.providerId.trim() : '';
   const disk = readPilotDeckConfigFile();
   const provider = disk.config?.model?.providers?.[providerId];
@@ -1175,7 +1177,7 @@ async function configModelConnectionTestsHandler(req, res) {
   req.body = { ...req.body, apiKey: credential.apiKey };
   return modelConnectionTestsHandler(req, res);
 }
-router.post('/test-connections', modelTestRateLimiter, configModelConnectionTestsHandler);
+router.post('/test-connections', configModelConnectionTestsHandler);
 router.put('/test-connections/:testId/image-capabilities', imageCapabilitiesHandler);
 
 /**
