@@ -224,12 +224,24 @@ export class JsonlTranscriptWriter implements AgentTranscriptWriter {
    * C3.S2 — derive a sidechain writer for a forked subagent. The new writer
    * is independent (its own sequence counter, its own file path) so the
    * subagent's turn-by-turn entries do not interleave with the parent.
+   *
+   * `seed` re-seeds the writer's monotonic counters from a previously
+   * persisted sidechain (task_id continuation appends). Without it, appended
+   * entries would restart at sequence 1 and `readTranscript`'s sequence sort
+   * would reorder the file's history.
    */
-  forSubagent(subagentId: string, now?: () => Date): SubagentTranscriptHandle {
+  forSubagent(
+    subagentId: string,
+    now?: () => Date,
+    seed?: AgentTranscriptWriterState,
+  ): SubagentTranscriptHandle {
     const path =
       this.options.subagentTranscriptPath?.(subagentId) ??
       defaultSubagentPath(this.options.path, subagentId);
     const writer = new JsonlTranscriptWriter({ path, now: now ?? this.now });
+    if (seed) {
+      writer.restoreState(seed.sequence, seed.lastEntryId);
+    }
     return { subagentId, writer, transcriptPath: path };
   }
 

@@ -135,7 +135,33 @@ export type SessionMetadataValue = {
   parentSessionId?: string;
   /** Turn id of the fork point in the parent session. */
   forkedFromTurnId?: string;
+  /**
+   * Identity/runtime metadata persisted by a forked subagent (agent tool
+   * `task_id` continuation). Written into sidechain transcripts so a
+   * continuation can restore the same child identity, provider, and model
+   * after a parent session reload. Deliberately carries NO permission
+   * state — current parent permissions always win.
+   */
+  subagentTask?: SubagentTaskMetadataValue;
   updatedAt?: string;
+};
+
+/** @see `SessionMetadataValue.subagentTask`. */
+export type SubagentTaskMetadataValue = {
+  /** On-disk format of the continuation metadata. */
+  formatVersion: 2;
+  /** Stable subagent UUID — reused as the continuation `task_id`. */
+  subagentId: string;
+  /** Subagent preset (definition) the child runs with. */
+  definitionId: string;
+  /** Provider the child actually used (preserved across parent reloads). */
+  provider: string;
+  /** Model the child actually used (preserved across parent reloads). */
+  model: string;
+  /** Owning parent session id — continuation is scoped to it. */
+  parentSessionId: string;
+  /** Child session id (sidechain identity). */
+  subagentSessionId: string;
 };
 
 export type AgentSessionMetadataTranscriptEntry = AgentTranscriptEntryBase & {
