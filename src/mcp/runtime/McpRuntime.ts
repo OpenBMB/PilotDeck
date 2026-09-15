@@ -61,7 +61,16 @@ export class McpRuntime {
               results.push({
                 serverId: client.spec.id,
                 status: "error",
-                error: err instanceof McpClientError ? err.message : (err as Error).message,
+                // `err` may not be an `Error` instance (throw strings, plain
+                // objects, `null`, etc.). Coerce defensively so the status
+                // entry always carries a human-readable message — otherwise
+                // `error` is `undefined` and downstream UI silently shows
+                // "unknown error".
+                error: err instanceof McpClientError
+                  ? err.message
+                  : err instanceof Error
+                    ? err.message
+                    : String(err),
               });
             }
           }
