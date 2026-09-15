@@ -4,7 +4,7 @@ import type {
 } from "../../model/index.js";
 import type { InputModality, MultimodalConstraints } from "../../model/index.js";
 
-const MEDIA_MODALITY_ORDER: InputModality[] = ["image", "pdf", "audio"];
+const MEDIA_MODALITY_ORDER: InputModality[] = ["image", "pdf", "audio", "video"];
 
 export function collectRequiredInputModalities(
   messages: CanonicalMessage[],
@@ -51,6 +51,9 @@ function collectFromBlock(
       return;
     case "audio":
       required.add("audio");
+      return;
+    case "video":
+      required.add("video");
       return;
     case "tool_result":
       for (const item of block.content) {
