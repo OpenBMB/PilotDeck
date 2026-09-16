@@ -176,6 +176,22 @@ export function PlugIcon({ width = 19, height = 19, className }: IconProps) {
   );
 }
 
+export function ClockIcon({ width = 14, height = 14, className }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={width} height={height} fill="currentColor" viewBox="0 0 256 256" className={className} aria-hidden="true">
+      <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z" />
+    </svg>
+  );
+}
+
+export function ArrowClockwiseIcon({ width = 14, height = 14, className }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={width} height={height} fill="currentColor" viewBox="0 0 256 256" className={className} aria-hidden="true">
+      <path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16h28.91A88.12,88.12,0,0,0,61.08,94.28a8,8,0,0,1-13.19-9.06A104.12,104.12,0,0,1,224.56,96H240a8,8,0,0,1,0,16ZM194.92,161.72a88.12,88.12,0,0,1-151.83-14.56H72a8,8,0,0,0,0-16H24a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V160.44A104.12,104.12,0,0,0,208.11,170.78a8,8,0,0,0-13.19-9.06Z" />
+    </svg>
+  );
+}
+
 export function CheckCircleFillIcon({ width = 19, height = 19, className }: IconProps) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox="0 0 256 256" className={className} aria-hidden="true">

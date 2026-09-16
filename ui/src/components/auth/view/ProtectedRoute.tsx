@@ -38,7 +38,8 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // Settings must remain reachable to repair an invalid model configuration.
   // Authentication above still applies when the Gateway cannot run.
-  if (pathname === '/settings' || pathname.startsWith('/settings/')) return <>{children}</>;
+  if (pathname === '/settings' || pathname.startsWith('/settings/'))
+    return <>{children}</>;
 
   if (modelConfiguration.state === 'loading') {
     return <AuthLoadingScreen />;
@@ -46,11 +47,14 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (modelConfiguration.state === 'empty') return <>{children}</>;
 
-  if (modelConfiguration.state === 'needs_configuration') {
+  if (modelConfiguration.state !== 'needs_configuration') {
     return <Onboarding onComplete={refreshOnboardingStatus} />;
   }
 
-  if (modelConfiguration.state === 'invalid' || modelConfiguration.state === 'status_error') {
+  if (
+    modelConfiguration.state === 'invalid' ||
+    modelConfiguration.state === 'status_error'
+  ) {
     return (
       <ModelConfigurationErrorScreen
         configuration={modelConfiguration}
@@ -59,12 +63,20 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (gatewayRuntime.state === 'stopped' || gatewayRuntime.state === 'starting') {
+  if (
+    gatewayRuntime.state === 'stopped' ||
+    gatewayRuntime.state === 'starting'
+  ) {
     return <AuthLoadingScreen />;
   }
 
   if (gatewayRuntime.state === 'error') {
-    return <GatewayRuntimeErrorScreen error={gatewayRuntime.error} onRetry={retryGateway} />;
+    return (
+      <GatewayRuntimeErrorScreen
+        error={gatewayRuntime.error}
+        onRetry={retryGateway}
+      />
+    );
   }
 
   return <>{children}</>;

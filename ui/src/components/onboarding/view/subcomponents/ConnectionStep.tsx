@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { CatalogProviderProtocol } from '../../../../shared/catalogProviders';
 import { CUSTOM_PROVIDER_ID, MAX_ONBOARDING_MODELS, PROVIDER_LOGOS } from '../constants';
 import { uniqueModelIds } from '../llmSetupUtils';
-import type { LlmSetupController } from '../types';
+import type { LlmSetupController, ModelTestState, TestStatus } from '../types';
 import FooterActions from './FooterActions';
 import ImageCapabilityModal from './ImageCapabilityModal';
 import {
@@ -13,12 +13,11 @@ import {
   GearIcon,
   KeyIcon,
   LockSimpleIcon,
-  CheckCircleFillIcon,
-  PlugIcon,
-  WarningCircleFillIcon,
   PlusIcon,
   MagnifyingGlassIcon,
   WarningIcon,
+  ClockIcon,
+  ArrowClockwiseIcon,
 } from './icons';
 
 type ConnectionStepProps = {
@@ -29,7 +28,7 @@ type ConnectionStepProps = {
 
 type ModelChipProps = {
   modelId: string;
-  variant: 'selected' | 'available';
+  variant: 'available';
   title: string;
   removeLabel: string;
   onRemove: () => void;
@@ -48,18 +47,14 @@ function ModelChip({
 }: ModelChipProps) {
   return (
     <span className={`model-chip ${variant}`} title={title}>
-      {variant === 'available' ? (
-        <button
-          className="model-chip-label"
-          type="button"
-          onClick={onSelect}
-          disabled={selectDisabled}
-        >
-          {modelId}
-        </button>
-      ) : (
-        <span className="model-chip-label">{modelId}</span>
-      )}
+      <button
+        className="model-chip-label"
+        type="button"
+        onClick={onSelect}
+        disabled={selectDisabled}
+      >
+        {modelId}
+      </button>
       <button
         className="model-chip-remove"
         type="button"
@@ -74,6 +69,89 @@ function ModelChip({
         <CloseIcon width={8} height={8} />
       </button>
     </span>
+  );
+}
+
+function statusBadgeClass(status: TestStatus) {
+  if (status === 'success') return 'passed';
+  if (status === 'error') return 'failed';
+  if (status === 'testing' || status === 'manual') return 'testing';
+  return 'untested';
+}
+
+function statusBadgeLabel(
+  status: TestStatus,
+  t: (key: string, options?: Record<string, unknown>) => string,
+) {
+  if (status === 'success') return t('connection.statusPassed');
+  if (status === 'error') return t('connection.statusFailed');
+  if (status === 'testing' || status === 'manual') return t('connection.statusTesting');
+  return t('connection.statusUntested');
+}
+
+function SelectedModelRow({
+  modelId,
+  title,
+  testState,
+  disabled,
+  onTest,
+  onRemove,
+}: {
+  modelId: string;
+  title: string;
+  testState: ModelTestState;
+  disabled: boolean;
+  onTest: () => void;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation('onboarding');
+  const status = testState.status;
+  const hasResult = status === 'success' || status === 'error';
+  const isTesting = status === 'testing';
+
+  return (
+    <div className="selected-model-row" title={title}>
+      <span className="selected-model-name">{modelId}</span>
+      <span className={`selected-model-status ${statusBadgeClass(status)}`}>
+        {statusBadgeLabel(status, t)}
+      </span>
+      <button
+        className="selected-model-test-button"
+        type="button"
+        onClick={onTest}
+        disabled={disabled || isTesting}
+        aria-label={
+          isTesting
+            ? `${t('connection.testing')} ${modelId}`
+            : hasResult
+              ? `${t('connection.retest')} ${modelId}`
+              : `${t('connection.test')} ${modelId}`
+        }
+      >
+        {isTesting ? (
+          <span className="spin" aria-hidden="true" />
+        ) : (
+          <ArrowClockwiseIcon width={13} height={13} />
+        )}
+        <span>
+          {isTesting
+            ? t('connection.testing')
+            : hasResult
+              ? t('connection.retest')
+              : t('connection.test')}
+        </span>
+      </button>
+      <button
+        className="selected-model-remove"
+        type="button"
+        aria-label={t('connection.removeModelId')}
+        title={t('connection.removeModelId')}
+        disabled={disabled}
+        onClick={onRemove}
+      >
+        <CloseIcon width={9} height={9} />
+      </button>
+    </div>
   );
 }
 
@@ -160,6 +238,15 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
     }
     setDraftAvailableId('');
   };
+
+  const failedModelMessage = selectedIds
+    .map((modelId) => {
+      const state = llm.getModelTestState(modelId);
+      return state.status === 'error' && state.message
+        ? { modelId, message: state.message }
+        : null;
+    })
+    .find(Boolean);
 
   return (
     <div className="content-page connection-page">
@@ -270,23 +357,36 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
           <fieldset className="field-group model-id-fieldset">
             <legend>{t('connection.modelId')}</legend>
             <div className="model-id-picker">
-              <div className="model-id-section">
-                <span className="model-id-section-label">{t('connection.selectedModels')}</span>
-                <div className="model-id-chips">
-                  {selectedIds.length === 0 ? (
-                    <span className="model-id-empty">{t('connection.noSelectedModels')}</span>
-                  ) : (
-                    selectedIds.map((modelId) => (
-                      <ModelChip
-                        key={`selected-${modelId}`}
-                        modelId={modelId}
-                        variant="selected"
-                        title={modelTitle(modelId)}
-                        removeLabel={t('connection.removeModelId')}
-                        onRemove={() => deselectSelectedModel(modelId)}
-                      />
-                    ))
-                  )}
+              <div className="model-id-section selected-models-section">
+                <span className="model-id-section-label">
+                  {t('connection.selectedModelsCount', { count: selectedIds.length })}
+                </span>
+                <div className="selected-models-body">
+                  <div className="selected-model-list">
+                    {selectedIds.length === 0 ? (
+                      <span className="model-id-empty">{t('connection.noSelectedModels')}</span>
+                    ) : (
+                      selectedIds.map((modelId) => (
+                        <SelectedModelRow
+                          key={`selected-${modelId}`}
+                          modelId={modelId}
+                          title={modelTitle(modelId)}
+                          testState={llm.getModelTestState(modelId)}
+                          disabled={llm.saving}
+                          onTest={() => {
+                            void llm.handleTest(modelId);
+                          }}
+                          onRemove={() => deselectSelectedModel(modelId)}
+                        />
+                      ))
+                    )}
+                  </div>
+                  {selectedIds.length > 0 ? (
+                    <p className="selected-model-hint">
+                      <ClockIcon width={13} height={13} />
+                      <span>{t('connection.testHint')}</span>
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <div className="model-id-section available">
@@ -361,52 +461,24 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
           </fieldset>
         </form>
 
-        <button
-          className={`connection-test-button ${llm.testStatus === 'manual' ? 'idle' : llm.testStatus}`}
-          type="button"
-          onClick={() => {
-            void llm.handleTest();
-          }}
-          disabled={llm.testStatus === 'testing' || llm.saving}
-        >
-          {llm.testStatus === 'testing' ? (
-            <>
-              <span className="spin" aria-hidden="true" />
-              <span>{t('connection.testing')}</span>
-            </>
-          ) : llm.testStatus === 'success' ? (
-            <>
-              <CheckCircleFillIcon />
-              <span>{t('connection.testPassed')}</span>
-            </>
-          ) : llm.testStatus === 'error' ? (
-            <>
-              <WarningCircleFillIcon />
-              <span>{t('connection.testFailedRetest')}</span>
-            </>
-          ) : (
-            <>
-              <PlugIcon />
-              <span>{t('connection.test')}</span>
-            </>
-          )}
-        </button>
-        {llm.testStatus !== 'success' && llm.testStatus !== 'error' && llm.testStatus !== 'manual' && (
-          <p className="connection-test-hint">
-            {llm.unknownImageProbeCount > 0
-              ? t('connection.testHint', { count: llm.unknownImageProbeCount })
-              : t('connection.testHintKnown')}
-          </p>
-        )}
-        {llm.testStatus === 'error' && llm.testMessage && (
+        {failedModelMessage ? (
           <div className="connection-failure-reason">
             <WarningIcon />
             <div>
               <strong>{t('connection.testFailed')}</strong>
+              <span>{failedModelMessage.message}</span>
+            </div>
+          </div>
+        ) : null}
+        {llm.testMessage && !failedModelMessage ? (
+          <div className="connection-failure-reason">
+            <WarningIcon />
+            <div>
+              <strong>{t('connection.saveFailed')}</strong>
               <span>{llm.testMessage}</span>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
       <FooterActions
@@ -419,7 +491,7 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
           void onContinue();
         }}
       />
-      {llm.testStatus === 'manual' && llm.manualModelIds.length > 0 && (
+      {llm.manualModelIds.length > 0 && (
         <ImageCapabilityModal
           modelIds={llm.manualModelIds}
           onCancel={llm.cancelManualImageSupport}
