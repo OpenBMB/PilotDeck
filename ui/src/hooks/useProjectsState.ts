@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import { api } from '../utils/api';
+import { ProjectActivity } from './projectActivity';
 import type {
   AppSocketMessage,
   AppTab,
@@ -17,6 +18,7 @@ type UseProjectsStateArgs = {
   latestMessage: AppSocketMessage | null;
   isMobile: boolean;
   activeSessions: Set<string>;
+  subscribe?: (handler: (message: AppSocketMessage) => void) => () => void;
 };
 
 type FetchProjectsOptions = {
@@ -130,7 +132,7 @@ export const preserveLoadedSessions = (prevProjects: Project[], nextProjects: Pr
       (s) => isTemporarySessionId(s.id) && !updatedIds.has(normalizeSessionId(s.id)),
     );
     const prevRealSessions = prevSessions.filter((s) => !isTemporarySessionId(s.id));
-    if (prevRealSessions.length <= updatedSessions.length) {
+    if (updated.sessionMeta?.hasMore === false || prevRealSessions.length <= updatedSessions.length) {
       if (optimisticToKeep.length === 0) return updated;
       return {
         ...updated,
@@ -269,6 +271,7 @@ export function useProjectsState({
   latestMessage,
   isMobile,
   activeSessions,
+  subscribe,
 }: UseProjectsStateArgs) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -304,9 +307,56 @@ export function useProjectsState({
   // Mirror `projects` into a ref so async callbacks can read the latest list
   // without closing over stale state (e.g. loadMoreSessions early-bail check).
   const projectsRef = useRef<Project[]>([]);
+  const projectListRevisionRef = useRef(0);
+  const pendingCreatedProjectsRef = useRef(new Map<string, Project>());
+  const activityRef = useRef(new ProjectActivity());
+  const handledSocketMessageRef = useRef<AppSocketMessage | null>(null);
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
+
+  const deleteProjectSession = useCallback((projectName: string, sessionIdToDelete: string) => {
+    const remove = activityRef.current.deleteSession(projectName, sessionIdToDelete);
+    setProjects((prev) => prev.map(remove));
+    setSelectedProject((prev) => prev ? remove(prev) : prev);
+  }, []);
+
+  const handleActivityMessage = useCallback((message: AppSocketMessage) => {
+    if (message.type === 'session-deleted' && typeof message.projectName === 'string' && typeof message.sessionId === 'string') {
+      deleteProjectSession(message.projectName, message.sessionId);
+    }
+    if (message.type === 'session-input-accepted' && typeof message.runId === 'string') {
+      activityRef.current.acceptInput(message.runId);
+    }
+    if (message.kind === 'text' && message.role === 'user' && message.isSteer === true && typeof message.queueItemId === 'string') {
+      activityRef.current.acceptInput(message.queueItemId);
+    }
+    if (message.type === 'session-input-removed' && typeof message.sessionId === 'string' && typeof message.itemId === 'string') {
+      const rollback = activityRef.current.cancelInput(message.sessionId, message.itemId);
+      setProjects((prev) => prev.map(rollback));
+      setSelectedProject((prev) => prev ? rollback(prev) : prev);
+    }
+  }, [deleteProjectSession]);
+  // Lifecycle events must not be lost when React batches multiple socket frames.
+  useEffect(() => subscribe?.(handleActivityMessage), [subscribe, handleActivityMessage]);
+
+  // A registration confirms only one project, not the rest of the list.
+  // Accept useful pre-registration snapshots and retain only the new entries
+  // they could not have observed. A scan started after registration is
+  // authoritative again (including when a project has since been deleted).
+  const retainPendingCreatedProjects = useCallback((snapshot: Project[], revision: number) => {
+    const names = new Set(snapshot.map((project) => project.name));
+    const current = new Map(projectsRef.current.map((project) => [project.name, project]));
+    const missing: Project[] = [];
+    for (const [name, created] of pendingCreatedProjectsRef.current) {
+      if (revision >= (created.projectListRevision ?? 0)) {
+        pendingCreatedProjectsRef.current.delete(name);
+      } else if (!names.has(name)) {
+        missing.push(current.get(name) ?? created);
+      }
+    }
+    return missing.length > 0 ? [...missing, ...snapshot] : snapshot;
+  }, []);
 
   const fetchProjects = useCallback(async ({ showLoadingState = true }: FetchProjectsOptions = {}) => {
     try {
@@ -331,7 +381,12 @@ export function useProjectsState({
       if (!Array.isArray(payload)) {
         throw new Error('Unable to load projects: the server returned an invalid response.');
       }
-      const projectData = payload;
+      const revision = Number(response.headers.get('X-Projects-Revision')) || 0;
+      if (revision < projectListRevisionRef.current || (revision > 0 && revision === projectListRevisionRef.current)) {
+        return projectsRef.current;
+      }
+      projectListRevisionRef.current = revision;
+      const projectData = retainPendingCreatedProjects(activityRef.current.merge(payload, projectsRef.current), revision);
 
       setProjects((prevProjects) => {
         if (prevProjects.length === 0) {
@@ -355,12 +410,38 @@ export function useProjectsState({
         setIsLoadingProjects(false);
       }
     }
-  }, []);
+  }, [retainPendingCreatedProjects]);
 
   const refreshProjectsSilently = useCallback(async () => {
     // Keep chat view stable while still syncing sidebar/session metadata in background.
     await fetchProjects({ showLoadingState: false });
   }, [fetchProjects]);
+
+  const addCreatedProject = useCallback((project: Project) => {
+    const revision = Number(project.projectListRevision) || 0;
+    if (revision > projectListRevisionRef.current) {
+      pendingCreatedProjectsRef.current.set(project.name, {
+        ...project, sessions: [], sessionMeta: { total: 0, hasMore: false },
+      });
+    }
+    setProjects((previous) => {
+      const existing = previous.find((item) => item.name === project.name);
+      if (existing) {
+        // Re-registering an existing workspace must keep its loaded sessions.
+        return previous.map((item) => item === existing
+          ? {
+              ...item,
+              ...project,
+              sessions: item.sessions,
+              sessionMeta: item.sessionMeta,
+              lastActivity: item.lastActivity ?? project.lastActivity,
+            }
+          : item);
+      }
+      return [{ ...project, sessions: [], sessionMeta: { total: 0, hasMore: false } }, ...previous];
+    });
+    setProjectsLoadError(null);
+  }, []);
 
   const openSettings = useCallback((tab = 'appearance') => {
     setSettingsInitialTab(tab);
@@ -382,6 +463,10 @@ export function useProjectsState({
     if (!latestMessage) {
       return;
     }
+    // Selection/activity state can rerun this effect without a new frame.
+    if (handledSocketMessageRef.current === latestMessage) return;
+    handledSocketMessageRef.current = latestMessage;
+    if (!subscribe) handleActivityMessage(latestMessage);
 
     if (latestMessage.type === 'loading_progress') {
       if (loadingProgressTimeoutRef.current) {
@@ -406,7 +491,6 @@ export function useProjectsState({
     }
 
     const projectsMessage = latestMessage as ProjectsUpdatedMessage;
-
     if (projectsMessage.changedFile && selectedSession && selectedProject) {
       const normalized = projectsMessage.changedFile.replace(/\\/g, '/');
       const projectPrefix = `${selectedProject.name}/`;
@@ -429,11 +513,19 @@ export function useProjectsState({
       }
     }
 
+    // Even an outdated list can carry a transcript-change notification that
+    // was not part of the newer HTTP response. Only discard its list state.
+    const revision = projectsMessage.projectListRevision ?? 0;
+    if (revision < projectListRevisionRef.current || (revision > 0 && revision === projectListRevisionRef.current)) return;
+    projectListRevisionRef.current = revision;
+
     const hasActiveSession =
       (selectedSession && activeSessions.has(selectedSession.id)) ||
       (activeSessions.size > 0 && Array.from(activeSessions).some((id) => id.startsWith('new-session-')));
 
-    const updatedProjects = projectsMessage.projects;
+    const updatedProjects = retainPendingCreatedProjects(
+      activityRef.current.merge(projectsMessage.projects, projectsRef.current), revision,
+    );
 
     // While a session is streaming we must NOT replace `selectedProject` /
     // `selectedSession` mid-flight (the chat pane and downstream hooks key
@@ -526,7 +618,7 @@ export function useProjectsState({
     if (serialize(normalizedUpdatedSelectedSession) !== serialize(selectedSession)) {
       setSelectedSession(normalizedUpdatedSelectedSession);
     }
-  }, [latestMessage, selectedProject, selectedSession, activeSessions]);
+  }, [latestMessage, selectedProject, selectedSession, activeSessions, retainPendingCreatedProjects, subscribe, handleActivityMessage]);
 
   useEffect(() => {
     return () => {
@@ -610,31 +702,24 @@ export function useProjectsState({
     [isMobile, navigate],
   );
 
-	  const handleSessionDelete = useCallback(
-	    (sessionIdToDelete: string) => {
-	      if (selectedSession?.id === sessionIdToDelete) {
-	        setSelectedSession(null);
-	        navigate('/');
-	      }
-
-	      setProjects((prevProjects) =>
-	        prevProjects.map((project) => {
-	          const hadSession = (project.sessions ?? []).some((session) => session.id === sessionIdToDelete);
-
-	          return {
-	            ...project,
-	            sessions: project.sessions?.filter((session) => session.id !== sessionIdToDelete) ?? [],
-	            sessionMeta: {
-	              ...project.sessionMeta,
-	              total: hadSession
-	                ? Math.max(0, (project.sessionMeta?.total as number | undefined ?? 0) - 1)
-	                : project.sessionMeta?.total,
-	            },
-	          };
-	        }),
-	      );
-	    },
-    [navigate, selectedSession?.id],
+  const handleSessionDelete = useCallback(
+    (sessionIdToDelete: string) => {
+      const id = normalizeSessionId(sessionIdToDelete);
+      if (selectedSession && normalizeSessionId(selectedSession.id) === id) {
+        setSelectedSession(null);
+        navigate('/');
+      }
+      // Use the same removal path as the server notification. If it already
+      // removed the row, there is nothing left to decrement.
+      const projectNames = new Set(projectsRef.current
+        .filter((project) => project.sessions?.some((session) => normalizeSessionId(session.id) === id))
+        .map((project) => project.name));
+      if (selectedProject?.sessions?.some((session) => normalizeSessionId(session.id) === id)) {
+        projectNames.add(selectedProject.name);
+      }
+      for (const projectName of projectNames) deleteProjectSession(projectName, sessionIdToDelete);
+    },
+    [navigate, selectedSession, selectedProject, deleteProjectSession],
   );
 
   // The /api/projects payload caps each project's sessions array at 5 for a
@@ -749,6 +834,8 @@ export function useProjectsState({
 
   const handleProjectDelete = useCallback(
     (projectName: string) => {
+      pendingCreatedProjectsRef.current.delete(projectName);
+      activityRef.current.remove(projectName);
       if (selectedProject?.name === projectName) {
         setSelectedProject(null);
         setSelectedSession(null);
@@ -772,13 +859,16 @@ export function useProjectsState({
   // We do NOT wait for the server's chokidar-debounced `projects_updated`
   // round-trip — instead we either bump the existing session's lastActivity
   // (so "sort by date" reorders immediately) or prepend a placeholder
-  // entry for a brand-new session. The placeholder uses a `new-session-*`
-  // id and is filtered out automatically the next time `preserveLoadedSessions`
-  // runs against a server payload.
+  // entry for a brand-new session. Keep the local activity until the server
+  // catches up; failed sends roll back only their own unconfirmed activity.
   const bumpSessionActivity = useCallback(
-    (projectName: string, sessionId: string, optimisticTitle?: string) => {
+    (projectName: string, sessionId: string, optimisticTitle?: string, inputId?: string) => {
       if (!projectName || !sessionId) return;
-      const now = new Date().toISOString();
+      const project = projectsRef.current.find((item) => item.name === projectName);
+      if (!project) return;
+      const at = Date.now();
+      const now = new Date(at).toISOString();
+      const activity = activityRef.current.begin(project, sessionId, at, inputId);
 
       const apply = (project: Project): Project => {
         if (project.name !== projectName) return project;
@@ -821,6 +911,12 @@ export function useProjectsState({
 
       setProjects((prev) => prev.map(apply));
       setSelectedProject((prev) => (prev && prev.name === projectName ? apply(prev) : prev));
+      return () => {
+        const rollback = activityRef.current.cancel(activity);
+        if (!rollback) return;
+        setProjects((prev) => prev.map(rollback));
+        setSelectedProject((prev) => prev ? rollback(prev) : prev);
+      };
     },
     [],
   );
@@ -831,6 +927,7 @@ export function useProjectsState({
   // real session in.
   const replaceOptimisticInProjects = useCallback((realSessionId: string) => {
     if (!realSessionId || isTemporarySessionId(realSessionId)) return;
+    activityRef.current.replaceTemporarySession(realSessionId);
     const apply = (project: Project): Project => {
       const sessions = project.sessions ?? [];
       const tempIdx = sessions.findIndex((s) => isTemporarySessionId(s.id));
@@ -852,14 +949,15 @@ export function useProjectsState({
     setSelectedProject((prev) => (prev ? apply(prev) : prev));
   }, []);
 
-  // Drop any optimistic placeholders for a given session id. Used when a
-  // session goes inactive without ever receiving a real id (errors, aborts
-  // before the agent emitted `session_created`).
+  // Roll back an unaccepted startup even after session_created assigned its
+  // real ID. Accepted inputs and queued messages survive normal inactivity.
   const dropOptimisticInProjects = useCallback((sessionId: string) => {
-    if (!sessionId || !isTemporarySessionId(sessionId)) return;
+    if (!sessionId) return;
+    const rollback = activityRef.current.cancelSession(sessionId);
     const apply = (project: Project): Project => {
+      project = rollback(project);
       const sessions = project.sessions ?? [];
-      if (!sessions.some((s) => s.id === sessionId)) return project;
+      if (!isTemporarySessionId(sessionId) || !sessions.some((s) => s.id === sessionId)) return project;
       return {
         ...project,
         sessions: sessions.filter((s) => s.id !== sessionId),
@@ -944,6 +1042,7 @@ export function useProjectsState({
     openSettings,
     fetchProjects,
     refreshProjectsSilently,
+    addCreatedProject,
     sidebarSharedProps,
     handleProjectSelect,
     handleSessionSelect,

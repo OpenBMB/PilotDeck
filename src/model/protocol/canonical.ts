@@ -1,3 +1,4 @@
+import type { ModelThinkingSettings } from "../thinking/settings.js";
 import type { ModelCapabilities } from "./capabilities.js";
 import type { CanonicalModelError } from "./errors.js";
 import type { MultimodalConstraints } from "./multimodal.js";
@@ -185,7 +186,6 @@ export type CanonicalToolChoice =
 export type CanonicalThinkingConfig = {
   mode?: "default" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   enabled: boolean;
-  budgetTokens?: number;
   preserve?: boolean;
   splitReasoning?: boolean;
 };
@@ -237,7 +237,6 @@ export type CanonicalModelRequest = {
   tools?: CanonicalToolSchema[];
   toolChoice?: CanonicalToolChoice;
   maxOutputTokens?: number;
-  temperature?: number;
   speed?: number;
   thinking?: CanonicalThinkingConfig;
   stream?: boolean;
@@ -302,6 +301,7 @@ export type CanonicalModelResponse = {
 };
 
 export type ModelDefinition = {
+  thinking?: ModelThinkingSettings;
   id: string;
   displayName?: string;
   capabilities: ModelCapabilities;

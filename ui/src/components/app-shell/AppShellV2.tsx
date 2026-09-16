@@ -114,6 +114,7 @@ export default function AppShellV2() {
     setSidebarOpen,
     setIsInputFocused,
     refreshProjectsSilently,
+    addCreatedProject,
     sidebarSharedProps,
     handleProjectSelect,
     handleSessionSelect,
@@ -131,6 +132,7 @@ export default function AppShellV2() {
     sessionId,
     navigate,
     latestMessage,
+    subscribe,
     isMobile,
     activeSessions,
   });
@@ -382,7 +384,6 @@ export default function AppShellV2() {
   const handleCloseNewProject = useCallback(() => setShowNewProject(false), []);
   const handleProjectCreated = useCallback((project?: Record<string, unknown>) => {
     setShowNewProject(false);
-    void refreshProjectsSilently();
 
     // Auto-jump into the new project's empty new-conversation screen so the
     // user doesn't accidentally keep chatting under the previously selected
@@ -391,12 +392,16 @@ export default function AppShellV2() {
     // (and the clone SSE complete event), which is the same `{ name,
     // displayName, fullPath, path }` shape as the sidebar list entries.
     const projectName = typeof project?.name === 'string' ? project.name : '';
-    if (!projectName) return;
+    if (!projectName) {
+      void refreshProjectsSilently();
+      return;
+    }
     const newProject = project as Project;
+    addCreatedProject(newProject);
     handleNewSession(newProject);
     navigate(`/p/${encodeURIComponent(projectName)}`);
     setActiveTab('chat');
-  }, [handleNewSession, navigate, refreshProjectsSilently, setActiveTab]);
+  }, [addCreatedProject, handleNewSession, navigate, refreshProjectsSilently, setActiveTab]);
 
   // Project deletion (V2): hover-revealed trash button on each row -> confirm dialog
   // -> DELETE /api/projects/:name (force=true). Reuses the shared cleanup callback
@@ -588,14 +593,10 @@ export default function AppShellV2() {
   ]);
 
   const handleSessionActivityBump = useCallback(
-    (projectName: string, sessionId: string, optimisticTitle?: string) => {
-      bumpSessionActivity(projectName, sessionId, optimisticTitle);
-      if (selectedSession) return;
-      const project = sidebarSharedProps.projects.find((item) => item.name === projectName);
-      if (!project) return;
-      setSelectedProject(project);
+    (projectName: string, sessionId: string, optimisticTitle?: string, inputId?: string) => {
+      return bumpSessionActivity(projectName, sessionId, optimisticTitle, inputId);
     },
-    [bumpSessionActivity, selectedSession, sidebarSharedProps.projects, setSelectedProject],
+    [bumpSessionActivity],
   );
 
   // Wrap the two session-lifecycle callbacks coming out of useSessionProtection

@@ -86,7 +86,8 @@ interface UseChatComposerStateArgs {
     projectName: string,
     sessionId: string,
     optimisticTitle?: string,
-  ) => void;
+    inputId?: string,
+  ) => void | (() => void);
   onInputFocusChange?: (focused: boolean) => void;
   onFileOpen?: (filePath: string, diffInfo?: unknown) => void;
   onShowSettings?: () => void;
@@ -1305,12 +1306,13 @@ export function useChatComposerState({
       // the sidebar because no session lifecycle event exists to remove it.
       const optimisticSessionId =
         submitTargetSessionId || createTemporarySessionId();
-      const bumpSessionActivity = () => {
+      const bumpSessionActivity = (inputId: string) => {
         if (!selectedProject?.name) return;
-        onSessionActivityBump?.(
+        return onSessionActivityBump?.(
           selectedProject.name,
           optimisticSessionId,
           userVisibleInput,
+          inputId,
         );
       };
 
@@ -1432,35 +1434,42 @@ export function useChatComposerState({
         const attempt = { fingerprint, id: runId };
         queueAttemptsRef.current.set(attemptKey, attempt);
         safeLocalStorage.setItem(attemptKey, JSON.stringify(attempt));
-        const result = await enqueuePreparedInput?.({
-          id: runId,
-          runId,
-          command: messageContent,
-          displayText: userVisibleInput,
-          createdAt: new Date().toISOString(),
-          options: {
-            sessionId: queueTargetSessionId,
-            projectPath: resolvedProjectPath,
-            cwd: resolvedProjectPath,
-            ...(selectedProject.workspaceCwd
-              ? { workspaceCwd: selectedProject.workspaceCwd }
-              : {}),
-            runMode,
-            permissionMode,
-            basePermissionMode,
-            model,
-            thinking: thinkingModeToConfig(thinkingMode),
-            sessionSummary,
-            toolsSettings,
-            userVisibleInput,
-            images: uploadedImages,
-            attachments: turnAttachments,
-            displayAttachments: [...uploadedFiles, ...turnAttachments].map(attachmentDisplayMetadata),
-            uploadedAttachments: uploadedAttachmentRefs,
-            modelSelection: submittedModelSelection,
-          },
-        }) ?? { ok: false, error: 'Message queue is unavailable.' };
+        const rollbackActivity = bumpSessionActivity(runId);
+        let result: { ok: boolean; error?: string };
+        try {
+          result = await enqueuePreparedInput?.({
+            id: runId,
+            runId,
+            command: messageContent,
+            displayText: userVisibleInput,
+            createdAt: new Date().toISOString(),
+            options: {
+              sessionId: queueTargetSessionId,
+              projectPath: resolvedProjectPath,
+              cwd: resolvedProjectPath,
+              ...(selectedProject.workspaceCwd
+                ? { workspaceCwd: selectedProject.workspaceCwd }
+                : {}),
+              runMode,
+              permissionMode,
+              basePermissionMode,
+              model,
+              thinking: thinkingModeToConfig(thinkingMode),
+              sessionSummary,
+              toolsSettings,
+              userVisibleInput,
+              images: uploadedImages,
+              attachments: turnAttachments,
+              displayAttachments: [...uploadedFiles, ...turnAttachments].map(attachmentDisplayMetadata),
+              uploadedAttachments: uploadedAttachmentRefs,
+              modelSelection: submittedModelSelection,
+            },
+          }) ?? { ok: false, error: 'Message queue is unavailable.' };
+        } catch (error) {
+          result = { ok: false, error: error instanceof Error ? error.message : 'Failed to queue this message.' };
+        }
         if (!result.ok) {
+          if (typeof rollbackActivity === 'function') rollbackActivity();
           addMessage({
             type: 'error',
             content: result.error || 'Failed to queue this message.',
@@ -1470,7 +1479,6 @@ export function useChatComposerState({
         }
         queueAttemptsRef.current.delete(attemptKey);
         safeLocalStorage.removeItem(attemptKey);
-        bumpSessionActivity();
         clearSubmittedComposerState();
         return;
       }
@@ -1518,7 +1526,7 @@ export function useChatComposerState({
         return;
       }
 
-      bumpSessionActivity();
+      bumpSessionActivity(runId);
       addMessage(userMessage, submitTargetSessionId);
       setIsLoading(true); // Processing banner starts
       setCanAbortSession(true);

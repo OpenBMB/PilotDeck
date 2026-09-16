@@ -640,7 +640,6 @@
     "subagentTitle": "子智能体 / {{type}}：{{description}}",
     "toolHistory": "查看工具历史（{{count}}）",
     "copyClipboard": "复制到剪贴板",
-    "rawParams": "原始参数",
     "toolRenderFailed": "无法显示工具输出。",
     "todoCount": "待办事项（{{count}}）",
     "taskStatus": {

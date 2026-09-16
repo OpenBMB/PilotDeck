@@ -1,5 +1,4 @@
 import { loadPilotConfig } from "../../pilot/config/loadPilotConfig.js";
-import { resolveThinkingPlan } from "../../model/thinking/registry.js";
 import type { ThinkingMode } from "../../model/thinking/registry.js";
 import type {
   ExplicitModelSelection,
@@ -11,7 +10,7 @@ import type {
 import { DialogGatewayError } from "./errors.js";
 
 const REASONING_VALUES = new Map<number, ThinkingMode>([
-  [0, "off"], [0.2, "minimal"], [0.4, "low"], [0.6, "medium"],
+  [0.4, "low"], [0.6, "medium"],
   [0.8, "high"], [0.9, "xhigh"], [1, "max"],
 ]);
 
@@ -24,9 +23,9 @@ export function listModelCatalog(input: ModelCatalogListInput, env: NodeJS.Proce
     for (const [modelId, model] of Object.entries(provider.models)) {
       const displayName = model.displayName ?? model.id;
       if (query && !`${providerId} ${modelId} ${displayName}`.toLocaleLowerCase().includes(query)) continue;
-      const reasoning = model.capabilities.supportsThinking
+      const reasoning = model.thinking?.state === "enabled"
         ? [...REASONING_VALUES.entries()]
-          .filter(([, mode]) => !resolveThinkingPlan({ mode, enabled: mode !== "off" }, provider, model).unsupportedReason)
+          .filter(([, mode]) => model.thinking?.efforts.some(effort => effort === mode))
           .map(([value]) => value)
         : [];
       const speed = model.capabilities.supportsSpeed === true && provider.speedMapping !== undefined;
@@ -37,8 +36,7 @@ export function listModelCatalog(input: ModelCatalogListInput, env: NodeJS.Proce
         displayName,
         available: Boolean(provider.apiKey),
         capabilities: {
-          ...(reasoning.length > 0 ? { reasoning: { type: "enum" as const, values: reasoning } } : {}),
-          temperature: { type: "range", min: 0, max: 1, step: 0.1 },
+          ...(model.thinking?.state === "enabled" ? { reasoning: { type: "enum" as const, values: reasoning } } : {}),
           ...(speed ? { speed: { type: "enum" as const, values: [0, 1] } } : {}),
         },
       });
@@ -74,9 +72,6 @@ export function validateExplicitModelSelection(projectKey: string, selection: Ex
   const catalog = listModelCatalog({ projectKey }, env);
   const item = catalog.items.find((candidate) => candidate.provider === selection.provider && candidate.model === selection.model);
   if (!item || !item.available) throw new DialogGatewayError("INVALID_MODEL_OVERRIDE", `Model is unavailable: ${selection.provider}/${selection.model}`);
-  if (selection.temperature !== undefined && (!Number.isFinite(selection.temperature) || selection.temperature < 0 || selection.temperature > 1)) {
-    throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", "temperature must be between 0 and 1.");
-  }
   if (selection.speed !== undefined && (!Number.isFinite(selection.speed) || selection.speed < 0 || selection.speed > 1)) {
     throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", "speed must be between 0 and 1.");
   }
@@ -91,4 +86,32 @@ export function validateExplicitModelSelection(projectKey: string, selection: Ex
 export function reasoningMode(value: number | undefined): ThinkingMode | undefined {
   if (value === undefined) return undefined;
   return REASONING_VALUES.get(value);
+}
+
+/** Drop retired preference fields without relaxing validation of incoming values. */
+export function normalizeSessionModelSelection(selection: SessionModelSelection): SessionModelSelection {
+  if (selection.mode === "auto") return { mode: "auto" };
+  if (selection.mode !== "model") return selection;
+  return {
+    mode: "model", provider: selection.provider, model: selection.model,
+    ...(selection.reasoning !== undefined ? { reasoning: selection.reasoning } : {}),
+    ...(selection.speed !== undefined ? { speed: selection.speed } : {}),
+  };
+}
+
+/** Historical effort choices can expire after upgrades or model configuration changes. */
+export function restoreSessionModelSelection(
+  projectKey: string,
+  selection: SessionModelSelection,
+  env: NodeJS.ProcessEnv = process.env,
+): SessionModelSelection {
+  const restored = normalizeSessionModelSelection(selection);
+  if (restored.mode !== "model" || restored.reasoning === undefined) return restored;
+  const item = listModelCatalog({ projectKey }, env).items.find(
+    candidate => candidate.provider === restored.provider && candidate.model === restored.model,
+  );
+  if (!item?.capabilities.reasoning?.values?.includes(restored.reasoning)) {
+    delete restored.reasoning;
+  }
+  return restored;
 }

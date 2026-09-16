@@ -1662,6 +1662,7 @@ export async function runChatViaGateway(
         for await (const event of stream) {
             if (event && event.type === 'input_accepted') {
                 inputAccepted = true;
+                writer.send({ type: 'session-input-accepted', sessionId: sessionKey, runId });
                 // Queue acceptance already recorded this choice; execution must
                 // never replace a newer accepted message's model preference.
                 if (!hooks.fromQueue && options.modelSelection && !state.deleted && !state.deleting) {

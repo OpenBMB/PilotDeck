@@ -42,7 +42,6 @@ export type PreparedQueuedInput = {
       provider: string;
       model: string;
       reasoning?: number;
-      temperature?: number;
       speed?: number;
     };
     thinking?: unknown;

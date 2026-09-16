@@ -101,7 +101,7 @@ describe('sessionLauncher turn identity', () => {
 });
 
 describe('dialog model submission', () => {
-  it.each([{ mode: 'auto' as const }, { mode: 'model' as const, provider: 'selected', model: 'chosen', reasoning: 0.8, temperature: 0.2, speed: 1 }])('snapshots %j in both new and edited requests', (selection) => {
+  it.each([{ mode: 'auto' as const }, { mode: 'model' as const, provider: 'selected', model: 'chosen', reasoning: 0.8, speed: 1 }])('snapshots %j in both new and edited requests', (selection) => {
     const sendMessage = vi.fn();
     const common = { sendMessage, selectedProject: { name: 'demo', path: '/demo' } as Project, command: 'hello', modelSelection: selection };
     startSessionCommand(common);

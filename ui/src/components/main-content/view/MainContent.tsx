@@ -242,7 +242,6 @@ function MainContent({
   const { preferences } = useUiPreferences();
   const {
     autoExpandTools,
-    showRawParameters,
     showThinking,
     inlineThinking,
     autoScrollToBottom,
@@ -563,7 +562,6 @@ function MainContent({
           onShowSettings={onShowSettings}
           externalMessageUpdate={externalMessageUpdate}
           autoExpandTools={autoExpandTools}
-          showRawParameters={showRawParameters}
           showThinking={showThinking}
           inlineThinking={inlineThinking}
           autoScrollToBottom={autoScrollToBottom}
@@ -640,7 +638,8 @@ type SplitBodyProps = {
     projectName: string,
     sessionId: string,
     optimisticTitle?: string,
-  ) => void;
+    inputId?: string,
+  ) => void | (() => void);
   processingSessions: Set<string>;
   unreadSessionIds: Set<string>;
   onReplaceTemporarySession: any;
@@ -653,7 +652,6 @@ type SplitBodyProps = {
   onShowSettings: any;
   externalMessageUpdate: any;
   autoExpandTools: any;
-  showRawParameters: any;
   showThinking: any;
   inlineThinking: any;
   autoScrollToBottom: any;
@@ -708,7 +706,6 @@ function SplitBody(props: SplitBodyProps) {
     onShowSettings,
     externalMessageUpdate,
     autoExpandTools,
-    showRawParameters,
     showThinking,
     inlineThinking,
     autoScrollToBottom,
@@ -1546,7 +1543,6 @@ function SplitBody(props: SplitBodyProps) {
               onNavigateToSession={onNavigateToSession}
               onShowSettings={onShowSettings}
               autoExpandTools={autoExpandTools}
-              showRawParameters={showRawParameters}
               showThinking={showThinking}
               inlineThinking={inlineThinking}
               autoScrollToBottom={autoScrollToBottom}

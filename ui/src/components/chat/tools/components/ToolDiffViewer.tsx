@@ -1,106 +1,41 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ToolDetails } from './ToolDetails';
+import { displayText } from '../toolPresentation';
 
-type DiffLine = {
-  type: string;
-  content: string;
-  lineNum: number;
-};
-
+type DiffLine = { type: string; content: string; lineNum: number };
 interface ToolDiffViewerProps {
-  oldContent: unknown;
-  newContent: unknown;
-  filePath: unknown;
+  oldContent: unknown; newContent: unknown; filePath: unknown;
   createDiff: (oldStr: string, newStr: string) => DiffLine[];
-  onFileClick?: () => void;
-  badge?: string;
-  badgeColor?: 'gray' | 'green';
+  onFileClick?: () => void; badge?: string; badgeColor?: 'gray' | 'green';
 }
 
-function stringifyDiffInput(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value === undefined || value === null) return '';
-  try {
-    return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
-  } catch {
-    return String(value);
-  }
-}
-
-/**
- * Compact diff viewer — VS Code-style
- */
-export const ToolDiffViewer: React.FC<ToolDiffViewerProps> = ({
-  oldContent,
-  newContent,
-  filePath,
-  createDiff,
-  onFileClick,
-  badge = 'Diff',
-  badgeColor = 'gray'
-}) => {
-  const safeOldContent = stringifyDiffInput(oldContent);
-  const safeNewContent = stringifyDiffInput(newContent);
-  const safeFilePath = stringifyDiffInput(filePath);
-  const badgeClasses = badgeColor === 'green'
-    ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
-    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400';
-
-  const diffLines = useMemo(
-    () => {
-      if (oldContent === undefined || newContent === undefined) {
-        return [];
-      }
-      return createDiff(safeOldContent, safeNewContent)
-    },
-    [createDiff, oldContent, newContent, safeOldContent, safeNewContent]
-  );
-
+export const ToolDiffViewer = ({ oldContent, newContent, filePath, createDiff, onFileClick, badge }: ToolDiffViewerProps) => {
+  const { t } = useTranslation('chat');
+  const oldText = displayText(oldContent);
+  const newText = displayText(newContent);
+  const path = displayText(filePath);
+  // A write may replace an existing file. Without its old contents, show a
+  // neutral content preview instead of claiming that every line was added.
+  const contentPreview = badge === 'Write' || badge === 'New' || oldContent === undefined;
+  const lines = useMemo(() => contentPreview
+    ? newText.split('\n').map((content, index) => ({ type: 'context', content, lineNum: index + 1 }))
+    : createDiff(oldText, newText), [contentPreview, newText, oldText, createDiff]);
+  const added = lines.filter(line => line.type === 'added').length;
+  const removed = lines.filter(line => line.type === 'removed').length;
   return (
-    <div className="overflow-hidden rounded border border-gray-200/60 dark:border-gray-700/50">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200/60 bg-gray-50/80 px-2.5 py-1 dark:border-gray-700/50 dark:bg-gray-800/40">
-        {onFileClick ? (
-          <button
-            onClick={onFileClick}
-            className="cursor-pointer truncate font-mono text-[11px] text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-          >
-            {safeFilePath}
-          </button>
-        ) : (
-          <span className="truncate font-mono text-[11px] text-gray-600 dark:text-gray-400">
-            {safeFilePath}
-          </span>
-        )}
-        <span className={`rounded px-1.5 py-px text-[10px] font-medium ${badgeClasses} ml-2 flex-shrink-0`}>
-          {badge}
-        </span>
-      </div>
-
-      {/* Diff lines */}
-      <div className="font-mono text-[11px] leading-[18px]">
-        {diffLines.map((diffLine, i) => (
-          <div key={i} className="flex">
-            <span
-              className={`w-6 flex-shrink-0 select-none text-center ${
-                diffLine.type === 'removed'
-                  ? 'bg-red-50 text-red-400 dark:bg-red-950/30 dark:text-red-500'
-                  : 'bg-green-50 text-green-400 dark:bg-green-950/30 dark:text-green-500'
-              }`}
-            >
-              {diffLine.type === 'removed' ? '-' : '+'}
-            </span>
-            <span
-              className={`flex-1 whitespace-pre-wrap px-2 ${
-                diffLine.type === 'removed'
-                  ? 'bg-red-50/50 text-red-800 dark:bg-red-950/20 dark:text-red-200'
-                  : 'bg-green-50/50 text-green-800 dark:bg-green-950/20 dark:text-green-200'
-              }`}
-            >
-              {diffLine.content}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <ToolDetails title={<span className="inline-flex max-w-full items-center gap-3">
+      {onFileClick ? <button type="button" title={path} onClick={onFileClick} className="truncate hover:text-violet-600 hover:underline dark:hover:text-violet-400">{path}</button> : <span className="truncate">{path}</span>}
+      <span className="shrink-0">{contentPreview ? t('toolDisplay.fileContent') : t('toolDisplay.changes')}</span>
+      {!contentPreview && <span className="shrink-0 tabular-nums"><span className="text-green-600 dark:text-green-400">+{added}</span>{' '}<span className="text-red-500 dark:text-red-400">−{removed}</span></span>}
+    </span>} copyContent={contentPreview ? newText : lines.map(line => `${line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}${line.content}`).join('\n')}>
+      {lines.length === 0 ? <span>{t('toolDisplay.noChanges')}</span> : <div className="w-max min-w-full font-mono text-xs leading-5">
+        {lines.map((line, index) => <div key={index} className={`flex ${line.type === 'added' ? 'bg-green-500/10' : line.type === 'removed' ? 'bg-red-500/10' : ''}`}>
+          <span className="w-10 shrink-0 select-none pr-3 text-right text-neutral-400 dark:text-neutral-500">{line.lineNum}</span>
+          {!contentPreview && <span className={`w-5 shrink-0 select-none ${line.type === 'added' ? 'text-green-600 dark:text-green-400' : line.type === 'removed' ? 'text-red-500 dark:text-red-400' : ''}`}>{line.type === 'added' ? '+' : line.type === 'removed' ? '−' : ' '}</span>}
+          <span className="whitespace-pre pr-3">{line.content || ' '}</span>
+        </div>)}
+      </div>}
+    </ToolDetails>
   );
 };

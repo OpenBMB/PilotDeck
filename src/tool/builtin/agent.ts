@@ -103,7 +103,6 @@ export type CreateAgentToolOptions = {
   provider?: string;
   model_?: string;
   maxOutputTokens?: number;
-  temperature?: number;
 };
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
@@ -195,7 +194,6 @@ export function createAgentTool(
         provider: options.provider ?? DEFAULT_PROVIDER_FALLBACK,
         modelId: options.model_ ?? DEFAULT_MODEL_FALLBACK,
         maxOutputTokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-        temperature: options.temperature ?? 0,
       });
     },
   };
@@ -409,7 +407,6 @@ async function runFallback(args: {
   provider: string;
   modelId: string;
   maxOutputTokens: number;
-  temperature: number;
 }): Promise<PilotDeckToolExecutionOutput<AgentToolOutput>> {
   const {
     input,
@@ -421,7 +418,6 @@ async function runFallback(args: {
     provider,
     modelId,
     maxOutputTokens,
-    temperature,
   } = args;
 
   const preset = presets[requestedType];
@@ -446,7 +442,6 @@ async function runFallback(args: {
     messages: [{ role: "user", content: [{ type: "text", text: directive }] }],
     systemPrompt: preset.systemPrompt,
     maxOutputTokens,
-    temperature,
     stream: true,
     metadata: { subagent: preset.type, description: input.description },
   };

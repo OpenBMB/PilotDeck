@@ -223,7 +223,6 @@
     },
     "darkMode": "深色模式",
     "autoExpandTools": "显示调用工具",
-    "showRawParameters": "显示原始参数",
     "showThinking": "显示思考过程",
     "inlineThinking": "内联思考（打字机动画）",
     "autoScrollToBottom": "自动滚动到底部",
@@ -970,6 +969,29 @@
       },
       "models": {
         "modelSettings": {
+          "thinkingEnabled": "思考模式",
+          "thinkingDisabled": "关闭思考",
+          "thinkingEfforts": "支持的推理强度",
+          "thinkingEffortsHelp": "仅勾选接口支持的档位。不勾选任何档位时，聊天框只显示“默认”，不发送 effort。",
+          "thinkingAdvanced": "高级设置",
+          "thinkingFormat": "思考参数格式",
+          "thinkingFormatHelp": "按供应商接口选择格式。自定义 OpenAI 兼容接口默认使用 OpenAI 标准；Qwen 可选择云端或自部署格式。不支持的参数可能被接口拒绝。",
+          "thinkingHelp": {
+            "default": "不发送思考控制参数，使用服务端默认。",
+            "enabled": "按接口请求开启思考。“默认”不传强度；没有独立开启参数的接口仍使用服务端默认。",
+            "disabled": "发送关闭请求，不发送具体强度。如果接口不支持关闭，会提示错误。"
+          },
+          "thinkingFormats": {
+            "provider": "跟随供应商",
+            "openai": "OpenAI 标准",
+            "thinking-type": "DeepSeek / Kimi / GLM",
+            "qwen-cloud": "Qwen 云端（百炼）",
+            "qwen-local": "Qwen 自部署",
+            "anthropic": "Anthropic 原生",
+            "google": "Google 原生",
+            "openrouter": "OpenRouter",
+            "server-default": "仅服务端默认"
+          },
           "title": "模型设置",
           "save": "保存",
           "saveFailed": "模型设置保存失败。",

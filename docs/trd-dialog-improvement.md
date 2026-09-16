@@ -216,7 +216,7 @@ type UploadedAttachmentRef = {
 `GET /api/models?query=&provider=&includeAuto=`
 
 模型目录直接读取全局配置，不枚举项目或会话；旧客户端传入的 `projectKey` 仅为兼容保留。返回 `defaultSelection` 明确指定系统默认模型，目录顺序不影响选择。
-返回 provider、model、displayName、available 以及 reasoning（推理强度）、temperature 和可选 speed 的能力声明。对话框统一使用 0..1 的数值语义；每个模型可通过能力声明限制可用范围、步长或枚举值，后端负责把 0..1 值映射为 Provider 所需参数。temperature 和 speed 统一范围为 0..1。官方 OpenAI / Anthropic 模型默认声明 speed；自定义模型需显式 `supportsSpeed: true`，且 Google Provider 当前不支持该字段。目录将 speed 暴露为枚举 `0`（标准）与 `1`（快速）。
+返回 provider、model、displayName、available 以及 reasoning（推理强度）和可选 speed 的能力声明。对话框统一使用 0..1 的数值语义；每个模型可通过能力声明限制可用范围、步长或枚举值，后端负责把 0..1 值映射为 Provider 所需参数。speed 统一范围为 0..1。官方 OpenAI / Anthropic 模型默认声明 speed；自定义模型需显式 `supportsSpeed: true`，且 Google Provider 当前不支持该字段。目录将 speed 暴露为枚举 `0`（标准）与 `1`（快速）。
 
 协议默认将未显式声明的模型视为支持 reasoning；模型可通过 `capabilities.supportsThinking: false` 关闭。speed 对官方 OpenAI / Anthropic 默认开启，其他模型通过 `capabilities.supportsSpeed: true` 显式开启。
 
@@ -232,7 +232,6 @@ type SessionModelOverride = {
   provider: string;
   model: string;
   reasoning?: number;
-  temperature?: number;
   speed?: number;
 };
 type GatewaySubmitTurnInput = ExistingGatewaySubmitTurnInput & {
@@ -258,7 +257,7 @@ Composer 不再调用下列会话模型读写接口。它在准备附件之前�
 
 `submit_turn.modelSelection` 为 Web 提交时固定的模型快照，随已接收输入记录；`modelOverride` 只覆盖本轮，不修改会话保存值。两者互斥，均优先于兼容会话设置。只有两者都未传时才使用会话保存模型 > Router auto/路由决策 > `agent.model` 默认模型；Web Composer 不依赖这条回退路径。
 
-`provider/model` 不存在或不可用返回 `INVALID_MODEL_OVERRIDE`；reasoning、temperature 或 speed 不满足模型能力返回 `UNSUPPORTED_MODEL_PARAMETER`。未声明支持的参数不发送给 Provider。speed 必须在 canonical request 入口通过 `0..1` 校验，再由支持 speed 的 Provider adapter 映射为原生字段；Google Provider 不声明或接收 speed。
+`provider/model` 不存在或不可用返回 `INVALID_MODEL_OVERRIDE`；reasoning 或 speed 不满足模型能力返回 `UNSUPPORTED_MODEL_PARAMETER`。未声明支持的参数不发送给 Provider。speed 必须在 canonical request 入口通过 `0..1` 校验，再由支持 speed 的 Provider adapter 映射为原生字段；Google Provider 不声明或接收 speed。
 
 模型确定后发出 `model_selection_changed`，包含 provider、model、来源（session/router/default）和已生效参数。
 

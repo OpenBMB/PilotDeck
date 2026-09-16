@@ -168,7 +168,7 @@ test("omits temperature for an Anthropic judge", async () => {
   });
 
   assert.equal(result?.tier, "medium");
-  assert.equal(request?.temperature, undefined);
+  assert.ok(request && !("temperature" in request));
 });
 
 test("omits temperature for an OpenAI-compatible judge", async () => {
@@ -191,7 +191,7 @@ test("omits temperature for an OpenAI-compatible judge", async () => {
     judgeRuntime,
   });
 
-  assert.equal(request?.temperature, undefined);
+  assert.ok(request && !("temperature" in request));
 });
 
 test("aborts the judge request when its classification timeout expires", async () => {

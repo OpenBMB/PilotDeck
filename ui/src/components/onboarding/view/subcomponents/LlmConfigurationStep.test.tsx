@@ -439,7 +439,6 @@ model:
       apiKey: old-key
       models:
         legacy-model:
-          temperature: 0.25
           multimodal:
             input: [text]
         gpt-5.6-luna:
@@ -489,7 +488,6 @@ agent:
       };
       const models = savedConfig.model.providers.modelbest.models;
       expect(models['legacy-model']).toEqual({
-        temperature: 0.25,
         multimodal: { input: ['text'] },
       });
       expect(models['gpt-5.6-luna']).toMatchObject({

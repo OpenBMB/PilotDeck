@@ -9,9 +9,9 @@ vi.mock('../utils/globalModelSelection', async (original) => ({
   get globalModelSelectionStore() { return mocks.store; },
 }));
 const A = { mode: 'model' as const, provider: 'HXAPI', model: 'first' };
-const B = { mode: 'model' as const, provider: 'Other', model: 'second', reasoning: .8, temperature: .3, speed: 1 };
+const B = { mode: 'model' as const, provider: 'Other', model: 'second', reasoning: .8, speed: 1 };
 const AUTO = { mode: 'auto' as const };
-const items = [A, B].map(s => ({ id: `${s.provider}/${s.model}`, ...s, displayName: s.model, available: true, capabilities: {} }));
+const items = [A, B].map(s => ({ id: `${s.provider}/${s.model}`, ...s, displayName: s.model, available: true, capabilities: { reasoning: { type: 'enum', values: [.8] } } }));
 const catalog = { items: [{ id: 'router/auto', provider: 'router', model: 'auto', displayName: 'Auto', available: true, capabilities: {} }, ...items], defaultSelection: B };
 const json = (data: unknown, status = 200) => ({ ok: status < 400, status, json: async () => data });
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
@@ -210,4 +210,11 @@ it('restores the last accepted queued model over execution history after navigat
   act(() => other.result.current.setModelSelection(AUTO));
   accept('other-client', 'web:queued'); await act(async () => {});
   expect(other.result.current.modelSelection).toEqual(AUTO);
+});
+it('drops stale effort after model settings change without losing other selection parameters', async () => {
+  const hook = mount(); await ready(hook);
+  expect(hook.result.current.modelSelection).toEqual(B);
+  mocks.fetch.mockImplementation(() => Promise.resolve(json({...catalog, items:catalog.items.map(item=>({...item,capabilities:{}}))})));
+  await act(async () => { await mocks.store.load(true); });
+  expect(hook.result.current.modelSelection).toEqual({mode:'model',provider:B.provider,model:B.model,speed:1});
 });

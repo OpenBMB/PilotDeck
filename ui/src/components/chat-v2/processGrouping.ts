@@ -17,6 +17,8 @@ export type ProcessAttachmentImage = {
 export type ProcessAttachment = {
   id: string;
   processSummary: ChatMessage;
+  /** Complete event sequence, including events without expandable details. */
+  processMessages: ChatMessage[];
   processDetailMessages: ChatMessage[];
   startIndex: number;
   endIndex: number;
@@ -596,7 +598,7 @@ function createSyntheticProcessSummary(
     startedAt: startedAt ? String(startedAt) : '',
     endedAt: endedAt ? String(endedAt) : '',
     durationMs: getDurationMs(startedAt, endedAt),
-    state: counts.toolErrorCount > 0 ? 'failed' : 'completed',
+    state: 'completed',
     toolCallCount: counts.toolCallCount,
     toolErrorCount: counts.toolErrorCount,
     ragSearchCount: counts.searchCount,
@@ -853,6 +855,7 @@ export function buildRenderableMessageItems(
       const attachment: ProcessAttachment = {
         id: segment.id,
         processSummary: summary,
+        processMessages: segment.messages,
         processDetailMessages: segment.detailMessages,
         startIndex: segment.startIndex,
         endIndex: segment.endIndex,
@@ -971,6 +974,13 @@ export function foldCompletedTurns(
 export function getLiveProcessDetailMessages(messages: ChatMessage[]): ChatMessage[] {
   return getLiveProcessGroups(messages, { isAssistantWorking: true })
     .flatMap((group) => group.detailMessages);
+}
+
+/** Only flatten a real single call; never discard thinking, activity or interactive details. */
+export function isSingleToolProcess(messages: ChatMessage[]): boolean {
+  return messages.length === 1 && Boolean(messages[0].isToolUse)
+    && isExpandableProcessMessage(messages[0])
+    && !messages[0].isSubagentContainer && !messages[0].isInteractivePrompt;
 }
 
 export function splitLiveProcessGroupDetailMessages(group: LiveProcessGroup): {
@@ -1208,12 +1218,6 @@ export function formatCompletedProcessTitle(
       defaultValue: `Used ${counts.otherToolCount} ${counts.otherToolCount === 1 ? 'tool' : 'tools'}`,
     }));
   }
-  if (counts.toolErrorCount > 0) {
-    labels.push(t('process.live.errors', {
-      count: counts.toolErrorCount,
-      defaultValue: `${counts.toolErrorCount} ${counts.toolErrorCount === 1 ? 'error' : 'errors'}`,
-    }));
-  }
 
   return labels.join(' ');
 }
@@ -1334,12 +1338,6 @@ export function processSummaryToTrace(
       ? {
           key: 'searches',
           label: t('process.metrics.searches', { count: searches, defaultValue: '{{count}} searches' }),
-        }
-      : null,
-    errors > 0
-      ? {
-          key: 'errors',
-          label: t('process.metrics.errors', { count: errors, defaultValue: '{{count}} errors' }),
         }
       : null,
   ].filter((metric): metric is ProcessTraceMetric => Boolean(metric));

@@ -2,6 +2,9 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { I18nextProvider } from 'react-i18next';
+import { createTestI18n } from '../../i18n/testInstance';
+import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage } from '../chat/types/types';
 import SubagentDetailMessageFlow from './SubagentDetailMessageFlow';
@@ -157,4 +160,46 @@ describe('SubagentDetailMessageFlow', () => {
       expect(activeMark?.textContent?.toLowerCase()).toBe('needle');
     });
   });
+});
+
+
+it('passes subagent lifecycle state to normalized tool cards and updates it without new messages', async () => {
+  const i18n = await createTestI18n();
+  const messages = normalizedToChatMessages([{
+    id: 'subagent-bash', sessionId: 'web:subagent-test', provider: 'pilotdeck',
+    kind: 'tool_use', role: 'assistant', toolId: 'subagent-bash', toolName: 'bash',
+    toolInput: { command: 'pnpm build', description: 'Build app' }, timestamp: timestamp(300),
+  }]);
+  const pane = (isRunning: boolean, items = messages) => (
+    <I18nextProvider i18n={i18n}>
+      <FindShortcutProvider activeScope="chat">
+        <SubagentDetailMessageFlow messages={items} provider="pilotdeck" selectedProject={null}
+          createDiff={() => []} isRunning={isRunning} />
+      </FindShortcutProvider>
+    </I18nextProvider>
+  );
+  const view = render(pane(true));
+  fireEvent.click(view.container.querySelector('.process-live-status button[aria-expanded]') as HTMLButtonElement);
+  fireEvent.click(view.container.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement);
+  expect(screen.getByRole('button', { name: 'Running Build app' })).toBeTruthy();
+  expect(screen.getAllByText('Running…').length).toBeGreaterThan(0);
+  expect(screen.queryByText('No result recorded')).toBeNull();
+
+  // Ending the subagent without a tool result must stop claiming execution.
+  view.rerender(pane(false));
+  expect(screen.getAllByText('No result recorded').length).toBeGreaterThan(0);
+  expect(screen.queryByRole('button', { name: 'Running Build app' })).toBeNull();
+
+  // Same message reference: this also detects a stale rendering callback.
+  view.rerender(pane(true));
+  expect(screen.getByRole('button', { name: 'Running Build app' })).toBeTruthy();
+  expect(screen.queryByText('No result recorded')).toBeNull();
+
+  view.rerender(pane(true, messages.map(message => ({
+    ...message, toolResult: { content: 'Build complete.', isError: false },
+  }))));
+  expect(screen.getByRole('button', { name: 'Ran Build app' })).toBeTruthy();
+  expect(screen.getByText('Build complete.')).toBeTruthy();
+  expect(screen.getByText('Success')).toBeTruthy();
+  expect(screen.queryByText('Running…')).toBeNull();
 });

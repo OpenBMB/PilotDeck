@@ -84,7 +84,6 @@ function ChatInterfaceV2({
   onNavigateToSession,
   onShowSettings,
   autoExpandTools,
-  showRawParameters,
   showThinking,
   inlineThinking,
   autoScrollToBottom,
@@ -917,7 +916,6 @@ function ChatInterfaceV2({
           onShowSettings={onShowSettings}
           onGrantSessionToolPermission={handleGrantSessionToolPermission}
           autoExpandTools={autoExpandTools}
-          showRawParameters={showRawParameters}
           showThinking={showThinking}
           inlineThinking={inlineThinking}
           setInput={setInput}

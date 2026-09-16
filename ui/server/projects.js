@@ -64,6 +64,20 @@ async function detectTaskMaster(projectPath) {
 
 const directoryCache = new Map();
 
+// Order snapshots by when their scan starts, not when it finishes. A slow
+// pre-creation scan must never overwrite a successfully registered project.
+let projectListRevision = Date.now();
+function nextProjectListRevision() {
+    projectListRevision = Math.max(Date.now(), projectListRevision + 1);
+    return projectListRevision;
+}
+
+async function getProjectsSnapshot(progressCallback = null) {
+    const revision = nextProjectListRevision();
+    const projects = await getProjects(progressCallback);
+    return { projects, revision };
+}
+
 function rememberProjectDirectory(name, fullPath) {
     if (!name || !fullPath) return;
     directoryCache.set(name, fullPath);
@@ -467,6 +481,7 @@ async function addProjectManually(projectPath, _displayName = null) {
             `[projects] failed to materialize PilotDeck project dir for ${name}:`,
             error?.message || error,
         );
+        throw error;
     }
 
     return {
@@ -474,6 +489,8 @@ async function addProjectManually(projectPath, _displayName = null) {
         displayName: projectDisplayName(absolute),
         fullPath: absolute,
         path: absolute,
+        lastActivity: await readProjectCreatedAt(name),
+        projectListRevision: nextProjectListRevision(),
     };
 }
 
@@ -689,6 +706,7 @@ async function searchConversations(query, limit = 50, onProjectResult = null, si
 
 export {
     getProjects,
+    getProjectsSnapshot,
     getProjectCronJobsOverview,
     getSessions,
     renameProject,

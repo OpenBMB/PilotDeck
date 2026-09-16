@@ -88,7 +88,7 @@ describe('useChatComposerState attachment submission', () => {
     });
     const sendMessage = vi.fn(() => true);
     const enqueuePreparedInput = vi.fn(async () => ({ ok: true }));
-    const initialChoice = { mode: 'model' as const, provider: 'zeta', model: 'configured', reasoning: 0.8, temperature: 0.3, speed: 1 };
+    const initialChoice = { mode: 'model' as const, provider: 'zeta', model: 'configured', reasoning: 0.8, speed: 1 };
     const selectedProject = { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' };
     const selectedSession = queued ? { id: 'web:queue' } : null;
     const { result, rerender } = renderHook(({ modelSelection }) => useChatComposerState({
@@ -378,4 +378,41 @@ describe('useChatComposerState attachment submission', () => {
       attachments: [expect.objectContaining({ name: 'b.txt', uploadId: 'upload-new' })],
     }), null);
   });
+
+  it.each(['accepted', 'rejected', 'network-error'] as const)('updates activity before the queue reply and handles %s', async (outcome) => {
+    let complete!: (value: { ok: boolean; error?: string }) => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<{ ok: boolean; error?: string }>((resolve, fail) => { complete = resolve; reject = fail; });
+    const rollback = vi.fn();
+    const onSessionActivityBump = vi.fn(() => rollback);
+    const enqueuePreparedInput = vi.fn((_item: { id: string }) => pending);
+    const addMessage = vi.fn();
+    const options = {
+      selectedProject: { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' },
+      selectedSession: { id: 'web:queue' }, currentSessionId: 'web:queue',
+      model: 'provider/model', permissionMode: 'default', runMode: 'agent', cycleRunMode: vi.fn(),
+      isLoading: false, canAbortSession: false, tokenBudget: null, sendMessage: vi.fn(() => true), enqueuePreparedInput,
+      onSessionActivityBump,
+      pendingViewSessionRef: { current: null }, scrollToBottom: vi.fn(), addMessage,
+      clearMessages: vi.fn(), rewindMessages: vi.fn(), setIsLoading: vi.fn(), setCanAbortSession: vi.fn(),
+      setIsAborting: vi.fn(), setClaudeStatus: vi.fn(), setPilotDeckStatus: vi.fn(), setIsUserScrolledUp: vi.fn(),
+      pendingPermissionRequests: [], setPendingPermissionRequests: vi.fn(),
+    };
+    const { result } = renderHook(() => useChatComposerState(options));
+    act(() => result.current.setInput('Activity check'));
+    let submitting!: Promise<void>;
+    act(() => { submitting = result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    await waitFor(() => expect(enqueuePreparedInput).toHaveBeenCalledTimes(1));
+    expect(onSessionActivityBump).toHaveBeenCalledWith('demo', 'web:queue', 'Activity check', enqueuePreparedInput.mock.calls[0][0].id);
+    expect(rollback).not.toHaveBeenCalled();
+    await act(async () => {
+      if (outcome === 'network-error') reject(new Error('Connection lost'));
+      else complete({ ok: outcome === 'accepted', error: outcome === 'rejected' ? 'Queue rejected' : undefined });
+      await submitting;
+    });
+    expect(onSessionActivityBump).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(outcome === 'accepted' ? 0 : 1);
+    if (outcome !== 'accepted') expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }), 'web:queue');
+  });
+
 });

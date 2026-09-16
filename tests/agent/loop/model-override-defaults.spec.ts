@@ -10,13 +10,12 @@ import type { CanonicalMessage, CanonicalModelRequest } from "../../../src/model
 import { createDefaultPermissionContext } from "../../../src/permission/index.js";
 import { ToolRegistry } from "../../../src/tool/index.js";
 
-test("provider and model overrides retain configured temperature, speed, and thinking defaults", async () => {
+test("provider and model overrides retain configured speed and thinking defaults", async () => {
   const thinking = { enabled: true, mode: "high" as const };
   const config: AgentRuntimeConfig = {
     provider: "openai",
     model: "default-model",
     cwd: "/workspace/project",
-    temperature: 0.35,
     thinking,
     permissionMode: "default",
     permissionContext: createDefaultPermissionContext({
@@ -51,7 +50,6 @@ test("provider and model overrides retain configured temperature, speed, and thi
 
   assert.equal(request.provider, "anthropic");
   assert.equal(request.model, "selected-model");
-  assert.equal(request.temperature, 0.35);
   assert.equal(request.speed, 0.7);
   assert.deepEqual(request.thinking, thinking);
 });

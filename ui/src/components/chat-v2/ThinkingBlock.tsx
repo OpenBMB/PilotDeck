@@ -23,7 +23,7 @@ export function ThinkingBlock({ content, isStreaming, inline, projectName, onFil
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
-        className={`hover-brand-text flex items-center gap-1.5 text-left text-[13px] font-medium ${inline
+        className={`hover-brand-text flex items-center gap-2 text-left text-[13px] font-medium ${inline
           ? 'text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300'
           : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'}`}
       >
@@ -39,7 +39,7 @@ export function ThinkingBlock({ content, isStreaming, inline, projectName, onFil
         <StreamingScrollViewport
           label={t('thinking.liveContentLabel', { defaultValue: 'Live thinking content' })}
           enabled={expanded && (isStreaming || text !== content)}
-          className={`mt-1.5 border-l-2 pl-3 text-[13px] text-neutral-600 dark:text-neutral-300 ${inline
+          className={`ml-[22px] mt-1.5 border-l-2 pl-3 text-[13px] text-neutral-600 dark:text-neutral-300 ${inline
             ? 'border-blue-400/50 dark:border-blue-500/40'
             : 'border-neutral-200 dark:border-neutral-700'}`}
         >

@@ -184,7 +184,6 @@ export type GatewayEvent = GatewayTurnScopedEventMetadata & (
       model: string;
       source: "turn" | "session" | "router" | "default";
       reasoning?: number;
-      temperature?: number;
       speed?: number;
     }
   | { type: "assistant_text_delta"; text: string; model?: string; blockId?: string }
@@ -463,7 +462,6 @@ export type ModelCatalogItem = {
   available: boolean;
   capabilities: {
     reasoning?: ModelNumericCapability;
-    temperature?: ModelNumericCapability;
     speed?: ModelNumericCapability;
   };
 };
@@ -487,7 +485,6 @@ export type ExplicitModelSelection = {
   provider: string;
   model: string;
   reasoning?: number;
-  temperature?: number;
   speed?: number;
 };
 
@@ -502,7 +499,6 @@ export type SessionModelResult = SessionModelInput & {
     model: string;
     source: "session" | "router" | "default";
     reasoning?: number;
-    temperature?: number;
     speed?: number;
   };
 };

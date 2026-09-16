@@ -132,7 +132,6 @@ describe('queued input persistence', () => {
                     provider: 'openai',
                     model: 'gpt-test',
                     reasoning: 0.8,
-                    temperature: 0.2,
                     speed: 1,
                 },
                 uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
@@ -149,7 +148,6 @@ describe('queued input persistence', () => {
                 provider: 'openai',
                 model: 'gpt-test',
                 reasoning: 0.8,
-                temperature: 0.2,
                 speed: 1,
             },
             uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
@@ -928,7 +926,7 @@ describe('Always-On turn notification forwarding', () => {
 
 describe('dialog model preference frames', () => {
     it('keeps Auto and explicit parameter choices in persisted queued messages', () => {
-        for (const selection of [{ mode: 'auto' }, { mode: 'model', provider: 'chosen', model: 'selected', reasoning: 0.8, temperature: 0.3, speed: 1 }]) {
+        for (const selection of [{ mode: 'auto' }, { mode: 'model', provider: 'chosen', model: 'selected', reasoning: 0.8, speed: 1 }]) {
             const item = { id: 'queued-model', options: { modelSelection: selection } };
             expect(hydrateQueuedInputOptions(restoreQueuedInputFromStorage(serializeQueuedInputForStorage(item)).options).modelSelection).toEqual(selection);
         }

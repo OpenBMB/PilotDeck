@@ -19,6 +19,7 @@ export type RawProviderConfig = {
 };
 
 export type RawModelDefinition = {
+  thinking?: unknown;
   displayName?: unknown;
   capabilities?: unknown;
   multimodal?: unknown;

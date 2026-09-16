@@ -34,6 +34,7 @@ import {
   getLiveProcessGroupStep,
   getLiveProcessGroups,
   isPendingToolUseMessage,
+  isSingleToolProcess,
   shouldRenderLiveProcessGroup,
   splitLiveProcessGroupDetailMessages,
   type LiveProcessGroup,
@@ -75,7 +76,6 @@ type MessagesPaneV2Props = {
     suggestion: PilotDeckPermissionSuggestion,
   ) => SessionPermissionGrantResult | null | undefined;
   autoExpandTools?: boolean;
-  showRawParameters?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
   setInput: Dispatch<SetStateAction<string>>;
@@ -360,7 +360,6 @@ function MessagesPaneV2({
   onShowSettings,
   onGrantSessionToolPermission,
   autoExpandTools,
-  showRawParameters,
   showThinking,
   inlineThinking,
   setInput,
@@ -538,6 +537,25 @@ function MessagesPaneV2({
       : [],
     [isAssistantWorking, renderableMessages, runMode],
   );
+  // Initialize the enclosing group's state once. A single call has no group
+  // toggle yet, so inherit its expansion when the enclosing row first appears.
+  // After that, parent and child toggles (and the completed trace) are independent.
+  useLayoutEffect(() => {
+    setExpandedProcessRows(current => {
+      let next = current;
+      for (const group of liveProcessGroups) {
+        if (isSingleToolProcess(group.messages) || next.has(group.id)) continue;
+        const expanded = group.detailMessages.some(message => {
+          const key = `${String(message.turnId || message.runId || 'legacy-turn')}:${String(message.toolId || message.toolCallId || message.id || message.toolName || 'tool')}:input`;
+          return Boolean(message.isToolUse && isToolSectionExpanded(key, autoExpandTools));
+        });
+        if (next === current) next = new Map(current);
+        next.set(group.id, expanded);
+      }
+      return next;
+    });
+  }, [liveProcessGroups, isToolSectionExpanded, autoExpandTools]);
+
   const liveProcessGroupsByAnchor = useMemo(() => {
     const groupsByAnchor = new Map<number, LiveProcessGroup[]>();
     for (const group of liveProcessGroups) {
@@ -909,7 +927,6 @@ function MessagesPaneV2({
         onShowSettings={onShowSettings}
         onGrantSessionToolPermission={onGrantSessionToolPermission}
         autoExpandTools={autoExpandTools}
-        showRawParameters={showRawParameters}
         showThinking={showThinking}
         inlineThinking={inlineThinking}
         isProcessExpanded={isProcessExpanded}
@@ -940,7 +957,6 @@ function MessagesPaneV2({
     isProcessExpanded,
     isToolSectionExpanded,
     handleProcessExpandedChange,
-    showRawParameters,
     showThinking,
     isAssistantWorking,
     sessionRuntimeState,
@@ -949,8 +965,11 @@ function MessagesPaneV2({
   const renderLiveProcessGroup = useCallback((group: LiveProcessGroup, index: number) => {
     const isLatestGroup = liveProcessGroups[liveProcessGroups.length - 1]?.id === group.id;
     const step = getLiveProcessGroupStep(group, t, group.isRunning && isLatestGroup ? liveStatusStep : null);
-    const expanded = isProcessExpanded(group.id);
     const { beforeStatusMessages, statusDetailMessages } = splitLiveProcessGroupDetailMessages(group);
+    if (isSingleToolProcess(group.messages)) {
+      return <Fragment key={group.id}>{renderLiveProcessDetailMessages(group.detailMessages, group.id)}</Fragment>;
+    }
+    const expanded = isProcessExpanded(group.id);
     return (
       <Fragment key={group.id || `${group.afterOriginalIndex}-${index}`}>
         {expanded && beforeStatusMessages.length > 0 ? (
@@ -1040,7 +1059,6 @@ function MessagesPaneV2({
         onShowSettings={onShowSettings}
         onGrantSessionToolPermission={onGrantSessionToolPermission}
         autoExpandTools={autoExpandTools}
-        showRawParameters={showRawParameters}
         showThinking={showThinking}
         inlineThinking={inlineThinking}
         isProcessExpanded={isProcessExpanded}
@@ -1159,7 +1177,6 @@ function MessagesPaneV2({
     provider,
     renderLiveProcessGroup,
     selectedProject,
-    showRawParameters,
     showThinking,
     subagentActivityById,
     subagentThinkingById,
@@ -1442,7 +1459,9 @@ function MessagesPaneV2({
               />
             ) : null}
 
-            {shouldRenderBottomLiveStatus ? (
+            {shouldRenderBottomLiveStatus && liveProcessGroups.length === 0 && isSingleToolProcess(liveProcessDetailMessages) ? (
+              renderLiveProcessDetailMessages(liveProcessDetailMessages, 'bottom-live-process')
+            ) : shouldRenderBottomLiveStatus ? (
               <ProcessLiveStatus
                 step={liveStatusStep}
                 expanded={bottomLiveStatusExpanded}

@@ -267,13 +267,13 @@ export interface ChatInterfaceProps {
     projectName: string,
     sessionId: string,
     optimisticTitle?: string,
-  ) => void;
+    inputId?: string,
+  ) => void | (() => void);
   processingSessions?: Set<string>;
   onReplaceTemporarySession?: (sessionId?: string | null) => void;
   onNavigateToSession?: (targetSessionId: string) => void;
   onShowSettings?: () => void;
   autoExpandTools?: boolean;
-  showRawParameters?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
   autoScrollToBottom?: boolean;

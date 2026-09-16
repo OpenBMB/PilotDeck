@@ -28,7 +28,7 @@ import ImageLightbox, { type LightboxImage } from '../chat/view/subcomponents/Im
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { formatUsageLimitText } from '../chat/utils/chatFormatting';
 import { ProcessTrace } from './ProcessTrace';
-import { processSummaryToTrace, type ProcessAttachment } from './processGrouping';
+import { isSingleToolProcess, processSummaryToTrace, type ProcessAttachment } from './processGrouping';
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import { ThinkingBlock } from './ThinkingBlock';
@@ -97,7 +97,6 @@ type MessageRowV2Props = {
     suggestion: PilotDeckPermissionSuggestion,
   ) => SessionPermissionGrantResult | null | undefined;
   autoExpandTools?: boolean;
-  showRawParameters?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
   isProcessExpanded?: (processKey: string, defaultExpanded?: boolean) => boolean;
@@ -143,7 +142,6 @@ function MessageRowV2({
   onShowSettings,
   onGrantSessionToolPermission,
   autoExpandTools,
-  showRawParameters,
   showThinking,
   inlineThinking,
   isProcessExpanded,
@@ -282,7 +280,6 @@ function MessageRowV2({
           onShowSettings={onShowSettings}
           onGrantSessionToolPermission={onGrantSessionToolPermission}
           autoExpandTools={autoExpandTools}
-          showRawParameters={showRawParameters}
           showThinking={showThinking}
           isProcessExpanded={isProcessExpanded}
           onProcessExpandedChange={onProcessExpandedChange}
@@ -327,7 +324,7 @@ function MessageRowV2({
 
   if (delegate) {
     return withProcessRows(
-      <div className="ui-v2-legacy-row">
+      <div className="ui-v2-legacy-row min-w-0 w-full">
         <MessageComponent
           message={message}
           prevMessage={prevMessage}
@@ -336,13 +333,13 @@ function MessageRowV2({
           onShowSettings={onShowSettings}
           onGrantSessionToolPermission={onGrantSessionToolPermission}
           autoExpandTools={autoExpandTools}
-          showRawParameters={showRawParameters}
           showThinking={showThinking}
           isToolSectionExpanded={isToolSectionExpanded}
           onToolSectionExpandedChange={onToolSectionExpandedChange}
           selectedProject={selectedProject ?? null}
           provider={provider}
           hideHeader
+          isSessionRunning={isSessionRunning}
         />
       </div>,
     );
@@ -797,6 +794,11 @@ function ProcessAttachmentRow({
       })),
     [attachment.inlineImages],
   );
+
+  // The tool row itself owns image previews when there is no enclosing group.
+  if (isSingleToolProcess(attachment.processMessages)) {
+    return renderDetail(attachment.processDetailMessages[0], 0);
+  }
 
   return (
     <div className="flex min-w-0 flex-col items-start gap-2">

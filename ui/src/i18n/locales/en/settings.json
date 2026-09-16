@@ -223,7 +223,6 @@
     },
     "darkMode": "Dark Mode",
     "autoExpandTools": "Auto-expand tools",
-    "showRawParameters": "Show raw parameters",
     "showThinking": "Show thinking",
     "inlineThinking": "Inline thinking (typewriter animation)",
     "autoScrollToBottom": "Auto-scroll to bottom",
@@ -970,6 +969,29 @@
       },
       "models": {
         "modelSettings": {
+          "thinkingEnabled": "Thinking mode",
+          "thinkingDisabled": "Disable thinking",
+          "thinkingEfforts": "Supported reasoning efforts",
+          "thinkingEffortsHelp": "Select only efforts supported by your endpoint. Leave all unchecked to show only Default and omit effort.",
+          "thinkingAdvanced": "Advanced settings",
+          "thinkingFormat": "Thinking parameter format",
+          "thinkingFormatHelp": "Choose the format accepted by your endpoint. Custom OpenAI-compatible endpoints use OpenAI by default; Qwen can use cloud or self-hosted formats. Unsupported parameters may be rejected.",
+          "thinkingHelp": {
+            "default": "Omit thinking controls and use the server default.",
+            "enabled": "Request thinking when the API supports a switch. Default omits effort; APIs without a separate switch keep their server default.",
+            "disabled": "Request thinking off and omit effort levels. APIs that cannot disable thinking will report an error."
+          },
+          "thinkingFormats": {
+            "provider": "Follow provider",
+            "openai": "OpenAI standard",
+            "thinking-type": "DeepSeek / Kimi / GLM",
+            "qwen-cloud": "Qwen cloud (DashScope)",
+            "qwen-local": "Qwen self-hosted",
+            "anthropic": "Anthropic native",
+            "google": "Google native",
+            "openrouter": "OpenRouter",
+            "server-default": "Server default only"
+          },
           "title": "Model settings",
           "save": "Save",
           "saveFailed": "Could not save model settings.",

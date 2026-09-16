@@ -64,8 +64,9 @@ import { getDefaultPtyShell } from './utils/defaultShell.js';
 import { pickNativeFolder } from './utils/nativeFolderPicker.js';
 import { browseDirectories } from './utils/browseDirectories.js';
 import { getOpenUrlSpawnCommand } from './utils/processSpawn.js';
+import { createProjectUpdateScheduler } from './projectUpdateScheduler.js';
 
-import { getProjects, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
+import { getProjectsSnapshot, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
 import {
     runChatViaGateway,
     replaceLastTurnViaGateway,
@@ -196,7 +197,7 @@ const WATCHER_IGNORED_PATTERNS = [
 ];
 const WATCHER_DEBOUNCE_MS = 300;
 let projectsWatchers = [];
-let projectsWatcherDebounceTimer = null;
+let projectUpdateScheduler = null;
 const connectedClients = new Set();
 const sessionActivityRegistry = createSessionActivityRegistry();
 function broadcastSessionActivity(frame, userId) {
@@ -215,7 +216,6 @@ registerAlwaysOnNotificationForwarding(connectedClients, createBackgroundSession
     broadcastActivity: broadcastSessionActivity,
     forwardToWatchers: broadcastToSessionWatchers,
 }));
-let isGetProjectsRunning = false; // Flag to prevent reentrant calls
 
 function normalizeSessionId(value) {
     if (typeof value !== 'string') return null;
@@ -304,10 +304,7 @@ process.on('pilotdeck:config-broadcast', broadcastConfigReloaded);
 async function setupProjectsWatcher() {
     const chokidar = (await import('chokidar')).default;
 
-    if (projectsWatcherDebounceTimer) {
-        clearTimeout(projectsWatcherDebounceTimer);
-        projectsWatcherDebounceTimer = null;
-    }
+    projectUpdateScheduler?.dispose();
 
     await Promise.all(
         projectsWatchers.map(async (watcher) => {
@@ -320,48 +317,31 @@ async function setupProjectsWatcher() {
     );
     projectsWatchers = [];
 
+    const scheduler = createProjectUpdateScheduler({
+        debounceMs: WATCHER_DEBOUNCE_MS,
+        scan: () => {
+            clearProjectDirectoryCache();
+            return getProjectsSnapshot(broadcastProgress);
+        },
+        publish: (snapshot, { eventType, filePath, provider, rootPath }) => {
+            const updateMessage = JSON.stringify({
+                type: 'projects_updated',
+                projects: snapshot.projects,
+                projectListRevision: snapshot.revision,
+                timestamp: new Date().toISOString(),
+                changeType: eventType,
+                changedFile: path.relative(rootPath, filePath),
+                watchProvider: provider,
+            });
+            connectedClients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) client.send(updateMessage);
+            });
+        },
+        onError: (error) => console.error('[ERROR] Error handling project changes:', error),
+    });
+    projectUpdateScheduler = scheduler;
     const debouncedUpdate = (eventType, filePath, provider, rootPath) => {
-        if (projectsWatcherDebounceTimer) {
-            clearTimeout(projectsWatcherDebounceTimer);
-        }
-
-        projectsWatcherDebounceTimer = setTimeout(async () => {
-            // Prevent reentrant calls
-            if (isGetProjectsRunning) {
-                return;
-            }
-
-            try {
-                isGetProjectsRunning = true;
-
-                // Clear project directory cache when files change
-                clearProjectDirectoryCache();
-
-                // Get updated projects list
-                const updatedProjects = await getProjects(broadcastProgress);
-
-                // Notify all connected clients about the project changes
-                const updateMessage = JSON.stringify({
-                    type: 'projects_updated',
-                    projects: updatedProjects,
-                    timestamp: new Date().toISOString(),
-                    changeType: eventType,
-                    changedFile: path.relative(rootPath, filePath),
-                    watchProvider: provider
-                });
-
-                connectedClients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(updateMessage);
-                    }
-                });
-
-            } catch (error) {
-                console.error('[ERROR] Error handling project changes:', error);
-            } finally {
-                isGetProjectsRunning = false;
-            }
-        }, WATCHER_DEBOUNCE_MS);
+        scheduler.schedule({ eventType, filePath, provider, rootPath });
     };
 
     for (const { provider, rootPath } of PROVIDER_WATCH_PATHS) {
@@ -916,8 +896,9 @@ app.use(express.static(path.join(__dirname, '../dist'), {
 
 app.get('/api/projects', authenticateToken, async (req, res) => {
     try {
-        const projects = await getProjects(broadcastProgress);
-        res.json(projects);
+        const snapshot = await getProjectsSnapshot(broadcastProgress);
+        res.setHeader('X-Projects-Revision', String(snapshot.revision));
+        res.json(snapshot.projects);
     } catch (error) {
         if (isGatewayUnavailableError(error)) {
             return res.status(503).json({
@@ -972,6 +953,11 @@ app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, 
             relativeTranscriptPath: req.query.relativeTranscriptPath || null,
         });
         sessionNamesDb.deleteName(sessionId, 'pilotdeck');
+        const userId = req.user?.id ?? req.user?.userId ?? null;
+        const payload = JSON.stringify({ type: 'session-deleted', projectName, sessionId });
+        connectedClients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) client.send(payload);
+        });
         console.log(`[API] Session ${sessionId} deleted successfully`);
         res.json({ success: true });
     } catch (error) {
@@ -2614,6 +2600,18 @@ function handleChatConnection(ws, request) {
                 });
             } else if (data.type === 'delete-queued-input') {
                 const result = await deleteQueuedInputViaGateway(requestSessionId, data.itemId, streamWriter);
+                if (result.ok) {
+                    // A submitting tab can retain sidebar activity after navigating
+                    // away (and unwatching). Notify every socket for this user.
+                    const payload = JSON.stringify({
+                        type: 'session-input-removed', sessionId: requestSessionId, itemId: data.itemId,
+                    });
+                    connectedClients.forEach((client) => {
+                        if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) {
+                            client.send(payload);
+                        }
+                    });
+                }
                 writer.send({
                     type: 'input-queue-operation-result',
                     operation: 'delete',

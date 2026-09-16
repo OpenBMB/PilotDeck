@@ -30,6 +30,7 @@ test("session title generator asks the model to preserve the user's language", a
   });
 
   assert.equal(title, "修复登录流程");
+  assert.ok(request && !("temperature" in request));
   assert.match(request?.systemPrompt ?? "", /same natural language as the user's input/);
   assert.match(request?.systemPrompt ?? "", /Do not translate.*English/);
   assert.match(request?.systemPrompt ?? "", /System language: en-US/);

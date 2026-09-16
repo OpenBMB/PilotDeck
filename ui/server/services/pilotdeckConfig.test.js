@@ -7,6 +7,7 @@ import {
     buildDefaultPilotDeckConfig,
     buildMemoryLlmOptions,
     buildRuntimeEnv,
+    normalizePilotDeckConfig,
     readPilotDeckConfigFile,
     resolveConfiguredProviderApiKey,
     resolveModel,
@@ -68,7 +69,7 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         expect(record.parseError).toBeNull();
         expect(record.rawYaml).toMatchObject({ schemaVersion: 1, model: { providers: {} } });
         expect(record.config.model.providers).toEqual({});
-        expect(record.config.memory.enabled).toBe(true);
+        expect(record.config.memory.enabled).toBe(false);
     });
 
     it('keeps raw YAML and falls back to defaults when YAML is invalid', () => {
@@ -93,6 +94,47 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         expect(response.revision).toMatch(/^[a-f0-9]{64}$/);
         expect(response.raw).toContain('appSecret: "********"');
         expect(response.raw).not.toContain('super-secret');
+    });
+});
+
+describe('optional feature defaults', () => {
+    it('keeps advanced features and message channels off for a new user', () => {
+        useTempConfig(null);
+        expect(readPilotDeckConfigFile().config).toMatchObject({
+            memory: { enabled: false },
+            router: { enabled: false },
+            tools: { webSearch: { enabled: false } },
+            alwaysOn: { projects: {} },
+            adapters: {
+                feishu: { enabled: false },
+                weixin: { enabled: false },
+                wecom: { enabled: false },
+            },
+        });
+    });
+
+    it.each([true, false])('preserves existing explicit feature settings enabled=%s', (enabled) => {
+        const configured = {
+            memory: { enabled, model: 'test/model' },
+            router: { enabled, scenarios: { default: 'test/model' } },
+            tools: { webSearch: { enabled, provider: 'tavily', apiKey: 'search-key' } },
+            alwaysOn: { projects: { '/test-project': { enabled } } },
+            adapters: { feishu: { enabled, appId: 'app' }, weixin: { enabled }, wecom: { enabled, token: 'bot' } },
+        };
+        const normalized = normalizePilotDeckConfig(configured);
+        expect(normalized).toMatchObject(configured);
+        expect(normalizePilotDeckConfig(normalized)).toEqual(normalized);
+    });
+
+    it('preserves legacy configured sections without an enabled flag', () => {
+        const normalized = normalizePilotDeckConfig({
+            memory: { model: 'test/model' },
+            router: { scenarios: { default: 'test/model' } },
+            tools: { webSearch: { provider: 'tavily', apiKey: 'search-key' } },
+        });
+        expect(normalized.memory.enabled).toBe(true);
+        expect(normalized.router.enabled).toBe(true);
+        expect(normalized.tools.webSearch.enabled).toBe(true);
     });
 });
 
@@ -923,6 +965,25 @@ describe('validatePilotDeckConfig web search settings', () => {
             expect(validation.errors).not.toEqual(expect.arrayContaining([
                 expect.stringContaining('tools.webSearch.provider'),
             ]));
+        }
+    });
+});
+
+describe('model thinking settings', () => {
+    const config = thinking => ({
+        agent: { model: 'custom/test' },
+        model: { providers: { custom: { protocol: 'openai', url: 'https://example.test/v1', apiKey: 'test-key', models: { test: { thinking } } } } },
+    });
+    it('accepts the three states and manually configured effort subsets', () => {
+        for (const state of ['default', 'enabled', 'disabled']) {
+            expect(validatePilotDeckConfig(config({ state, efforts: ['low', 'medium', 'xhigh'], format: 'qwen-local' })).valid).toBe(true);
+        }
+    });
+    it('rejects invalid effort and incompatible formats before saving', () => {
+        for (const thinking of [{state:'both'}, {efforts:['ultra']}, {format:'anthropic'}]) {
+            const result = validatePilotDeckConfig(config(thinking));
+            expect(result.valid).toBe(false);
+            expect(result.errors.join(' ')).toContain('thinking');
         }
     });
 });

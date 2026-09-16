@@ -642,7 +642,6 @@
     "subagentTitle": "Subagent / {{type}}: {{description}}",
     "toolHistory": "View tool history ({{count}})",
     "copyClipboard": "Copy to clipboard",
-    "rawParams": "Raw parameters",
     "toolRenderFailed": "Tool output could not be rendered.",
     "todoCount": "Todo list ({{count}})",
     "taskStatus": {
