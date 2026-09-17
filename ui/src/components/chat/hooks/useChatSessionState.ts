@@ -247,13 +247,18 @@ function getUserAttachmentNames(message: ChatMessage): string[] {
   return [...explicitNames, ...parsedNames].sort();
 }
 
-function hasEquivalentUserMessage(messages: ChatMessage[], pendingUserMessage: ChatMessage): boolean {
+export function hasEquivalentUserMessage(messages: ChatMessage[], pendingUserMessage: ChatMessage): boolean {
+  const pendingTurnId = pendingUserMessage.turnId || pendingUserMessage.runId;
   const pendingText = normalizeUserMessageText(pendingUserMessage.content);
   const pendingImageCount = Array.isArray(pendingUserMessage.images) ? pendingUserMessage.images.length : 0;
   const pendingAttachmentNames = getUserAttachmentNames(pendingUserMessage);
 
   return messages.some((message) => {
     if (message.type !== 'user') return false;
+    const messageTurnId = message.turnId || message.runId;
+    if (pendingTurnId || messageTurnId) {
+      return Boolean(pendingTurnId && messageTurnId && pendingTurnId === messageTurnId);
+    }
     if (normalizeUserMessageText(message.content) !== pendingText) return false;
 
     const imageCount = Array.isArray(message.images) ? message.images.length : 0;

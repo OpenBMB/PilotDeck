@@ -1,50 +1,37 @@
-import type { CanonicalModelRequest, CanonicalThinkingConfig, ModelDefinition, ProviderConfig } from "../protocol/canonical.js";
-import { ModelRequestError } from "../protocol/errors.js";
+import type { CanonicalModelRequest, CanonicalThinkingConfig, ModelDefinition, ProviderConfig } from '../protocol/canonical.js';
+import { ModelRequestError } from '../protocol/errors.js';
+import { THINKING_EFFORTS, type ThinkingEffort, type ThinkingFormat } from './settings.js';
 
-export type ThinkingMode = NonNullable<CanonicalThinkingConfig["mode"]>;
-
+export type ThinkingMode = NonNullable<CanonicalThinkingConfig['mode']>;
 export type ThinkingPlan = {
   mode: ThinkingMode;
   enabled: boolean;
-  budgetTokens?: number;
-  preserve?: boolean;
-  splitReasoning?: boolean;
-  effort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-  thinkingType?: "enabled" | "disabled" | "adaptive";
-  thinkingLevel?: "low" | "medium" | "high";
-  useGeminiBudget?: boolean;
-  useGeminiLevel?: boolean;
-  useOpenAIReasoning?: boolean;
-  useOpenAICompatibleThinking?: boolean;
   bodyPatch?: Record<string, unknown>;
+  thinkingType?: 'adaptive' | 'disabled';
+  effort?: ThinkingEffort | 'none';
   useAnthropicOutputEffort?: boolean;
-  omitTemperature?: boolean;
+  useOpenAIReasoning?: boolean;
+  thinkingLevel?: ThinkingEffort;
   unsupportedReason?: string;
 };
 
-const GEMINI_25_BUDGETS: Partial<Record<ThinkingMode, number>> = {
-  minimal: 1024,
-  low: 1024,
-  medium: 8192,
-  high: 24576,
-  xhigh: 24576,
-  max: 24576,
-};
-
-const QWEN_BUDGETS: Partial<Record<ThinkingMode, number>> = {
-  minimal: 1024,
-  low: 2048,
-  medium: 8192,
-  high: 24576,
-  xhigh: 38912,
-  max: 38912,
-};
-
+/** Legacy off/minimal/budget settings no longer control model reasoning. */
 export function normalizeThinkingMode(thinking?: CanonicalThinkingConfig): ThinkingMode {
-  if (!thinking) return "default";
-  if (thinking.mode) return thinking.mode;
-  if (thinking.enabled === true) return "medium";
-  return "default";
+  return THINKING_EFFORTS.includes(thinking?.mode as ThinkingEffort) ? thinking!.mode! : 'default';
+}
+
+function resolveFormat(provider: ProviderConfig, format: ThinkingFormat): ThinkingFormat {
+  if (format !== 'provider') return format;
+  if (provider.protocol === 'anthropic') return 'anthropic';
+  if (provider.protocol === 'google') return 'google';
+  if (provider.protocol === 'openai-responses') return 'openai';
+  // Endpoint presets, never the model's name: proxies may translate native APIs.
+  const preset: Record<string, ThinkingFormat> = {
+    openai: 'openai', dashscope: 'qwen-cloud', deepseek: 'thinking-type',
+    moonshot: 'thinking-type', zhipu: 'thinking-type', openrouter: 'openrouter',
+    ollama: 'server-default', minimax: 'server-default', volc_ark: 'server-default',
+  };
+  return preset[provider.id] ?? 'openai';
 }
 
 export function resolveThinkingPlan(
@@ -52,260 +39,54 @@ export function resolveThinkingPlan(
   provider: ProviderConfig,
   model: ModelDefinition,
 ): ThinkingPlan {
-  const requestedMode = normalizeThinkingMode(requestThinking);
-  const explicitMode = requestThinking?.mode !== undefined;
-  const providerId = provider.id.toLowerCase();
-  const providerUrl = (provider.url ?? "").toLowerCase();
-  const modelId = model.id.toLowerCase();
-  const enabledByLegacy = requestThinking?.enabled === true && requestedMode === "default";
-  const mode = enabledByLegacy ? "medium" : requestedMode;
-
-  if (mode === "default") {
+  const settings = model.thinking;
+  const state = settings?.state ?? 'default';
+  // Model state always wins over stale conversation/agent preferences.
+  if (state === 'default') return { mode: 'default', enabled: false };
+  const off = state === 'disabled';
+  const mode = off ? 'off' : normalizeThinkingMode(requestThinking);
+  const plan: ThinkingPlan = { mode, enabled: !off };
+  const fail = (message: string): ThinkingPlan => ({ ...plan, unsupportedReason: `${model.id}: ${message}` });
+  const effort = mode !== 'default' && mode !== 'off' ? mode as ThinkingEffort : undefined;
+  if (effort && !settings?.efforts.includes(effort)) return fail(`Reasoning effort '${effort}' is not configured. Select Default or configure the model's supported efforts.`);
+  const format = resolveFormat(provider, settings?.format ?? 'provider');
+  if (format === 'server-default') {
+    if (off || effort) return fail('This parameter format only supports the server default. Choose a thinking parameter format in model settings.');
     return { mode, enabled: false };
   }
-
-  const budgetTokens = typeof requestThinking?.budgetTokens === "number" && Number.isFinite(requestThinking.budgetTokens)
-    ? requestThinking.budgetTokens
-    : undefined;
-  const isOff = mode === "off";
-  const explicitlyUnsupported = (model.capabilities as { supportsThinkingExplicit?: boolean }).supportsThinkingExplicit === false;
-
-  if (explicitMode && explicitlyUnsupported) {
-    return {
-      mode,
-      enabled: false,
-      unsupportedReason: `Model ${model.id} does not support thinking mode '${mode}'. Switch thinking strength back to Default.`,
-    };
+  if (format === 'openai') {
+    return { ...plan, effort: off ? 'none' : effort, useOpenAIReasoning: true };
+  }
+  if (format === 'anthropic') {
+    if (off) return { ...plan, thinkingType: 'disabled' };
+    // Older extended-thinking models require a token budget, which we do not generate.
+    const budgetOnly = /claude-(?:3|haiku-3|haiku-4|(?:sonnet|opus)-4(?:[.-][0-5](?:\D|$)|-20|$))/.test(model.id);
+    if (budgetOnly) return effort ? fail('This model requires a thinking budget; only Default is supported.') : { mode, enabled: false };
+    return { ...plan, thinkingType: 'adaptive', effort, useAnthropicOutputEffort: true };
+  }
+  if (format === 'google') {
+    if (off) return fail('Turning off thinking is not supported by this effort-only Gemini adapter. Uncheck both thinking options to use the server default.');
+    if (!/gemini-?3/.test(model.id)) return effort ? fail('This Gemini model has no supported thinking-level adapter. Select Default.') : { mode, enabled: false };
+    if (effort && !['low', 'medium', 'high'].includes(effort)) return fail(`Gemini thinkingLevel does not support '${effort}'.`);
+    return { ...plan, thinkingLevel: effort };
+  }
+  const effortPatch = effort ? { reasoning_effort: effort } : {};
+  // These official endpoint versions are always-thinking. Do not emit a fake switch.
+  if (settings?.format === 'provider' && ((provider.id === 'moonshot' && /^kimi-k3/.test(model.id)) ||
+      (provider.id === 'zhipu' && /^glm-?5\.3/.test(model.id)))) {
+    if (off) return fail('This model cannot disable thinking. Uncheck both options to use the server default.');
+    return { ...plan, bodyPatch: effortPatch };
   }
 
-  if (provider.protocol === "openai-responses" || isOpenAIProvider(providerId, providerUrl)) {
-    return openAIPlan(mode, modelId, isOpenAIProvider(providerId, providerUrl));
-  }
-  if (provider.protocol === "anthropic" || /anthropic|claude/.test(providerId + providerUrl + modelId)) {
-    return anthropicPlan(mode, modelId, budgetTokens);
-  }
-  if (provider.protocol === "google" || /google|gemini|generativelanguage/.test(providerId + providerUrl + modelId)) {
-    return googlePlan(mode, modelId, budgetTokens);
-  }
-  if (/zhipu|bigmodel|z\.ai|z-ai|glm/.test(providerId + providerUrl + modelId)) {
-    return glmPlan(mode, modelId);
-  }
-  if (/qwen|dashscope|aliyun|alibaba|tongyi/.test(providerId + providerUrl + modelId)) {
-    return qwenPlan(mode, modelId, providerUrl, budgetTokens);
-  }
-  if (/deepseek/.test(providerId + providerUrl + modelId)) {
-    return deepSeekPlan(mode, modelId);
-  }
-  if (/kimi|moonshot/.test(providerId + providerUrl + modelId)) {
-    return kimiPlan(mode, modelId);
-  }
-  if (/minimax/.test(providerId + providerUrl + modelId)) {
-    return minimaxPlan(mode);
-  }
-
-  if (explicitMode) {
-    return genericThinkingPlan(mode, budgetTokens);
-  }
-  return { mode, enabled: false };
+  if (format === 'qwen-cloud') return { ...plan, bodyPatch: { enable_thinking: !off, ...effortPatch } };
+  if (format === 'qwen-local') return { ...plan, bodyPatch: { chat_template_kwargs: { enable_thinking: !off }, ...effortPatch } };
+  if (format === 'openrouter') return { ...plan, bodyPatch: { reasoning: off ? { enabled: false } : { enabled: true, ...(effort ? { effort } : {}) } } };
+  return { ...plan, bodyPatch: { thinking: { type: off ? 'disabled' : 'enabled' }, ...effortPatch } };
 }
 
-export function throwIfUnsupportedThinkingPlan(
-  plan: ThinkingPlan,
-  request: CanonicalModelRequest,
-): void {
+export function throwIfUnsupportedThinkingPlan(plan: ThinkingPlan, request: CanonicalModelRequest): void {
   if (!plan.unsupportedReason) return;
-  throw new ModelRequestError("unsupported_thinking", plan.unsupportedReason, {
-    provider: request.provider,
-    model: request.model,
-    thinkingMode: plan.mode,
+  throw new ModelRequestError('unsupported_thinking', plan.unsupportedReason, {
+    provider: request.provider, model: request.model, thinkingMode: plan.mode,
   });
-}
-
-function isOpenAIProvider(providerId: string, providerUrl: string): boolean {
-  return /(^|[^a-z])openai([^a-z]|$)|api\.openai\.com/.test(providerId + " " + providerUrl);
-}
-
-function genericThinkingPlan(mode: ThinkingMode, budgetTokens?: number): ThinkingPlan {
-  if (mode === "off") return { mode, enabled: false, bodyPatch: { enable_thinking: false } };
-  return {
-    mode,
-    enabled: true,
-    budgetTokens: budgetTokens ?? QWEN_BUDGETS[mode] ?? effortBudget(mode),
-    bodyPatch: {
-      enable_thinking: true,
-      thinking_budget: budgetTokens ?? QWEN_BUDGETS[mode] ?? effortBudget(mode),
-    },
-  };
-}
-
-function openAIPlan(mode: ThinkingMode, modelId: string, officialOpenAIProvider: boolean): ThinkingPlan {
-  if (mode === "off") {
-    return modelId.includes("gpt-5.5")
-      ? { mode, enabled: true, effort: "none", useOpenAIReasoning: true }
-      : {
-        mode,
-        enabled: false,
-        unsupportedReason: `OpenAI model ${modelId} does not support an explicit off thinking mode. Switch thinking strength back to Default.`,
-      };
-  }
-  if (modelId.includes("gpt-5.5-pro")) {
-    return { mode, enabled: true, effort: clampEffort(mode, ["medium", "high", "xhigh"]), useOpenAIReasoning: true };
-  }
-  if (modelId.includes("gpt-5.5")) {
-    return { mode, enabled: true, effort: clampEffort(mode, ["none", "low", "medium", "high", "xhigh"]), useOpenAIReasoning: true };
-  }
-  if (modelId.includes("gpt-5")) {
-    return { mode, enabled: true, effort: clampEffort(mode, ["minimal", "low", "medium", "high"]), useOpenAIReasoning: true };
-  }
-  if (/^(?:o1|o3|o4)(?:\b|[-_])/.test(modelId)) {
-    return { mode, enabled: true, effort: clampEffort(mode, ["low", "medium", "high"]), useOpenAIReasoning: true };
-  }
-  if (officialOpenAIProvider && modelId.startsWith("gpt")) {
-    return {
-      mode,
-      enabled: false,
-      unsupportedReason: `OpenAI-compatible model ${modelId} does not advertise a known thinking mode adapter. Switch thinking strength back to Default.`,
-    };
-  }
-  return genericThinkingPlan(mode);
-}
-
-function anthropicPlan(mode: ThinkingMode, modelId: string, budgetTokens?: number): ThinkingPlan {
-  if (mode === "off") return { mode, enabled: false };
-  if (/opus-4\.8|opus-4\.7|sonnet-5|claude-.*(4\.8|4\.7|5)/.test(modelId)) {
-    return {
-      mode,
-      enabled: true,
-      thinkingType: "adaptive",
-      effort: clampEffort(mode, ["low", "medium", "high", "xhigh"]),
-      useAnthropicOutputEffort: true,
-    };
-  }
-  return { mode, enabled: true, thinkingType: "enabled", budgetTokens: budgetTokens ?? effortBudget(mode) };
-}
-
-function googlePlan(mode: ThinkingMode, modelId: string, budgetTokens?: number): ThinkingPlan {
-  if (/gemini-?3|gemini.*3\./.test(modelId)) {
-    if (mode === "off") return { mode, enabled: false };
-    return { mode, enabled: true, thinkingLevel: clampLevel(mode), useGeminiLevel: true };
-  }
-  if (/gemini-?2\.5|gemini.*2\.5/.test(modelId)) {
-    if (mode === "off") return { mode, enabled: true, budgetTokens: 0, useGeminiBudget: true };
-    return { mode, enabled: true, budgetTokens: budgetTokens ?? GEMINI_25_BUDGETS[mode] ?? 8192, useGeminiBudget: true };
-  }
-  if (mode === "off") return { mode, enabled: false };
-  return { mode, enabled: true, budgetTokens, useGeminiBudget: true };
-}
-
-function glmPlan(mode: ThinkingMode, modelId: string): ThinkingPlan {
-  if (mode === "off" || mode === "minimal") {
-    return { mode, enabled: false, thinkingType: "disabled", useOpenAICompatibleThinking: true };
-  }
-  const plan: ThinkingPlan = { mode, enabled: true, thinkingType: "enabled", useOpenAICompatibleThinking: true };
-  if (/glm-?5\.2|glm.*5\.2/.test(modelId)) {
-    plan.effort = mode === "xhigh" || mode === "max" ? "max" : "high";
-  }
-  return plan;
-}
-
-function qwenPlan(mode: ThinkingMode, modelId: string, providerUrl: string, budgetTokens?: number): ThinkingPlan {
-  const isModelBest = providerUrl.includes("llm-center.ali.modelbest.cn") || /^qwen_/.test(modelId);
-  if (isModelBest) {
-    if (mode === "off") {
-      return { mode, enabled: false, thinkingType: "disabled", useOpenAICompatibleThinking: true, preserve: true };
-    }
-    return {
-      mode,
-      enabled: true,
-      thinkingType: "enabled",
-      effort: clampEffort(mode, ["minimal", "low", "medium", "high", "xhigh"]),
-      useOpenAICompatibleThinking: true,
-      preserve: true,
-    };
-  }
-  const thinkingOnly = /thinking|qwq|qvq/.test(modelId) && !/hybrid/.test(modelId);
-  if (mode === "off" && thinkingOnly) return { mode, enabled: false };
-  if (mode === "off") return { mode, enabled: false, bodyPatch: { enable_thinking: false } };
-  return {
-    mode,
-    enabled: true,
-    budgetTokens: budgetTokens ?? QWEN_BUDGETS[mode] ?? 8192,
-    preserve: true,
-    bodyPatch: {
-      enable_thinking: true,
-      thinking_budget: budgetTokens ?? QWEN_BUDGETS[mode] ?? 8192,
-    },
-  };
-}
-
-function deepSeekPlan(mode: ThinkingMode, modelId: string): ThinkingPlan {
-  const isModelBest = /^deepseek_/.test(modelId);
-  if (mode === "off" || mode === "minimal") {
-    return { mode, enabled: false, thinkingType: "disabled", useOpenAICompatibleThinking: true, preserve: true };
-  }
-  if (isModelBest) {
-    return {
-      mode,
-      enabled: true,
-      thinkingType: "enabled",
-      useOpenAICompatibleThinking: true,
-      preserve: true,
-    };
-  }
-  return {
-    mode,
-    enabled: true,
-    thinkingType: "enabled",
-    effort: mode === "xhigh" || mode === "max" ? "max" : "high",
-    preserve: true,
-    useOpenAICompatibleThinking: true,
-  };
-}
-
-function kimiPlan(mode: ThinkingMode, _modelId: string): ThinkingPlan {
-  if (mode === "off") {
-    return { mode, enabled: false, thinkingType: "disabled", preserve: true, useOpenAICompatibleThinking: true, omitTemperature: true };
-  }
-  return { mode, enabled: mode !== "default", preserve: true, useOpenAICompatibleThinking: false, omitTemperature: true };
-}
-
-function minimaxPlan(mode: ThinkingMode): ThinkingPlan {
-  if (mode === "off") {
-    return { mode, enabled: false, thinkingType: "disabled", useOpenAICompatibleThinking: true };
-  }
-  if (mode === "default") return { mode, enabled: false };
-  return { mode, enabled: true, splitReasoning: true };
-}
-
-function clampEffort(mode: ThinkingMode, allowed: ThinkingPlan["effort"][]): NonNullable<ThinkingPlan["effort"]> {
-  const normalized = mode === "max" ? "xhigh" : mode;
-  if (allowed.includes(normalized as ThinkingPlan["effort"])) {
-    return normalized as NonNullable<ThinkingPlan["effort"]>;
-  }
-  const rank: Record<string, number> = { none: 0, off: 0, minimal: 1, low: 2, medium: 3, high: 4, xhigh: 5, max: 6 };
-  const requested = rank[mode] ?? 3;
-  let best = allowed[0] as NonNullable<ThinkingPlan["effort"]>;
-  let bestDistance = Infinity;
-  for (const effort of allowed) {
-    if (!effort) continue;
-    const distance = Math.abs((rank[effort] ?? 3) - requested);
-    if (distance < bestDistance) {
-      best = effort;
-      bestDistance = distance;
-    }
-  }
-  return best;
-}
-
-function clampLevel(mode: ThinkingMode): "low" | "medium" | "high" {
-  if (mode === "minimal" || mode === "low") return "low";
-  if (mode === "high" || mode === "xhigh" || mode === "max") return "high";
-  return "medium";
-}
-
-function effortBudget(mode: ThinkingMode): number {
-  if (mode === "minimal" || mode === "low") return 1024;
-  if (mode === "high") return 8192;
-  if (mode === "xhigh" || mode === "max") return 16000;
-  return 4096;
 }

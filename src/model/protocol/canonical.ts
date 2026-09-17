@@ -1,3 +1,5 @@
+import type { TimelinePosition } from "./timeline.js";
+import type { ModelThinkingSettings } from "../thinking/settings.js";
 import type { ModelCapabilities } from "./capabilities.js";
 import type { CanonicalModelError } from "./errors.js";
 import type { MultimodalConstraints } from "./multimodal.js";
@@ -7,13 +9,19 @@ export type ModelProtocol = "anthropic" | "openai" | "openai-responses" | "googl
 export type CanonicalRole = "user" | "assistant";
 
 export type CanonicalTextBlock = {
+  timeline?: TimelinePosition;
   type: "text";
   text: string;
+  /** UI stream/history identity; never a provider request field. */
+  blockId?: string;
 };
 
 export type CanonicalThinkingBlock = {
+  timeline?: TimelinePosition;
   type: "thinking";
   text: string;
+  /** UI stream/history identity; never a provider request field. */
+  blockId?: string;
   /**
    * Provider-supplied signature accompanying the thinking block (Anthropic
    * extended-thinking signature_delta). Required for prompt-cache validity
@@ -52,6 +60,7 @@ export type CanonicalAudioBlock = {
 };
 
 export type CanonicalToolCall = {
+  timeline?: TimelinePosition;
   id: string;
   name: string;
   input: unknown;
@@ -122,7 +131,7 @@ export type CanonicalMediaReferenceBlock = {
 
 export type CanonicalToolResult = CanonicalToolResultBlock;
 
-export type CanonicalContentBlock =
+export type CanonicalContentBlock = { timeline?: TimelinePosition } & (
   | CanonicalTextBlock
   | CanonicalThinkingBlock
   | CanonicalImageBlock
@@ -131,7 +140,7 @@ export type CanonicalContentBlock =
   | CanonicalToolCallBlock
   | CanonicalToolResultBlock
   | CanonicalToolResultReferenceBlock
-  | CanonicalMediaReferenceBlock;
+  | CanonicalMediaReferenceBlock);
 
 export type CanonicalMessageMetadata = {
   /** Actual model that generated this assistant message. */
@@ -189,7 +198,6 @@ export type CanonicalToolChoice =
 export type CanonicalThinkingConfig = {
   mode?: "default" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   enabled: boolean;
-  budgetTokens?: number;
   preserve?: boolean;
   splitReasoning?: boolean;
 };
@@ -241,7 +249,6 @@ export type CanonicalModelRequest = {
   tools?: CanonicalToolSchema[];
   toolChoice?: CanonicalToolChoice;
   maxOutputTokens?: number;
-  temperature?: number;
   speed?: number;
   thinking?: CanonicalThinkingConfig;
   stream?: boolean;
@@ -306,6 +313,7 @@ export type CanonicalModelResponse = {
 };
 
 export type ModelDefinition = {
+  thinking?: ModelThinkingSettings;
   id: string;
   displayName?: string;
   capabilities: ModelCapabilities;

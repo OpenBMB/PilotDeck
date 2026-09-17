@@ -1,3 +1,4 @@
+import { isOptionalFeatureEnabled } from "../../../../../../../src/pilot/config/optionalFeature.js";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authenticatedFetch } from "../../../../../utils/api";
@@ -236,7 +237,7 @@ function normalizeProvider(value: unknown): WebSearchProvider {
 export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
   const { t } = useTranslation("settings");
   const ws = config.tools?.webSearch ?? {};
-  const enabled = ws.enabled !== false;
+  const enabled = isOptionalFeatureEnabled(config.tools?.webSearch);
   const provider = normalizeProvider(ws.provider);
   const apiKey = typeof ws.apiKey === "string" ? ws.apiKey : "";
   const endpoint = typeof ws.endpoint === "string" ? ws.endpoint : "";

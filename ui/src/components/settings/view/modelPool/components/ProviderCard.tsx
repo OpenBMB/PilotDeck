@@ -1,3 +1,4 @@
+import { parseThinkingSettings } from '../../../../../../../src/model/thinking/settings.js';
 import { useEffect, useRef, useState } from "react";
 import { useConnectionTestTasks, isTestTaskBusy } from "../hooks/useConnectionTestTasks";
 import { useTranslation } from "react-i18next";
@@ -272,7 +273,7 @@ export default function ProviderCard({
     const multimodal = asModelRecord(current.multimodal as Record<string, unknown>);
     const input = Array.isArray(multimodal.input) ? multimodal.input.filter(value => typeof value === 'string' && value !== 'image') : ['text'];
     if (values.supportsImage) input.push('image');
-    const nextModel: Record<string, unknown> = { ...current, capabilities: { ...readCapabilities(current), maxOutputTokens: values.maxOutputTokens, maxContextTokens: values.maxContextTokens }, multimodal: { ...multimodal, input } };
+    const nextModel: Record<string, unknown> = { ...current, thinking: values.thinking, capabilities: { ...readCapabilities(current), maxOutputTokens: values.maxOutputTokens, maxContextTokens: values.maxContextTokens }, multimodal: { ...multimodal, input } };
     delete nextModel.connectionTest;
     const next = { ...source, models: { ...source.models, [modelId]: nextModel } };
     if (editing) { update({ models: next.models }); return { ok: true }; }
@@ -667,7 +668,8 @@ export default function ProviderCard({
       {modelSettingsId && <ModelSettingsModal
         key={modelSettingsId}
         modelId={modelSettingsId}
-        initial={{ maxOutputTokens: tokenValue(modelSettingsId, 'maxOutputTokens'), maxContextTokens: tokenValue(modelSettingsId, 'maxContextTokens'), supportsImage: modelSupportsImage(modelSettingsId) }}
+        initial={{ maxOutputTokens: tokenValue(modelSettingsId, 'maxOutputTokens'), maxContextTokens: tokenValue(modelSettingsId, 'maxContextTokens'), supportsImage: modelSupportsImage(modelSettingsId), thinking: (() => { try { return parseThinkingSettings(asModelRecord(draftProvider.models?.[modelSettingsId]).thinking, protocol); } catch { return undefined; } })() }}
+        protocol={protocol}
         task={task}
         applyTestResult={!task || (!task.acknowledged && !handledTests.current.has(task.id))}
         testDisabled={testDisabled || !configured}

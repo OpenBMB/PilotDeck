@@ -42,7 +42,6 @@ export type PreparedQueuedInput = {
       provider: string;
       model: string;
       reasoning?: number;
-      temperature?: number;
       speed?: number;
     };
     thinking?: unknown;
@@ -51,6 +50,8 @@ export type PreparedQueuedInput = {
     userVisibleInput?: string;
     images?: unknown[];
     attachments?: ChatAttachment[];
+    /** Rendered in the accepted queue echo, never forwarded as model input. */
+    displayAttachments?: ChatAttachment[];
     uploadedAttachments?: Array<{ uploadId: string; attachmentIds?: string[] }>;
   };
 };

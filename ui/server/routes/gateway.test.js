@@ -21,6 +21,14 @@ afterEach(() => {
 });
 
 describe('gateway WeCom routes', () => {
+  it('reports every message channel off when no adapters are configured', async () => {
+    const { request } = await createGatewayApp({});
+    const status = await request('/api/gateway/status');
+    for (const channel of ['feishu', 'weixin', 'wecom']) {
+      expect(status[channel].enabled).toBe(false);
+    }
+  });
+
   it('returns WeCom status from pilotdeck.yaml', async () => {
     const { request } = await createGatewayApp({
       adapters: {

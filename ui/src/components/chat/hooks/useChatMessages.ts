@@ -3,7 +3,7 @@
  * Converts NormalizedMessage[] from the session store into ChatMessage[] for the UI.
  */
 
-import type { NormalizedMessage } from '../../../stores/useSessionStore';
+import { normalizeCompactionMessage, type NormalizedMessage } from '../../../stores/useSessionStore';
 import type { ChatMessage, SubagentChildTool } from '../types/types';
 import { formatUsageLimitText } from '../utils/chatFormatting';
 import { mergeUserAttachments, parseUserAttachmentNote } from '../utils/attachmentNotes';
@@ -233,7 +233,7 @@ function convertSingleMessage(
           timestamp: msg.timestamp,
           ...turnIdentity,
           isThinking: true,
-          isStreaming: msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_'),
+          isStreaming: msg.timeline ? msg.streamState === 'open' : msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_'),
         };
       }
       return null;
@@ -290,6 +290,8 @@ function convertSingleMessage(
         ...turnIdentity,
         isCompactBoundary: true,
         compactionId: msg.compactionId,
+        compactState: normalizeCompactionMessage(msg).compactState,
+        renderKey: msg.compactionId ? `compact:${msg.sessionId}:${msg.turnId || msg.runId}:${msg.compactionId}` : msg.renderKey,
         compactTrigger: msg.trigger,
         preTokens: msg.preTokens,
         postTokens: msg.postTokens,
@@ -355,7 +357,7 @@ function convertSingleMessage(
           content: msg.content,
           timestamp: msg.timestamp,
           ...turnIdentity,
-          isStreaming: true,
+          isStreaming: msg.timeline ? msg.streamState === 'open' : true,
         };
       }
       return null;

@@ -14,6 +14,7 @@ import {
     isGatewayUnavailableError,
     isTerminalAlwaysOnTurnEvent,
     queuedInputDispositionAfterTurn,
+    queuedUserFrame,
     reconcileRecoveredQueueItems,
     resetSteeringItemForRun,
     resolvePermissionMode,
@@ -27,6 +28,28 @@ import {
     syncLocalActiveRunFromSnapshot,
     uiFilesToAttachments,
 } from './pilotdeck-bridge.js';
+
+describe('model block identity', () => {
+    it('preserves absolute snapshots and explicit end boundaries for parent and child streams', () => {
+        const timeline = { version: 1, turnId: 'child-turn', id: 'thought', order: 2, revision: 8 };
+        const streamBoundary = { turnId: 'child-turn', through: 2, revision: 9 };
+        expect(gatewayEventToFrames({ type: 'assistant_block', runId: 'parent', blockId: 'thought',
+            kind: 'thinking', text: 'complete', timeline }, 'session', 'pilotdeck')[0])
+            .toMatchObject({ timeline, kind: 'thinking', content: 'complete', isFinal: true });
+        expect(gatewayEventToFrames({ type: 'agent_status', runId: 'parent', event: 'subagent_thinking_delta',
+            timeline, streamState: 'closed', detail: { subagentId: 'child', text: 'complete' } }, 'session', 'pilotdeck')[0])
+            .toMatchObject({ timeline, streamState: 'closed', subagentId: 'child', content: 'complete' });
+        expect(gatewayEventToFrames({ type: 'agent_status', runId: 'parent', event: 'subagent_stream_end',
+            streamBoundary, detail: { subagentId: 'child' } }, 'session', 'pilotdeck')[0])
+            .toMatchObject({ streamBoundary, kind: 'stream_end', subagentId: 'child' });
+    });
+    it('preserves model block identity on both live output kinds', () => {
+        for (const type of ['assistant_text_delta', 'assistant_thinking_delta']) {
+            expect(gatewayEventToFrames({ type, runId: 'turn-1', text: 'same', blockId: `${type}:1` }, 'session', 'pilotdeck'))
+                .toEqual([expect.objectContaining({ blockId: `${type}:1`, runId: 'turn-1', content: 'same' })]);
+        }
+    });
+});
 
 describe('per-turn permission precedence', () => {
     it('lets an explicit default selection turn off persisted full access for one turn', () => {
@@ -122,7 +145,6 @@ describe('queued input persistence', () => {
                     provider: 'openai',
                     model: 'gpt-test',
                     reasoning: 0.8,
-                    temperature: 0.2,
                     speed: 1,
                 },
                 uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
@@ -139,7 +161,6 @@ describe('queued input persistence', () => {
                 provider: 'openai',
                 model: 'gpt-test',
                 reasoning: 0.8,
-                temperature: 0.2,
                 speed: 1,
             },
             uploadedAttachments: [{ uploadId: 'upload-1', attachmentIds: ['attachment-1'] }],
@@ -492,6 +513,18 @@ describe('steer run identity', () => {
 });
 
 describe('web attachment conversion', () => {
+    it('echoes display-only upload previews and retains compatibility with ordinary attachments', () => {
+        const preview = { name: 'photo.png', uploadId: 'u', attachmentId: 'a',
+            previewData: 'data:image/png;base64,aW1hZ2U=' };
+        const item = { id: 'q1', displayText: 'describe this', options: {
+            images: [], attachments: [], displayAttachments: [preview],
+            uploadedAttachments: [{ uploadId: 'u', attachmentIds: ['a'] }],
+        } };
+        expect(queuedUserFrame(item, 'web:session', 'run-1', 'pilotdeck').attachments).toEqual([preview]);
+        expect(uiFilesToAttachments(item.options.attachments)).toBeUndefined();
+        expect(queuedUserFrame({ ...item, options: { attachments: [preview] } }, 'web:session', 'run-1', 'pilotdeck').attachments)
+            .toEqual([preview]);
+    });
     it('marks uploaded files with the web channel key', () => {
         expect(uiFilesToAttachments([{
             name: 'meeting.wav',
@@ -906,7 +939,7 @@ describe('Always-On turn notification forwarding', () => {
 
 describe('dialog model preference frames', () => {
     it('keeps Auto and explicit parameter choices in persisted queued messages', () => {
-        for (const selection of [{ mode: 'auto' }, { mode: 'model', provider: 'chosen', model: 'selected', reasoning: 0.8, temperature: 0.3, speed: 1 }]) {
+        for (const selection of [{ mode: 'auto' }, { mode: 'model', provider: 'chosen', model: 'selected', reasoning: 0.8, speed: 1 }]) {
             const item = { id: 'queued-model', options: { modelSelection: selection } };
             expect(hydrateQueuedInputOptions(restoreQueuedInputFromStorage(serializeQueuedInputForStorage(item)).options).modelSelection).toEqual(selection);
         }

@@ -1,3 +1,4 @@
+import { sanitizeProviderBody } from "../../request/sanitizeProviderBody.js";
 import {
   GoogleGenAI,
   type GenerateContentParameters,
@@ -20,7 +21,7 @@ export function createGoogleClient(provider: ProviderConfig): GoogleModelClient 
   const httpOptions: HttpOptions = {
     headers: provider.headers,
     ...(provider.timeoutMs ? { timeout: provider.timeoutMs } : {}),
-    ...(provider.extraBody ? { extraBody: provider.extraBody } : {}),
+    ...(provider.extraBody ? { extraBody: sanitizeProviderBody(provider.extraBody) } : {}),
     ...(resolved.baseUrl ? { baseUrl: resolved.baseUrl } : {}),
   };
 

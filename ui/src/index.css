@@ -2608,25 +2608,7 @@
     }
   }
 
-  .temperature-range::-webkit-slider-thumb {
-    width: 12px;
-    height: 12px;
-    margin-top: -4px;
-    appearance: none;
-    border: 0;
-    border-radius: 50%;
-    background: radial-gradient(circle at center, #665ee8 0 3px, #fff 3.25px 100%);
-    box-shadow: 0 0 0 1px rgba(102, 94, 232, 0.18);
-  }
 
-  .temperature-range::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
-    border: 0;
-    border-radius: 50%;
-    background: radial-gradient(circle at center, #665ee8 0 3px, #fff 3.25px 100%);
-    box-shadow: 0 0 0 1px rgba(102, 94, 232, 0.18);
-  }
 }
 
 /* Block copy controls float above content without adding a toolbar row. */
@@ -2651,4 +2633,75 @@
 
 .markdown-copy-table th:last-child {
   padding-inline-end: 3.5rem;
+}
+
+
+/* Markdown owns its code surfaces, including in thinking and plan cards that
+   don't have a surrounding typography/prose container. */
+.markdown-code-block {
+  border-color: #e5e5e5;
+  background: #f5f5f5;
+  color: #262626;
+}
+.dark .markdown-code-block {
+  border-color: #404040;
+  background: #262626;
+  color: #e5e5e5;
+}
+.markdown-code-header {
+  color: #525252;
+}
+.dark .markdown-code-header {
+  color: #d4d4d4;
+}
+.markdown-code-header button[aria-pressed="false"] {
+  opacity: 0.55;
+}
+.markdown-code-block pre {
+  padding: 0.25rem 1rem 1rem;
+  background: transparent;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.65;
+  tab-size: 4;
+}
+.markdown-code-block pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+/* Override the legacy .chat-message pre/code forced wrapping only within
+   Markdown blocks; tool output keeps its existing wrapping behavior. */
+.markdown-code-block[data-wrap="true"] pre,
+.markdown-code-block[data-wrap="true"] pre code {
+  white-space: pre-wrap !important;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+.markdown-code-block[data-wrap="false"] pre,
+.markdown-code-block[data-wrap="false"] pre code {
+  white-space: pre !important;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+.chat-markdown :not(pre) > code {
+  border-radius: 0.25rem;
+  padding: 0.1em 0.3em;
+  background: #f0f0f0;
+  color: inherit;
+  font-size: 0.9em;
+  font-weight: 400;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.dark .chat-markdown :not(pre) > code {
+  background: #343434;
 }

@@ -38,6 +38,8 @@ export interface ChatAttachment {
   /** Stable identity for a transient browser upload, not a workspace path. */
   uploadId?: string;
   attachmentId?: string;
+  /** Display-only preview; uploadedAttachments supplies the model's image. */
+  previewData?: string;
 }
 
 export interface ChatFileArtifact {
@@ -121,6 +123,7 @@ export interface ChatMessage {
   parentRunId?: string;
   turnId?: string;
   compactionId?: string;
+  compactState?: 'running' | 'completed' | 'failed' | 'cancelled';
   compactTrigger?: string;
   preTokens?: number;
   postTokens?: number;
@@ -264,13 +267,13 @@ export interface ChatInterfaceProps {
     projectName: string,
     sessionId: string,
     optimisticTitle?: string,
-  ) => void;
+    inputId?: string,
+  ) => void | (() => void);
   processingSessions?: Set<string>;
   onReplaceTemporarySession?: (sessionId?: string | null) => void;
   onNavigateToSession?: (targetSessionId: string) => void;
   onShowSettings?: () => void;
   autoExpandTools?: boolean;
-  showRawParameters?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
   autoScrollToBottom?: boolean;

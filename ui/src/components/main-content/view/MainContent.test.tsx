@@ -29,7 +29,6 @@ vi.mock('../../../hooks/useUiPreferences', () => ({
   useUiPreferences: () => ({
     preferences: {
       autoExpandTools: false,
-      showRawParameters: false,
       showThinking: false,
       inlineThinking: false,
       autoScrollToBottom: true,

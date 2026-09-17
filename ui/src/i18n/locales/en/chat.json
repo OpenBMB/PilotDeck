@@ -1,5 +1,7 @@
 {
   "copyBlock": {
+    "plainText": "Plain text",
+    "wrap": "Wrap code",
     "code": "Copy code",
     "table": "Copy table",
     "tableMarkdown": "Copy table as Markdown",
@@ -102,6 +104,8 @@
     "executingTool": "Running tool...",
     "generating": "Generating response",
     "compacting": "Compacting context...",
+    "compactFailed": "Context compaction failed",
+    "compactCancelled": "Context compaction stopped",
     "compactingLevel": "Triggering level {{level}} compaction: {{label}}",
     "waitingForPermission": "Waiting for permission",
     "retrying": "Reconnecting {{attempt}}/{{max}}{{delay}}",
@@ -368,15 +372,23 @@
       "advanced": "Advanced settings",
       "reasoning": "Reasoning",
       "speed": "Speed",
-      "temperature": "Temperature",
       "reasoningLevels": {
         "off": "Off",
         "light": "Light",
         "low": "Low",
         "medium": "Medium",
         "high": "High",
-        "xhigh": "Extra high",
-        "max": "Maximum"
+        "xhigh": "Xhigh",
+        "max": "Max",
+        "default": "Default"
+      },
+      "reasoningMenuLevels": {
+        "default": "Default",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "Xhigh",
+        "max": "Max"
       },
       "speedLevels": {
         "standard": "Standard",
@@ -679,5 +691,50 @@
     "updated": "Updated this turn",
     "collapse": "Collapse",
     "showAll": "View all {{count}} files"
+  },
+  "toolDisplay": {
+    "copyCommand": "Copy command",
+    "collapse": "Limit height",
+    "full": "Expand fully",
+    "copy": "Copy",
+    "details": "Tool details",
+    "output": "Output",
+    "success": "Success",
+    "failed": "Failed",
+    "exitCode": "Exit {{code}}",
+    "executing": "Running…",
+    "actionRequired": "Action required",
+    "noResult": "No result recorded",
+    "noOutput": "No output",
+    "fileContent": "File content",
+    "changes": "Changes",
+    "noChanges": "No changes",
+    "running": {
+      "command": "Running",
+      "write": "Writing",
+      "edit": "Editing",
+      "read": "Reading",
+      "search": "Searching",
+      "tool": "Using",
+      "skill": "Reading skill"
+    },
+    "pending": {
+      "command": "Command",
+      "write": "Write",
+      "edit": "Edit",
+      "read": "Read",
+      "search": "Search",
+      "tool": "Tool",
+      "skill": "Read skill"
+    },
+    "done": {
+      "command": "Ran",
+      "write": "Wrote",
+      "edit": "Edited",
+      "read": "Read",
+      "search": "Searched",
+      "tool": "Used",
+      "skill": "Read skill"
+    }
   }
 }

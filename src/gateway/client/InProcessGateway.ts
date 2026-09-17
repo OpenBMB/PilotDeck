@@ -1,3 +1,5 @@
+import { ActiveTimeline } from "../stream/ActiveTimeline.js";
+import { normalizeSessionModelSelection } from "../dialog/modelCatalog.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -219,6 +221,7 @@ type ActiveTurnReplay = {
   sessionKey: string;
   runId: string;
   events: GatewayEvent[];
+  timelineEvents: ActiveTimeline;
   bytes: number;
   truncated: boolean;
 };
@@ -339,6 +342,11 @@ export class InProcessGateway implements Gateway {
   }
 
   async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
+    input = {
+      ...input,
+      ...(input.modelSelection ? { modelSelection: normalizeSessionModelSelection(input.modelSelection) } : {}),
+      ...(input.modelOverride ? { modelOverride: normalizeSessionModelSelection(input.modelOverride) as typeof input.modelOverride } : {}),
+    };
     const invalidPermission = validateGatewayPermissionModes(input);
     if (invalidPermission) {
       yield {
@@ -427,6 +435,7 @@ export class InProcessGateway implements Gateway {
       sessionKey: input.sessionKey,
       runId,
       events: [],
+      timelineEvents: new ActiveTimeline(),
       bytes: 0,
       truncated: false,
     });
@@ -581,7 +590,6 @@ export class InProcessGateway implements Gateway {
             model: modelSelection.selection.model,
             source: modelSelection.source,
             reasoning: modelSelection.selection.reasoning,
-            temperature: modelSelection.selection.temperature,
             speed: modelSelection.selection.speed,
             runId,
           };
@@ -610,7 +618,6 @@ export class InProcessGateway implements Gateway {
               modelOverride: {
                 provider: modelSelection.selection.provider,
                 model: modelSelection.selection.model,
-                temperature: modelSelection.selection.temperature,
                 speed: modelSelection.selection.speed,
                 ...(modelSelection.selection.reasoning !== undefined ? {
                   thinking: {
@@ -977,7 +984,7 @@ export class InProcessGateway implements Gateway {
       runId: replay.runId,
       events: input.includeEvents === false
         ? []
-        : replay.events
+        : [...replay.events, ...replay.timelineEvents.values()]
           .filter((event) => this.shouldReplayActiveTurnEvent(input.sessionKey, event))
           .map((event) => cloneGatewayEvent(event)),
       ...(replay.truncated ? { truncated: true } : {}),
@@ -1051,7 +1058,16 @@ export class InProcessGateway implements Gateway {
         "read_session_messages is not configured. Wire `readSessionMessages` via createLocalGateway.",
       );
     }
-    return this.options.readSessionMessages(input);
+    // The active-run object is an epoch. If it changes while reading disk,
+    // reread so a just-settled turn cannot disappear between history and live.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const epoch = this.activeTurnReplays.get(input.sessionKey);
+      const history = await this.options.readSessionMessages(input);
+      if (epoch !== this.activeTurnReplays.get(input.sessionKey)) continue;
+      const stream = await this.getActiveTurnSnapshot({ sessionKey: input.sessionKey });
+      return { ...history, stream };
+    }
+    throw new Error("Session changed during transcript synchronization; retry the snapshot.");
   }
 
   async readSubagentMessages(input: WebReadSubagentMessagesInput): Promise<WebReadSubagentMessagesResult> {
@@ -1428,6 +1444,7 @@ export class InProcessGateway implements Gateway {
     const replay = this.activeTurnReplays.get(sessionKey);
     if (!replay) return;
     const copy = cloneGatewayEvent(event);
+    if (replay.timelineEvents.record(copy)) return;
     const bytes = Buffer.byteLength(JSON.stringify(copy), "utf8");
     replay.events.push(copy);
     replay.bytes += bytes;
@@ -1537,9 +1554,9 @@ function validateGatewayPermissionModes(input: GatewaySubmitTurnInput): string |
   return undefined;
 }
 
-function reasoningValueToMode(value: number): "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" {
-  const modes = new Map<number, "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max">([
-    [0, "off"], [0.2, "minimal"], [0.4, "low"], [0.6, "medium"], [0.8, "high"], [0.9, "xhigh"], [1, "max"],
+function reasoningValueToMode(value: number): "low" | "medium" | "high" | "xhigh" | "max" {
+  const modes = new Map<number, "low" | "medium" | "high" | "xhigh" | "max">([
+    [0.4, "low"], [0.6, "medium"], [0.8, "high"], [0.9, "xhigh"], [1, "max"],
   ]);
   const mode = modes.get(value);
   if (!mode) throw new DialogGatewayError("UNSUPPORTED_MODEL_PARAMETER", `Unsupported reasoning value: ${value}`);
@@ -1904,7 +1921,10 @@ function inferToolErrorCategory(code: string | undefined):
 
 export function mapAgentEvent(event: AgentEvent, runId: string): GatewayEvent[] {
   return mapAgentEventForTurn(event, runId).map((gatewayEvent) =>
-    withGatewayRunId(gatewayEvent, runId)
+    withGatewayRunId({ ...gatewayEvent,
+      ...(event.timeline && gatewayEvent.type !== "assistant_attachment" ? { timeline: event.timeline } : {}),
+      ...(event.streamBoundary ? { streamBoundary: event.streamBoundary } : {}),
+    }, runId)
   );
 }
 
@@ -1915,15 +1935,25 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
     case "input_accepted":
       return [{ type: "input_accepted", runId }];
     case "steer_applied":
-      return [{ type: "steer_applied", itemId: event.itemId, message: event.message }];
+      return [{ type: "steer_applied", itemId: event.itemId, message: event.message,
+        ...(event.message.content.find(block => block.timeline)?.timeline ? { timeline: event.message.content.find(block => block.timeline)!.timeline } : {}),
+      }];
     case "steer_unapplied":
       return [{ type: "steer_unapplied", itemId: event.itemId, reason: event.reason }];
     case "model_request_started":
       return [{ type: "model_request_started", model: event.model, provider: event.provider }];
     case "model_event":
-      return mapModelEvent(event.event, runId);
+      return mapModelEvent(event.event, runId).map(frame => event.blockId
+        ? { ...frame, blockId: event.blockId } : frame);
+    case "assistant_message":
+      return event.message.content.flatMap((block): GatewayEvent[] =>
+        (block.type === "text" || block.type === "thinking") && block.blockId && block.timeline
+          ? [{ type: "assistant_block", kind: block.type, blockId: block.blockId, text: block.text,
+               timeline: block.timeline, streamState: "closed", model: event.message.metadata?.model }]
+          : []);
     case "tool_calls_detected":
       return event.calls.map((call) => ({
+        ...(call.timeline ? { timeline: call.timeline } : {}),
         type: "tool_call_started",
         toolCallId: call.id,
         name: call.name,
@@ -2199,6 +2229,7 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
       return mapSubagentModelEvent(event);
     case "subagent_tool_calls_detected":
       return event.calls.map((call) => ({
+        ...(call.timeline ? { timeline: call.timeline } : {}),
         type: "agent_status",
         event: "subagent_tool_call_started",
         detail: {
@@ -2353,6 +2384,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function mapModelEvent(event: CanonicalModelEvent, runId: string): GatewayEvent[] {
   switch (event.type) {
+    case "message_end":
+    case "tool_call_start":
+      return [{ type: "assistant_stream_end", runId }];
     case "text_delta":
       return [{ type: "assistant_text_delta", text: event.text, runId }];
     case "thinking_delta":
@@ -2361,7 +2395,7 @@ function mapModelEvent(event: CanonicalModelEvent, runId: string): GatewayEvent[
       // Model-level errors are internal control flow until AgentLoop decides
       // whether they are recoverable. Surfacing them here duplicates the final
       // turn_failed frame and also shows self-correction retries as red errors.
-      return [];
+      return [{ type: "assistant_stream_end", runId }];
     default:
       return [];
   }
@@ -2373,8 +2407,12 @@ function mapSubagentModelEvent(
   const base = {
     subagentId: event.subagentId,
     subagentType: event.subagentType,
+    blockId: event.blockId,
   };
   switch (event.event.type) {
+    case "message_end":
+    case "tool_call_start":
+      return [{ type: "agent_status", event: "subagent_stream_end", detail: base }];
     case "text_delta":
       return [{
         type: "agent_status",
@@ -2393,6 +2431,8 @@ function mapSubagentModelEvent(
         event: "subagent_model_error",
         detail: {
           ...base,
+          // Allocate once before live delivery and replay storage diverge.
+          errorId: randomUUID(),
           code: event.event.error.code,
           message: event.event.error.message,
         },

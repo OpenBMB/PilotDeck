@@ -1,3 +1,4 @@
+import { isOptionalFeatureEnabled } from "../../../../../../../src/pilot/config/optionalFeature.js";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -81,7 +82,7 @@ export default function RouterSection({
   const [editingTiers, setEditingTiers] = useState(false);
   const [editingPricing, setEditingPricing] = useState(false);
   const r = config.router ?? {};
-  const enabled = r.enabled === true;
+  const enabled = isOptionalFeatureEnabled(config.router);
   const modelOpts = buildModelRefOptions(config);
   const tiers = r.tokenSaver?.tiers ?? EMPTY_TIERS;
   const defaultTier = r.tokenSaver?.defaultTier ?? "medium";

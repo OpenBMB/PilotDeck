@@ -231,6 +231,9 @@ export class SubAgentSession {
         type: "subagent_model_event",
         ...base,
         event: event.event,
+        timeline: event.timeline,
+        blockId: event.blockId,
+        streamBoundary: event.streamBoundary,
       });
       return;
     }
@@ -242,11 +245,26 @@ export class SubAgentSession {
       });
       return;
     }
+    if (event.type === "compact_started" || event.type === "compact_completed") {
+      emit({ type: "agent_status", ...base, event: `subagent_${event.type}`, timeline: event.timeline,
+        detail: { ...event, subagentId: base.subagentId } });
+      return;
+    }
+    if (event.type === "assistant_message") {
+      for (const block of event.message.content) {
+        if ((block.type === "text" || block.type === "thinking") && block.timeline) emit({
+          type: "agent_status", ...base, event: "subagent_assistant_block", timeline: block.timeline,
+          detail: { subagentId: base.subagentId, kind: block.type, text: block.text, blockId: block.blockId },
+        });
+      }
+      return;
+    }
     if (event.type === "tool_result") {
       emit({
         type: "subagent_tool_result",
         ...base,
         result: event.result,
+        timeline: event.timeline,
       });
     }
   }

@@ -9,7 +9,7 @@ const mock = await vi.hoisted(async () => {
     return { gateway: null, home, previousHome };
 });
 vi.mock('./services/gatewayConnectionCache.js', () => ({ createGatewayConnectionCache: () => ({ get: async () => mock.gateway, invalidate: () => {} }) }));
-import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedInputForStorage } from './pilotdeck-bridge.js';
+import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedInputForStorage, runChatViaGateway } from './pilotdeck-bridge.js';
 import { rm } from 'node:fs/promises';
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const item = id => ({ id, runId: id, command: 'fixture', displayText: id, options: { projectPath: '/tmp/sending-project' } });
@@ -43,6 +43,7 @@ it('shows idle input as sending, preserves concurrent input order, and removes e
     completion.resolve();
     await vi.waitFor(async () => expect((await getInputQueueStateViaGateway(sid)).items).toEqual([]));
     expect(calls).toEqual(['first', 'second']);
+    expect(frames.filter(x => x.type === 'session-input-accepted').map(x => x.runId)).toEqual(['first', 'second']);
     expect(frames.filter(x => x.role === 'user').map(x => x.queueItemId)).toEqual(['first', 'second']);
 });
 it('converts a provisional send to a real queue item if the gateway discovers another active client', async () => {
@@ -64,4 +65,42 @@ it('retains failed sends for recovery and treats only actually dispatched inputs
     await vi.waitFor(async () => expect(await getInputQueueStateViaGateway(sid)).toMatchObject({ paused: true, items: [{ id: 'rejected', status: 'failed' }] }));
     expect(serializeQueuedInputForStorage({ ...item('checking'), status: 'submitting' }).status).toBe('queued');
     expect(serializeQueuedInputForStorage({ ...item('sent'), status: 'dispatching' }).status).toBe('delivery_uncertain');
+});
+
+it.each([false, true])('acknowledges a retry after execution without dispatching again (restart=%s)', async restart => {
+    const calls = [], frames = [];
+    mock.gateway = {
+        getActiveTurnSnapshot: async () => ({ active: false, events: [] }),
+        async *submitTurn(input) {
+            calls.push(input.runId);
+            yield { type: 'input_accepted', runId: input.runId };
+            yield { type: 'turn_completed', runId: input.runId, finishReason: 'completed', usage: {} };
+        },
+    };
+    const sid = `web:s_retry_${restart}`, writer = {send: frame => frames.push(frame)};
+    const first = item(`accepted-${restart}`);
+    await enqueueInputViaGateway(sid, first, writer);
+    await vi.waitFor(() => expect(frames.some(frame => frame.kind === 'complete')).toBe(true));
+    let enqueue = enqueueInputViaGateway;
+    if (restart) {
+        vi.resetModules();
+        enqueue = (await import('./pilotdeck-bridge.js')).enqueueInputViaGateway;
+    }
+    const retry = await enqueue(sid, first, writer);
+    expect(retry).toMatchObject({ok: true, state: {items: []}});
+    expect(calls).toEqual([first.id]);
+    await enqueue(sid, {...first, id: first.id + '-new', runId: first.id + '-new'}, writer);
+    await vi.waitFor(() => expect(calls).toEqual([first.id, first.id + '-new']));
+});
+
+
+it('assigns a real ID before startup failure without acknowledging the input', async () => {
+    const frames = [];
+    const result = await runChatViaGateway('fixture', { projectPath: '/tmp/sending-project', runId: 'failed-start' },
+        { send: frame => frames.push(frame) }, 'pilotdeck', {
+            getGateway: async () => { throw new Error('Gateway unavailable'); },
+        });
+    expect(frames.find(frame => frame.kind === 'session_created')?.newSessionId).toBe(result.sessionKey);
+    expect(frames.some(frame => frame.kind === 'error' && frame.terminal === true && frame.sessionId === result.sessionKey)).toBe(true);
+    expect(frames.some(frame => frame.type === 'session-input-accepted')).toBe(false);
 });

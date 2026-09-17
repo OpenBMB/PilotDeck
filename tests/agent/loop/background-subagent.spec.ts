@@ -34,6 +34,7 @@ import {
   type PilotDeckToolDefinition,
 } from "../../../src/tool/index.js";
 import type { AgentLoopInput, AgentLoopRunResult } from "../../../src/agent/loop/AgentLoop.js";
+import { mapAgentEvent } from "../../../src/gateway/client/InProcessGateway.js";
 
 const CHILD_REPORT = [
   "Scope: gated probe",
@@ -146,6 +147,7 @@ function createHarness(options: HarnessOptions) {
     ...(options.backgroundTasks ? { backgroundTasks: options.backgroundTasks } : {}),
   };
 
+  const createLoop = () => new AgentLoop(config, dependencies);
   const runLoop = async (
     overrides: Partial<AgentLoopInput> = {},
   ): Promise<{
@@ -155,7 +157,7 @@ function createHarness(options: HarnessOptions) {
     durable: CanonicalMessage[];
     parentRequests: CanonicalModelRequest[];
   }> => {
-    const loop = new AgentLoop(config, dependencies);
+    const loop = createLoop();
     const events: AgentEvent[] = [];
     const durable: CanonicalMessage[] = [];
     const iterator = loop.run({
@@ -176,7 +178,7 @@ function createHarness(options: HarnessOptions) {
     }
   };
 
-  return { runLoop, parentRequests, childRequests, pendingEvents };
+  return { createLoop, runLoop, parentRequests, childRequests, pendingEvents };
 }
 
 function backgroundAgentCall(id: string) {
@@ -262,6 +264,27 @@ test("background child joins at the terminal boundary: parent progresses indepen
   assert.match(JSON.stringify(delivered[0]?.content), /CHILD-REPORT-MARKER/);
   assert.match(JSON.stringify(delivered[0]?.content), /UNTRUSTED TOOL OUTPUT/);
   assert.equal(events.filter((event) => event.type === "background_subagent_result").length, 1);
+
+  // Background ownership must preserve upstream live/history reconciliation.
+  const parentText = events.filter(event => event.type === "model_event" && event.event.type === "text_delta");
+  assert.ok(parentText.length > 0);
+  for (const event of parentText) {
+    assert.ok(event.type === "model_event" && event.blockId);
+    assert.equal(event.timeline?.turnId, "turn-1");
+    const block = durable.flatMap(message => message.content).find(block =>
+      block.type === "text" && block.blockId === event.blockId);
+    assert.ok(block?.timeline);
+    assert.equal(block.timeline.id, event.timeline?.id);
+    assert.equal(block.timeline.order, event.timeline?.order);
+  }
+  const childText = events.find(event => event.type === "subagent_model_event" && event.event.type === "text_delta");
+  assert.ok(childText?.type === "subagent_model_event" && childText.blockId);
+  assert.ok(childText.timeline);
+  assert.notEqual(childText.timeline.turnId, "turn-1", "child timeline must remain distinct from its parent");
+  const childWire = mapAgentEvent(childText, "turn-1")[0];
+  assert.ok(childWire?.type === "agent_status");
+  assert.equal(childWire.detail?.blockId, childText.blockId);
+  assert.deepEqual(childWire.timeline, childText.timeline);
 
   // The queued tool call returned a stable taskId (=== subagentId) retrievable via the runtime.
   const queuedResult = events.find(
@@ -369,6 +392,42 @@ test("user stop during the terminal join cancels owned children and leaves no or
   const parentEnd = events.findIndex((event) => event.type === "turn_completed");
   assert.ok(childEnd >= 0 && childEnd < parentEnd, "cancelled child status must reach the UI before the parent ends");
   assert.equal(harness.pendingEvents.length, 0, "no events may leak into another turn");
+});
+
+test("returning the public iterator early cancels background children through the timeline wrapper", async () => {
+  const backgroundTasks = new BackgroundTaskRuntime();
+  const started = createGate();
+  let childAborted = false;
+  const harness = createHarness({
+    backgroundTasks,
+    parentResponses: [backgroundAgentCall("abandoned-child")],
+    childBehavior: async function* (_request, signal) {
+      started.open();
+      await new Promise<never>((_resolve, reject) => {
+        const abort = () => { childAborted = true; reject(signal?.reason ?? new Error("aborted")); };
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, { once: true });
+      });
+    },
+  });
+  const iterator = harness.createLoop().run({
+    sessionId: "session-1", turnId: "turn-1",
+    messages: [{ role: "user", content: [{ type: "text", text: "start a child" }] }],
+  });
+  try {
+    for await (const event of iterator) {
+      if (event.type === "tool_result" && event.result.toolName === "agent") {
+        await started.promise;
+        break;
+      }
+    }
+    assert.equal(childAborted, true);
+    assert.equal(backgroundTasks.list({ kind: "agent" })[0]?.status, "cancelled");
+    assert.equal(backgroundTasks.list({ status: "running" }).length, 0);
+    assert.equal(harness.pendingEvents.length, 0);
+  } finally {
+    await iterator.return(undefined as never);
+  }
 });
 
 test("maxTurns cap is respected: no extra model calls, limit surfaced, children cancelled", async () => {

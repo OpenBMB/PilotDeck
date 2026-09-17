@@ -18,6 +18,7 @@
 import express from 'express';
 import {
   getPilotDeckGateway,
+  gatewayEventToFrames,
   isGatewayUnavailableError,
   withPilotDeckGatewayReadRetry,
 } from '../pilotdeck-bridge.js';
@@ -63,6 +64,9 @@ router.get('/:sessionId/messages', async (req, res) => {
 
     return res.json({
       messages,
+      ...(result.stream ? { stream: { active: result.stream.active, runId: result.stream.runId,
+        messages: result.stream.events.flatMap(event => gatewayEventToFrames(event, sessionId, 'pilotdeck')),
+      } } : {}),
       total: totalKnown,
       hasMore,
       offset,
@@ -177,6 +181,8 @@ function mapWebMessageToNormalized(message, sessionId) {
       : undefined;
   const base = {
     id: message.id,
+    ...(message.blockId ? { blockId: message.blockId } : {}),
+    ...(message.timeline ? { timeline: message.timeline, isFinal: true } : {}),
     sessionId,
     timestamp: message.createdAt,
     provider: message.provider || 'pilotdeck',

@@ -19,8 +19,9 @@ import type {
  *       endpoint: https://api.z.ai/api/paas/v4/web_search
  *
  * Unknown fields produce non-fatal warnings so future additions don't break
- * older deployments.  Returns `undefined` when the section is missing or
- * empty so callers can keep the field off the snapshot entirely.
+ * older deployments. Returns `undefined` when no webSearch block exists.
+ * Preserve a present but empty block: legacy configs use it to opt into
+ * search with credentials supplied by the environment.
  */
 export function parseToolsConfig(
   rawTools: unknown,
@@ -199,7 +200,8 @@ function parseWebSearch(
     }
   }
 
-  return Object.keys(result).length > 0 ? result : undefined;
+  // Presence is meaningful even if every legacy/unknown field was discarded.
+  return result;
 }
 
 function parseCustomProvider(

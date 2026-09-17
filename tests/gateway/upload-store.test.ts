@@ -1,10 +1,38 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import test from "node:test";
 import { UploadStore } from "../../src/gateway/dialog/UploadStore.js";
+
+test("upload metadata cannot escape through a symlink or change its directory identity", async (t) => {
+  const project = await mkdtemp(join(tmpdir(), "pilotdeck-upload-boundary-"));
+  t.after(() => rm(project, { recursive: true, force: true }));
+  const store = new UploadStore({ resolveProject: async () => project, listProjects: async () => [project] });
+  const created = await store.create(project, [{ clientFileId: "one", name: "one.txt", relativePath: "one.txt", size: 0 }]);
+  const taskDir = join(project, ".tmp", "chat-uploads", created.uploadId);
+  const outside = join(project, "outside-upload-store");
+  await rename(taskDir, outside);
+  await symlink(outside, taskDir, "junction");
+  await assert.rejects(store.get(created.uploadId), { code: "PROJECT_PATH_FORBIDDEN" });
+  await rm(taskDir);
+  await rename(outside, taskDir);
+  assert.equal((await store.get(created.uploadId)).uploadId, created.uploadId);
+  for (const changed of [{ uploadId: "other-upload" }, { projectKey: outside }]) {
+    await writeFile(join(taskDir, "metadata.json"), JSON.stringify({ ...created, ...changed }));
+    await assert.rejects(store.get(created.uploadId), { code: "UPLOAD_INTEGRITY_MISMATCH" });
+  }
+});
+
+test("upload lookups reject path separators, traversal and absolute paths", async (t) => {
+  const project = await mkdtemp(join(tmpdir(), "pilotdeck-upload-id-"));
+  t.after(() => rm(project, { recursive: true, force: true }));
+  const store = new UploadStore({ resolveProject: async () => project, listProjects: async () => [project] });
+  for (const id of ["../outside", "..", "/etc/passwd", "a/b", "a\\b", "C:\\outside", "%2e%2e", ""]) {
+    await assert.rejects(store.get(id), { code: "UPLOAD_NOT_FOUND" });
+  }
+});
 
 test("upload store persists, verifies, and resolves streamed attachments", async (t) => {
   const project = await mkdtemp(join(tmpdir(), "pilotdeck-upload-"));

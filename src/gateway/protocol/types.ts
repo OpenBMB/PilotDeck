@@ -1,3 +1,4 @@
+import type { TimelinePosition, StreamBoundary } from "../../model/protocol/timeline.js";
 import type { AgentTurnResult } from "../../agent/index.js";
 import type { AgentStatusMessageInput } from "../../session/transcript/TranscriptWriter.js";
 import type { AgentRunMode } from "../../agent/protocol/input.js";
@@ -165,6 +166,9 @@ export type GatewayRecordAgentStatusMessageInput = {
 };
 
 type GatewayTurnScopedEventMetadata = {
+  timeline?: TimelinePosition;
+  streamBoundary?: StreamBoundary;
+  streamState?: "open" | "closed";
   /**
    * Stable id of the active turn that produced this event. Turn-scoped events
    * carry it so streaming clients can match deltas with lifecycle boundaries.
@@ -184,13 +188,14 @@ export type GatewayEvent = GatewayTurnScopedEventMetadata & (
       model: string;
       source: "turn" | "session" | "router" | "default";
       reasoning?: number;
-      temperature?: number;
       speed?: number;
     }
-  | { type: "assistant_text_delta"; text: string; model?: string }
+  | { type: "assistant_block"; blockId: string; kind: "text" | "thinking"; text: string; model?: string }
+  | { type: "assistant_stream_end" }
+  | { type: "assistant_text_delta"; text: string; model?: string; blockId?: string }
   | { type: "assistant_attachment"; attachment: GatewayOutboundAttachment }
   | { type: "file_artifacts"; artifacts: import("../../session/artifacts/FileArtifact.js").FileArtifact[] }
-  | { type: "assistant_thinking_delta"; text: string }
+  | { type: "assistant_thinking_delta"; text: string; blockId?: string }
   | { type: "tool_call_started"; toolCallId: string; name: string; argsPreview?: string }
   | {
       type: "tool_call_finished";
@@ -463,7 +468,6 @@ export type ModelCatalogItem = {
   available: boolean;
   capabilities: {
     reasoning?: ModelNumericCapability;
-    temperature?: ModelNumericCapability;
     speed?: ModelNumericCapability;
   };
 };
@@ -487,7 +491,6 @@ export type ExplicitModelSelection = {
   provider: string;
   model: string;
   reasoning?: number;
-  temperature?: number;
   speed?: number;
 };
 
@@ -502,7 +505,6 @@ export type SessionModelResult = SessionModelInput & {
     model: string;
     source: "session" | "router" | "default";
     reasoning?: number;
-    temperature?: number;
     speed?: number;
   };
 };

@@ -84,7 +84,6 @@ function ChatInterfaceV2({
   onNavigateToSession,
   onShowSettings,
   autoExpandTools,
-  showRawParameters,
   showThinking,
   inlineThinking,
   autoScrollToBottom,
@@ -295,6 +294,7 @@ function ChatInterfaceV2({
     documentReferences,
     removeDocumentReference,
     uploadingImages,
+    hasPendingAttachments,
     imageErrors,
     getRootProps,
     getInputProps,
@@ -763,6 +763,7 @@ function ChatInterfaceV2({
       onRemoveDocumentReference={removeDocumentReference}
       onOpenDocumentReference={onFileOpen ? (filePath) => onFileOpen(filePath) : undefined}
       uploadingImages={uploadingImages}
+      hasPendingAttachments={hasPendingAttachments}
       imageErrors={imageErrors}
       showFileDropdown={showFileDropdown}
       fileMentionQuery={fileMentionQuery}
@@ -915,7 +916,6 @@ function ChatInterfaceV2({
           onShowSettings={onShowSettings}
           onGrantSessionToolPermission={handleGrantSessionToolPermission}
           autoExpandTools={autoExpandTools}
-          showRawParameters={showRawParameters}
           showThinking={showThinking}
           inlineThinking={inlineThinking}
           setInput={setInput}

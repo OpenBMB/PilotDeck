@@ -1,3 +1,4 @@
+import type { TimelinePosition } from "../../model/protocol/timeline.js";
 import type { CanonicalMessage } from "../../model/index.js";
 import type { AgentTurnResult } from "../../agent/protocol/result.js";
 import type { FileArtifact } from "../artifacts/FileArtifact.js";
@@ -55,6 +56,7 @@ export type AgentFileArtifactsTranscriptEntry = AgentTranscriptEntryBase & {
 };
 
 export type CompactBoundaryMetadata = {
+  timeline?: TimelinePosition;
   /** Stable identity shared by live and persisted representations. */
   compactionId?: string;
   trigger: "manual" | "auto" | "reactive";
@@ -124,7 +126,7 @@ export type SessionMetadataValue = {
   /** Persisted dialog model preference. Null is an explicit clear tombstone. */
   modelSelection?:
     | { mode: "auto" }
-    | { mode: "model"; provider: string; model: string; reasoning?: number; temperature?: number; speed?: number }
+    | { mode: "model"; provider: string; model: string; reasoning?: number; speed?: number }
     | null;
   linkedPullRequest?: {
     number: number;

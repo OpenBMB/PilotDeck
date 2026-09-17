@@ -213,6 +213,305 @@ describe('patchMergedStreamingMessage', () => {
 });
 
 describe('computeMerged', () => {
+  it('does not render a persisted thinking prefix beside the active realtime reasoning', () => {
+    const repeatedPrefix = 'The same realtime reasoning is still being streamed. '.repeat(4);
+    const server: NormalizedMessage[] = [{
+      id: 'persisted-thinking-snapshot',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:01.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: repeatedPrefix,
+      runId: 'run-1',
+      turnId: 'run-1',
+    }];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:00.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: `${repeatedPrefix}More tokens from the same reasoning block.`,
+      runId: 'run-1',
+      serverTailIdAtStart: null,
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      '__streaming_thinking_web:s_test_run-1',
+    ]);
+  });
+
+  it('keeps the more complete persisted reasoning when realtime is behind', () => {
+    const prefix = 'The server has already persisted this reasoning.';
+    const server: NormalizedMessage[] = [{
+      id: 'persisted-thinking-snapshot',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:01.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: `${prefix} More persisted tokens.`,
+      runId: 'run-1',
+      turnId: 'run-1',
+    }];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:00.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: prefix,
+      runId: 'run-1',
+      serverTailIdAtStart: null,
+    }];
+
+    expect(computeMerged(server, realtime)).toEqual(server);
+  });
+
+  it('keeps a previous reasoning block from the same tool turn', () => {
+    const server: NormalizedMessage[] = [
+      {
+        id: 'thinking-before-tool',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:00.000Z',
+        provider: PROVIDER,
+        kind: 'thinking',
+        content: 'I should inspect the file first.',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+      {
+        id: 'tool-result-boundary',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:01.000Z',
+        provider: PROVIDER,
+        kind: 'tool_result',
+        content: 'file contents',
+        toolId: 'read-1',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+      {
+        id: 'thinking-after-tool-snapshot',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:02.000Z',
+        provider: PROVIDER,
+        kind: 'thinking',
+        content: 'The file shows',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+    ];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:01.500Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'The file shows the expected value.',
+      runId: 'run-1',
+      serverTailIdAtStart: 'tool-result-boundary',
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'thinking-before-tool',
+      'tool-result-boundary',
+      '__streaming_thinking_web:s_test_run-1',
+    ]);
+  });
+
+  it('keeps pre-tool reasoning when the captured server tail was stale', () => {
+    const server: NormalizedMessage[] = [
+      textMessage('stale-tail', 'User prompt', '2026-09-10T10:00:00.000Z', {
+        role: 'user',
+        runId: 'run-1',
+        turnId: 'run-1',
+      }),
+      {
+        id: 'thinking-before-tool',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:01.000Z',
+        provider: PROVIDER,
+        kind: 'thinking',
+        content: 'I should inspect the game settings.',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+      {
+        id: 'tool-use',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:02.000Z',
+        provider: PROVIDER,
+        kind: 'tool_use',
+        toolId: 'read-settings',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+      {
+        id: 'tool-result',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:03.000Z',
+        provider: PROVIDER,
+        kind: 'tool_result',
+        toolId: 'read-settings',
+        content: 'settings',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+    ];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:04.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'I should inspect the game settings. The values are too high.',
+      runId: 'run-1',
+      serverTailIdAtStart: 'stale-tail',
+      toolBoundaryIdAtStart: 'read-settings',
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'stale-tail',
+      'thinking-before-tool',
+      'tool-use',
+      'tool-result',
+      '__streaming_thinking_web:s_test_run-1',
+    ]);
+  });
+
+  it('waits for a missing persisted tool boundary before reconciling reasoning', () => {
+    const server: NormalizedMessage[] = [
+      textMessage('stale-tail', 'User prompt', '2026-09-10T10:00:00.000Z', {
+        role: 'user',
+        runId: 'run-1',
+        turnId: 'run-1',
+      }),
+      {
+        id: 'thinking-before-tool',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:01.000Z',
+        provider: PROVIDER,
+        kind: 'thinking',
+        content: 'Repeated reasoning prefix.',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+    ];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:04.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'Repeated reasoning prefix. This is after the tool.',
+      runId: 'run-1',
+      serverTailIdAtStart: 'stale-tail',
+      toolBoundaryIdAtStart: 'read-settings',
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'stale-tail',
+      'thinking-before-tool',
+      '__streaming_thinking_web:s_test_run-1',
+    ]);
+  });
+
+  it('does not deduplicate matching reasoning text from another turn', () => {
+    const server: NormalizedMessage[] = [{
+      id: 'thinking-from-old-turn',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:00.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'Shared reasoning prefix.',
+      runId: 'run-old',
+      turnId: 'run-old',
+    }];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-new',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:01.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'Shared reasoning prefix. New turn details.',
+      runId: 'run-new',
+      serverTailIdAtStart: null,
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'thinking-from-old-turn',
+      '__streaming_thinking_web:s_test_run-new',
+    ]);
+  });
+
+  it('does not deduplicate reasoning at or before the captured server tail', () => {
+    const server: NormalizedMessage[] = [
+      {
+        id: 'thinking-at-stream-start',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:00.000Z',
+        provider: PROVIDER,
+        kind: 'thinking',
+        content: 'Repeated wording.',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+      {
+        id: 'tool-result-after-thinking',
+        sessionId: 'web:s_test',
+        timestamp: '2026-09-10T10:00:01.000Z',
+        provider: PROVIDER,
+        kind: 'tool_result',
+        content: 'tool output',
+        toolId: 'tool-1',
+        runId: 'run-1',
+        turnId: 'run-1',
+      },
+    ];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'Repeated wording. But this is a later block.',
+      runId: 'run-1',
+      serverTailIdAtStart: 'tool-result-after-thinking',
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'thinking-at-stream-start',
+      'tool-result-after-thinking',
+      '__streaming_thinking_web:s_test_run-1',
+    ]);
+  });
+
+  it('does not treat an active reasoning row as an assistant text stream', () => {
+    const server = [
+      textMessage('tail-before-turn', 'Previous answer', '2026-09-10T10:00:00.000Z'),
+      textMessage('current-assistant-text', 'Current answer snapshot', '2026-09-10T10:00:01.000Z', {
+        runId: 'run-1',
+        turnId: 'run-1',
+      }),
+    ];
+    const realtime: NormalizedMessage[] = [{
+      id: '__streaming_thinking_web:s_test_run-1',
+      sessionId: 'web:s_test',
+      timestamp: '2026-09-10T10:00:02.000Z',
+      provider: PROVIDER,
+      kind: 'thinking',
+      content: 'A later reasoning block.',
+      runId: 'run-1',
+      serverTailIdAtStart: 'tail-before-turn',
+    }];
+
+    expect(computeMerged(server, realtime).map((message) => message.id)).toEqual([
+      'tail-before-turn',
+      'current-assistant-text',
+      '__streaming_thinking_web:s_test_run-1',
+    ]);
+  });
+
   it('deduplicates an optimistic user message from its persisted attachment prompt', () => {
     const server = [
       textMessage(
@@ -998,7 +1297,7 @@ describe('turn-scoped server reconciliation', () => {
     const upserted = upsertRealtimeMessages([firstBoundary], [replayedBoundary]);
 
     expect(upserted).toHaveLength(1);
-    expect(upserted[0]).toBe(replayedBoundary);
+    expect(upserted[0]).toMatchObject({ ...firstBoundary, compactState: 'completed' });
   });
 });
 

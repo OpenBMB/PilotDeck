@@ -70,7 +70,7 @@ export function ConfirmDialog({ title, children, confirmLabel, destructive = fal
         </div>
         <footer className="flex justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
           <button ref={cancel} type="button" disabled={busy} onClick={onCancel} className="h-9 shrink-0 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">{t('confirmDialog.cancel')}</button>
-          <button type="button" disabled={busy || disabled} onClick={onConfirm} className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium disabled:opacity-50 ${destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
+          <button type="button" disabled={busy || disabled} onClick={onConfirm} className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-[#5b5ce2] text-white enabled:hover:bg-[#4948cf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b5ce2] focus-visible:ring-offset-2 focus-visible:ring-offset-background'}`}>
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? t('confirmDialog.working') : confirmLabel || t('confirmDialog.confirm')}
           </button>
         </footer>

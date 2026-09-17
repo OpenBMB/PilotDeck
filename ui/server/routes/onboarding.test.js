@@ -10,6 +10,34 @@ afterEach(() => {
 });
 
 describe('onboarding routes', () => {
+  it.each([false, true])('saving onboarding preserves advanced features and channels enabled=%s', async (enabled) => {
+    const { buildDefaultPilotDeckConfig } = await vi.importActual('../services/pilotdeckConfig.js');
+    const config = buildDefaultPilotDeckConfig();
+    if (enabled) {
+      config.memory.enabled = true;
+      config.router.enabled = true;
+      config.tools.webSearch = { enabled: true, provider: 'tavily', apiKey: 'saved-search-key' };
+      config.alwaysOn.projects = { '/existing-project': { enabled: true } };
+      for (const adapter of Object.values(config.adapters)) adapter.enabled = true;
+    }
+    const writePilotDeckConfig = vi.fn(async (next) => ({ config: next }));
+    const { request } = await createOnboardingApp({ config, writePilotDeckConfig, probe: vi.fn().mockResolvedValue({ ok: true }) });
+    const payload = { providerId: 'ollama', apiKey: '', models: ['local'], retryPolicy: retryPolicy() };
+    const tested = await request('/api/v1/model-connection-tests', { method: 'POST', body: JSON.stringify(payload) });
+    const saved = await request('/api/v1/model-configuration', { method: 'PUT', body: JSON.stringify({
+      ...payload, testId: tested.body.testId, models: [{ modelId: 'local', textInput: true, imageInput: true }],
+    }) });
+    expect(saved.status).toBe(200);
+    const next = writePilotDeckConfig.mock.calls[0][0];
+    expect(next.agent.model).toBe('ollama/local');
+    for (const key of ['memory', 'router', 'tools', 'alwaysOn', 'adapters']) {
+      expect(next[key]).toEqual(config[key]);
+    }
+    expect(next.memory.enabled).toBe(enabled);
+    expect(next.tools.webSearch.enabled).toBe(enabled);
+    for (const adapter of Object.values(next.adapters)) expect(adapter.enabled).toBe(enabled);
+  });
+
   it('returns preset providers in catalog order with logos', async () => {
     const { request } = await createOnboardingApp();
     const result = await request('/api/v1/providers');

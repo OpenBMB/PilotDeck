@@ -49,7 +49,7 @@ function getMessageKey(message: ChatMessage, index: number): string {
 }
 
 function isStreamingSubagentThinkingMessage(message: ChatMessage): boolean {
-  return Boolean(message.isThinking && String(message.id || '').startsWith('__subagent_thinking_'));
+  return Boolean(message.isThinking && message.isStreaming);
 }
 
 function processAttachmentOverlapsLiveGroup(
@@ -258,6 +258,7 @@ export default function SubagentDetailMessageFlow({
         createDiff={createDiff}
         onFileOpen={onFileOpen}
         showThinking={showThinking}
+        isSessionRunning={isRunning}
         isProcessExpanded={isProcessExpanded}
         onProcessExpandedChange={handleProcessExpandedChange}
         isToolSectionExpanded={isToolSectionExpanded}
@@ -269,6 +270,7 @@ export default function SubagentDetailMessageFlow({
     handleProcessExpandedChange,
     handleToolSectionExpandedChange,
     isProcessExpanded,
+    isRunning,
     isToolSectionExpanded,
     onFileOpen,
     provider,
@@ -362,6 +364,7 @@ export default function SubagentDetailMessageFlow({
                     createDiff={createDiff}
                     onFileOpen={onFileOpen}
                     showThinking={showThinking}
+                    isSessionRunning={isRunning}
                     isProcessExpanded={isProcessExpanded}
                     onProcessExpandedChange={handleProcessExpandedChange}
                     isToolSectionExpanded={isToolSectionExpanded}

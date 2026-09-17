@@ -1,3 +1,5 @@
+import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
+import { isOptionalFeatureEnabled } from "../pilot/config/optionalFeature.js";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync as mkdirSyncFs, renameSync } from "node:fs";
 import { dirname, resolve, join as joinPath } from "node:path";
@@ -102,7 +104,7 @@ import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatc
 import { createTelemetryCollector, type TelemetryClient } from "../telemetry/index.js";
 import { UploadStore } from "../gateway/dialog/UploadStore.js";
 import { DialogGatewayError } from "../gateway/dialog/errors.js";
-import { listModelCatalog, validateExplicitModelSelection, validateModelSelection } from "../gateway/dialog/modelCatalog.js";
+import { listModelCatalog, normalizeSessionModelSelection, restoreSessionModelSelection, validateExplicitModelSelection, validateModelSelection } from "../gateway/dialog/modelCatalog.js";
 import { createDialogProjectRegistry } from "../gateway/dialog/projectRegistry.js";
 import type { SessionModelSelection } from "../gateway/protocol/types.js";
 import { listCommands } from "../gateway/dialog/commands.js";
@@ -347,7 +349,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     if (!sessionKey?.trim()) throw new DialogGatewayError("INVALID_SESSION_KEY", "sessionKey is required.");
     const storage = createAgentProjectSessionStorage({ projectRoot: projectKey, pilotHome, sessionId: sessionKey, now });
     const replay = replayTranscriptEntries((await readTranscript(storage.transcriptPath)).entries);
-    return replay.metadata.modelSelection ?? undefined;
+    return replay.metadata.modelSelection ? restoreSessionModelSelection(projectKey, replay.metadata.modelSelection, env) : undefined;
   };
   const modelResult = async (projectKey: string, sessionKey: string, saved?: SessionModelSelection) => {
     const snapshot = loadPilotConfig({ projectRoot: projectKey, env }).config;
@@ -361,7 +363,6 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
         model: explicit.model,
         source: "session" as const,
         reasoning: explicit.reasoning,
-        temperature: explicit.temperature,
         speed: explicit.speed,
       } : {
         provider: snapshot.agent.model.provider,
@@ -394,6 +395,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       if (router.hasActiveTurn(input.sessionKey)) throw new DialogGatewayError("SESSION_BUSY", "Cannot change the model during an active turn.");
       if (!input.selection || typeof input.selection !== "object") throw new DialogGatewayError("INVALID_MODEL_OVERRIDE", "selection is required.");
       validateModelSelection(projectKey, input.selection, env);
+      input = { ...input, selection: normalizeSessionModelSelection(input.selection) };
       const storage = createAgentProjectSessionStorage({ projectRoot: projectKey, pilotHome, sessionId: input.sessionKey, now });
       await storage.transcript.recordSessionMetadata(input.sessionKey, "model-selection", {
         modelSelection: input.selection,
@@ -421,12 +423,12 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       if (input.modelSelection !== undefined) {
         validateModelSelection(projectKey, input.modelSelection, env);
         return input.modelSelection.mode === "model"
-          ? { selection: input.modelSelection, source: "turn" as const }
+          ? { selection: normalizeSessionModelSelection(input.modelSelection) as ExplicitModelSelection, source: "turn" as const }
           : { source: "router" as const };
       }
       if (input.modelOverride) {
         validateExplicitModelSelection(projectKey, input.modelOverride, env);
-        return { selection: input.modelOverride, source: "turn" as const };
+        return { selection: normalizeSessionModelSelection(input.modelOverride) as ExplicitModelSelection, source: "turn" as const };
       }
       const saved = await readSavedModel(projectKey, input.sessionKey);
       if (saved) validateModelSelection(projectKey, saved, env);
@@ -899,9 +901,9 @@ class ProjectRuntimeRegistry {
         lister: () => pluginRuntime.getAllSkills(),
       },
       // Pass the YAML-configured web-search provider through to the built-in
-      // `web_search` tool. When absent, the tool may infer GLM/Tavily from
-      // provider-specific environment variables.
-      ...(webSearchConfig?.enabled === false
+      // `web_search` tool. An absent section keeps search out of the registry,
+      // even when provider credentials are available in the environment.
+      ...(!isOptionalFeatureEnabled(webSearchConfig)
         ? { webSearch: false as const }
         : webSearchConfig
           ? {
@@ -1630,33 +1632,18 @@ function ensureRouterConfig(
   defaultSelection: PilotAgentModelSelection,
 ): RouterConfig {
   const defaultRef = { id: defaultSelection.id, provider: defaultSelection.provider, model: defaultSelection.model };
-  if (router?.enabled === false) {
+  if (!router || !isOptionalFeatureEnabled(router)) {
     return { enabled: false };
   }
-  if (router) {
-    // Scenarios is optional at the parse boundary (see schema.ts) — the UI
-    // can persist a partial `router:` block, e.g. user toggled `enabled`
-    // and seeded `tokenSaver.*` without ever opening the Scenarios editor.
-    // Fill `scenarios.default` from `agent.model` so RouterRuntime always
-    // sees a valid map.
-    return {
-      enabled: true,
-      ...router,
-      scenarios: router.scenarios ?? { default: defaultRef },
-      fallback: router.fallback ?? { default: [defaultRef] },
-      tokenSaver: router.tokenSaver ?? buildDefaultTokenSaver(defaultRef),
-      autoOrchestrate: router.autoOrchestrate ?? buildDefaultAutoOrchestrate(),
-      stats: { enabled: true, baselineModel: defaultRef, ...(router.stats ?? {}) },
-    };
-  }
+  // Fill missing settings only for an explicitly configured router.
   return {
     enabled: true,
-    scenarios: { default: defaultRef },
-    fallback: { default: [defaultRef] },
-    zeroUsageRetry: { enabled: true, maxAttempts: 2 },
-    tokenSaver: buildDefaultTokenSaver(defaultRef),
-    autoOrchestrate: buildDefaultAutoOrchestrate(),
-    stats: { enabled: true, baselineModel: defaultRef },
+    ...router,
+    scenarios: router.scenarios ?? { default: defaultRef },
+    fallback: router.fallback ?? { default: [defaultRef] },
+    tokenSaver: router.tokenSaver ?? buildDefaultTokenSaver(defaultRef),
+    autoOrchestrate: router.autoOrchestrate ?? buildDefaultAutoOrchestrate(),
+    stats: { enabled: true, baselineModel: defaultRef, ...(router.stats ?? {}) },
   };
 }
 

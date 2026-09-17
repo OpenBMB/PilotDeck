@@ -102,3 +102,24 @@ describe('chat Markdown fidelity and block copying', () => {
     await screen.findByRole('button', { name: 'Copied' });
   });
 });
+
+
+it('shows language labels and preserves wrapping choice while a code block streams', () => {
+  const view = render(<Markdown isStreaming>{'```python\nprint(1)'}</Markdown>);
+  expect(screen.getByText('python')).toBeTruthy();
+  const wrap = screen.getByRole('button', { name: 'Wrap code' });
+  expect(wrap.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(wrap);
+  view.rerender(<Markdown>{'```python\nprint(123)\n```'}</Markdown>);
+  expect(screen.getByRole('button', { name: 'Wrap code' })).toBe(wrap);
+  expect(wrap.getAttribute('aria-pressed')).toBe('false');
+  expect(view.container.querySelector('.markdown-code-block')?.getAttribute('data-wrap')).toBe('false');
+  expect(view.container.querySelector('pre code')?.textContent).toBe('print(123)\n');
+});
+
+it('labels unlabeled blocks as plain text without adding a toolbar to inline code', () => {
+  const { container } = render(<Markdown>{'```\nplain\n```\n\n`inline`'}</Markdown>);
+  expect(screen.getByText('Plain text')).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Copy code' })).toHaveLength(1);
+  expect(container.querySelector('code:not(pre code)')?.textContent).toBe('inline');
+});

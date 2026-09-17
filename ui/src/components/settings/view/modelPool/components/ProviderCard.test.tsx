@@ -191,7 +191,7 @@ describe("ProviderCard connection badge", () => {
     expect(screen.queryByRole('button',{name:'pilotDeckConfig.panels.models.testConnection'})).toBeNull();
     fireEvent.click(screen.getByRole('button',{name:'one'}));
     fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens'),{target:{value:'8192'}});
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', {name:'pilotDeckConfig.panels.models.modelSettings.imageInput'}));
     fireEvent.click(screen.getByRole('button',{name:'pilotDeckConfig.panels.models.modelSettings.save'}));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0][1]).toMatchObject({models:{one:{capabilities:{maxOutputTokens:8192,supportsToolUse:true},multimodal:{input:['text','pdf','image'],maxPdfPages:5}},two:provider.models.two}});
@@ -220,10 +220,10 @@ describe("ProviderCard connection badge", () => {
     fireEvent.click(screen.getByRole('button',{name:'one'}));
     await screen.findByRole('button',{name:'pilotDeckConfig.panels.models.modelSettings.testing'});
     tasks = [{...tasks[0],status:'success',result:{models:[{modelId:'one',textInput:'supported',imageInput:'supported'}]}}];
-    await waitFor(()=>expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true),{timeout:3000});
+    await waitFor(()=>expect((screen.getByRole('checkbox', {name:'pilotDeckConfig.panels.models.modelSettings.imageInput'}) as HTMLInputElement).checked).toBe(true),{timeout:3000});
     expect(props.onSave).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button',{name:'confirmDialog.cancel'}));
     fireEvent.click(screen.getByRole('button',{name:'one'}));
-    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole('checkbox', {name:'pilotDeckConfig.panels.models.modelSettings.imageInput'}) as HTMLInputElement).checked).toBe(false);
   });
 });

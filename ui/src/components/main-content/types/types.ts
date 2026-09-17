@@ -59,7 +59,8 @@ export type MainContentProps = {
     projectName: string,
     sessionId: string,
     optimisticTitle?: string,
-  ) => void;
+    inputId?: string,
+  ) => void | (() => void);
   processingSessions: Set<string>;
   unreadSessionIds: Set<string>;
   onReplaceTemporarySession: SessionLifecycleHandler;

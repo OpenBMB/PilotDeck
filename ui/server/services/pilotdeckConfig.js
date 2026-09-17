@@ -1,3 +1,4 @@
+import { parseThinkingSettings } from '../../../src/model/thinking/settings.js';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import os from 'os';
@@ -104,7 +105,7 @@ export function buildDefaultPilotDeckConfig() {
       providers: {},
     },
     memory: {
-      enabled: true,
+      enabled: false,
       reasoningMode: 'answer_first',
       autoIndexIntervalMinutes: 30,
       autoDreamIntervalMinutes: 60,
@@ -112,6 +113,14 @@ export function buildDefaultPilotDeckConfig() {
       includeAssistant: true,
       maxMessageChars: 6000,
       heartbeatBatchSize: 30,
+    },
+    router: { enabled: false },
+    tools: { webSearch: { enabled: false } },
+    alwaysOn: { projects: {} },
+    adapters: {
+      feishu: { enabled: false },
+      weixin: { enabled: false },
+      wecom: { enabled: false },
     },
     webui: {
       runtime: {
@@ -138,6 +147,16 @@ export function buildDefaultPilotDeckConfig() {
 export function normalizePilotDeckConfig(input) {
   const source = isRecord(input) ? input : {};
   const normalized = deepMerge(buildDefaultPilotDeckConfig(), source);
+  // Older configured sections implied enabled. Do not let new-user defaults
+  // silently switch those existing features off during a read/save cycle.
+  for (const key of ['memory', 'router']) {
+    if (isRecord(source[key]) && source[key].enabled === undefined) {
+      normalized[key].enabled = true;
+    }
+  }
+  if (isRecord(source.tools?.webSearch) && source.tools.webSearch.enabled === undefined) {
+    normalized.tools.webSearch.enabled = true;
+  }
   const sourceOfficePreview = isRecord(source.webui?.officePreview)
     ? source.webui.officePreview
     : {};
@@ -279,6 +298,10 @@ function validateProvider(id, provider, errors) {
       }
       if (model !== null && model !== undefined && !isRecord(model)) {
         errors.push(`model.providers.${id}.models.${modelId} must be an object`);
+      }
+      if (isRecord(model)) {
+        try { parseThinkingSettings(model.thinking, protocol); }
+        catch (error) { errors.push(`model.providers.${id}.models.${modelId}: ${error.message}`); }
       }
     }
   }

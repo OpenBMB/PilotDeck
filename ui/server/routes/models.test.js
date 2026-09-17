@@ -52,7 +52,7 @@ describe('model routes', () => {
   });
 
   it('returns 422 for unsupported model parameters', async () => {
-    const error = Object.assign(new Error('temperature is unsupported'), {
+    const error = Object.assign(new Error('reasoning effort is unsupported'), {
       code: 'UNSUPPORTED_MODEL_PARAMETER',
     });
     vi.doMock('../pilotdeck-bridge.js', () => ({

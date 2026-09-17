@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { StreamingScrollViewport } from './StreamingScrollViewport';
-import { useTypewriter } from './useTypewriter';
 
 export function ThinkingBlock({ content, isStreaming, inline, projectName, onFileOpen }: {
   content: string;
@@ -13,17 +12,20 @@ export function ThinkingBlock({ content, isStreaming, inline, projectName, onFil
   onFileOpen?: (path: string) => void;
 }) {
   // Only phase transitions change the default; token updates preserve manual toggles.
-  const [expanded, setExpanded] = useState(isStreaming);
-  useEffect(() => setExpanded(isStreaming), [isStreaming]);
+  const [view, setView] = useState({ streaming: isStreaming, expanded: isStreaming });
+  // Reset the phase default during render, before paint. A completed block never
+  // flashes a restarted typewriter or an expanded stale viewport for one frame.
+  if (view.streaming !== isStreaming) setView({ streaming: isStreaming, expanded: isStreaming });
+  const expanded = view.streaming === isStreaming ? view.expanded : isStreaming;
   const { t } = useTranslation('chat');
-  const text = useTypewriter(content, isStreaming, 4);
+  const text = content;
   return (
     <div className="min-w-0 text-[14px] leading-relaxed">
       <button
         type="button"
         aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-        className={`hover-brand-text flex items-center gap-1.5 text-left text-[13px] font-medium ${inline
+        onClick={() => setView({ streaming: isStreaming, expanded: !expanded })}
+        className={`hover-brand-text flex items-center gap-2 text-left text-[13px] font-medium ${inline
           ? 'text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300'
           : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'}`}
       >
@@ -38,12 +40,12 @@ export function ThinkingBlock({ content, isStreaming, inline, projectName, onFil
       <div hidden={!expanded}>
         <StreamingScrollViewport
           label={t('thinking.liveContentLabel', { defaultValue: 'Live thinking content' })}
-          enabled={expanded && (isStreaming || text !== content)}
-          className={`mt-1.5 border-l-2 pl-3 text-[13px] text-neutral-600 dark:text-neutral-300 ${inline
+          enabled={expanded && isStreaming}
+          className={`ml-[22px] mt-1.5 border-l-2 pl-3 text-[13px] text-neutral-600 dark:text-neutral-300 ${inline
             ? 'border-blue-400/50 dark:border-blue-500/40'
             : 'border-neutral-200 dark:border-neutral-700'}`}
         >
-          <Markdown projectName={projectName} onFileOpen={onFileOpen} isStreaming={isStreaming || text !== content}>{text}</Markdown>
+          <Markdown projectName={projectName} onFileOpen={onFileOpen} isStreaming={isStreaming}>{text}</Markdown>
         </StreamingScrollViewport>
       </div>
     </div>

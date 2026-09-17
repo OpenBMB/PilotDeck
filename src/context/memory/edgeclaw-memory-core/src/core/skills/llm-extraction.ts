@@ -2296,7 +2296,6 @@ export class LlmMemoryExtractor {
       url = `${selection.baseUrl}/responses`;
       body = {
         model: selection.model,
-        temperature: 0,
         input: [
           { role: "system", content: input.systemPrompt },
           { role: "user", content: input.userPrompt },
@@ -2309,7 +2308,6 @@ export class LlmMemoryExtractor {
       body = {
         model: selection.model,
         max_tokens: 32768,
-        temperature: 0,
         system: input.systemPrompt,
         messages: [
           { role: "user", content: input.userPrompt },
@@ -2324,7 +2322,6 @@ export class LlmMemoryExtractor {
           { role: "user", parts: [{ text: input.userPrompt }] },
         ],
         generationConfig: {
-          temperature: 0,
           responseMimeType: "application/json",
         },
       };
@@ -2333,7 +2330,6 @@ export class LlmMemoryExtractor {
       url = `${selection.baseUrl}/chat/completions`;
       body = {
         model: selection.model,
-        temperature: 0,
         stream: false,
         response_format: { type: "json_object" },
         messages: [

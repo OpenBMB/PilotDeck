@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatComposerState } from './useChatComposerState';
+import { cachedUploadedPreview } from '../utils/uploadedAttachmentPreview';
 
 const mocks = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
@@ -39,7 +40,42 @@ describe('useChatComposerState attachment submission', () => {
     vi.restoreAllMocks();
   });
 
-  it.each([false, true])('snapshots the selected model before attachment preparation (queued=%s)', async (queued) => {
+  it.each([false, true])('retries a timed-out draft once, including after reload (reload=%s)', async (reload) => {
+    const acceptedIds = new Set<string>();
+    let attempts = 0;
+    const enqueuePreparedInput = vi.fn(async (item: any) => {
+      acceptedIds.add(item.id); // Server accepts/persists, but its first acknowledgment is lost.
+      return ++attempts === 1 ? { ok: false, error: 'Queue operation timed out.' } : { ok: true };
+    });
+    const options = {
+      selectedProject: { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' },
+      selectedSession: { id: 'web:queue' }, currentSessionId: 'web:queue',
+      model: 'provider/model', permissionMode: 'default', runMode: 'agent', cycleRunMode: vi.fn(),
+      isLoading: true, canAbortSession: true, tokenBudget: null, sendMessage: vi.fn(), enqueuePreparedInput,
+      pendingViewSessionRef: { current: null }, scrollToBottom: vi.fn(), addMessage: vi.fn(),
+      clearMessages: vi.fn(), rewindMessages: vi.fn(), setIsLoading: vi.fn(), setCanAbortSession: vi.fn(),
+      setIsAborting: vi.fn(), setClaudeStatus: vi.fn(), setPilotDeckStatus: vi.fn(), setIsUserScrolledUp: vi.fn(),
+      pendingPermissionRequests: [], setPendingPermissionRequests: vi.fn(),
+    };
+    let view = renderHook(() => useChatComposerState(options));
+    let result = view.result;
+    act(() => result.current.setInput('same draft after timeout'));
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    expect(result.current.input).toBe('same draft after timeout');
+    if (reload) {
+      view.unmount();
+      view = renderHook(() => useChatComposerState(options));
+      result = view.result;
+    }
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    expect(acceptedIds.size).toBe(1);
+    expect(result.current.input).toBe('');
+    act(() => result.current.setInput('same draft after timeout'));
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    expect(acceptedIds.size).toBe(2); // An intentional new message with identical text must still send.
+  });
+
+  it.each([false, true])('ignores sends during upload and uses the model selected after completion (queued=%s)', async (queued) => {
     let finishUpload!: () => void;
     const uploadGate = new Promise<void>((resolve) => { finishUpload = resolve; });
     mocks.uploadAttachmentBatch.mockImplementation(async ({ files }: { files: File[] }) => {
@@ -52,7 +88,7 @@ describe('useChatComposerState attachment submission', () => {
     });
     const sendMessage = vi.fn(() => true);
     const enqueuePreparedInput = vi.fn(async () => ({ ok: true }));
-    const initialChoice = { mode: 'model' as const, provider: 'zeta', model: 'configured', reasoning: 0.8, temperature: 0.3, speed: 1 };
+    const initialChoice = { mode: 'model' as const, provider: 'zeta', model: 'configured', reasoning: 0.8, speed: 1 };
     const selectedProject = { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' };
     const selectedSession = queued ? { id: 'web:queue' } : null;
     const { result, rerender } = renderHook(({ modelSelection }) => useChatComposerState({
@@ -72,12 +108,66 @@ describe('useChatComposerState attachment submission', () => {
     await waitFor(() => expect(result.current.attachedImages).toHaveLength(1));
     let submitting!: Promise<void>;
     act(() => { submitting = result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    await act(async () => { await submitting; });
+    act(() => {
+      result.current.handleKeyDown({ key: 'Enter', preventDefault: vi.fn() } as never);
+      result.current.handleKeyDown({ key: 'Enter', preventDefault: vi.fn() } as never);
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(enqueuePreparedInput).not.toHaveBeenCalled();
     rerender({ modelSelection: { mode: 'auto' } });
-    await act(async () => { finishUpload(); await submitting; });
+    await act(async () => { finishUpload(); });
+    await waitFor(() => expect(result.current.hasPendingAttachments).toBe(false));
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(enqueuePreparedInput).not.toHaveBeenCalled();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
     expect(queued ? enqueuePreparedInput : sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-      options: expect.objectContaining({ modelSelection: initialChoice }),
+      options: expect.objectContaining({ modelSelection: { mode: 'auto' } }),
     }));
   });
+
+  it.each([[false, 1, 11], [true, 1, 11], [true, 20, 4 * 1024 * 1024]] as const)(
+    'keeps previews local and queue frames small (queued=%s, files=%s, bytes=%s)', async (queued, count, bytes) => {
+    mocks.uploadAttachmentBatch.mockImplementation(async ({ files }: { files: File[] }) => ({
+      uploadId: `preview-upload-${files[0].name}`, attachmentIds: files.map(file => file.name),
+      attachments: files.map(file => ({ attachmentId: file.name, name: file.name,
+        relativePath: `.tmp/chat-uploads/preview-upload/${file.name}`, bytes: file.size, mimeType: file.type })),
+    }));
+    const addMessage = vi.fn();
+    const sendMessage = vi.fn((_message: any) => true);
+    const enqueuePreparedInput = vi.fn(async (_item: any) => ({ ok: true }));
+    const options = {
+      selectedProject: { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' },
+      selectedSession: queued ? { id: 'web:queue' } : null, currentSessionId: queued ? 'web:queue' : null,
+      model: 'provider/model', permissionMode: 'default', runMode: 'agent', cycleRunMode: vi.fn(),
+      isLoading: queued, canAbortSession: queued, tokenBudget: null, sendMessage, enqueuePreparedInput,
+      pendingViewSessionRef: { current: null }, scrollToBottom: vi.fn(), addMessage,
+      clearMessages: vi.fn(), rewindMessages: vi.fn(), setIsLoading: vi.fn(), setCanAbortSession: vi.fn(),
+      setIsAborting: vi.fn(), setClaudeStatus: vi.fn(), setPilotDeckStatus: vi.fn(), setIsUserScrolledUp: vi.fn(),
+      pendingPermissionRequests: [], setPendingPermissionRequests: vi.fn(),
+    };
+    const { result } = renderHook(() => useChatComposerState(options));
+    act(() => {
+      result.current.setInput('describe this image');
+      result.current.addAttachmentFiles(Array.from({ length: count }, (_, index) =>
+        new File([new Uint8Array(bytes)], `preview-${index}.png`, { type: 'image/png' })));
+    });
+    await waitFor(() => expect(result.current.uploadingImages.size).toBe(count));
+    await waitFor(() => expect(result.current.hasPendingAttachments).toBe(false), { timeout: 10_000 });
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    const dispatched = queued ? enqueuePreparedInput.mock.calls[0][0] : sendMessage.mock.calls[0][0];
+    expect(dispatched.options.images ?? []).toEqual([]);
+    expect(dispatched.options.attachments ?? []).toEqual([]);
+    expect(dispatched.options.uploadedAttachments.flatMap((ref: any) => ref.attachmentIds)).toHaveLength(count);
+    const attachments = queued ? dispatched.options.displayAttachments : addMessage.mock.calls[0][0].attachments;
+    expect(attachments).toHaveLength(count);
+    expect(attachments[0]).toMatchObject({ uploadId: 'preview-upload-preview-0.png', attachmentId: 'preview-0.png' });
+    if (count === 1) expect(cachedUploadedPreview(attachments[0])).toMatch(/^data:image\/png;base64,/);
+    // 20 x 4 MiB would occupy >106 MiB as Base64 and disconnect the WS receiver.
+    expect(JSON.stringify(dispatched).length).toBeLessThan(32 * 1024);
+    expect(JSON.stringify(dispatched)).not.toContain('data:image/');
+    if (queued) expect(addMessage).not.toHaveBeenCalled(); // A waiting input must not jump into the transcript.
+  }, 15_000);
 
   it('does not create an optimistic sidebar session when attachment upload fails', async () => {
     mocks.uploadAttachmentBatch.mockRejectedValue(new Error('upload failed'));
@@ -127,18 +217,15 @@ describe('useChatComposerState attachment submission', () => {
     await waitFor(() => {
       expect(result.current.input).toBe('send this file');
       expect(result.current.attachedImages).toHaveLength(1);
+      expect(result.current.imageErrors.size).toBe(1);
     });
 
     await result.current.handleSubmit({ preventDefault: vi.fn() } as never);
 
     expect(onSessionActivityBump).not.toHaveBeenCalled();
-    expect(addMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'error',
-        content: 'Failed to upload attachments: broken.txt',
-      }),
-      null,
-    );
+    expect(addMessage).not.toHaveBeenCalled();
+    expect(result.current.hasPendingAttachments).toBe(true);
+    expect(result.current.imageErrors.size).toBeGreaterThan(0);
   });
 
   it('keeps the draft and avoids loading state when a new-session command is disconnected', async () => {
@@ -232,7 +319,7 @@ describe('useChatComposerState attachment submission', () => {
 
     const sendMessage = vi.fn(() => true);
     const addMessage = vi.fn();
-    const { result } = renderHook(() => useChatComposerState({
+    const options: Parameters<typeof useChatComposerState>[0] = {
       selectedProject: { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' },
       selectedSession: null,
       currentSessionId: null,
@@ -257,7 +344,8 @@ describe('useChatComposerState attachment submission', () => {
       setIsUserScrolledUp: vi.fn(),
       pendingPermissionRequests: [],
       setPendingPermissionRequests: vi.fn(),
-    }));
+    };
+    const { result } = renderHook(() => useChatComposerState(options));
     const first = new File(['a'], 'a.txt', { type: 'text/plain', lastModified: 1 });
     const second = new File(['b'], 'b.txt', { type: 'text/plain', lastModified: 2 });
 
@@ -274,6 +362,9 @@ describe('useChatComposerState attachment submission', () => {
     act(() => result.current.removeAttachedImage(0));
     await waitFor(() => expect(mocks.uploadAttachmentBatch).toHaveBeenCalledTimes(2));
     await submitting;
+    await waitFor(() => expect(result.current.hasPendingAttachments).toBe(false));
+    expect(sendMessage).not.toHaveBeenCalled();
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
 
     expect(mocks.cancelAttachmentUpload).toHaveBeenCalledWith('upload-old');
     expect(mocks.uploadAttachmentBatch).toHaveBeenCalledTimes(2);
@@ -287,4 +378,41 @@ describe('useChatComposerState attachment submission', () => {
       attachments: [expect.objectContaining({ name: 'b.txt', uploadId: 'upload-new' })],
     }), null);
   });
+
+  it.each(['accepted', 'rejected', 'network-error'] as const)('updates activity before the queue reply and handles %s', async (outcome) => {
+    let complete!: (value: { ok: boolean; error?: string }) => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<{ ok: boolean; error?: string }>((resolve, fail) => { complete = resolve; reject = fail; });
+    const rollback = vi.fn();
+    const onSessionActivityBump = vi.fn(() => rollback);
+    const enqueuePreparedInput = vi.fn((_item: { id: string }) => pending);
+    const addMessage = vi.fn();
+    const options = {
+      selectedProject: { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' },
+      selectedSession: { id: 'web:queue' }, currentSessionId: 'web:queue',
+      model: 'provider/model', permissionMode: 'default', runMode: 'agent', cycleRunMode: vi.fn(),
+      isLoading: false, canAbortSession: false, tokenBudget: null, sendMessage: vi.fn(() => true), enqueuePreparedInput,
+      onSessionActivityBump,
+      pendingViewSessionRef: { current: null }, scrollToBottom: vi.fn(), addMessage,
+      clearMessages: vi.fn(), rewindMessages: vi.fn(), setIsLoading: vi.fn(), setCanAbortSession: vi.fn(),
+      setIsAborting: vi.fn(), setClaudeStatus: vi.fn(), setPilotDeckStatus: vi.fn(), setIsUserScrolledUp: vi.fn(),
+      pendingPermissionRequests: [], setPendingPermissionRequests: vi.fn(),
+    };
+    const { result } = renderHook(() => useChatComposerState(options));
+    act(() => result.current.setInput('Activity check'));
+    let submitting!: Promise<void>;
+    act(() => { submitting = result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    await waitFor(() => expect(enqueuePreparedInput).toHaveBeenCalledTimes(1));
+    expect(onSessionActivityBump).toHaveBeenCalledWith('demo', 'web:queue', 'Activity check', enqueuePreparedInput.mock.calls[0][0].id);
+    expect(rollback).not.toHaveBeenCalled();
+    await act(async () => {
+      if (outcome === 'network-error') reject(new Error('Connection lost'));
+      else complete({ ok: outcome === 'accepted', error: outcome === 'rejected' ? 'Queue rejected' : undefined });
+      await submitting;
+    });
+    expect(onSessionActivityBump).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(outcome === 'accepted' ? 0 : 1);
+    if (outcome !== 'accepted') expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }), 'web:queue');
+  });
+
 });

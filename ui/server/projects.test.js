@@ -21,7 +21,7 @@ vi.mock('./database/db.js', () => ({
     applyCustomSessionNames: vi.fn(),
 }));
 
-import { deleteSession, getProjects } from './projects.js';
+import { addProjectManually, deleteSession, getProjects, getProjectsSnapshot } from './projects.js';
 import { createProjectId, sanitizeSessionIdForPath } from './utils/pilotPaths.js';
 
 const originalPilotHome = process.env.PILOT_HOME;
@@ -180,6 +180,58 @@ describe('getProjects', () => {
     });
 });
 
+
+describe('project registration and snapshot ordering', () => {
+    let pilotHome;
+    let previousHome;
+    let previousWorkspacesRoot;
+    beforeEach(async () => {
+        previousHome = process.env.PILOT_HOME;
+        previousWorkspacesRoot = process.env.WORKSPACES_ROOT;
+        pilotHome = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-project-registration-'));
+        process.env.PILOT_HOME = pilotHome;
+        process.env.WORKSPACES_ROOT = path.join(pilotHome, 'workspaces');
+        gateway.listProjects.mockReset().mockResolvedValue({ projects: [] });
+        gateway.listSessions.mockReset().mockResolvedValue({ sessions: [] });
+        gateway.describeProject.mockReset().mockResolvedValue({ sessionCount: 0 });
+    });
+    afterEach(async () => {
+        if (previousHome === undefined) delete process.env.PILOT_HOME;
+        else process.env.PILOT_HOME = previousHome;
+        if (previousWorkspacesRoot === undefined) delete process.env.WORKSPACES_ROOT;
+        else process.env.WORKSPACES_ROOT = previousWorkspacesRoot;
+        vi.restoreAllMocks();
+        await fs.rm(pilotHome, { recursive: true, force: true });
+    });
+
+    it('registers without querying any project or session history', async () => {
+        const workspace = path.join(pilotHome, 'workspace');
+        const registered = await addProjectManually(workspace);
+        expect(registered).toMatchObject({
+            fullPath: workspace, lastActivity: expect.any(Number), projectListRevision: expect.any(Number),
+        });
+        expect(await fs.readFile(path.join(pilotHome, 'projects', registered.name, '.cwd'), 'utf8')).toBe(workspace);
+        expect(gateway.listProjects).not.toHaveBeenCalled();
+        expect(gateway.listSessions).not.toHaveBeenCalled();
+    });
+
+    it('orders a slow scan before a registration even when it finishes afterwards', async () => {
+        const pending = deferred();
+        gateway.listProjects.mockReturnValueOnce(pending.promise);
+        const oldSnapshot = getProjectsSnapshot();
+        const registered = await addProjectManually(path.join(pilotHome, 'workspace'));
+        pending.resolve({ projects: [] });
+        expect((await oldSnapshot).revision).toBeLessThan(registered.projectListRevision);
+        expect((await getProjectsSnapshot()).revision).toBeGreaterThan(registered.projectListRevision);
+    });
+
+    it('rejects a failed registration instead of returning a project the UI would display', async () => {
+        const error = new Error('Disk write failed');
+        vi.spyOn(fs, 'writeFile').mockRejectedValueOnce(error);
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        await expect(addProjectManually(path.join(pilotHome, 'workspace'))).rejects.toBe(error);
+    });
+});
 
 describe('deleteSession lifecycle', () => {
     let pilotHome;

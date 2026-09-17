@@ -505,7 +505,7 @@ type ProjectionContext = {
 
 /**
  * Flatten a CanonicalMessage's content blocks into one or more WebMessages.
- * Adjacent text blocks within the same canonical message merge.
+ * Adjacent legacy text blocks merge; identified model blocks stay distinct.
  *
  * Tool-result images get special handling: when an `image` block immediately
  * follows a `tool_result` block (as produced by `projectToolResults`), the
@@ -524,6 +524,8 @@ export function flattenCanonicalMessage(
   const out: WebMessage[] = [];
   const role: WebMessageRole = message.role === "user" ? "user" : "assistant";
   let textBuffer = "";
+  let textBlockId: string | undefined;
+  let textTimeline: CanonicalContentBlock["timeline"];
   let pendingImages: NonNullable<WebMessage["images"]> = [];
   let lastToolResultMessage: WebMessage | undefined;
 
@@ -538,6 +540,8 @@ export function flattenCanonicalMessage(
       role,
       kind: "text",
       text: textBuffer,
+      ...(textBlockId ? { blockId: textBlockId } : {}),
+      ...(textTimeline ? { timeline: textTimeline } : {}),
       ...(role === "assistant" && typeof message.metadata?.model === "string" ? { model: message.metadata.model } : {}),
       ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
       ...(context.forkUnsupportedContent
@@ -552,10 +556,17 @@ export function flattenCanonicalMessage(
       source: "history",
     });
     textBuffer = "";
+    textBlockId = undefined;
+    textTimeline = undefined;
     pendingImages = [];
   };
 
   for (const block of message.content) {
+    if (block.type === 'text') {
+      if (textBlockId !== block.blockId) flushText();
+      textBlockId = block.blockId;
+      textTimeline = block.timeline;
+    }
     if (block.type !== "image" && block.type !== "tool_result") {
       // Any other block breaks the tool_result → image association.
       lastToolResultMessage = undefined;
@@ -572,6 +583,7 @@ export function flattenCanonicalMessage(
     }, (image) => {
       pendingImages.push(toWebMessageImage(image));
     });
+    if (block.type !== "text" && block.timeline && out.length) out[out.length - 1].timeline = block.timeline;
     if (block.type === "tool_result") {
       lastToolResultMessage = out[out.length - 1];
     }
@@ -611,6 +623,7 @@ function flushBlock(
         role: "assistant",
         kind: "thinking",
         text: block.text,
+        ...(block.blockId ? { blockId: block.blockId } : {}),
         source: "history",
       });
       return;
@@ -790,6 +803,7 @@ function compactBoundaryMetadata(entry: AgentTranscriptEntry & { type: "control_
     "compactMetadata" in entry.boundary
   ) {
     const cm = entry.boundary.compactMetadata as Record<string, unknown>;
+    if (cm.timeline) meta.timeline = cm.timeline;
     if (typeof cm.compactionId === "string" && cm.compactionId.length > 0) {
       meta.compactionId = cm.compactionId;
     }
@@ -970,6 +984,7 @@ function injectCompactBoundaryMessages(
       provider: "pilotdeck",
       role: "system",
       kind: "compact_boundary",
+      ...(boundary.metadata?.timeline ? { timeline: boundary.metadata.timeline as WebMessage["timeline"] } : {}),
       turnId: boundary.turnId,
       sequence: boundary.sequence,
       text: "Context compacted",

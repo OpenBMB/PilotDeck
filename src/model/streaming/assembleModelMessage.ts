@@ -11,6 +11,7 @@ import type {
 import type { CanonicalModelError } from "../protocol/errors.js";
 
 export type ModelMessageAssemblerState = {
+  responseId?: string;
   content: CanonicalContentBlock[];
   textBuffer: string;
   model?: string;
@@ -35,8 +36,9 @@ export type AssembledAssistantMessage = {
   hasMessageEnd: boolean;
 };
 
-export function createModelMessageAssemblerState(): ModelMessageAssemblerState {
+export function createModelMessageAssemblerState(responseId?: string): ModelMessageAssemblerState {
   return {
+    ...(responseId ? { responseId } : {}),
     content: [],
     textBuffer: "",
     thinkingBuffer: "",
@@ -45,6 +47,11 @@ export function createModelMessageAssemblerState(): ModelMessageAssemblerState {
     hasMessageEnd: false,
     toolCalls: [],
   };
+}
+
+/** The next delta and its eventual persisted block must carry the same ID. */
+export function getModelStreamBlockId(state: ModelMessageAssemblerState, kind: 'text' | 'thinking'): string | undefined {
+  return state.responseId ? `${state.responseId}:${kind}:${state.content.filter(block => block.type === kind).length}` : undefined;
 }
 
 export function applyModelEventToAssembler(
@@ -60,9 +67,11 @@ export function applyModelEventToAssembler(
     case "tool_call_delta":
       return;
     case "text_delta":
+      if (state.thinkingBuffer || state.thinkingReasoningContentBuffer || state.thinkingSignature !== undefined) flushTextBuffers(state);
       state.textBuffer += event.text;
       return;
     case "thinking_delta":
+      if (state.textBuffer) flushTextBuffers(state);
       state.thinkingBuffer += event.text;
       if (event.reasoningContent !== undefined) {
         state.thinkingReasoningContentBuffer += event.reasoningContent;
@@ -158,6 +167,7 @@ function flushTextBuffers(state: ModelMessageAssemblerState): void {
     const block: CanonicalThinkingBlock = {
       type: "thinking",
       text: state.thinkingBuffer,
+      ...(state.responseId ? { blockId: getModelStreamBlockId(state, 'thinking') } : {}),
     };
     if (state.thinkingReasoningContentBuffer.length > 0) {
       block.reasoningContent = state.thinkingReasoningContentBuffer;
@@ -175,6 +185,7 @@ function flushTextBuffers(state: ModelMessageAssemblerState): void {
     state.content.push({
       type: "text",
       text: state.textBuffer,
+      ...(state.responseId ? { blockId: getModelStreamBlockId(state, 'text') } : {}),
     } satisfies CanonicalTextBlock);
     state.textBuffer = "";
   }

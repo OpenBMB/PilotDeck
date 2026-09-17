@@ -323,7 +323,25 @@ export class UploadStore {
     }
   }
   private async readAt(projectKey: string, uploadId: string): Promise<UploadRecord | undefined> {
-    try { return JSON.parse(await readFile(join(projectKey, ".tmp", "chat-uploads", uploadId, "metadata.json"), "utf8")) as UploadRecord; }
+    assertUploadId(uploadId);
+    const uploadRoot = resolve(projectKey, ".tmp", "chat-uploads");
+    const metadataPath = resolve(uploadRoot, uploadId, "metadata.json");
+    if (!metadataPath.startsWith(uploadRoot + sep)) {
+      throw new DialogGatewayError("PROJECT_PATH_FORBIDDEN", "Upload metadata must stay inside the upload directory.");
+    }
+    try {
+      const canonicalProject = await realpath(projectKey);
+      const canonicalRoot = resolve(canonicalProject, ".tmp", "chat-uploads");
+      const canonicalPath = await realpath(metadataPath);
+      if (!canonicalPath.startsWith(canonicalRoot + sep)) {
+        throw new DialogGatewayError("PROJECT_PATH_FORBIDDEN", "Upload metadata symlink leaves the upload directory.");
+      }
+      const record = JSON.parse(await readFile(canonicalPath, "utf8")) as UploadRecord;
+      if (record.uploadId !== uploadId || record.projectKey !== canonicalProject) {
+        throw new DialogGatewayError("UPLOAD_INTEGRITY_MISMATCH", "Upload metadata identity does not match its directory.");
+      }
+      return record;
+    }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
   }
   private async listInProject(projectKey: string): Promise<UploadRecord[]> {

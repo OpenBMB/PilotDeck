@@ -18,7 +18,6 @@ const catalogItem: ChatModelCatalogItem = {
   available: true,
   capabilities: {
     reasoning: { type: "enum", values: [0, 0.2, 0.4, 0.6, 0.8, 0.9, 1] },
-    temperature: { type: "range", min: 0, max: 1, step: 0.1 },
     speed: { type: "enum", values: [0, 1] },
   },
 };
@@ -37,22 +36,20 @@ describe("modelCapabilityOptions", () => {
     ).toEqual([0, 1]);
   });
 
-  it("keeps reasoning, temperature, and speed when reselecting the same model", () => {
+  it("keeps reasoning and speed when reselecting the same model", () => {
     const preserved = preserveParamsForModel(catalogItem, {
       mode: "model",
       provider: "openai",
       model: "gpt-4o",
       reasoning: 0.6,
-      temperature: 0.3,
       speed: 1,
     });
-    expect(preserved).toEqual({ reasoning: 0.6, temperature: 0.3, speed: 1 });
+    expect(preserved).toEqual({ reasoning: 0.6, speed: 1 });
     expect(buildExplicitSelection(catalogItem, preserved)).toEqual({
       mode: "model",
       provider: "openai",
       model: "gpt-4o",
       reasoning: 0.6,
-      temperature: 0.3,
       speed: 1,
     });
   });
@@ -108,4 +105,21 @@ describe("modelCapabilityOptions", () => {
       speed: 1,
     });
   });
+});
+
+it('keeps an enabled model with no configured efforts as a Default-only capability', () => {
+  const parsed = parseCatalogItem({ ...catalogItem, capabilities: { reasoning: { type: 'enum', values: [] } } });
+  expect(parsed?.capabilities.reasoning).toEqual({ type: 'enum', values: [] });
+});
+it('clears the effort when selecting Default and keeps the remaining model parameters', () => {
+  const prior = {mode:'model' as const,provider:'openai',model:'gpt-4o',reasoning:.8,speed:1};
+  const selection = buildExplicitSelection(catalogItem, {...preserveParamsForModel(catalogItem,prior),reasoning:undefined});
+  expect(selection).toEqual({mode:'model',provider:'openai',model:'gpt-4o',speed:1});
+});
+
+it('ignores legacy temperature in restored preferences and catalog capabilities', () => {
+  const legacy = {mode:'model',provider:'openai',model:'gpt-4o',reasoning:.8,temperature:.3,speed:1};
+  expect(normalizeModelSelection(legacy)).toEqual({mode:'model',provider:'openai',model:'gpt-4o',reasoning:.8,speed:1});
+  const parsed = parseCatalogItem({...catalogItem,capabilities:{...catalogItem.capabilities,temperature:{type:'range',min:0,max:1,step:.1}}});
+  expect(parsed?.capabilities).not.toHaveProperty('temperature');
 });

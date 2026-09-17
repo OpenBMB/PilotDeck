@@ -1,5 +1,7 @@
 {
   "copyBlock": {
+    "plainText": "纯文本",
+    "wrap": "代码自动换行",
     "code": "复制代码",
     "table": "复制表格",
     "tableMarkdown": "复制表格 Markdown",
@@ -102,6 +104,8 @@
     "executingTool": "执行工具中...",
     "generating": "正在生成回复",
     "compacting": "正在压缩上下文...",
+    "compactFailed": "上下文压缩失败",
+    "compactCancelled": "上下文压缩已停止",
     "compactingLevel": "正在触发 {{level}} 级压缩：{{label}}",
     "waitingForPermission": "等待授权",
     "retrying": "重连中 {{attempt}}/{{max}}{{delay}}",
@@ -351,7 +355,6 @@
       "advanced": "高级设置",
       "reasoning": "推理强度",
       "speed": "速度",
-      "temperature": "温度",
       "reasoningLevels": {
         "off": "关闭",
         "light": "轻度",
@@ -359,7 +362,16 @@
         "medium": "中",
         "high": "高",
         "xhigh": "极高",
-        "max": "最高"
+        "max": "最高",
+        "default": "默认"
+      },
+      "reasoningMenuLevels": {
+        "default": "默认(Default)",
+        "low": "低(Low)",
+        "medium": "中(Medium)",
+        "high": "高(High)",
+        "xhigh": "极高(Xhigh)",
+        "max": "最高(Max)"
       },
       "speedLevels": {
         "standard": "标准",
@@ -661,5 +673,50 @@
     "updated": "本轮更新",
     "collapse": "收起",
     "showAll": "查看全部 {{count}} 个文件"
+  },
+  "toolDisplay": {
+    "copyCommand": "复制命令",
+    "collapse": "收起完整内容",
+    "full": "展开完整内容",
+    "copy": "复制",
+    "details": "工具详情",
+    "output": "输出",
+    "success": "成功",
+    "failed": "失败",
+    "exitCode": "退出码 {{code}}",
+    "executing": "正在运行…",
+    "actionRequired": "需要处理",
+    "noResult": "未记录执行结果",
+    "noOutput": "无输出",
+    "fileContent": "文件内容",
+    "changes": "变更",
+    "noChanges": "无变更",
+    "running": {
+      "command": "正在运行",
+      "write": "正在写入",
+      "edit": "正在编辑",
+      "read": "正在读取",
+      "search": "正在搜索",
+      "tool": "正在使用",
+      "skill": "正在读取技能"
+    },
+    "pending": {
+      "command": "命令",
+      "write": "写入",
+      "edit": "编辑",
+      "read": "读取",
+      "search": "搜索",
+      "tool": "工具",
+      "skill": "读取技能"
+    },
+    "done": {
+      "command": "已运行",
+      "write": "已写入",
+      "edit": "已编辑",
+      "read": "已读取",
+      "search": "已搜索",
+      "tool": "已使用",
+      "skill": "已读取技能"
+    }
   }
 }

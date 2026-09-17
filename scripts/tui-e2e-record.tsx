@@ -64,7 +64,6 @@ async function main(): Promise<void> {
     systemPrompt:
       "You are PilotDeck running an end-to-end TUI test. When asked for arithmetic, you MUST call the provided add_numbers tool exactly once instead of computing it yourself, then report the answer in plain text.",
     maxOutputTokens: 1024,
-    temperature: 0,
     permissionMode: "default",
     permissionContext: createDefaultPermissionContext({
       cwd,

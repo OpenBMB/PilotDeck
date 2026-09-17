@@ -17,6 +17,8 @@ export type ProcessAttachmentImage = {
 export type ProcessAttachment = {
   id: string;
   processSummary: ChatMessage;
+  /** Complete event sequence, including events without expandable details. */
+  processMessages: ChatMessage[];
   processDetailMessages: ChatMessage[];
   startIndex: number;
   endIndex: number;
@@ -126,6 +128,7 @@ function getStableProcessSegmentId(
 ): string {
   const turnPart = getStableMessagePart(messages[turn.start], `turn-${turn.start}`);
   const firstPart = String(
+    (firstMessage.isCompactBoundary && firstMessage.compactionId) ||
     firstMessage.toolId ||
       firstMessage.toolCallId ||
       firstMessage.activityId ||
@@ -595,7 +598,7 @@ function createSyntheticProcessSummary(
     startedAt: startedAt ? String(startedAt) : '',
     endedAt: endedAt ? String(endedAt) : '',
     durationMs: getDurationMs(startedAt, endedAt),
-    state: counts.toolErrorCount > 0 ? 'failed' : 'completed',
+    state: 'completed',
     toolCallCount: counts.toolCallCount,
     toolErrorCount: counts.toolErrorCount,
     ragSearchCount: counts.searchCount,
@@ -604,6 +607,8 @@ function createSyntheticProcessSummary(
     commandCount: counts.commandCount,
     subagentCount: counts.subagentCount,
     compactCount: counts.compactCount,
+    compactState: detailMessages.find(message => message.isCompactBoundary
+      && (message.compactState === 'failed' || message.compactState === 'cancelled'))?.compactState,
     thinkingCount: counts.thinkingCount,
     otherToolCount: counts.otherToolCount,
     keySteps: [],
@@ -850,6 +855,7 @@ export function buildRenderableMessageItems(
       const attachment: ProcessAttachment = {
         id: segment.id,
         processSummary: summary,
+        processMessages: segment.messages,
         processDetailMessages: segment.detailMessages,
         startIndex: segment.startIndex,
         endIndex: segment.endIndex,
@@ -863,7 +869,10 @@ export function buildRenderableMessageItems(
         : itemsByIndex.get(segment.nextHostIndex);
       const isTrailingCompactOnlySegment = Boolean(
         previousHost
-        && !nextHost
+        && !previousHost.message.isThinking
+        // nextHost is intentionally unset whenever there is a previous host;
+        // that does not mean this segment is at the end of the transcript.
+        && findNextHostIndex(messages, turn, segment.endIndex + 1) === null
         && segment.messages.every((message) => message.isCompactBoundary),
       );
 
@@ -919,6 +928,7 @@ export function foldCompletedTurns(
     const finalItem = turnItems.find((item) => item.message === last);
     const abnormal = raw.some((message) => message.type === 'error' || message.isInterruptedNotice
       || message.isInteractivePrompt || message.isStreaming
+      || (message.isCompactBoundary && message.compactState === 'running')
       || (message.isAgentActivitySummary && message.state && message.state !== 'completed'));
     const hasFinal = last?.type === 'assistant' && !last.isThinking && !last.isToolUse
       && !last.isSubagentContainer && !last.isTaskNotification
@@ -964,6 +974,13 @@ export function foldCompletedTurns(
 export function getLiveProcessDetailMessages(messages: ChatMessage[]): ChatMessage[] {
   return getLiveProcessGroups(messages, { isAssistantWorking: true })
     .flatMap((group) => group.detailMessages);
+}
+
+/** Only flatten a real single call; never discard thinking, activity or interactive details. */
+export function isSingleToolProcess(messages: ChatMessage[]): boolean {
+  return messages.length === 1 && Boolean(messages[0].isToolUse)
+    && isExpandableProcessMessage(messages[0])
+    && !messages[0].isSubagentContainer && !messages[0].isInteractivePrompt;
 }
 
 export function splitLiveProcessGroupDetailMessages(group: LiveProcessGroup): {
@@ -1048,7 +1065,7 @@ export function getLiveProcessGroups(
   const result = groups.map((group) => {
     return {
       ...group,
-      isRunning: Boolean(options.isAssistantWorking && group.messages.some(isPendingToolUseMessage)),
+      isRunning: Boolean(options.isAssistantWorking && group.messages.some(isPendingProcessMessage)),
     };
   });
   return result;
@@ -1072,6 +1089,10 @@ export function isWebFetchToolMessage(message: ChatMessage): boolean {
 
 function getLatestToolMessage(group: LiveProcessGroup): ChatMessage | undefined {
   return [...group.messages].reverse().find((message) => message.isToolUse || message.type === 'tool');
+}
+
+function isPendingProcessMessage(message: ChatMessage): boolean {
+  return (message.isCompactBoundary && message.compactState === 'running') || isPendingToolUseMessage(message);
 }
 
 export function isPendingToolUseMessage(message: ChatMessage): boolean {
@@ -1178,7 +1199,15 @@ export function formatCompletedProcessTitle(
     labels.push(t('process.live.subagentCompleted', { defaultValue: 'Subagent finished' }));
   }
   if (counts.compactCount > 0) {
-    labels.push(t('process.live.compactCompleted', { defaultValue: 'Compacted context' }));
+    const compactState = Array.isArray(messageOrMessages)
+      ? messageOrMessages.find(message => message.isCompactBoundary
+        && (message.compactState === 'failed' || message.compactState === 'cancelled'))?.compactState
+      : messageOrMessages.compactState;
+    labels.push(compactState === 'failed'
+      ? t('working.compactFailed', { defaultValue: 'Context compaction failed' })
+      : compactState === 'cancelled'
+        ? t('working.compactCancelled', { defaultValue: 'Context compaction stopped' })
+        : t('process.live.compactCompleted', { defaultValue: 'Compacted context' }));
   }
   if (counts.thinkingCount > 0 && labels.length === 0) {
     labels.push(t('process.live.thoughtCompleted', { defaultValue: 'Thought through next step' }));
@@ -1189,12 +1218,6 @@ export function formatCompletedProcessTitle(
       defaultValue: `Used ${counts.otherToolCount} ${counts.otherToolCount === 1 ? 'tool' : 'tools'}`,
     }));
   }
-  if (counts.toolErrorCount > 0) {
-    labels.push(t('process.live.errors', {
-      count: counts.toolErrorCount,
-      defaultValue: `${counts.toolErrorCount} ${counts.toolErrorCount === 1 ? 'error' : 'errors'}`,
-    }));
-  }
 
   return labels.join(' ');
 }
@@ -1203,7 +1226,7 @@ export function getRunningProcessTitle(
   group: LiveProcessGroup,
   t: TFunction<'chat'>,
 ): string {
-  const latestMessage = [...group.messages].reverse().find(isPendingToolUseMessage);
+  const latestMessage = [...group.messages].reverse().find(isPendingProcessMessage);
   if (!latestMessage) {
     return t('working.processing', { defaultValue: 'Processing' });
   }
@@ -1267,7 +1290,7 @@ export function getLiveProcessGroupStep(
     ? getRunningProcessTitle(group, t)
     : formatCompletedProcessTitle(group.messages, t);
   const latestMessage = group.isRunning
-    ? [...group.messages].reverse().find(isPendingToolUseMessage)
+    ? [...group.messages].reverse().find(isPendingProcessMessage)
     : group.messages[group.messages.length - 1];
   const kind = latestMessage ? getProcessToolKind(latestMessage) : 'tool';
 
@@ -1315,12 +1338,6 @@ export function processSummaryToTrace(
       ? {
           key: 'searches',
           label: t('process.metrics.searches', { count: searches, defaultValue: '{{count}} searches' }),
-        }
-      : null,
-    errors > 0
-      ? {
-          key: 'errors',
-          label: t('process.metrics.errors', { count: errors, defaultValue: '{{count}} errors' }),
         }
       : null,
   ].filter((metric): metric is ProcessTraceMetric => Boolean(metric));

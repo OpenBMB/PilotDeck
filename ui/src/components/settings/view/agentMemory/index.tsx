@@ -1,3 +1,4 @@
+import { isOptionalFeatureEnabled } from "../../../../../../src/pilot/config/optionalFeature.js";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePilotDeckConfig } from "../../../../hooks/usePilotDeckConfig";
@@ -87,7 +88,7 @@ function MemorySection({
 }) {
   const { t } = useTranslation("settings");
   const m = config.memory ?? {};
-  const enabled = Boolean(m.enabled);
+  const enabled = isOptionalFeatureEnabled(config.memory);
   const selected = m.model && m.model.trim() ? m.model : "inherit";
   const modelOptions = buildModelRefOptions(config);
 

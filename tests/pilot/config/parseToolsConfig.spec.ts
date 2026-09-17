@@ -4,6 +4,24 @@ import test from "node:test";
 import { parseToolsConfig } from "../../../src/pilot/config/parseToolsConfig.js";
 import type { PilotConfigDiagnostic } from "../../../src/pilot/config/types.js";
 
+test("missing search configuration stays distinct from a present empty or legacy block", () => {
+  for (const tools of [undefined, {}]) {
+    const diagnostics: PilotConfigDiagnostic[] = [];
+    assert.equal(parseToolsConfig(tools, diagnostics), undefined);
+    assert.deepEqual(diagnostics, []);
+  }
+  for (const [webSearch, warnings] of [
+    [{}, []],
+    [{ region: "cn" }, ["TOOLS_WEB_SEARCH_REGION_DEPRECATED"]],
+    [{ unknownLegacyField: true }, ["TOOLS_WEB_SEARCH_UNKNOWN_FIELD"]],
+  ] as const) {
+    const diagnostics: PilotConfigDiagnostic[] = [];
+    assert.deepEqual(parseToolsConfig({ webSearch }, diagnostics), { webSearch: {} });
+    assert.deepEqual(diagnostics.map(item => item.code), warnings);
+    assert.ok(diagnostics.every(item => item.severity === "warning"));
+  }
+});
+
 test("disabled web search ignores inactive provider fields", () => {
   const diagnostics: PilotConfigDiagnostic[] = [];
 

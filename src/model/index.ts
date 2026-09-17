@@ -48,6 +48,7 @@ export {
   applyModelEventToAssembler,
   assembleAssistantMessage,
   createModelMessageAssemblerState,
+  getModelStreamBlockId,
   type AssembledAssistantMessage,
   type ModelMessageAssemblerState,
 } from "./streaming/assembleModelMessage.js";
