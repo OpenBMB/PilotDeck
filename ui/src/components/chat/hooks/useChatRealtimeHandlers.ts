@@ -1,3 +1,4 @@
+import { isTimelineMessage, type TimelinePosition } from '../../../stores/sessionTimeline';
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type {
@@ -28,6 +29,9 @@ type PendingViewSession = {
 };
 
 type LatestChatMessage = {
+  timeline?: TimelinePosition;
+  streamBoundary?: NormalizedMessage["streamBoundary"];
+  streamState?: "open" | "closed";
   type?: string;
   kind?: string;
   data?: any;
@@ -152,13 +156,14 @@ export function getDuplicateAssistantStreamTextState(
 }
 
 type ActiveTurnReplayState = {
+  merged?: NormalizedMessage[];
   realtimeMessages?: NormalizedMessage[];
   serverMessages?: NormalizedMessage[];
 };
 
 function getKnownCompactions(message: NormalizedMessage, state: ActiveTurnReplayState): NormalizedMessage[] {
   if (message.kind !== 'compact_boundary' || !message.compactionId) return [];
-  return [...(state.realtimeMessages || []), ...(state.serverMessages || [])].filter(existing =>
+  return [...(state.realtimeMessages || []), ...(state.serverMessages || []), ...(state.merged || [])].filter(existing =>
     existing.compactionId === message.compactionId && getMessageRunId(existing) === getMessageRunId(message));
 }
 
@@ -240,7 +245,7 @@ export function getActiveTurnReplayMessagesToApply(
   // Interleaved channels are not adjacent in the replay. Compare the complete
   // identified block with history, then retain/skip all of its original frames.
   for (const message of activeTurnMessages) {
-    if (!message.blockId || (message.kind !== 'thinking' && message.kind !== 'stream_delta')) continue;
+    if (message.timeline || !message.blockId || (message.kind !== 'thinking' && message.kind !== 'stream_delta')) continue;
     const key = blockKey(message);
     const aggregate = identifiedBlocks.get(key) ?? {
       kind: message.kind, messages: [], text: '', runId: getMessageRunId(message), blockId: message.blockId,
@@ -260,6 +265,7 @@ export function getActiveTurnReplayMessagesToApply(
 
   for (const rawMessage of activeTurnMessages) {
     const message = normalizeCompactionMessage(rawMessage as NormalizedMessage);
+    if (isTimelineMessage(message as NormalizedMessage)) { flushBlock(); output.push(message); continue; }
     const kind = String(message?.kind || '');
     if (kind === 'thinking' || kind === 'stream_delta') {
       if (block && (block.kind !== kind || block.blockId !== message.blockId)) {
@@ -708,7 +714,7 @@ export function useChatRealtimeHandlers({
     // A replay must be idempotent before any stream-finalization side effects.
     // Completion may enrich a running row, but an already-known boundary
     // cannot end a newer answer that happens to be streaming now.
-    const knownCompacts = getKnownCompactions(msg as NormalizedMessage, sessionStore.getSessionSlot?.(sid) || {});
+    const knownCompacts = msg.timeline ? [] : getKnownCompactions(msg as NormalizedMessage, sessionStore.getSessionSlot?.(sid) || {});
     if (knownCompacts.length > 0 && (msg.compactState === 'running'
       || knownCompacts.some(message => normalizeCompactionMessage(message).compactState === 'completed'))) return;
     const msgRunId = typeof msg.runId === 'string' && msg.runId.trim() ? msg.runId.trim() : undefined;
@@ -736,6 +742,18 @@ export function useChatRealtimeHandlers({
       sessionStore.setActiveSession(sid);
     }
 
+    const orderedFrame = isTimelineMessage(msg as NormalizedMessage);
+    if (orderedFrame) {
+      const gap = sessionStore.applyTimelineMessage(sid, msg as NormalizedMessage);
+      if (gap) scheduleSessionStatusRetry(sid, msgRunId ?? null);
+      // Ordered content does not enter the legacy stream accumulator or matcher.
+      if (msg.kind === 'stream_delta' || msg.kind === 'thinking' || msg.kind === 'text' || msg.isSubagentDetail) return;
+    }
+    if (msg.kind === 'stream_end' || msg.kind === 'complete' || isTerminalError) {
+      sessionStore.closeTimeline(sid, msgRunId, msg.kind === 'complete' || isTerminalError,
+        msg.isSubagentDetail ? String(msg.subagentId) : undefined, msg.streamBoundary);
+    }
+
     if (msg.kind === 'text' && msg.role === 'user') {
       // A mid-turn steer is a real user-message boundary inside the same
       // runId. Close the preceding assistant blocks so the next model call
@@ -760,6 +778,7 @@ export function useChatRealtimeHandlers({
         msg.phase === 'subagent' &&
         ['completed', 'failed', 'cancelled'].includes(String(msg.state || ''))
       ) {
+        sessionStore.closeTimeline(sid, getMessageRunId({ runId: msg.parentRunId }), true, activitySubagentId);
         sessionStore.finalizeSubagentDetailThinking?.(sid, activitySubagentId);
         sessionStore.finalizeSubagentDetailStreaming?.(sid, activitySubagentId);
       }
@@ -901,7 +920,7 @@ export function useChatRealtimeHandlers({
     if (duplicateStreamTextState.hasActiveStream) {
       sessionStore.finalizeStreaming(sid, duplicateStreamTextState.activeStreamRunId ?? undefined);
     }
-    if (!duplicateStreamTextState.isDuplicate) {
+    if (!orderedFrame && !duplicateStreamTextState.isDuplicate) {
       sessionStore.appendRealtime(sid, msg as NormalizedMessage);
     }
 

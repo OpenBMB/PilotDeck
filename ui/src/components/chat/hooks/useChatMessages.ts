@@ -233,7 +233,7 @@ function convertSingleMessage(
           timestamp: msg.timestamp,
           ...turnIdentity,
           isThinking: true,
-          isStreaming: msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_'),
+          isStreaming: msg.timeline ? msg.streamState === 'open' : msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_'),
         };
       }
       return null;
@@ -357,7 +357,7 @@ function convertSingleMessage(
           content: msg.content,
           timestamp: msg.timestamp,
           ...turnIdentity,
-          isStreaming: true,
+          isStreaming: msg.timeline ? msg.streamState === 'open' : true,
         };
       }
       return null;

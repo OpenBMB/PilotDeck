@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createAgentEventBuffer } from "../../../src/agent/protocol/events.js";
+import { createAgentEventBuffer, type AgentEvent } from "../../../src/agent/protocol/events.js";
 import { AgentLoop } from "../../../src/agent/loop/AgentLoop.js";
 import type { AgentRuntimeConfig } from "../../../src/agent/runtime/AgentRuntimeConfig.js";
 import type { AgentRouterRuntime, AgentRuntimeDependencies } from "../../../src/agent/runtime/AgentRuntimeDependencies.js";
@@ -126,7 +126,7 @@ test("agent loop respects agent maxContextTokens before and after routing", asyn
 
   const loop = new AgentLoop(config, dependencies);
 
-  const events: Array<{ type: string }> = [];
+  const events: AgentEvent[] = [];
   for await (const event of loop.run({
     sessionId: "session-1",
     turnId: "turn-1",
@@ -842,7 +842,7 @@ test("agent loop records a compact boundary when auto compaction fires and strea
 
   const loop = new AgentLoop(config, dependencies);
 
-  const events: Array<{ type: string }> = [];
+  const events: AgentEvent[] = [];
   for await (const event of loop.run({
     sessionId: "session-2",
     turnId: "turn-2",
@@ -874,6 +874,7 @@ test("agent loop records a compact boundary when auto compaction fires and strea
     kind: "compact",
     subtype: "compact_boundary",
     compactMetadata: {
+      timeline: events.find(event => event.type === "compact_completed")!.timeline,
       compactionId: "compact-auto-1",
       trigger: "auto",
       preTokens: 120,

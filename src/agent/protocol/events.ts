@@ -1,3 +1,4 @@
+import type { TimelinePosition, StreamBoundary } from "../../model/protocol/timeline.js";
 import type { CanonicalMessage, CanonicalModelError, CanonicalModelEvent, CanonicalToolCall } from "../../model/index.js";
 import type { PilotDeckToolResult } from "../../tool/index.js";
 import type { AgentError } from "./errors.js";
@@ -7,7 +8,7 @@ import type { TokenBudgetSnapshot } from "../../context/budget/TokenBudgetManage
 import type { RouterRetryProgressEvent } from "../../router/protocol/events.js";
 import type { FileArtifact } from "../../session/artifacts/FileArtifact.js";
 
-export type AgentEvent =
+export type AgentEvent = { timeline?: TimelinePosition; streamBoundary?: StreamBoundary } & (
   | { type: "session_started"; sessionId: string }
   | { type: "session_ended"; sessionId: string; reason: string }
   | { type: "turn_started"; sessionId: string; turnId: string }
@@ -101,7 +102,7 @@ export type AgentEvent =
       success?: boolean;
       durationMs?: number;
     }
-  | { type: "subagent_model_event"; sessionId: string; turnId: string; subagentId: string; subagentType: string; event: CanonicalModelEvent }
+  | { type: "subagent_model_event"; sessionId: string; turnId: string; subagentId: string; subagentType: string; event: CanonicalModelEvent; blockId?: string }
   | { type: "subagent_tool_calls_detected"; sessionId: string; turnId: string; subagentId: string; subagentType: string; calls: CanonicalToolCall[] }
   | { type: "subagent_tool_result"; sessionId: string; turnId: string; subagentId: string; subagentType: string; result: PilotDeckToolResult }
   | { type: "elicitation_requested"; sessionId: string; turnId: string; requestId: string; toolName: string }
@@ -110,7 +111,7 @@ export type AgentEvent =
   | { type: "turn_completed"; sessionId: string; turnId: string; result: AgentTurnResult }
   | { type: "turn_failed"; sessionId: string; turnId: string; error: AgentError }
   | { type: "retry_progress"; sessionId: string; turnId: string; detail: RouterRetryProgressEvent }
-  | { type: "session_aborted"; sessionId: string; reason?: string };
+  | { type: "session_aborted"; sessionId: string; reason?: string });
 
 export type AgentEventEmitter = (event: AgentEvent) => void;
 

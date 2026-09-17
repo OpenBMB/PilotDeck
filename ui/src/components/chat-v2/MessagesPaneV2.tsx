@@ -129,7 +129,7 @@ const MESSAGE_WINDOW_OVERSCAN = 12;
 const MESSAGE_GAP_PX = 16;
 
 function isStreamingThinkingMessage(message: ChatMessage): boolean {
-  return Boolean(message.isThinking && String(message.id || '').startsWith('__streaming_thinking_'));
+  return Boolean(message.isThinking && message.isStreaming);
 }
 
 function isRenderableAssistantProse(message: ChatMessage): boolean {

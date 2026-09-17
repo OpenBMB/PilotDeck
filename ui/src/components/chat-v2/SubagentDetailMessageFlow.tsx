@@ -49,7 +49,7 @@ function getMessageKey(message: ChatMessage, index: number): string {
 }
 
 function isStreamingSubagentThinkingMessage(message: ChatMessage): boolean {
-  return Boolean(message.isThinking && String(message.id || '').startsWith('__subagent_thinking_'));
+  return Boolean(message.isThinking && message.isStreaming);
 }
 
 function processAttachmentOverlapsLiveGroup(

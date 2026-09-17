@@ -67,9 +67,11 @@ export function applyModelEventToAssembler(
     case "tool_call_delta":
       return;
     case "text_delta":
+      if (state.thinkingBuffer || state.thinkingReasoningContentBuffer || state.thinkingSignature !== undefined) flushTextBuffers(state);
       state.textBuffer += event.text;
       return;
     case "thinking_delta":
+      if (state.textBuffer) flushTextBuffers(state);
       state.thinkingBuffer += event.text;
       if (event.reasoningContent !== undefined) {
         state.thinkingReasoningContentBuffer += event.reasoningContent;

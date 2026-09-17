@@ -1,3 +1,4 @@
+import type { TimelinePosition } from "./timeline.js";
 import type { ModelThinkingSettings } from "../thinking/settings.js";
 import type { ModelCapabilities } from "./capabilities.js";
 import type { CanonicalModelError } from "./errors.js";
@@ -8,6 +9,7 @@ export type ModelProtocol = "anthropic" | "openai" | "openai-responses" | "googl
 export type CanonicalRole = "user" | "assistant";
 
 export type CanonicalTextBlock = {
+  timeline?: TimelinePosition;
   type: "text";
   text: string;
   /** UI stream/history identity; never a provider request field. */
@@ -15,6 +17,7 @@ export type CanonicalTextBlock = {
 };
 
 export type CanonicalThinkingBlock = {
+  timeline?: TimelinePosition;
   type: "thinking";
   text: string;
   /** UI stream/history identity; never a provider request field. */
@@ -57,6 +60,7 @@ export type CanonicalAudioBlock = {
 };
 
 export type CanonicalToolCall = {
+  timeline?: TimelinePosition;
   id: string;
   name: string;
   input: unknown;
@@ -127,7 +131,7 @@ export type CanonicalMediaReferenceBlock = {
 
 export type CanonicalToolResult = CanonicalToolResultBlock;
 
-export type CanonicalContentBlock =
+export type CanonicalContentBlock = { timeline?: TimelinePosition } & (
   | CanonicalTextBlock
   | CanonicalThinkingBlock
   | CanonicalImageBlock
@@ -136,7 +140,7 @@ export type CanonicalContentBlock =
   | CanonicalToolCallBlock
   | CanonicalToolResultBlock
   | CanonicalToolResultReferenceBlock
-  | CanonicalMediaReferenceBlock;
+  | CanonicalMediaReferenceBlock);
 
 export type CanonicalMessageMetadata = {
   /** Actual model that generated this assistant message. */

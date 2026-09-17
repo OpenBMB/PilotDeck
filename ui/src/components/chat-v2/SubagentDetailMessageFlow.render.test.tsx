@@ -88,6 +88,14 @@ afterEach(() => {
 });
 
 describe('SubagentDetailMessageFlow', () => {
+  it.each(['__subagent_thinking_session-1_subagent-1', 'child-t0:response:thinking:0'])(
+    'does not duplicate the active thinking indicator for %s', (id) => {
+      renderFlow([{ ...streamingThinking('Analyzing the request.'), id }]);
+      expect(screen.getAllByText('Analyzing the request.')).toHaveLength(1);
+      expect(screen.queryByRole('status')).toBeNull();
+    },
+  );
+
   it('renders streaming subagent thinking once before the tool status', async () => {
     renderFlow([
       assistant('a-1', 'I will edit the file.', 100),

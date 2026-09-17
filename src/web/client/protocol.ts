@@ -1,3 +1,4 @@
+import type { GatewayActiveTurnSnapshot } from "../../gateway/protocol/types.js";
 /**
  * Browser-friendly mirror of `src/gateway/protocol/types.ts` and
  * `src/gateway/protocol/frames.ts`.
@@ -338,6 +339,8 @@ export type WebReadSessionMessagesInput = {
 };
 
 export type WebReadSessionMessagesResult = {
+  /** History plus an absolute active-turn baseline captured after the disk read. */
+  stream?: GatewayActiveTurnSnapshot;
   messages: import("./webMessage.js").WebMessage[];
   nextCursor?: string;
   total?: number;

@@ -40,13 +40,18 @@ test("output-limit continuation preserves distinct block identities through live
   assert.deepEqual(history.map(message => message.text), ["Same reasoning", "Same answer", "Same reasoning", "Same answer"]);
 });
 
-test("agent loop drops interrupted tool calls and continues with a chunked-write prompt", async () => {
+for (const completeFirst of [false, true]) test(`agent loop drops interrupted response tools (complete first call: ${completeFirst})`, async () => {
   const requests: CanonicalModelRequest[] = [];
   let scheduledToolCalls = 0;
   const loop = createLoop(async function* (_decision, request) {
     requests.push(request);
     if (requests.length === 1) {
       yield { type: "message_start", role: "assistant" };
+      if (completeFirst) {
+        yield { type: "tool_call_start", id: "complete-but-discarded", name: "write_file" };
+        yield { type: "tool_call_end", toolCall: { id: "complete-but-discarded", name: "write_file", input: { path: "unused", content: "unused" } } };
+      }
+
       yield { type: "tool_call_start", id: "call-1", name: "write_file" };
       yield { type: "tool_call_delta", id: "call-1", delta: '{"path":"deck.mjs","content":"partial"' };
       yield {
@@ -70,7 +75,7 @@ test("agent loop drops interrupted tool calls and continues with a chunked-write
     yield { type: "message_end", finishReason: "stop" };
   }, () => { scheduledToolCalls += 1; });
 
-  const events: Array<{ type: string }> = [];
+  const events: AgentEvent[] = [];
   for await (const event of loop.run({
     sessionId: "stream-interruption",
     turnId: "turn-1",
@@ -81,6 +86,10 @@ test("agent loop drops interrupted tool calls and continues with a chunked-write
 
   assert.equal(requests.length, 2);
   assert.equal(scheduledToolCalls, 0);
+  const recoveredDelta = events.find(event => event.type === "model_event" && event.event.type === "text_delta");
+  assert.ok(recoveredDelta?.timeline);
+  assert.equal(recoveredDelta.timeline.previousId, undefined, "a discarded response tool must not leave a predecessor dependency");
+
   assert.ok(events.some((event) => event.type === "turn_continued"));
   assert.ok(!events.some((event) => event.type === "turn_failed"));
   const recoveryRequest = requests[1]!;
@@ -471,7 +480,8 @@ for (const [name, text] of Object.entries(literalToolExamples)) {
       const blockIds = [...new Set(events.flatMap(event =>
         event.type === "model_event" && event.blockId ? [event.blockId] : []))];
       assert.equal(blockIds.length, chunked ? 2 : 1);
-      assert.deepEqual(durable[0]!.content, [
+      assert.ok(durable[0]!.content.every(block => block.timeline?.version === 1));
+      assert.deepEqual(durable[0]!.content.map(({ timeline: _timeline, ...block }) => block), [
         ...(chunked ? [{ type: "thinking", text: reasoning, reasoningContent: reasoning, blockId: blockIds[0] }] : []),
         { type: "text", text, blockId: blockIds.at(-1) },
       ]);

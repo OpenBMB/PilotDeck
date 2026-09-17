@@ -525,6 +525,7 @@ export function flattenCanonicalMessage(
   const role: WebMessageRole = message.role === "user" ? "user" : "assistant";
   let textBuffer = "";
   let textBlockId: string | undefined;
+  let textTimeline: CanonicalContentBlock["timeline"];
   let pendingImages: NonNullable<WebMessage["images"]> = [];
   let lastToolResultMessage: WebMessage | undefined;
 
@@ -540,6 +541,7 @@ export function flattenCanonicalMessage(
       kind: "text",
       text: textBuffer,
       ...(textBlockId ? { blockId: textBlockId } : {}),
+      ...(textTimeline ? { timeline: textTimeline } : {}),
       ...(role === "assistant" && typeof message.metadata?.model === "string" ? { model: message.metadata.model } : {}),
       ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
       ...(context.forkUnsupportedContent
@@ -555,6 +557,7 @@ export function flattenCanonicalMessage(
     });
     textBuffer = "";
     textBlockId = undefined;
+    textTimeline = undefined;
     pendingImages = [];
   };
 
@@ -562,6 +565,7 @@ export function flattenCanonicalMessage(
     if (block.type === 'text') {
       if (textBlockId !== block.blockId) flushText();
       textBlockId = block.blockId;
+      textTimeline = block.timeline;
     }
     if (block.type !== "image" && block.type !== "tool_result") {
       // Any other block breaks the tool_result → image association.
@@ -579,6 +583,7 @@ export function flattenCanonicalMessage(
     }, (image) => {
       pendingImages.push(toWebMessageImage(image));
     });
+    if (block.type !== "text" && block.timeline && out.length) out[out.length - 1].timeline = block.timeline;
     if (block.type === "tool_result") {
       lastToolResultMessage = out[out.length - 1];
     }
@@ -798,6 +803,7 @@ function compactBoundaryMetadata(entry: AgentTranscriptEntry & { type: "control_
     "compactMetadata" in entry.boundary
   ) {
     const cm = entry.boundary.compactMetadata as Record<string, unknown>;
+    if (cm.timeline) meta.timeline = cm.timeline;
     if (typeof cm.compactionId === "string" && cm.compactionId.length > 0) {
       meta.compactionId = cm.compactionId;
     }
@@ -978,6 +984,7 @@ function injectCompactBoundaryMessages(
       provider: "pilotdeck",
       role: "system",
       kind: "compact_boundary",
+      ...(boundary.metadata?.timeline ? { timeline: boundary.metadata.timeline as WebMessage["timeline"] } : {}),
       turnId: boundary.turnId,
       sequence: boundary.sequence,
       text: "Context compacted",

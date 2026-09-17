@@ -1,3 +1,4 @@
+import type { TimelinePosition } from "../../model/protocol/timeline.js";
 /**
  * Web-facing message DTO + reducer.
  *
@@ -107,6 +108,7 @@ export type WebMessage = {
   turnId?: string;
   /** Shared identity of a model output block in live events and history. */
   blockId?: string;
+  timeline?: TimelinePosition;
   /** Stable queued-input identity, used to reconcile recovered in-flight guidance. */
   queueItemId?: string;
   /** Transcript ordering sequence for deterministic history reconciliation. */

@@ -30,6 +30,19 @@ import {
 } from './pilotdeck-bridge.js';
 
 describe('model block identity', () => {
+    it('preserves absolute snapshots and explicit end boundaries for parent and child streams', () => {
+        const timeline = { version: 1, turnId: 'child-turn', id: 'thought', order: 2, revision: 8 };
+        const streamBoundary = { turnId: 'child-turn', through: 2, revision: 9 };
+        expect(gatewayEventToFrames({ type: 'assistant_block', runId: 'parent', blockId: 'thought',
+            kind: 'thinking', text: 'complete', timeline }, 'session', 'pilotdeck')[0])
+            .toMatchObject({ timeline, kind: 'thinking', content: 'complete', isFinal: true });
+        expect(gatewayEventToFrames({ type: 'agent_status', runId: 'parent', event: 'subagent_thinking_delta',
+            timeline, streamState: 'closed', detail: { subagentId: 'child', text: 'complete' } }, 'session', 'pilotdeck')[0])
+            .toMatchObject({ timeline, streamState: 'closed', subagentId: 'child', content: 'complete' });
+        expect(gatewayEventToFrames({ type: 'agent_status', runId: 'parent', event: 'subagent_stream_end',
+            streamBoundary, detail: { subagentId: 'child' } }, 'session', 'pilotdeck')[0])
+            .toMatchObject({ streamBoundary, kind: 'stream_end', subagentId: 'child' });
+    });
     it('preserves model block identity on both live output kinds', () => {
         for (const type of ['assistant_text_delta', 'assistant_thinking_delta']) {
             expect(gatewayEventToFrames({ type, runId: 'turn-1', text: 'same', blockId: `${type}:1` }, 'session', 'pilotdeck'))

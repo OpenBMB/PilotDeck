@@ -894,7 +894,7 @@ export function resolvePermissionMode(options, readPersisted = readPermissionSet
  * @returns {object[]} NormalizedMessage frames.
  */
 export function gatewayEventToFrames(event, sessionId, provider) {
-    const base = { sessionId, provider, ...(event.runId ? { runId: event.runId } : {}) };
+    const base = { sessionId, provider, ...(event.runId ? { runId: event.runId } : {}), ...(event.timeline ? { timeline: event.timeline, streamState: event.streamState } : {}), ...(event.streamBoundary ? { streamBoundary: event.streamBoundary } : {}) };
     switch (event.type) {
         case 'input_accepted':
             return event.modelSelection ? [{ type: 'model-selection-saved', ...base, selection: { ...event.modelSelection } }] : [];
@@ -952,6 +952,13 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     provider: event.provider,
                 }),
             ];
+        case 'assistant_stream_end':
+            return [createNormalizedMessage({ ...base, kind: 'stream_end' })];
+        case 'assistant_block':
+            return [createNormalizedMessage({ ...base, kind: event.kind === 'text' ? 'text' : 'thinking',
+                role: 'assistant', blockId: event.blockId, content: event.text, isFinal: true,
+                ...(event.model ? { model: event.model } : {}),
+            })];
         case 'assistant_text_delta':
             return [
                 createNormalizedMessage({
@@ -1410,9 +1417,23 @@ function createSubagentDetailFrames(event, base, detail) {
         sessionId: base.sessionId,
         subagentId,
         isSubagentDetail: true,
+        ...(detail.blockId ? { blockId: detail.blockId } : {}),
     };
 
     switch (event?.event) {
+        case 'subagent_compact_started':
+        case 'subagent_compact_completed':
+            return [createNormalizedMessage({ ...detailBase, kind: 'compact_boundary',
+                compactionId: detail.compactionId,
+                compactState: event.event === 'subagent_compact_started' ? 'running' : detail.status === 'failed' ? 'failed' : 'completed',
+                trigger: detail.trigger, preTokens: detail.preTokens, postTokens: detail.postTokens,
+                messagesSummarized: detail.messagesSummarized,
+            })];
+        case 'subagent_stream_end':
+            return [createNormalizedMessage({ ...detailBase, kind: 'stream_end' })];
+        case 'subagent_assistant_block':
+            return [createNormalizedMessage({ ...detailBase, kind: detail.kind, content: detail.text,
+                role: 'assistant', isFinal: true, streamState: 'closed' })];
         case 'subagent_text_delta':
             return [createNormalizedMessage({
                 ...detailBase,
@@ -1453,7 +1474,7 @@ function createSubagentDetailFrames(event, base, detail) {
         case 'subagent_model_error':
             return [createNormalizedMessage({
                 ...detailBase,
-                id: `subagent_detail_error_${sanitizeMessageId(detailSessionId)}_${Date.now()}`,
+                id: `subagent_detail_error_${sanitizeMessageId(detailSessionId)}_${detail.errorId || randomUUID()}`,
                 kind: 'error',
                 content: detail.message || detail.error || 'Subagent model error',
             })];

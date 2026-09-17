@@ -1,3 +1,4 @@
+import { TurnTimeline } from "../stream/TurnTimeline.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -190,6 +191,36 @@ export class AgentLoop {
   }
 
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+    const timeline = new TurnTimeline(input.turnId);
+    const generator = this.runOrdered({
+      ...input,
+      onCompactPersisted: async (compact) => {
+        if (compact.boundary.kind === "compact" && "compactMetadata" in compact.boundary) {
+          const metadata = compact.boundary.compactMetadata;
+          if (metadata.compactionId) metadata.timeline = timeline.position(`compact:${metadata.compactionId}`);
+        }
+        await input.onCompactPersisted?.(compact);
+      },
+      onDurableMessage: async (message) => {
+        timeline.message(message);
+        await input.onDurableMessage?.(message);
+      },
+    });
+    let completed = false;
+    try {
+      while (true) {
+        const next = await generator.next();
+        if (next.done) { completed = true; return next.value; }
+        yield timeline.event(next.value);
+      }
+    } finally {
+      // Forward consumer cancellation to the underlying agent iterator. Its
+      // return value is intentionally unused when the consumer has stopped.
+      if (!completed) await generator.return(undefined as never);
+    }
+  }
+
+  private async *runOrdered(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
     this.clearTurnScopedTokenCaps();
     this.applyRunModeOverride(input.runMode);
     this.applyPermissionOverrides(input.permissionMode, input.permissionRules, input.basePermissionMode);
