@@ -48,14 +48,30 @@ export type PilotDeckToolModelClient = {
  * `subagent_depth_exceeded` when `depth >= maxSubagentDepth`.
  */
 export type PilotDeckSubagentForkApi = {
+  /** Explicit opt-in: older hosts must not silently ignore taskId. */
+  supportsContinuation?: boolean;
   depth: number;
   maxSubagentDepth: number;
   listDefinitions(): { id: string; description: string }[];
   isAllowedDefinition(id: string): boolean;
   fork(args: {
-    definitionId: string;
+    /**
+     * Subagent preset for a NEW fork (required). For a continuation
+     * (`taskId` set) this is optional: omit it to reuse the task's saved
+     * definition, or pass the explicitly requested type — a mismatch with
+     * the saved identity fails the call.
+     */
+    definitionId?: string;
     directive: string;
+    /** Fresh subagent UUID for a new fork. Ignored when `taskId` is set. */
     subagentId: string;
+    /**
+     * When set, continue an existing completed child task instead of forking
+     * a new one: restore its prior durable history, append only the new
+     * directive, and reuse the child's identity (same UUID, definition,
+     * provider, model). Persisted under the calling parent session.
+     */
+    taskId?: string;
     toolCallId?: string;
     abortSignal?: AbortSignal;
     timeoutMs?: number;
@@ -65,6 +81,10 @@ export type PilotDeckSubagentForkApi = {
     turns: number;
     durationMs: number;
     parsed?: Record<string, string>;
+    /** Effective subagent UUID (the task id when continuing). */
+    subagentId?: string;
+    /** Effective definition id (the saved one when continuing without an explicit type). */
+    definitionId?: string;
   }>;
 };
 
