@@ -163,6 +163,7 @@ export function TextInput({
   type = "text",
   className,
   monospace,
+  ariaLabel,
 }: {
   value: string | number | undefined;
   onChange: (next: string) => void;
@@ -170,6 +171,7 @@ export function TextInput({
   type?: "text" | "password" | "number";
   className?: string;
   monospace?: boolean;
+  ariaLabel?: string;
 }) {
   const stringValue = value === undefined ? "" : String(value);
   return (
@@ -183,6 +185,7 @@ export function TextInput({
           placeholder={placeholder}
           spellCheck={false}
           readOnly={!editing}
+          aria-label={ariaLabel}
           className={cn(
             "w-full rounded-md border border-border bg-background px-2 py-1.5 text-[13px] leading-5 text-foreground outline-none",
             editing
@@ -280,11 +283,13 @@ export function TextAreaInput({
   onChange,
   placeholder,
   className,
+  ariaLabel,
 }: {
   value: string | undefined;
   onChange: (next: string) => void;
   placeholder?: string;
   className?: string;
+  ariaLabel?: string;
 }) {
   const { t } = useTranslation("settings");
   const mode = useContext(InputSaveModeContext);
@@ -304,6 +309,7 @@ export function TextAreaInput({
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         spellCheck={false}
+        aria-label={ariaLabel}
         className={cn(
           "min-h-[100px] w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs leading-5 text-foreground outline-none focus:ring-1 focus:ring-ring",
           className,
@@ -347,6 +353,7 @@ export function TextAreaInput({
         onKeyDown={handleKeyDown}
         readOnly={!editing}
         spellCheck={false}
+        aria-label={ariaLabel}
         className={cn(
           "min-h-[100px] min-w-0 flex-1 resize-y rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs leading-5 text-foreground outline-none",
           editing
@@ -381,11 +388,13 @@ export function Select({
   onChange,
   options,
   disabled = false,
+  ariaLabel,
 }: {
   value: string | undefined;
   onChange: (next: string) => void;
   options: Array<{ value: string; label: string; disabled?: boolean }>;
   disabled?: boolean;
+  ariaLabel?: string;
 }) {
   const fieldLabel = useContext(FieldLabelContext);
   const selectedOption = options.find((opt) => opt.value === value);
@@ -422,11 +431,11 @@ export function Select({
           onChange(nextValue);
         }}
         disabled={disabled}
+        aria-label={ariaLabel ?? selectedLabel}
         className={cn(
           "absolute inset-0 h-full w-full opacity-0",
           disabled ? "cursor-default" : "cursor-pointer",
         )}
-        aria-label={selectedLabel}
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value} disabled={opt.disabled}>
