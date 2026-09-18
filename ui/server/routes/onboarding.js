@@ -15,7 +15,8 @@ const MAX_STREAM_RETRIES_PER_PROBE = 10;
 const MAX_RETRY_DELAY_MS = 60_000;
 const MAX_STREAM_IDLE_TIMEOUT_MS = 5 * 60_000;
 const TEST_RATE_WINDOW_MS = 60 * 1000;
-const TEST_RATE_MAX_REQUESTS = 5;
+const TEST_RATE_MAX_REQUESTS = 20;
+const CONNECTION_TEST_TIMEOUT_MS = 60 * 1000;
 const PROBE_GLOBAL_LIMIT = 3;
 const PROBE_PER_USER_LIMIT = 1;
 const CLONE_GLOBAL_LIMIT = 2;
@@ -56,24 +57,36 @@ const PROVIDER_CATALOG = [
 const PROTOCOLS = new Set(['openai', 'openai-responses', 'anthropic', 'google']);
 
 function createInFlightLimiter(globalLimit, perUserLimit) {
-  let total = 0;
   const perUser = new Map();
+  const active = new Set();
   return {
     tryAcquire(userId) {
       const key = String(userId);
-      const userCount = perUser.get(key) || 0;
-      if (total >= globalLimit || userCount >= perUserLimit) return null;
-      total += 1;
-      perUser.set(key, userCount + 1);
+      const current = perUser.get(key);
+      const userCount = current?.count || 0;
+      if (active.size >= globalLimit || userCount >= perUserLimit) return null;
+      const entry = { startedAt: Date.now(), userId: key };
+      active.add(entry);
+      perUser.set(key, { count: userCount + 1, startedAt: current?.startedAt ?? entry.startedAt });
       let released = false;
       return () => {
         if (released) return;
         released = true;
-        total -= 1;
-        const remaining = (perUser.get(key) || 1) - 1;
-        if (remaining > 0) perUser.set(key, remaining);
+        active.delete(entry);
+        const perUserActive = perUser.get(key);
+        const remaining = (perUserActive?.count || 1) - 1;
+        if (remaining > 0) perUser.set(key, { ...perUserActive, count: remaining });
         else perUser.delete(key);
       };
+    },
+    retryAfterSeconds(userId, maxDurationMs) {
+      const userActive = perUser.get(String(userId));
+      const startedAt = userActive?.startedAt ?? [...active].reduce(
+        (earliest, entry) => Math.min(earliest, entry.startedAt),
+        Number.POSITIVE_INFINITY,
+      );
+      if (!Number.isFinite(startedAt)) return 1;
+      return Math.max(1, Math.ceil((startedAt + maxDurationMs - Date.now()) / 1000));
     },
   };
 }
@@ -239,17 +252,16 @@ export function getConnectionTestRecord(userId, testId) {
 function deleteExpiredTests() { const now = Date.now(); for (const [id, record] of tests) if (record.expiresAt <= now) tests.delete(id); }
 setInterval(deleteExpiredTests, TEST_TTL_MS).unref();
 
-export function modelTestRateLimiter(req, res, next) {
+function consumeModelTestRateLimit(userId) {
   const now = Date.now();
-  const key = String(req.user?.id || req.ip || 'anonymous');
+  const key = String(userId || 'anonymous');
   const bucket = testRateBuckets.get(key);
   if (!bucket || now >= bucket.resetAt) {
     testRateBuckets.set(key, { count: 1, resetAt: now + TEST_RATE_WINDOW_MS });
-    return next();
+    return 0;
   }
-  if (++bucket.count <= TEST_RATE_MAX_REQUESTS) return next();
-  res.setHeader('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
-  return apiError(res, 429, 'RATE_LIMITED', 'Too many connection tests.');
+  if (++bucket.count <= TEST_RATE_MAX_REQUESTS) return 0;
+  return Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
 }
 
 router.get('/providers', (_req, res) => {
@@ -280,20 +292,38 @@ export function prepareConnectionTest(body, userId, allowPresetEndpointOverride 
   }
   const release = probeInFlight.tryAcquire(userId);
   if (!release) {
-    throw Object.assign(new Error('Too many connection tests are already running.'), { status: 429, code: 'TEST_BUSY' });
+    throw Object.assign(new Error('A connection test is already running.'), {
+      status: 429,
+      code: 'TEST_BUSY',
+      retryAfterSeconds: probeInFlight.retryAfterSeconds(userId, CONNECTION_TEST_TIMEOUT_MS),
+    });
+  }
+  const retryAfterSeconds = consumeModelTestRateLimit(userId);
+  if (retryAfterSeconds > 0) {
+    release();
+    throw Object.assign(new Error('Too many connection tests.'), {
+      status: 429,
+      code: 'RATE_LIMITED',
+      retryAfterSeconds,
+    });
   }
   return async (signal) => {
+    const timeoutController = new AbortController();
+    const timeoutError = Object.assign(new Error('Connection test timed out after 60 seconds.'), { code: 'TEST_TIMEOUT' });
+    const timeout = setTimeout(() => timeoutController.abort(timeoutError), CONNECTION_TEST_TIMEOUT_MS);
+    timeout.unref?.();
+    const probeSignal = AbortSignal.any([signal, timeoutController.signal]);
     const results = [];
     try {
       for (const modelId of models) {
-        signal.throwIfAborted();
+        probeSignal.throwIfAborted();
         let textProbe;
         try {
           textProbe = await probeModelConnection({
-            protocol: provider.protocol, baseUrl: provider.endpoint, apiKey, model: modelId, signal, retryPolicy: retry,
+            protocol: provider.protocol, baseUrl: provider.endpoint, apiKey, model: modelId, signal: probeSignal, retryPolicy: retry,
           });
         } catch (error) {
-          if (signal.aborted) throw error;
+          if (probeSignal.aborted) throw error;
           textProbe = { ok: false, code: 'ENDPOINT_UNREACHABLE', error: error?.message || 'Connection failed.' };
         }
         if (!textProbe.ok) {
@@ -309,11 +339,11 @@ export function prepareConnectionTest(body, userId, allowPresetEndpointOverride 
             apiKey,
             model: modelId,
             image: true,
-            signal,
+            signal: probeSignal,
             retryPolicy: retry,
           });
         } catch (error) {
-          if (signal.aborted) throw error;
+          if (probeSignal.aborted) throw error;
           imageProbe = { ok: false, imageUnsupported: false, error: error?.message || 'Image capability could not be determined.' };
         }
         results.push(imageProbe.ok
@@ -322,14 +352,14 @@ export function prepareConnectionTest(body, userId, allowPresetEndpointOverride 
             ? { modelId, textInput: 'supported', imageInput: 'unsupported', error: null }
             : { modelId, textInput: 'supported', imageInput: 'unknown', error: { code: 'IMAGE_CAPABILITY_UNKNOWN', message: imageProbe.error, modelId } });
       }
-      signal.throwIfAborted();
+      probeSignal.throwIfAborted();
       const status = testStatus(results);
       const record = { id: randomUUID(), userId, provider, retry, keyFingerprint: keyFingerprint(apiKey), models: results, status, testedAt: new Date().toISOString(), expiresAt: Date.now() + TEST_TTL_MS, error: aggregateError(results, status) };
       tests.set(record.id, record);
       return publicResult(record);
     } catch (error) {
       if (signal.aborted) throw signal.reason;
-      const message = error?.message || 'Unable to test the model connection.';
+      const message = timeoutController.signal.aborted ? timeoutError.message : (error?.message || 'Unable to test the model connection.');
       const completed = new Set(results.map((model) => model.modelId));
       for (const modelId of models) {
         if (completed.has(modelId)) continue;
@@ -340,6 +370,7 @@ export function prepareConnectionTest(body, userId, allowPresetEndpointOverride 
       tests.set(record.id, record);
       return publicResult(record);
     } finally {
+      clearTimeout(timeout);
       release();
     }
   };
@@ -349,8 +380,8 @@ export async function modelConnectionTestsHandler(req, res) {
   let run;
   try { run = prepareConnectionTest(req.body || {}, req.user.id, req.allowPresetEndpointOverride === true); }
   catch (error) {
-    if (error.status === 429) res.setHeader('Retry-After', '1');
-    return apiError(res, error.status || 500, error.code === 'TEST_BUSY' ? 'RATE_LIMITED' : error.code, error.message);
+    if (error.status === 429) res.setHeader('Retry-After', String(error.retryAfterSeconds || 1));
+    return apiError(res, error.status || 500, error.code, error.message);
   }
   const requestAbort = abortOnDisconnect(req, res);
   try { res.json(await run(requestAbort.signal)); }
@@ -400,7 +431,7 @@ export function imageCapabilitiesHandler(req, res) {
   catch (error) { return apiError(res, error.status || 500, error.code, error.message); }
 }
 
-router.post('/model-connection-tests', modelTestRateLimiter, modelConnectionTestsHandler);
+router.post('/model-connection-tests', modelConnectionTestsHandler);
 
 router.put('/model-connection-tests/:testId/image-capabilities', imageCapabilitiesHandler);
 

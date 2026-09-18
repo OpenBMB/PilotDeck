@@ -34,6 +34,7 @@ export type LlmSetupController = {
   customUrl: string;
   testStatus: TestStatus;
   testMessage: string;
+  testRetryAfterSeconds: number;
   saving: boolean;
   apiModels: ApiModelListItem[] | null;
   modelListStatus: ModelListStatus;
