@@ -1132,6 +1132,8 @@
           "maxContextDescription": "Context window used for auto-compaction. Leave empty to use the model default."
         },
         "subagents": {
+          "timeoutLabel": "Subagent maximum run time (seconds)",
+          "timeoutDescription": "Limit each complete subagent run, including model and tool calls. Leave blank for the default of 1 hour. Supports fractional seconds, from 0.001 seconds to about 24.8 days.",
           "label": "Subagents default",
           "description": "Default model for subagents on non-router paths.",
           "inherit": "Inherit main agent model",
