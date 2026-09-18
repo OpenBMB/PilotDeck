@@ -1455,7 +1455,7 @@
 
   .sidebar-brand-row {
     display: flex;
-    height: 61px;
+    height: 62px;
     flex: 0 0 auto;
     align-items: center;
     justify-content: flex-start;
@@ -1735,7 +1735,7 @@
   .compact-brand {
     position: relative;
     display: grid;
-    height: 61px;
+    height: 62px;
     flex: 0 0 auto;
     place-items: center;
     border: 0;
