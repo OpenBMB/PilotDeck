@@ -293,6 +293,10 @@ export class SubAgentSession {
       getModelProtocol: this.options.parentDependencies.getModelProtocol,
       getModelSupportsPromptCache: this.options.parentDependencies.getModelSupportsPromptCache,
       subagentTranscript: this.options.parentDependencies.subagentTranscript,
+      // Forward the shared background-task runtime. The scoped registry
+      // already excludes the `agent` tool, so this does NOT enable nested
+      // spawning — it only lets the child loop observe/cancel tasks it owns.
+      backgroundTasks: this.options.parentDependencies.backgroundTasks,
     };
   }
 
