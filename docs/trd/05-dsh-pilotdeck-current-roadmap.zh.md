@@ -1211,6 +1211,13 @@ semantic difference 或 cleanup BLOCKED。
 | Elicitation availability | `interactionCapabilities.elicitationAvailable` boolean | host interaction/channel composition；pending answer 与 durable result 留在 host | tool exposure filter | manifest 只投影 availability，不传 channel 对象 |
 | Status persistence | awaited transcript callback before `agent_status` publication/ack | Session transcript writer | Gateway replay/status consumer | callback failure 不能产出成功 terminal 或假 ack |
 
+本轮 merge closure 为 compaction durable boundary 增加了 Session/EventStore-owned 的 versioned `snapshot`（v1）：完整
+snapshot 在 enclosing turn terminal 中断时仍可 replay，损坏 snapshot 则保留既有历史并给出诊断，legacy
+`replacementMessages` 继续只读兼容。JSONL writer 只在该 durable boundary 后 flush，并在下一次 append 前修复部分尾行。
+它不进入 sidecar protocol、不改变 Module Protocol v2、Router 策略或 permission owner；`TurnRunner` 在没有原子 replacement
+writer 时失败关闭。对应 crash/replay/fork/deferred-failure 回归为 21/21，证据见
+`docs/testing/sdk-core-merge-regression-20260918.zh.md`。
+
 生产 parity adapter 已删除自实现 `StdioAgentLoopRunner` 与 `__testAgentLoopFactory` 注入。Gateway sidecar 只通过
 `PILOTDECK_AGENT_LOOP_TRANSPORT=stdio` 选择正式 deployment profile；oracle 强制检查 transport selection、正式
 handshake/binding 与场景要求的 module calls，缺失即 `BLOCKED`。旧 harness 即使 comparator PASS，也因没有证明

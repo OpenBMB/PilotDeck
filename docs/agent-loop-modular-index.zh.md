@@ -165,6 +165,11 @@ host buffer 经过同一 projector 后才输出，并从 child session tool even
 volatile live event，不成为 Session durable truth。compaction persistence callback 属于 durable boundary：拒绝会停止直接
 runner 的后续模型调用；Gateway `TurnRunner` 继续拥有 durable bracket cleanup 与 abort。
 
+compact durable boundary 的 replacement 采用 versioned `snapshot`（当前 v1）保存完整 canonical messages。它由
+Session/EventStore writer 持有，不进入 sidecar wire；完整 snapshot 可在 enclosing turn terminal 缺失时恢复，损坏或不完整
+snapshot 绝不替换旧历史，legacy `replacementMessages` 仍只读兼容。JSONL owner 在 compact boundary 后 flush，并在下一次
+append 前修复中断尾行；这些是持久化/replay 语义，不改变 Module Protocol v2 或 Router policy。
+
 `AgentTurnCapabilities.ts` 是纯 consumer view；native 的宽 dependency bag、Router 与 scheduler adapter
 只在 `nativeAgentTurnCapabilitiesAdapter.ts` 中保留为 deprecated compatibility facade。AgentLoop 不读取
 `PreparedModelInvocation.opaque`，也不引用 Router 类型；legacy Router decision/materialization 仅由该
