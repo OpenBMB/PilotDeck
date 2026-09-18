@@ -27,13 +27,19 @@ export type ModelImageSupport = {
   source: ImageSupportSource | null;
 };
 
+export type ModelTestState = {
+  status: TestStatus;
+  message: string;
+  testId: string;
+};
+
 export type LlmSetupController = {
   selectedProvider: CatalogProvider | null;
   modelIds: string[];
   apiKey: string;
   customUrl: string;
-  testStatus: TestStatus;
   testMessage: string;
+  modelTests: Record<string, ModelTestState>;
   saving: boolean;
   apiModels: ApiModelListItem[] | null;
   modelListStatus: ModelListStatus;
@@ -65,9 +71,10 @@ export type LlmSetupController = {
   setCustomProviderId: (value: string) => void;
   setCustomProtocol: (value: CatalogProviderProtocol) => void;
   resetTest: () => void;
+  getModelTestState: (modelId: string) => ModelTestState;
   handleProviderSelect: (provider: CatalogProvider) => void;
   handleFetchModels: () => Promise<void>;
-  handleTest: () => Promise<void>;
+  handleTest: (modelId: string) => Promise<void>;
   submitManualImageSupport: (values: Record<string, boolean>) => void;
   cancelManualImageSupport: () => void;
   handleSave: () => Promise<void>;

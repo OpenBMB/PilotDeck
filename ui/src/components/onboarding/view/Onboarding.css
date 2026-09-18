@@ -294,6 +294,11 @@
   flex-direction: column;
   background: rgb(255, 255, 255);
   overflow: auto;
+  scrollbar-width: none;
+}
+
+.onboarding-shell .setup-content::-webkit-scrollbar {
+  display: none;
 }
 
 .onboarding-shell .content-page {
@@ -974,6 +979,142 @@
   overflow-x: hidden;
   overflow-y: auto;
   padding: 8px 10px 4px 4px;
+}
+
+.onboarding-shell .model-id-section.selected-models-section {
+  align-items: start;
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+
+.onboarding-shell .model-id-section.selected-models-section .model-id-section-label {
+  padding-top: 14px;
+}
+
+.onboarding-shell .selected-models-body {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.onboarding-shell .selected-model-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  max-height: 168px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+
+.onboarding-shell .selected-model-row {
+  min-height: 44px;
+  padding: 0 10px 0 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgb(226, 229, 238);
+  border-radius: 12px;
+  background: rgb(255, 255, 255);
+}
+
+.onboarding-shell .selected-model-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(44, 52, 65);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.onboarding-shell .selected-model-status {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.onboarding-shell .selected-model-status.untested,
+.onboarding-shell .selected-model-status.testing {
+  background: rgb(241, 243, 247);
+  color: rgb(110, 118, 134);
+}
+
+.onboarding-shell .selected-model-status.passed {
+  background: rgb(232, 247, 239);
+  color: rgb(21, 150, 106);
+}
+
+.onboarding-shell .selected-model-status.failed {
+  background: rgb(255, 239, 239);
+  color: rgb(203, 67, 67);
+}
+
+.onboarding-shell .selected-model-test-button {
+  min-height: 30px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgb(189, 194, 232);
+  border-radius: 9px;
+  background: rgb(255, 255, 255);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.onboarding-shell .selected-model-test-button:hover:not(:disabled) {
+  background: var(--brand-soft);
+  border-color: rgb(158, 164, 228);
+}
+
+.onboarding-shell .selected-model-test-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.onboarding-shell .selected-model-remove {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(138, 147, 165);
+}
+
+.onboarding-shell .selected-model-remove:hover:not(:disabled) {
+  background: rgb(245, 246, 250);
+  color: rgb(62, 70, 86);
+}
+
+.onboarding-shell .selected-model-hint {
+  margin: 0;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: rgb(138, 147, 165);
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.55;
+}
+
+.onboarding-shell .selected-model-hint svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .onboarding-shell .model-id-section.available .model-id-chips {
@@ -1776,9 +1917,14 @@
   max-height: min(720px, calc(100vh - 32px));
   display: block;
   overflow: auto;
+  scrollbar-width: none;
   border-radius: 18px;
   background: rgb(255, 255, 255);
   box-shadow: rgba(32, 39, 53, 0.22) 0 24px 80px;
+}
+
+.onboarding-shell.create-workspace-dialog::-webkit-scrollbar {
+  display: none;
 }
 
 .onboarding-shell.create-workspace-dialog .create-workspace-dialog-close {
@@ -1805,11 +1951,11 @@
 
 .onboarding-shell.create-workspace-dialog .content-page {
   min-height: 0;
-  margin-top: 20px;
+  margin-top: 0;
 }
 
 .onboarding-shell.create-workspace-dialog .workspace-setup-page {
-  padding-top: 0;
+  padding-top: 20px;
 }
 
 .onboarding-shell.create-workspace-dialog .page-intro h1 {

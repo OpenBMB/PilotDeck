@@ -1455,7 +1455,7 @@
 
   .sidebar-brand-row {
     display: flex;
-    height: 61px;
+    height: 62px;
     flex: 0 0 auto;
     align-items: center;
     justify-content: flex-start;
@@ -1735,7 +1735,7 @@
   .compact-brand {
     position: relative;
     display: grid;
-    height: 61px;
+    height: 62px;
     flex: 0 0 auto;
     place-items: center;
     border: 0;
@@ -2599,6 +2599,24 @@
   }
 
   @container pd-composer (max-width: 360px) {
+    .pd-composer-container.pd-composer-compact .pd-composer-control-row,
+    .pd-composer-container.pd-composer-compact .pd-composer-toolbar-left {
+      flex-wrap: nowrap;
+    }
+
+    .pd-composer-container.pd-composer-compact .pd-composer-toolbar-left .pd-composer-icon-button {
+      width: 1.4rem;
+      min-width: 1.4rem;
+      max-width: 1.4rem;
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .pd-composer-container.pd-composer-compact .pd-composer-permission-label,
+    .pd-composer-container.pd-composer-compact .pd-composer-toolbar-left .pd-composer-control-chevron {
+      display: none;
+    }
+
     .pd-composer-container .pd-composer-attachment-panel {
       padding: 0.375rem;
     }
