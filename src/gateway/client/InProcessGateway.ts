@@ -219,6 +219,8 @@ export type InProcessGatewayOptions = {
   uuid?: () => string;
   serverInfo?: Partial<GatewayServerInfo>;
   cron?: GatewayCronController;
+  sopStatus?: (input: import("../protocol/types.js").GatewaySopStatusInput) => Promise<import("../protocol/types.js").GatewaySopStatusResult>;
+  resumeSop?: (input: import("../protocol/types.js").GatewaySopResumeInput) => Promise<import("../protocol/types.js").GatewaySopResumeResult>;
   /**
    * Web Phase 2 — pluggable session-history reader. Wired by
    * `createLocalGateway` so the in-process gateway can answer
@@ -533,6 +535,25 @@ export class InProcessGateway implements Gateway {
 
   getUserDialogBus(): GatewayUserDialogBus {
     return this.userDialogBus;
+  }
+
+  async sopStatus(input: import("../protocol/types.js").GatewaySopStatusInput): Promise<import("../protocol/types.js").GatewaySopStatusResult> {
+    if (!this.options.sopStatus) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "StaffDeck SOP status is unavailable.");
+    return this.options.sopStatus(input);
+  }
+
+  async resumeSop(input: import("../protocol/types.js").GatewaySopResumeInput): Promise<import("../protocol/types.js").GatewaySopResumeResult> {
+    if (!this.options.resumeSop) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "StaffDeck SOP resume is unavailable.");
+    if (this.router.hasActiveTurn(input.sessionKey)) throw new DialogGatewayError("SESSION_BUSY", "Cannot resume StaffDeck SOP while a turn is active.");
+    try {
+      return await this.options.resumeSop(input);
+    } catch (error) {
+      if (error instanceof DialogGatewayError) throw error;
+      const code = typeof error === "object" && error !== null && typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : "SOP_RESUME_FAILED";
+      throw new DialogGatewayError(code, error instanceof Error ? error.message : String(error));
+    }
   }
 
   /**

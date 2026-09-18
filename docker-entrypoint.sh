@@ -141,6 +141,39 @@ YAML
   fi
 fi
 
+# A product deployment can opt into the stateless StaffDeck SOP runtime while
+# leaving model, tool, session and transcript ownership in PilotDeck. Existing
+# hand-authored YAML remains authoritative and must already contain modules.
+if [ -n "${PILOTDECK_STAFFDECK_SOP_ENDPOINT:-}" ]; then
+  if [ -z "${PILOTDECK_STAFFDECK_SOP_DEFINITIONS_PATH:-}" ] || [ -z "${PILOTDECK_STAFFDECK_SOP_DEFAULT_ID:-}" ]; then
+    echo "[pilotdeck-docker] StaffDeck SOP requires PILOTDECK_STAFFDECK_SOP_DEFINITIONS_PATH and PILOTDECK_STAFFDECK_SOP_DEFAULT_ID." >&2
+    exit 1
+  fi
+  if grep -q '^modules:' "$CONFIG_FILE"; then
+    echo "[pilotdeck-docker] Existing modules config retained; StaffDeck SOP environment settings were not applied."
+  elif [ -w "$CONFIG_FILE" ]; then
+    cat >> "$CONFIG_FILE" <<YAML
+modules:
+  agentLoop: { enabled: true, provider: pilotdeck }
+  modelProvider: { enabled: true, provider: pilotdeck }
+  tools: { enabled: true, provider: pilotdeck }
+  sop:
+    enabled: true
+    provider: staffdeck
+    endpoint: ${PILOTDECK_STAFFDECK_SOP_ENDPOINT}
+    definitionsPath: ${PILOTDECK_STAFFDECK_SOP_DEFINITIONS_PATH}
+    defaultSopId: ${PILOTDECK_STAFFDECK_SOP_DEFAULT_ID}
+YAML
+    if [ -n "${PILOTDECK_STAFFDECK_SOP_TIMEOUT_MS:-}" ]; then
+      printf '    timeoutMs: %s\n' "$PILOTDECK_STAFFDECK_SOP_TIMEOUT_MS" >> "$CONFIG_FILE"
+    fi
+    echo "[pilotdeck-docker] Enabled StaffDeck SOP module profile."
+  else
+    echo "[pilotdeck-docker] Cannot add StaffDeck SOP to read-only $CONFIG_FILE; include modules.sop in the mounted YAML." >&2
+    exit 1
+  fi
+fi
+
 # ── Forward proxy env vars ────────────────────────────────────────────
 if [ -n "${PILOTDECK_PROXY:-}" ]; then
   export http_proxy="$PILOTDECK_PROXY"

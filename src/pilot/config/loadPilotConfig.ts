@@ -16,6 +16,7 @@ import { mergeConfigSources } from "./merge.js";
 import { parseMemoryConfig } from "./parseMemoryConfig.js";
 import { parseAdaptersConfig, parseGatewayConfig } from "./parseGatewayConfig.js";
 import { parseToolsConfig } from "./parseToolsConfig.js";
+import { parseModulesConfig } from "./parseModulesConfig.js";
 import { parseRouterConfig } from "../../router/config/parseRouterConfig.js";
 import { redactConfig } from "./redact.js";
 import {
@@ -160,6 +161,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
   const alwaysOn = parseAlwaysOnConfig(rawConfig.alwaysOn, diagnostics);
   const cron = parseCronConfig(rawConfig.cron, diagnostics);
   const tools = parseToolsConfig(rawConfig.tools, diagnostics);
+  const modules = parseModulesConfig(rawConfig.modules, pilotHome, diagnostics);
   const telemetry = parseTelemetryConfig(rawConfig.telemetry);
   const proxy = parseProxyConfig(rawConfig, diagnostics);
   throwConfigErrorIfFatal(diagnostics);
@@ -177,6 +179,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
     tools,
     telemetry,
     proxy,
+    modules,
   });
   return deepFreeze({
     version: options.version ?? 1,
@@ -198,6 +201,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
       ...(tools ? { tools } : {}),
       telemetry,
       ...(proxy ? { proxy } : {}),
+      ...(modules ? { modules } : {}),
     },
   });
 }
@@ -350,6 +354,7 @@ function validateTopLevel(rawConfig: PilotRawConfig, diagnostics: PilotConfigDia
     // config without producing diagnostic noise.
     "webui",
     "telemetry",
+    "modules",
   ]);
   for (const key of Object.keys(rawConfig)) {
     if (!allowedKeys.has(key)) {

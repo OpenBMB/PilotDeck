@@ -108,6 +108,14 @@ function projectAgentEventForTurn(
               streamState: "closed",
               model: event.message.metadata?.model,
             }]
+          : block.type === "text"
+            ? [{
+                type: "assistant_text_delta",
+                text: block.text,
+                ...(event.message.metadata?.model ? { model: event.message.metadata.model } : {}),
+              }]
+            : block.type === "thinking"
+              ? [{ type: "assistant_thinking_delta", text: block.text }]
           : []
       );
     case "prompt_suggestion":

@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { SessionConfigOverrides } from "../always-on/runtime/SessionConfigOverrides.js";
 import type { AlwaysOnControlPort } from "../always-on/protocol/AlwaysOnControlPort.js";
 import {
+  AgentLoop,
   type AgentRuntimeConfig,
   type AgentRuntimeDependencies,
   type AgentLoopRuntimeFactory,
@@ -18,6 +19,10 @@ import {
   type AgentLoopRunner,
   type AgentLoopSidecarTransportObserver,
 } from "../agent/index.js";
+import {
+  createStaffDeckSopAgentLoop,
+  StaffDeckSopControlPlane,
+} from "../sop/staffdeck/index.js";
 import {
   createNodeAttachmentPort,
   type CompactionPort,
@@ -503,6 +508,7 @@ export function resolveBrowserUseOutputDir(input: {
 
 export type CreateLocalGatewayResult = {
   gateway: Gateway;
+  sopControl: StaffDeckSopControlPlane;
   configStore: PilotConfigStore;
   registry: ProjectRuntimeRegistry;
   /** Application-owned registration point for live, non-durable telemetry observers. */
@@ -538,10 +544,22 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   } = bootConfig;
   const organizationPolicy = normalizeGatewayOrganizationPolicy(options.organizationPolicy);
   const sessionOverrides = options.sessionOverrides ?? new SessionConfigOverrides();
-  const agentLoopFactory = options.agentLoopFactory ?? createAgentLoopDeploymentFactory(
-    resolveAgentLoopDeploymentProfile({ env, cwd: projectRoot }),
+  const deploymentProfile = resolveAgentLoopDeploymentProfile({ env, cwd: projectRoot });
+  const configuredAgentLoopFactory = options.agentLoopFactory ?? createAgentLoopDeploymentFactory(
+    deploymentProfile,
     { transportObserver: options.agentLoopTransportObserver },
   );
+  const agentLoopFactory: AgentLoopRuntimeFactory = (input) => {
+    const sop = input.config.staffDeckSop;
+    if (sop && input.config.isSubagent !== true) {
+      if (deploymentProfile.transport !== "native") {
+        throw new Error("modules.sop requires PILOTDECK_AGENT_LOOP_TRANSPORT=native because SOP control tools run inside PilotDeck.");
+      }
+      return createStaffDeckSopAgentLoop(input, sop);
+    }
+    return configuredAgentLoopFactory?.(input)
+      ?? new AgentLoop(input.config, input.capabilities, input.seedState);
+  };
   const sessionDataPlane = options.sessionDataPlane ?? createProjectSessionDataPlane({
     ...(options.persistenceProvider ? { persistenceProvider: options.persistenceProvider } : {}),
     ...(options.storageProvider ? { storageProvider: options.storageProvider } : {}),
@@ -772,6 +790,9 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const turnReplayStore = new GatewayTurnReplayStore();
   const turnTelemetryContextResolver = new GatewayTurnTelemetryContextResolver();
   const manualCompactionCoordinator = new GatewayManualCompactionCoordinator({ router });
+  const sopControl = new StaffDeckSopControlPlane(
+    (requestedProjectKey) => registry.resolve(requestedProjectKey).snapshot.config.modules?.sop,
+  );
   const restoringSessionKeys = new Set<string>();
   let boundServer: { broadcastNotification(name: string, payload?: unknown): void } | undefined;
   const gateway = new InProcessGateway(router, {
@@ -804,6 +825,8 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     turnReplayStore,
     turnTelemetryContextResolver,
     manualCompactionCoordinator,
+    sopStatus: (input) => sopControl.status(input).then((status) => status ?? null),
+    resumeSop: (input) => sopControl.resume(input),
     cron: options.cron,
     skillManager,
     commandsList: (input) => commandCatalog.commandsList(input),
@@ -1069,6 +1092,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const lifecycle = bootResources.commit({ gateway });
   return {
     gateway,
+    sopControl,
     configStore,
     registry,
     sessionDataPlane,

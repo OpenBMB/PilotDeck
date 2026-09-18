@@ -149,6 +149,7 @@ export class SessionAgentConfigBundle {
       ...(this.options.testAgentConfigOverrides ?? {}),
       maxOutputTokens,
       runtimeContextSurface: runtime.profile.runtimeContextSurface,
+      ...(runtime.snapshot.config.modules?.sop ? { staffDeckSop: runtime.snapshot.config.modules.sop } : {}),
       thinking: capThinking(
         organizationSettings?.enforcedSessionSettings?.agent?.thinking
           ?? this.options.sdkThinking

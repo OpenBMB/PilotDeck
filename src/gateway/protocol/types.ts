@@ -66,6 +66,10 @@ import type {
   SkillsListResult,
 } from "../../extension/skills/types.js";
 import type { InteractionConnectionBinding, InteractionReconnectResult } from "../../interaction/index.js";
+import type {
+  StaffDeckSopResumeResult,
+  StaffDeckSopStatusSnapshot,
+} from "../../sop/staffdeck/types.js";
 
 export type GatewayChannelKey =
   | "cli" | "tui" | "feishu" | "weixin" | "qq" | "web" | "test"
@@ -77,6 +81,24 @@ export type GatewayChannelKey =
   | (string & {});
 
 export type GatewayMode = "default" | "plan" | "bypassPermissions";
+
+export type GatewaySopStatusInput = {
+  sessionKey: string;
+  projectKey?: string;
+};
+
+export type GatewaySopStatusResult = StaffDeckSopStatusSnapshot | null;
+
+export type GatewaySopResumeInput = GatewaySopStatusInput & {
+  requestId: string;
+  waitId: string;
+  source: "human" | "external_task";
+  message: string;
+  expectedRevision?: number;
+  slotUpdates?: Record<string, unknown>;
+};
+
+export type GatewaySopResumeResult = StaffDeckSopResumeResult;
 
 export type ChannelAttachment = {
   type: "file" | "image" | "text" | "unknown";
@@ -1265,6 +1287,8 @@ export type {
 
 export interface Gateway {
   submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent>;
+  sopStatus?(input: GatewaySopStatusInput): Promise<GatewaySopStatusResult>;
+  resumeSop?(input: GatewaySopResumeInput): Promise<GatewaySopResumeResult>;
   steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult>;
   cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult>;
   abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void>;

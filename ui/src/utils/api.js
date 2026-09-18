@@ -255,6 +255,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ projectPath, fromEntryId }),
     }),
+  sopStatus: (sessionKey, projectKey = '') => {
+    const params = new URLSearchParams({ sessionKey });
+    if (projectKey) params.set('projectKey', projectKey);
+    return authenticatedFetch(`/api/sop/status?${params.toString()}`, { suppressServerErrorToast: true });
+  },
+  resumeSop: (payload) => authenticatedFetch('/api/sop/resume', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
   deleteProject: (projectName, force = false) =>
     authenticatedFetch(`/api/projects/${projectName}${force ? '?force=true' : ''}`, {
       method: 'DELETE',

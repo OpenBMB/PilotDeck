@@ -1,0 +1,12 @@
+sops:
+  - id: operator_approval
+    version: "1"
+    name: Operator approval
+    content:
+      start_node_id: approval
+      nodes:
+        - node_id: approval
+          type: handoff
+          instruction: Wait for an operator decision before completing this request.
+      terminal_node_ids:
+        - approval

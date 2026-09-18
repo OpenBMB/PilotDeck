@@ -43,6 +43,22 @@ test("GatewayAgentEventProjector owns live projection and delegates advisory art
   }]);
 });
 
+test("GatewayAgentEventProjector preserves durable assistant text without streaming metadata", () => {
+  const projector = new GatewayAgentEventProjector();
+
+  const projected = projector.project({
+    runId: "run-1",
+    event: {
+      type: "assistant_message",
+      sessionId: "session-1",
+      turnId: "turn-1",
+      message: { role: "assistant", content: [{ type: "text", text: "Durable SOP reply" }] },
+    },
+  });
+
+  assert.deepEqual(projected, [{ type: "assistant_text_delta", text: "Durable SOP reply", runId: "run-1" }]);
+});
+
 test("InProcessGateway consumes its injected Agent event projector", async () => {
   const inputs: Array<{ type: string; runId: string }> = [];
   const projector: GatewayAgentEventProjectorPort = {

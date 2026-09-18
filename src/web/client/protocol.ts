@@ -10,7 +10,7 @@ import type { GatewayActiveTurnSnapshot } from "../../gateway/protocol/types.js"
  * `tests/web-ui-client/protocol-sync.test.ts`.
  */
 
-export const PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB = "1.1";
+export const PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB = "1.2";
 
 export type WebGatewayMode =
   | "default"

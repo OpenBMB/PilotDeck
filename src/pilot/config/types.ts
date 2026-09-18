@@ -5,6 +5,7 @@ import type { InteractionProfileName } from "../../interaction/InteractionProfil
 import type { SandboxMode } from "../../tool/execution-world/SandboxPort.js";
 import type { ModelConfig } from "../../model/protocol/canonical.js";
 import type { RouterConfig } from "../../router/config/schema.js";
+import type { StaffDeckSopRuntimeConfig } from "../../sop/staffdeck/types.js";
 
 export type PilotConfigSourceKind = "default" | "project" | "env";
 export type PilotConfigSourcePhase = "bootstrap" | "merge";
@@ -51,6 +52,7 @@ export type PilotRawConfig = {
   telemetry?: unknown;
   proxy?: unknown;
   webui?: unknown;
+  modules?: unknown;
 };
 
 export type PilotExtensionConfig = {
@@ -239,6 +241,19 @@ export type PilotTelemetryConfig = {
   enabled: boolean;
 };
 
+export type PilotCoreModuleConfig = {
+  enabled: true;
+  provider: "pilotdeck";
+};
+
+/** Deployment composition selected by YAML; only the StaffDeck SOP slot is external in v1. */
+export type PilotModulesConfig = {
+  agentLoop?: PilotCoreModuleConfig;
+  modelProvider?: PilotCoreModuleConfig;
+  tools?: PilotCoreModuleConfig;
+  sop?: StaffDeckSopRuntimeConfig;
+};
+
 export type PilotConfig = {
   agent: PilotAgentConfig;
   model: ModelConfig;
@@ -252,6 +267,7 @@ export type PilotConfig = {
   tools?: PilotToolsConfig;
   telemetry?: PilotTelemetryConfig;
   proxy?: PilotProxyConfig;
+  modules?: PilotModulesConfig;
 };
 
 export type PilotConfigSnapshot = {
