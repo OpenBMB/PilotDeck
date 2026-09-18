@@ -22,7 +22,7 @@ test("transcript writer commits compaction boundary and replacement surface as o
   if (entry?.type !== "control_boundary") return;
   assert.equal(entry.boundary.kind, "compact");
   if (entry.boundary.kind !== "compact" || entry.boundary.subtype !== "compact_boundary") return;
-  assert.deepEqual(entry.boundary.replacementMessages, [
+  assert.deepEqual(entry.boundary.snapshot, { version: 1, messages: [
     { role: "assistant", content: [{ type: "text", text: "summary" }] },
-  ]);
+  ] });
 });

@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
 import type { CanonicalContentBlock } from "../../model/index.js";
 import { sanitizeSessionIdForPath } from "../storage/ProjectSessionStorage.js";
+import { readCompactSnapshot } from "../transcript/CompactSnapshot.js";
 import type { AgentTranscriptEntry } from "../transcript/TranscriptEntry.js";
 import type { ProjectSessionForkInput, ProjectSessionForkPort } from "./ProjectSessionForkPort.js";
 
@@ -78,6 +79,28 @@ function retargetTranscriptEntryAuxiliaryPaths(
         content: entry.message.content.map((block) => retargetContentBlock(block, sourceSessionDir, targetSessionDir)),
       },
     };
+  }
+  if (
+    entry.type === "control_boundary" &&
+    entry.boundary.kind === "compact" &&
+    entry.boundary.subtype === "compact_boundary"
+  ) {
+    const snapshot = readCompactSnapshot(entry);
+    if (snapshot) {
+      return {
+        ...entry,
+        boundary: {
+          ...entry.boundary,
+          snapshot: {
+            version: 1,
+            messages: snapshot.map((message) => ({
+              ...message,
+              content: message.content.map((block) => retargetContentBlock(block, sourceSessionDir, targetSessionDir)),
+            })),
+          },
+        },
+      };
+    }
   }
   return entry;
 }

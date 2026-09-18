@@ -26,6 +26,7 @@ Gateway/WebSocket、module protocol 和 durable callback 的确定性语义一�
 | Gateway 旧生产路径基线 | `run.py --comparison same-version --surface gateway --scenario all` | 48/48 PASS；仅证明当时的 scenario 集合 |
 | Gateway 当前生产路径 gate（2026-09-17） | `run.py --comparison same-version --surface gateway --scenario all` | 49/49 PASS；`FAIL=0`、`BLOCKED=0`、oracle failure `=0` |
 | Gateway merge-closure gate（2026-09-18） | `run.py --comparison both --surface gateway --scenario all --pilotdeck-baseline origin/main` | 53 个场景全部执行；52 个 native/sidecar strict shared；`deadline` 保留 2 条精确声明的 transport settlement difference；exact contract 后 `FAIL=0`、`BLOCKED=0`、oracle failure `=0` |
+| SDK/core merge closure（2026-09-18） | 同上；输出 `/tmp/pilotdeck-parity-merge-closure-20260918/summary.json` | 固定起始 current `148a7bd6c`、baseline `cd52c9af8`；53/53 执行，`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 baseline applicable、19 明确 `notApplicable`；新增 crash-safe compact snapshot 合并后无 parity 回归 |
 | 本轮 metadata focused suites | `default-factory`、`llm-model-port`、`sidecar-client` | 72/72 PASS |
 
 全量命令：

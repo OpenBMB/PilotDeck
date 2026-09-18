@@ -391,7 +391,12 @@ export type AgentControlBoundaryTranscriptEntry = AgentTranscriptEntryBase & {
         kind: "compact";
         subtype: "compact_boundary";
         compactMetadata: CompactBoundaryMetadata;
-        /** Atomic model-visible surface replacement committed with the boundary. */
+        /** Complete replacement context committed in the same durable record. */
+        snapshot?: { version: 1; messages: CanonicalMessage[] };
+        /**
+         * Compatibility for records written before compact snapshots. New
+         * writers always use `snapshot`, which is validated before replay.
+         */
         replacementMessages?: CanonicalMessage[];
       }
     | {

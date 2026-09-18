@@ -169,6 +169,17 @@ function validateTranscriptEntryPayload(entry: Record<string, unknown>, label: s
       if (
         boundary.kind === "compact" &&
         boundary.subtype === "compact_boundary" &&
+        boundary.snapshot !== undefined
+      ) {
+        const snapshot = checkpointRecord(boundary.snapshot, `${label}.boundary.snapshot`);
+        if (snapshot.version !== 1) {
+          throw new TypeError(`${label}.boundary.snapshot version is invalid.`);
+        }
+        checkpointCanonicalMessages(snapshot.messages, `${label}.boundary.snapshot.messages`);
+      }
+      if (
+        boundary.kind === "compact" &&
+        boundary.subtype === "compact_boundary" &&
         boundary.replacementMessages !== undefined
       ) {
         checkpointCanonicalMessages(boundary.replacementMessages, `${label}.boundary.replacementMessages`);

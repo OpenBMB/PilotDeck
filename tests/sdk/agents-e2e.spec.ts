@@ -3425,6 +3425,16 @@ test("SDK query projects PreCompact and PostCompact through a Gateway-owned auto
       warmup.close();
     }
 
+    // Keep the warm-up requests below their original admission budget, then
+    // exercise the production config-reload path to make the next turn's
+    // compaction decision deterministic. This keeps the lifecycle assertion
+    // on the SDK/Gateway composition rather than a test-only context provider.
+    await writeFile(
+      join(projectRoot, "pilotdeck.yaml"),
+      COMPACTION_TEST_CONFIG.replace("maxContextTokens: 20000", "maxContextTokens: 16000"),
+      "utf8",
+    );
+
     const received: string[] = [];
     const run = query({
       prompt: historySegment,

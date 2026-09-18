@@ -121,7 +121,7 @@ export class InMemoryTranscriptWriter implements AgentTranscriptWriter {
       type: "control_boundary",
       boundary: {
         ...boundary,
-        replacementMessages: messages.map((message) => structuredClone(message)),
+        snapshot: { version: 1, messages: messages.map((message) => structuredClone(message)) },
       },
     });
   }

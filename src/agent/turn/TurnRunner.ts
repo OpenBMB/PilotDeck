@@ -343,11 +343,18 @@ export class TurnRunner {
                   boundary,
                   compactMessages,
                 );
+              } else if (
+                boundary.kind === "compact" &&
+                "subtype" in boundary &&
+                boundary.subtype === "compact_boundary" &&
+                this.transcript.recordControlBoundary
+              ) {
+                await this.transcript.recordControlBoundary(options.sessionId, options.turnId, {
+                  ...boundary,
+                  snapshot: { version: 1, messages: compactMessages.map((message) => structuredClone(message)) },
+                });
               } else {
-                await this.transcript.recordControlBoundary?.(options.sessionId, options.turnId, boundary);
-                for (const message of compactMessages) {
-                  await this.transcript.recordDurableMessage(options.sessionId, options.turnId, message);
-                }
+                throw new Error("Transcript writer does not support atomic compaction replacement.");
               }
               await this.sessionEventRecorder.commitDeferredCompaction(options.sessionId, options.turnId);
             } catch (error) {

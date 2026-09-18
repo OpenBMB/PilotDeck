@@ -8,6 +8,7 @@ import type {
   AgentTranscriptEntry,
   SessionMetadataValue,
 } from "../transcript/TranscriptEntry.js";
+import { readCompactSnapshot } from "../transcript/CompactSnapshot.js";
 import {
   checkpointArray,
   checkpointCanonicalMessages,
@@ -50,6 +51,7 @@ type ConversationState = {
     index: number;
     turnId: string;
     messages: CanonicalMessage[];
+    replayBeforeTurnCompletion: boolean;
   };
 };
 
@@ -81,7 +83,7 @@ const conversationProjection: SessionProjectionDefinition<
   AgentConversationProjectionResult
 > = {
   name: AGENT_TRANSCRIPT_PROJECTION_NAMES.conversation,
-  version: 2,
+  version: 3,
   create: () => ({ entries: [], completedTurnIds: new Set(), lastCompactBoundaryIndex: -1 }),
   reduce(state, entry, { index }) {
     switch (entry.type) {
@@ -106,19 +108,26 @@ const conversationProjection: SessionProjectionDefinition<
           "subtype" in entry.boundary &&
           entry.boundary.subtype === "compact_boundary"
         ) {
+          const snapshot = readCompactSnapshot(entry);
+          const replacement = snapshot ?? entry.boundary.replacementMessages;
+          // A boundary without a complete replacement cannot discard prior
+          // history. Snapshot records are self-contained and can survive a
+          // crash before the enclosing turn reaches its terminal event.
+          if (!replacement) {
+            return hasSnapshotField(entry.boundary)
+              ? { ...state, entries: [...state.entries, { entry, index }] }
+              : state;
+          }
           return {
             ...state,
             entries: [...state.entries, { entry, index }],
             lastCompactBoundaryIndex: index,
-            ...(entry.boundary.replacementMessages
-              ? {
-                  lastCompactReplacement: {
-                    index,
-                    turnId: entry.turnId,
-                    messages: cloneMessages(entry.boundary.replacementMessages),
-                  },
-                }
-              : { lastCompactReplacement: undefined }),
+            lastCompactReplacement: {
+              index,
+              turnId: entry.turnId,
+              messages: cloneMessages(replacement),
+              replayBeforeTurnCompletion: snapshot !== undefined,
+            },
           };
         }
         return state;
@@ -150,6 +159,9 @@ const conversationProjection: SessionProjectionDefinition<
         case "assistant_message":
         case "tool_result_message":
         case "durable_message":
+          if (entry.message.metadata?.compactReplacement === true) {
+            break;
+          }
           if (!state.completedTurnIds.has(entry.turnId)) {
             result.diagnostics.push({
               code: "transcript_entry_invalid",
@@ -185,12 +197,24 @@ const conversationProjection: SessionProjectionDefinition<
             "subtype" in entry.boundary &&
             entry.boundary.subtype === "compact_boundary" &&
             state.lastCompactReplacement?.index === index &&
-            state.completedTurnIds.has(entry.turnId)
+            (state.lastCompactReplacement.replayBeforeTurnCompletion || state.completedTurnIds.has(entry.turnId))
           ) {
             for (const message of state.lastCompactReplacement.messages) {
               result.messages.push(cloneMessage(message));
               result.events.push(projectMessageEvent(entry.sessionId, entry.turnId, message));
             }
+          } else if (
+            entry.boundary.kind === "compact" &&
+            "subtype" in entry.boundary &&
+            entry.boundary.subtype === "compact_boundary" &&
+            hasSnapshotField(entry.boundary) &&
+            readCompactSnapshot(entry) === undefined
+          ) {
+            result.diagnostics.push({
+              code: "transcript_entry_invalid",
+              severity: "warning",
+              message: "Ignoring compact boundary without a valid complete snapshot; retaining prior context.",
+            });
           }
           break;
         default:
@@ -210,6 +234,7 @@ const conversationProjection: SessionProjectionDefinition<
               index: state.lastCompactReplacement.index,
               turnId: state.lastCompactReplacement.turnId,
               messages: state.lastCompactReplacement.messages,
+              replayBeforeTurnCompletion: state.lastCompactReplacement.replayBeforeTurnCompletion,
             },
           }
         : {}),
@@ -244,6 +269,7 @@ const conversationProjection: SessionProjectionDefinition<
                 replacementRecord.messages,
                 "conversation.lastCompactReplacement.messages",
               ),
+              replayBeforeTurnCompletion: replacementRecord.replayBeforeTurnCompletion === true,
             };
           })();
       return {
@@ -321,6 +347,7 @@ const compactBoundaryProjection: SessionProjectionDefinition<CompactBoundaryStat
       "subtype" in entry.boundary &&
       entry.boundary.subtype === "compact_boundary"
     ) {
+      if (!readCompactSnapshot(entry) && !entry.boundary.replacementMessages) return state;
       return { lastCompactBoundary: entry };
     }
     return state;
@@ -341,6 +368,9 @@ const compactBoundaryProjection: SessionProjectionDefinition<CompactBoundaryStat
         entry.boundary.subtype !== "compact_boundary"
       ) {
         throw new TypeError("Compact boundary checkpoint does not contain a compact boundary.");
+      }
+      if (!readCompactSnapshot(entry) && !entry.boundary.replacementMessages) {
+        throw new TypeError("Compact boundary checkpoint does not contain a complete replacement.");
       }
       return { lastCompactBoundary: entry };
     },
@@ -467,7 +497,8 @@ export function findLastCompactBoundaryIndex(entries: readonly AgentTranscriptEn
       entry.type === "control_boundary" &&
       entry.boundary.kind === "compact" &&
       "subtype" in entry.boundary &&
-      entry.boundary.subtype === "compact_boundary"
+      entry.boundary.subtype === "compact_boundary" &&
+      (readCompactSnapshot(entry) !== undefined || entry.boundary.replacementMessages !== undefined)
     ) {
       return index;
     }
@@ -504,6 +535,10 @@ function mergeUsage(first: CanonicalUsage, second: CanonicalUsage): CanonicalUsa
 function add(first: number | undefined, second: number | undefined): number | undefined {
   if (first === undefined && second === undefined) return undefined;
   return (first ?? 0) + (second ?? 0);
+}
+
+function hasSnapshotField(boundary: Extract<AgentTranscriptEntry, { type: "control_boundary" }>['boundary']): boolean {
+  return Object.prototype.hasOwnProperty.call(boundary, "snapshot");
 }
 
 function insertBeforeLatestUserRequest(

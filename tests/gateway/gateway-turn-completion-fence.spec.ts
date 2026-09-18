@@ -46,6 +46,7 @@ test("InProcessGateway ignores an abort for a stale run id", async () => {
   let abortCalls = 0;
   const gateway = new InProcessGateway({
     abort: async () => { abortCalls += 1; },
+    activeTurnRunId: () => "run-current",
   } as unknown as SessionRouter, { turnCompletionFence: fence });
 
   await gateway.abortTurn({ sessionKey: "web:stale", runId: "run-old" });

@@ -12,6 +12,7 @@ import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { platform } from "node:process";
 import type { CanonicalContentBlock, CanonicalMessage } from "../../model/index.js";
 import { parseAgentRunMode } from "../../agent/protocol/input.js";
+import { readCompactSnapshot } from "../../session/transcript/CompactSnapshot.js";
 import {
   createProjectSessionForkPort,
   readAgentProjectSessionPersistence,
@@ -213,6 +214,25 @@ function markTranscriptEntryAsForkCarryover(
       message: markMessageAsForkCarryover(entry.message, sourceSessionId, entry.turnId),
     };
   }
+  if (
+    entry.type === "control_boundary" &&
+    entry.boundary.kind === "compact" &&
+    entry.boundary.subtype === "compact_boundary"
+  ) {
+    const snapshot = readCompactSnapshot(entry);
+    if (snapshot) {
+      return {
+        ...entry,
+        boundary: {
+          ...entry.boundary,
+          snapshot: {
+            version: 1,
+            messages: snapshot.map((message) => markMessageAsForkCarryover(message, sourceSessionId, entry.turnId)),
+          },
+        },
+      };
+    }
+  }
   return entry;
 }
 
@@ -234,7 +254,10 @@ function retargetEntriesToSession(
     if (
       retargeted.type === "assistant_message" ||
       retargeted.type === "tool_result_message" ||
-      retargeted.type === "durable_message"
+      retargeted.type === "durable_message" ||
+      (retargeted.type === "control_boundary" &&
+        retargeted.boundary.kind === "compact" &&
+        retargeted.boundary.subtype === "compact_boundary")
     ) {
       return markTranscriptEntryAsForkCarryover({ ...retargeted, sessionId: options.sessionId }, entry.sessionId);
     }
@@ -269,6 +292,28 @@ function retargetLegacyAuxiliaryPaths(
   }
   if (entry.type === "assistant_message" || entry.type === "tool_result_message" || entry.type === "durable_message") {
     return { ...entry, message: { ...entry.message, content: entry.message.content.map(retargetBlock) } };
+  }
+  if (
+    entry.type === "control_boundary" &&
+    entry.boundary.kind === "compact" &&
+    entry.boundary.subtype === "compact_boundary"
+  ) {
+    const snapshot = readCompactSnapshot(entry);
+    if (snapshot) {
+      return {
+        ...entry,
+        boundary: {
+          ...entry.boundary,
+          snapshot: {
+            version: 1,
+            messages: snapshot.map((message) => ({
+              ...message,
+              content: message.content.map(retargetBlock),
+            })),
+          },
+        },
+      };
+    }
   }
   if (entry.type === "subagent_started") {
     const sourceSafeId = sanitizeSessionIdForPath(entry.sessionId);

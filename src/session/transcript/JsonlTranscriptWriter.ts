@@ -184,13 +184,14 @@ export class JsonlTranscriptWriter implements AgentTranscriptWriter {
       type: "control_boundary",
       boundary: {
         ...boundary,
-        replacementMessages: messages.map((message) => structuredClone(message)),
+        snapshot: { version: 1, messages: messages.map((message) => structuredClone(message)) },
       },
     });
   }
 
   recordEntry(entry: AgentTranscriptEntry): Promise<void> {
-    return this.enqueueWrite(() => this.eventStore.appendRecorded(entry));
+    const stableEntry = structuredClone(entry);
+    return this.enqueueWrite(() => this.eventStore.appendRecorded(stableEntry));
   }
 
   recordFileSnapshot(
@@ -294,7 +295,10 @@ export class JsonlTranscriptWriter implements AgentTranscriptWriter {
   }
 
   private append(sessionId: string, turnId: string, event: SessionEventDraft): Promise<void> {
-    return this.enqueueWrite(() => this.eventStore.append(sessionId, turnId, event).then(() => undefined));
+    // Capture before queuing IO. Compaction callers can release or reuse the
+    // source message array as soon as this method returns.
+    const stableEvent = structuredClone(event);
+    return this.enqueueWrite(() => this.eventStore.append(sessionId, turnId, stableEvent).then(() => undefined));
   }
 
   private enqueueWrite(operation: () => Promise<void>): Promise<void> {

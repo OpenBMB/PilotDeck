@@ -51,7 +51,7 @@ test("manual compaction writes a standalone durable replacement without model-lo
   assert.equal(boundary?.type, "control_boundary");
   if (boundary?.type === "control_boundary" && boundary.boundary.kind === "compact") {
     assert.equal(boundary.boundary.subtype, "compact_boundary");
-    assert.equal(boundary.boundary.replacementMessages?.[0]?.metadata?.compactReplacement, true);
+    assert.equal(boundary.boundary.snapshot?.messages[0]?.metadata?.compactReplacement, true);
   }
   const replay = projectAgentTranscriptEntries(transcript.entries);
   assert.equal(replay.messages[0]?.content[0]?.type === "text" && replay.messages[0].content[0].text, "summary");

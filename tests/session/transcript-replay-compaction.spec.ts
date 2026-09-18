@@ -13,7 +13,7 @@ function messageText(entry: { content: Array<{ type: string; text?: string }> })
     .join("\n");
 }
 
-test("transcript replay resumes from persisted post-compact replacement messages", () => {
+test("legacy compaction without a complete snapshot conservatively retains original history", () => {
   const entries: AgentTranscriptEntry[] = [
     {
       type: "accepted_input",
@@ -114,14 +114,20 @@ test("transcript replay resumes from persisted post-compact replacement messages
   const replayText = replay.messages.map(messageText).join("\n");
   const rawText = JSON.stringify(entries);
 
-  assert.equal(replay.lastCompactBoundaryIndex, 3);
+  assert.equal(replay.lastCompactBoundaryIndex, undefined);
   assert.match(rawText, /old accepted input/);
   assert.match(rawText, /old assistant reply/);
-  assert.doesNotMatch(replayText, /old accepted input/);
-  assert.doesNotMatch(replayText, /old assistant reply/);
-  assert.match(replayText, /\[CONTEXT COMPACTION - REFERENCE ONLY\]/);
-  assert.match(replayText, /kept tail input/);
-  assert.equal(replay.messages.every((message) => message.metadata?.compactReplacement === true), true);
+  assert.match(replayText, /old accepted input/);
+  assert.match(replayText, /old assistant reply/);
+  assert.doesNotMatch(replayText, /\[CONTEXT COMPACTION - REFERENCE ONLY\]/);
+  assert.doesNotMatch(replayText, /kept tail input/);
+  // Neither a bare legacy boundary nor a partially written replacement can
+  // hide the old context, even before turn_result has been recorded.
+  for (const end of [4, 5, 6]) {
+    const partial = replayTranscriptEntries(entries.slice(0, end));
+    assert.deepEqual(partial.messages, replay.messages);
+    assert.equal(partial.lastCompactBoundary, undefined);
+  }
 });
 
 test("transcript replay applies an atomic compact replacement only after its turn completes", () => {

@@ -1529,7 +1529,12 @@ export class InProcessGateway implements Gateway {
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {
     const reason = input.reason ?? (input.runId ? `aborted:${input.runId}` : "aborted");
     const cancelled = this.turnCompletionFence.cancel(input.sessionKey, reason, input.runId);
-    if (input.runId !== undefined && !cancelled) return;
+    if (input.runId !== undefined && !cancelled) {
+      // Replacement can observe a Router-admitted turn before submitTurn has
+      // installed its local completion fence. Abort that exact Router turn,
+      // but never let an old replacement abort a newer run.
+      if (this.router.activeTurnRunId(input.sessionKey) !== input.runId) return;
+    }
     await this.router.abort(input.sessionKey, reason);
     // Wait for the in-flight `submitTurn` (if any) to fully unwind so
     // `inFlightTurns` has been cleared by the time the RPC response is

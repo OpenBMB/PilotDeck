@@ -42,27 +42,22 @@ export type HostModelInvokerPort = ModelInvokerPort & Readonly<{
 }>;
 
 const preparationIdSymbol = Symbol("pilotdeck.hostModelPreparationId");
-const requestPreparationIdSymbol = Symbol("pilotdeck.hostModelRequestPreparationId");
 
 type PreparedInvocationWithIdentity = PreparedModelInvocation & {
   [preparationIdSymbol]?: string;
 };
 
-type ModelRequestWithPreparationIdentity = CanonicalModelRequest & {
-  [requestPreparationIdSymbol]?: string;
-};
+// Materialized canonical requests are immutable snapshots. Keep the host-only
+// preparation association out-of-band so this adapter never mutates a request
+// supplied by the caller or serialized across the module boundary.
+const requestPreparationIds = new WeakMap<CanonicalModelRequest, string>();
 
 export function readHostModelRequestPreparationId(request: CanonicalModelRequest): string | undefined {
-  return (request as ModelRequestWithPreparationIdentity)[requestPreparationIdSymbol];
+  return requestPreparationIds.get(request);
 }
 
 function rememberRequestPreparationId(request: CanonicalModelRequest, preparationId: string): CanonicalModelRequest {
-  Object.defineProperty(request, requestPreparationIdSymbol, {
-    configurable: false,
-    enumerable: false,
-    value: preparationId,
-    writable: false,
-  });
+  requestPreparationIds.set(request, preparationId);
   return request;
 }
 

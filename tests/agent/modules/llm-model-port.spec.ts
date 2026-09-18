@@ -258,6 +258,7 @@ test("host model consumer materializes an existing preparation without exposing 
   } as CanonicalModelRequest);
 
   assert.equal(materialized?.systemPrompt, "provider prompt");
+  assert.equal(Object.isFrozen(materialized), true);
   assert.equal(materialized?.tools?.[0]?.name, "provider_tool");
   assert.equal(materialized?.maxOutputTokens, 64);
   assert.equal(calls[0]?.preparationId, calls[1]?.preparationId);
