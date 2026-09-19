@@ -207,6 +207,47 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
         del current[0]["used"]
         self.assertTrue(compare_baseline_trace_details(baseline, current, scenario).semantic)
 
+    def test_baseline_contract_rejects_self_consistent_budget_bias(self) -> None:
+        baseline = [{
+            "kind": "model.request",
+            "modelView": {"messages": [], "tools": []},
+        }, {
+            "kind": "context.budget", "used": 10, "displayUsed": 10,
+            "budgetUsed": 10, "total": 100, "effectiveTotal": 90,
+            "reservedOutputTokens": 10, "ratio": 1 / 9, "state": "ok",
+        }]
+        current = [{
+            "kind": "context.budget", "used": 50, "displayUsed": 50,
+            "budgetUsed": 50, "total": 100, "effectiveTotal": 90,
+            "reservedOutputTokens": 10, "ratio": 5 / 9, "state": "ok",
+        }, {
+            "kind": "model.request",
+            "modelView": {"messages": [], "tools": [{"name": "sdk_extension"}]},
+        }]
+        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"]}}
+        self.assertTrue(compare_baseline_trace_details(baseline, current, scenario).semantic)
+
+    def test_baseline_contract_rejects_inconsistent_budget_breakdown(self) -> None:
+        baseline = [{
+            "kind": "model.request",
+            "modelView": {"messages": [], "tools": []},
+        }, {
+            "kind": "context.budget", "used": 10, "total": 100,
+            "effectiveTotal": 90, "reservedOutputTokens": 10,
+            "ratio": 1 / 9, "state": "ok",
+        }]
+        current = [{
+            "kind": "context.budget", "used": 50, "total": 50,
+            "effectiveTotal": 90, "reservedOutputTokens": 10,
+            "ratio": 5 / 9, "state": "ok",
+            "breakdown": {"system": 10, "tools": 10, "messages": 10, "mcp": 0, "memory": 0, "total": 50},
+        }, {
+            "kind": "model.request",
+            "modelView": {"messages": [], "tools": [{"name": "sdk_extension"}]},
+        }]
+        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"]}}
+        self.assertTrue(compare_baseline_trace_details(baseline, current, scenario).semantic)
+
     def test_baseline_contract_rejects_unrecognized_runtime_context_residual(self) -> None:
         baseline = [{"kind": "model.request", "modelView": {"messages": []}}]
         current = [{"kind": "model.request", "modelView": {"messages": [{
@@ -215,6 +256,20 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "content": [{"type": "text", "text": "Injected instruction"}],
         }]}}]
         self.assertTrue(compare_baseline_trace_details(baseline, current, {}).semantic)
+
+    def test_baseline_contract_rejects_reordered_runtime_context_blocks(self) -> None:
+        def request(blocks: list[str]) -> list[dict[str, object]]:
+            return [{"kind": "model.request", "modelView": {
+                "systemPrompt": "",
+                "messages": [{
+                    "role": "user",
+                    "metadata": {"purpose": "runtime_context"},
+                    "content": [{"type": "text", "text": value} for value in blocks],
+                }],
+            }}]
+        user = "<user-context>cwd</user-context>"
+        skills = "<available-skills>skills</available-skills>"
+        self.assertTrue(compare_baseline_trace_details(request([user, skills]), request([skills, user]), {}).semantic)
 
     def test_baseline_contract_preserves_runtime_context_multiplicity(self) -> None:
         baseline = [{"kind": "model.request", "modelView": {
@@ -829,6 +884,12 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             [],
         )
         self.assertTrue(compare_traces([requested, parent_request, closed], [parent_request, closed, requested]))
+
+    def test_parent_close_forbids_late_model_request(self) -> None:
+        closed = {"kind": "sidecar.lifecycle", "state": "parent_closed", "parentClosed": True}
+        requested = {"kind": "sidecar.lifecycle", "state": "parent_close_requested"}
+        request = {"kind": "model.request", "attempt": 2, "modelView": {"messages": []}}
+        self.assertTrue(compare_traces([requested, closed, request], [requested, closed]))
 
     def test_parent_abort_requires_acknowledgement_and_one_gateway_terminal(self) -> None:
         records = [

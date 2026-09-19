@@ -108,6 +108,12 @@ sidecar oracle 要求每个适用场景同时出现：
 
 ## 结论
 
+### 2026-09-19 严格 baseline closure
+
+固定 current `2a767d95b21bd66215a3c65ebdd92159ad6fa156` 与 `origin/main` `cd52c9af812a84c27a9dd1b7ccf246f48540045f` 后，正式 stdio factory 全矩阵重新执行 53/53：`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`。34 个 baseline 场景适用，19 个因 main 缺少对应能力明确列为 `notApplicable`；未把不适用场景计为 PASS。9 条 expected extension 逐场景、逐路径验证，未扩大 normalization 或白名单。
+
+本轮严格 comparator 保留并验证 current `context.budget.breakdown`，只在 canonical request 相同、raw request 存在已声明 SDK/runtime composition 差异、且 breakdown 组件非负、组件和与 `used` 一致时比较共同 budget decision fields；原始请求相同仍逐值比较 usage/ratio。负向对照已覆盖 self-consistent budget bias、错误 breakdown、runtime-context 顺序错误、settlement 后 late model request。结果目录：`/tmp/pilotdeck-parity-closure-20260919-strict2/`。
+
 `48/48` 与 `49/49` 是历史基线；当前 53 个场景已在正式 stdio factory 下全部重跑。除 `deadline` 的精确
 transport settlement contract 外，52 个场景保持 native/sidecar strict shared；exact contract 生效后
 `FAIL=0`、`BLOCKED=0`、oracle failure `=0`。`plan_mode_host_policy` 验证四轮 host-owned

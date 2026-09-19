@@ -254,6 +254,12 @@ normalization 规则隐藏 semantic diff。
 
 ## 当前验收状态
 
+### 2026-09-19 merge regression closure
+
+固定 `origin/main=cd52c9af812a84c27a9dd1b7ccf246f48540045f`、current=`2a767d95b21bd66215a3c65ebdd92159ad6fa156`，严格 production stdio 对拍 53/53：`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable、19 个明确 `notApplicable`。current native 与正式 sidecar 均通过 handshake、capability manifest、host dispatcher 和 durable callback oracle。
+
+本轮没有重新引入 AgentLoop 宽依赖或状态 owner：`AgentLoop.ts` 未 import Router、SessionRuntime、Gateway、Plugin aggregate 或 `AgentRuntimeDependencies`；sidecar 继续只消费 `AgentTurnCapabilities` 窄 ports，Module Protocol 保持 `2.0`。comparator 对 budget usage 的归一化受限于可验证 breakdown 和声明的 request composition drift，缺失/重复/错误 breakdown、相同 request 的 budget 偏差均失败。
+
 - PilotDeck native vs sidecar 的正式 Gateway gate 当前为 53 个 PilotDeck 场景；2026-09-18 在 Node `22.23.1` 上最新重跑时，
   52 个场景为 strict shared，`deadline` 保留 native confirmed abort 与 sidecar `result_unknown` 的 2 条精确 transport
   settlement difference。exact contract 生效后 `FAIL=0`、`BLOCKED=0`、oracle failure `=0`，不能写成 53 个场景无条件

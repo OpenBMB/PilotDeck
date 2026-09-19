@@ -756,6 +756,39 @@ def _baseline_budget_validation_differences(
                 differences.append(Difference(f"{path}.ratio_consistency", expected_ratio, ratio))
         if budget.get("state") not in {"ok", "warning", "blocking"}:
             differences.append(Difference(f"{path}.state", "ok|warning|blocking", budget.get("state")))
+        breakdown = budget.get("breakdown")
+        if breakdown is not None:
+            if not isinstance(breakdown, dict):
+                differences.append(Difference(f"{path}.breakdown", "object", breakdown))
+            else:
+                component_fields = ("system", "tools", "messages", "mcp", "memory")
+                components = [breakdown.get(field) for field in component_fields]
+                if any(
+                    not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0
+                    for value in components
+                ):
+                    differences.append(Difference(
+                        f"{path}.breakdown.components",
+                        "non_negative_numbers",
+                        breakdown,
+                    ))
+                total = breakdown.get("total")
+                if not isinstance(total, (int, float)) or isinstance(total, bool) or total < 0:
+                    differences.append(Difference(f"{path}.breakdown.total", "non_negative_number", total))
+                elif all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in components):
+                    component_total = sum(components)
+                    if component_total != total:
+                        differences.append(Difference(
+                            f"{path}.breakdown.total_consistency",
+                            component_total,
+                            total,
+                        ))
+                if isinstance(used, (int, float)) and isinstance(total, (int, float)) and used != total:
+                    differences.append(Difference(
+                        f"{path}.breakdown.used_consistency",
+                        total,
+                        used,
+                    ))
     return differences
 
 
@@ -764,7 +797,7 @@ def _baseline_shared_context_budget(record: dict[str, Any]) -> dict[str, Any]:
         "kind": "context.budget",
         **{
             key: record[key]
-            for key in _BASELINE_CONTEXT_BUDGET_FIELDS
+            for key in (*_BASELINE_CONTEXT_BUDGET_FIELDS, "breakdown")
             if key in record
         },
     }
@@ -784,6 +817,16 @@ def _normalize_baseline_budget_for_declared_request_drift(
         left_raw = left_raw_requests[index] if index < len(left_raw_requests) else None
         right_raw = right_raw_requests[index] if index < len(right_raw_requests) else None
         if left_raw == right_raw:
+            continue
+        # A request-level budget may legitimately have a different measured
+        # usage when the raw request differs only on an explicitly declared
+        # composition surface (SDK extension tools, runtime projection, or a
+        # contracted tool description). The current trace must prove that its
+        # measured value comes from a complete internally consistent
+        # breakdown; otherwise the usage difference remains semantic.
+        current_budget = right_request.get("contextBudget")
+        breakdown = current_budget.get("breakdown") if isinstance(current_budget, dict) else None
+        if not isinstance(breakdown, dict):
             continue
         for request in (left_request, right_request):
             budget = request.get("contextBudget")
@@ -827,22 +870,24 @@ def _tagged_prompt_sections(value: Any, tag: str) -> list[str]:
 def _runtime_composition(view: dict[str, Any]) -> dict[str, Any]:
     composition: dict[str, Any] = {}
     order_violations: list[str] = []
+    observed: list[tuple[int, str, str, str]] = []
+    sequence = 0
 
     def collect(value: Any, location: str) -> None:
-        observed: list[tuple[int, str, str]] = []
+        nonlocal sequence
         if isinstance(value, str):
-            for tag, key in (("user-context", "userContext"), ("available-skills", "availableSkills")):
-                for match in re.finditer(rf"<{re.escape(tag)}>(.*?)</{re.escape(tag)}>", value, re.DOTALL):
-                    section = match.group(1).strip()
-                    if tag == "available-skills":
-                        section = re.sub(r"\(file: [^)]+\)", "(file: <skill-path>)", section)
-                    observed.append((match.start(), key, section))
-        observed.sort(key=lambda item: item[0])
-        for _offset, key, section in observed:
-            composition.setdefault(key, []).append(section)
-        ranks = [0 if key == "userContext" else 1 for _offset, key, _section in observed]
-        if ranks != sorted(ranks):
-            order_violations.append(location)
+            for match in re.finditer(
+                r"<(user-context|available-skills)>(.*?)</\1>",
+                value,
+                re.DOTALL,
+            ):
+                tag = match.group(1)
+                key = "userContext" if tag == "user-context" else "availableSkills"
+                section = match.group(2).strip()
+                if tag == "available-skills":
+                    section = re.sub(r"\(file: [^)]+\)", "(file: <skill-path>)", section)
+                observed.append((sequence, key, section, location))
+                sequence += 1
 
     system_prompt = view.get("systemPrompt")
     collect(system_prompt, "systemPrompt")
@@ -855,6 +900,20 @@ def _runtime_composition(view: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(block, dict) or block.get("type") != "text":
                 continue
             collect(block.get("text"), f"messages[{message_index}].content[{block_index}]")
+    for _sequence, key, section, _location in observed:
+        composition.setdefault(key, []).append(section)
+    ranks = [0 if key == "userContext" else 1 for _sequence, key, _section, _location in observed]
+    order_error = any(
+        ranks[left_index] > ranks[right_index]
+        and not (
+            (observed[left_index][3] == "systemPrompt")
+            != (observed[right_index][3] == "systemPrompt")
+        )
+        for left_index in range(len(observed))
+        for right_index in range(left_index + 1, len(observed))
+    )
+    if order_error:
+        order_violations.append("request")
     if order_violations:
         composition["orderViolations"] = order_violations
     return composition
@@ -1029,6 +1088,35 @@ def _partial_order_differences(records: list[dict[str, Any]], side: str) -> list
                     "durable_before_applied",
                     "applied_before_durable",
                 ))
+
+    # A close/abort acknowledgement is a lifecycle settlement boundary. A
+    # model request after it would permit an old actor to create side effects
+    # after the session was closed or the turn was aborted.
+    settlement_states = {
+        "parent_closed": "close",
+        "parent_abort_acknowledged": "abort",
+        "parent_abort_settled": "abort",
+    }
+    for index, record in enumerate(records):
+        if record.get("kind") != "sidecar.lifecycle":
+            continue
+        settlement = settlement_states.get(record.get("state"))
+        if settlement is None:
+            continue
+        late_request = next(
+            (
+                request_index
+                for request_index, candidate in enumerate(records[index + 1:], start=index + 1)
+                if candidate.get("kind") == "model.request"
+            ),
+            None,
+        )
+        if late_request is not None:
+            differences.append(Difference(
+                f"trace.partialOrder.{side}.{settlement}_after_settlement.{index}",
+                f"no_model_request_after_{settlement}_settlement",
+                {"modelRequestIndex": late_request, "state": record.get("state")},
+            ))
     return differences
 
 

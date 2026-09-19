@@ -1200,6 +1200,12 @@ semantic difference 或 cleanup BLOCKED。
 
 ### R4.2：sidecar budget、turn callback 与生产验证闭环（已完成）
 
+#### 2026-09-19 严格 merge closure 复核
+
+固定 current `2a767d95b21bd66215a3c65ebdd92159ad6fa156`、`origin/main` `cd52c9af812a84c27a9dd1b7ccf246f48540045f` 与架构基线 `e55b0a82d07ee3951e5812c34103400dfa6043f7` 后，production stdio Gateway 矩阵 53/53 全部执行，`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable，19 个 `notApplicable`。严格 comparator 新增 budget breakdown 完整性约束和负向对照，不扩大 normalization；结果见 `/tmp/pilotdeck-parity-closure-20260919-strict2/summary.json`。
+
+本轮验收命令证据：Node 22 `pnpm build` PASS，根测试 `1721/1723`（2 skipped）PASS，SDK `123/123`，focused module/Gateway/SDK seed `135/135`，comparator `50/50`。真实 provider、StaffDeck Harness/TaskFrame/SOP lease、remote/queued deployment 与 Desktop/Web 视觉检查仍不在本 PilotDeck-only 矩阵内，不计为 PASS。
+
 | 边界 | Definition | Provider / durable owner | Consumer | Composition |
 | --- | --- | --- | --- | --- |
 | Budget | 可选 `budget.estimate_request_input`、`evaluate_request_budget`、`estimate_usage_cost` | session 已解析的 `ModelBudgetPort`；provider/model、abort 与 token policy 留在 host | sidecar AgentLoop 的异步 `ModelBudgetPort` | host dispatcher 按 active turn 重建 canonical request context；不传 Router/estimator 对象 |
