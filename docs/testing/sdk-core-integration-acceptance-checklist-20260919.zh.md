@@ -7,7 +7,7 @@
 | 项目 | 固定值 / 来源 |
 | --- | --- |
 | 当前分支起点 | `2a767d95b21bd66215a3c65ebdd92159ad6fa156` |
-| 当前最终提交 | `c308a3109a179809a54d8af69fc40c9382cc946a`，已推送到 `origin/codex/integrate-sdk-0901` |
+| 本轮实现提交 | `c308a3109a179809a54d8af69fc40c9382cc946a`；本清单与 comparator 证据随最终验收提交 |
 | 产品行为基线 | `origin/main=cd52c9af812a84c27a9dd1b7ccf246f48540045f` |
 | 架构基线 | `Kaguya-19/refactor/core_agent_loop_0831=e55b0a82d07ee3951e5812c34103400dfa6043f7` |
 | 运行环境 | Node `v22.23.1`，Python `3.12.2` |
