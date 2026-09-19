@@ -171,6 +171,7 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
         budget = {
             "kind": "context.budget",
             "used": 10,
+            "displayUsed": 10,
             "total": 100,
             "effectiveTotal": 90,
             "reservedOutputTokens": 10,
@@ -178,12 +179,16 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "state": "ok",
         }
         baseline = [request, budget]
-        changed = [{**budget, "used": 11}, request]
+        changed = [{**budget, "used": 11, "displayUsed": 11, "ratio": 11 / 90}, request]
         missing = [request]
         duplicate = [budget, budget, request]
-        self.assertTrue(compare_baseline_trace_details(baseline, changed, {}).semantic)
-        self.assertTrue(compare_baseline_trace_details(baseline, missing, {}).semantic)
-        self.assertTrue(compare_baseline_trace_details(baseline, duplicate, {}).semantic)
+        changed_paths = {difference.path for difference in compare_baseline_trace_details(baseline, changed, {}).semantic}
+        missing_paths = {difference.path for difference in compare_baseline_trace_details(baseline, missing, {}).semantic}
+        duplicate_paths = {difference.path for difference in compare_baseline_trace_details(baseline, duplicate, {}).semantic}
+        self.assertIn("trace[0]~[0].contextBudget.used", changed_paths)
+        self.assertIn("trace[0]~[0].contextBudget.displayUsed", changed_paths)
+        self.assertIn("trace[0]~[0].contextBudget", missing_paths)
+        self.assertIn("trace[1]", duplicate_paths)
 
     def test_baseline_contract_rejects_corrupt_budget_during_declared_request_drift(self) -> None:
         baseline = [{
@@ -203,41 +208,67 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "modelView": {"messages": [], "tools": [{"name": "sdk_extension"}]},
         }]
         scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"]}}
-        self.assertTrue(compare_baseline_trace_details(baseline, current, scenario).semantic)
+        paths = {difference.path for difference in compare_baseline_trace_details(baseline, current, scenario).semantic}
+        self.assertIn("trace.contextBudget.current[0].used", paths)
         del current[0]["used"]
-        self.assertTrue(compare_baseline_trace_details(baseline, current, scenario).semantic)
+        paths = {difference.path for difference in compare_baseline_trace_details(baseline, current, scenario).semantic}
+        self.assertIn("trace.contextBudget.current[0].used", paths)
 
-    def test_baseline_contract_rejects_self_consistent_budget_bias(self) -> None:
+    def test_baseline_contract_rejects_synchronized_budget_bias_for_unchanged_request(self) -> None:
         baseline = [{
             "kind": "model.request",
             "modelView": {"messages": [], "tools": []},
         }, {
             "kind": "context.budget", "used": 10, "displayUsed": 10,
-            "budgetUsed": 10, "total": 100, "effectiveTotal": 90,
-            "reservedOutputTokens": 10, "ratio": 1 / 9, "state": "ok",
+            "total": 100, "effectiveTotal": 90, "reservedOutputTokens": 10,
+            "ratio": 1 / 9, "state": "ok",
+            "breakdown": {"system": 4, "tools": 3, "messages": 3, "mcp": 0, "memory": 0, "total": 10},
         }]
         current = [{
             "kind": "context.budget", "used": 50, "displayUsed": 50,
-            "budgetUsed": 50, "total": 100, "effectiveTotal": 90,
-            "reservedOutputTokens": 10, "ratio": 5 / 9, "state": "ok",
+            "total": 100, "effectiveTotal": 90, "reservedOutputTokens": 10,
+            "ratio": 5 / 9, "state": "ok",
+            "breakdown": {"system": 20, "tools": 10, "messages": 10, "mcp": 5, "memory": 5, "total": 50},
+        }, {
+            "kind": "model.request",
+            "modelView": {"messages": [], "tools": []},
+        }]
+        paths = {difference.path for difference in compare_baseline_trace_details(baseline, current, {}).semantic}
+        self.assertIn("trace[0]~[0].contextBudget.used", paths)
+        self.assertIn("trace[0]~[0].contextBudget.breakdown.total", paths)
+
+    def test_baseline_contract_allows_declared_request_drift_with_valid_breakdown(self) -> None:
+        baseline = [{
+            "kind": "model.request",
+            "modelView": {"messages": [], "tools": []},
+        }, {
+            "kind": "context.budget", "used": 10, "displayUsed": 10,
+            "total": 100, "effectiveTotal": 90, "reservedOutputTokens": 10,
+            "ratio": 1 / 9, "state": "ok",
+        }]
+        current = [{
+            "kind": "context.budget", "used": 50, "displayUsed": 50,
+            "total": 100, "effectiveTotal": 90, "reservedOutputTokens": 10,
+            "ratio": 5 / 9, "state": "ok",
+            "breakdown": {"system": 20, "tools": 10, "messages": 10, "mcp": 5, "memory": 5, "total": 50},
         }, {
             "kind": "model.request",
             "modelView": {"messages": [], "tools": [{"name": "sdk_extension"}]},
         }]
         scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"]}}
-        self.assertTrue(compare_baseline_trace_details(baseline, current, scenario).semantic)
+        self.assertEqual(compare_baseline_trace_details(baseline, current, scenario).semantic, [])
 
     def test_baseline_contract_rejects_inconsistent_budget_breakdown(self) -> None:
         baseline = [{
             "kind": "model.request",
             "modelView": {"messages": [], "tools": []},
         }, {
-            "kind": "context.budget", "used": 10, "total": 100,
+            "kind": "context.budget", "used": 10, "displayUsed": 10, "total": 100,
             "effectiveTotal": 90, "reservedOutputTokens": 10,
             "ratio": 1 / 9, "state": "ok",
         }]
         current = [{
-            "kind": "context.budget", "used": 50, "total": 50,
+            "kind": "context.budget", "used": 50, "displayUsed": 50, "total": 100,
             "effectiveTotal": 90, "reservedOutputTokens": 10,
             "ratio": 5 / 9, "state": "ok",
             "breakdown": {"system": 10, "tools": 10, "messages": 10, "mcp": 0, "memory": 0, "total": 50},
@@ -246,7 +277,8 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "modelView": {"messages": [], "tools": [{"name": "sdk_extension"}]},
         }]
         scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"]}}
-        self.assertTrue(compare_baseline_trace_details(baseline, current, scenario).semantic)
+        paths = {difference.path for difference in compare_baseline_trace_details(baseline, current, scenario).semantic}
+        self.assertEqual(paths, {"trace.contextBudget.current[0].breakdown.total_consistency"})
 
     def test_baseline_contract_rejects_unrecognized_runtime_context_residual(self) -> None:
         baseline = [{"kind": "model.request", "modelView": {"messages": []}}]
