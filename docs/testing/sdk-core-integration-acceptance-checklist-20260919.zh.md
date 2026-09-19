@@ -65,4 +65,18 @@
 
 ## 阻断清单
 
+以下账本覆盖原始 goal 优先指出的九类问题；每项都保留触发条件、影响、证据、根因状态、owner、下一步和关闭条件。`已关闭` 不等于删除历史问题，后续 merge 仍需复用对应回归。
+
+| 状态 | 触发条件 / 影响 | 根因状态与 owner | 证据 | 下一步 / 关闭条件 |
+| --- | --- | --- | --- | --- |
+| 已关闭 | production sidecar recovery compaction 在 model prepare 后 replacement；可能丢失 preparation identity 或使用错误生命周期 | 已证实：preparation reference 属于 host model adapter，不能写入 frozen canonical request；owner 为 model adapter / host dispatcher | `materialize_prepared_request` focused tests、full/projected compaction budget、raw sidecar module proof | 无新增动作；关闭条件是 preparation reference 生命周期与 native/sidecar raw trace 持续一致 |
+| 已关闭 | `closeSession` 返回后 pending creation/admission 继续 submit；可能产生旧 session turn/副作用 | 已证实：admission reservation/fence 需要由 Gateway/Session owner 统一 settlement；owner 为 Gateway admission | sdk-controls、creation/close、production parent-close traces | 无新增动作；关闭条件是 close 后旧 admission 不能提交或产生副作用 |
+| 已关闭 | SDK control busy 检查后新 turn 进入，再被 close 清除；可能丢控制操作或 turn | 已证实：control 与 turn admission 必须共享 session reservation；owner 为 Gateway control admission | SDK config/MCP/seed/flag concurrency tests、root suite | 无新增动作；关闭条件是 barrier 交错下 control/turn/close 因果稳定 |
+| 已关闭 | seed/MCP/config rebuild 或 plan entry/exit 丢 current/base permission mode；permission RPC 进入 plan 时丢 base mode | 已证实：live mode 属于 Gateway session permission registry，wire override 不是第二 owner；owner 为 permission registry | permission roundtrip、dirty recreate、plan-mode parity、sidecar permission tests | 无新增动作；关闭条件是所有入口/失败/重建/退出保留 mode |
+| 已关闭 | admission 异常退出泄漏 reservation/fence；后续 turn 可能永久 busy 或绕过 fence | 已证实：异常路径缺少统一 unwind；owner 为 admission actor/Gateway finally cleanup | pending creation/config/attachment/model-selection tests、root suite | 无新增动作；关闭条件是异常、取消、close、dispose 均释放 reservation/fence |
+| 已关闭 | sidecar error-only terminal 丢原始 provider/module error 分类；用户只能看到泛化失败 | 已证实：terminal projection 必须保留 source code/retryability；owner 为 operation terminal host owner | llm failure tests、tool/permission error parity、sidecar terminal tests | 无新增动作；关闭条件是 error-only、result_unknown、failed/cancelled 分类可重放 |
+| 已关闭 | comparator 只看事件位置或无条件剥离 usage，可能隐藏 self-consistent budget bias | 已证实：budget 必须先绑定所属 request；usage 归一化受声明 raw request drift 与完整 breakdown 限制；owner 为 parity comparator | `51/51` unit、validation-disabled expected failure、unchanged-request synchronized tamper、53-trace re-evaluation | 无新增动作；关闭条件是新 budget 字段或 normalization 变更先通过同一负向门槛 |
+| 已关闭 | runtime-context 在 block/message 间重排或残余内容漏检；可能改变 provider-visible prompt 顺序 | 已证实：request-only projection 需要跨容器顺序和未知残余校验；owner 为 Context runtime/comparator contract | runtime-context positive/negative tests、default-factory tests、raw request re-evaluation | 无新增动作；关闭条件是重复标签、未知残余、非文本 block、顺序错误持续失败 |
+| 已关闭 | lifecycle actor 分离后 close/abort 与后续 model request 或副作用缺少因果约束 | 已证实：settlement boundary 必须阻止 late model request；owner 为 operation ledger/Gateway fence | close/abort late-request test、partial-order checks、sidecar reconnect/replay traces | 无新增动作；关闭条件是 admission、durable commit、close/abort、terminal、副作用的必要 happens-before 保持 |
+
 当前没有未解释的 P1/P2、semantic FAIL、oracle failure 或 architecture violation。外部 provider/deployment/StaffDeck/Desktop 范围属于明确未覆盖项，不是被测试绿灯隐式关闭的阻断；若将其纳入验收，需要新增产品入口、环境和对应 oracle。
