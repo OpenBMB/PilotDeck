@@ -2,7 +2,7 @@ import express from 'express';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
-import { readPilotDeckConfigFile, withPilotDeckConfigWrite, writePilotDeckConfig } from '../services/pilotdeckConfig.js';
+import { configRevision, readPilotDeckConfigFile, withPilotDeckConfigWrite, writePilotDeckConfig } from '../services/pilotdeckConfig.js';
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
@@ -425,7 +425,7 @@ router.put('/model-configuration', async (req, res) => {
   try {
     const outcome = await withPilotDeckConfigWrite(async () => {
       const recordConfig = readPilotDeckConfigFile();
-      if (recordConfig.parseError) return { error: ['CONFIGURATION_MISMATCH', 'pilotdeck.yaml is invalid and must be repaired before saving.'] };
+      if (recordConfig.parseError) return { error: ['INVALID_CONFIG_YAML', 'pilotdeck.yaml is invalid and must be repaired before saving.'] };
       const existingProvider = recordConfig.config?.model?.providers?.[provider.providerId] || {};
       const suppliedKey = req.body?.apiKey;
       let apiKey;
@@ -471,8 +471,11 @@ router.put('/model-configuration', async (req, res) => {
         model: { ...recordConfig.config.model, providers: { ...recordConfig.config.model.providers, [provider.providerId]: savedProvider } },
         webui: { ...recordConfig.config.webui, onboarding: { modelConfigurationId: configurationId, savedAt } },
       };
-      suppressNextWatchEvent();
-      const saved = await writePilotDeckConfig(nextConfig);
+      const saved = await writePilotDeckConfig(nextConfig, {
+        previousConfig: recordConfig.config,
+        expectedRevision: configRevision(recordConfig.raw),
+        beforeWrite: suppressNextWatchEvent,
+      });
       return { saved, configurationId, savedAt };
     });
     if (outcome.error) return apiError(res, outcome.error[0] === 'INVALID_REQUEST' ? 400 : 409, outcome.error[0], outcome.error[1]);
@@ -480,6 +483,9 @@ router.put('/model-configuration', async (req, res) => {
     tests.delete(record.id);
     return res.json({ configurationId: outcome.configurationId, savedAt: outcome.savedAt });
   } catch (error) {
+    if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+      return apiError(res, error.statusCode || 409, error.code, error.message);
+    }
     return apiError(res, 409, 'CONFIGURATION_MISMATCH', error?.message || 'Unable to save configuration.');
   }
 });

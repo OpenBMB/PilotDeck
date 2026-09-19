@@ -699,6 +699,42 @@ describe('config model-pool connection test routes', () => {
     }
   });
 
+  it('keeps hand-written provider formatting when a detached connection test saves', async () => {
+    const raw = [
+      '# model config maintained outside the UI',
+      'schemaVersion: 1',
+      'agent:',
+      '    model: HXAPI/model-a',
+      'model:',
+      '    providers:',
+      '        HXAPI:',
+      '            protocol: openai',
+      '            url: https://custom.example/v1',
+      '            apiKey: private-test-key',
+      '            models:',
+      '                model-a: {}',
+      '',
+    ].join('\n');
+    const { request, configPath } = await createDiskConfigApp(raw, {
+      probe: vi.fn().mockResolvedValue({ ok: true }),
+    });
+
+    const started = await request('/api/config/connection-test-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ providerId: 'HXAPI' }),
+    });
+    expect(started.status).toBe(202);
+    await vi.waitFor(async () => {
+      const state = await request('/api/config/connection-test-tasks');
+      expect(state.body.tasks[0].status).toBe('success');
+    });
+
+    const saved = readFileSync(configPath, 'utf8');
+    expect(saved).toContain('# model config maintained outside the UI');
+    expect(saved).toContain('            apiKey: private-test-key');
+    expect(() => parseYaml(saved)).not.toThrow();
+  });
+
   it.each(['HXAPI', 'Gemini', 'OpenAI'])('preserves %s through masked-key testing, real disk save and reload', async (id) => {
     const probe = vi.fn().mockResolvedValue({ ok: true });
     const lower = id.toLowerCase();
@@ -1976,6 +2012,27 @@ describe('config write revisions', () => {
     expect(
       parseYaml(readFileSync(configPath, 'utf8')).customEnv.SAVE_VERSION,
     ).toBe('first');
+  });
+
+  it('detects an external secret-only edit even when the masked YAML is unchanged', async () => {
+    const firstRaw = 'schemaVersion: 1\nadapters:\n  feishu:\n    appSecret: secret-value-a\n';
+    const secondRaw = 'schemaVersion: 1\nadapters:\n  feishu:\n    appSecret: secret-value-b\n';
+    const { request, configPath } = await createDiskConfigApp(firstRaw);
+    const loaded = await request('/api/config');
+
+    writeFileSync(configPath, secondRaw, 'utf8');
+    const refreshed = await request('/api/config');
+    expect(refreshed.body.raw).toBe(loaded.body.raw);
+    expect(refreshed.body.revision).not.toBe(loaded.body.revision);
+
+    const staleWrite = await request('/api/config', {
+      method: 'PUT',
+      body: JSON.stringify({ raw: loaded.body.raw, baseRevision: loaded.body.revision }),
+    });
+
+    expect(staleWrite.status).toBe(409);
+    expect(staleWrite.body.code).toBe('CONFIG_CONFLICT');
+    expect(readFileSync(configPath, 'utf8')).toBe(secondRaw);
   });
 });
 

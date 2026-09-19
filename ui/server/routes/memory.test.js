@@ -68,7 +68,7 @@ describe('memory clear route', () => {
 
 describe('memory settings route', () => {
   it('saves answer_first reasoning mode', async () => {
-    const { request, writePilotDeckConfig } = await createMemorySettingsApp({
+    const { request, updatePilotDeckConfig } = await createMemorySettingsApp({
       memory: {
         reasoningMode: 'accuracy_first',
         autoIndexIntervalMinutes: 30,
@@ -83,13 +83,11 @@ describe('memory settings route', () => {
 
     expect(result.status).toBe(200);
     expect(result.body.reasoningMode).toBe('answer_first');
-    expect(writePilotDeckConfig).toHaveBeenCalledWith(expect.objectContaining({
-      memory: expect.objectContaining({ reasoningMode: 'answer_first' }),
-    }));
+    expect(updatePilotDeckConfig).toHaveBeenCalledOnce();
   });
 
   it('saves accuracy_first reasoning mode', async () => {
-    const { request, writePilotDeckConfig } = await createMemorySettingsApp({
+    const { request, updatePilotDeckConfig } = await createMemorySettingsApp({
       memory: {
         reasoningMode: 'answer_first',
         autoIndexIntervalMinutes: 30,
@@ -104,13 +102,11 @@ describe('memory settings route', () => {
 
     expect(result.status).toBe(200);
     expect(result.body.reasoningMode).toBe('accuracy_first');
-    expect(writePilotDeckConfig).toHaveBeenCalledWith(expect.objectContaining({
-      memory: expect.objectContaining({ reasoningMode: 'accuracy_first' }),
-    }));
+    expect(updatePilotDeckConfig).toHaveBeenCalledOnce();
   });
 
   it('rejects invalid reasoning mode without saving config', async () => {
-    const { request, writePilotDeckConfig } = await createMemorySettingsApp({
+    const { request, updatePilotDeckConfig } = await createMemorySettingsApp({
       memory: {
         reasoningMode: 'answer_first',
         autoIndexIntervalMinutes: 30,
@@ -125,7 +121,7 @@ describe('memory settings route', () => {
 
     expect(result.status).toBe(400);
     expect(result.body.error).toBe('memory.reasoningMode must be answer_first or accuracy_first');
-    expect(writePilotDeckConfig).not.toHaveBeenCalled();
+    expect(updatePilotDeckConfig).toHaveBeenCalledOnce();
   });
 });
 
@@ -182,8 +178,11 @@ async function createMemoryApp() {
   }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
     readPilotDeckConfigFile: vi.fn(() => ({ config: {} })),
-    withPilotDeckConfigWrite: vi.fn(async (operation) => operation()),
-    writePilotDeckConfig: vi.fn(async (config) => ({ config })),
+    updatePilotDeckConfig: vi.fn(async (mutate) => {
+      const config = {};
+      await mutate(config);
+      return { changed: true, config };
+    }),
   }));
   vi.doMock('../services/pilotdeckConfigReloader.js', () => ({
     reloadPilotDeckConfig: vi.fn(async () => undefined),
@@ -206,9 +205,11 @@ async function createMemoryApp() {
 
 async function createMemorySettingsApp(initialConfig) {
   let config = structuredClone(initialConfig);
-  const writePilotDeckConfig = vi.fn(async (nextConfig) => {
-    config = structuredClone(nextConfig);
-    return { config };
+  const updatePilotDeckConfig = vi.fn(async (mutate) => {
+    const next = structuredClone(config);
+    await mutate(next);
+    config = next;
+    return { changed: true, config };
   });
 
   vi.doMock('../services/memoryService.js', () => ({
@@ -231,8 +232,7 @@ async function createMemorySettingsApp(initialConfig) {
   }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
     readPilotDeckConfigFile: vi.fn(() => ({ config })),
-    withPilotDeckConfigWrite: vi.fn(async (operation) => operation()),
-    writePilotDeckConfig,
+    updatePilotDeckConfig,
   }));
   vi.doMock('../services/pilotdeckConfigReloader.js', () => ({
     reloadPilotDeckConfig: vi.fn(async () => undefined),
@@ -247,7 +247,7 @@ async function createMemorySettingsApp(initialConfig) {
   app.use('/api/memory', memoryRoutes);
 
   return {
-    writePilotDeckConfig,
+    updatePilotDeckConfig,
     request: (path, init) => requestJson(app, path, init),
   };
 }

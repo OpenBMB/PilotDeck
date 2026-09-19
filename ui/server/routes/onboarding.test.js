@@ -162,7 +162,7 @@ describe('onboarding routes', () => {
     expect(writePilotDeckConfig).toHaveBeenCalledWith(expect.objectContaining({
       agent: expect.objectContaining({ model: 'openai/gpt-test' }),
       model: expect.objectContaining({ providers: expect.objectContaining({ openai: expect.objectContaining({ retry: expect.objectContaining({ requestMaxRetries: 2, jitter: true, repeatedChunkLimit: 4 }), models: expect.objectContaining({ 'keep-me': { multimodal: { input: ['text'] } }, 'gpt-test': { multimodal: { input: ['text', 'image'] } } }) }) }) }),
-    }));
+    }), expect.objectContaining({ expectedRevision: 'test-revision' }));
   });
 
   it('requires the exact tested model set and retry policy when saving', async () => {
@@ -409,7 +409,8 @@ async function createOnboardingApp(overrides = {}) {
   const config = overrides.config ?? { schemaVersion: 1, agent: {}, model: { providers: {} }, webui: {} };
   vi.doMock('../services/modelConnectionProbe.js', () => ({ probeModelConnection: probe }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
-    readPilotDeckConfigFile: vi.fn(() => ({ config })),
+    configRevision: vi.fn(() => 'test-revision'),
+    readPilotDeckConfigFile: vi.fn(() => ({ config, raw: 'test-config' })),
     withPilotDeckConfigWrite: vi.fn(async (operation) => operation()),
     writePilotDeckConfig,
   }));

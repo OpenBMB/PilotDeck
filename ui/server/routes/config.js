@@ -7,7 +7,7 @@ import { prepareBackgroundSpawnOptions } from '../utils/processSpawn.js';
 import { parse as parseYaml } from 'yaml';
 import {
   buildDefaultPilotDeckConfig,
-  configToYaml,
+  configRevision,
   getPilotDeckConfigPath,
   hasUnresolvedMaskedSecrets,
   maskSecrets,
@@ -17,6 +17,7 @@ import {
   readPilotDeckConfigFile,
   resolveConfiguredProviderApiKey,
   serializePilotDeckConfigResponse,
+  updatePilotDeckConfig,
   withPilotDeckConfigWrite,
   validatePilotDeckConfig,
   writePilotDeckConfig,
@@ -521,15 +522,18 @@ const connectionTasks = createConnectionTestTasks({
     return !record || connectionTestMatchesProvider(record, { ...provider, providerId: task.providerId, apiKey: resolveConfiguredProviderApiKey(task.providerId, provider) });
   },
   persist: async (userId, testId) => {
-    const saved = await withPilotDeckConfigWrite(async () => {
-      const disk = readPilotDeckConfigFile();
-      if (disk.parseError) throw new Error('Invalid config YAML; repair it before saving test results.');
-      // Bind to the latest disk configuration, retaining unrelated edits made while testing.
-      const next = structuredClone(disk.rawYaml ?? disk.config);
-      const binding = bindModelConnectionTests(next, [{ testId }], userId);
+    const { record } = getConnectionTestRecord(userId, testId);
+    if (!record) throw Object.assign(new Error('Connection test was not found.'), { code: 'TEST_NOT_FOUND' });
+    const changedPaths = record.models.flatMap(({ modelId }) => [
+      ['model', 'providers', record.provider.providerId, 'models', modelId, 'connectionTest'],
+      ['model', 'providers', record.provider.providerId, 'models', modelId, 'multimodal'],
+    ]);
+    const saved = await updatePilotDeckConfig((config) => {
+      const binding = bindModelConnectionTests(config, [{ testId }], userId);
       if (binding.error) throw Object.assign(new Error(binding.error.message), binding.error);
-      suppressNextWatchEvent();
-      return writeRawPilotDeckYaml(next, { previousConfig: disk.config });
+    }, {
+      paths: changedPaths,
+      beforeWrite: suppressNextWatchEvent,
     });
     const reload = await reloadPilotDeckConfig(saved.config);
     void notifyGatewayConfigReload();
@@ -814,9 +818,10 @@ router.put('/', async (req, res) => {
           references: deletedReference.references,
         });
       }
-      suppressNextWatchEvent();
       saved = await writeRawPilotDeckYaml(renamed.config, {
         previousConfig: diskRecord.config,
+        expectedRevision: configRevision(diskRecord.raw),
+        beforeWrite: suppressNextWatchEvent,
       });
     } else if (req.body?.config && typeof req.body.config === 'object') {
       if (diskRecord.parseError) {
@@ -876,9 +881,10 @@ router.put('/', async (req, res) => {
           references: deletedReference.references,
         });
       }
-      suppressNextWatchEvent();
       saved = await writePilotDeckConfig(renamed.config, {
         previousConfig: diskRecord.config,
+        expectedRevision: configRevision(diskRecord.raw),
+        beforeWrite: suppressNextWatchEvent,
       });
     } else {
       return res.status(400).json({ error: 'raw YAML or config object is required' });
@@ -894,6 +900,12 @@ router.put('/', async (req, res) => {
     broadcastConfigEvent({ source: 'ui-save', ...response, timestamp: new Date().toISOString() });
     res.json(response);
     } catch (error) {
+      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+        return res.status(error.statusCode || 409).json({
+          error: error.message,
+          code: error.code,
+        });
+      }
       if (error?.validation) {
         return res.status(400).json({
           error: error.message,
@@ -1391,7 +1403,10 @@ router.post('/open', async (_req, res) => {
     try {
       await fsPromises.access(configPath);
     } catch {
-      await fsPromises.writeFile(configPath, configToYaml(buildDefaultPilotDeckConfig()), 'utf8');
+      await writePilotDeckConfig(buildDefaultPilotDeckConfig(), {
+        expectedRevision: configRevision(''),
+        beforeWrite: suppressNextWatchEvent,
+      });
     }
 
     const command = process.platform === 'darwin'
