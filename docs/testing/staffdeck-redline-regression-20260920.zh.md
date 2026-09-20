@@ -27,8 +27,8 @@
 | `sop_scheduled_task` | 已固定 snapshot 只在可见 SOP 上应用；trace 记录实际应用版本 `7` | StaffDeck Harness scheduled snapshot | PASS |
 | `sop_step_advance` | provider 按当前 SOP step 发出 `collect -> review`；两条路径执行 review 后完成 | StaffDeck Harness/SOP state owner | PASS |
 | `sop_conditional_transition` | provider 在 check 节点选择 `branch_a`；两条路径执行分支后完成 | StaffDeck Harness/SOP state owner | PASS |
-| `sop_team_task` | TL 只通过可信 roster 选择成员；两条路径均持久化一个 `TeamRun`、一个 `pending` TeamTask 和一个 pending wake，assignee 为 roster 中的 member | StaffDeck Team/TeamRun/TeamTask/wake owner；sidecar 只经 canonical host modules | PASS |
-| built TCP child restart after host effect | production deployment profile 启动的 child 在 host effect 已提交、capability acknowledgement 未写回时退出；替代 child 完成新 handshake，旧 operation durable terminal 为 `result_unknown`，无第二次 tool execution 或可见成功 | Session operation ledger 与 host capability dispatcher；TCP child 不拥有 effect | PASS（fail-closed） |
+| `sop_team_task` | TL 只通过可信 roster 发布一个 member `TeamTask`；正式 `task_assigned` wake 在 legacy 和 production sidecar 各执行一次真实成员 `AgentLoop.handle_turn_stream`，均产生同样的 model request、permission、`lookup` tool effect、成员 report、`TeamTask=done` 和 wake=`done` | StaffDeck Team/TeamRun/TeamTask/wake owner；sidecar 只经 canonical host modules | PASS |
+| built TCP child restart before/after host effect | production deployment profile 启动的 child 分别在 durable host effect append 前和后退出；替代 child 以 `hello` 返回新的 instance/generation。重开 JSONL transcript 后旧 operation terminal 均为 `result_unknown`，before=零 effect、after=恰一 effect，均无第二次 tool execution | Session operation ledger 与 host capability dispatcher；TCP child 不拥有 effect | PASS（fail-closed） |
 
 `PilotDeckAgentLoopClient` 仅把 sidecar 的 canonical module failure 和 capability
 exchange 投影回 StaffDeck-owned `TaskExecutionResult`。显式 `RESULT_UNKNOWN` 不得被
@@ -121,13 +121,15 @@ dispatcher；built TCP CLI 测试证明正式 child 的 Protocol `2.0` handshake
 `execute` 不重放。stdio 的 one-turn/one-child 边界不提供同一 stream 的 reconnect，因此它的
 进程中断契约是 fail-closed `result_unknown`，而非伪造 generation resume。
 
-本轮新增 built-child evidence 由同一命令中的
-`built TCP sidecar restart after a host effect fails closed without replaying it` 提供：它使用
-正式 `AgentLoopDeploymentProfile`、built CLI child、host model/capability dispatcher 和
-session transcript ledger。在 capability response 尚未写回时终止 child，启动替代 child 并完成
-新的 TCP handshake。断言 effect 与 capability dispatch 均为一次，operation terminal 为
-`result_unknown`，且观察到 `result_unknown_fail_closed`。默认 production manifest 不宣称跨实例
-resume，因此该场景不把未知 effect 伪装为已完成或重放给替代 child。
+本轮 built-child evidence 由同一命令中的
+`built TCP sidecar restart before_effect persists host and operation evidence without replay` 与
+`built TCP sidecar restart after_effect persists host and operation evidence without replay` 提供：它们使用
+正式 `AgentLoopDeploymentProfile`、built CLI child、host model/capability dispatcher、文件化 host
+effect record 和 `JsonlTranscriptWriter` ledger。每个场景都终止 child、启动替代 child、发送正式
+`hello`，并断言新 `moduleInstanceId` 与 `connectionGeneration`。重开两份持久化记录验证
+before-effect 没有 effect、after-effect 恰一 effect；两者 operation terminal 都是 `result_unknown`，
+且均观察到 `result_unknown_fail_closed`。默认 production manifest 不宣称跨实例 resume，因此该场景
+不把未知 effect 伪装为已完成或重放给替代 child。
 
 固定 main 对拍补充命令：
 
@@ -167,18 +169,32 @@ env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
   --pair staffdeck --comparison same-version --suite staffdeck-workflow \
   --pilotdeck-root /Users/a1/Desktop/claw/openbmb/PilotDeck-sdk-core-integration \
   --staffdeck-root /Users/a1/Desktop/claw/openbmb/StaffDeck-pilotdeck-agent-loop \
-  --output /tmp/pilotdeck-sdk-core-staffdeck-workflow-v50-20260920
+  --output /tmp/pilotdeck-sdk-core-staffdeck-workflow-v60-20260920
 ```
 
-该产物的 `24` 个场景为 `failed=[]`、`blocked=[]`、`oracleFailures=[]`。其中
-`sop_team_task` 不再是双方共同 oracle failure：fixture 建立了真实的 `Team`、leader/member
-`TeamMember`、TL `ChatSession`，并严格比较 TeamRun、TeamTask 和 wake 的 durable state。
+该当前产物的 `24` 个场景为 `failed=[]`、`blocked=[]`、`oracleFailures=[]`。其中
+`sop_team_task` 已执行真实 worker；focused production-worker run 进一步提供单场景 raw-trace 审查：
+
+```sh
+env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
+  backend/.venv/bin/python tools/agent-loop-parity/run.py \
+  --pair staffdeck --comparison same-version --scenario sop_team_task \
+  --pilotdeck-root /Users/a1/Desktop/claw/openbmb/PilotDeck-sdk-core-integration \
+  --staffdeck-root /Users/a1/Desktop/claw/openbmb/StaffDeck-pilotdeck-agent-loop \
+  --output /tmp/pilotdeck-sdk-core-team-worker-v59-20260920
+```
+
+`v59` 为 `failed=[]`、`blocked=[]`、`oracleFailures=[]`。raw trace 同时包含 member 的
+model request/response、permission、tool lifecycle、side effect、`team.member_execution` report，
+以及 TeamRun/TeamTask/wake 的 durable terminal state。comparator 的负向单测会在 member report
+状态或摘要漂移时失败；不使用 `skip`、额外 normalization 或白名单。
 
 ## 限制
 
-最新同版本全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v51-20260920/summary.json`：`62` 场景、
-`failed=[]`、`blocked=[]`、`oracleFailures=[]`；历史的 `sop_team_task` oracle failure 已由上面的
-`v50` workflow matrix 取代。deadline 两项仅保留已枚举的精确内部时序差异。
+最新同版本全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v61-20260920/summary.json`：`62` 场景、
+`failed=[]`、`blocked=[]`、`oracleFailures=[]`；其中 `sop_team_task` 已实际执行成员 worker，
+并由上面的 `v60` workflow matrix 和 focused `v59` raw trace 交叉验证。deadline 两项仅保留已枚举的
+精确内部时序差异。
 
 未验收范围仍明确保留，不计入 PASS：
 
@@ -195,8 +211,8 @@ env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
   raw traces `/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v44-20260920/plan_mode_host_policy.pilotdeck-baseline-native.jsonl`
   与 `/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v44-20260920/plan_mode_host_policy.pilotdeck-current-native.jsonl`
   作为反向对照；未使用 normalization、白名单或 skip 隐藏该差异。
-- 跨进程 effect 的成功 reconciliation：本轮已证明 production TCP child crash 后的 exactly-once
-  fail-closed terminal；没有具体产品 tool/provider 的 idempotency/status-query owner 时，不虚构
+- 跨进程 effect 的成功 reconciliation：本轮已证明 production TCP child crash 前/后的 durable effect
+  boundary 和 fail-closed terminal；没有具体产品 tool/provider 的 idempotency/status-query owner 时，不虚构
   “已知完成”状态查询。此 provider-specific success reconciliation 保持 unsupported，不计为 PASS。
 - 原有 `SKIPPED_NOT_APPLICABLE` 仍以精确能力边界保留；特别是
   `unsupported_capability` 没有被删除、扩展 normalize 或改写为 PASS。

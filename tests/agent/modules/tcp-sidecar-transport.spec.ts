@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
 import {
@@ -27,6 +29,7 @@ import { GatewayElicitationBus } from "../../../src/gateway/elicitation/GatewayE
 import { GatewayPermissionBus } from "../../../src/gateway/permission/GatewayPermissionBus.js";
 import { createDefaultPermissionContext } from "../../../src/permission/index.js";
 import { InMemoryTranscriptWriter } from "../../../src/session/transcript/InMemoryTranscriptWriter.js";
+import { JsonlTranscriptWriter } from "../../../src/session/transcript/JsonlTranscriptWriter.js";
 
 test("TCP sidecar provider reconnects one live stream without duplicating the host terminal", async (t) => {
   let releaseTerminal!: () => void;
@@ -864,8 +867,13 @@ test("built sidecar CLI serves Module Protocol over local TCP when configured", 
   assert.equal(message.protocolVersion, "2.0");
 });
 
-test("built TCP sidecar restart after a host effect fails closed without replaying it", async (t) => {
+for (const crashStage of ["before_effect", "after_effect"] as const) {
+test(`built TCP sidecar restart ${crashStage} persists host and operation evidence without replay`, async (t) => {
   const port = await reservePort();
+  const directory = await mkdtemp(join(tmpdir(), "pilotdeck-built-tcp-restart-"));
+  const effectsPath = join(directory, "host-effects.jsonl");
+  const transcriptPath = join(directory, "transcript.jsonl");
+  t.after(() => rm(directory, { recursive: true, force: true }));
   let child = startBuiltTcpSidecar(port);
   let stderr = "";
   child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
@@ -875,11 +883,11 @@ test("built TCP sidecar restart after a host effect fails closed without replayi
 
   const connect = createTcpAgentLoopSidecarConnectionFactory({ port, connectTimeoutMs: 100 });
   const readiness = await connectEventually(connect);
+  const originalBinding = await helloBinding(readiness, "tcp-original-hello");
   await readiness.close?.("test_readiness_complete");
 
-  let sideEffects = 0;
   let toolExecutions = 0;
-  let replacementReady = false;
+  let replacementBinding: { moduleInstanceId: string; connectionGeneration: string } | undefined;
   const observations: Array<Record<string, unknown>> = [];
   const model: ModelInvokerPort = {
     async prepare({ request }) {
@@ -906,15 +914,21 @@ test("built TCP sidecar restart after a host effect fails closed without replayi
     }],
     async executeAll(calls) {
       toolExecutions += 1;
-      sideEffects += calls.length;
-      // The host commits its effect before the capability response crosses
-      // the socket. Replace the actual process while that acknowledgement is
-      // outstanding; the replacement cannot safely replay this call.
+      // Crash precisely on either side of the host's durable effect append.
+      // The response cannot cross the socket after the child is replaced, so
+      // the caller must preserve result_unknown rather than replaying it.
+      if (crashStage === "after_effect") {
+        await writeFile(effectsPath, calls.map((call) => JSON.stringify({
+          effectId: call.id,
+          toolName: call.name,
+          committed: true,
+        })).join("\n") + "\n", "utf8");
+      }
       await stopChild(child);
       child = startBuiltTcpSidecar(port);
       const replacementConnection = await connectEventually(connect);
+      replacementBinding = await helloBinding(replacementConnection, "tcp-replacement-hello");
       await replacementConnection.close?.("replacement_readiness_complete");
-      replacementReady = true;
       return calls.map((call) => ({
         type: "success" as const,
         toolCallId: call.id,
@@ -925,7 +939,7 @@ test("built TCP sidecar restart after a host effect fails closed without replayi
       }));
     },
   };
-  const transcript = new InMemoryTranscriptWriter();
+  const transcript = new JsonlTranscriptWriter({ path: transcriptPath });
   const profile = resolveAgentLoopDeploymentProfile({
     env: {
       PILOTDECK_AGENT_LOOP_TRANSPORT: "tcp",
@@ -954,10 +968,21 @@ test("built TCP sidecar restart after a host effect fails closed without replayi
     turnId: "built-restart-turn",
     execution: { runId: "built-restart-run", operationId: "built-restart-operation" },
   }));
+  await transcript.close();
 
   assert.equal(toolExecutions, 1, stderr || "the host capability dispatcher must not replay after child restart");
-  assert.equal(sideEffects, 1, "the committed host effect must remain exactly once");
-  assert.equal(replacementReady, true, "the replacement built child must complete a fresh TCP handshake");
+  const durableEffects = (await readFile(effectsPath, "utf8").catch(() => ""))
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { effectId: string; toolName: string; committed: boolean });
+  assert.equal(
+    durableEffects.length,
+    crashStage === "after_effect" ? 1 : 0,
+    `${crashStage} must preserve the host's durable effect boundary`,
+  );
+  assert.ok(replacementBinding, "the replacement built child must answer hello");
+  assert.notEqual(replacementBinding.moduleInstanceId, originalBinding.moduleInstanceId);
+  assert.notEqual(replacementBinding.connectionGeneration, originalBinding.connectionGeneration);
   assert.equal(events.filter((event) => event.type === "tool_result").length, 0);
   const terminals = events.filter((event) => event.type === "turn_completed") as Array<{
     result?: { type?: string; errors?: Array<{ code?: string }> };
@@ -965,7 +990,11 @@ test("built TCP sidecar restart after a host effect fails closed without replayi
   assert.equal(terminals.length, 1);
   assert.equal(terminals[0]?.result?.type, "error");
   assert.equal(terminals[0]?.result?.errors?.[0]?.code, "agent_invalid_state");
-  const operationEntries = transcript.entries.filter((entry) => entry.type.startsWith("agent_loop_operation_"));
+  const persistedEntries = (await readFile(transcriptPath, "utf8"))
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { type: string; outcome?: string });
+  const operationEntries = persistedEntries.filter((entry) => entry.type.startsWith("agent_loop_operation_"));
   assert.deepEqual(operationEntries.map((entry) => entry.type), [
     "agent_loop_operation_started",
     "agent_loop_operation_accepted",
@@ -981,6 +1010,27 @@ test("built TCP sidecar restart after a host effect fails closed without replayi
     && observation.source === "transport_interruption"
   )), JSON.stringify(observations));
 });
+}
+
+async function helloBinding(
+  connection: Awaited<ReturnType<ReturnType<typeof createTcpAgentLoopSidecarConnectionFactory>>>,
+  messageId: string,
+): Promise<{ moduleInstanceId: string; connectionGeneration: string }> {
+  const iterator = connection.receive()[Symbol.asyncIterator]();
+  await connection.send({ kind: "request", messageId, method: "hello", payload: {} });
+  const response = await iterator.next();
+  assert.equal(response.done, false, "TCP sidecar closed before hello response.");
+  const message = response.value as Record<string, unknown>;
+  assert.equal(message.kind, "response");
+  assert.equal(message.inReplyTo, messageId);
+  assert.equal(message.protocolVersion, "2.0");
+  assert.equal(typeof message.moduleInstanceId, "string");
+  assert.equal(typeof message.connectionGeneration, "string");
+  return {
+    moduleInstanceId: message.moduleInstanceId as string,
+    connectionGeneration: message.connectionGeneration as string,
+  };
+}
 
 function isSequenceZeroEvent(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
