@@ -11,6 +11,10 @@ import {
   createAgentLoopSidecarRuntimeFactory,
   createTcpAgentLoopSidecarConnectionFactory,
 } from "../../../src/agent/index.js";
+import {
+  createAgentLoopDeploymentFactory,
+  resolveAgentLoopDeploymentProfile,
+} from "../../../src/cli/AgentLoopDeploymentProfile.js";
 import { createSidecarExecution } from "../../../src/cli/pilotdeck-agent-loop-default-factory.js";
 import { createAgentSession } from "../../../src/agent/session/createAgentSession.js";
 import type { AgentLoop } from "../../../src/agent/loop/AgentLoop.js";
@@ -860,6 +864,124 @@ test("built sidecar CLI serves Module Protocol over local TCP when configured", 
   assert.equal(message.protocolVersion, "2.0");
 });
 
+test("built TCP sidecar restart after a host effect fails closed without replaying it", async (t) => {
+  const port = await reservePort();
+  let child = startBuiltTcpSidecar(port);
+  let stderr = "";
+  child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+  t.after(async () => {
+    await stopChild(child);
+  });
+
+  const connect = createTcpAgentLoopSidecarConnectionFactory({ port, connectTimeoutMs: 100 });
+  const readiness = await connectEventually(connect);
+  await readiness.close?.("test_readiness_complete");
+
+  let sideEffects = 0;
+  let toolExecutions = 0;
+  let replacementReady = false;
+  const observations: Array<Record<string, unknown>> = [];
+  const model: ModelInvokerPort = {
+    async prepare({ request }) {
+      return { request, provider: request.provider, model: request.model };
+    },
+    async *stream(): AsyncIterable<CanonicalModelEvent> {
+      yield { type: "message_start", role: "assistant" };
+      yield {
+        type: "tool_call_end",
+        toolCall: { id: "built-restart-tool", name: "lookup", input: { query: "durable effect" } },
+      };
+      yield { type: "message_end", finishReason: "tool_call" };
+    },
+  };
+  const tools: ToolPort = {
+    list: () => [{
+      name: "lookup",
+      description: "Read the durable restart fixture.",
+      kind: "custom",
+      inputSchema: { type: "object" },
+      isReadOnly: () => true,
+      isConcurrencySafe: () => true,
+      execute: async () => ({ content: [] }),
+    }],
+    async executeAll(calls) {
+      toolExecutions += 1;
+      sideEffects += calls.length;
+      // The host commits its effect before the capability response crosses
+      // the socket. Replace the actual process while that acknowledgement is
+      // outstanding; the replacement cannot safely replay this call.
+      await stopChild(child);
+      child = startBuiltTcpSidecar(port);
+      const replacementConnection = await connectEventually(connect);
+      await replacementConnection.close?.("replacement_readiness_complete");
+      replacementReady = true;
+      return calls.map((call) => ({
+        type: "success" as const,
+        toolCallId: call.id,
+        toolName: call.name,
+        content: [{ type: "text" as const, text: "durably committed" }],
+        startedAt: "2026-09-20T00:00:00.000Z",
+        completedAt: "2026-09-20T00:00:00.001Z",
+      }));
+    },
+  };
+  const transcript = new InMemoryTranscriptWriter();
+  const profile = resolveAgentLoopDeploymentProfile({
+    env: {
+      PILOTDECK_AGENT_LOOP_TRANSPORT: "tcp",
+      PILOTDECK_AGENT_LOOP_TCP_HOST: "127.0.0.1",
+      PILOTDECK_AGENT_LOOP_TCP_PORT: String(port),
+      PILOTDECK_AGENT_LOOP_CONNECT_TIMEOUT_MS: "100",
+    },
+  });
+  const factory = createAgentLoopDeploymentFactory(profile, {
+    transportObserver: { observe: (observation) => { observations.push({ ...observation }); } },
+  });
+  assert.ok(factory, "TCP deployment profile must create the production sidecar factory");
+  const session = createAgentSession({
+    sessionId: "built-restart-session",
+    config: config(),
+    transcript,
+    dependencies: {
+      router: {} as never,
+      ports: { model, tools },
+      tools: { registry: { list: () => [] } as never, scheduler: { executeAll: async () => [] } as never },
+    },
+    agentLoopFactory: factory,
+  });
+
+  const events = await collect(session.submit({ type: "text", text: "restart after effect" }, {
+    turnId: "built-restart-turn",
+    execution: { runId: "built-restart-run", operationId: "built-restart-operation" },
+  }));
+
+  assert.equal(toolExecutions, 1, stderr || "the host capability dispatcher must not replay after child restart");
+  assert.equal(sideEffects, 1, "the committed host effect must remain exactly once");
+  assert.equal(replacementReady, true, "the replacement built child must complete a fresh TCP handshake");
+  assert.equal(events.filter((event) => event.type === "tool_result").length, 0);
+  const terminals = events.filter((event) => event.type === "turn_completed") as Array<{
+    result?: { type?: string; errors?: Array<{ code?: string }> };
+  }>;
+  assert.equal(terminals.length, 1);
+  assert.equal(terminals[0]?.result?.type, "error");
+  assert.equal(terminals[0]?.result?.errors?.[0]?.code, "agent_invalid_state");
+  const operationEntries = transcript.entries.filter((entry) => entry.type.startsWith("agent_loop_operation_"));
+  assert.deepEqual(operationEntries.map((entry) => entry.type), [
+    "agent_loop_operation_started",
+    "agent_loop_operation_accepted",
+    "agent_loop_operation_terminal",
+  ]);
+  const operationTerminal = operationEntries.at(-1);
+  assert.equal(
+    operationTerminal?.type === "agent_loop_operation_terminal" ? operationTerminal.outcome : undefined,
+    "result_unknown",
+  );
+  assert.ok(observations.some((observation) => (
+    observation.type === "result_unknown_fail_closed"
+    && observation.source === "transport_interruption"
+  )), JSON.stringify(observations));
+});
+
 function isSequenceZeroEvent(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const event = value as { kind?: unknown; sequence?: unknown };
@@ -936,6 +1058,17 @@ function deterministicIds(): () => string {
 
 function builtSidecarPath(): string {
   return resolve(process.cwd(), "dist/src/cli/pilotdeck-agent-loop-sidecar.js");
+}
+
+function startBuiltTcpSidecar(port: number): ChildProcess {
+  return spawn(process.execPath, [builtSidecarPath()], {
+    env: {
+      ...process.env,
+      PILOTDECK_AGENT_LOOP_TCP_HOST: "127.0.0.1",
+      PILOTDECK_AGENT_LOOP_TCP_PORT: String(port),
+    },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
 }
 
 async function reservePort(): Promise<number> {

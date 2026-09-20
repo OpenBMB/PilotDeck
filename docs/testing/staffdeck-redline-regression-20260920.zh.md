@@ -7,7 +7,7 @@
 
 | 项目 | 固定值 |
 | --- | --- |
-| PilotDeck 当前提交 | `afe67d60` |
+| PilotDeck 本轮起始提交 | `1d222bc313fcb7ebe57fc93e35ac13dc655ff3a5` |
 | PilotDeck 产品基线 | `origin/main` `cd52c9af812a84c27a9dd1b7ccf246f48540045f` |
 | PilotDeck 分支 | `codex/integrate-sdk-0901` |
 | Node | `v22.23.1` |
@@ -27,6 +27,8 @@
 | `sop_scheduled_task` | 已固定 snapshot 只在可见 SOP 上应用；trace 记录实际应用版本 `7` | StaffDeck Harness scheduled snapshot | PASS |
 | `sop_step_advance` | provider 按当前 SOP step 发出 `collect -> review`；两条路径执行 review 后完成 | StaffDeck Harness/SOP state owner | PASS |
 | `sop_conditional_transition` | provider 在 check 节点选择 `branch_a`；两条路径执行分支后完成 | StaffDeck Harness/SOP state owner | PASS |
+| `sop_team_task` | TL 只通过可信 roster 选择成员；两条路径均持久化一个 `TeamRun`、一个 `pending` TeamTask 和一个 pending wake，assignee 为 roster 中的 member | StaffDeck Team/TeamRun/TeamTask/wake owner；sidecar 只经 canonical host modules | PASS |
+| built TCP child restart after host effect | production deployment profile 启动的 child 在 host effect 已提交、capability acknowledgement 未写回时退出；替代 child 完成新 handshake，旧 operation durable terminal 为 `result_unknown`，无第二次 tool execution 或可见成功 | Session operation ledger 与 host capability dispatcher；TCP child 不拥有 effect | PASS（fail-closed） |
 
 `PilotDeckAgentLoopClient` 仅把 sidecar 的 canonical module failure 和 capability
 exchange 投影回 StaffDeck-owned `TaskExecutionResult`。显式 `RESULT_UNKNOWN` 不得被
@@ -113,11 +115,19 @@ env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
   tests/agent/modules/tcp-sidecar-transport.spec.ts
 ```
 
-结果 `58/58`。其中 built stdio CLI 测试证明正式 child、handshake 与 host model/tool
+结果 `59/59`。其中 built stdio CLI 测试证明正式 child、handshake 与 host model/tool
 dispatcher；built TCP CLI 测试证明正式 child 的 Protocol `2.0` handshake。TCP restart
 测试证明新 module instance 后 host ledger 记录 `result_unknown`、reconcile 已知 terminal，且
 `execute` 不重放。stdio 的 one-turn/one-child 边界不提供同一 stream 的 reconnect，因此它的
 进程中断契约是 fail-closed `result_unknown`，而非伪造 generation resume。
+
+本轮新增 built-child evidence 由同一命令中的
+`built TCP sidecar restart after a host effect fails closed without replaying it` 提供：它使用
+正式 `AgentLoopDeploymentProfile`、built CLI child、host model/capability dispatcher 和
+session transcript ledger。在 capability response 尚未写回时终止 child，启动替代 child 并完成
+新的 TCP handshake。断言 effect 与 capability dispatch 均为一次，operation terminal 为
+`result_unknown`，且观察到 `result_unknown_fail_closed`。默认 production manifest 不宣称跨实例
+resume，因此该场景不把未知 effect 伪装为已完成或重放给替代 child。
 
 固定 main 对拍补充命令：
 
@@ -149,27 +159,40 @@ handoff/reply/resume、scheduled worker 和 Team roster/TeamRun/member worker �
 `coverageGaps=[]`。数据库记录 1 个 team、1 个 team task、6 个 team task event，终态为
 `review`，证明生产 sidecar 路径已经执行真实 team worker，而不是 parity adapter 的伪造路径。
 
+最新 StaffDeck workflow same-version matrix：
+
+```sh
+env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
+  backend/.venv/bin/python tools/agent-loop-parity/run.py \
+  --pair staffdeck --comparison same-version --suite staffdeck-workflow \
+  --pilotdeck-root /Users/a1/Desktop/claw/openbmb/PilotDeck-sdk-core-integration \
+  --staffdeck-root /Users/a1/Desktop/claw/openbmb/StaffDeck-pilotdeck-agent-loop \
+  --output /tmp/pilotdeck-sdk-core-staffdeck-workflow-v50-20260920
+```
+
+该产物的 `24` 个场景为 `failed=[]`、`blocked=[]`、`oracleFailures=[]`。其中
+`sop_team_task` 不再是双方共同 oracle failure：fixture 建立了真实的 `Team`、leader/member
+`TeamMember`、TL `ChatSession`，并严格比较 TeamRun、TeamTask 和 wake 的 durable state。
+
 ## 限制
 
-最新同版本全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v41-20260920/summary.json`：`62` 场景、
-`failed=[]`、`blocked=[]`；`sop_team_task` 在 legacy 与 sidecar 两侧均为 oracle failure，
-不构成通过证据。deadline 两项仅保留已枚举的精确内部时序差异。
+最新同版本全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v51-20260920/summary.json`：`62` 场景、
+`failed=[]`、`blocked=[]`、`oracleFailures=[]`；历史的 `sop_team_task` oracle failure 已由上面的
+`v50` workflow matrix 取代。deadline 两项仅保留已枚举的精确内部时序差异。
 
 未验收范围仍明确保留，不计入 PASS：
 
-- `sop_team_task`：不计 legacy-vs-sidecar parity PASS。当前 stdio parity adapter 未创建
-  trusted Team roster、TeamRun 与成员 worker，故该 adapter fixture 的双侧 oracle failure
-  仍是未覆盖范围；不是产品能力 `unsupported`。正式 sidecar 的真实 team worker 已由上面的
-  deployment E2E 覆盖，但尚未形成 legacy 对拍的同一 fixture。
-- 真正的 sidecar restart/reconciliation：当前 trace 只注入 host-dispatch 围栏；尚未证明
-  stdio child 终止、新 generation handshake、durable ledger replay 与 exactly-once effect。
 - PilotDeck main 对拍：`/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v44-20260920/summary.json`
   不再有 adapter `BLOCKED`。`plan_mode_host_policy` 和
   `plan_mode_bypass_host_policy` 是固定 main 的已确认缺陷：main 在成功的
   `exit_plan_mode` 后仍把第四轮留在 `plan`，再度拒绝 `parity_write_probe`；current 在该点
   恢复 `default` 或 `bypassPermissions`，得到一次批准和一次副作用，符合场景的公开
-  `policyModes` / `sideEffectCount: 1` 契约。它是精确记录的语义差异，不以 normalization
-  掩盖，也不回退 current 的权限恢复。
+  `policyModes` / `sideEffectCount: 1` 契约。该差异涉及 permission、tool execution 和最终
+  用户可见结果，按红线不能列为已验收的精确差异；它保持原始 raw trace 与失败对照，等待明确
+  产品决策，未使用 normalization 或白名单掩盖。
+- 跨进程 effect 的成功 reconciliation：本轮已证明 production TCP child crash 后的 exactly-once
+  fail-closed terminal；没有具体产品 tool/provider 的 idempotency/status-query owner 时，不虚构
+  “已知完成”状态查询。此 provider-specific success reconciliation 保持 unsupported，不计为 PASS。
 - 原有 `SKIPPED_NOT_APPLICABLE` 仍以精确能力边界保留；特别是
   `unsupported_capability` 没有被删除、扩展 normalize 或改写为 PASS。
 
