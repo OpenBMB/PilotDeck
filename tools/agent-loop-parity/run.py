@@ -218,13 +218,8 @@ def declared_extension_matches(
     allowlists from silently masking a newly shared behavior.
     """
     comparison = comparison or baseline_comparison(scenario)
-    if comparison.get("allowEvidencedBudgetDrift") is True and differences:
-        allowed_budget_paths = {
-            "contextBudget.used", "contextBudget.displayUsed",
-            "contextBudget.ratio", "contextBudget.breakdown",
-        }
-        if all(any(difference.path.endswith(path) for path in allowed_budget_paths) for difference in differences):
-            return True
+    if not differences and comparison.get("allowEvidencedBudgetDrift") is True:
+        return True
     per_adapter = comparison.get("allowedDifferencesByAdapter")
     allowed = per_adapter.get(adapter) if isinstance(per_adapter, dict) and adapter else comparison.get("allowedDifferences")
     if not isinstance(allowed, list):

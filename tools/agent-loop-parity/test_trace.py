@@ -477,6 +477,23 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
         ]
         self.assertFalse(declared_extension_matches(scenario, regression))
 
+    def test_budget_extension_gate_does_not_waive_without_validated_evidence(self) -> None:
+        scenario = {
+            "scenarioId": "checkpoint_resume",
+            "baselineComparison": {
+                "mode": "extension",
+                "allowEvidencedBudgetDrift": True,
+            },
+        }
+        self.assertTrue(declared_extension_matches(scenario, []))
+        for current in (80, 9999):
+            difference = type("Difference", (), {
+                "path": "trace[0]~[0].contextBudget.used",
+                "left": 50,
+                "right": current,
+            })()
+            self.assertFalse(declared_extension_matches(scenario, [difference]))
+
     def test_extension_contract_can_pin_adapter_specific_durable_differences(self) -> None:
         scenario = {"baselineComparison": {
             "mode": "extension",

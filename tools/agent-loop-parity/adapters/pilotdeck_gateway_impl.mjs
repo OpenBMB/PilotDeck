@@ -2,6 +2,7 @@ import { access, mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { createRequestBudgetEvidence } from "./budget_evidence.mjs";
 
 const sourceRoot = process.env.PARITY_SOURCE_ROOT;
 const sidecarRoot = process.env.PARITY_PILOTDECK_ROOT ?? sourceRoot;
@@ -27,6 +28,10 @@ const { GatewayWsClient } = await importFrom(sourceRoot, "dist/src/gateway/clien
 const { DEFAULT_MODEL_CAPABILITIES } = await importFrom(
   sourceRoot,
   "dist/src/model/protocol/capabilities.js",
+);
+const { TokenBudgetManager } = await importFrom(
+  sourceRoot,
+  "dist/src/context/budget/TokenBudgetManager.js",
 );
 const { getPilotProjectChatDir } = await importFrom(
   sourceRoot,
@@ -60,21 +65,16 @@ let sequence = 0;
 const trace = [];
 const pendingBudgetRecords = [];
 const pendingRequestRecords = [];
+const parityTokenBudget = new TokenBudgetManager();
 const linkRequestBudgetEvidence = () => {
   while (pendingBudgetRecords.length > 0 && pendingRequestRecords.length > 0) {
     const budgetRecord = pendingBudgetRecords.shift();
     const requestRecord = pendingRequestRecords.shift();
-    const budget = budgetRecord;
-    const evidence = {
-      source: "gateway_token_accounting",
-      accountingContract: "TokenAccountingRuntime/o200k_base/v1",
+    budgetRecord.requestEvidence = createRequestBudgetEvidence({
       request: requestRecord.modelView,
-      ...(budget.breakdown !== undefined ? { breakdown: budget.breakdown } : {}),
-      ...(budget.used !== undefined ? { used: budget.used } : {}),
-      ...(budget.displayUsed !== undefined ? { displayUsed: budget.displayUsed } : {}),
-      ...(budget.budgetUsed !== undefined ? { budgetUsed: budget.budgetUsed } : {}),
-    };
-    budgetRecord.requestEvidence = evidence;
+      tokenBudget: parityTokenBudget,
+      observedBudget: budgetRecord,
+    });
   }
 };
 let modelAttempt = 0;
@@ -94,8 +94,13 @@ const push = (kind, extra = {}) => {
   const record = { kind, scenarioId: scenario.scenarioId, q: scenario.q, invocationId, sequence: sequence++, ...extra };
   trace.push(record);
   if (kind === "context.budget") pendingBudgetRecords.push(record);
-  if (kind === "model.request") pendingRequestRecords.push(record);
-  if (kind === "context.budget" || kind === "model.request") linkRequestBudgetEvidence();
+  if (kind === "model.request") {
+    // AgentLoop emits the prepared context budget immediately before the
+    // provider-visible request. Retain only the next request candidate so a
+    // budget cannot be linked to the preceding completed request.
+    pendingRequestRecords.splice(0, pendingRequestRecords.length, record);
+    linkRequestBudgetEvidence();
+  }
 };
 const modelView = (request) => ({
   provider: request.provider,
