@@ -320,6 +320,11 @@ handshake 与 host `module_call_received` raw proof。模块族到 port/provider
 逐项 inventory、SDK public matrix 和九类 blocker ledger 见
 [`sdk-core-integration-final-20260920.zh.md`](testing/sdk-core-integration-final-20260920.zh.md)。
 
+该报告的结论不是“所有仓库模块已完成同一 sidecar 解耦”：Session/Gateway/Workflow/Plugin/
+Cron/Always-On/Goal/Web 仍是 host-owned，逐项归属和测试映射已列出；Workflow domain integration
+及 Frontend integration 未验证。SDK 的 `Query.accountInfo()` 仍是有文档依据的
+`unsupported_capability` gap，不能把 SDK 说成无缺口。
+
 19 个 main 缺少能力的场景在 baseline summary 中保留为 `notApplicable`，不计为 PASS；
 Frontend integration、真实外部 provider、remote/queued deployment、StaffDeck workflow
 和 Desktop 原生视觉检查明确未覆盖。

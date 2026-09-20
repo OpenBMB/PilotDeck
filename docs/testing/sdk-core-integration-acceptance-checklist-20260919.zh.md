@@ -27,6 +27,8 @@
 | tools、subagent、live steer、interaction、resource lease、teardown | Tool/interaction/subagent/lease owner 留在 host；sidecar 只消费 capability ports | production sidecar scenarios `sidecar_live_steer`、elicitation、subagent、progress；root tool/subagent/teardown tests | 已关闭 |
 | Gateway、SDK、Web replay/bridge、session history、plugin 组合入口 | Gateway 是 session/durable truth；SDK/Web 只消费公开 projection/bridge；plugin snapshot 在 host composition 冻结 | root Web/session/plugin tests、`tests/web/compact-replay.spec.ts`、`tests/web/fork-session-projection.spec.ts`、SDK MCP/package tests | 已关闭 |
 
+本表的“已关闭”只表示列出的适用行为已验证，不表示整个 SDK 无缺口：`PilotDeckQuery.accountInfo()` 当前是文档明确的 `unsupported_capability` stub，Gateway 没有 account/login contract；因此 SDK “完整功能正确”不成立，该缺口保留而未伪装成 PASS。
+
 ## 架构验收
 
 | 约束 | 当前检查 | 证据 / 状态 |
@@ -82,4 +84,4 @@
 | 已关闭 | lifecycle actor 分离后 close/abort 与后续 model request 或副作用缺少因果约束 | 已证实：settlement boundary 必须阻止 late model request；owner 为 operation ledger/Gateway fence | close/abort late-request test、partial-order checks、sidecar reconnect/replay traces | 无新增动作；关闭条件是 admission、durable commit、close/abort、terminal、副作用的必要 happens-before 保持 |
 | 已关闭 | project taskBudget retention 很短时，并发调度可能让冲突 retention 请求在到期后重新配置并进入 model | ledger 原先直接使用 `Date.now()`，绕过 Gateway 注入时钟；现统一使用 `ProjectRuntimeRegistry.options.now`，测试用可控时钟在冲突前不推进、重启前精确推进 | `tests/sdk/max-budget-e2e.spec.ts` retention 回归；Node 22 dist 单文件 `5/5`；TS 类型检查通过 | 后续 suite 保持该时钟注入契约 |
 
-本轮关键 blocker 已关闭：runner gate 与 production evidence 独立计量已补齐，真实 trace 的 `budgetUsed` 新增字段反例可检出；本轮重新生成的 raw trace 无 FAIL/BLOCKED/oracle failure。外部 provider/deployment/StaffDeck/Desktop 范围属于明确未覆盖项；Frontend integration 按本 goal 明确排除。
+本轮关键 blocker 已关闭：runner gate 与 production evidence 独立计量已补齐，真实 trace 的 `budgetUsed` 新增字段反例可检出；本轮重新生成的 raw trace 无 FAIL/BLOCKED/oracle failure。SDK `accountInfo()` 的已知 unsupported gap 和 host-only 未做 sidecar 对拍的模块不是 PASS。外部 provider/deployment/StaffDeck/Desktop 范围属于明确未覆盖项；Frontend integration 按本 goal 明确排除。

@@ -1505,7 +1505,9 @@ SDK/core integration 当前验收锚点为 `codex/integrate-sdk-0901@b15d2080`�
 记录了模块 inventory、state/dispose owner、SDK public matrix、九类 blocker 及 production
 trace。当前 gate 为 root `1721 pass / 2 skip`、SDK `123/123`、module focused `433/433`、
 comparator `53/53`、production `failed=0 / blocked=0 / oracleFailures=0`；19 个 baseline
-缺失能力仍明确标为 `notApplicable`。Frontend integration 不属于本轮覆盖范围。
+缺失能力仍明确标为 `notApplicable`。SDK `Query.accountInfo()` 仍是文档明确的
+`unsupported_capability` gap；与 main 的 `deadline`、`deadline_during_tool`、`sidecar_live_steer`
+和 `auto_compact` 精确差异仍使“字面完全一致”不成立。Frontend integration 不属于本轮覆盖范围。
 
 ## 代码锚点
 
