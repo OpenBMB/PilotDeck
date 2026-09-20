@@ -59,6 +59,8 @@ export type CompactionEngineOptions = {
   /** Stable identity factory for correlating live and persisted compaction events. */
   uuid?: () => string;
   eventEmitter?: AgentEventEmitter;
+  /** Test-only read-only observation of the exact summary-owner input. */
+  onPreCompact?: (input: { trigger: CompactionTrigger; messages: CanonicalMessage[]; preTokens: number }) => void;
 };
 
 export const COMPACT_SYSTEM_PROMPT_DEFAULT =
@@ -190,6 +192,15 @@ export class CompactionEngine {
     const compactionId = this.options.uuid?.() ?? randomUUID();
     const checkpoint = splitCheckpointPrefix(input.messages);
     const preTokens = this.estimateMessages(input.messages);
+    try {
+      this.options.onPreCompact?.({
+        trigger: input.trigger,
+        messages: structuredClone(input.messages),
+        preTokens,
+      });
+    } catch {
+      // Test observation must not alter compaction.
+    }
     const checkpointMerged = checkpoint.previousSummaries.length > 0;
     const cacheReset = input.cacheReset ?? checkpointMerged;
     const stablePrefix: CanonicalMessage[] = [];

@@ -1525,6 +1525,42 @@ test("sidecar factory requires a v2 streaming handshake before execute", async (
   assert.equal(terminal?.result?.type, "error");
 });
 
+test("sidecar factory rejects a module identity that differs from the configured implementation", async () => {
+  const methods: string[] = [];
+  const responses = queue<unknown>();
+  const factory = createAgentLoopSidecarRuntimeFactory({
+    expectedModuleId: "configured.loop",
+    connect: () => ({
+      send(message) {
+        const request = message as Record<string, unknown>;
+        methods.push(String(request.method));
+        if (request.method === "hello") responses.push(handshakeResponse(request, {}));
+      },
+      receive: () => responses,
+    }),
+    uuid: deterministicIds(),
+  });
+  const session = createAgentSession({
+    sessionId: "identity-session",
+    config: config(),
+    dependencies: {
+      router: {} as never,
+      ports: { model: noopModel(), tools: noopTools() },
+      tools: { registry: { list: () => [] } as never, scheduler: { executeAll: async () => [] } as never },
+    },
+    agentLoopFactory: factory,
+  });
+
+  const events = [];
+  for await (const event of session.submit({ type: "text", text: "identity" }, { turnId: "identity-turn" })) {
+    events.push(event);
+  }
+
+  assert.deepEqual(methods, ["hello"]);
+  const terminal = events.find((event) => event.type === "turn_completed") as { result?: { type?: string } } | undefined;
+  assert.equal(terminal?.result?.type, "error");
+});
+
 test("sidecar factory sends cancel only after the streaming execute accepted response", async () => {
   const methods: string[] = [];
   const responses = queue<unknown>();

@@ -70,6 +70,7 @@ export class ProjectExecutionWorldBundle {
       codeRuntime: executionWorld.codeRuntime,
       executionTransport: executionWorld.executionTransport,
       executeCodeSandbox: executionWorld.executeCodeSandbox,
+      maxSubagentDepth: this.options.snapshot.config.agent.subagents?.maxDepth ?? 1,
       backgroundTasks: { runtime: executionWorld.backgroundTasks },
       readSkill: this.options.skills,
       ...(this.options.lsp ? { lsp: this.options.lsp } : {}),

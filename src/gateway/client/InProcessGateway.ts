@@ -134,7 +134,7 @@ import {
   GatewaySessionPermissionModeRegistry,
   type GatewaySessionPermissionModePort,
 } from "../permission/GatewaySessionPermissionModeRegistry.js";
-import { SkillManagerError, type SkillManager } from "../../extension/skills/index.js";
+import { SkillManagerError, type SkillManagementPort } from "../../extension/skills/index.js";
 import { getPilotDeckInstallCommand } from "../../mcp/runtime/projectMcpSpec.js";
 import type { AttachmentResolver } from "../../context/attachments/AttachmentResolver.js";
 import type { AlwaysOnControlPort } from "../../always-on/protocol/AlwaysOnControlPort.js";
@@ -362,7 +362,7 @@ export type InProcessGatewayOptions = {
    * Wired by `createLocalGateway` so every host (CLI, TUI, Web UI bridge,
    * SDK) reads and writes the same skill directory the agent loads from.
    */
-  skillManager?: SkillManager;
+  skillManager?: SkillManagementPort;
   dispatchHookForSession?: (sessionKey: string, event: string, payload: Record<string, unknown>) => void;
   /** Directory to persist large tool outputs for TUI/Web viewing. */
   toolResultsDir?: string;
@@ -2228,7 +2228,7 @@ export class InProcessGateway implements Gateway {
     return this.requireSkills().scan(input);
   }
 
-  private requireSkills(): SkillManager {
+  private requireSkills(): SkillManagementPort {
     if (!this.options.skillManager) {
       throw new SkillManagerError(
         "not_configured",

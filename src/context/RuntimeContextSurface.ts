@@ -2,8 +2,8 @@ export const RUNTIME_CONTEXT_SURFACES = ["system_prompt", "user_message"] as con
 
 export type RuntimeContextSurface = (typeof RUNTIME_CONTEXT_SURFACES)[number];
 
-/** Default projection selected by application and sidecar profiles. */
-export const DEFAULT_RUNTIME_CONTEXT_SURFACE: RuntimeContextSurface = "user_message";
+/** Default projection preserves the native owner system-prompt surface. */
+export const DEFAULT_RUNTIME_CONTEXT_SURFACE: RuntimeContextSurface = "system_prompt";
 
 /** Direct ContextRuntime compatibility default. */
 export const LEGACY_RUNTIME_CONTEXT_SURFACE: RuntimeContextSurface = "system_prompt";

@@ -70,12 +70,30 @@ export type CompactionAutoCompactInput = {
   reservedOutputTokens?: number;
   /** Legacy compatibility flag; summary failures never fabricate a checkpoint. */
   allowFallbackOnFailure?: boolean;
-  budgetEvaluator?: (messages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>;
+  budgetEvaluator?: CompactionBudgetEvaluator;
   /** Serializable request template used to reconstruct request-level budgeting across a sidecar boundary. */
   budgetRequest?: CanonicalModelRequest;
   /** Candidate-message preparation intent for a remote context runtime. */
   budgetPreparation?: Omit<ContextPrepareInput, "abortSignal">;
   budgetCalibration?: TokenCalibrationBaseline;
+};
+
+/**
+ * Optional read-only detail from an AgentLoop request-budget evaluation.
+ * Context consumes only the returned snapshot; the detail is retained solely
+ * by native test instrumentation so a saved trace can independently replay
+ * the request-level accounting input.
+ */
+export type CompactionBudgetEvaluationObservation = {
+  request: CanonicalModelRequest;
+  maxContextTokens: number;
+  reservedOutputTokens: number;
+  calibration?: TokenCalibrationBaseline;
+};
+
+export type CompactionBudgetEvaluator = ((messages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>) & {
+  /** Returns the input that produced the most recently returned snapshot. */
+  getLastObservation?: () => CompactionBudgetEvaluationObservation | undefined;
 };
 
 /** Derive the public budget intent from an in-process auto-compaction call. */

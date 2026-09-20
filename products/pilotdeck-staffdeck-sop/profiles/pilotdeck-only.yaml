@@ -13,4 +13,6 @@ modules:
   agentLoop: { enabled: true, provider: pilotdeck }
   modelProvider: { enabled: true, provider: pilotdeck }
   tools: { enabled: true, provider: pilotdeck }
-  sop: { enabled: false, provider: staffdeck }
+  skills: { enabled: false }
+  knowledge: { enabled: false }
+  sop: { enabled: false }

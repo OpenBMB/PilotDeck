@@ -109,6 +109,7 @@ export type {
   AgentLoopOperationIdentity,
   AgentLoopOperationKnownTerminal,
   AgentLoopOperationLedger,
+  AgentLoopOperationRecovery,
   AgentLoopOperationResolution,
   AgentLoopOperationUnknownTerminal,
 } from "./operationLedger.js";

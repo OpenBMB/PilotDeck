@@ -37,6 +37,7 @@ import type { PilotDeckHookEvent } from "../../extension/hooks/protocol/events.j
 import { truncateHeadPreservingCheckpoint } from "../../context/compaction/CompactionEngine.js";
 import type {
   CompactionResult,
+  CompactionBudgetEvaluator,
   ContextRecoveryDecision,
   ContextSupplementalToolResultMessage,
   TokenCalibrationBaseline,
@@ -299,8 +300,6 @@ export class AgentLoop {
       sessionId: input.sessionId,
       turnId: input.turnId,
       event: status.event,
-      kind: status.kind,
-      text: status.text,
       detail: status.detail,
     });
     const emitStatus = async (status: AgentStatusMessage): Promise<AgentEvent> => {
@@ -2335,26 +2334,36 @@ export class AgentLoop {
       maxContextTokens?: number;
       reservedOutputTokens: number;
     },
-  ): ((candidateMessages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>) | undefined {
+  ): CompactionBudgetEvaluator | undefined {
     const tokenAccounting = this.capabilities.model.budget;
     const evaluateRequestBudget = tokenAccounting?.evaluateRequestBudget;
     const maxContextTokens = options.maxContextTokens;
     if (!evaluateRequestBudget || !maxContextTokens) {
       return undefined;
     }
-    return async (candidateMessages) => {
+    let lastObservation: ReturnType<NonNullable<CompactionBudgetEvaluator["getLastObservation"]>>;
+    const evaluator: CompactionBudgetEvaluator = async (candidateMessages) => {
       const candidateRequest = await this.createBudgetRequest(input, candidateMessages, options);
+      const calibration = this.tokenCalibrationByRoute.get(tokenCalibrationKey(
+        candidateRequest.provider,
+        candidateRequest.model,
+      ));
       const snapshot = await evaluateRequestBudget.call(tokenAccounting, candidateRequest, {
         maxContextTokens,
         reservedOutputTokens: options.reservedOutputTokens,
         signal: input.abortSignal,
-        calibration: this.tokenCalibrationByRoute.get(tokenCalibrationKey(
-          candidateRequest.provider,
-          candidateRequest.model,
-        )),
+        calibration,
       });
+      lastObservation = {
+        request: structuredClone(candidateRequest),
+        maxContextTokens,
+        reservedOutputTokens: options.reservedOutputTokens,
+        ...(calibration ? { calibration: structuredClone(calibration) } : {}),
+      };
       return snapshot;
     };
+    evaluator.getLastObservation = () => lastObservation && structuredClone(lastObservation);
+    return evaluator;
   }
 
   private async createBudgetRequest(

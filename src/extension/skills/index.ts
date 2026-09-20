@@ -1,5 +1,6 @@
 export { SkillManager, SkillManagerError, SkillValidationError } from "./SkillManager.js";
 export type { SkillManagerOptions } from "./SkillManager.js";
+export type { SkillManagementPort } from "./types.js";
 export {
   hashDirectoryTree,
   migrateLegacyBundledSkillCopies,

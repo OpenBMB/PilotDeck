@@ -4,7 +4,7 @@ import { SopStateStore } from "./SopStateStore.js";
 import type {
   StaffDeckSopResumeInput,
   StaffDeckSopResumeResult,
-  StaffDeckSopRuntimeConfig,
+  SopRuntimeConfig,
   StaffDeckSopStatusSnapshot,
 } from "./types.js";
 
@@ -20,7 +20,7 @@ export class StaffDeckSopControlPlane {
   private readonly stores = new Map<string, SopStateStore>();
 
   constructor(
-    private readonly resolveProfile: (projectKey?: string) => StaffDeckSopRuntimeConfig | undefined,
+    private readonly resolveProfile: (projectKey?: string) => SopRuntimeConfig | undefined,
   ) {}
 
   async status(input: StaffDeckSopControlInput): Promise<StaffDeckSopStatusSnapshot | undefined> {

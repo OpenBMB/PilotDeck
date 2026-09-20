@@ -38,7 +38,7 @@ test("runtime profile uses native defaults when config omits a provider choice",
   const profile = resolvePilotDeckRuntimeProfile({ agent: agent() });
 
   assert.equal(profile.sandboxMode, DEFAULT_SANDBOX_MODE);
-  assert.equal(profile.runtimeContextSurface, "user_message");
+  assert.equal(profile.runtimeContextSurface, "system_prompt");
   assert.equal(profile.interaction.name, "interactive");
 });
 

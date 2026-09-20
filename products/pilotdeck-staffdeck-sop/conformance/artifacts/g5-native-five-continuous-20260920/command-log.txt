@@ -1,0 +1,51 @@
+# G5 continuous evidence command log (completed run; not rerun during review)
+
+working_directory=/Users/a1/Desktop/claw/openbmb/PilotDeck-staffdeck-sop
+profile=products/pilotdeck-staffdeck-sop/profiles/native-five-staffdeck.yaml
+bindings=agentLoop/skills/tools/context/modelProvider:native; staffdeck.knowledge:external; staffdeck.portable-sop:external
+final_artifact_image=pilotdeck:g4-native-five-20260920
+sop_image=staffdeck-sop-runtime:g4-current-20260920
+knowledge_service=StaffDeck Knowledge runtime (external service)
+network=pilotdeck-g5-continuous-20260920
+model=provider1/qwen3.6-flash-distill
+provider_url=${PILOTDECK_REAL_MODEL_BASE_URL} (value omitted)
+provider_key=${PILOTDECK_REAL_MODEL_API_KEY} (value omitted)
+knowledge_endpoint=${REAL_MODEL_KNOWLEDGE_ENDPOINT} (value omitted)
+sop_endpoint=${STAFFDECK_SOP_SMOKE_ENDPOINT} (value omitted)
+
+Reproducible command shape (runtime image tags and endpoint values are supplied
+through the variables above; the completed run used the recorded image/network
+names):
+
+```sh
+docker network create "$network"
+docker run --rm --name staffdeck-sop-g5 --network "$network" \
+  --network-alias sop-runtime "$STAFFDECK_SOP_IMAGE"
+docker run --rm --name staffdeck-knowledge-g5 --network "$network" \
+  --network-alias knowledge-runtime "$STAFFDECK_KNOWLEDGE_IMAGE"
+docker run --rm --name pilotdeck-g5 --network "$network" \
+  -e PILOTDECK_REAL_MODEL_API_KEY -e PILOTDECK_REAL_MODEL_BASE_URL \
+  -e REAL_MODEL_KNOWLEDGE_ENDPOINT -e STAFFDECK_SOP_SMOKE_ENDPOINT \
+  "$final_artifact_image"
+```
+
+The Gateway calls in steps 6-11 were issued against the PilotDeck container's
+internal Gateway binding; their request bodies and sanitized responses are in
+`transcript.sanitized.jsonl` and `evidence-summary.json`.
+
+1. `docker network create pilotdeck-g5-continuous-20260920`                             exit=0
+2. start StaffDeck SOP runtime on the isolated network; poll `/healthz`                 exit=0 (HTTP 200)
+3. start StaffDeck Knowledge runtime on the isolated network; poll `/api/health`       exit=0 (HTTP 200)
+4. create a Knowledge base and import `approval-policy.md`; poll the job to ready       exit=0
+5. start the final image `pilotdeck:g4-native-five-20260920` with runtime env bindings  exit=0
+6. submit one Gateway turn: `read_skill -> read_file -> knowledge_query -> handoff`    exit=0
+7. read SOP status: `handoff`, waitId recorded, revision 17                             exit=0
+8. resume the same wait: accepted, revision 18                                          exit=0
+9. submit the same-session completion step: `completed`, revision 25                    exit=0
+10. submit three durable context turns in the same session                             exit=0
+11. call Gateway `/compact`; outcome `compacted`, one durable boundary                 exit=0
+12. capture transcript/state, redact identifiers and runtime-only fields                 exit=0
+13. remove temporary containers, network, and Knowledge volume                          exit=0
+
+Required continuous sequence: `read_skill`, `read_file`, `knowledge_query`,
+`submit_step_result(handoff)`, `resume`, `submit_step_result(completed)`.

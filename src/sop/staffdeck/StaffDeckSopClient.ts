@@ -9,6 +9,7 @@ import type {
   StaffDeckSopRuntimeClient,
   StaffDeckSopState,
   StaffDeckSopSubmitResponse,
+  SopRuntimeManifestExpectation,
 } from "./types.js";
 import {
   STAFFDECK_SOP_CONTRACT,
@@ -39,7 +40,12 @@ export class StaffDeckSopClient implements StaffDeckSopRuntimeClient {
 
   constructor(
     endpoint: string,
-    private readonly options: { fetch?: FetchLike; timeoutMs?: number } = {},
+    private readonly options: {
+      fetch?: FetchLike;
+      timeoutMs?: number;
+      manifestPath?: string;
+      expectedManifest?: SopRuntimeManifestExpectation;
+    } = {},
   ) {
     this.endpoint = endpoint.replace(/\/+$/u, "");
   }
@@ -111,14 +117,14 @@ export class StaffDeckSopClient implements StaffDeckSopRuntimeClient {
   }
 
   private async fetchManifest(signal?: AbortSignal): Promise<StaffDeckSopModuleManifest> {
-    const result = await this.request("/healthz", undefined, signal, "GET");
+    const result = await this.request(this.options.manifestPath ?? "/healthz", undefined, signal, "GET");
     if (!result.response.ok) {
       throw new StaffDeckSopClientError(
         "SOP_RUNTIME_UNAVAILABLE",
         `StaffDeck SOP runtime health check returned HTTP ${result.response.status}.`,
       );
     }
-    return validateManifest(result.payload);
+    return validateManifest(result.payload, this.options.expectedManifest);
   }
 
   private async request(
@@ -183,7 +189,7 @@ function requestEnvelope(
   };
 }
 
-function validateManifest(value: unknown): StaffDeckSopModuleManifest {
+function validateManifest(value: unknown, expected?: SopRuntimeManifestExpectation): StaffDeckSopModuleManifest {
   const operations = isRecord(value) && Array.isArray(value.operations) ? value.operations : undefined;
   if (!isRecord(value)
     || value.status !== "ok"
@@ -195,6 +201,15 @@ function validateManifest(value: unknown): StaffDeckSopModuleManifest {
     throw new StaffDeckSopClientError(
       "SOP_PROTOCOL_INCOMPATIBLE",
       "StaffDeck SOP runtime does not advertise sop.runtime sop.lifecycle/v2 protocol 2.0 support.",
+    );
+  }
+  if (expected && (value.descriptorVersion !== "1.0"
+    || value.implementationId !== expected.implementationId
+    || value.contract !== expected.contract
+    || value.transport !== expected.transport)) {
+    throw new StaffDeckSopClientError(
+      "SOP_PROTOCOL_INCOMPATIBLE",
+      `SOP runtime does not advertise the configured ${expected.implementationId} ${expected.contract}/${expected.transport} binding.`,
     );
   }
   return value as StaffDeckSopModuleManifest;

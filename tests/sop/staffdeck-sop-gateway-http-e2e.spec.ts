@@ -111,7 +111,7 @@ test("Gateway leaves StaffDeck out of a disabled SOP composition", async () => {
   }
 });
 
-test("Gateway rejects the shipped onboarding SOP when lookup_account is not bound", { skip: !endpoint }, async () => {
+test("Gateway rejects the shipped onboarding SOP before model dispatch when lookup_account is not bound", { skip: !endpoint }, async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-sop-missing-tool-"));
   const projectRoot = join(root, "project");
   const provider = await startMissingToolOpenAiMock();
@@ -127,11 +127,9 @@ test("Gateway rejects the shipped onboarding SOP when lookup_account is not boun
       message: "Onboard Ada without the declared business tool",
       mode: "bypassPermissions",
     }));
-    assertTurnEndsAfterReply(events, "lookup_account is not bound for this deployment.");
-    const persisted = await readState(projectRoot, "sop:missing-tool:e2e");
-    assert.equal(persisted.state.active_step_id, "collect_profile");
-    assert.equal(persisted.state.status, "active");
-    assert.deepEqual(persisted.state.successful_tool_names, []);
+    assert.ok(events.some((event) => event.type === "error" && /requires unavailable PilotDeck tools: lookup_account/.test(event.message)), JSON.stringify(events));
+    assert.equal(provider.requests.length, 0, "a missing required Tool must reject before model dispatch");
+    await assert.rejects(access(join(projectRoot, "sop", "sessions")));
   } finally {
     await local.dispose();
     await provider.close();
@@ -340,6 +338,116 @@ test("Gateway resumes StaffDeck handoff and external waits through host-side com
   }
 });
 
+test("Gateway projects non-resumable StaffDeck SOP states through ordinary turns", { skip: !endpoint }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-sop-nonresumable-http-"));
+  const projectRoot = join(root, "project");
+  const provider = await startLifecycleOpenAiMock();
+  await mkdir(projectRoot, { recursive: true });
+  await writeFile(join(projectRoot, "lifecycle.yaml"), LIFECYCLE_YAML, "utf8");
+  await writeFile(
+    join(projectRoot, "pilotdeck.yaml"),
+    configForDefinition(endpoint!, provider.url, "lifecycle.yaml", "lifecycle"),
+    "utf8",
+  );
+
+  const local = createSopGateway(projectRoot);
+  try {
+    for (const scenario of [
+      {
+        name: "awaiting-user",
+        sessionKey: "sop:awaiting-user:e2e",
+        start: "Request user information",
+        waitingReply: "Waiting for user information.",
+        continueWith: "Provide the requested user information.",
+        completionReply: "User-information SOP completed.",
+      },
+      {
+        name: "failed",
+        sessionKey: "sop:failed:e2e",
+        start: "Mark SOP as failed",
+        waitingReply: "SOP step failed and needs another attempt.",
+        continueWith: "Retry the failed SOP step.",
+        completionReply: "Failed SOP recovered and completed.",
+      },
+    ]) {
+      const initialEvents = await collectTurn(local.gateway.submitTurn({
+        sessionKey: scenario.sessionKey,
+        channelKey: "test",
+        workspaceCwd: projectRoot,
+        message: scenario.start,
+        mode: "bypassPermissions",
+      }));
+      assertTurnEndsAfterReply(initialEvents, scenario.waitingReply);
+      const initial = await local.gateway.sopStatus!({ sessionKey: scenario.sessionKey, projectKey: projectRoot });
+      assert.equal(initial?.state.status, scenario.name === "awaiting-user" ? "awaiting_user" : "failed");
+      assert.equal(initial?.wait, undefined);
+      await assert.rejects(
+        () => local.gateway.resumeSop!({
+          sessionKey: scenario.sessionKey,
+          projectKey: projectRoot,
+          requestId: `${scenario.name}-invalid-resume`,
+          waitId: "not-a-real-wait",
+          source: "human",
+          message: "This status must not use the host resume control.",
+        }),
+        (error: unknown) => (error as { code?: string }).code === "SOP_NOT_WAITING",
+      );
+
+      const continuationEvents = await collectTurn(local.gateway.submitTurn({
+        sessionKey: scenario.sessionKey,
+        channelKey: "test",
+        workspaceCwd: projectRoot,
+        message: scenario.continueWith,
+        mode: "bypassPermissions",
+      }));
+      assertTurnEndsAfterReply(continuationEvents, scenario.completionReply);
+      const completed = await local.gateway.sopStatus!({ sessionKey: scenario.sessionKey, projectKey: projectRoot });
+      assert.equal(completed?.state.status, "completed");
+      assert.equal(completed?.wait, undefined);
+    }
+
+    const blockedEvents = await collectTurn(local.gateway.submitTurn({
+      sessionKey: "sop:blocked:e2e",
+      channelKey: "test",
+      workspaceCwd: projectRoot,
+      message: "Mark SOP as blocked",
+      mode: "bypassPermissions",
+    }));
+    assertTurnEndsAfterReply(blockedEvents, "SOP is blocked and cannot continue.");
+    const blocked = await local.gateway.sopStatus!({ sessionKey: "sop:blocked:e2e", projectKey: projectRoot });
+    assert.equal(blocked?.state.status, "blocked");
+    assert.equal(blocked?.wait, undefined);
+    await assert.rejects(
+      () => local.gateway.resumeSop!({
+        sessionKey: "sop:blocked:e2e",
+        projectKey: projectRoot,
+        requestId: "blocked-invalid-resume",
+        waitId: "not-a-real-wait",
+        source: "human",
+        message: "Blocked states are terminal.",
+      }),
+      (error: unknown) => (error as { code?: string }).code === "SOP_NOT_WAITING",
+    );
+    const blockedRevision = blocked!.revision;
+    const blockedContinuation = await collectTurn(local.gateway.submitTurn({
+      sessionKey: "sop:blocked:e2e",
+      channelKey: "test",
+      workspaceCwd: projectRoot,
+      message: "Try to continue a blocked SOP",
+      mode: "bypassPermissions",
+    }));
+    assertTurnEndsAfterReply(blockedContinuation, "Blocked SOP remains terminal.");
+    const stillBlocked = await local.gateway.sopStatus!({ sessionKey: "sop:blocked:e2e", projectKey: projectRoot });
+    assert.equal(stillBlocked?.state.status, "blocked");
+    assert.equal(stillBlocked?.revision, blockedRevision, "a terminal SOP must not be prepared or submitted again");
+    assert.equal(stillBlocked?.wait, undefined);
+  } finally {
+    await local.dispose();
+    await provider.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 for (const fault of ["http_500", "malformed_200", "timeout"] as const) {
   test(`Gateway preserves SOP state and remains usable after ${fault}`, async () => {
     const root = await mkdtemp(join(tmpdir(), `pilotdeck-sop-${fault}-`));
@@ -476,12 +584,14 @@ modules:
 `;
 }
 
-async function startMissingToolOpenAiMock(): Promise<{ url: string; close(): Promise<void> }> {
+async function startMissingToolOpenAiMock(): Promise<{ url: string; requests: Record<string, unknown>[]; close(): Promise<void> }> {
   let streamedRequests = 0;
+  const requests: Record<string, unknown>[] = [];
   const server = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+    requests.push(body);
     if (body.stream !== true) {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: '{"title":"Missing binding"}' }, finish_reason: "stop" }] }));
@@ -497,7 +607,7 @@ async function startMissingToolOpenAiMock(): Promise<{ url: string; close(): Pro
     response.end("data: [DONE]\n\n");
   });
   await listen(server);
-  return { url: serverUrl(server), close: () => closeServer(server) };
+  return { url: serverUrl(server), requests, close: () => closeServer(server) };
 }
 
 async function startOpenAiMock(): Promise<{ url: string; requests: Record<string, unknown>[]; close(): Promise<void> }> {
@@ -629,9 +739,27 @@ async function startLifecycleOpenAiMock(): Promise<{ url: string; close(): Promi
       return;
     }
     const messages = JSON.stringify(body.messages ?? []);
-    let status: "completed" | "handoff" | "waiting_external_task" = "completed";
+    let status: "completed" | "awaiting_user" | "handoff" | "failed" | "blocked" | "waiting_external_task" = "completed";
     let replyFragment = "SOP completed.";
-    if (messages.includes("Request human handoff") && !messages.includes("Human approved the request")) {
+    if (messages.includes("Request user information") && !messages.includes("Provide the requested user information")) {
+      status = "awaiting_user";
+      replyFragment = "Waiting for user information.";
+    } else if (messages.includes("Provide the requested user information")) {
+      replyFragment = "User-information SOP completed.";
+    } else if (messages.includes("Mark SOP as failed") && !messages.includes("Retry the failed SOP step")) {
+      status = "failed";
+      replyFragment = "SOP step failed and needs another attempt.";
+    } else if (messages.includes("Retry the failed SOP step")) {
+      replyFragment = "Failed SOP recovered and completed.";
+    } else if (messages.includes("Try to continue a blocked SOP")) {
+      response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "Blocked SOP remains terminal." }, finish_reason: "stop" }] })}\n\n`);
+      response.end("data: [DONE]\n\n");
+      return;
+    } else if (messages.includes("Mark SOP as blocked")) {
+      status = "blocked";
+      replyFragment = "SOP is blocked and cannot continue.";
+    } else if (messages.includes("Request human handoff") && !messages.includes("Human approved the request")) {
       status = "handoff";
       replyFragment = "Waiting for human approval.";
     } else if (messages.includes("Human approved the request")) {

@@ -17,6 +17,7 @@ import type {
 type ModelModuleCall = Omit<ModuleCallRequest, "kind" | "messageId" | "method"> & {
   idempotencyKey?: string;
   recordFailure?: boolean;
+  abortSignal?: AbortSignal;
 };
 
 export type HostModelModuleClient = (request: ModelModuleCall) => Promise<ModuleResponse>;
@@ -65,6 +66,7 @@ export function createHostModelInvokerPort(
         idempotencyKey: context.idempotencyKey,
         requestId: `model-prepare-${uuid()}`,
         module: "model",
+        abortSignal: context.abortSignal,
         payload: {
           operation: "prepare",
           request: fallback.request,
@@ -93,6 +95,7 @@ export function createHostModelInvokerPort(
               idempotencyKey: context.idempotencyKey,
               requestId: `model-stream-next-${uuid()}`,
               module: "model",
+              abortSignal: context.abortSignal,
               payload: {
                 operation: "stream_next",
                 request: snapshotCanonicalModelRequest(prepared.request),
@@ -129,6 +132,7 @@ export function createHostModelInvokerPort(
         idempotencyKey: context.idempotencyKey,
         requestId: `model-${uuid()}`,
         module: "model",
+        abortSignal: context.abortSignal,
         payload: {
           operation: "stream",
           request: prepared.request,

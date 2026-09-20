@@ -33,6 +33,7 @@ import type { PilotDeckLoadedPlugin } from "../extension/index.js";
 import type { PilotDeckHookEvent } from "../extension/hooks/protocol/events.js";
 import type { GatewayUserDialogStore } from "../gateway/user-dialog/GatewayUserDialogStore.js";
 import type { ResolvedGatewayOrganizationPolicy } from "./createLocalGateway.js";
+import type { CompactionAutomaticTriggerObservation } from "../context/index.js";
 
 /**
  * The session-facing subset of a published project generation.
@@ -93,6 +94,7 @@ export type ProjectSessionFactoryOptions<Runtime extends ProjectSessionFactoryRu
   agentLoopFactory?: AgentLoopRuntimeFactory;
   testAgentConfigOverrides?: Pick<AgentRuntimeConfig, "maxContextMessages">;
   testAgentLoopFactory?: CreateAgentSessionOptions["__agentLoopFactory"];
+  testOnAutomaticCompactionTrigger?: (observation: CompactionAutomaticTriggerObservation) => void;
   shouldCollectFileArtifacts(runtime: Runtime): boolean;
   onDiagnostic?: (message: string, error?: unknown) => void;
 };
@@ -162,7 +164,7 @@ export class ProjectSessionFactory<Runtime extends ProjectSessionFactoryRuntime>
       if (previous.transcriptWriterState) {
         storage.events.restoreState(previous.transcriptWriterState);
       }
-      const extensionDependencies = prepared.extendDependencies(storage);
+      const extensionDependencies = await prepared.extendDependencies(storage, readResult.entries);
       const { handle } = await createAgentSessionWithStorageAsync({
         sessionId: context.sessionKey,
         config: prepared.agentConfig,
@@ -270,6 +272,7 @@ export class ProjectSessionFactory<Runtime extends ProjectSessionFactoryRuntime>
       agentLoopFactory: this.options.agentLoopFactory,
       testAgentConfigOverrides: this.options.testAgentConfigOverrides,
       testAgentLoopFactory: this.options.testAgentLoopFactory,
+      testOnAutomaticCompactionTrigger: this.options.testOnAutomaticCompactionTrigger,
       collectFileArtifacts: this.options.shouldCollectFileArtifacts(runtime),
       onDiagnostic: this.options.onDiagnostic,
     }).compose();

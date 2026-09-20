@@ -105,6 +105,7 @@ export {
   type AgentLoopOperationIdentity,
   type AgentLoopOperationKnownTerminal,
   type AgentLoopOperationLedger,
+  type AgentLoopOperationRecovery,
   type AgentLoopOperationResolution,
   type AgentLoopOperationUnknownTerminal,
 } from "./transport/index.js";

@@ -1,0 +1,11 @@
+date=2026-09-20
+working_directory=/Users/a1/Desktop/claw/openbmb/PilotDeck-staffdeck-sop
+pilotdeck_image=pilotdeck:g4-native-five-20260920
+staffdeck_sop_image=staffdeck-sop-runtime:g4-current-20260920
+knowledge_service=StaffDeck Knowledge runtime (external service; image tag intentionally omitted)
+sop_service=StaffDeck SOP runtime (external service; image tag recorded above)
+network=pilotdeck-g4-runtime-20260920
+profile=products/pilotdeck-staffdeck-sop/profiles/native-five-staffdeck.yaml
+bindings=agentLoop/skills/tools/context/modelProvider:native; staffdeck.knowledge:external; staffdeck.portable-sop:external
+provider_credentials=runtime-only environment variables; values omitted
+source_result=/tmp/pilotdeck-g4-runtime-20260920/result.json

@@ -1,9 +1,12 @@
 import type { CanonicalMessage } from "../../model/index.js";
+import type { CanonicalModelRequest } from "../../model/index.js";
 import type { ContextDiagnostic } from "../protocol/types.js";
 import type { TokenBudgetSnapshot } from "../budget/TokenBudgetManager.js";
+import type { TokenCalibrationBaseline } from "../budget/TokenAccountingRuntime.js";
 import type { CompactionPort, AutoCompactResult, CompactionAutoCompactInput } from "./CompactionPort.js";
 import { ensureTrailingUserMessage } from "./toolPairIntegrity.js";
 import type { CompactionResult } from "./CompactionEngine.js";
+import type { AutoCompactionDecision } from "./AutoCompactionPolicy.js";
 
 const POST_COMPACTION_TARGET_RATIO = 0.60;
 const EMERGENCY_KEEP_TAIL_RATIO = 0.05;
@@ -15,6 +18,30 @@ export type CompactionOrchestratorOptions = {
   maxContextTokens: number;
   onSurfaceChanged?: () => void;
   log?: (stage: string, context: { sessionId?: string; turnId?: string }, details: Record<string, unknown>) => void;
+  /** Read-only instrumentation for the automatic policy trigger. */
+  onAutomaticTrigger?: (observation: CompactionAutomaticTriggerObservation) => void;
+};
+
+export type CompactionAutomaticTriggerObservation = {
+  input: CompactionAutoCompactInput;
+  snapshot: TokenBudgetSnapshot;
+  decision: AutoCompactionDecision;
+  budgetEvaluations: readonly CompactionBudgetEvaluation[];
+  fullSummaryStarted: boolean;
+  summaryMessages?: CanonicalMessage[];
+  summaryPreTokens?: number;
+  summaryLocalEstimateTokens?: number;
+  summaryAccountingEstimateTokens?: number;
+};
+
+export type CompactionBudgetEvaluation = {
+  messages: CanonicalMessage[];
+  snapshot: TokenBudgetSnapshot;
+  /** Present for native AgentLoop accounting; not consumed by Context policy. */
+  request?: CanonicalModelRequest;
+  maxContextTokens?: number;
+  reservedOutputTokens?: number;
+  calibration?: TokenCalibrationBaseline;
 };
 
 /**
@@ -60,12 +87,29 @@ async function runCompaction(
     return { type: "skipped", snapshot: emptySnapshot(maxContextTokens) };
   }
 
-  const evaluateBudget = (messages: CanonicalMessage[]): Promise<TokenBudgetSnapshot> =>
-    input.budgetEvaluator
+  const budgetEvaluations: CompactionBudgetEvaluation[] = [];
+  let triggerObservation: CompactionAutomaticTriggerObservation | undefined;
+  const evaluateBudget = async (messages: CanonicalMessage[]): Promise<TokenBudgetSnapshot> => {
+    const snapshot = await (input.budgetEvaluator
       ? input.budgetEvaluator(messages)
       : Promise.resolve(port.budget!.evaluate(messages, maxContextTokens, {
           reservedOutputTokens: input.reservedOutputTokens,
-        }));
+        })));
+    const observation = input.budgetEvaluator?.getLastObservation?.();
+    budgetEvaluations.push({
+      messages: structuredClone(messages),
+      snapshot: structuredClone(snapshot),
+      ...(observation
+        ? {
+            request: structuredClone(observation.request),
+            maxContextTokens: observation.maxContextTokens,
+            reservedOutputTokens: observation.reservedOutputTokens,
+            ...(observation.calibration ? { calibration: structuredClone(observation.calibration) } : {}),
+          }
+        : {}),
+    });
+    return snapshot;
+  };
   let messages = input.messages;
   const initialSnapshot = await evaluateBudget(messages);
   let currentSnapshot = initialSnapshot;
@@ -84,6 +128,18 @@ async function runCompaction(
     if (decision.type !== "trigger") {
       log("policy_skip", { decisionType: decision.type, snapshot: describeSnapshot(decision.snapshot) });
       return { type: "skipped", snapshot: decision.snapshot };
+    }
+    try {
+      triggerObservation = {
+        input: { ...input, messages: structuredClone(input.messages) },
+        snapshot: initialSnapshot,
+        decision,
+        budgetEvaluations,
+        fullSummaryStarted: false,
+      };
+      options.onAutomaticTrigger?.(triggerObservation);
+    } catch {
+      // Observation must not influence Context compaction.
     }
     log("policy_trigger", {
       reason: decision.reason,
@@ -132,6 +188,10 @@ async function runCompaction(
     Math.floor(currentSnapshot.effectiveContextTokens ?? currentSnapshot.maxContextTokens),
   );
   const targetPostTokens = Math.max(1, Math.floor(effectiveContextTokens * POST_COMPACTION_TARGET_RATIO));
+  if (triggerObservation) {
+    triggerObservation.fullSummaryStarted = true;
+    triggerObservation.summaryMessages = structuredClone(messages);
+  }
   const result = await port.summary.run({
     trigger: manualForce ? "manual" : "auto",
     messages,

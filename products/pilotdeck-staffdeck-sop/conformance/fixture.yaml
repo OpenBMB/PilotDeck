@@ -1,0 +1,10 @@
+sops:
+  - id: approval
+    version: "1"
+    name: Example approval
+    content:
+      start_node_id: approve
+      nodes:
+        - node_id: approve
+          type: handoff
+          instruction: Approve this request.

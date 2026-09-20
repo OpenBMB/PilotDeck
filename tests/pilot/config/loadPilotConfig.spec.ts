@@ -104,6 +104,85 @@ test("PilotConfigStore watches the configured custom path", async () => {
   }
 });
 
+test("PilotConfigStore retains its active snapshot when a module profile reload is rejected", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "pilotdeck-config-reload-rejected-"));
+  const configPath = join(directory, "pilotdeck.yaml");
+  try {
+    writeFileSync(configPath, configYaml("model-a"), "utf8");
+    const store = createPilotConfigStoreSync({
+      env: { PILOTDECK_CONFIG_PATH: configPath },
+    });
+    let published = 0;
+    const unsubscribe = store.subscribe(() => { published += 1; });
+    try {
+      writeFileSync(configPath, `${configYaml("model-b")}
+modules:
+  modelProvider:
+    enabled: true
+    implementationId: example.model
+    contract: pilotdeck.model/v1
+    transport: module-http-v2
+    endpoint: http://model:9011
+    methods: [prepare, stream]
+    stateMode: stateful
+`, "utf8");
+
+      await assert.rejects(
+        () => store.reload("module-profile-change"),
+        (error: unknown) => (error as { diagnostics?: Array<{ code?: string }> }).diagnostics?.some(
+          (diagnostic) => diagnostic.code === "MODULE_STATE_MODE_UNSUPPORTED",
+        ) === true,
+      );
+      assert.equal(store.getSnapshot().config.agent.model.id, "custom/model-a");
+      assert.equal(published, 0);
+      assert.ok(store.getDiagnostics().some((diagnostic) => diagnostic.code === "MODULE_STATE_MODE_UNSUPPORTED"));
+    } finally {
+      unsubscribe();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("PilotConfigStore retains its active snapshot when an external module contract changes incompatibly", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "pilotdeck-config-contract-reload-rejected-"));
+  const configPath = join(directory, "pilotdeck.yaml");
+  try {
+    writeFileSync(configPath, configYaml("model-a"), "utf8");
+    const store = createPilotConfigStoreSync({
+      env: { PILOTDECK_CONFIG_PATH: configPath },
+    });
+    let published = 0;
+    const unsubscribe = store.subscribe(() => { published += 1; });
+    try {
+      writeFileSync(configPath, `${configYaml("model-b")}
+modules:
+  modelProvider:
+    enabled: true
+    implementationId: example.replacement-model
+    contract: vendor.model/v9
+    transport: module-http-v2
+    endpoint: http://model:9011
+    methods: [prepare, stream]
+`, "utf8");
+
+      await assert.rejects(
+        () => store.reload("module-contract-change"),
+        (error: unknown) => (error as { diagnostics?: Array<{ code?: string }> }).diagnostics?.some(
+          (diagnostic) => diagnostic.code === "MODULE_CONTRACT_UNSUPPORTED",
+        ) === true,
+      );
+      assert.equal(store.getSnapshot().config.agent.model.id, "custom/model-a");
+      assert.equal(published, 0);
+      assert.ok(store.getDiagnostics().some((diagnostic) => diagnostic.code === "MODULE_CONTRACT_UNSUPPORTED"));
+    } finally {
+      unsubscribe();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 
 test("invalid unused providers are isolated from the Gateway without deleting their settings", () => {
   const dir = mkdtempSync(join(tmpdir(), "pilotdeck-provider-isolation-"));

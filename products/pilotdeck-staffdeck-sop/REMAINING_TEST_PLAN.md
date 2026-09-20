@@ -1,17 +1,59 @@
 # Remaining Composition Acceptance Tests
 
-Reviewed: 2026-09-18. Status: READY for the declared fixed-composition sign-off.
+Reviewed: 2026-09-20. Status: READY for the requested seven-slot composition.
+This file is subordinate to the authoritative G0-G5 table in
+`ACCEPTANCE_REQUIREMENTS.md` and records the retained evidence and boundaries.
 
 ## v3 Candidate Update
 
-The v3 protocol regression, independent native-owner matrix, StaffDeck owner
-tests, fresh enabled export browser/restart/sidecar-recovery run, and fresh
-disabled export browser run are complete. Exact commands, worktrees, counts,
-and artifact locations are recorded in `ACCEPTANCE.md` under **v3 Candidate
-Addendum**. Those results supersede neither historical evidence nor the
-remaining gate below.
+The v3 SOP protocol regression, SOP owner comparison, StaffDeck owner tests,
+fresh enabled export browser/restart/sidecar-recovery run, fresh disabled
+export browser run, deterministic Context/Compaction recovery, native-five G4
+runtime, and continuous final-artifact G5 workflow are complete. Exact
+commands, worktrees, counts, and artifact locations are recorded in
+`ACCEPTANCE.md` and the durable artifact directories. Together with the
+existing independent B0/C AgentLoop session replay and deterministic Model
+provider/request/runtime differentials, these close all G0-G5 rows.
 
-**LIVE-EXPORT-01: real provider on a newly exported Compose artifact. Status: PASS.**
+## Current Work Item
+
+| Field | Value |
+| --- | --- |
+| Acceptance ID | G0-G5 final sign-off |
+| Missing behavior | None for the declared seven-slot acceptance scope. |
+| Call path | `native-five-staffdeck.yaml` -> `export-composition.mjs` -> generated Compose topology and runtime env references -> final build/start/restart/failure-isolation run. |
+| Pass condition / verification | The authoritative table records PASS for every G0-G5 gate; durable artifacts retain the final G4/G5 deployment and real-provider evidence without credential material. |
+| Next action | Retain the archived evidence; rerun affected gates only after a scoped owner, composition, or deployment change. |
+
+Preflight completed (2026-09-20): `export-composition.mjs` produced
+`/tmp/pilotdeck-g4-native-five.tcOvIK` with five native PilotDeck owners plus
+external `staffdeck.knowledge` and `staffdeck.portable-sop` bindings. Its
+`compose.yaml` parsed with a temporary Compose env file containing only
+`PILOTDECK_API_KEY=test-only` and empty real-model credential fields. The file
+was removed after validation. The export deliberately bundles neither external service;
+its README names `knowledge-runtime:8090` and `sop-runtime:8091`. This host has
+no running instances of those services and no local `node:22-bookworm` or
+`pilotdeck:exported` image, so this was topology evidence only at preflight.
+
+Runtime completion (2026-09-20): the frozen artifact subsequently ran on an
+isolated Docker network with current StaffDeck SOP and Knowledge services. The
+artifact built as `pilotdeck:g4-native-five-20260920`; PilotDeck and both
+service health endpoints returned 200. A real provider turn successfully
+executed `read_skill`, `read_file`, `knowledge_query`, and SOP handoff. The
+wait ID survived a PilotDeck restart; resume completed the same session.
+Stopping SOP produced `StaffDeck SOP runtime request failed: fetch failed`
+without falsely completing state; after SOP recovery the session completed.
+Knowledge was restarted independently and the persisted document query still
+returned a chunk and citation. Three further real turns followed by
+`/compact` produced a durable `compaction_completed` record and
+`compact_boundary` with `summaryGenerated: true`. The sanitized durable result,
+environment record, and command log are at
+`conformance/artifacts/g4-native-five-runtime-20260920/`; the original
+`/tmp/pilotdeck-g4-runtime-20260920` directory is only the run source.
+Credentials were injected only into the Compose process environment.
+
+**LIVE-EXPORT-01: real provider on a newly exported Compose artifact. Status:
+PASS for the fixed SOP profile; not a seven-slot sign-off.**
 
 The exported-artifact real-model mode generated a temporary runtime config for
 `provider1/qwen3.6-flash-distill` whose API key value was only
@@ -43,7 +85,8 @@ for this profile.
 
 ## P0: Semantic Preservation
 
-**SEM-01: v3 owner-versus-glue module contract comparison. Current status: PASS.**
+**SEM-01: v3 SOP owner-versus-glue contract comparison. Current status: PASS
+for the covered SOP matrix; the seven-slot semantic gate remains PARTIAL.**
 
 Use the original SOP sources in the specified StaffDeck checkout as the oracle:
 
@@ -120,7 +163,8 @@ does not fabricate replacement semantics.
 
 ## P0: Export and Clean Deployment
 
-**PKG-01: One-command standalone export. Current status: PASS.**
+**PKG-01: One-command standalone export. Current status: PASS for the shipped
+SOP profiles; the final seven-slot export remains NOT RUN.**
 
 `export-composition.mjs` now creates a standalone directory from either shipped
 profile. It copies required PilotDeck and StaffDeck sources, rewrites the SOP
@@ -156,7 +200,8 @@ directories and removed their isolated Compose projects, networks, and
 volumes. The products' build contexts and runtime paths remained inside each
 export.
 
-**DEP-01: Actual Compose deployment. Current status: PASS.**
+**DEP-01: Actual Compose deployment. Current status: PASS for the shipped SOP
+profile; the final integrated seven-slot deployment/recovery run remains PARTIAL.**
 
 Rerun evidence (2026-09-17): a clean SOP-enabled export at
 `/tmp/pilotdeck-export-deploy.qpGccG` built both images and started with
@@ -183,12 +228,14 @@ Pass: the exported example completes without undocumented manual edits; state,
 wait identity, and visible transcript survive restart; startup and recovery
 errors are actionable. Compose parsing alone is not a passing result.
 
-Focused missing-tool rerun (2026-09-17): Gateway HTTP E2E includes a fixture
-definition with `lookup_account` deliberately absent. The model receives an
-actionable missing-binding reply; the SOP remains active at `collect_profile`
-and no successful tool receipt is persisted. The full suite passes 9/9 against
-the real StaffDeck HTTP sidecar. The shipped profile now uses
-`operator_approval`, which has no such dependency.
+Focused missing-tool rerun (2026-09-20): Gateway HTTP E2E includes a fixture
+definition with `lookup_account` deliberately absent. The selected SOP is
+rejected before model dispatch with the unavailable-Tool diagnostic; no SOP
+session state is written. This matches the composition rule that an actual
+required dependency failure must reject startup rather than begin an owner
+turn that cannot satisfy its validator. The full suite passes 9/9 against the
+real StaffDeck HTTP sidecar. The shipped profile now uses `operator_approval`,
+which has no such dependency.
 
 Exported real-model rerun (2026-09-17): a fresh SOP-enabled export was built
 and started as Compose project `pilotdeckoperatorverify`, with the credential
@@ -208,7 +255,8 @@ source-checkout repair.
 
 ## P0: YAML Composition and Native Behavior
 
-**CFG-01: Supported profile matrix. Current status: PASS.**
+**CFG-01: Supported profile matrix. Current status: PASS for the fixed SOP
+profile; arbitrary seven-slot provider selection remains NOT RUN.**
 
 Exercise absent `modules`, explicit PilotDeck-only with SOP disabled, and the
 mixed profile. With SOP disabled, stop/remove StaffDeck and prove normal chat
@@ -252,7 +300,8 @@ matrix. It does not claim arbitrary non-PilotDeck core providers are supported.
 
 ## P0: Complete Real-Model Workflow
 
-**LIVE-01: Evidence and business tool path. Current status: PASS.**
+**LIVE-01: Evidence and business tool path. Current status: PASS for the fixed
+SOP profile; the seven-slot real-model workflow remains NOT RUN.**
 
 The real-model smoke requires a real PilotDeck business tool before SOP
 handoff. It is a focused local candidate check; export/browser evidence remains
@@ -377,16 +426,79 @@ runtime versions, exact command, exit code, artifact directory, and case
 results. Preserve failing diagnostics too. Use PASS, FAIL, BLOCKED, and
 NOT RUN distinctly; missing or skipped evidence cannot pass a required gate.
 
-Fixed-profile acceptance requires all above gates to pass, including SEM-01's
-direct v3 owner-versus-glue matrix. The original arbitrary-module
-selection goal additionally requires a declared supported provider matrix and
-the corresponding implementation/tests; fixed-profile success cannot establish
+The fixed-profile evidence above is useful regression evidence, but it is not
+the requested seven-slot acceptance. The candidate now has contract-driven
+bindings for the six core slots and a StaffDeck Knowledge Module Protocol
+facade; those are implementation inputs, not completion evidence. The broader
+goal still requires session-level and independent implementation conformance
+for every slot, B0 owner parity, a complete exporter/profile, and the G0-G5
+gates in `ACCEPTANCE_REQUIREMENTS.md`. Fixed-profile success cannot establish
 that broader claim. No module-core changes are authorized by this test plan.
 
-## Release-Blocking Delta
+## Current Seven-Slot Delta
 
-The existing results are sufficient to accept the deterministic composition
-layer as a candidate. They are not sufficient to accept the deployable product.
+This table is the current finite release list for the requested seven-slot
+candidate. It supersedes the historical fixed-SOP-only wording below for
+seven-slot planning. `PASS` rows elsewhere remain reusable evidence only when
+their listed behavior and binding match this row; none changes G0-G5 by itself.
+
+| Acceptance ID | Unsatisfied behavior | Classification | Reusable evidence | One next action | Exit condition |
+| --- | --- | --- | --- | --- | --- |
+| G0 / EVID-01 | Freeze the B0 -> N0 -> C owner inventory and close every recorded drift for all seven slots. | PASS | PilotDeck N0 `4355463d`: AgentLoop (7/7), Skill (15/15), Tool (23/23), Context/Compaction (15/15), Model (14/14). StaffDeck N0 `71aaede2`: SOP GraphRules (3/3) plus TurnFinalizer (5/5), Knowledge citations (3/3) plus public owner lifecycle (11/11), each B0 -> N0 and N0 -> C; injected mismatches exit 1. The independent AgentLoop session replay includes `incomplete-turn-resumed-execution` with full B0/C request, event, terminal, durable-order, and zero-side-effect comparison. | Retain the root-selectable runners and rerun only after an owner or adapter change. | Every declared owner row has a baseline command/result, closed difference, and mismatch sensitivity. |
+| TOOL-01 | Native Gateway Tool audit/restart, timeout, and cancellation side effects. | PASS | `run-tool-gateway-restart-b0-differential.mjs` plus focused durable Tool recorder regression. | Retain the runner as the Tool regression; do not reopen it unless native dispatch or durable Tool recording changes. | B0/C compare declared Tool result, audit and filesystem/process effects; injected order/result mismatch exits nonzero. |
+| CTX-01 / CMP-01 | Native Gateway automatic-compaction/restart replay must preserve every model-visible post-boundary message and canonical request. | PASS for the declared native Gateway slice | Refreshed schema-v3 real-owner trace, B0 Context/budget replay, B0 legacy compact-boundary projection, strict post-restart request comparison, and `run-context-b0-differential.mjs` 4/4. Messages, tool names, `agent`, `execute_code` descriptions, contribution order, media pairing, max-message projection, and cache fields align. | Retain the strict runner; reopen only if Context or compaction code changes. | Reactive+auto transcript, boundaries, budgets, restart count, messages, and complete canonical request parity pass. |
+| CMP-02 | Manual compaction failure/cancellation and process termination before/after replacement commit, including spill/missing-summary and service-recovery branches. | PASS for the declared native recovery slice | `native-compaction-process-recovery.spec.js` 7/7, `run-compaction-restart-b0-differential.mjs` 3/3 B0/C, `manual-compaction-controller.spec.js` missing-summary/write-race cases, `run-compaction-b0-differential.mjs`, and `run-auto-compaction-b0-differential.mjs`. | Retain the passing recovery matrix; reopen only after a Context or compaction behavior change. | Summary failure/cancellation/kill preserves prior history; commit-before/after kill yields exactly one boundary; spill, missing summary, cancellation, write-race, and outage recovery have explicit state assertions. |
+| MODEL-01 | Configured-provider runtime parity for selection, usage, error, retry and cancellation. | PASS | `run-model-provider-b0-differential.mjs`, `run-model-request-b0-differential.mjs`, `run-model-runtime-b0-differential.mjs`, and focused Model owner regressions. | Retain the runtime runner; reopen it if native Model request, stream, usage, retry, or cancellation behavior changes. | Six B0/C cases compare configured provider/model selection and default output cap, normalized content/tool/usage stream, retry progress and request count, terminal auth classification, active cancellation, and non-stream completion/tool/usage. Usage/error/event-order injections each exit nonzero; real-provider behavior is covered separately by G5. |
+| SOP-01 / SOP-02 | Declared SOP owner lifecycle, nesting and cross-process resume slice. | PASS | 5/5 B0/C native `TurnFinalizer` differential (handoff, routed handoff, rejected handoff, completed, continued), 49/49 direct owner/API tests, 24/24 frozen nesting checks, and 10/10 real StaffDeck HTTP Gateway E2E. The Gateway now proves `awaiting_user`, `failed`, and `blocked` projections alongside handoff/external wait restart/recovery. | Retain these regressions; reopen only if the owner lifecycle, portable HTTP state mapping, or Gateway SOP state store changes. | Handoff/external waits have the only resumable host waits. Awaiting-user/failed reject `resumeSop` and recover through ordinary turns; blocked rejects `resumeSop`, does not re-enter owner preparation, and remains terminal. |
+| KB-01..KB-04 | Full public Knowledge management/discovery facade matrix. | PASS | `run_staffdeck_knowledge_owner_lifecycle_differential.py` compares 11/11 B0/C native owner behavior groups, with mismatch sensitivity; `run_staffdeck_knowledge_lifecycle.py` records 32/32 declared facade calls and correlated envelopes across restart, including query/citation/OKF state. | Retain the two runners and rerun only after Knowledge owner or facade changes. | Closed for the declared KB matrix. It does not establish G0, G3, G4, or G5. |
+| PLUG-02 | A frozen host must accept an unregistered implementation in every slot through YAML alone, execute one real domain operation, and reject a contract/error path. | PASS for the declared unknown-module matrix, not G2 sign-off | `unknown-agent-loop-conformance.spec.ts` (4 cases), `external-sidecar-sop-session-e2e.spec.ts`, `http-module-runtime.spec.ts` (18 cases), `modules-config.spec.ts` (21 cases), and `run-sop-conformance.mjs`. | Retain these conformance runners; rerun after protocol/config changes. | All seven slots have an unregistered YAML-selected operation and a structured identity/capability/contract/state-mode or operation failure path without a host factory or implementation allow-list. |
+| PLUG-03..PLUG-05 / RPC-01 | Toggles, required-dependency rejection, reconfiguration, and fail-closed remote uncertainty. | PASS for the declared G2 matrix | `PARALLEL_PROTOCOL_REPORT.md`: PLUG-03/04/05 and RPC-01 are PASS; focused composition/config tests cover plain, Knowledge-only, SOP-only, disabled modules, dependency rejection, rejected reload retention, and timeout/disconnect/cancel result-unknown behavior. | Carry this evidence into G2; do not repeat the delivered protocol slice. | Closed for the declared protocol/configuration matrix. Integrated seven-slot export and G4/G5 remain separate gates. |
+| E2E-01..E2E-05 / REC-01..REC-02 | Real owner composition has deterministic E2E-01 plus E2E-02..05 and recovery slices. | PASS for the declared native-five composition | `real-staffdeck-seven-slot-e2e.spec.js` 2/2, native recovery 7/7, compaction restart 3/3, AgentLoop differential 7/7, LOOP/session recovery 7/7, Knowledge 32/32/11/11, plus the cancellation/write-race and outage assertions listed above. | Retain the evidence; reopen only after owner, composition, or recovery behavior changes. | Each E2E case has an input, expected state/side effect, and trace; no claim of remote durable deduplication is made where the contract does not declare it. |
+| G4 / DEP-01 | Final integrated seven-slot export, clean build/start, restart and failure-isolation evidence. | PASS for the frozen native-five artifact | `conformance/artifacts/g4-native-five-runtime-20260920/result.sanitized.json` plus its `environment.txt` and `command-log.txt`: current PilotDeck image built from the exported artifact, external Knowledge/SOP health, PilotDeck restart retained the SOP wait, Knowledge restart retained query/citation state, and SOP outage returned a recoverable failure before completion after recovery. | Retain the sanitized runtime record; do not rerun without a deployment or composition change. | Fresh artifact builds/starts, shared StaffDeck topology is correct, restart/outage paths preserve state, and all G4 assertions pass. |
+| G5 / E2E-REAL | Real provider plus real StaffDeck Knowledge/SOP must execute Skill -> Tool -> Knowledge -> handoff -> resume -> completed and one real summary. | PASS | `conformance/artifacts/g5-native-five-continuous-20260920/evidence-summary.json` and `transcript.sanitized.jsonl` record one final-artifact session with successful Skill, Tool, Knowledge evidence/citations, handoff wait, accepted resume, completed SOP state, and durable compaction. | Retain this artifact; rerun only after the final artifact, Knowledge/SOP protocol, or model workflow changes. | One sanitized transcript records every required real operation and final completed state, with no credentials or provider URLs. |
+
+### Strict B0 Compaction Decision
+
+The application/profile default and invalid-value fallback now select
+`runtimeContextSurface: system_prompt`, matching B0's model-visible default.
+Explicit `user_message` remains supported and separately tested; it is not
+normalized away during parity comparison.
+
+The current native-owner trace is generated by:
+
+```sh
+env -u NODE_OPTIONS PILOTDECK_E2E_ARTIFACT_DIR=/tmp/pilotdeck-e2e01-restart-trace.65478n \
+  PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
+  node --test --test-force-exit --test-name-pattern='native PilotDeck owners compose real StaffDeck Knowledge and SOP through Gateway' \
+  dist/tests/composition/real-staffdeck-seven-slot-e2e.spec.js
+```
+
+Its transcript records a successful `reactive` compact boundary followed by a
+successful `auto` boundary. Both remain in the durable transcript. The strict
+runner validates exactly one automatic replacement boundary, preserves the
+reactive boundary in the trace-only B0 legacy durable-message projection, and
+compares the next B0 Gateway request against all 28 candidate model-visible
+messages after restart:
+
+```sh
+env -u NODE_OPTIONS PILOTDECK_E2E_POST_COMPACTION_REPLAY=1 \
+  PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
+  node products/pilotdeck-staffdeck-sop/conformance/run-e2e01-native-pilotdeck-b0-gateway-session-replay.mjs \
+  /tmp/pilotdeck-e2e01-restart-trace.65478n/e2e01-native-owner-trace.json
+```
+
+It exits `0`. With
+`PILOTDECK_E2E_POST_COMPACTION_REQUEST_INJECT_MISMATCH=1`, the same command
+exits `1` and reports the altered final user-message content. The frozen B0
+still cannot directly read atomic `replacementMessages`; only the runner's
+trace-local legacy projection bridges that historical JSONL format, without
+modifying B0 or candidate product code.
+
+## Historical Fixed-SOP Release-Blocking Delta
+
+The existing results are sufficient to describe a deterministic SOP
+composition-layer candidate. They are not sufficient to accept the requested
+seven-slot deployable product.
 The following four tests are the minimum remaining release-blocking execution
 set. Run them against one immutable exported SOP-enabled artifact and retain
 sanitized logs, screenshots, state snapshots, and the exact image/config

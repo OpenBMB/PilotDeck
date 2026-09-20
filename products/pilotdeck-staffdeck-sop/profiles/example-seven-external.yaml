@@ -1,0 +1,72 @@
+schemaVersion: 1
+agent:
+  model: external/default
+model:
+  providers:
+    external:
+      protocol: openai
+      url: https://model.example.invalid/v1
+      apiKey: ${PILOTDECK_API_KEY}
+      models:
+        default: {}
+modules:
+  agentLoop:
+    enabled: true
+    implementationId: example.loop
+    contract: pilotdeck.agent-loop/v1
+    transport: module-tcp-v2
+    host: loop.example.invalid
+    port: 9020
+    methods: [execute, cancel, status, resume, ack]
+  skills:
+    enabled: true
+    implementationId: example.skills
+    contract: pilotdeck.skills/v1
+    transport: module-http-v2
+    endpoint: http://skills.example.invalid:9021
+    methods: [list, read]
+  tools:
+    enabled: true
+    implementationId: example.tools
+    contract: pilotdeck.tools/v1
+    transport: module-http-v2
+    endpoint: http://tools.example.invalid:9022
+    methods: [execute]
+    catalog:
+      - name: remote_lookup
+        description: Look up an externally owned value.
+        inputSchema: { type: object }
+        readOnly: true
+        concurrencySafe: true
+  context:
+    enabled: true
+    implementationId: example.context
+    contract: pilotdeck.context/v1
+    transport: module-http-v2
+    endpoint: http://context.example.invalid:9023
+    methods: [prepare_for_model, try_auto_compact]
+  modelProvider:
+    enabled: true
+    implementationId: example.model
+    contract: pilotdeck.model/v1
+    transport: module-http-v2
+    endpoint: http://model.example.invalid:9024
+    methods: [prepare, stream]
+  sop:
+    enabled: true
+    implementationId: example.sop
+    contract: sop.lifecycle/v2
+    transport: sop-http-v2
+    endpoint: http://sop.example.invalid:9025
+    manifestPath: /module-manifest
+    definitionsPath: ../conformance/fixture.yaml
+    defaultSopId: approval
+    deployment:
+      mode: external
+  knowledge:
+    enabled: true
+    implementationId: example.knowledge
+    contract: staffdeck.knowledge/v1
+    transport: module-http-v2
+    endpoint: http://knowledge.example.invalid:9026
+    methods: [list_bases, create_base, get_base, update_base, delete_base, list_versions, sync_base, publish_version, rollback_version, list_documents, get_document, import_document, import_okf, update_document, delete_document, list_document_buckets, update_bucket, list_bucket_chunks, update_chunk, get_job, list_jobs, cancel_job, list_okf_concepts, get_okf_concept, upsert_okf_concept, export_okf, lint_okf, list_discoveries, confirm_discovery, reject_discovery, query, resolve_citation]

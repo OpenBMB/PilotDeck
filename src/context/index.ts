@@ -140,8 +140,14 @@ export {
   type CompactionTrigger,
 } from "./compaction/CompactionEngine.js";
 export {
+  type CompactionAutomaticTriggerObservation,
+  type CompactionBudgetEvaluation,
+} from "./compaction/CompactionOrchestrator.js";
+export {
   type AutoCompactResult as CompactionAutoCompactResult,
   type CompactionAutoCompactInput,
+  type CompactionBudgetEvaluationObservation,
+  type CompactionBudgetEvaluator,
   type CompactionBudgetProjection,
   type CompactionBudgetPort,
   type CompactionMicroPort,

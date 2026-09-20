@@ -153,6 +153,119 @@ test("SOP loop admits a completed step only after a PilotDeck tool result", asyn
   }
 });
 
+test("SOP session construction rejects definitions whose required PilotDeck tool is unavailable", () => {
+  const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-missing-tool-"));
+  try {
+    const noTools: ToolPort = {
+      list: () => [],
+      async executeAll() { return []; },
+    };
+    assert.throws(
+      () => createSopSession({
+        root,
+        sessionId: "missing-tool",
+        model: modelFromStream(async function* () { yield* yieldText("unreachable"); }),
+        client: acceptingClient(),
+        tools: noTools,
+      }),
+      (error: unknown) => (error as { code?: string; missingToolNames?: unknown }).code === "SOP_REQUIRED_TOOL_UNAVAILABLE"
+        && JSON.stringify((error as { missingToolNames?: unknown }).missingToolNames) === JSON.stringify(["lookup_account"]),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("SOP glue decorates an externally supplied AgentLoop runner through sidecar ports", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-external-loop-"));
+  try {
+    const profile: StaffDeckSopRuntimeConfig = {
+      provider: "staffdeck",
+      endpoint: "http://unused.test",
+      definitionsPath: join(root, "definitions.yaml"),
+      defaultSopId: "onboarding",
+      stateRoot: root,
+    };
+    const client = acceptingClient();
+    const session = createAgentSession({
+      sessionId: "external-loop-session",
+      config: {
+        provider: "test",
+        model: "test-model",
+        cwd: root,
+        permissionMode: "bypassPermissions",
+        permissionContext: createDefaultPermissionContext({ cwd: root, mode: "bypassPermissions", canPrompt: false }),
+        staffDeckSop: profile,
+      },
+      dependencies: {
+        router: {} as never,
+        ports: { model: modelFromStream(async function* () { yield* yieldText("unused"); }), tools: toolPort(lookupTool()) },
+        tools: { registry: { list: () => [lookupTool()] } as never, scheduler: { executeAll: async () => [] } as never },
+      },
+      agentLoopFactory: (input) => new SopAgentLoop(input.config, input.capabilities, input.seedState, {
+        profile,
+        bundle: BUNDLE,
+        client,
+        stateStore: new SopStateStore(join(root, "sessions")),
+        sidecarModules: input.sidecarModules,
+        sidecarTransportContext: input.sidecarTransportContext,
+        runnerFactory: (runnerInput) => {
+          const modules = runnerInput.sidecarModules;
+          assert.ok(modules, "external runner must receive the composed sidecar modules");
+          return {
+            snapshotFileState: () => ({}),
+            async *run(runInput) {
+              const tools = modules.capability.execution.list();
+              assert.ok(tools.some((tool) => tool.name === "submit_step_result"));
+              await modules.context?.execution.prepareForModel({
+                sessionId: runInput.sessionId,
+                turnId: runInput.turnId,
+                cwd: root,
+                provider: "test",
+                model: "test-model",
+                permissionMode: "bypassPermissions",
+                additionalWorkingDirectories: [],
+                messages: runInput.messages,
+                tools: [],
+              } as never);
+              const [submitted] = await modules.capability.execution.executeAll(
+                [{ id: "external-submit", name: "submit_step_result", input: { status: "completed", replyFragment: "External loop completed." } }],
+                { sessionId: runInput.sessionId, turnId: runInput.turnId, cwd: root } as never,
+                { sessionId: runInput.sessionId, turnId: runInput.turnId, runId: "external-run", operationId: "external-op" },
+              );
+              assert.equal(submitted?.type, "success");
+              const result = {
+                type: "success" as const,
+                sessionId: runInput.sessionId,
+                turnId: runInput.turnId,
+                stopReason: "completed" as const,
+                usage: {},
+                permissionDenials: [],
+                turns: 1,
+                startedAt: "2026-09-18T00:00:00.000Z",
+                completedAt: "2026-09-18T00:00:01.000Z",
+              };
+              yield { type: "turn_completed", sessionId: runInput.sessionId, turnId: runInput.turnId, result };
+              return { result, messages: [] };
+            },
+          };
+        },
+      }),
+    });
+
+    const events: AgentEvent[] = [];
+    for await (const event of session.submit({ type: "text", text: "Run external SOP" }, { turnId: "external-turn" })) {
+      events.push(event);
+    }
+    assert.ok(events.some((event) => event.type === "assistant_message"
+      && event.message.content[0]?.type === "text"
+      && event.message.content[0].text === "External loop completed."));
+    assert.equal((await new SopStateStore(join(root, "sessions")).status("external-loop-session"))?.state.status, "completed");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("SOP state store rejects a stale submission revision before replacing durable state", async () => {
   const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-revision-conflict-"));
   try {

@@ -1,5 +1,14 @@
 # PilotDeck + StaffDeck SOP
 
+Seven-slot external example: `profiles/example-seven-external.yaml` binds every
+slot to an unregistered implementation. The exporter preserves these bindings
+and lists the required external endpoints in the generated README.
+
+> 当前验收状态：**NOT READY**（七插槽可插拔目标尚未签收）。本目录已
+> 具备固定 PilotDeck AgentLoop + Tools + Model Provider + StaffDeck SOP
+> 的部分 glue、导出和真实部署证据；这不等于 Skill、Context/Compaction
+> 或 StaffDeck Knowledge Management 已支持未知实现接入。
+
 This product profile keeps AgentLoop, model providers, tools, sessions and
 durable state in PilotDeck. The StaffDeck container is a stateless SOP
 transition service. PilotDeck snapshots every session's selected SOP
@@ -43,6 +52,32 @@ the existing StaffDeck handoff lifecycle and no business-tool binding. Point
 when deploying a business workflow. Any declared business capability remains a
 PilotDeck tool dependency: missing capabilities fail explicitly instead of
 falling back to StaffDeck-owned tools, knowledge bases, channels, or sessions.
+
+The broader target has seven slots: `agentLoop`, `skills`, `tools`, `context`,
+`modelProvider`, `sop`, and `knowledge`. Compaction is part of `context`.
+Only a slot with a published contract, resolver/binding, owner parity evidence,
+and an independent unknown-implementation conformance test may be called
+pluggable. See [ACCEPTANCE.md](ACCEPTANCE.md) for the current decision and
+[ACCEPTANCE_REQUIREMENTS.md](ACCEPTANCE_REQUIREMENTS.md) for the release gates.
+
+## Protocol conformance example
+
+`profiles/example-sop-external.yaml` demonstrates an unregistered SOP
+implementation. It uses the same `sop.lifecycle/v2` contract but does not
+import StaffDeck or require a PilotDeck factory entry. Build PilotDeck first,
+then run the independent cross-process conformance check:
+
+```bash
+PATH=/Users/a1/.nvm/versions/node/v22.13.1/bin:$PATH \
+PYTHON_BIN=/path/to/python \
+node products/pilotdeck-staffdeck-sop/conformance/run-sop-conformance.mjs
+```
+
+The check performs a real `prepare`, a completed `submit`, and a business
+rejection. It is protocol conformance evidence only; it does not claim parity
+with StaffDeck's complete SOP owner. Protocol-bound modules can declare
+`deployment.mode: build`, `image`, or `external`; legacy `provider: staffdeck`
+continues to emit the managed StaffDeck sidecar.
 
 Handoff and external-task recovery is deliberately two-stage. The host first
 accepts the result through `POST /api/sop/resume`; the returned message is then

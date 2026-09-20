@@ -19,6 +19,7 @@ import type {
 type CapabilityModuleCall = Omit<ModuleCallRequest, "kind" | "messageId" | "method"> & {
   idempotencyKey?: string;
   recordFailure?: boolean;
+  abortSignal?: AbortSignal;
 };
 
 export type HostCapabilityModuleClient = (request: CapabilityModuleCall) => Promise<ModuleResponse>;
@@ -149,19 +150,29 @@ export function createHostCapabilityToolPort(
 
       if (options.methods?.includes("execute_batch") && calls.length > 0) {
         const resultSlots = new Array<PilotDeckToolResult | undefined>(calls.length);
-        const response = await callModule({
+        let response: ModuleResponse;
+        try {
+          response = await callModule({
           runId: execution.runId,
           operationId: execution.operationId ?? options.binding?.operationId ?? execution.turnId,
           idempotencyKey: execution.idempotencyKey ?? options.binding?.idempotencyKey,
           requestId: `tool-batch-${uuid()}`,
           module: "capability",
-          payload: {
+            abortSignal: execution.abortSignal,
+            payload: {
             operation: "execute_batch",
             calls: calls.map((call) => ({ name: call.name, arguments: call.input, toolCallId: call.id })),
             context: serializeToolContext(context),
             execution: serializeExecutionContext(execution),
-          },
-        });
+            },
+          });
+        } catch (error) {
+          if (moduleCallWasAborted(error) || execution.abortSignal?.aborted) {
+            options.onAbort?.("tool_cancelled");
+            throw new Error("Tool execution cancelled.");
+          }
+          return calls.map((call) => transportFailureResult(call, error));
+        }
         const results = response.payload?.results;
         if (!response.ok) {
           for (const [index, call] of calls.entries()) resultSlots[index] = moduleFailureResult(call, response);
@@ -188,20 +199,30 @@ export function createHostCapabilityToolPort(
 
       const execute = async (call: PilotDeckToolCall): Promise<PilotDeckToolResult> => {
         if (execution.abortSignal?.aborted) throw new Error("Tool execution cancelled.");
-        const response = await callModule({
-          runId: execution.runId,
-          operationId: execution.operationId ?? options.binding?.operationId ?? execution.turnId,
-          idempotencyKey: execution.idempotencyKey ?? options.binding?.idempotencyKey,
-          requestId: `tool-${uuid()}`,
-          module: "capability",
-          payload: {
-            name: call.name,
-            arguments: call.input,
-            toolCallId: call.id,
-            context: serializeToolContext(context),
-            execution: serializeExecutionContext(execution),
-          },
-        });
+        let response: ModuleResponse;
+        try {
+          response = await callModule({
+            runId: execution.runId,
+            operationId: execution.operationId ?? options.binding?.operationId ?? execution.turnId,
+            idempotencyKey: execution.idempotencyKey ?? options.binding?.idempotencyKey,
+            requestId: `tool-${uuid()}`,
+            module: "capability",
+            abortSignal: execution.abortSignal,
+            payload: {
+              name: call.name,
+              arguments: call.input,
+              toolCallId: call.id,
+              context: serializeToolContext(context),
+              execution: serializeExecutionContext(execution),
+            },
+          });
+        } catch (error) {
+          if (moduleCallWasAborted(error) || execution.abortSignal?.aborted) {
+            options.onAbort?.("tool_cancelled");
+            throw new Error("Tool execution cancelled.");
+          }
+          return transportFailureResult(call, error);
+        }
         if (execution.abortSignal?.aborted) throw new Error("Tool execution cancelled.");
 
         const payload = response.payload;
@@ -304,6 +325,35 @@ function moduleFailureResult(call: PilotDeckToolCall, response: ModuleResponse):
     startedAt: new Date().toISOString(),
     completedAt: new Date().toISOString(),
   };
+}
+
+function transportFailureResult(call: PilotDeckToolCall, error: unknown): PilotDeckToolResult {
+  const code = typeof (error as { code?: unknown })?.code === "string"
+    ? (error as { code: string }).code
+    : "MODULE_TRANSPORT_UNAVAILABLE";
+  const timeout = code === "MODULE_TIMEOUT";
+  const message = error instanceof Error ? error.message : "Capability module transport failed.";
+  return {
+    type: "error",
+    toolCallId: call.id,
+    toolName: call.name,
+    error: {
+      code: timeout ? "tool_timeout" : "tool_execution_failed",
+      message,
+      details: {
+        moduleCode: code,
+        outcome: "result_unknown",
+        retryability: "unsafe",
+      },
+    },
+    content: [{ type: "text", text: message }],
+    startedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+  };
+}
+
+function moduleCallWasAborted(error: unknown): boolean {
+  return (error as { code?: unknown })?.code === "MODULE_ABORTED";
 }
 
 function serializeToolContext(context: PilotDeckToolRuntimeContext): Record<string, unknown> {

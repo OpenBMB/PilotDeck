@@ -60,6 +60,56 @@ test("SOP client validates the manifest and wraps calls with the v2 execution en
   });
 });
 
+test("SOP client accepts an unregistered implementation that advertises the configured contract", async () => {
+  const requests: string[] = [];
+  const client = new StaffDeckSopClient("http://sop.test", {
+    manifestPath: "/module-manifest",
+    expectedManifest: {
+      implementationId: "example.approval",
+      contract: "sop.lifecycle/v2",
+      transport: "sop-http-v2",
+    },
+    fetch: async (url, init) => {
+      requests.push(String(url));
+      if (String(url).endsWith("/module-manifest")) return json({
+        ...manifest,
+        descriptorVersion: "1.0",
+        implementationId: "example.approval",
+        implementationVersion: "1.0.0",
+        transport: "sop-http-v2",
+      });
+      const body = JSON.parse(String(init?.body)) as { requestId: string };
+      return json({
+        protocolVersion: "2.0", requestId: body.requestId, ok: true, outcome: "completed", payload: preparePayload(),
+      });
+    },
+  });
+
+  await client.prepare({ bundle, state });
+  assert.deepEqual(requests, ["http://sop.test/module-manifest", "http://sop.test/v1/sop/prepare"]);
+});
+
+test("SOP client rejects a manifest whose implementation identity does not match the YAML binding", async () => {
+  const client = new StaffDeckSopClient("http://sop.test", {
+    expectedManifest: {
+      implementationId: "example.approval",
+      contract: "sop.lifecycle/v2",
+      transport: "sop-http-v2",
+    },
+    fetch: async () => json({
+      ...manifest,
+      descriptorVersion: "1.0",
+      implementationId: "other.approval",
+      transport: "sop-http-v2",
+    }),
+  });
+
+  await assert.rejects(
+    () => client.prepare({ bundle, state }),
+    (error: unknown) => error instanceof StaffDeckSopClientError && error.code === "SOP_PROTOCOL_INCOMPATIBLE",
+  );
+});
+
 test("SOP client preserves semantic runtime rejection codes and retryability", async () => {
   const client = new StaffDeckSopClient("http://sop.test", {
     fetch: async (url, init) => {

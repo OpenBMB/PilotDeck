@@ -1,18 +1,36 @@
-export type StaffDeckSopRuntimeConfig = Readonly<{
-  provider: "staffdeck";
+import type { ModuleDeployment } from "../../composition/types.js";
+
+export const STAFFDECK_SOP_PROTOCOL_VERSION = "2.0" as const;
+export const STAFFDECK_SOP_MODULE_ID = "sop.runtime" as const;
+export const STAFFDECK_SOP_CONTRACT = "sop.lifecycle/v2" as const;
+export const STAFFDECK_SOP_TRANSPORT = "sop-http-v2" as const;
+export const STAFFDECK_SOP_OPERATIONS = ["prepare", "submit"] as const;
+
+type SopRuntimeConfigBase = Readonly<{
   endpoint: string;
   definitionsPath: string;
   defaultSopId: string;
   /** Host-owned directory for durable SOP state; never supplied by a client. */
   stateRoot: string;
   timeoutMs?: number;
+  deployment?: ModuleDeployment;
+}>;
+
+/** Legacy shorthand retained for existing StaffDeck deployments. */
+export type StaffDeckSopRuntimeConfig = SopRuntimeConfigBase & Readonly<{
+  provider: "staffdeck";
 }>;
 
 /** Versioned HTTP boundary between the PilotDeck host and StaffDeck SOP owner. */
-export const STAFFDECK_SOP_PROTOCOL_VERSION = "2.0" as const;
-export const STAFFDECK_SOP_MODULE_ID = "sop.runtime" as const;
-export const STAFFDECK_SOP_CONTRACT = "sop.lifecycle/v2" as const;
-export const STAFFDECK_SOP_OPERATIONS = ["prepare", "submit"] as const;
+export type ProtocolSopRuntimeConfig = SopRuntimeConfigBase & Readonly<{
+  implementationId: string;
+  contract: typeof STAFFDECK_SOP_CONTRACT;
+  transport: typeof STAFFDECK_SOP_TRANSPORT;
+  manifestPath: string;
+}>;
+
+/** A legacy StaffDeck binding or a protocol-selected implementation. */
+export type SopRuntimeConfig = StaffDeckSopRuntimeConfig | ProtocolSopRuntimeConfig;
 
 export type StaffDeckSopOperation = (typeof STAFFDECK_SOP_OPERATIONS)[number];
 
@@ -22,6 +40,19 @@ export type StaffDeckSopModuleManifest = Readonly<{
   moduleId: typeof STAFFDECK_SOP_MODULE_ID;
   contract: typeof STAFFDECK_SOP_CONTRACT;
   operations: StaffDeckSopOperation[];
+  descriptorVersion?: "1.0";
+  implementationId?: string;
+  implementationVersion?: string;
+  transport?: typeof STAFFDECK_SOP_TRANSPORT;
+  capabilities?: string[];
+  state?: Readonly<{ ownership: "host"; schema: string; scope: "session" }>;
+  requires?: Readonly<{ hostCapabilities?: string[] }>;
+}>;
+
+export type SopRuntimeManifestExpectation = Readonly<{
+  implementationId: string;
+  contract: typeof STAFFDECK_SOP_CONTRACT;
+  transport: typeof STAFFDECK_SOP_TRANSPORT;
 }>;
 
 /** Host execution identity forwarded to the stateless SOP runtime. */

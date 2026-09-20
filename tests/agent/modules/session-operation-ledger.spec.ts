@@ -139,6 +139,36 @@ test("session operation ledger restores from the session JSONL backend", async (
   await resumedStorage.dispose();
 });
 
+test("session operation ledger recovers a durable terminal across transport attempt identities", async () => {
+  const transcript = new InMemoryTranscriptWriter();
+  const ledger = new SessionAgentLoopOperationLedger({
+    sessionId: "ledger-session",
+    transcript,
+  });
+  const identity = operationIdentity();
+  await ledger.start(identity);
+  await ledger.accept({ ...identity, streamId: "stream-original" });
+  await ledger.terminal({
+    ...identity,
+    streamId: "stream-original",
+    lastAppliedSequence: 1,
+    outcome: "completed",
+    result: completedResult(),
+    messages: [],
+  });
+
+  const recovered = ledger.recover({
+    ...identity,
+    requestId: "ledger-request-after-restart",
+    binding: {
+      moduleInstanceId: "ledger-sidecar-restarted",
+      connectionGeneration: "ledger-connection-restarted",
+    },
+  });
+  assert.equal(recovered?.state, "terminal");
+  assert.equal(recovered?.state === "terminal" ? recovered.resolution.result.type : undefined, "success");
+});
+
 function operationIdentity() {
   return {
     runId: "ledger-run",

@@ -106,6 +106,8 @@ export type AgentLoopSidecarResultUnknownReconciler = (
 
 export type AgentLoopSidecarRuntimeFactoryOptions = {
   connect: AgentLoopSidecarConnectionFactory;
+  /** Expected descriptor identity selected by deployment composition. */
+  expectedModuleId?: string;
   /**
    * Optional host operation-ledger query for a sidecar result_unknown final.
    * Omitting it intentionally keeps result_unknown fail-closed.
@@ -224,6 +226,7 @@ export function createAgentLoopSidecarRuntimeFactory(
       ?? createSidecarModuleComposition(createSidecarHostModulePorts(capabilities)),
     seedState,
     connect: options.connect,
+    expectedModuleId: options.expectedModuleId,
     reconcileResultUnknown: options.reconcileResultUnknown,
     operationLedger: options.transportContext?.operationLedger
       ?? sidecarTransportContext?.operationLedger
@@ -252,6 +255,7 @@ class AgentLoopSidecarRunner implements AgentLoopRunner {
     modules: SidecarModuleComposition;
     seedState?: AgentLoopSeedState;
     connect: AgentLoopSidecarConnectionFactory;
+    expectedModuleId?: string;
     reconcileResultUnknown?: AgentLoopSidecarResultUnknownReconciler;
     operationLedger?: AgentLoopOperationLedger;
     transportObserver?: AgentLoopSidecarTransportObserver;
@@ -339,6 +343,7 @@ class AgentLoopSidecarRunner implements AgentLoopRunner {
         input,
         checkpoint: hostToolCheckpoint,
         manifest: dispatcher.manifest,
+        expectedModuleId: this.options.expectedModuleId,
         uuid: this.options.uuid,
         reconcileResultUnknown: this.options.reconcileResultUnknown,
         operationLedger: this.options.operationLedger,
@@ -361,13 +366,8 @@ class AgentLoopSidecarRunner implements AgentLoopRunner {
           await input.onDurableMessage?.(event.message);
           input.onSteerApplied?.(event.itemId);
         }
-        if (event.type === "agent_status" && event.kind && event.text) {
-          await input.onAgentStatusMessage?.({
-            event: event.event,
-            kind: event.kind,
-            text: event.text,
-            detail: event.detail,
-          });
+        if (event.type === "agent_status") {
+          await input.onAgentStatusMessage?.(sidecarStatusMessage(event));
         }
         yield event;
         if (event.type === "assistant_message" || event.type === "tool_results_projected") {
@@ -460,6 +460,7 @@ class SidecarTurnProtocol {
     input: AgentLoopInput;
     checkpoint: HostToolCheckpoint;
     manifest: ReturnType<typeof createSidecarDefaultModuleDispatcher>["manifest"];
+    expectedModuleId?: string;
     uuid: () => string;
     reconcileResultUnknown?: AgentLoopSidecarResultUnknownReconciler;
     operationLedger?: AgentLoopOperationLedger;
@@ -537,6 +538,43 @@ class SidecarTurnProtocol {
             } else {
               phase = "execute";
               if (this.options.input.abortSignal?.aborted) return abortedResult(this.options.input);
+              const recovered = await this.options.operationLedger?.recover?.(this.operationIdentity());
+              if (recovered?.state === "terminal") {
+                const terminal = readResolvedTerminal(recovered.resolution, this.options.input);
+                terminalObserved = true;
+                yield {
+                  type: "turn_completed",
+                  sessionId: this.options.input.sessionId,
+                  turnId: this.options.input.turnId,
+                  result: terminal.result,
+                };
+                return terminal;
+              }
+              if (recovered?.state === "result_unknown") {
+                const resolution = await this.options.reconcileResultUnknown?.(recovered.unknown);
+                if (!resolution) {
+                  throw new Error("A recovered sidecar operation has an unknown terminal and cannot be safely re-executed.");
+                }
+                const terminal = readResolvedTerminal(resolution, this.options.input);
+                await this.options.operationLedger?.terminal({
+                  ...recovered.unknown,
+                  outcome: resolution.outcome,
+                  result: terminal.result,
+                  messages: resolution.messages,
+                  ...(resolution.seedState ? { seedState: resolution.seedState } : {}),
+                });
+                terminalObserved = true;
+                yield {
+                  type: "turn_completed",
+                  sessionId: this.options.input.sessionId,
+                  turnId: this.options.input.turnId,
+                  result: terminal.result,
+                };
+                return terminal;
+              }
+              if (recovered?.state === "incomplete") {
+                throw new Error("A recovered sidecar operation is incomplete and cannot be safely re-executed.");
+              }
               await this.options.operationLedger?.start(this.operationIdentity());
               await this.send(this.executeRequest());
               executeStarted = true;
@@ -708,6 +746,9 @@ class SidecarTurnProtocol {
     }
     const binding = parseBinding(message);
     if (phase === "hello") {
+      if (this.options.expectedModuleId && binding.moduleId !== this.options.expectedModuleId) {
+        throw new Error(`Sidecar module identity '${binding.moduleId}' does not match configured implementation '${this.options.expectedModuleId}'.`);
+      }
       if (this.binding) {
         if (this.binding.moduleId !== binding.moduleId) {
           throw new Error("Sidecar changed its module identity while resuming a stream.");
@@ -1375,6 +1416,36 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined;
+}
+
+function sidecarStatusMessage(event: Extract<AgentEvent, { type: "agent_status" }>): {
+  event: string;
+  kind: "status" | "error";
+  text: string;
+  detail?: Record<string, unknown>;
+} {
+  const detail = event.detail ?? {};
+  return {
+    event: event.event,
+    kind: event.kind ?? (isFailureStatusEvent(event.event, detail) ? "error" : "status"),
+    text: event.text ?? (typeof detail.message === "string" ? detail.message : event.event),
+    detail: event.detail,
+  };
+}
+
+function isFailureStatusEvent(event: string, detail: Record<string, unknown>): boolean {
+  if (detail.severity === "error") return true;
+  return new Set([
+    "max_budget_reached",
+    "task_budget_reached",
+    "model_request_failed",
+    "tool_call_recovery_exhausted",
+    "max_turns_reached",
+    "max_output_recovery_exhausted",
+    "empty_response",
+    "content_filter",
+    "unknown_finish_reason",
+  ]).has(event);
 }
 
 function serializeTransportError(error: unknown): Record<string, unknown> {

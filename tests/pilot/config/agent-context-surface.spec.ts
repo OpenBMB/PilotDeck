@@ -37,7 +37,7 @@ test("agent profile exposes the durable user-message runtime-context surface", (
   }
 });
 
-test("agent profile defaults to the durable user-message runtime-context surface", () => {
+test("agent profile defaults to the native system-prompt runtime-context surface", () => {
   const home = mkdtempSync(join(tmpdir(), "pilotdeck-context-surface-"));
   try {
     writeFileSync(join(home, "pilotdeck.yaml"), [
@@ -57,13 +57,13 @@ test("agent profile defaults to the durable user-message runtime-context surface
 
     const snapshot = loadPilotConfig({ env: { PILOT_HOME: home } });
 
-    assert.equal(snapshot.config.agent.runtimeContextSurface, "user_message");
+    assert.equal(snapshot.config.agent.runtimeContextSurface, "system_prompt");
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
 });
 
-test("invalid runtime-context surface fails soft to the user-message profile", () => {
+test("invalid runtime-context surface fails soft to the system-prompt profile", () => {
   const home = mkdtempSync(join(tmpdir(), "pilotdeck-context-surface-"));
   try {
     writeFileSync(join(home, "pilotdeck.yaml"), [
@@ -84,7 +84,7 @@ test("invalid runtime-context surface fails soft to the user-message profile", (
 
     const snapshot = loadPilotConfig({ env: { PILOT_HOME: home } });
 
-    assert.equal(snapshot.config.agent.runtimeContextSurface, "user_message");
+    assert.equal(snapshot.config.agent.runtimeContextSurface, "system_prompt");
     assert.equal(
       snapshot.diagnostics.some(
         (diagnostic) => diagnostic.code === "CONFIG_AGENT_RUNTIME_CONTEXT_SURFACE_INVALID",

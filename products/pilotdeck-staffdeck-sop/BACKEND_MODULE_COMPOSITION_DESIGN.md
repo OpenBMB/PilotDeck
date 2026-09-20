@@ -1,29 +1,52 @@
 # 后端模块协议与可插拔装配设计
 
-状态：设计提案，尚未实现。日期：2026-09-18。
+状态：实施中，尚未通过七槽验收。日期：2026-09-18。
 
-本文基于 `codex/pilotdeck-staffdeck-sop` 和 `codex/portable-sop-runtime` 两个工作树的当前代码，包括未提交的 SOP glue 改动。本文不改变已有固定组合的验收范围，也不把新设计视为已验证能力。
+本文以 `codex/pilotdeck-staffdeck-sop` 的 `ec34a7ce` 和 `codex/portable-sop-runtime` 的 `7fdc8d42` 作为解耦分支起点；其后的未提交实现属于候选 C，不能用这两个起点提交代替最终候选身份。新的开发目标扩展为 PilotDeck AgentLoop + Skill + Tool + Context（含 Compaction）+ Model Provider，以及 StaffDeck SOP + 知识管理。此前固定组合的 PASS 仅是历史证据，不构成此扩展组合的验收结果。
+
+执行配套文档：
+
+- [开发 SOP](DEVELOPMENT_SOP.md)：基线冻结、模块边界、开发步骤和差异处理。
+- [Roadmap](ROADMAP.md)：依赖顺序、阶段产物、退出条件和回退策略。
+- [验收需求](ACCEPTANCE_REQUIREMENTS.md)：origin/main 独立对照、模块矩阵、组合 E2E 和签收证据。
+- [AI Goal Prompt](AI_GOAL_PROMPT.md)：可用于持续实现任务的目标与执行约束。
+- [M0 基线审计](BASELINE_AUDIT.md)：固定提交、owner 定位、已执行命令和当前差异。
+
+后续第 10、11 节的早期阶段划分由上述配套文档细化和扩展。发生范围冲突时，以此次七模块验收要求为准；旧验收记录不自动升级。文档中的“七模块”均指上述七个插槽；`CMP-01/CMP-02` 是 Context 的验收用例，不增加插槽数量。
 
 ## 1. 目标与边界
 
 目标是：宿主不需要认识模块的作者、厂商或仓库，只要该实现满足宿主已支持的领域契约、传输协议和组合要求，就能通过 YAML 接入；导出器按配置产生对应部署。
 
+交付标准是“协议即接入”：已支持插槽的新实现接入时，只允许提供模块端 adapter、manifest、运行配置和镜像/服务地址；无需修改、重新编译或重新发布 PilotDeck 宿主，无需新增 provider 白名单、厂商专用 factory 或 exporter 分支。宿主重启或重建 runtime 可以要求，宿主源码变更不属于零代码接入。协议包含数据结构、生命周期、错误、状态归属及必需能力，不能仅靠字段同名认定兼容。
+
+常用模块允许内置快捷绑定。默认适用范围是现有 PilotDeck AgentLoop、Skill、Tool、Context/Compaction、Model Provider 的原生实现：可免远端服务、网络握手和原 owner 的 RPC 部署测试，采用静态 descriptor 与进程内 Port。该豁免只针对具体内置实现的交付方式，不豁免槽位的外部协议接入能力、依赖校验、可替换性或 origin/main 行为对照。SOP 与知识管理在本次验收中仍须走真实跨进程接口。
+
+不能通过把新实现登记为“常用模块”来绕开协议接入验收。内置绑定与外部绑定最终进入同一 resolver/Port；每个目标插槽都要用宿主发布后才创建的 implementationId 验证零宿主改动接入。具体豁免与替代证据记录在交付清单，不新增需要逐个审批的 provider 注册流程。
+
 “未知实现”可以零宿主代码接入；“未知模块类型”需要先定义宿主调用位置和领域契约。例如，新的 SOP 实现可以复用 SOP 插槽，而全新的 Planner 类型不能仅通过自报 manifest 自动成为 AgentLoop 的一个阶段。
+
+必须区分两种验证：现有 PilotDeck/StaffDeck 实现插拔后，要与各自固定 origin/main 保持行为等价；第三方独立实现只需遵守插槽的公开协议与必需行为，不要求复制原实现的算法或输出。第三方 conformance 通过不能替代原模块 parity，原模块 parity 通过也不能证明未知实现可以接入。
+
+每个契约分为必需行为、可选能力和实现私有部分。必需行为包含输入/输出、状态、调用时机、失败/取消与恢复；可选能力显式协商；内部类、数据库对象和算法不直接成为通用协议。已有 `sop.lifecycle/v2` 的 StaffDeck 兼容数据约定仍需明确保留，不在本次通过改名假装变成通用工作流语义。
 
 本设计覆盖配置、契约、装配、RPC、状态归属、后端恢复和部署导出。不涉及前端、动态加载第三方 JavaScript、模块市场或任意生命周期 hook 系统。配置变更通过新建 runtime 或部署重启生效，不承诺活跃会话中的热替换。
 
 所有变更限定在 composition、协议适配和打包层。PilotDeck AgentLoop 与 StaffDeck SOP owner 的业务语义继续由原模块负责。默认示例使用 `operator_approval`，不引入账户 onboarding、`lookup_account` 或子 SOP 执行能力。
 
+语义基准是各自锁定的原始 `origin/main`，不能只比较解耦分支的 owner。子 SOP 不作为新能力开发；如果 main 中已有相关行为而候选组合丢失它，必须记录不兼容并阻止“完整 SOP 等价”签收，不能因候选缺失而自动改为范围外。有限场景通过与模块完整行为一致必须分别报告。
+
 ## 2. 当前基础与差距
 
 | 位置 | 当前实现 | 设计变化 |
 | --- | --- | --- |
-| `src/pilot/config/parseModulesConfig.ts` | 核心模块限 PilotDeck，SOP 限 StaffDeck | 解析实现描述，通过契约和 transport 选择适配器 |
+| `src/pilot/config/parseModulesConfig.ts` | 已解析六个 core slot 的原生/外部 binding；SOP 保留独立契约 | 继续补组合依赖和完整 profile 验证 |
 | `src/cli/createLocalGateway.ts` | 根据 SOP 配置构造专用 wrapper | 消费已验证的 composition plan |
 | `src/agent/loop/AgentLoopRuntimeFactory.ts` | 已有 runner 注入点 | 复用；外部 runner 仍受能力边界约束 |
-| `src/agent/modules/protocol.ts` | Module Protocol v2、Model/Tool Port、流与回调协议 | 优先复用，不另建简化版通用 RPC |
+| `src/agent/modules/protocol.ts` | Module Protocol v2 已扩展 skills/knowledge callback 目标 | 优先复用，不另建简化版通用 RPC |
 | `src/sop/staffdeck/` | 客户端、上下文与工具 wrapper、宿主状态存储 | 分离协议级实现与 StaffDeck 兼容入口 |
-| StaffDeck `portable_sop/.../original_runtime.py` | 调用原生 validator、graph、lifecycle | 保持 owner 委托；补充可选 manifest 描述 |
+| StaffDeck `portable_sop/.../original_runtime.py` | 调用原生 validator、graph、lifecycle | 保持 owner 委托和现有 manifest |
+| StaffDeck `backend/app/api/module_knowledge.py` | Module Protocol facade 调用原生知识 API/Service 与数据库对象 | 补 owner parity、完整管理生命周期和跨进程恢复证据 |
 | `export-composition.mjs` | 按固定组合复制两个仓库 | 根据构建/镜像/外部端点声明生成部署 |
 
 现有 `sop.lifecycle/v2` 是带 StaffDeck 数据约定的领域契约，不是所有工作流引擎天然兼容的格式。采用相同契约意味着接受现有 definition、state、step、proposal、result 及恢复语义；另一引擎需要在自己的 adapter 中实现这些约定。
@@ -41,6 +64,9 @@ flowchart TD
     Factory --> Loop[AgentLoop Runner]
     Factory --> Model[Model Port]
     Factory --> Tools[Tool Port]
+    Factory --> Skills[Skill Port]
+    Factory --> Context[Context 与 Compaction Port]
+    Factory --> Knowledge[StaffDeck 知识管理 Adapter]
     Factory --> SOP[SOP Port 与 Wrapper]
     SOP --> HTTP[HTTP Adapter]
     HTTP --> Owner[StaffDeck 或其他兼容实现]
@@ -49,6 +75,8 @@ flowchart TD
 注册表登记的是宿主已经实现的 `(contract, transport)` 适配器，以及明确内置的实现。远端实现的 `implementationId` 仅用于识别和诊断，不参加厂商白名单判断。
 
 同一种契约可以有多个实现，同一种实现也可以支持多个契约。一个选中的插槽只能绑定一个实现；当前 Tools 插槽视为一个完整工具集合，多工具提供者聚合属于后续独立能力。
+
+本次目标是七个插槽：`agentLoop`、`skills`、`tools`、`context`、`modelProvider`、`sop`、`knowledge`。Compaction 是 `context` 插槽下的必验能力，不是第八个独立插槽，也不得存在两个压缩决策 owner。知识管理与 SOP 可共享一个 StaffDeck 进程/数据库依赖，但必须有独立 binding、能力开关和依赖声明；共享进程不能使已禁用的模块继续被调用。
 
 职责划分：
 
@@ -63,7 +91,7 @@ flowchart TD
 
 ## 4. 配置设计
 
-保留顶层 `schemaVersion: 1`；新增的 binding 字段由 parser 显式识别。以下为拟议格式，当前代码不能直接使用。
+保留顶层 `schemaVersion: 1`；新增 binding 字段由 parser 显式识别。以下格式中的 core slot 已可解析，完整七槽部署仍须等 exporter、依赖校验与组合 E2E 完成后使用。
 
 ```yaml
 schemaVersion: 1
@@ -150,14 +178,17 @@ SOP HTTP 保持 `GET /healthz`，以及原来的必需字段。新增字段采�
 
 ## 6. 领域 Port 与传输协议
 
-第一阶段只泛化 SOP，后续逐步开放已有核心模块 Port。下面的核心模块契约名是建议名，需在相应阶段发布 schema 后才成为可配置能力。
+实现顺序从 SOP 纵向切片开始，再逐步开放已有核心模块 Port。当前候选已经实现下表契约标识、通用 binding 骨架和部分调用；这只表示入口存在，不表示该槽位已通过 owner parity、完整 conformance、组合或导出验收。
 
 | 插槽 | 契约 | 宿主接口与要求 |
 | --- | --- | --- |
 | SOP | 已有 `sop.lifecycle/v2` | `prepare`、`submit`；宿主持有状态，模块返回状态转换结果 |
-| Model Provider | 拟议 `pilotdeck.model/v1` | 复用 `ModelInvokerPort.prepare/stream` 与 CanonicalModelRequest/Event |
-| Tools | 拟议 `pilotdeck.tools/v1` | 复用 `ToolPort.list/executeAll`；权限仍通过宿主授权 Port |
-| AgentLoop | 拟议 `pilotdeck.agent-loop/v1` | 复用 AgentLoopRuntimeFactory、runner、seed 与已有 host callback 协议 |
+| Model Provider | `pilotdeck.model/v1` | 复用 `ModelInvokerPort.prepare/stream` 与 CanonicalModelRequest/Event |
+| Tools | `pilotdeck.tools/v1` | 复用 `ToolPort.list/executeAll`；权限仍通过宿主授权 Port |
+| AgentLoop | `pilotdeck.agent-loop/v1` | 复用 AgentLoopRuntimeFactory、runner、seed 与已有 host callback 协议 |
+| Skill | `pilotdeck.skills/v1` | 复用 SkillManager、发现/渲染/读取链路；CRUD 与运行时可见性保持原生规则 |
+| Context / Compaction | `pilotdeck.context/v1` | 复用 AgentContextRuntime、CompactionPort 与手动压缩入口；保留预算、溢出恢复和持久边界 |
+| 知识管理 | `staffdeck.knowledge/v1` | 复用原生知识库管理、入库任务、KnowledgeRuntime、检索及持久引用；不是仅包装 search |
 
 SOP 使用 `sop-http-v2` 适配器，保留 `/v1/sop/prepare`、`/v1/sop/submit` 和原 envelope。路径中的 `/v1`、RPC `2.0`、StaffDeck 内部 harness v3 是不同层次的版本，迁移不要求它们数值一致。
 
@@ -175,7 +206,7 @@ Model/Tools/AgentLoop 复用 Module Protocol v2 的 execute、事件流、status
 
 ## 7. Runtime 装配方案
 
-建议新增 `src/composition/` 作为宿主装配层，放置 `types.ts`、`parse.ts`、`registry.ts`、`resolve.ts` 和部署计划类型。协议级 SOP 客户端与 wrapper 放入 provider-neutral 的 `src/sop/runtime/`；旧 `src/sop/staffdeck/` 保留兼容导出，逐步迁移调用者。
+当前候选已新增 `src/composition/` 作为宿主装配层，包含契约类型、registry、HTTP binding 和 Port 构造。后续只补真实调用链需要的 resolver、依赖和部署计划能力，不另建第二套 registry。现有 `src/sop/staffdeck/` 同时承担 `sop.lifecycle/v2` 的 StaffDeck 兼容入口；只有在不改变调用者行为且有 parity 证据时，才可机械提取 provider-neutral 部分，不能为了目录命名重写 wrapper。
 
 注册表示意：
 
@@ -195,7 +226,7 @@ registry.registerContract({
 
 Gateway 消费 plan，构造 Model/Tool capabilities，再创建 runner，最后在受支持组合上装配 SOP wrapper。初始化前必须验证这一能力图可满足；资源失败时按创建的逆序清理。
 
-继续使用 `AgentLoopRuntimeFactory` 和原有 runtime bundle。第一阶段保留 SOP 仅适配 native PilotDeck runner、主会话的限制。将来开放 SOP + 外部 loop，需要单独定义该 loop 可提供的上下文/工具装饰边界并验证组合，不能通过删掉现有 guard 宣称支持。
+继续使用 `AgentLoopRuntimeFactory` 和原有 runtime bundle。当前候选仍明确拒绝 SOP + 外部 AgentLoop；七槽验收要求补齐该组合已有扩展边界上的上下文、工具和状态装饰，并通过组合 parity。不能通过删掉 guard、绕过 SOP wrapper 或把该组合改成范围外来宣称支持；若只能修改 AgentLoop/SOP 核心语义才能实现，则记录 BLOCKED。
 
 配置重新加载先构建候选 plan，失败时不得改变当前运行实例。模块选择、协议、端点或状态兼容性变化属于需要重建 runtime 的变更；活跃回合不得切换到另一 binding。
 
@@ -210,6 +241,9 @@ SOP 契约限定为无业务副作用的转换服务：输入 definition、state
 | 工具执行记录与成功凭据 | PilotDeck | 不接受模型自报成功；每步消费与清理 |
 | transcript 与回复 journal | PilotDeck | 保留现有持久回复恢复路径 |
 | owner 临时对象 | 模块进程 | 可重建，不成为另一份权威会话状态 |
+| Skill 文件、scope 与索引 | PilotDeck Skill owner | 沿用原生目录和发现规则，适配器不建第二份权威目录 |
+| Context / Compaction 边界、缓存与落盘引用 | PilotDeck Context 和 session owner | 原生策略决定何时压缩、保留什么、如何恢复 |
+| 知识文档、版本、索引、入库任务和引用快照 | StaffDeck 知识 owner | 原生存储持久化；与无状态 SOP 转换服务区分 |
 
 每次 `prepare/submit` 从同一会话快照发起，只有完整校验响应后，才以读取到的 revision 做条件提交。`expectedRevision` 的 wire 透传不能代替宿主本地的 revision fence。校验失败、网络失败或提交时版本冲突均不得修改本次 RPC 前的状态、wait 和 reply journal。
 
@@ -263,9 +297,13 @@ deployment/
 
 `external` 模式不能称为离线独立部署；`image` 模式仍依赖镜像可获取，`build` 模式仍可能依赖包仓库。自包含部署包表示不依赖原工作树，不等于离线包。外部模型服务也需列入依赖说明。
 
+导出结果必须分开记录四个状态：`exported`（配置和来源已打包）、`built`（本地构建成功）、`handshake-validated`（运行中的 manifest/协议检查通过）和 `e2e-validated`（业务场景通过）。前一个状态不能推导后一个状态；特别是导出器不能把成功复制镜像或生成 Compose 写成运行兼容或语义等价已通过。
+
 凭据继续通过环境引用在运行时注入。更换模块 binding 后必须重新执行启动握手；重启期间 endpoint 同名但服务身份发生变化也不能绕过验证。
 
-## 10. 迁移顺序与完成条件
+## 10. 演进顺序与完成条件
+
+以下 A/B/C 是架构演进顺序，不是要求新的实施代理从头重做。代理必须先检查当前代码、测试和证据，把已有但未验证的实现视为候选而非完成项，并从最早未满足的退出门槛继续。正式进度和 G0-G5 门槛以 [Roadmap](ROADMAP.md) 与 [验收需求](ACCEPTANCE_REQUIREMENTS.md) 为准。
 
 ### 阶段 A：开放未知 SOP 实现
 
@@ -276,15 +314,15 @@ deployment/
 5. exporter 支持 build/image/external，给出离线检查和在线验证的不同状态。
 6. 用不导入 StaffDeck 的最小独立测试服务，验证“未知实现 + 同一契约 + 仅改 YAML”接入。该服务只实现有限测试定义，不能作为完整 SOP 语义等价证明。
 
-完成标志：原有两个 profile 和旧会话恢复通过；未知 SOP 服务在没有厂商注册代码的情况下运行；不支持的契约与组合启动即拒绝；独立导出可从包内启动。
+完成标志：原有两个 profile 和旧会话恢复通过；未知 SOP 服务在没有厂商注册代码的情况下运行；不支持的契约与组合启动即拒绝；独立导出可从包内启动。当前已有部分历史证据，但仍需按最终候选重新执行并记录，不能因为代码存在而自动标记完成。
 
 ### 阶段 B：开放 Tools 与 Model Provider
 
-分别发布基于现有 Port 的线协议 schema，解决工具目录快照、执行位置、权限、模型句柄、流顺序与恢复。每开放一种插槽，同时补它与 native PilotDeck loop、SOP wrapper 的组合测试。仅完成 SOP 不宣称整个核心模块矩阵可互换。
+分别发布基于现有 Port 的线协议 schema，解决工具目录快照、执行位置、权限、模型句柄、流顺序与恢复。当前候选已有协议骨架和首批测试；后续必须补真实 owner 调用、B0 parity、独立未知实现及组合测试。仅完成接口或 SOP 不宣称整个核心模块矩阵可互换。
 
 ### 阶段 C：开放 AgentLoop 实现
 
-复用现有 sidecar 握手与 host callbacks，列出 runner 对 context、model、tools、checkpoint 的依赖，验证中断、恢复、事件及持久化语义。外部 AgentLoop + SOP 作为独立组合门，未通过前明确拒绝。
+复用现有 sidecar 握手与 host callbacks，列出 runner 对 context、model、tools、checkpoint 的依赖，验证中断、恢复、事件及持久化语义。当前候选已有 stdio/TCP binding 和身份校验；外部 AgentLoop + SOP 仍是独立组合门，未通过前必须明确拒绝。
 
 新增 Memory/Planner 等类型另行定义插槽与领域契约。本设计不通过通用 hook 将未知语义自动接入主循环。
 
@@ -307,6 +345,8 @@ deployment/
 测试 SDK 应允许模块作者在自己的服务地址上运行 contract conformance suite，检查 wire schema 和可观测语义。有限 conformance 通过表明满足对应场景，不能替代 provider 自身业务正确性验证。
 
 本次设计文档不要求前端变更或重跑浏览器验收。后续实现阶段 A 时先运行受影响的协议、owner、Gateway 与部署测试；已有前端继续使用相同后端状态/resume 接口。
+
+七模块正式签收还需满足 [验收需求](ACCEPTANCE_REQUIREMENTS.md) 全部门槛，包括两个 origin/main 基线、Skill/Context/知识管理逐模块对照、知识写入恢复、可插拔矩阵和真实模型后端 E2E。不得以本节早期 SOP-only 矩阵替代。
 
 ## 12. 代码参考
 

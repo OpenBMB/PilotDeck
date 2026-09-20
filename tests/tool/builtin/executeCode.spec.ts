@@ -52,6 +52,43 @@ test("execute_code read-only probe handles missing input", () => {
   assert.equal(tool.isReadOnly({} as never), false);
 });
 
+test("execute_code describes native environment inheritance by sandbox mode", () => {
+  const sandbox = {
+    port: { async prepare(request: Parameters<SandboxPort["prepare"]>[0]) { return request; } },
+    resolvePolicy: ({ workspaceRoot, executionRoot }: { workspaceRoot: string; executionRoot: string }) => ({
+      mode: "danger-full-access" as const,
+      workspaceRoot,
+      executionRoot,
+    }),
+  };
+
+  assert.match(createExecuteCodeTool({ sandbox: { ...sandbox, mode: "danger-full-access" } }).description, /inherits the same runtime environment/);
+  assert.match(createExecuteCodeTool({ sandbox: { ...sandbox, mode: "read-only" } }).description, /read-only file-effect policy/);
+  assert.match(createExecuteCodeTool({ sandbox }).description, /environment visibility is provider-defined/);
+});
+
+test("execute_code default host path preserves harmless parent environment sentinels", async () => {
+  let capturedEnv: NodeJS.ProcessEnv | undefined;
+  const result = await createExecuteCodeTool({
+    codeRuntime: {
+      async resolveExecutable() { return "python3"; },
+      async run(request) {
+        capturedEnv = request.env;
+        return { exitCode: 0, exitSignal: null, stdout: "sentinel", stderr: "", timedOut: false, cancelled: false };
+      },
+    },
+    sandbox: {
+      mode: "danger-full-access",
+      port: { async prepare(request) { return request; } },
+      resolvePolicy: ({ workspaceRoot, executionRoot }) => ({ mode: "danger-full-access" as const, workspaceRoot, executionRoot }),
+    },
+  }).execute({ code: "print('sentinel')" }, { ...context(), env: { PILOTDECK_TEST_SENTINEL: "pilotdeck-sentinel" } });
+
+  assert.equal(result.data?.status, "success");
+  assert.equal(capturedEnv?.PILOTDECK_TEST_SENTINEL, "pilotdeck-sentinel");
+  assert.match(capturedEnv?.PYTHONPATH ?? "", /pilotdeck_execute_code_/);
+});
+
 test("disabling web search removes it from the registry but keeps web fetch", () => {
   const registry = createBuiltinRegistry({ webSearch: false });
 

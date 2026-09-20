@@ -33,6 +33,8 @@ import { createNodeSubprocessPort, type SubprocessPort } from "./SubprocessPort.
 /** Execution-world policy supplied to the execute_code consumer. */
 export type ExecuteCodeSandbox = {
   port: SandboxPort;
+  /** The selected native mode, when the host can state it explicitly. */
+  mode?: SandboxMode;
   resolvePolicy(input: { workspaceRoot: string; executionRoot: string }): SandboxPolicy;
 };
 
@@ -123,6 +125,7 @@ export function createNodeExecutionWorldBundle(
     executionTransport: createNodeExecutionTransportPort(),
     executeCodeSandbox: {
       port: sandbox,
+      mode: sandboxMode,
       resolvePolicy: ({ workspaceRoot, executionRoot }) => ({
         mode: sandboxMode,
         workspaceRoot,

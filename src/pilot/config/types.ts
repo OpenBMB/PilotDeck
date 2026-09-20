@@ -5,7 +5,8 @@ import type { InteractionProfileName } from "../../interaction/InteractionProfil
 import type { SandboxMode } from "../../tool/execution-world/SandboxPort.js";
 import type { ModelConfig } from "../../model/protocol/canonical.js";
 import type { RouterConfig } from "../../router/config/schema.js";
-import type { StaffDeckSopRuntimeConfig } from "../../sop/staffdeck/types.js";
+import type { SopRuntimeConfig } from "../../sop/staffdeck/types.js";
+import type { CoreModuleBinding } from "../../composition/types.js";
 
 export type PilotConfigSourceKind = "default" | "project" | "env";
 export type PilotConfigSourcePhase = "bootstrap" | "merge";
@@ -241,17 +242,17 @@ export type PilotTelemetryConfig = {
   enabled: boolean;
 };
 
-export type PilotCoreModuleConfig = {
-  enabled: true;
-  provider: "pilotdeck";
-};
+export type PilotCoreModuleConfig = CoreModuleBinding;
 
-/** Deployment composition selected by YAML; only the StaffDeck SOP slot is external in v1. */
+/** Deployment composition selected by YAML. */
 export type PilotModulesConfig = {
   agentLoop?: PilotCoreModuleConfig;
+  skills?: PilotCoreModuleConfig;
   modelProvider?: PilotCoreModuleConfig;
   tools?: PilotCoreModuleConfig;
-  sop?: StaffDeckSopRuntimeConfig;
+  context?: PilotCoreModuleConfig;
+  sop?: SopRuntimeConfig;
+  knowledge?: PilotCoreModuleConfig;
 };
 
 export type PilotConfig = {

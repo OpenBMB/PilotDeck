@@ -6,6 +6,7 @@ import type {
   ToolExecutionPort,
 } from "../../agent/loop/AgentTurnCapabilities.js";
 import type { AgentLoopRuntimeFactoryInput } from "../../agent/loop/AgentLoopRuntimeFactory.js";
+import type { AgentLoopRuntimeFactory } from "../../agent/loop/AgentLoopRuntimeFactory.js";
 import type { AgentRuntimeConfig } from "../../agent/runtime/AgentRuntimeConfig.js";
 import type { AgentLoopRunner } from "../../agent/turn/TurnRunner.js";
 import type { AgentEvent } from "../../agent/protocol/events.js";
@@ -28,9 +29,10 @@ import type {
   StaffDeckSopProposal,
   StaffDeckSopReplyDelivery,
   StaffDeckSopRuntimeClient,
-  StaffDeckSopRuntimeConfig,
+  SopRuntimeConfig,
   StaffDeckSopSubmitResult,
 } from "./types.js";
+import type { SidecarModuleComposition } from "../../agent/modules/transport/sidecarHostModulePorts.js";
 
 export const SUBMIT_SOP_STEP_RESULT_TOOL = "submit_step_result";
 
@@ -39,10 +41,14 @@ type SopSubmission = Readonly<{
 }>;
 
 type SopAgentLoopOptions = Readonly<{
-  profile: StaffDeckSopRuntimeConfig;
+  profile: SopRuntimeConfig;
   bundle: StaffDeckSopBundle;
   client?: StaffDeckSopRuntimeClient;
   stateStore?: SopStateStore;
+  /** Optional externally deployed loop. SOP remains a host-side decorator. */
+  runnerFactory?: AgentLoopRuntimeFactory;
+  sidecarModules?: SidecarModuleComposition;
+  sidecarTransportContext?: AgentLoopRuntimeFactoryInput["sidecarTransportContext"];
 }>;
 
 /**
@@ -54,7 +60,7 @@ export class SopAgentLoop implements AgentLoopRunner {
   private readonly stateStore: SopStateStore;
   private readonly client: StaffDeckSopRuntimeClient;
   private readonly submissions = new Map<string, SopSubmission>();
-  private readonly native: AgentLoop;
+  private readonly native: AgentLoopRunner;
 
   constructor(
     config: AgentRuntimeConfig,
@@ -63,9 +69,20 @@ export class SopAgentLoop implements AgentLoopRunner {
     private readonly options: SopAgentLoopOptions,
   ) {
     config.stopOnStructuredOutput = true;
+    assertRequiredSopTools(options.bundle, options.profile.defaultSopId, capabilities.toolExecution.list());
     this.stateStore = options.stateStore ?? new SopStateStore(join(config.staffDeckSop!.stateRoot, "sessions"));
     this.client = options.client ?? new StaffDeckSopClient(options.profile.endpoint, {
       timeoutMs: options.profile.timeoutMs,
+      ...("implementationId" in options.profile
+        ? {
+            manifestPath: options.profile.manifestPath,
+            expectedManifest: {
+              implementationId: options.profile.implementationId,
+              contract: options.profile.contract,
+              transport: options.profile.transport,
+            },
+          }
+        : {}),
     });
 
     const controlPort = new SopControlToolPort({
@@ -96,7 +113,17 @@ export class SopAgentLoop implements AgentLoopRunner {
         port: controlPort,
       }),
     }) as AgentTurnCapabilities;
-    this.native = new AgentLoop(config, wrappedCapabilities, seedState);
+    this.native = options.runnerFactory
+      ? options.runnerFactory({
+          config,
+          capabilities: wrappedCapabilities,
+          sidecarModules: options.sidecarModules
+            ? wrapSidecarModules(options.sidecarModules, controlPort, (input) => this.prepareContext(capabilities, input))
+            : undefined,
+          seedState,
+          sidecarTransportContext: options.sidecarTransportContext,
+        })
+      : new AgentLoop(config, wrappedCapabilities, seedState);
   }
 
   snapshotFileState(): AgentLoopSeedState {
@@ -104,7 +131,7 @@ export class SopAgentLoop implements AgentLoopRunner {
   }
 
   seedReadState(filePath: string, mtimeMs: number): Promise<{ applied: boolean }> {
-    return this.native.seedReadState(filePath, mtimeMs);
+    return this.native.seedReadState?.(filePath, mtimeMs) ?? Promise.resolve({ applied: false });
   }
 
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
@@ -218,13 +245,45 @@ export class SopAgentLoop implements AgentLoopRunner {
 /** Creates a native PilotDeck loop decorated with one StaffDeck SOP profile. */
 export function createStaffDeckSopAgentLoop(
   input: AgentLoopRuntimeFactoryInput,
-  profile: StaffDeckSopRuntimeConfig,
+  profile: SopRuntimeConfig,
+  runnerFactory?: AgentLoopRuntimeFactory,
 ): SopAgentLoop {
   const bundle = loadStaffDeckSopDefinitions(profile.definitionsPath);
   if (!bundle.sops.some((definition) => sopId(definition) === profile.defaultSopId)) {
     throw new Error(`StaffDeck SOP defaultSopId '${profile.defaultSopId}' is not present in ${profile.definitionsPath}.`);
   }
-  return new SopAgentLoop(input.config, input.capabilities, input.seedState, { profile, bundle });
+  return new SopAgentLoop(input.config, input.capabilities, input.seedState, {
+    profile,
+    bundle,
+    ...(runnerFactory ? { runnerFactory } : {}),
+    ...(input.sidecarModules ? { sidecarModules: input.sidecarModules } : {}),
+    ...(input.sidecarTransportContext ? { sidecarTransportContext: input.sidecarTransportContext } : {}),
+  });
+}
+
+function wrapSidecarModules(
+  modules: SidecarModuleComposition,
+  controlPort: ToolPort,
+  prepareForModel: (input: Parameters<AgentTurnCapabilities["contextPreparation"]["prepareForModel"]>[0]) => ReturnType<AgentTurnCapabilities["contextPreparation"]["prepareForModel"]>,
+): SidecarModuleComposition {
+  return Object.freeze({
+    ...modules,
+    capability: Object.freeze({
+      ...modules.capability,
+      execution: controlPort,
+    }),
+    ...(modules.context
+      ? {
+          context: Object.freeze({
+            ...modules.context,
+            execution: Object.freeze({
+              ...modules.context.execution,
+              prepareForModel,
+            }),
+          }),
+        }
+      : {}),
+  });
 }
 
 type SopControlToolPortOptions = Readonly<{
@@ -467,9 +526,6 @@ function isSopStatus(value: unknown): value is StaffDeckSopProposal["status"] {
     || value === "failed" || value === "blocked" || value === "waiting_external_task";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -477,4 +533,41 @@ function text(value: unknown): string | undefined {
 
 function sopId(definition: Record<string, unknown>): string | undefined {
   return text(definition.id) ?? text(definition.skill_id);
+}
+
+/**
+ * StaffDeck declares every `call_tool:<name>` action as a required capability
+ * for that graph node. Rejecting a selected definition without the host tool
+ * makes an unavailable dependency a composition error rather than a turn that
+ * can never satisfy the owner validation.
+ */
+function assertRequiredSopTools(
+  bundle: StaffDeckSopBundle,
+  defaultSopId: string,
+  availableTools: readonly PilotDeckToolDefinition[],
+): void {
+  const definition = bundle.sops.find((candidate) => sopId(candidate) === defaultSopId);
+  const content = definition?.content;
+  if (!isRecord(content) || !Array.isArray(content.nodes)) return;
+  const required = new Set<string>();
+  for (const node of content.nodes) {
+    if (!isRecord(node) || !Array.isArray(node.allowed_actions)) continue;
+    for (const action of node.allowed_actions) {
+      if (typeof action !== "string" || !action.startsWith("call_tool:")) continue;
+      const name = action.slice("call_tool:".length).trim();
+      if (name) required.add(name);
+    }
+  }
+  const available = new Set(availableTools.map((tool) => tool.name));
+  const missing = [...required].filter((name) => !available.has(name));
+  if (missing.length > 0) {
+    throw Object.assign(
+      new Error(`StaffDeck SOP '${defaultSopId}' requires unavailable PilotDeck tools: ${missing.join(", ")}.`),
+      { code: "SOP_REQUIRED_TOOL_UNAVAILABLE", missingToolNames: missing },
+    );
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

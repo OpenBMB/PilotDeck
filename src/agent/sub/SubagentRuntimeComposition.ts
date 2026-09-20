@@ -2,6 +2,7 @@ import { PermissionRuntime } from "../../permission/index.js";
 import { ConcurrentToolScheduler } from "../../tool/scheduler/ConcurrentToolScheduler.js";
 import { ToolRuntime } from "../../tool/execution/ToolRuntime.js";
 import { createToolCapabilityPolicy } from "../../tool/registry/ToolCapabilityPolicy.js";
+import { withBuiltinAgentToolDescription } from "../../tool/builtin/agent.js";
 import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
 import { AgentRuntimeScope } from "../scope/AgentRuntimeScope.js";
@@ -58,11 +59,19 @@ export function createSubagentRuntimeComposition(
       disallowedTools: options.definition.disallowedTools,
       // The child may receive the continuable consumer only when the same
       // depth contract that governs the legacy `agent` tool permits another
-      // descendant. Its local registration (installed by the native host)
-      // shadows the parent's binding, so it never delegates as its parent.
+      // descendant. A recognized native agent definition receives a local,
+      // description-only shadow; third-party definitions remain inherited.
       runtimeCapabilities: childDepth < maxSubagentDepth ? ["subagent_fork"] : [],
     }),
   );
+  const parentAgent = parentDependencies.tools.registry.get("agent");
+  const describedChildAgent = parentAgent && withBuiltinAgentToolDescription(parentAgent, {
+    maxSubagentDepth,
+    subagentDepth: childDepth,
+  });
+  if (describedChildAgent) {
+    registry.registerOrReplace(describedChildAgent);
+  }
   const toolRuntime = new ToolRuntime(
     registry,
     inherited.permission,

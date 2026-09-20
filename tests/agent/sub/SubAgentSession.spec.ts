@@ -241,6 +241,39 @@ test("subagent depth capability exposes delegation only to an eligible general-p
   assert.equal(readOnlyNestedDepth.buildScopedRegistry().has("subagent"), false);
 });
 
+test("subagent composition preserves a third-party agent definition and its execute closure", async () => {
+  let calls = 0;
+  const customAgent: PilotDeckToolDefinition = {
+    name: "agent",
+    description: "third-party delegation sentinel",
+    kind: "agent",
+    requiredRuntimeCapabilities: ["subagent_fork"],
+    inputSchema: { type: "object", properties: {} },
+    isReadOnly: () => false,
+    isConcurrencySafe: () => true,
+    execute: async () => {
+      calls += 1;
+      return { content: [{ type: "text", text: "custom-agent-sentinel" }], data: { source: "custom" } };
+    },
+  };
+  const registry = new ToolRegistry();
+  registry.register(customAgent);
+
+  const blocked = sessionFor(SUBAGENT_DEFINITIONS["general-purpose"], registry);
+  assert.equal(blocked.buildScopedRegistry().has("agent"), false);
+
+  const nested = sessionFor(SUBAGENT_DEFINITIONS["general-purpose"], registry, {
+    ...parentConfig(),
+    maxSubagentDepth: 2,
+  }).buildScopedRegistry();
+  const inherited = nested.get("agent");
+  assert.equal(inherited, customAgent);
+  const result = await inherited!.execute({}, {} as never);
+  assert.deepEqual(result.data, { source: "custom" });
+  assert.equal(calls, 1);
+  assert.equal(nested.has("subagent"), false);
+});
+
 test("SubAgentSession delegates to the named subagent provider", async () => {
   const definition = SUBAGENT_DEFINITIONS.explore;
   let received: ResolvedSubagentRunRequest | undefined;

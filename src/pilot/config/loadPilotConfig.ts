@@ -459,7 +459,7 @@ function parseRuntimeContextSurface(
   diagnostics.push({
     code: "CONFIG_AGENT_RUNTIME_CONTEXT_SURFACE_INVALID",
     severity: "warning",
-    message: "agent.runtimeContextSurface must be system_prompt or user_message; using the user_message profile default.",
+    message: "agent.runtimeContextSurface must be system_prompt or user_message; using the system_prompt profile default.",
     path: "agent.runtimeContextSurface",
     recoverable: true,
   });

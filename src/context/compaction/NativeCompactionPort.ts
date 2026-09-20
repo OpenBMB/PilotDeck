@@ -9,7 +9,10 @@ import type { MicroCompactionEngine } from "./MicroCompactionEngine.js";
 import type { SnipEngine } from "./SnipEngine.js";
 import type { ContextOverflowRecovery } from "../recovery/ContextOverflowRecovery.js";
 import type { CompactionPort } from "./CompactionPort.js";
-import { createCompactionOrchestrator } from "./CompactionOrchestrator.js";
+import {
+  createCompactionOrchestrator,
+  type CompactionAutomaticTriggerObservation,
+} from "./CompactionOrchestrator.js";
 
 export type NativeCompactionPortOptions = {
   tokenBudget?: TokenBudgetManager;
@@ -20,6 +23,7 @@ export type NativeCompactionPortOptions = {
   overflowRecovery?: ContextOverflowRecovery;
   maxContextTokens?: number;
   log?: (stage: string, context: { sessionId?: string; turnId?: string }, details: Record<string, unknown>) => void;
+  onAutomaticTrigger?: (observation: CompactionAutomaticTriggerObservation) => void;
 };
 
 /** Native provider adapter for the existing PilotDeck compaction algorithms. */
@@ -53,6 +57,7 @@ export function createNativeCompactionPort(options: NativeCompactionPortOptions)
   port.autoCompact = createCompactionOrchestrator(port, {
     maxContextTokens: options.maxContextTokens ?? 8192,
     log: options.log,
+    onAutomaticTrigger: options.onAutomaticTrigger,
   });
   return port;
 }
