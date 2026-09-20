@@ -1,10 +1,10 @@
-# SDK/Core Integration 系统回归最终报告（2026-09-20）
+# SDK/Core Integration 系统回归历史快照（2026-09-20）
 
 ## 结论
 
-**本报告的历史“验收通过”结论已失效，当前不得视为验收完成。** 2026-09-20 的后续 StaffDeck production-stdio 收口在未提交工作树中发现并修复了 `ACTION_BUDGET_EXHAUSTED` 被宿主泛化为 `HARNESS_V2_ERROR`、SOP 跨节点通用消息边界以及 capability result/budget 回投；同时完整矩阵仍发现未收口的 PilotDeck deadline terminal/error 分类和 deadline 中 tool-result/terminal 因果差异。当前 authoritative matrix 是 `/tmp/pilotdeck-sdk-core-all-current-20260920/summary.json`：`62` 场景、`blocked=[]`、仍有 `6` 个 semantic failures 和未触发的 StaffDeck fixture/oracle failures。不得将本文件后文的历史 PASS、clean worktree、commit/push 或全绿表述用于当前验收。
+**本文件是历史快照，不是当前验收入口。** 后续 StaffDeck production-stdio 收口已修复其中记录的 host terminal、SOP message boundary 与 capability/budget 回投问题；当前基线、精确 main 差异、production team evidence 和未覆盖范围以 [`staffdeck-redline-regression-20260920.zh.md`](staffdeck-redline-regression-20260920.zh.md) 为准。不得将本文件后文的历史 PASS、失败数、clean worktree、commit/push 或全绿表述用于当前验收。
 
-当前分支 `codex/integrate-sdk-0901` 仍以固定产品基线 `origin/main` 及 `refactor/core_agent_loop_0831` 架构边界继续回归。新的修复和验证尚未 commit/push；最终验收必须以更新后的全矩阵、raw trace、架构检查和可审查提交为准。
+当前分支 `codex/integrate-sdk-0901` 仍以固定产品基线 `origin/main` 及 `refactor/core_agent_loop_0831` 架构边界继续回归。最新验证和可审查提交记录在 current report 中；未覆盖范围仍不得计入 PASS。
 
 Frontend integration 不在本轮授权范围内，不能解读为已验收。
 

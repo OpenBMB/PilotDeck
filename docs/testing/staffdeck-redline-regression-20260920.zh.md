@@ -7,7 +7,7 @@
 
 | 项目 | 固定值 |
 | --- | --- |
-| PilotDeck 当前提交 | `7bca1938`（本轮 sidecar terminal capability 修复仍在可审查 diff 中） |
+| PilotDeck 当前提交 | `afe67d60` |
 | PilotDeck 产品基线 | `origin/main` `cd52c9af812a84c27a9dd1b7ccf246f48540045f` |
 | PilotDeck 分支 | `codex/integrate-sdk-0901` |
 | Node | `v22.23.1` |
@@ -19,8 +19,8 @@
 | `max_turns` | terminal 为 `action_budget`，code/stop reason 均为 `ACTION_BUDGET_EXHAUSTED`/`action_budget`，不泛化为 `HARNESS_V2_ERROR` | StaffDeck Harness result 与 PilotDeck host glue | PASS |
 | `sop_blocked_transition` | terminal 为 `blocked`，保留用户可见 blocked message；无 tool side effect | StaffDeck SOP TaskFrame | PASS |
 | `sop_multi_action_budget` | 两个真实 capability 调用后进入 `action_budget`；tool history、error code、final message 一致 | StaffDeck capability bridge；sidecar 只经 canonical module calls | PASS |
-| `sidecar_restart_before_effect` | host 在 effect acknowledgement 前失联，terminal 为 `result_unknown`/`RESULT_UNKNOWN`；不继续模型循环，不产生 effect | PilotDeck canonical sidecar terminal；StaffDeck bridge/invocation durable record | PASS |
-| `sidecar_restart_after_effect` | host 在 effect acknowledgement 后失联，terminal 为 `result_unknown`/`RESULT_UNKNOWN`；effect 恰好一次 | 同上 | PASS |
+| `sidecar_restart_before_effect` | host dispatcher 在 effect acknowledgement 前围栏该 operation，terminal 为 `result_unknown`/`RESULT_UNKNOWN`；不继续模型循环，不产生 effect | PilotDeck canonical sidecar terminal；StaffDeck bridge/invocation durable record | PASS（host-fence） |
+| `sidecar_restart_after_effect` | host dispatcher 在 effect acknowledgement 后围栏该 operation，terminal 为 `result_unknown`/`RESULT_UNKNOWN`；effect 恰好一次 | 同上 | PASS（host-fence） |
 | `sop_unknown_requeue` | SOP frame 保持待协调状态；最终消息、`RESULT_UNKNOWN`、权限和一次 effect 一致 | StaffDeck TaskFrame/invocation owner | PASS |
 | `sop_knowledge_budget_exhausted` | 第三次 knowledge search 在 host bridge 拒绝；终态准确保留 `KNOWLEDGE_SEARCH_BUDGET_EXHAUSTED`，无第三次外部 tool execution | StaffDeck Harness/bridge/checkpoint | PASS |
 | `sop_task_dependency` | child TaskFrame 只在 durable prerequisite 完成后运行，并收到前置 capability result | StaffDeck TaskFrame store | PASS |
@@ -50,8 +50,9 @@ env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
   --pair staffdeck --scenario sop_multi_action_budget --comparison same-version ...
 ```
 
-三条命令均为 `failed=[]`、`blocked=[]`、`oracleFailures=[]`。本轮 restart/reconciliation
-命令也均为 `failed=[]`、`blocked=[]`、`oracleFailures=[]`：
+三条命令均为 `failed=[]`、`blocked=[]`、`oracleFailures=[]`。下面两条命令验证的是
+host dispatcher 围栏导致的 unknown-outcome，不是 sidecar 进程终止、重新握手和 durable ledger
+reconciliation；两条命令同样为 `failed=[]`、`blocked=[]`、`oracleFailures=[]`：
 
 ```sh
 env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
@@ -87,21 +88,57 @@ Raw traces:
 `test_harness_v2.py` 与 `test_pilotdeck_agent_loop_client.py` 为 `110` passed；trace tests
 为 `9` passed；两个工作区 `git diff --check` 通过。
 
+固定 main 对拍补充命令：
+
+```sh
+env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
+  backend/.venv/bin/python tools/agent-loop-parity/run.py \
+  --pair pilotdeck --comparison baseline \
+  --pilotdeck-root /Users/a1/Desktop/claw/openbmb/PilotDeck-sdk-core-integration \
+  --staffdeck-root /Users/a1/Desktop/claw/openbmb/StaffDeck-pilotdeck-agent-loop \
+  --output /tmp/pilotdeck-sdk-core-pilotdeck-baseline-v44-20260920
+```
+
+`v44` 的 33 个 PilotDeck 场景没有 `failed`、`blocked` 或 oracle failure。固定 main 缺失的
+seed-state projection 已由 parity adapter 在 adapter 边界映射到 main 的公开
+`AgentLoopSeedState` 形状；该映射不进入 PilotDeck 产品代码。
+
+生产部署补充命令：
+
+```sh
+env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
+  backend/.venv/bin/python tools/real-deployment-e2e.py \
+  --staffdeck-root /Users/a1/Desktop/claw/openbmb/StaffDeck-pilotdeck-agent-loop \
+  --pilotdeck-root /Users/a1/Desktop/claw/openbmb/PilotDeck-sdk-core-integration
+```
+
+产物 `/var/folders/xd/mml9c6fj2g95x40hgf_n6lrr0000gn/T/staffdeck-e2e-kqn8gkex/REAL_DEPLOYMENT_E2E.zh.md`
+为 `PASS`：正式 Gateway 的 `hello_ok`/Protocol `1.1`、StaffDeck Web proxy、多 turn、并发、
+handoff/reply/resume、scheduled worker 和 Team roster/TeamRun/member worker 均通过；
+`coverageGaps=[]`。数据库记录 1 个 team、1 个 team task、6 个 team task event，终态为
+`review`，证明生产 sidecar 路径已经执行真实 team worker，而不是 parity adapter 的伪造路径。
+
 ## 限制
 
-最新全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v41-20260920/summary.json`：`62` 场景、
-`failed=[]`、`blocked=[]`、`baselineDifferences=[]`。其中 61 个适用场景没有 oracle failure；
-deadline 两项仅保留已枚举的精确内部时序差异。
+最新同版本全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v41-20260920/summary.json`：`62` 场景、
+`failed=[]`、`blocked=[]`；`sop_team_task` 在 legacy 与 sidecar 两侧均为 oracle failure，
+不构成通过证据。deadline 两项仅保留已枚举的精确内部时序差异。
 
 未验收范围仍明确保留，不计入 PASS：
 
-- `sop_team_task`：不计 PASS。当前 stdio parity adapter 未创建可信 Team roster、TeamRun
-  与成员 worker，因此真实入口正确拒绝缺失上下文。这是覆盖缺口，不是产品能力
-  `unsupported`；该范围须由带真实 team worker 的 deployment E2E 补齐。
-- PilotDeck main 对拍：`/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v37-20260920/summary.json`
-  记录 31 个 `BLOCKED`，原因是固定 `origin/main` 不包含 baseline adapter 引用的
-  `seedStateProjection`。`plan_mode_host_policy` 与 `plan_mode_bypass_host_policy` 另有 main
-  未具备的 SDK-only capability drift；按公开扩展契约保留，不伪装为 main parity PASS。
+- `sop_team_task`：不计 legacy-vs-sidecar parity PASS。当前 stdio parity adapter 未创建
+  trusted Team roster、TeamRun 与成员 worker，故该 adapter fixture 的双侧 oracle failure
+  仍是未覆盖范围；不是产品能力 `unsupported`。正式 sidecar 的真实 team worker 已由上面的
+  deployment E2E 覆盖，但尚未形成 legacy 对拍的同一 fixture。
+- 真正的 sidecar restart/reconciliation：当前 trace 只注入 host-dispatch 围栏；尚未证明
+  stdio child 终止、新 generation handshake、durable ledger replay 与 exactly-once effect。
+- PilotDeck main 对拍：`/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v44-20260920/summary.json`
+  不再有 adapter `BLOCKED`。`plan_mode_host_policy` 和
+  `plan_mode_bypass_host_policy` 是固定 main 的已确认缺陷：main 在成功的
+  `exit_plan_mode` 后仍把第四轮留在 `plan`，再度拒绝 `parity_write_probe`；current 在该点
+  恢复 `default` 或 `bypassPermissions`，得到一次批准和一次副作用，符合场景的公开
+  `policyModes` / `sideEffectCount: 1` 契约。它是精确记录的语义差异，不以 normalization
+  掩盖，也不回退 current 的权限恢复。
 - 原有 `SKIPPED_NOT_APPLICABLE` 仍以精确能力边界保留；特别是
   `unsupported_capability` 没有被删除、扩展 normalize 或改写为 PASS。
 
