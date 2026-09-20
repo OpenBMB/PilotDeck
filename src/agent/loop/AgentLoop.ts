@@ -1953,6 +1953,7 @@ export class AgentLoop {
           executionRunId,
         );
       } catch (error) {
+        if (isResultUnknownToolError(error)) throw error;
         results = toolCalls.map((call) =>
           createMissingToolResult(
             call,
@@ -3875,6 +3876,10 @@ function createAgentTurnStatusDetail(input: {
     scope: "turn",
     source: "agent",
   });
+}
+
+function isResultUnknownToolError(error: unknown): error is Error & { code: "RESULT_UNKNOWN" } {
+  return Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "RESULT_UNKNOWN");
 }
 
 function shouldSurfaceAbortStatus(reason: unknown): boolean {

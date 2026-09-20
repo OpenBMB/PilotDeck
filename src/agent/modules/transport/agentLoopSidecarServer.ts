@@ -350,6 +350,11 @@ export class AgentLoopSidecarServer {
         finalSent = true;
         return;
       }
+      if (isResultUnknownExecutionError(error)) {
+        await this.sendResultUnknown(request, streamId, sequence++, serializeExecutionError(error));
+        finalSent = true;
+        return;
+      }
       const outcome = controller.signal.aborted ? "cancelled" : "failed";
       const serialized = serializeExecutionError(error);
       this.operations.recordFinal(request.operationId, request.requestId, outcome);
@@ -399,11 +404,22 @@ export class AgentLoopSidecarServer {
     streamId: string,
     sequence: number,
   ): Promise<void> {
-    const error = { code: "DEADLINE_EXCEEDED", message: "Module execution deadline exceeded." };
+    return this.sendResultUnknown(request, streamId, sequence, {
+      code: "DEADLINE_EXCEEDED",
+      message: "Module execution deadline exceeded.",
+    });
+  }
+
+  private sendResultUnknown(
+    request: ModuleExecuteRequest,
+    streamId: string,
+    sequence: number,
+    error: Record<string, unknown>,
+  ): Promise<void> {
     this.operations.recordFinal(request.operationId, request.requestId, "result_unknown");
     return this.publishStreamEvent(streamId, {
       kind: "event",
-      messageId: this.nextId("deadline-unknown"),
+      messageId: this.nextId("result-unknown"),
       eventType: "agent.execute.result_unknown",
       streamId,
       sequence,
@@ -412,7 +428,7 @@ export class AgentLoopSidecarServer {
       requestId: request.requestId,
       final: true,
       outcome: "result_unknown",
-      code: error.code,
+      ...(typeof error.code === "string" ? { code: error.code } : {}),
       error,
       payload: {},
     });
@@ -447,6 +463,9 @@ export class AgentLoopSidecarServer {
       // would turn an otherwise recoverable host reply into a second terminal.
     }
     const result = await response;
+    if (isExplicitResultUnknownResponse(result)) {
+      throw resultUnknownModuleCallError(result);
+    }
     if (recordFailure && call.operationId) {
       if (!result.ok) {
         this.moduleFailures.set(call.operationId, {
@@ -689,6 +708,23 @@ function serializeExecutionError(error: unknown): Record<string, unknown> {
     };
   }
   return { message: error instanceof Error ? error.message : String(error) };
+}
+
+function isResultUnknownExecutionError(error: unknown): error is Error & { code: "RESULT_UNKNOWN" } {
+  return Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "RESULT_UNKNOWN");
+}
+
+function resultUnknownModuleCallError(response: ModuleResponse): Error & { code: "RESULT_UNKNOWN" } {
+  return Object.assign(
+    new Error(String(response.error?.message ?? "Host capability execution outcome is unknown.")),
+    { code: "RESULT_UNKNOWN" as const },
+  );
+}
+
+function isExplicitResultUnknownResponse(response: ModuleResponse): boolean {
+  return response.ok === false
+    && response.outcome === "result_unknown"
+    && response.code === "RESULT_UNKNOWN";
 }
 
 function controlFailure(inReplyTo: string, code: string, messageId: string): ModuleResponse {

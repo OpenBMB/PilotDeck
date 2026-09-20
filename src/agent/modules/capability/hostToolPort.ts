@@ -194,6 +194,9 @@ export function createHostCapabilityToolPort(
           },
         });
         const results = response.payload?.results;
+        if (isResultUnknownCapabilityResponse(response)) {
+          throw resultUnknownCapabilityError(response);
+        }
         if (!response.ok) {
           for (const [index, call] of calls.entries()) resultSlots[index] = moduleFailureResult(call, response);
           return resultSlots as PilotDeckToolResult[];
@@ -264,6 +267,9 @@ export function createHostCapabilityToolPort(
           options.onAbort?.("tool_cancelled");
           throw new Error("Tool execution cancelled.");
         }
+        if (isResultUnknownCapabilityResponse(response)) {
+          throw resultUnknownCapabilityError(response);
+        }
         if (response.ok && payload && typeof payload === "object" && "type" in payload) {
           return payload as unknown as PilotDeckToolResult;
         }
@@ -277,6 +283,17 @@ export function createHostCapabilityToolPort(
       return resultSlots as PilotDeckToolResult[];
     },
   };
+}
+
+function isResultUnknownCapabilityResponse(response: ModuleResponse): boolean {
+  return response.ok === false && response.outcome === "result_unknown";
+}
+
+function resultUnknownCapabilityError(response: ModuleResponse): Error & { code: "RESULT_UNKNOWN" } {
+  return Object.assign(
+    new Error(String(response.error?.message ?? "Host capability execution outcome is unknown.")),
+    { code: "RESULT_UNKNOWN" as const },
+  );
 }
 
 function permissionDecisionResult(

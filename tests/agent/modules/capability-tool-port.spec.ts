@@ -125,6 +125,28 @@ test("host capability consumer projects output truncation to the host tool", asy
   assert.equal(context?.outputTruncated, true);
 });
 
+test("host capability consumer fails closed when a side effect result is unknown", async () => {
+  const port = createHostCapabilityToolPort(async () => ({
+    kind: "response",
+    messageId: "response-unknown",
+    inReplyTo: "call",
+    ok: false,
+    final: true,
+    outcome: "result_unknown",
+    code: "RESULT_UNKNOWN",
+    error: { code: "RESULT_UNKNOWN", message: "host lost the tool acknowledgement" },
+  }), { tools: [tool("write_file")] });
+
+  await assert.rejects(
+    () => port.executeAll(
+      [{ id: "call-unknown", name: "write_file", input: {} }],
+      runtimeContext,
+      executionContext,
+    ),
+    (error: Error & { code?: string }) => error.code === "RESULT_UNKNOWN",
+  );
+});
+
 test("host capability consumer gates side effects through the host permission port", async () => {
   const capabilityCalls: Array<Record<string, unknown>> = [];
   const permissionCalls: string[] = [];

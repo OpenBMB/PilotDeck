@@ -732,6 +732,97 @@ test("sidecar terminal preserves the AgentLoop error instead of replacing it wit
   });
 });
 
+test("sidecar emits result_unknown when a capability acknowledgement is fenced", async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const lines = collectLines(output);
+  const factory: SidecarExecutionFactory = () => ({
+    loop: {
+      async *run() {
+        throw Object.assign(new Error("host lost the capability acknowledgement"), { code: "RESULT_UNKNOWN" });
+      },
+    } as unknown as AgentLoop,
+    input: {} as never,
+  });
+  const serving = new AgentLoopSidecarServer(factory).serve(input, output);
+  input.write(`${JSON.stringify({
+    kind: "request",
+    messageId: "execute-fenced",
+    method: "execute",
+    runId: "fenced-run",
+    operationId: "fenced-operation",
+    requestId: "fenced-request",
+    payload: {},
+  })}\n`);
+  await waitFor(() => lines.some((message) => message.kind === "event" && message.final === true));
+  input.end();
+  await serving;
+
+  const terminal = lines.find((message) => message.kind === "event" && message.final === true);
+  assert.equal(terminal?.outcome, "result_unknown");
+  assert.equal(terminal?.code, "RESULT_UNKNOWN");
+  assert.deepEqual(terminal?.error, {
+    code: "RESULT_UNKNOWN",
+    message: "host lost the capability acknowledgement",
+  });
+});
+
+test("sidecar does not continue after a host capability result_unknown response", async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const lines = collectLines(output);
+  let continued = false;
+  const factory: SidecarExecutionFactory = ({ callModule }) => ({
+    loop: {
+      async *run() {
+        await callModule({
+          runId: "unknown-run",
+          operationId: "unknown-operation",
+          requestId: "unknown-module-request",
+          module: "capability",
+          payload: { name: "write_file", arguments: {} },
+        });
+        continued = true;
+        return { result: { type: "success" }, messages: [] };
+      },
+    } as unknown as AgentLoop,
+    input: {} as never,
+  });
+  const serving = new AgentLoopSidecarServer(factory).serve(input, output);
+  output.on("data", () => {
+    const call = lines.find((message) => message.kind === "request" && message.method === "module_call");
+    if (!call || lines.some((message) => message.inReplyTo === call.messageId)) return;
+    input.write(`${JSON.stringify({
+      kind: "response",
+      messageId: "host-unknown",
+      inReplyTo: call.messageId,
+      requestId: call.requestId,
+      ok: false,
+      final: true,
+      outcome: "result_unknown",
+      code: "RESULT_UNKNOWN",
+      error: { code: "RESULT_UNKNOWN", message: "host lost the capability acknowledgement" },
+    })}\n`);
+  });
+  input.write(`${JSON.stringify({
+    kind: "request",
+    messageId: "execute-unknown",
+    method: "execute",
+    runId: "unknown-run",
+    operationId: "unknown-operation",
+    requestId: "unknown-request",
+    payload: {},
+  })}\n`);
+  await waitFor(() => lines.some((message) => message.kind === "event" && message.final === true));
+  input.end();
+  await serving;
+
+  const terminal = lines.find((message) => message.kind === "event" && message.final === true);
+  assert.equal(continued, false);
+  assert.equal(terminal?.outcome, "result_unknown");
+  assert.equal(terminal?.code, "RESULT_UNKNOWN");
+});
+
 test("sidecar abort releases a pending module call", async () => {
   const input = new PassThrough();
   const output = new PassThrough();
