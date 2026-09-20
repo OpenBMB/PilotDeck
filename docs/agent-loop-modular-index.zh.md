@@ -312,7 +312,7 @@ SQLite、日志或 token 提交到 PilotDeck。
 
 ## 2026-09-20 SDK/Core 独立回归
 
-当前 `codex/integrate-sdk-0901@40fa6ebd` 已在固定 `origin/main@cd52c9af` 与架构基线
+当前 `codex/integrate-sdk-0901@836d81eb` 已在固定 `origin/main@cd52c9af` 与架构基线
 `Kaguya-19/refactor/core_agent_loop_0831@e55b0a82` 上完成系统回归：Core build、根测试
 `1721/1721`、SDK `127/127`、模块/transport/session focused `433/433` 和 production
 parity `53` 场景均无 FAIL/BLOCKED/oracle failure。53 个 sidecar 场景均有正式 stdio

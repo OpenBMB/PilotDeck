@@ -2,7 +2,7 @@
 
 ## 结论
 
-当前分支 `codex/integrate-sdk-0901` 在固定产品基线 `origin/main` 上完成了 Core、SDK、native/production-sidecar 和架构边界回归。没有发现需要新增的 P1/P2 根因；上一轮已提交的九类修复在当前 HEAD 上全部有 focused regression 和 production trace 证据。本轮另修正 `PilotDeckClient.startup` 的初始化超时语义并补直接生命周期回归；最终代码修复与报告修正将在本轮提交，验证完成后保持 worktree 干净。
+当前分支 `codex/integrate-sdk-0901` 在固定产品基线 `origin/main` 上完成了 Core、SDK、native/production-sidecar 和架构边界回归。没有发现需要新增的 P1/P2 根因；上一轮已提交的九类修复在当前 HEAD 上全部有 focused regression 和 production trace 证据。本轮另修正 `PilotDeckClient.startup` 的初始化超时语义并补直接生命周期回归；代码与报告修正已提交为 `836d81eb`，当前 worktree 干净。
 
 Frontend integration 不在本轮授权范围内，不能解读为已验收。
 
@@ -18,7 +18,7 @@ Frontend integration 不在本轮授权范围内，不能解读为已验收。
 
 | 项目 | 值 |
 | --- | --- |
-| 当前分支 / HEAD | `codex/integrate-sdk-0901` / `b15d2080ed06f0330485c96f8add48b14b3b721d` |
+| 当前分支 / HEAD | `codex/integrate-sdk-0901` / `836d81eb739073e4ae2cb2e72d82c3565258f7a0` |
 | 产品行为基线 | `origin/main` = `cd52c9af812a84c27a9dd1b7ccf246f48540045f` |
 | 架构边界基线 | `Kaguya-19/refactor/core_agent_loop_0831` = `e55b0a82d07ee3951e5812c34103400dfa6043f7` |
 | 开始时工作区 | clean；保留策略已确认，无用户改动需要合并 |
@@ -194,4 +194,4 @@ The exact comparator declarations are in `tools/agent-loop-parity/run.py` (`BASE
 
 ## 交付状态
 
-本报告与 acceptance checklist、模块索引、roadmap 已按当前代码和验证产物更新。本轮新增 startup 握手超时 teardown 与 client 生命周期回归，代码和文档 diff 均可审查。提交并 push 后需把最终 commit、报告路径、四项结论和 `待独立验收` 发送给独立验收线程。
+本报告与 acceptance checklist、模块索引、roadmap 已按当前代码和验证产物更新。本轮新增 startup 握手超时 teardown 与 client 生命周期回归，代码和文档 diff 均可审查；代码提交 `836d81eb` 已建立，文档锚点提交后统一 push 并发送 `待独立验收`。

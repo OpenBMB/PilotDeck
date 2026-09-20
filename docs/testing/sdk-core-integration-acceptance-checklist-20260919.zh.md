@@ -7,7 +7,7 @@
 | 项目 | 固定值 / 来源 |
 | --- | --- |
 | 当前分支起点 | `b15d2080ed06f0330485c96f8add48b14b3b721d` |
-| 本轮实现提交 | `b15d2080ed06f0330485c96f8add48b14b3b721d`；本轮为独立回归与证据收口，无新增产品代码 |
+| 本轮实现提交 | `836d81eb739073e4ae2cb2e72d82c3565258f7a0`；本轮补齐 SDK startup 初始化 deadline/transport teardown 与 client 生命周期回归，并更新 host-owned 边界证据 |
 | 产品行为基线 | `origin/main=cd52c9af812a84c27a9dd1b7ccf246f48540045f` |
 | 架构基线 | `Kaguya-19/refactor/core_agent_loop_0831=e55b0a82d07ee3951e5812c34103400dfa6043f7` |
 | 运行环境 | Node `v22.23.1`，Python `3.12.2` |
