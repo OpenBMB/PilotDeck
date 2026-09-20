@@ -63,6 +63,7 @@ export class GatewayTransport {
   private readonly notificationListeners = new Set<GatewayTransportNotificationListener>();
   private closed = false;
   private connecting?: Promise<PilotDeckServerInfo>;
+  private openReject?: (error: Error) => void;
   private helloReject?: (error: Error) => void;
 
   constructor(private readonly options: GatewayConnectionOptions) {}
@@ -125,9 +126,15 @@ export class GatewayTransport {
         : reason === "protocol_mismatch"
           ? "protocol_version_error"
           : "transport_error";
-      this.failPending(new PilotDeckError({ code: errorCode, message: reason || "Gateway WebSocket closed.", retryable: errorCode === "transport_error" }));
+      const error = new PilotDeckError({ code: errorCode, message: reason || "Gateway WebSocket closed.", retryable: errorCode === "transport_error" });
+      this.openReject?.(error);
+      this.helloReject?.(error);
+      this.failPending(error);
     });
     await this.waitForOpen(socket);
+    if (this.closed || this.socket !== socket) {
+      throw new PilotDeckError({ code: "transport_error", message: "Gateway client closed.", retryable: false });
+    }
     socket.send(JSON.stringify({ type: "hello", protocolVersion: this.options.protocolVersion ?? "1.1", clientName: this.options.clientName ?? "sdk", clientVersion: this.options.clientVersion ?? "0.1.0", token: this.options.token }));
     const hello = await new Promise<WireHelloOk>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -189,8 +196,10 @@ export class GatewayTransport {
     this.closed = true;
     const socket = this.socket;
     this.socket = undefined;
+    const error = new PilotDeckError({ code: "transport_error", message: "Gateway client closed." });
+    this.openReject?.(error);
     this.helloReject?.(new PilotDeckError({ code: "transport_error", message: "Gateway client closed." }));
-    this.failPending(new PilotDeckError({ code: "transport_error", message: "Gateway client closed." }));
+    this.failPending(error);
     socket?.close();
   }
 
@@ -208,9 +217,23 @@ export class GatewayTransport {
   private async waitForOpen(socket: SocketLike): Promise<void> {
     if (socket.readyState === 1) return;
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new PilotDeckError({ code: "timeout", message: "Gateway connection timed out.", retryable: true })), this.options.connectTimeoutMs ?? 10_000);
-      socket.addEventListener("open", () => { clearTimeout(timer); resolve(); });
-      socket.addEventListener("error", () => { clearTimeout(timer); reject(new PilotDeckError({ code: "transport_error", message: "Gateway connection failed.", retryable: true })); });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        if (timer !== undefined) clearTimeout(timer);
+        if (this.openReject === rejectOpen) this.openReject = undefined;
+      };
+      const resolveOpen = () => {
+        cleanup();
+        resolve();
+      };
+      const rejectOpen = (error: Error) => {
+        cleanup();
+        reject(error);
+      };
+      this.openReject = rejectOpen;
+      timer = setTimeout(() => rejectOpen(new PilotDeckError({ code: "timeout", message: "Gateway connection timed out.", retryable: true })), this.options.connectTimeoutMs ?? 10_000);
+      socket.addEventListener("open", resolveOpen);
+      socket.addEventListener("error", () => rejectOpen(new PilotDeckError({ code: "transport_error", message: "Gateway connection failed.", retryable: true })));
     });
   }
 

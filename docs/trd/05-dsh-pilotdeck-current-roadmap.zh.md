@@ -1503,7 +1503,7 @@ SDK/core integration 当前验收锚点为 `codex/integrate-sdk-0901@b9547afd`�
 `origin/main@cd52c9af`，架构边界基线为 `Kaguya-19/refactor/core_agent_loop_0831@e55b0a82`。
 独立回归报告 [`sdk-core-integration-final-20260920.zh.md`](../testing/sdk-core-integration-final-20260920.zh.md)
 记录了模块 inventory、state/dispose owner、SDK public matrix、九类 blocker 及 production
-trace。当前 gate 为 root `1721 pass / 2 skip`、SDK `127/127`、module focused `433/433`、
+trace。当前 gate 为 root `1721 pass / 2 skip`、SDK `129/129`、module focused `433/433`、
 comparator `53/53`、production `failed=0 / blocked=0 / oracleFailures=0`；19 个 baseline
 缺失能力仍明确标为 `notApplicable`。SDK `Query.accountInfo()` 仍是文档明确的
 `unsupported_capability` gap；与 main 的 `deadline`、`deadline_during_tool`、`sidecar_live_steer`

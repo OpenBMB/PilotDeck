@@ -871,6 +871,49 @@ class FakeWebSocket {
   private emit(name: string, event: any): void { for (const handler of this.listeners.get(name) ?? []) handler(event); }
 }
 
+class NeverOpenWebSocket {
+  static OPEN = 1;
+  static instances: NeverOpenWebSocket[] = [];
+  readyState = 0;
+  private listeners = new Map<string, ((event: any) => void)[]>();
+  constructor(public readonly url: string) { NeverOpenWebSocket.instances.push(this); }
+  addEventListener(name: string, handler: (event: any) => void): void {
+    this.listeners.set(name, [...(this.listeners.get(name) ?? []), handler]);
+  }
+  send(_raw: string): void {}
+  close(): void {
+    this.readyState = 3;
+    for (const handler of this.listeners.get("close") ?? []) handler({});
+  }
+}
+
+async function withTrackedTimeouts<T>(run: (pending: Set<unknown>, delays: number[]) => Promise<T>): Promise<T> {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const pending = new Set<unknown>();
+  const delays: number[] = [];
+  (globalThis as any).setTimeout = (handler: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+    let timer: unknown;
+    timer = originalSetTimeout(() => {
+      pending.delete(timer);
+      handler(...args);
+    }, delay as any);
+    pending.add(timer);
+    delays.push(Number(delay));
+    return timer;
+  };
+  (globalThis as any).clearTimeout = (timer: unknown) => {
+    pending.delete(timer);
+    return originalClearTimeout(timer as any);
+  };
+  try {
+    return await run(pending, delays);
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+}
+
 class CapturePermissionModeWebSocket extends FakeWebSocket {
   static submits: any[] = [];
   static modeChanges: any[] = [];
@@ -4055,6 +4098,21 @@ test("top-level startup applies initializeTimeoutMs to the Gateway handshake", a
   assert.equal(SlowTopLevelStartupWebSocket.instances[0].readyState, 3);
 });
 
+test("top-level startup cancels a connection that never reaches open", async () => {
+  await withTrackedTimeouts(async (pending, delays) => {
+    NeverOpenWebSocket.instances = [];
+    (globalThis as any).WebSocket = NeverOpenWebSocket;
+    await assert.rejects(
+      () => import("../src/index.js").then(({ startup }) => startup({ options: { gatewayUrl: "ws://never-open", authToken: "token" }, initializeTimeoutMs: 5 })),
+      (error: unknown) => (error as any)?.code === "timeout",
+    );
+    assert.equal(NeverOpenWebSocket.instances.length, 1);
+    assert.equal(NeverOpenWebSocket.instances[0].readyState, 3);
+    assert.ok(delays.includes(10_000));
+    assert.equal(pending.size, 0);
+  });
+});
+
 test("client startup uses its connection defaults and Gateway-owned warm query", async () => {
   class CaptureClientStartupWebSocket extends FakeWebSocket {
     static frames: any[] = [];
@@ -4118,6 +4176,22 @@ test("client close rejects later asynchronous lifecycle calls without creating a
   await assert.rejects(() => client.startup(), { code: "transport_error" });
   assert.throws(() => client.query("after-close"), { code: "transport_error" });
   assert.equal(CountingClientWebSocket.instances.length, 1);
+});
+
+test("client close cancels a connection that has not reached open", async () => {
+  await withTrackedTimeouts(async (pending, delays) => {
+    NeverOpenWebSocket.instances = [];
+    (globalThis as any).WebSocket = NeverOpenWebSocket;
+    const client = createPilotDeckClient({ gatewayUrl: "ws://never-open", authToken: "token" });
+    const connecting = client.connect();
+    await Promise.resolve();
+    assert.equal(NeverOpenWebSocket.instances.length, 1);
+    await client.close();
+    await assert.rejects(connecting, { code: "transport_error" });
+    assert.equal(NeverOpenWebSocket.instances[0].readyState, 3);
+    assert.ok(delays.includes(10_000));
+    assert.equal(pending.size, 0);
+  });
 });
 
 class FakeThinkingAndRewindWebSocket extends FakeWebSocket {
