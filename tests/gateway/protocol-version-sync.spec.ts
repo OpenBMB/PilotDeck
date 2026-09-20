@@ -9,7 +9,7 @@ test("browser and canonical gateway clients use the same protocol version", () =
   assert.equal(PILOTDECK_GATEWAY_PROTOCOL_VERSION_WEB, PILOTDECK_GATEWAY_PROTOCOL_VERSION);
 });
 
-test("browser gateway client exposes the steer RPCs added in protocol 1.1", () => {
+test("browser gateway client exposes the steer RPCs retained by the current protocol", () => {
   assert.equal(typeof GatewayBrowserClient.prototype.steerTurn, "function");
   assert.equal(typeof GatewayBrowserClient.prototype.cancelSteer, "function");
   assert.equal(typeof Object.getOwnPropertyDescriptor(GatewayBrowserClient.prototype, "interactionBinding")?.get, "function");

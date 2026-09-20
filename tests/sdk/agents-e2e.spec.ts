@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -1033,6 +1034,44 @@ class SkillScopeModel implements ModelRuntime {
   getProviderBaseUrl() { return undefined; }
 }
 
+class ExternalSkillKnowledgeModel implements ModelRuntime {
+  readonly requests: CanonicalModelRequest[] = [];
+
+  async *stream(request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+    this.requests.push(request);
+    const hasToolResult = request.messages.some((message) =>
+      message.content.some((block) => block.type === "tool_result"),
+    );
+    yield { type: "request_started", provider: "test", model: "test" };
+    yield { type: "message_start", role: "assistant" };
+    if (!hasToolResult) {
+      yield { type: "tool_call_start", id: "external-read-skill", name: "read_skill" };
+      yield {
+        type: "tool_call_end",
+        toolCall: { id: "external-read-skill", name: "read_skill", input: { skillName: "approval-guide" } },
+      };
+      yield { type: "tool_call_start", id: "external-knowledge-query", name: "knowledge_query" };
+      yield {
+        type: "tool_call_end",
+        toolCall: { id: "external-knowledge-query", name: "knowledge_query", input: { query: "approval evidence" } },
+      };
+      yield { type: "message_end", finishReason: "tool_call" };
+      return;
+    }
+    yield { type: "text_delta", text: "External skill and knowledge evidence consumed." };
+    yield { type: "message_end", finishReason: "stop" };
+  }
+
+  async complete(): Promise<CanonicalModelResponse> {
+    return { role: "assistant", content: [{ type: "text", text: "External skill and knowledge evidence consumed." }], finishReason: "stop" };
+  }
+
+  getCapabilities() { return DEFAULT_MODEL_CAPABILITIES; }
+  getMultimodal(): MultimodalConstraints { return { input: ["text"] }; }
+  getProviderProtocol() { return "openai" as const; }
+  getProviderBaseUrl() { return undefined; }
+}
+
 class AgentDefinitionScopeModel implements ModelRuntime {
   readonly childRequests: CanonicalModelRequest[] = [];
 
@@ -1452,6 +1491,17 @@ async function writeStandaloneSkill(root: string, name: string, body: string): P
   );
 }
 
+async function readModuleJson(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+}
+
+function writeModuleJson(response: ServerResponse, value: unknown): void {
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify(value));
+}
+
 function requestWithSkills(model: SkillScopeModel): CanonicalModelRequest {
   const request = model.requests.find((candidate) => candidate.systemPrompt?.includes("<available-skills>"));
   assert.ok(request, "the AgentLoop did not build a skill-aware model request");
@@ -1664,6 +1714,95 @@ test("createLocalGateway scopes SDK session skills in both prompts and read_skil
     const missingEvents = await submit("sdk:skills-missing", ["missing"]);
     assert.equal(missingEvents[0]?.type, "error");
     assert.equal(missingEvents[0]?.code, "SDK_SKILL_NOT_FOUND");
+  } finally {
+    await local.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("createLocalGateway composes unregistered Skill and Knowledge modules into one session", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-external-skill-knowledge-e2e-"));
+  const projectRoot = join(root, "project");
+  const calls: string[] = [];
+  const moduleServer = createServer(async (request, response) => {
+    const path = request.url ?? "";
+    const implementationId = path.includes("skills") ? "example.skills" : "example.knowledge";
+    const contract = implementationId === "example.skills" ? "pilotdeck.skills/v1" : "staffdeck.knowledge/v1";
+    const methods = implementationId === "example.skills" ? ["list", "read"] : ["query"];
+    if (request.method === "GET") {
+      writeModuleJson(response, { protocolVersion: "2.0", implementationId, contract, transport: "module-http-v2", methods });
+      return;
+    }
+    const requestBody = await readModuleJson(request);
+    const payload = requestBody.payload as Record<string, unknown>;
+    const operation = String(payload.operation);
+    calls.push(`${implementationId}:${operation}`);
+    const result = implementationId === "example.skills"
+      ? operation === "list"
+        ? [{ name: "approval-guide", description: "Approval evidence guidance", path: "/external/approval-guide/SKILL.md" }]
+        : "# Approval Guide\n\nRequire citation evidence."
+      : { hits: [{ id: "chunk-1", text: "Approvals require a citation.", citationId: "citation-1" }] };
+    writeModuleJson(response, {
+      kind: "response",
+      messageId: `response-${String(requestBody.messageId)}`,
+      inReplyTo: requestBody.messageId,
+      requestId: requestBody.requestId,
+      ok: true,
+      payload: { result },
+    });
+  });
+  await new Promise<void>((resolve) => moduleServer.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve, reject) => moduleServer.close((error) => error ? reject(error) : resolve())));
+  const address = moduleServer.address();
+  if (!address || typeof address === "string") throw new Error("module server has no TCP address");
+  const endpoint = `http://127.0.0.1:${address.port}`;
+  const config = `${TEST_CONFIG}
+modules:
+  skills:
+    enabled: true
+    implementationId: example.skills
+    contract: pilotdeck.skills/v1
+    transport: module-http-v2
+    endpoint: ${endpoint}
+    manifestPath: /manifest/skills
+    callPath: /call/skills
+    methods: [list, read]
+  knowledge:
+    enabled: true
+    implementationId: example.knowledge
+    contract: staffdeck.knowledge/v1
+    transport: module-http-v2
+    endpoint: ${endpoint}
+    manifestPath: /manifest/knowledge
+    callPath: /call/knowledge
+    methods: [query]
+`;
+  const model = new ExternalSkillKnowledgeModel();
+  await mkdir(projectRoot, { recursive: true });
+  await writeFile(join(projectRoot, "pilotdeck.yaml"), config, "utf8");
+  const local = createLocalGateway({
+    projectRoot,
+    pilotHome: projectRoot,
+    fallbackProjectRoot: projectRoot,
+    permissionMode: "bypassPermissions",
+    __testModelFactory: () => model,
+  });
+
+  try {
+    const events: any[] = [];
+    for await (const event of local.gateway.submitTurn({
+      sessionKey: "external:skill-knowledge",
+      workspaceCwd: projectRoot,
+      channelKey: "test",
+      message: "Use the approval guide and knowledge evidence.",
+      mode: "bypassPermissions",
+    })) events.push(event);
+
+    assert.deepEqual(calls, ["example.skills:list", "example.skills:read", "example.knowledge:query"]);
+    assert.match(model.requests[0]?.systemPrompt ?? "", /approval-guide .*\/external\/approval-guide\/SKILL\.md/);
+    assert.match(JSON.stringify(events), /External skill and knowledge evidence consumed/);
+    assert.match(JSON.stringify(events), /Require citation evidence/);
+    assert.match(JSON.stringify(events), /Approvals require a citation/);
   } finally {
     await local.dispose();
     await rm(root, { recursive: true, force: true });
@@ -6279,7 +6418,7 @@ test("embedded client resources and runs use the authoritative Gateway without a
     permissionMode: "bypassPermissions",
   });
   try {
-    assert.equal((await client.connect()).protocolVersion, "1.1");
+    assert.equal((await client.connect()).protocolVersion, "1.2");
     const session = await client.sessions.create();
     assert.equal(session.projectKey, projectRoot);
 
@@ -6534,7 +6673,7 @@ test("Gateway nativeSessionStorage routes SDK session lifecycle through a host-o
   }
 });
 
-test("Gateway restores external tool-result payloads for read_file and cleans them on delete", async () => {
+test("Gateway restores external tool-result payloads and retains missing references without fabricating a body", async () => {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-sdk-async-tool-result-store-"));
   const projectRoot = join(root, "project");
   const sessionKey = "sdk:async-tool-result-store";
@@ -6620,6 +6759,18 @@ test("Gateway restores external tool-result payloads for read_file and cleans th
     startedAt: "2026-09-10T00:00:00.000Z",
     completedAt: "2026-09-10T00:00:01.000Z",
   });
+  await storage.transcript.recordCompactionReplacement!(sessionKey, "seed-turn", {
+    kind: "compact",
+    subtype: "compact_boundary",
+    compactMetadata: {
+      compactionId: "seed-tool-reference-compact",
+      trigger: "auto",
+      preTokens: 10_000,
+      postTokens: 500,
+      messagesSummarized: 1,
+      summaryGenerated: true,
+    },
+  }, [persisted]);
   await rm(storage.toolResultsDir, { recursive: true, force: true });
 
   const local = createLocalGateway({
@@ -6646,10 +6797,66 @@ test("Gateway restores external tool-result payloads for read_file and cleans th
     assert.match(readResult?.resultPreview ?? "", /restart tool-result marker/);
     assert.equal(await readFile(join(projectRoot, reference.readFilePath), "utf8"), payload);
 
-    await local.gateway.deleteSession!({ sessionKey, projectKey: projectRoot });
-    assert.equal(payloads.size, 0, "Gateway delete must clear host-owned tool-result payloads");
   } finally {
     await local.dispose();
+  }
+
+  // A manually pruned host artifact is recoverable as an absent payload: the
+  // durable reference remains model-visible and native read_file reports the
+  // ordinary missing-file result instead of synthesizing a replacement body.
+  payloads.clear();
+  await rm(storage.toolResultsDir, { recursive: true, force: true });
+  await rm(join(projectRoot, reference.readFilePath), { force: true });
+  const missingPayload = createLocalGateway({
+    projectRoot,
+    pilotHome: projectRoot,
+    fallbackProjectRoot: projectRoot,
+    permissionMode: "bypassPermissions",
+    nativeSessionStorage,
+    __testModelFactory: () => new RestoredToolResultCacheModel(reference.readFilePath!),
+  });
+  try {
+    const events: any[] = [];
+    for await (const event of missingPayload.gateway.submitTurn({
+      sessionKey,
+      workspaceCwd: projectRoot,
+      channelKey: "test",
+      message: "read the missing restored host payload",
+      mode: "bypassPermissions",
+      runId: "missing-host-payload-turn",
+    })) events.push(event);
+    const readResult = events.find((event) =>
+      event.type === "tool_call_finished" && event.toolCallId === "read-restored-tool-result",
+    );
+    assert.equal(readResult?.ok, false);
+    assert.equal(readResult?.errorCode, "tool_execution_failed");
+    assert.match(readResult?.resultPreview ?? "", /ENOENT: no such file or directory/);
+    await assert.rejects(readFile(join(projectRoot, reference.readFilePath), "utf8"));
+
+    const persistedTranscript = await storage.readTranscript!();
+    const referenceMessages = persistedTranscript.entries.flatMap((entry) => {
+      if (entry.type !== "tool_result_message" && entry.type !== "durable_message") return [];
+      return entry.message.content.some((block) => block.type === "tool_result_reference")
+        ? [entry.message]
+        : [];
+    });
+    assert.equal(referenceMessages.length, 1);
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(referenceMessages[0]?.content)),
+      JSON.parse(JSON.stringify(persisted.content)),
+    );
+    assert.equal(
+      persistedTranscript.entries.filter((entry) => entry.type === "control_boundary"
+        && entry.boundary.kind === "compact"
+        && entry.boundary.subtype === "compact_boundary").length,
+      1,
+      "missing spill recovery must not create a duplicate compaction boundary",
+    );
+
+    await missingPayload.gateway.deleteSession!({ sessionKey, projectKey: projectRoot });
+    assert.equal(payloads.size, 0, "Gateway delete must clear host-owned tool-result payloads");
+  } finally {
+    await missingPayload.dispose();
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -1,0 +1,38 @@
+# G4 native-five runtime evidence (reconstructed from the completed run)
+# No command below contains a credential value or provider URL.
+
+working_directory=/Users/a1/Desktop/claw/openbmb/PilotDeck-staffdeck-sop
+profile=products/pilotdeck-staffdeck-sop/profiles/native-five-staffdeck.yaml
+artifact_runtime=/tmp/pilotdeck-g4-runtime-20260920
+network=pilotdeck-g4-runtime-20260920
+
+Reproducible command shape (runtime image tags and endpoint values are supplied
+through environment variables; secret values are intentionally omitted):
+
+```sh
+node products/pilotdeck-staffdeck-sop/scripts/export-composition.mjs \
+  --profile "$profile" --staffdeck-root "$STAFFDECK_SOP_ROOT" \
+  --out "$artifact_runtime/export"
+docker build -t pilotdeck:g4-native-five-20260920 "$artifact_runtime/export"
+docker network create "$network"
+docker run --rm --name staffdeck-sop-g4 --network "$network" \
+  --network-alias sop-runtime "$STAFFDECK_SOP_IMAGE"
+docker run --rm --name staffdeck-knowledge-g4 --network "$network" \
+  --network-alias knowledge-runtime "$STAFFDECK_KNOWLEDGE_IMAGE"
+docker run --rm --name pilotdeck-g4 --network "$network" \
+  -e PILOTDECK_REAL_MODEL_API_KEY -e PILOTDECK_REAL_MODEL_BASE_URL \
+  "$PILOTDECK_IMAGE"
+```
+
+1. export-composition.mjs --profile "$profile" --out "$artifact_runtime/export" --staffdeck-root "$STAFFDECK_SOP_ROOT"  # exit=0
+2. docker build -t pilotdeck:g4-native-five-20260920 "$artifact_runtime/export"                 # exit=0
+3. docker network create pilotdeck-g4-runtime-20260920                                           # exit=0
+4. start StaffDeck SOP runtime and Knowledge runtime on the isolated network; poll /healthz and /api/health  # exit=0
+5. start pilotdeck:g4-native-five-20260920 with external SOP/Knowledge endpoints from runtime env vars       # exit=0
+6. query Knowledge through PilotDeck Gateway; assert {"ok":true}                                             # exit=0
+7. restart Knowledge; repeat query and assert chunkCount=1,citationCount=1                                      # exit=0
+8. submit real-provider turn: read_skill -> read_file -> knowledge_query -> submit_step_result(handoff)       # exit=0
+9. restart PilotDeck; assert the same SOP wait remains handoff; resume and complete the session               # exit=0
+10. stop SOP; assert fetch failure while SOP status remains active; restart SOP and complete the same session  # exit=0
+11. call Gateway /compact; assert outcome=compacted, durable boundary and generated summary                    # exit=0
+12. write sanitized result.sanitized.json and remove runtime containers/network                                 # exit=0

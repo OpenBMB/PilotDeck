@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createAgentTool } from "../../../src/tool/builtin/agent.js";
+import {
+  createAgentTool,
+  withBuiltinAgentToolDescription,
+} from "../../../src/tool/builtin/agent.js";
 import type {
   PilotDeckSubagentForkApi,
   PilotDeckToolModelClient,
@@ -76,6 +79,25 @@ test("agent tool defaults general-purpose to explore in ask mode", async () => {
 
   assert.equal(result.data?.subagentType, "explore");
   assert.deepEqual(calls, ["explore"]);
+});
+
+test("agent description accounts for the caller depth when describing child tools", () => {
+  const root = createAgentTool({ maxSubagentDepth: 3, subagentDepth: 0 });
+  const lastFork = createAgentTool({ maxSubagentDepth: 3, subagentDepth: 2 });
+
+  assert.match(root.description, /nested delegation is available within the configured depth cap/);
+  assert.match(lastFork.description, /except nested agent launch/);
+});
+
+test("native agent description adaptation preserves execute and schema references", () => {
+  const original = createAgentTool();
+  const described = withBuiltinAgentToolDescription(original, { maxSubagentDepth: 2 });
+
+  assert.ok(described);
+  assert.notEqual(described, original);
+  assert.equal(described.execute, original.execute);
+  assert.equal(described.inputSchema, original.inputSchema);
+  assert.match(described.description, /nested delegation is available within the configured depth cap/);
 });
 
 test("agent tool keeps host-owned one-shot sidechain references in its result", async () => {

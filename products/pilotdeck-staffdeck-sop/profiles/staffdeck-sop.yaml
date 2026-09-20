@@ -1,0 +1,22 @@
+schemaVersion: 1
+agent:
+  model: openai/gpt-4.1-mini
+model:
+  providers:
+    openai:
+      protocol: openai
+      url: https://api.openai.com/v1
+      apiKey: ${PILOTDECK_API_KEY}
+      models:
+        gpt-4.1-mini: {}
+modules:
+  agentLoop: { enabled: true, provider: pilotdeck }
+  modelProvider: { enabled: true, provider: pilotdeck }
+  tools: { enabled: true, provider: pilotdeck }
+  sop:
+    enabled: true
+    provider: staffdeck
+    endpoint: http://sop-runtime:8091
+    definitionsPath: ../sops/operator-approval.yaml
+    defaultSopId: operator_approval
+    timeoutMs: 10000

@@ -1,4 +1,5 @@
 import type { AgentEventEmitter } from "../agent/protocol/events.js";
+import type { CanonicalMessage } from "../model/index.js";
 import {
   AutoCompactionPolicy,
   CompactionEngine,
@@ -14,6 +15,7 @@ import {
   ToolResultBudget,
   createNativeCompactionPort,
   type CompactionPort,
+  type CompactionAutomaticTriggerObservation,
   registerExtensionPromptContributions,
   type ExtensionResolver,
   type InstructionStoragePort,
@@ -52,12 +54,16 @@ export type SessionContextRuntimeBundleOptions = {
   promptCacheCoordinator?: PromptCacheCoordinatorPort;
   /** Optional application-selected compaction provider for this session context. */
   compaction?: CompactionPort;
+  /** Test-only observer for the native Context automatic-compaction trigger. */
+  testOnAutomaticCompactionTrigger?: (observation: CompactionAutomaticTriggerObservation) => void;
   now: () => Date;
   eventEmitter?: AgentEventEmitter;
 };
 
 export type SessionContextRuntimeBundleResult = {
   context: DefaultContextRuntime;
+  /** Rebuild the Gateway-local cache for durable result references on resume. */
+  hydrateToolResultReferences(messages: readonly CanonicalMessage[]): Promise<void>;
   promptContributions: {
     registry: PromptContributionRegistry;
     owned: true;
@@ -75,6 +81,7 @@ export class SessionContextRuntimeBundle {
   constructor(private readonly options: SessionContextRuntimeBundleOptions) {}
 
   compose(): SessionContextRuntimeBundleResult {
+    let automaticTrigger: CompactionAutomaticTriggerObservation | undefined;
     const toolResultBudget = new ToolResultBudget({
       toolResultsDir: this.options.toolResultsDir,
       artifactStorage: this.options.toolResultArtifactStorage,
@@ -113,6 +120,17 @@ export class SessionContextRuntimeBundle {
       protectedToolNames: DEFAULT_PROTECTED_TOOL_RESULT_NAMES,
       now: this.options.now,
       eventEmitter: this.options.eventEmitter,
+      ...(this.options.testOnAutomaticCompactionTrigger
+        ? {
+            onPreCompact: ({ trigger, messages, preTokens }: { trigger: "manual" | "auto" | "reactive"; messages: import("../model/index.js").CanonicalMessage[]; preTokens: number }) => {
+              if (trigger !== "auto" || !automaticTrigger?.fullSummaryStarted) return;
+              automaticTrigger.summaryMessages = messages;
+              automaticTrigger.summaryPreTokens = preTokens;
+              automaticTrigger.summaryLocalEstimateTokens = tokenBudget.estimateMessagesTokens(messages);
+              automaticTrigger.summaryAccountingEstimateTokens = this.options.tokenAccounting.estimateMessages(messages);
+            },
+          }
+        : {}),
     });
     const autoCompactionPolicy = new AutoCompactionPolicy({ tokenBudget });
     const microCompaction = new MicroCompactionEngine({
@@ -129,6 +147,10 @@ export class SessionContextRuntimeBundle {
       microCompaction,
       snipEngine,
       overflowRecovery,
+      onAutomaticTrigger: (observation) => {
+        automaticTrigger = observation;
+        this.options.testOnAutomaticCompactionTrigger?.(observation);
+      },
     });
     const instructionDiscovery = new InstructionDiscovery(
       this.options.projectRoot,
@@ -165,6 +187,7 @@ export class SessionContextRuntimeBundle {
           maxContextTokens: this.options.maxContextTokens,
           now: this.options.now,
         }),
+        hydrateToolResultReferences: (messages) => toolResultBudget.hydrateReferences(messages),
         promptContributions: { registry: promptContributions, owned: true },
       };
     } catch (error) {

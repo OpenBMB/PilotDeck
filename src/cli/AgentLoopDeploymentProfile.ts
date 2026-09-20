@@ -8,6 +8,7 @@ import {
   type AgentLoopRuntimeFactory,
   type AgentLoopSidecarTransportObserver,
 } from "../agent/index.js";
+import { isExternalAgentLoopBinding, type CoreModuleBinding } from "../composition/index.js";
 
 export type AgentLoopDeploymentTransport = "native" | "stdio" | "tcp";
 
@@ -34,6 +35,7 @@ export type ResolveAgentLoopDeploymentProfileInput = {
 /** Application-selected live observer for an external AgentLoop deployment. */
 export type AgentLoopDeploymentFactoryOptions = {
   transportObserver?: AgentLoopSidecarTransportObserver;
+  expectedModuleId?: string;
 };
 
 /**
@@ -86,6 +88,7 @@ export function createAgentLoopDeploymentFactory(
         port: profile.port,
         ...(profile.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: profile.connectTimeoutMs }),
       }),
+      expectedModuleId: options.expectedModuleId,
       transportObserver: options.transportObserver,
     });
   }
@@ -95,8 +98,32 @@ export function createAgentLoopDeploymentFactory(
       args: profile.args,
       env: profile.env,
     }),
+    expectedModuleId: options.expectedModuleId,
     transportObserver: options.transportObserver,
   });
+}
+
+/** Resolve a per-runtime YAML binding without changing the legacy environment fallback. */
+export function createAgentLoopBindingFactory(
+  binding: CoreModuleBinding | undefined,
+  options: AgentLoopDeploymentFactoryOptions = {},
+): AgentLoopRuntimeFactory | undefined {
+  if (!isExternalAgentLoopBinding(binding)) return undefined;
+  const bindingOptions = { ...options, expectedModuleId: binding.implementationId };
+  if (binding.transport === "module-tcp-v2") {
+    return createAgentLoopDeploymentFactory({
+      transport: "tcp",
+      host: binding.host!,
+      port: binding.port!,
+      connectTimeoutMs: binding.connectTimeoutMs,
+    }, bindingOptions);
+  }
+  return createAgentLoopDeploymentFactory({
+    transport: "stdio",
+    command: binding.command!,
+    args: binding.args ?? [],
+    env: { ...process.env, ...binding.env },
+  }, bindingOptions);
 }
 
 function readTransport(value: string | undefined): AgentLoopDeploymentTransport {

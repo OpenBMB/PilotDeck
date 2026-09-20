@@ -3,6 +3,9 @@ import type { RuntimeContextSurface } from "../../context/RuntimeContextSurface.
 import type { PermissionContext, PermissionMode } from "../../permission/index.js";
 import type { AgentRunMode } from "../protocol/input.js";
 import type { SubagentDefinition } from "../sub/builtinSubagentTypes.js";
+import type { SopRuntimeConfig } from "../../sop/staffdeck/types.js";
+import type { CoreModuleBinding } from "../../composition/types.js";
+import type { RuntimeModuleBindings } from "../../composition/runtimePorts.js";
 
 export type AgentRuntimeConfig = {
   provider: string;
@@ -81,4 +84,10 @@ export type AgentRuntimeConfig = {
    * post-routing compaction pass when the routed window is smaller.
    */
   maxContextTokens?: number;
+  /** Host-owned StaffDeck SOP profile selected by the resolved deployment YAML. */
+  staffDeckSop?: SopRuntimeConfig;
+  /** Provider-neutral module bindings selected for this runtime generation. */
+  moduleBindings?: RuntimeModuleBindings;
+  /** AgentLoop binding selected for this runtime generation. */
+  agentLoopBinding?: CoreModuleBinding;
 };

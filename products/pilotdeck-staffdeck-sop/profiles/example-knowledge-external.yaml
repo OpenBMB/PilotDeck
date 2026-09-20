@@ -1,0 +1,26 @@
+schemaVersion: 1
+agent:
+  model: openai/gpt-4.1-mini
+model:
+  providers:
+    openai:
+      protocol: openai
+      url: https://api.openai.com/v1
+      apiKey: ${PILOTDECK_API_KEY}
+      models:
+        gpt-4.1-mini: {}
+modules:
+  agentLoop: { enabled: true, provider: pilotdeck }
+  modelProvider: { enabled: true, provider: pilotdeck }
+  tools: { enabled: true, provider: pilotdeck }
+  skills: { enabled: false }
+  knowledge:
+    enabled: true
+    implementationId: example.knowledge
+    contract: staffdeck.knowledge/v1
+    transport: module-http-v2
+    endpoint: http://example-knowledge:9026
+    methods: [list_bases, create_base, get_base, update_base, delete_base, list_versions, sync_base, publish_version, rollback_version, list_documents, get_document, import_document, import_okf, update_document, delete_document, list_document_buckets, update_bucket, list_bucket_chunks, update_chunk, get_job, list_jobs, cancel_job, list_okf_concepts, get_okf_concept, upsert_okf_concept, export_okf, lint_okf, list_discoveries, confirm_discovery, reject_discovery, query, resolve_citation]
+    deployment:
+      mode: external
+  sop: { enabled: false }

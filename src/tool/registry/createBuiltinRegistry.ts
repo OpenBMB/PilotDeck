@@ -78,6 +78,8 @@ export type CreateBuiltinRegistryOptions = {
    * lock the provider/model.
    */
   agent?: CreateAgentToolOptions | boolean;
+  /** Effective project/session cap used to describe nested delegation accurately. */
+  maxSubagentDepth?: number;
   /**
    * `web_fetch` builtin tool. **Opt-in** (default: registered) because it
    * issues HTTP requests and a secondary model call. Pass `false` to skip.
@@ -170,7 +172,10 @@ export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): T
   }
   if (options?.agent !== false) {
     const agentOpts = options?.agent === true || options?.agent === undefined ? undefined : options.agent;
-    registry.register(createAgentTool(agentOpts));
+    registry.register(createAgentTool({
+      ...(agentOpts ?? {}),
+      ...(options?.maxSubagentDepth !== undefined ? { maxSubagentDepth: options.maxSubagentDepth } : {}),
+    }));
   }
   if (options?.backgroundTasks) {
     const runtime = options.backgroundTasks.runtime;

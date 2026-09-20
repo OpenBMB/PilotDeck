@@ -1,0 +1,120 @@
+{
+  "artifact": "g5-native-five-continuous-20260920",
+  "sessionKey": "g5-native-five-continuous-20260920",
+  "finalArtifactImage": "pilotdeck:g4-native-five-20260920",
+  "runtime": {
+    "pilotdeck": "final image",
+    "sop": "staffdeck-sop-runtime:g4-current-20260920",
+    "knowledge": "staffdeck-sop-runtime:g4-current-20260920",
+    "network": "pilotdeck-g5-continuous-20260920"
+  },
+  "continuousFlow": {
+    "required": [
+      "read_skill",
+      "read_file",
+      "knowledge_query",
+      "submit_step_result(handoff)",
+      "resume",
+      "submit_step_result(completed)"
+    ],
+    "successfulToolCalls": [
+      {
+        "turnId": "20a9a1cd-eb37-415a-ae6b-6864ce29eb28",
+        "name": "read_skill",
+        "input": {
+          "skillName": "approval-guide"
+        }
+      },
+      {
+        "turnId": "20a9a1cd-eb37-415a-ae6b-6864ce29eb28",
+        "name": "read_file",
+        "input": {
+          "file_path": "approval-context.txt"
+        }
+      },
+      {
+        "turnId": "20a9a1cd-eb37-415a-ae6b-6864ce29eb28",
+        "name": "knowledge_query",
+        "input": {
+          "query": "owner approval before release"
+        }
+      },
+      {
+        "turnId": "20a9a1cd-eb37-415a-ae6b-6864ce29eb28",
+        "name": "submit_step_result",
+        "input": {
+          "status": "handoff",
+          "replyFragment": "Waiting for continuous approval."
+        }
+      },
+      {
+        "turnId": "abdadf12-0d08-4a7a-889e-a52277e6767b",
+        "name": "submit_step_result",
+        "input": {
+          "status": "completed",
+          "replyFragment": "Continuous approval completed."
+        }
+      }
+    ],
+    "errors": 0,
+    "uniqueToolCallCount": 5
+  },
+  "knowledge": {
+    "query": "owner approval before release",
+    "success": true,
+    "selectedBucketCount": 4,
+    "chunkCount": 4,
+    "evidencePackCount": 4,
+    "citationCount": 4,
+    "knowledgeBaseId": "kb_001de64afdae4f13",
+    "documentId": "kdoc_58f8b3aa80d1482d",
+    "evidenceExcerpt": "Owner approval is required before release."
+  },
+  "sop": {
+    "beforeHandoff": {
+      "status": "active",
+      "revision": 14
+    },
+    "afterHandoff": {
+      "status": "handoff",
+      "waitId": "8585c5a0-3835-4db8-a7e9-a3094efbe447",
+      "revision": 17
+    },
+    "resume": {
+      "requestId": "g5-continuous-approval-1",
+      "accepted": true,
+      "revision": 18
+    },
+    "afterCompletion": {
+      "status": "completed",
+      "revision": 25
+    },
+    "outage": null
+  },
+  "compaction": {
+    "manualRunnerOutcome": "compacted",
+    "durableBoundaryCount": 1,
+    "durableCompactionCount": 1,
+    "boundary": {
+      "compactionId": "9c3e8293-d91f-421c-a71d-b5dc3a77fb1a",
+      "trigger": "reactive",
+      "preTokens": 10598,
+      "postTokens": 3611,
+      "messagesSummarized": 6,
+      "targetTokens": 4915,
+      "summaryGenerated": true,
+      "checkpointMerged": false,
+      "finalRatio": 0.4407958984375,
+      "extra": {
+        "tier": "full",
+        "summarySucceeded": true,
+        "cacheReset": true
+      }
+    }
+  },
+  "transcript": {
+    "entryCount": 458,
+    "sanitizedPath": "transcript.sanitized.jsonl"
+  },
+  "credentials": "runtime-only; no API keys or provider URLs retained"
+}

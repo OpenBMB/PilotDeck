@@ -46,6 +46,7 @@ import {
   type SidecarModuleComposition,
   type SidecarTransportContext,
 } from "../modules/transport/sidecarHostModulePorts.js";
+import { composeToolPorts, createRuntimeModulePorts } from "../../composition/runtimePorts.js";
 
 /**
  * Inputs used to compose the native resources consumed by one AgentSession.
@@ -151,9 +152,11 @@ export class AgentSessionRuntimeBundle {
         eventRecorder,
         { sessionId: this.options.sessionId },
       );
-      const context = this.options.dependencies.context
+      const externalPorts = createRuntimeModulePorts(this.options.config.moduleBindings, this.options.sessionId);
+      const selectedContext = externalPorts.context ?? this.options.dependencies.context;
+      const context = selectedContext
         ? createDurableContextRuntime(
-            unwrapDurableContextRuntime(this.options.dependencies.context),
+            unwrapDurableContextRuntime(selectedContext),
             eventRecorder,
           )
         : undefined;
@@ -177,7 +180,7 @@ export class AgentSessionRuntimeBundle {
       ownsScope = sessionScope.ownsScope;
       const scopedElicitation = scope.services.elicitation ?? elicitation;
       const scopedLifecycle = scope.services.lifecycle ?? this.options.dependencies.lifecycle;
-      const modelPort = this.options.dependencies.ports?.model ?? createRouterModelInvokerPort(
+      const modelPort = externalPorts.model ?? this.options.dependencies.ports?.model ?? createRouterModelInvokerPort(
         this.options.dependencies.router,
         {
           isMainAgent: !this.options.config.isSubagent,
@@ -186,10 +189,13 @@ export class AgentSessionRuntimeBundle {
           managedModelPolicy: this.options.config.managedModelPolicy,
         },
       );
-      const toolPort = this.options.dependencies.ports?.tools ?? createToolSchedulerPort(
+      const nativeToolPort = this.options.dependencies.ports?.tools ?? createToolSchedulerPort(
         this.options.dependencies.tools.registry,
         sessionScope.scheduler,
       );
+      const toolPort = externalPorts.tools
+        ? composeToolPorts(externalPorts.tools, nativeToolPort)
+        : nativeToolPort;
       const durableModelPort = createDurableModelInvokerPort(modelPort, eventRecorder);
       const durableToolPort = createDurableToolPort(toolPort, eventRecorder);
       const dependencies: AgentRuntimeDependencies = {

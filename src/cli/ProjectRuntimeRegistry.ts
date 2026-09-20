@@ -154,6 +154,7 @@ export type ProjectRuntimeRegistryOptions = {
   additionalWorkingDirectories?: string[];
   modelFactory?: (snapshot: PilotConfigSnapshot) => ModelRuntime;
   testAgentConfigOverrides?: Pick<AgentRuntimeConfig, "maxContextMessages">;
+  testOnAutomaticCompactionTrigger?: (observation: import("../context/index.js").CompactionAutomaticTriggerObservation) => void;
   modelInvocationProviderFactory?: (snapshot: PilotConfigSnapshot) => readonly ModelInvocationProvider[];
   executionWorldBundleFactory?: (input: {
     projectRoot: string;
@@ -348,6 +349,7 @@ export class ProjectRuntimeRegistry {
       continuations: options.continuations,
       agentLoopFactory: options.agentLoopFactory,
       testAgentConfigOverrides: options.testAgentConfigOverrides,
+      testOnAutomaticCompactionTrigger: options.testOnAutomaticCompactionTrigger,
       testAgentLoopFactory: options.testAgentLoopFactory,
       shouldCollectFileArtifacts: (runtime) => resolve(runtime.projectRoot) !== resolve(options.pilotHome),
       onDiagnostic: (message, error) => {

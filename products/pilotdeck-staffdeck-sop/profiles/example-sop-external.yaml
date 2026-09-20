@@ -1,0 +1,28 @@
+schemaVersion: 1
+agent:
+  model: openai/gpt-4.1-mini
+model:
+  providers:
+    openai:
+      protocol: openai
+      url: https://api.openai.com/v1
+      apiKey: ${PILOTDECK_API_KEY}
+      models:
+        gpt-4.1-mini: {}
+modules:
+  agentLoop: { enabled: true, provider: pilotdeck }
+  modelProvider: { enabled: true, provider: pilotdeck }
+  tools: { enabled: true, provider: pilotdeck }
+  skills: { enabled: false }
+  knowledge: { enabled: false }
+  sop:
+    enabled: true
+    implementationId: example.approval
+    contract: sop.lifecycle/v2
+    transport: sop-http-v2
+    endpoint: http://example-sop:8091
+    manifestPath: /module-manifest
+    definitionsPath: ../conformance/fixture.yaml
+    defaultSopId: approval
+    deployment:
+      mode: external

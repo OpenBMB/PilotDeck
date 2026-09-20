@@ -71,6 +71,7 @@ export class ProjectExecutionWorldBundle {
       codeRuntime: executionWorld.codeRuntime,
       executionTransport: executionWorld.executionTransport,
       executeCodeSandbox: executionWorld.executeCodeSandbox,
+      maxSubagentDepth: this.options.snapshot.config.agent.subagents?.maxDepth ?? 1,
       backgroundTasks: { runtime: executionWorld.backgroundTasks },
       ...(this.options.subagentIdFactory ? { agent: { uuid: this.options.subagentIdFactory } } : {}),
       readSkill: this.options.skills,

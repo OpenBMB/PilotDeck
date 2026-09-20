@@ -5,6 +5,8 @@ import type { InteractionProfileName } from "../../interaction/InteractionProfil
 import type { SandboxMode } from "../../tool/execution-world/SandboxPort.js";
 import type { ModelConfig } from "../../model/protocol/canonical.js";
 import type { RouterConfig } from "../../router/config/schema.js";
+import type { SopRuntimeConfig } from "../../sop/staffdeck/types.js";
+import type { CoreModuleBinding } from "../../composition/types.js";
 
 export type PilotConfigSourceKind = "default" | "project" | "env";
 export type PilotConfigSourcePhase = "bootstrap" | "merge";
@@ -51,6 +53,7 @@ export type PilotRawConfig = {
   telemetry?: unknown;
   proxy?: unknown;
   webui?: unknown;
+  modules?: unknown;
 };
 
 export type PilotExtensionConfig = {
@@ -239,6 +242,19 @@ export type PilotTelemetryConfig = {
   enabled: boolean;
 };
 
+export type PilotCoreModuleConfig = CoreModuleBinding;
+
+/** Deployment composition selected by YAML. */
+export type PilotModulesConfig = {
+  agentLoop?: PilotCoreModuleConfig;
+  skills?: PilotCoreModuleConfig;
+  modelProvider?: PilotCoreModuleConfig;
+  tools?: PilotCoreModuleConfig;
+  context?: PilotCoreModuleConfig;
+  sop?: SopRuntimeConfig;
+  knowledge?: PilotCoreModuleConfig;
+};
+
 export type PilotConfig = {
   agent: PilotAgentConfig;
   model: ModelConfig;
@@ -252,6 +268,7 @@ export type PilotConfig = {
   tools?: PilotToolsConfig;
   telemetry?: PilotTelemetryConfig;
   proxy?: PilotProxyConfig;
+  modules?: PilotModulesConfig;
 };
 
 export type PilotConfigSnapshot = {

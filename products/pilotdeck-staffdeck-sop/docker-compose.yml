@@ -1,0 +1,46 @@
+services:
+  sop-runtime:
+    build:
+      context: ${STAFFDECK_SOP_RUNTIME_CONTEXT:-../../../StaffDeck-portable-sop}
+      dockerfile: portable_sop/Dockerfile
+    image: ${STAFFDECK_SOP_RUNTIME_IMAGE:-pilotdeck-staffdeck-sop-runtime:local}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8091/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  pilotdeck:
+    build:
+      context: ../..
+    image: ${PILOTDECK_IMAGE:-pilotdeck:staffdeck-sop}
+    depends_on:
+      sop-runtime:
+        condition: service_healthy
+    ports:
+      - "${PILOTDECK_PORT:-3001}:3001"
+    volumes:
+      - pilotdeck-home:/root/.pilotdeck
+      - ./sops:/root/.pilotdeck/sops:ro
+    environment:
+      NODE_ENV: production
+      PILOT_HOME: /root/.pilotdeck
+      SERVER_PORT: "3001"
+      PILOTDECK_GATEWAY_PORT: "18789"
+      PILOTDECK_MODEL: ${PILOTDECK_MODEL:-openai/gpt-4.1-mini}
+      PILOTDECK_LIGHT_MODEL: ${PILOTDECK_LIGHT_MODEL:-openai/gpt-4.1-mini}
+      PILOTDECK_API_URL: ${PILOTDECK_API_URL:-https://api.openai.com/v1}
+      PILOTDECK_API_KEY: ${PILOTDECK_API_KEY:?set PILOTDECK_API_KEY in .env}
+      PILOTDECK_AGENT_LOOP_TRANSPORT: native
+      PILOTDECK_STAFFDECK_SOP_ENDPOINT: http://sop-runtime:8091
+      PILOTDECK_STAFFDECK_SOP_DEFINITIONS_PATH: /root/.pilotdeck/sops/operator-approval.yaml
+      PILOTDECK_STAFFDECK_SOP_DEFAULT_ID: operator_approval
+      PILOTDECK_STAFFDECK_SOP_TIMEOUT_MS: ${PILOTDECK_STAFFDECK_SOP_TIMEOUT_MS:-10000}
+      # The Docker daemon may inject an outbound proxy. Keep the in-network
+      # StaffDeck sidecar direct so SOP calls never leave the Compose network.
+      NO_PROXY: sop-runtime,${PILOTDECK_NO_PROXY:-api.openai.com,localhost,127.0.0.1}
+      no_proxy: sop-runtime,${PILOTDECK_NO_PROXY:-api.openai.com,localhost,127.0.0.1}
+    restart: unless-stopped
+
+volumes:
+  pilotdeck-home:

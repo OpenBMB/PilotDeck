@@ -1,0 +1,73 @@
+schemaVersion: 1
+agent:
+  model: fixture/default
+model:
+  providers:
+    fixture:
+      protocol: openai
+      url: http://model-fixture.invalid/v1
+      apiKey: ${PILOTDECK_API_KEY}
+      models:
+        default: {}
+modules:
+  agentLoop:
+    enabled: true
+    implementationId: exported.agentLoop
+    contract: pilotdeck.agent-loop/v1
+    transport: module-tcp-v2
+    host: module-agent-loop
+    port: 9020
+    methods: [execute, cancel, status, resume, ack]
+    deployment: { mode: build, context: ../fixtures/build-module-runtime, port: 9020 }
+  skills:
+    enabled: true
+    implementationId: exported.skills
+    contract: pilotdeck.skills/v1
+    transport: module-http-v2
+    endpoint: http://module-skills:9021
+    methods: [list, read]
+    deployment: { mode: build, context: ../fixtures/build-module-runtime, port: 9021, healthPath: /healthz }
+  tools:
+    enabled: true
+    implementationId: exported.tools
+    contract: pilotdeck.tools/v1
+    transport: module-http-v2
+    endpoint: http://module-tools:9022
+    methods: [execute]
+    catalog:
+      - { name: remote_lookup, description: Fixture lookup, inputSchema: { type: object }, readOnly: true, concurrencySafe: true }
+    deployment: { mode: build, context: ../fixtures/build-module-runtime, port: 9022, healthPath: /healthz }
+  context:
+    enabled: true
+    implementationId: exported.context
+    contract: pilotdeck.context/v1
+    transport: module-http-v2
+    endpoint: http://module-context:9023
+    methods: [prepare_for_model, apply_tool_results, recover_from_model_error, capture_turn, try_auto_compact]
+    deployment: { mode: build, context: ../fixtures/build-module-runtime, port: 9023, healthPath: /healthz }
+  modelProvider:
+    enabled: true
+    implementationId: exported.modelProvider
+    contract: pilotdeck.model/v1
+    transport: module-http-v2
+    endpoint: http://module-model-provider:9024
+    methods: [prepare, stream]
+    deployment: { mode: build, context: ../fixtures/build-module-runtime, port: 9024, healthPath: /healthz }
+  knowledge:
+    enabled: true
+    implementationId: exported.knowledge
+    contract: staffdeck.knowledge/v1
+    transport: module-http-v2
+    endpoint: http://module-knowledge:9026
+    methods: [list_bases, create_base, get_base, update_base, delete_base, list_versions, sync_base, publish_version, rollback_version, list_documents, get_document, import_document, import_okf, update_document, delete_document, list_document_buckets, update_bucket, list_bucket_chunks, update_chunk, get_job, list_jobs, cancel_job, list_okf_concepts, get_okf_concept, upsert_okf_concept, export_okf, lint_okf, list_discoveries, confirm_discovery, reject_discovery, query, resolve_citation]
+    deployment: { mode: build, context: ../fixtures/build-module-runtime, port: 9026, healthPath: /healthz }
+  sop:
+    enabled: true
+    implementationId: exported.sop
+    contract: sop.lifecycle/v2
+    transport: sop-http-v2
+    endpoint: http://module-sop:9025
+    manifestPath: /module-manifest
+    definitionsPath: ../conformance/fixture.yaml
+    defaultSopId: approval
+    deployment: { mode: build, context: ../fixtures/build-module-runtime, port: 9025, healthPath: /healthz }

@@ -7,6 +7,7 @@ import type {
   AgentLoopOperationIdentity,
   AgentLoopOperationKnownTerminal,
   AgentLoopOperationLedger,
+  AgentLoopOperationRecovery,
   AgentLoopOperationResolution,
   AgentLoopOperationUnknownTerminal,
 } from "./operationLedger.js";
@@ -35,6 +36,17 @@ export class SessionAgentLoopOperationLedger implements AgentLoopOperationLedger
 
   constructor(private readonly options: SessionAgentLoopOperationLedgerOptions) {
     for (const entry of options.restoredEntries ?? []) this.restore(entry);
+  }
+
+  recover(input: AgentLoopOperationIdentity): AgentLoopOperationRecovery | undefined {
+    this.assertSession(input);
+    const record = this.records.get(input.operationId);
+    if (!record || !sameDurableOperation(record.identity, input)) return undefined;
+    if (!record.terminal) return { state: "incomplete" };
+    if (isKnownTerminal(record.terminal)) {
+      return { state: "terminal", resolution: resolutionFromTerminal(record.terminal) };
+    }
+    return { state: "result_unknown", unknown: cloneUnknownTerminal(record.terminal) };
   }
 
   start(input: AgentLoopOperationIdentity): Promise<void> {
@@ -149,12 +161,7 @@ export class SessionAgentLoopOperationLedger implements AgentLoopOperationLedger
     const record = this.records.get(input.operationId);
     if (!record || !sameIdentity(record.identity, input) || record.streamId !== input.streamId) return undefined;
     if (!record.terminal || !isKnownTerminal(record.terminal)) return undefined;
-    return {
-      outcome: record.terminal.outcome,
-      result: structuredClone(record.terminal.result),
-      messages: structuredClone(record.terminal.messages),
-      ...(record.terminal.seedState ? { seedState: cloneSeedState(record.terminal.seedState) } : {}),
-    };
+    return resolutionFromTerminal(record.terminal);
   }
 
   private requireActive(
@@ -295,6 +302,24 @@ function sameIdentity(left: AgentLoopOperationIdentity, right: AgentLoopOperatio
     && left.idempotencyKey === right.idempotencyKey
     && left.binding.moduleInstanceId === right.binding.moduleInstanceId
     && left.binding.connectionGeneration === right.binding.connectionGeneration;
+}
+
+/** Request, stream, and module binding identify a single transport attempt. */
+function sameDurableOperation(left: AgentLoopOperationIdentity, right: AgentLoopOperationIdentity): boolean {
+  return left.runId === right.runId
+    && left.operationId === right.operationId
+    && left.sessionId === right.sessionId
+    && left.turnId === right.turnId
+    && left.idempotencyKey === right.idempotencyKey;
+}
+
+function resolutionFromTerminal(terminal: AgentLoopOperationKnownTerminal): AgentLoopOperationResolution {
+  return {
+    outcome: terminal.outcome,
+    result: structuredClone(terminal.result),
+    messages: structuredClone(terminal.messages),
+    ...(terminal.seedState ? { seedState: cloneSeedState(terminal.seedState) } : {}),
+  };
 }
 
 function sameKnownTerminal(left: AgentLoopOperationKnownTerminal, right: AgentLoopOperationKnownTerminal): boolean {

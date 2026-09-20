@@ -19,6 +19,7 @@ import type {
 type ContextModuleCall = Omit<ModuleCallRequest, "kind" | "messageId" | "method"> & {
   idempotencyKey?: string;
   recordFailure?: boolean;
+  abortSignal?: AbortSignal;
 };
 
 export type HostContextModuleClient = (request: ContextModuleCall) => Promise<ModuleResponse>;
@@ -47,6 +48,7 @@ export function createHostContextRuntime(
       requestId: `context-${operation}-${uuid()}`,
       module: "context",
       recordFailure: operation === "prepare_for_model",
+      abortSignal: (input as { abortSignal?: AbortSignal }).abortSignal,
       payload: { operation, input: serializeContextInput(operation, input) },
     });
     if (!response.ok) {

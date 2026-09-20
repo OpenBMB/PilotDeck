@@ -43,6 +43,7 @@ import { useWebSocket } from '../../contexts/WebSocketContext';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
 import QueuedMessagesTray from './QueuedMessagesTray';
+import SopWaitBanner from './SopWaitBanner';
 import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
 
 type PendingViewSession = {
@@ -718,6 +719,16 @@ function ChatInterfaceV2({
     [handleSubmit, isWelcomeMode, onExitWelcome],
   );
 
+  const handleSopContinuationPrepared = useCallback((resumeMessage: string) => {
+    setInput(resumeMessage);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    addToast('success', 'Continuation prepared. Send it to continue the SOP.');
+  }, [addToast, setInput, textareaRef]);
+
+  const handleSopControlError = useCallback((messageText: string) => {
+    addToast('error', messageText);
+  }, [addToast]);
+
   // The composer is identical in welcome / normal mode — just rendered in a
   // different parent container. Pulled out so we don't drift between the two.
   const composer = sessionIsReadOnly ? (
@@ -836,6 +847,16 @@ function ChatInterfaceV2({
   );
   const composerSlot = (
     <div data-chat-composer-slot className="min-h-0 shrink-0">
+      {!sessionIsReadOnly ? (
+        <SopWaitBanner
+          sessionKey={selectedSession?.id || currentSessionId || null}
+          projectKey={selectedProject?.fullPath || selectedProject?.path || ''}
+          refreshKey={`${chatMessages.length}:${isLoading ? 'running' : 'idle'}`}
+          disabled={isLoading}
+          onPrepared={handleSopContinuationPrepared}
+          onError={handleSopControlError}
+        />
+      ) : null}
       {composer}
     </div>
   );

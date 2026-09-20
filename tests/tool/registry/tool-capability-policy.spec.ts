@@ -44,6 +44,26 @@ test("scoped tool views delegate to the parent registry without copying definiti
   assert.equal(view.has("dynamic"), false);
 });
 
+test("agent description reflects the effective nested delegation cap", () => {
+  const defaultAgent = createAgentTool({ maxSubagentDepth: 1 });
+  const nestedAgent = createAgentTool({ maxSubagentDepth: 2 });
+
+  assert.match(defaultAgent.description, /except nested agent launch/);
+  assert.doesNotMatch(defaultAgent.description, /nested delegation is available/);
+  assert.match(nestedAgent.description, /nested delegation is available within the configured depth cap/);
+});
+
+test("session agent description shadowing does not mutate the project registry", () => {
+  const project = new ToolRegistry();
+  project.register(createAgentTool({ maxSubagentDepth: 1 }));
+  const session = project.clone();
+  session.replace(createAgentTool({ maxSubagentDepth: 2 }));
+
+  assert.match(project.get("agent")?.description ?? "", /except nested agent launch/);
+  assert.match(session.get("agent")?.description ?? "", /nested delegation is available within the configured depth cap/);
+  session.dispose();
+});
+
 test("tool registrations are exact handles and owned views dispose without affecting the parent", () => {
   const parent = new ToolRegistry();
   const initial = createTool("replaceable");

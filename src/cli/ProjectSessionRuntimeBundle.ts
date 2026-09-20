@@ -15,6 +15,7 @@ import {
   createRequestUserFormTool,
   createRequestUserInputTool,
 } from "../tool/index.js";
+import { withBuiltinAgentToolDescription } from "../tool/builtin/agent.js";
 import { buildMcpToolWireName } from "../tool/index.js";
 import { createDeferredToolSearchTool } from "../tool/builtin/searchTools.js";
 import { resolveRoutedModelMaxContextTokens } from "../agent/runtime/modelContextWindow.js";
@@ -22,6 +23,7 @@ import {
   InputProcessor,
   PluginRuntimeExtensionResolver,
   type CompactionPort,
+  type CompactionAutomaticTriggerObservation,
   type InstructionStoragePort,
   type MemoryResolver,
   type PromptCacheCoordinatorPort,
@@ -44,7 +46,11 @@ import type { PermissionRuleSet } from "../permission/index.js";
 import type { PilotConfigSnapshot } from "../pilot/config/types.js";
 import type { RouterRuntime } from "../router/index.js";
 import type { RouterSessionCustomRouterPort } from "../router/index.js";
-import { createAgentProjectSessionStorage } from "../session/index.js";
+import {
+  createAgentProjectSessionStorage,
+  replayTranscriptEntries,
+  type AgentTranscriptEntry,
+} from "../session/index.js";
 import { createSessionTitleGenerator } from "../session/title/SessionTitleGenerator.js";
 import { createPromptSuggestionGenerator } from "../session/prompt/PromptSuggestionGenerator.js";
 import type {
@@ -82,6 +88,13 @@ import type { PilotDeckRuntimeProfile } from "./PilotDeckRuntimeProfile.js";
 import type { InteractionProfile } from "../interaction/index.js";
 import type { BackgroundSubagentRuntime } from "../agent/sub/BackgroundSubagentRuntime.js";
 import type { ResolvedGatewayOrganizationPolicy } from "./createLocalGateway.js";
+import {
+  createKnowledgeModulePort,
+  createKnowledgeQueryTool,
+  createSkillModulePort,
+  isDisabledModuleBinding,
+  isExternalModuleBinding,
+} from "../composition/index.js";
 
 /**
  * The project-generation services consumed while composing one Agent session.
@@ -130,7 +143,8 @@ export type ProjectSessionRuntimeBundleResult = {
   inputProcessor: AgentInputAdmission;
   extendDependencies: (
     storage: ReturnType<typeof createAgentProjectSessionStorage>,
-  ) => Partial<AgentRuntimeDependencies>;
+    entries?: readonly AgentTranscriptEntry[],
+  ) => Partial<AgentRuntimeDependencies> | Promise<Partial<AgentRuntimeDependencies>>;
   configureContinuableSubagents: NonNullable<CreateAgentSessionOptions["__configure"]>;
 };
 
@@ -171,6 +185,7 @@ export type ProjectSessionRuntimeBundleOptions = {
   agentLoopFactory?: AgentLoopRuntimeFactory;
   testAgentConfigOverrides?: Pick<AgentRuntimeConfig, "maxContextMessages">;
   testAgentLoopFactory?: CreateAgentSessionOptions["__agentLoopFactory"];
+  testOnAutomaticCompactionTrigger?: (observation: CompactionAutomaticTriggerObservation) => void;
   collectFileArtifacts: boolean;
   onDiagnostic?: (message: string, error?: unknown) => void;
 };
@@ -197,7 +212,20 @@ export class ProjectSessionRuntimeBundle {
       await runtime.pluginRuntime.refresh();
       const extensionLease = runtime.pluginRuntime.acquireSessionContributions(this.options.sdkSessionPlugins);
       resources.add("plugin contribution lease", extensionLease.release);
-      const contributions = filterSessionSkills(extensionLease.contributions, this.options.sdkSessionConfig?.skills);
+      const skillBinding = runtime.snapshot.config.modules?.skills;
+      const skillsDisabled = isDisabledModuleBinding(skillBinding);
+      const externalSkillPort = isExternalModuleBinding(skillBinding)
+        ? createSkillModulePort(skillBinding)
+        : undefined;
+      const selectedContributions = externalSkillPort
+        ? await replaceSkillContributions(
+            extensionLease.contributions,
+            await externalSkillPort.list({ projectKey: runtime.projectRoot }),
+          )
+        : skillsDisabled
+          ? await replaceSkillContributions(extensionLease.contributions, [])
+        : extensionLease.contributions;
+      const contributions = filterSessionSkills(selectedContributions, this.options.sdkSessionConfig?.skills);
       const extension = new PluginRuntimeExtensionResolver(contributions);
       const inputProcessor = new InputProcessor({ extension });
       const routerRegistration = runtime.routerSessionCustomRouters.register(
@@ -226,19 +254,31 @@ export class ProjectSessionRuntimeBundle {
         alwaysOnToolNames: this.options.alwaysOnToolNames,
       }).compose();
       const sessionTools = sessionToolComposition.registry;
-      if (Array.isArray(this.options.sdkSessionConfig?.skills)) {
+      if (skillsDisabled && sessionTools.has("read_skill")) {
+        sessionTools.unregister("read_skill");
+      }
+      if (externalSkillPort || Array.isArray(this.options.sdkSessionConfig?.skills)) {
         const skillByName = new Map(contributions.skills.map((skill) => [skill.name, skill]));
         if (!sessionTools.has("read_skill")) {
           throw new Error("read_skill is unavailable for this SDK skill-scoped session.");
         }
         sessionTools.replace(createReadSkillTool({
-          loader: async (name) => skillByName.get(name)?.content,
+          loader: async (name) => externalSkillPort
+            ? externalSkillPort.read({ name, projectKey: runtime.projectRoot })
+            : skillByName.get(name)?.content,
           lister: () => contributions.skills.map((skill) => ({
             name: skill.name,
             description: skill.description,
             path: skill.path,
           })),
         }));
+      }
+      const knowledgeBinding = runtime.snapshot.config.modules?.knowledge;
+      if (isExternalModuleBinding(knowledgeBinding)) {
+        if (sessionTools.has("knowledge_query")) {
+          throw new Error("knowledge_query is already owned by this session.");
+        }
+        sessionTools.register(createKnowledgeQueryTool(createKnowledgeModulePort(knowledgeBinding)));
       }
       const userDialogTools = [
         ...(this.options.sdkSessionConfig?.userDialogKinds?.includes("input") ? [createRequestUserInputTool()] : []),
@@ -325,6 +365,17 @@ export class ProjectSessionRuntimeBundle {
         env: this.options.env,
         testAgentConfigOverrides: this.options.testAgentConfigOverrides,
       }).compose();
+      // The project registry is shared across sessions. Shadow only this
+      // session's agent definition so SDK and organization depth caps cannot
+      // leak into another session's tool description.
+      const sessionAgent = sessionTools.get("agent");
+      const describedSessionAgent = sessionAgent && withBuiltinAgentToolDescription(sessionAgent, {
+        maxSubagentDepth: agentConfig.maxSubagentDepth ?? 1,
+        subagentDepth: agentConfig.subagentDepth ?? 0,
+      });
+      if (describedSessionAgent) {
+        sessionTools.registerOrReplace(describedSessionAgent);
+      }
       const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
         router: runtime.router,
         tools: { registry: sessionTools },
@@ -407,6 +458,7 @@ export class ProjectSessionRuntimeBundle {
       let goalSequence = 0;
       const extendDependencies = (
         storage: ReturnType<typeof createAgentProjectSessionStorage>,
+        entries: readonly AgentTranscriptEntry[] = [],
       ) => {
         const agentModel = runtime.snapshot.config.agent.model;
         const caps = runtime.model.getCapabilities(agentModel.provider, agentModel.model);
@@ -421,6 +473,7 @@ export class ProjectSessionRuntimeBundle {
           instructionStorage: runtime.instructionStorage,
           toolResultSpill: runtime.toolResultSpill,
           compaction: runtime.compaction,
+          testOnAutomaticCompactionTrigger: this.options.testOnAutomaticCompactionTrigger,
           promptCacheCoordinator: runtime.promptCacheCoordinator,
           model: runtime.router,
           tokenAccounting: runtime.tokenAccounting,
@@ -463,6 +516,7 @@ export class ProjectSessionRuntimeBundle {
               instructionStorage: runtime.instructionStorage,
               toolResultSpill: runtime.toolResultSpill,
               compaction: runtime.compaction,
+              testOnAutomaticCompactionTrigger: this.options.testOnAutomaticCompactionTrigger,
               promptCacheCoordinator: runtime.promptCacheCoordinator,
               model: runtime.router,
               tokenAccounting: runtime.tokenAccounting,
@@ -528,7 +582,7 @@ export class ProjectSessionRuntimeBundle {
               }) : {}),
             })
           : undefined;
-        return {
+        return sessionContext.hydrateToolResultReferences(replayTranscriptEntries([...entries]).messages).then(() => ({
           context: sessionContext.context,
           ownedContext: true,
           promptContributions: sessionContext.promptContributions,
@@ -542,7 +596,7 @@ export class ProjectSessionRuntimeBundle {
           planFileManager: planTodo.planFileManager,
           planTodoManager: planTodo.planTodoManager,
           goalManager: goal.goalManager,
-        };
+        }));
       };
       const configureContinuableSubagents: NonNullable<CreateAgentSessionOptions["__configure"]> = (input) => {
         if (this.options.gateway) {
@@ -607,6 +661,16 @@ function filterSessionSkills(
   return Object.freeze({
     ...contributions,
     skills: Object.freeze(contributions.skills.filter((skill) => names.has(skill.name))),
+  });
+}
+
+async function replaceSkillContributions(
+  source: PluginSessionContributionSnapshot,
+  skills: readonly PluginSessionContributionSnapshot["skills"][number][],
+): Promise<PluginSessionContributionSnapshot> {
+  return Object.freeze({
+    ...source,
+    skills: Object.freeze(skills.map((skill) => Object.freeze({ ...skill }))),
   });
 }
 

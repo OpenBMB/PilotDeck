@@ -11,6 +11,7 @@ import {
   type GatewayTransportClient,
   type GatewayTransportNotificationListener,
 } from "./transport.js";
+import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "./gateway-protocol.js";
 import {
   PilotDeckError,
   type PilotDeckEmbeddedToolDefinition,
@@ -252,7 +253,7 @@ export class PilotDeckEmbeddedTransport implements GatewayTransportClient {
     try {
       this.options.endpoint.sendToGateway(JSON.stringify({
         type: "hello",
-        protocolVersion: "1.1",
+        protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION,
         clientName: "sdk",
         clientVersion: this.options.clientVersion ?? "0.1.0",
         token: this.options.token,
@@ -328,7 +329,7 @@ export class PilotDeckEmbeddedTransport implements GatewayTransportClient {
       return;
     }
     if (isEmbeddedHelloFrame(frame)) {
-      const info = embeddedServerInfo(frame.serverInfo);
+      const info = embeddedServerInfo(frame.serverInfo, frame.protocolVersion);
       this.endpointState.serverInfo ??= info;
       this.serverInfo = this.endpointState.serverInfo;
       return;
@@ -440,10 +441,15 @@ function isEmbeddedRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function embeddedServerInfo(value: Record<string, unknown>): PilotDeckServerInfo {
+function embeddedServerInfo(
+  value: Record<string, unknown>,
+  protocolVersion?: string,
+): PilotDeckServerInfo {
   return {
     mode: value.mode as PilotDeckServerInfo["mode"],
-    protocolVersion: typeof value.protocolVersion === "string" ? value.protocolVersion : "1.1",
+    protocolVersion: typeof value.protocolVersion === "string"
+      ? value.protocolVersion
+      : protocolVersion ?? PILOTDECK_GATEWAY_PROTOCOL_VERSION,
     serverVersion: typeof value.serverVersion === "string" ? value.serverVersion : "embedded",
     capabilities: Array.isArray(value.capabilities) ? value.capabilities.map(String) : [],
   };

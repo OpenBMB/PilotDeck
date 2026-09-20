@@ -136,6 +136,59 @@ test("durable tool decorator preserves an optional host catalog refresh", async 
   assert.equal(refreshes, 1);
 });
 
+test("durable tool decorator does not settle late results after turn cancellation", async () => {
+  const transcript = new InMemoryTranscriptWriter();
+  const recorder = new AgentSessionEventRecorder(transcript);
+  await recorder.startTurn(context.sessionId, context.turnId);
+  await recorder.recordModelRequest(context.sessionId, context.turnId, {
+    request,
+    provider: request.provider,
+    model: request.model,
+  });
+  const controller = new AbortController();
+  const tools = createDurableToolPort({
+    list: () => [],
+    async executeAll(calls) {
+      controller.abort("turn cancelled");
+      return calls.map((call) => ({
+        type: "error" as const,
+        toolCallId: call.id,
+        toolName: call.name,
+        error: { code: "tool_execution_failed" as const, message: "cancelled while running" },
+        content: [{ type: "text" as const, text: "cancelled while running" }],
+        startedAt: "2026-09-06T00:00:00.000Z",
+        completedAt: "2026-09-06T00:00:01.000Z",
+      }));
+    },
+  }, recorder);
+
+  await tools.executeAll(
+    [{ id: "call-1", name: "lookup", input: {} }],
+    {
+      sessionId: context.sessionId,
+      turnId: context.turnId,
+      cwd: "/tmp",
+      permissionMode: "default",
+      permissionContext: {
+        mode: "default",
+        rules: { allow: [], deny: [], ask: [] },
+        cwd: "/tmp",
+        additionalWorkingDirectories: [],
+        canPrompt: false,
+        bypassAvailable: false,
+      },
+    },
+    { ...context, abortSignal: controller.signal },
+  );
+
+  assert.deepEqual(transcript.entries.map((entry) => entry.type), [
+    "turn_started",
+    "step_started",
+    "model_request",
+    "tool_call",
+  ]);
+});
+
 test("model_request persistence failure prevents provider dispatch", async () => {
   let dispatched = false;
   const transcript = new FailingSessionEventWriter("model_request");

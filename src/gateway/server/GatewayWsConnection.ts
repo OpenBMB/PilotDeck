@@ -240,6 +240,12 @@ export class GatewayWsConnection {
         return this.options.gateway.listSessions(frame.params as never);
       case "resume_session":
         return this.options.gateway.resumeSession(frame.params as never);
+      case "sop_status":
+        if (!this.options.gateway.sopStatus) throw Object.assign(new Error("sop_status is unavailable."), { code: "CAPABILITY_UNAVAILABLE" });
+        return this.options.gateway.sopStatus(frame.params as never);
+      case "sop_resume":
+        if (!this.options.gateway.resumeSop) throw Object.assign(new Error("sop_resume is unavailable."), { code: "CAPABILITY_UNAVAILABLE" });
+        return this.options.gateway.resumeSop(frame.params as never);
       case "new_session":
         return this.options.gateway.newSession(frame.params as never);
       case "close_project_sessions":

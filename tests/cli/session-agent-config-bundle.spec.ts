@@ -4,6 +4,7 @@ import test from "node:test";
 import { SessionAgentConfigBundle } from "../../src/cli/SessionAgentConfigBundle.js";
 import type { ModelRuntime } from "../../src/model/index.js";
 import type { PilotConfigSnapshot } from "../../src/pilot/index.js";
+import { createAgentTool } from "../../src/tool/builtin/agent.js";
 
 test("session agent config bundle freezes model, permission, workspace, and subagent selections", () => {
   const config = new SessionAgentConfigBundle({
@@ -65,7 +66,35 @@ test("session agent config bundle accepts the internal max-message parity overri
   assert.equal(config.maxContextMessages, 1);
 });
 
+test("session maxSubagentDepth uses the SDK override and organization cap", () => {
+  const sessionOverride = new SessionAgentConfigBundle({
+    runtime: { projectRoot: "/project", snapshot: snapshotWithDepth(1), profile: { runtimeContextSurface: "system_prompt" }, model: model() },
+    sdkSessionConfig: { settings: { agent: { subagents: { maxDepth: 2 } } } },
+    permissionRules: { allow: [], deny: [], ask: [] },
+    interaction: { canPrompt: false },
+    permissionMode: "default",
+    env: {},
+  }).compose();
+  const organizationCap = new SessionAgentConfigBundle({
+    runtime: { projectRoot: "/project", snapshot: snapshotWithDepth(2), profile: { runtimeContextSurface: "system_prompt" }, model: model() },
+    organizationPolicy: { limits: { maxSubagentDepth: 1 } },
+    permissionRules: { allow: [], deny: [], ask: [] },
+    interaction: { canPrompt: false },
+    permissionMode: "default",
+    env: {},
+  }).compose();
+
+  assert.equal(sessionOverride.maxSubagentDepth, 2);
+  assert.match(createAgentTool({ maxSubagentDepth: sessionOverride.maxSubagentDepth }).description, /nested delegation is available within the configured depth cap/);
+  assert.equal(organizationCap.maxSubagentDepth, 1);
+  assert.match(createAgentTool({ maxSubagentDepth: organizationCap.maxSubagentDepth }).description, /except nested agent launch/);
+});
+
 function snapshot(): PilotConfigSnapshot {
+  return snapshotWithDepth(3);
+}
+
+function snapshotWithDepth(maxDepth: number): PilotConfigSnapshot {
   return {
     version: 1,
     schemaVersion: 1,
@@ -82,7 +111,7 @@ function snapshot(): PilotConfigSnapshot {
         subagents: {
           default: { id: "sub-provider/sub-model", provider: "sub-provider", model: "sub-model" },
           timeoutMs: 45_000,
-          maxDepth: 3,
+          maxDepth,
         },
       },
       model: { providers: {} },

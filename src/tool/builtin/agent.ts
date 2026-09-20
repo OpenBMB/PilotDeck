@@ -110,20 +110,28 @@ export type CreateAgentToolOptions = {
   maxOutputTokens?: number;
   /** Optional host identity source; production defaults to random UUIDs. */
   uuid?: () => string;
+  /** Effective project/session cap used to describe nested delegation accurately. */
+  maxSubagentDepth?: number;
+  /** Current caller depth; used to describe the next child’s remaining depth. */
+  subagentDepth?: number;
 };
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
 const DEFAULT_PROVIDER_FALLBACK = "pilotdeck";
 const DEFAULT_MODEL_FALLBACK = "moonshotai/kimi-k2.6";
 const PUBLIC_SUBAGENT_TYPES = ["general-purpose", "explore", "plan"] as const;
+const BUILTIN_AGENT_TOOLS = new WeakSet<object>();
 
 export function createAgentTool(
   options: CreateAgentToolOptions = {},
 ): PilotDeckToolDefinition<AgentToolInput, AgentToolOutput> {
   const fallbackPresets = options.subagents ?? BUILTIN_SUBAGENTS;
-  const description = buildAgentToolDescription();
+  const description = buildAgentToolDescription(
+    options.maxSubagentDepth ?? 1,
+    options.subagentDepth ?? 0,
+  );
 
-  return {
+  const tool: PilotDeckToolDefinition<AgentToolInput, AgentToolOutput> = {
     name: "agent",
     aliases: ["Agent", "Task"],
     description,
@@ -205,17 +213,51 @@ export function createAgentTool(
       });
     },
   };
+  BUILTIN_AGENT_TOOLS.add(tool);
+  return tool;
 }
 
-function buildAgentToolDescription(): string {
+/** True only for definitions produced by this module, never a same-named host tool. */
+export function isBuiltinAgentTool(tool: PilotDeckToolDefinition): boolean {
+  return BUILTIN_AGENT_TOOLS.has(tool);
+}
+
+/**
+ * Keeps a native agent's execution closure and schemas while adapting only
+ * its model-visible nested-delegation description for one registry scope.
+ */
+export function withBuiltinAgentToolDescription(
+  tool: PilotDeckToolDefinition,
+  options: Pick<CreateAgentToolOptions, "maxSubagentDepth" | "subagentDepth">,
+): PilotDeckToolDefinition | undefined {
+  if (!isBuiltinAgentTool(tool)) return undefined;
+  const described = {
+    ...tool,
+    description: buildAgentToolDescription(
+      options.maxSubagentDepth ?? 1,
+      options.subagentDepth ?? 0,
+    ),
+  };
+  BUILTIN_AGENT_TOOLS.add(described);
+  return described;
+}
+
+function buildAgentToolDescription(maxSubagentDepth: number, subagentDepth: number): string {
+  const childDepth = Math.max(0, subagentDepth) + 1;
+  const childCanDelegate = childDepth < maxSubagentDepth;
   const publicTypes = PUBLIC_SUBAGENT_TYPES
     .map((id) => {
       const definition = SUBAGENT_DEFINITIONS[id];
+      const summary = id === "general-purpose" && !childCanDelegate
+        ? "General-purpose subagent for complex research/synthesis tasks. Has broad parent-tool access except nested subagent launch."
+        : definition.description;
       const tools =
         definition.allowedTools[0] === "*"
-          ? "all parent tools except nested agent launch"
+          ? childCanDelegate
+            ? "all parent tools; nested delegation is available within the configured depth cap"
+            : "all parent tools except nested agent launch"
           : definition.allowedTools.join(", ");
-      return `- ${id}: ${definition.description} Tools: ${tools}.`;
+      return `- ${id}: ${summary} Tools: ${tools}.`;
     })
     .join("\n");
 

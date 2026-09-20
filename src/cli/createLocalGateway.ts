@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { SessionConfigOverrides } from "../always-on/runtime/SessionConfigOverrides.js";
 import type { AlwaysOnControlPort } from "../always-on/protocol/AlwaysOnControlPort.js";
 import {
+  AgentLoop,
   type AgentRuntimeConfig,
   type AgentRuntimeDependencies,
   type AgentLoopRuntimeFactory,
@@ -19,8 +20,13 @@ import {
   type AgentLoopSidecarTransportObserver,
 } from "../agent/index.js";
 import {
+  createStaffDeckSopAgentLoop,
+  StaffDeckSopControlPlane,
+} from "../sop/staffdeck/index.js";
+import {
   createNodeAttachmentPort,
   type CompactionPort,
+  type CompactionAutomaticTriggerObservation,
   type PromptCacheCoordinatorPort,
   type AttachmentPort,
 } from "../context/index.js";
@@ -104,7 +110,12 @@ import {
 import type {
   PilotDeckToolDefinition,
 } from "../tool/index.js";
-import { SkillManager, migrateLegacyBundledSkillCopies } from "../extension/skills/index.js";
+import {
+  SkillManager,
+  migrateLegacyBundledSkillCopies,
+  type SkillManagementPort,
+} from "../extension/skills/index.js";
+import { createSkillManagementPort, isDisabledModuleBinding, isExternalModuleBinding } from "../composition/index.js";
 import { getPilotDeckInstallCommand } from "../mcp/runtime/projectMcpSpec.js";
 import { isPathWithinRoot } from "../tool/builtin/filesystem/pathSafety.js";
 import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatchManager.js";
@@ -116,6 +127,7 @@ import { LocalGatewayBootResources } from "./LocalGatewayBootResources.js";
 import { readPositiveIntegerEnv, resolveLocalGatewayBootConfig } from "./LocalGatewayBootConfig.js";
 import {
   createAgentLoopDeploymentFactory,
+  createAgentLoopBindingFactory,
   resolveAgentLoopDeploymentProfile,
 } from "./AgentLoopDeploymentProfile.js";
 import { GatewaySessionModelBundle } from "./GatewaySessionModelBundle.js";
@@ -193,6 +205,8 @@ export type CreateLocalGatewayOptions = {
   __testAgentConfigOverrides?: Pick<AgentRuntimeConfig, "maxContextMessages">;
   /** @internal Deterministic subagent identities for production-path tests. */
   __testSubagentIdFactory?: () => string;
+  /** @internal Test-only observer for native Context automatic-compaction triggers. */
+  __testOnAutomaticCompactionTrigger?: (observation: CompactionAutomaticTriggerObservation) => void;
   /** Application-selected model invocation providers for each project generation. */
   modelInvocationProviderFactory?: (snapshot: PilotConfigSnapshot) => readonly ModelInvocationProvider[];
   /** Application-selected project execution-world provider. */
@@ -507,6 +521,7 @@ export function resolveBrowserUseOutputDir(input: {
 
 export type CreateLocalGatewayResult = {
   gateway: Gateway;
+  sopControl: StaffDeckSopControlPlane;
   configStore: PilotConfigStore;
   registry: ProjectRuntimeRegistry;
   /** Application-owned registration point for live, non-durable telemetry observers. */
@@ -542,10 +557,23 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   } = bootConfig;
   const organizationPolicy = normalizeGatewayOrganizationPolicy(options.organizationPolicy);
   const sessionOverrides = options.sessionOverrides ?? new SessionConfigOverrides();
-  const agentLoopFactory = options.agentLoopFactory ?? createAgentLoopDeploymentFactory(
-    resolveAgentLoopDeploymentProfile({ env, cwd: projectRoot }),
+  const deploymentProfile = resolveAgentLoopDeploymentProfile({ env, cwd: projectRoot });
+  const configuredAgentLoopFactory = options.agentLoopFactory ?? createAgentLoopDeploymentFactory(
+    deploymentProfile,
     { transportObserver: options.agentLoopTransportObserver },
   );
+  const agentLoopFactory: AgentLoopRuntimeFactory = (input) => {
+    const sop = input.config.staffDeckSop;
+    const bindingFactory = createAgentLoopBindingFactory(input.config.agentLoopBinding, {
+      transportObserver: options.agentLoopTransportObserver,
+    });
+    const selectedFactory = bindingFactory ?? configuredAgentLoopFactory;
+    if (sop && input.config.isSubagent !== true) {
+      return createStaffDeckSopAgentLoop(input, sop, selectedFactory);
+    }
+    return selectedFactory?.(input)
+      ?? new AgentLoop(input.config, input.capabilities, input.seedState);
+  };
   const sessionDataPlane = options.sessionDataPlane ?? createProjectSessionDataPlane({
     ...(options.persistenceProvider ? { persistenceProvider: options.persistenceProvider } : {}),
     ...(options.storageProvider ? { storageProvider: options.storageProvider } : {}),
@@ -643,6 +671,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     additionalWorkingDirectories: options.additionalWorkingDirectories,
     modelFactory: options.__testModelFactory,
     testAgentConfigOverrides: options.__testAgentConfigOverrides,
+    testOnAutomaticCompactionTrigger: options.__testOnAutomaticCompactionTrigger,
     modelInvocationProviderFactory:
       options.modelInvocationProviderFactory ?? options.__testModelInvocationProviderFactory,
     executionWorldBundleFactory: options.executionWorldBundleFactory ?? options.__testExecutionWorldBundleFactory,
@@ -728,7 +757,26 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     },
   });
   bootResources.ownRouter(router);
-  const skillManager = new SkillManager({ pilotHome, builtinSkillsRoot });
+  const nativeSkillManager = new SkillManager({ pilotHome, builtinSkillsRoot });
+  const disabledSkillManager = createDisabledSkillManagementPort();
+  const resolveSkillManager = (projectKey?: string | null): SkillManagementPort => {
+    const skillsBinding = registry.resolve(projectKey ?? projectRoot).snapshot.config.modules?.skills;
+    return isDisabledModuleBinding(skillsBinding)
+      ? disabledSkillManager
+      : isExternalModuleBinding(skillsBinding)
+      ? createSkillManagementPort(skillsBinding)
+      : nativeSkillManager;
+  };
+  const skillManager: SkillManagementPort = Object.freeze({
+    list: (input) => resolveSkillManager(input.projectKey).list(input),
+    read: (input) => resolveSkillManager(input.projectKey).read(input),
+    write: (input) => resolveSkillManager(input.projectKey).write(input),
+    create: (input) => resolveSkillManager(input.projectKey).create(input),
+    delete: (input) => resolveSkillManager(input.projectKey).delete(input),
+    import: (input) => resolveSkillManager(input.projectKey).import(input),
+    validate: (input) => resolveSkillManager().validate(input),
+    scan: (input) => resolveSkillManager().scan(input),
+  });
   const dialog = new GatewayDialogBundle({
     pilotHome,
     sessionCatalog,
@@ -780,6 +828,9 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const turnReplayStore = new GatewayTurnReplayStore();
   const turnTelemetryContextResolver = new GatewayTurnTelemetryContextResolver();
   const manualCompactionCoordinator = new GatewayManualCompactionCoordinator({ router });
+  const sopControl = new StaffDeckSopControlPlane(
+    (requestedProjectKey) => registry.resolve(requestedProjectKey).snapshot.config.modules?.sop,
+  );
   const restoringSessionKeys = new Set<string>();
   let boundServer: { broadcastNotification(name: string, payload?: unknown): void } | undefined;
   const gateway = new InProcessGateway(router, {
@@ -812,6 +863,8 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     turnReplayStore,
     turnTelemetryContextResolver,
     manualCompactionCoordinator,
+    sopStatus: (input) => sopControl.status(input).then((status) => status ?? null),
+    resumeSop: (input) => sopControl.resume(input),
     cron: options.cron,
     skillManager,
     commandsList: (input) => commandCatalog.commandsList(input),
@@ -1077,6 +1130,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const lifecycle = bootResources.commit({ gateway });
   return {
     gateway,
+    sopControl,
     configStore,
     registry,
     sessionDataPlane,
@@ -1531,6 +1585,24 @@ function isOrganizationModelSelector(value: string): boolean {
 
 function isOrganizationToolSelector(value: string): boolean {
   return value === "*" || /^[A-Za-z0-9][A-Za-z0-9_.:-]*\*?$/.test(value);
+}
+
+function createDisabledSkillManagementPort(): SkillManagementPort {
+  const unavailable = async (): Promise<never> => {
+    throw Object.assign(new Error("Skill module is disabled for this profile."), {
+      code: "SKILL_MODULE_DISABLED",
+    });
+  };
+  return Object.freeze({
+    list: unavailable,
+    read: unavailable,
+    write: unavailable,
+    create: unavailable,
+    delete: unavailable,
+    import: unavailable,
+    validate: unavailable,
+    scan: unavailable,
+  });
 }
 
 function normalizeMcpPermissionSegment(value: string): string {

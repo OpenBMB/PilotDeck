@@ -494,7 +494,7 @@ test("default sidecar factory falls back to the shared runtime-context profile",
     callModule: async () => ({ kind: "response", messageId: "response-surface", inReplyTo: "call-surface", ok: true }),
   });
 
-  assert.equal((execution.loop as any).config.runtimeContextSurface, "user_message");
+  assert.equal((execution.loop as any).config.runtimeContextSurface, "system_prompt");
 });
 
 test("default sidecar factory validates and restores generic seed state", async () => {

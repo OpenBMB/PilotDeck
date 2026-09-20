@@ -1194,6 +1194,29 @@ test("RemoteGateway forwards SDK controls without changing wire semantics", asyn
   });
 });
 
+test("RemoteGateway forwards StaffDeck SOP host controls without changing module semantics", async () => {
+  const requests: Array<{ method: string; input: unknown }> = [];
+  const remote = new RemoteGateway({
+    request: async (method: string, input: unknown) => {
+      requests.push({ method, input });
+      return method === "sop_status"
+        ? { sessionId: "sop:1", revision: 2, state: { status: "handoff" }, wait: { id: "wait-1", kind: "handoff", createdAt: "2026-09-17T00:00:00.000Z" } }
+        : { accepted: true, duplicate: false, sessionId: "sop:1", requestId: "reply-1", revision: 3, message: "approved" };
+    },
+  } as unknown as GatewayWsClient);
+  assert.equal((await remote.sopStatus({ sessionKey: "sop:1", projectKey: "/project" }))?.wait?.id, "wait-1");
+  assert.equal((await remote.resumeSop({
+    sessionKey: "sop:1",
+    projectKey: "/project",
+    requestId: "reply-1",
+    waitId: "wait-1",
+    source: "human",
+    message: "approved",
+    expectedRevision: 2,
+  })).revision, 3);
+  assert.deepEqual(requests.map((request) => request.method), ["sop_status", "sop_resume"]);
+});
+
 test("RemoteGateway forwards SDK MCP control messages without transforming ownership", async () => {
   const requests: Array<{ method: string; input: unknown }> = [];
   const remote = new RemoteGateway({

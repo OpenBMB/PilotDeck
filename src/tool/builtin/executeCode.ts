@@ -10,7 +10,7 @@ import { createNodeExecutionWorkspacePort } from "../execution-world/NodeExecuti
 import type { ExecutionWorkspacePort } from "../execution-world/ExecutionWorkspacePort.js";
 import { createNodeCodeRuntimePort } from "../execution-world/NodeCodeRuntimePort.js";
 import type { CodeRuntimePort } from "../execution-world/CodeRuntimePort.js";
-import type { SandboxPolicy, SandboxPort } from "../execution-world/SandboxPort.js";
+import type { SandboxMode, SandboxPolicy, SandboxPort } from "../execution-world/SandboxPort.js";
 import {
   createNodeExecutionTransportPort,
   setExecuteCodeTransportOverrideForTests,
@@ -56,6 +56,7 @@ export type CreateExecuteCodeToolOptions = {
   /** Optional per-run sandbox adapter. Omission preserves the legacy unconfined execution path. */
   sandbox?: {
     port: SandboxPort;
+    mode?: SandboxMode;
     resolvePolicy(input: { workspaceRoot: string; executionRoot: string }): SandboxPolicy;
   };
 };
@@ -156,9 +157,12 @@ export function createExecuteCodeTool(
   const codeRuntime = options.codeRuntime ?? createNodeCodeRuntimePort();
   const executionTransport = options.executionTransport ?? createNodeExecutionTransportPort();
   const sandbox = options.sandbox;
-  const availableHelpers = [
-    ...allowedTools,
-  ];
+  const availableHelpers = options.allowedTools
+    ? [...allowedTools]
+    : [
+        ...(allowedTools.has("web_search") ? ["web_search"] : []),
+        ...EXECUTE_CODE_BASE_ALLOWED_TOOLS,
+      ];
   const supportsFileWrites = allowedTools.has("write_file") || allowedTools.has("edit_file");
   const helperExample = allowedTools.has("edit_file")
     ? "grep -> read_file -> edit_file"
@@ -174,9 +178,7 @@ export function createExecuteCodeTool(
   const helperGuidance = availableHelpers.length > 0
     ? `Use normal Python control flow to orchestrate tools: loops for batch work, conditionals for branching, data structures for aggregation, and try/except around individual helper calls when one failure should not abort the whole script. Helper failures raise RuntimeError. You can chain helper results, e.g. ${helperExample}. Print only the concise final result needed by the agent. `
     : "Use normal Python only against the profile-owned process and its mounted workspace; do not import PilotDeck helpers. ";
-  const executionEnvironment = sandbox
-    ? "The script runs through a Gateway-selected host sandbox runner. It receives only the private RPC/module environment needed for this execution, not the Gateway process environment, provider credentials, or arbitrary host variables. "
-    : "The script runs from the workspace cwd and inherits the same runtime environment as normal tools such as bash, including configured API, proxy, PATH, virtualenv, and conda variables; do not print secrets or dump the full environment. ";
+  const executionEnvironment = describeExecutionEnvironment(sandbox);
   return {
     name: "execute_code",
     description:
@@ -248,6 +250,18 @@ export function createExecuteCodeTool(
       };
     },
   };
+}
+
+function describeExecutionEnvironment(
+  sandbox: CreateExecuteCodeToolOptions["sandbox"],
+): string {
+  if (!sandbox || sandbox.mode === "danger-full-access") {
+    return "The script runs from the workspace cwd and inherits the same runtime environment as normal tools such as bash, including configured API, proxy, PATH, virtualenv, and conda variables; do not print secrets or dump the full environment. ";
+  }
+  if (sandbox.mode === "read-only" || sandbox.mode === "workspace-write") {
+    return `The script runs from the workspace cwd with the host ${sandbox.mode} file-effect policy. It inherits the same runtime environment as normal tools such as bash, including configured API, proxy, PATH, virtualenv, and conda variables; do not print secrets or dump the full environment. `;
+  }
+  return "The script runs through a host-selected sandbox whose environment visibility is provider-defined; do not assume provider credentials or arbitrary host variables are available, and do not print secrets or dump the full environment. ";
 }
 
 async function validateExecuteCodeInput(input: ExecuteCodeInput) {

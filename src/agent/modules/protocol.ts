@@ -184,7 +184,7 @@ export type ModuleCallRequest = ModuleMessageBase & {
   operationId: string;
   requestId: string;
   idempotencyKey?: string;
-  module: "model" | "budget" | "turn" | "capability" | "permission" | "checkpoint" | "context" | "lifecycle" | "event";
+  module: "model" | "budget" | "turn" | "capability" | "permission" | "checkpoint" | "context" | "skills" | "knowledge" | "lifecycle" | "event";
   payload: Record<string, unknown>;
 };
 
@@ -365,6 +365,8 @@ const MODULE_CALL_TARGETS: ModuleCallRequest["module"][] = [
   "permission",
   "checkpoint",
   "context",
+  "skills",
+  "knowledge",
   "lifecycle",
   "event",
 ];

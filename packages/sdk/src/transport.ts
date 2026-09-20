@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "./gateway-protocol.js";
 import { PilotDeckError, type PilotDeckMessage, type PilotDeckServerInfo } from "./types.js";
 
 type SocketLike = {
@@ -135,7 +136,7 @@ export class GatewayTransport {
     if (this.closed || this.socket !== socket) {
       throw new PilotDeckError({ code: "transport_error", message: "Gateway client closed.", retryable: false });
     }
-    socket.send(JSON.stringify({ type: "hello", protocolVersion: this.options.protocolVersion ?? "1.1", clientName: this.options.clientName ?? "sdk", clientVersion: this.options.clientVersion ?? "0.1.0", token: this.options.token }));
+    socket.send(JSON.stringify({ type: "hello", protocolVersion: this.options.protocolVersion ?? PILOTDECK_GATEWAY_PROTOCOL_VERSION, clientName: this.options.clientName ?? "sdk", clientVersion: this.options.clientVersion ?? "0.1.0", token: this.options.token }));
     const hello = await new Promise<WireHelloOk>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.helloReject = undefined;

@@ -201,3 +201,19 @@ export type SkillScanResult = {
   parentPath: string;
   folders: SkillScanFolder[];
 };
+
+/**
+ * Gateway-facing skill management surface.  Native SkillManager and external
+ * contract adapters implement the same methods so callers do not need to
+ * know which owner is configured for the skills slot.
+ */
+export type SkillManagementPort = Readonly<{
+  list(input: SkillsListInput): Promise<SkillsListResult>;
+  read(input: SkillAddressInput): Promise<SkillReadResult>;
+  write(input: SkillWriteInput): Promise<SkillWriteResult>;
+  create(input: SkillCreateInput): Promise<SkillCreateResult>;
+  delete(input: SkillDeleteInput): Promise<SkillDeleteResult>;
+  import(input: SkillImportInput): Promise<SkillImportResult>;
+  validate(input: SkillValidateInput): Promise<SkillValidationResult>;
+  scan(input: SkillScanInput): Promise<SkillScanResult>;
+}>;
