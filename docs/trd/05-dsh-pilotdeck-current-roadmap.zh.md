@@ -1499,7 +1499,7 @@ reconciliation，也不证明远程 subagent，因此不改变 R2/R3 的开始�
 
 ## 2026-09-20 验收锚点
 
-SDK/core integration 当前验收锚点为 `codex/integrate-sdk-0901@836d81eb`，产品基线为
+SDK/core integration 当前验收锚点为 `codex/integrate-sdk-0901@b9547afd`，产品基线为
 `origin/main@cd52c9af`，架构边界基线为 `Kaguya-19/refactor/core_agent_loop_0831@e55b0a82`。
 独立回归报告 [`sdk-core-integration-final-20260920.zh.md`](../testing/sdk-core-integration-final-20260920.zh.md)
 记录了模块 inventory、state/dispose owner、SDK public matrix、九类 blocker 及 production
