@@ -4032,6 +4032,94 @@ test("startup returns a warmed query handle that reuses its handshake", async ()
   warm.close();
 });
 
+test("top-level startup applies initializeTimeoutMs to the Gateway handshake", async () => {
+  class SlowTopLevelStartupWebSocket extends FakeWebSocket {
+    static instances: SlowTopLevelStartupWebSocket[] = [];
+    constructor(url: string) {
+      super(url);
+      SlowTopLevelStartupWebSocket.instances.push(this);
+    }
+    override send(raw: string): void {
+      const frame = JSON.parse(raw);
+      if (frame.type === "hello") return;
+      super.send(raw);
+    }
+  }
+  SlowTopLevelStartupWebSocket.instances = [];
+  (globalThis as any).WebSocket = SlowTopLevelStartupWebSocket;
+  await assert.rejects(
+    () => import("../src/index.js").then(({ startup }) => startup({ options: { gatewayUrl: "ws://slow", authToken: "token" }, initializeTimeoutMs: 5 })),
+    (error: unknown) => (error as any)?.code === "timeout",
+  );
+  assert.equal(SlowTopLevelStartupWebSocket.instances.length, 1);
+  assert.equal(SlowTopLevelStartupWebSocket.instances[0].readyState, 3);
+});
+
+test("client startup uses its connection defaults and Gateway-owned warm query", async () => {
+  class CaptureClientStartupWebSocket extends FakeWebSocket {
+    static frames: any[] = [];
+    override send(raw: string): void {
+      const frame = JSON.parse(raw);
+      CaptureClientStartupWebSocket.frames.push(frame);
+      super.send(raw);
+    }
+  }
+  CaptureClientStartupWebSocket.frames = [];
+  (globalThis as any).WebSocket = CaptureClientStartupWebSocket;
+  const client = createPilotDeckClient({ gatewayUrl: "ws://client-default", authToken: "client-token", projectKey: "project-default" });
+  const warm = await client.startup();
+  const run = warm.query("hello");
+  for await (const _event of run) { /* consume */ }
+  const hello = CaptureClientStartupWebSocket.frames.find((frame) => frame.type === "hello");
+  const session = CaptureClientStartupWebSocket.frames.find((frame) => frame.method === "new_session");
+  assert.equal(hello.token, "client-token");
+  assert.equal(session.params.projectKey, "project-default");
+  warm.close();
+  await client.close();
+});
+
+test("client startup applies initializeTimeoutMs to the handshake and closes the timed-out transport", async () => {
+  class SlowClientStartupWebSocket extends FakeWebSocket {
+    static instances: SlowClientStartupWebSocket[] = [];
+    constructor(url: string) {
+      super(url);
+      SlowClientStartupWebSocket.instances.push(this);
+    }
+    override send(raw: string): void {
+      const frame = JSON.parse(raw);
+      if (frame.type === "hello") return;
+      super.send(raw);
+    }
+  }
+  SlowClientStartupWebSocket.instances = [];
+  (globalThis as any).WebSocket = SlowClientStartupWebSocket;
+  const client = createPilotDeckClient({ gatewayUrl: "ws://slow", authToken: "token" });
+  await assert.rejects(() => client.startup({ initializeTimeoutMs: 5 }), (error: unknown) => (error as any)?.code === "timeout");
+  assert.equal(SlowClientStartupWebSocket.instances.length, 1);
+  assert.equal(SlowClientStartupWebSocket.instances[0].readyState, 3);
+  await client.close();
+});
+
+test("client close rejects later asynchronous lifecycle calls without creating another transport", async () => {
+  class CountingClientWebSocket extends FakeWebSocket {
+    static instances: CountingClientWebSocket[] = [];
+    constructor(url: string) {
+      super(url);
+      CountingClientWebSocket.instances.push(this);
+    }
+  }
+  CountingClientWebSocket.instances = [];
+  (globalThis as any).WebSocket = CountingClientWebSocket;
+  const client = createPilotDeckClient({ gatewayUrl: "ws://close", authToken: "token" });
+  await client.connect();
+  await client.close();
+  await assert.rejects(() => client.connect(), { code: "transport_error" });
+  await assert.rejects(() => client.describeServer(), { code: "transport_error" });
+  await assert.rejects(() => client.startup(), { code: "transport_error" });
+  assert.throws(() => client.query("after-close"), { code: "transport_error" });
+  assert.equal(CountingClientWebSocket.instances.length, 1);
+});
+
 class FakeThinkingAndRewindWebSocket extends FakeWebSocket {
   static requests: Array<{ method: string; params: any }> = [];
   override send(raw: string): void {

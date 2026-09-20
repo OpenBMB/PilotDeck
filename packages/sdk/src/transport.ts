@@ -189,6 +189,7 @@ export class GatewayTransport {
     this.closed = true;
     const socket = this.socket;
     this.socket = undefined;
+    this.helloReject?.(new PilotDeckError({ code: "transport_error", message: "Gateway client closed." }));
     this.failPending(new PilotDeckError({ code: "transport_error", message: "Gateway client closed." }));
     socket?.close();
   }

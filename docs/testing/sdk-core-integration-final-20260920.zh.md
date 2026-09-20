@@ -2,7 +2,7 @@
 
 ## 结论
 
-当前分支 `codex/integrate-sdk-0901` 在固定产品基线 `origin/main` 上完成了 Core、SDK、native/production-sidecar 和架构边界回归。没有发现需要新增的 P1/P2 根因；上一轮已提交的九类修复在当前 HEAD 上全部有 focused regression 和 production trace 证据。当前 worktree 在本轮验证前后保持干净。
+当前分支 `codex/integrate-sdk-0901` 在固定产品基线 `origin/main` 上完成了 Core、SDK、native/production-sidecar 和架构边界回归。没有发现需要新增的 P1/P2 根因；上一轮已提交的九类修复在当前 HEAD 上全部有 focused regression 和 production trace 证据。本轮另修正 `PilotDeckClient.startup` 的初始化超时语义并补直接生命周期回归；最终代码修复与报告修正将在本轮提交，验证完成后保持 worktree 干净。
 
 Frontend integration 不在本轮授权范围内，不能解读为已验收。
 
@@ -73,10 +73,25 @@ Frontend integration 不在本轮授权范围内，不能解读为已验收。
 | `src/cron` | `ProjectAutomationBundle -> CronControlPort/CronRuntime -> CronTaskStore/Scheduler` | project automation store and scheduler own records/run dispose | host-only; `cron-control-port.spec.ts`, `cron-agent-gateway-port.spec.ts`, cron editing tests | implemented host feature, not AgentLoop decoupling target |
 | `src/always-on` | `AlwaysOnManager/Runtime -> AlwaysOnControlPort -> project storage/run context/channel lease` | project storage provider, run context registry and channel lease | host-only; `always-on-control-port.spec.ts`, session catalog consumer tests | implemented host feature, not AgentLoop decoupling target |
 | `src/goal` | `SessionGoalBundle -> GoalPort/NativeGoalRuntime -> goal projection/checkpoint -> tool` | session-bound goal runtime/projection | host-only; `goal-runtime.spec.ts`, `project-goal-composition.spec.ts`, builtin goal tests | implemented host feature, not AgentLoop decoupling target |
-| `src/workflow` | caller-owned Definition/Run/Control -> InMemory/JSONL event store -> run lifecycle | caller owns workflow run/store/dispose; no AgentLoop/Gateway takeover | host-only vertical core; `workflow-run.spec.ts`, `jsonl-workflow-event-store.spec.ts`, `workflow-composition.spec.ts` | tested core, domain/sidecar integration unverified |
+| `src/workflow` | caller-owned Definition/Run/Control -> InMemory/JSONL event store -> run lifecycle | caller owns workflow run/store/dispose; no AgentLoop/Gateway takeover | host-only vertical core; `workflow-run.spec.ts`, `jsonl-workflow-event-store.spec.ts`, `workflow-composition.spec.ts` | generic core is decoupled; domain/sidecar integration is a separate product scope |
 | `src/gateway`、`src/web`、SDK bridge | `SDK/Web -> Gateway protocol -> session/turn composition`; Web replay/bridge projects host events | Gateway owns session/turn/durable truth; SDK/Web owns only transport/projection handles | host integration; `sdk-controls.spec.ts`, `gateway-turn-completion-fence.spec.ts`, Web replay/fork/replace suites | shared entrypoints verified; frontend integration excluded |
 
 静态边界检查确认 `AgentLoop` 没有重新引入 `Router`、`Gateway`、`SessionRuntime`、Plugin aggregate 或 `AgentRuntimeDependencies` 依赖；Router 只在 native adapter/application composition。`MODULE_PROTOCOL_VERSION` 仍为 `2.0`。sidecar raw trace 的 53 个场景均出现 `handshake_completed` 与 `module_call_received`，不是 test factory 或 fake runner。
+
+### Host-owned 模块替换边界复核（2026-09-20）
+
+host-owned 不等于未解耦。本轮对仍未作为 AgentLoop sidecar 目标的模块读取真实 import、port、状态和 dispose 路径，并按“已满足边界 / 存在具体耦合 / 需要产品决策”区分：
+
+| 模块 | 真实依赖与状态 owner | dispose/替换边界 | 结论 |
+| --- | --- | --- | --- |
+| `src/workflow` | 只依赖自身 `protocol`；`WorkflowRun` 接收 caller-owned `WorkflowEventStore` 与 `WorkflowExecutionAdapter`，事件绑定和 snapshot 由 run/store 持有 | `WorkflowRun.dispose()` 取消并等待执行；`composeWorkflow` 返回 caller-held run/control，没有 registry、Gateway 或 AgentLoop 引用 | generic workflow core 已满足解耦；接入具体领域 caller 或 sidecar 需要单独产品决策，不是当前边界缺陷 |
+| `src/cron` | `CronControlPort` + 仅三项操作的 `CronAgentGatewayPort`；project storage provider 持久化 task/run，`CronRuntime` 持有 scheduler/active runs | `CronRuntime.stop()`/`CronManager.stop()` 停 scheduler、等待启动、清理 runtime；Gateway 只替换窄 turn facade，不能替换 storage owner | 存在明确的 host automation 与 Gateway turn facade 耦合，但没有宽 Gateway/SessionRuntime 依赖；作为 host feature 合理，sidecar 化需产品决定 |
+| `src/always-on` | `AlwaysOnControlPort` + `AlwaysOnAgentGatewayPort`；project storage、run-context registry、channel lease、session catalog/transcript reader 分别由 runtime/注入 provider 持有 | `AlwaysOnRuntime.stop()` 停 scheduler、等待 active control runs、清理 project contexts/overrides；Gateway 只提供窄 turn facade | 存在有意的 project/session read-side 耦合，owner 清晰且可由 provider 替换；不属于 AgentLoop port 违规，扩大到 sidecar 需产品决定 |
+| `src/goal` | `GoalPort.forSession()` 只暴露 session handle；`NativeGoalRuntime` 依赖 `SessionProjectionDriver` + `AgentTranscriptWriter`，projection/transcript 是 durable truth | session id 校验阻止跨 session 使用；mutation tail 串行化，runtime 不拥有 Gateway/AgentLoop state | 已满足窄 port 与单一 host durable owner；这是 session data-plane 绑定，不是重复 owner |
+| `src/plan-todo` | `PlanTodoPort.forSession()` 返回既有 tool-facing handle；native runtime 只依赖 projection/transcript ports | session id/turn id 校验；所有 mutation 先写 transcript event，projection 是唯一 snapshot owner | 已满足窄 port 与单一 owner；sidecar 仅消费 host snapshot，不能据此要求迁移 durable state |
+| `src/gateway`/`src/web`/SDK bridge | Gateway composition 持有 session/turn/durable truth；Web/SDK 只消费 protocol/projection | Gateway shutdown/operation fence 与 Web replay/SDK transport 各自关闭；Frontend integration 按 goal 明确排除 | 是宿主边界而非 AgentLoop 解耦目标；真实前端遍历仍未验证，不能扩大为 PASS |
+
+上述结论由 `WorkflowRun`/`WorkflowComposition`、`CronRuntime`/`CronManager`、`AlwaysOnRuntime`、`NativeGoalRuntime`、`NativePlanTodoRuntime` 及对应 port/type 文件的静态调用路径，结合各模块 focused tests 得出；未用“没有 sidecar 对拍”作为耦合判据。
 
 ### 模块测试映射与缺口
 
@@ -88,7 +103,7 @@ Frontend integration 不在本轮授权范围内，不能解读为已验收。
 | Session/scope/subagent | `session-router-lifecycle.spec.ts`: close/shutdown/dirty recreate; `agent-session-runtime-bundle.spec.ts`; `SubagentContinuationManager`/`OneShotSubagentPort` suites | PASS in root/focused suites; no claim that all provider implementations are exhaustively fuzzed |
 | persistence/read-side/fork/replacement | `project-session-data-plane.spec.ts`, `project-session-read-side-bundle.spec.ts`, `project-session-transcript-reader.spec.ts`, `fork-session-storage-provider.spec.ts`, `replace-last-turn-storage-provider.spec.ts`, `transcript-replay-compaction.spec.ts` | PASS; selected provider contracts tested; external DB/object-store not run |
 | plugin/skills/plan-todo | `plugin-registry-lifecycle.spec.ts`, `command-contribution-snapshot.spec.ts`, `native-plan-todo-runtime.spec.ts`, `host-plan-todo-port.spec.ts`, `session-plan-todo-bundle.spec.ts` | PASS; host-owned, not sidecar module ownership |
-| cron/always-on/goal/workflow | `cron-control-port.spec.ts`, `always-on-control-port.spec.ts`, `goal-runtime.spec.ts`, `workflow-run.spec.ts`, `jsonl-workflow-event-store.spec.ts` | PASS for listed local contracts; workflow domain integration and frontend integration unverified |
+| cron/always-on/goal/workflow | `cron-control-port.spec.ts`, `always-on-control-port.spec.ts`, `goal-runtime.spec.ts`, `workflow-run.spec.ts`, `jsonl-workflow-event-store.spec.ts`; Node 22 dist boundary batch | `38/38 PASS` for listed local contracts and real stdio Goal composition; Workflow domain caller integration and frontend integration remain separate product scopes |
 | Gateway/Web/SDK bridge | `sdk-controls.spec.ts`, `gateway-turn-completion-fence.spec.ts`, `compact-replay.spec.ts`, `fork-session-projection.spec.ts`, `replace-last-turn.spec.ts`, SDK `transport.test.ts` | PASS for Gateway/SDK/Web tests; real frontend all-module traversal excluded |
 
 No applicable test in the above mapping was skipped. Root suite has exactly 2 unrelated skips; they remain reported as skips rather than PASS.
@@ -108,14 +123,14 @@ No applicable test in the above mapping was skipped. Root suite has exactly 2 un
 | examples/docs | 14 SDK examples and public docs | package build plus `check-public-docs.mjs` (`46` runtime symbols, `2` exports) | correctly implemented and tested |
 | external provider/deployment parity | real provider keys, remote/queued deployment, Desktop visual integration | intentionally not run in this worktree | not applicable / unverified |
 
-SDK `123/123` tests cover the public surface listed below; no API was removed to obtain parity. SDK-only additions remain explicitly typed extensions and are not treated as main parity requirements.
+SDK `127/127` tests cover the public surface listed below; no API was removed to obtain parity. SDK-only additions remain explicitly typed extensions and are not treated as main parity requirements.
 
 ### 完整 runtime exports 与对象方法
 
 | 入口 | 完整方法/成员清单 | 实现锚点与具体验证 | 结论 |
 | --- | --- | --- | --- |
 | root `@pilotdeck/sdk` | `query`, `tool`, `startup`; `createQuery`, `createWarmQuery`, `createPilotDeckClient`; session helpers `listSessions`, `getSessionMessages`, `getSessionInfo`, `exportSessionTranscript`, `restoreSessionTranscript`, `prepareLastTurnReplacement`, `renameSession`, `tagSession`, `forkSession`, `resolveSettings`, `deleteSession`, `getSubagentMessages`, `listSubagents`; `defineTool`, `createPilotDeckMcpServer`, `createSdkMcpServer`; `GatewayTransport`, `AsyncEventQueue`, `mapError`, `PilotDeckError`, `AbortError`; `InMemorySessionStore`, `FileSessionStore`, `createSessionStoreFromAdapter`; terminal/browser/DOM/manual dialog factories; all type exports from `types.ts` | `src/index.ts`, `client.ts`, `transport.ts`, `session-store.ts`; package tests 1-123 and Gateway SDK E2E | runtime exports verified; type aliases compile |
-| `PilotDeckClient` 顶层 | `connect`, `describeServer`, `close`, `query`, `startup` | `types.ts:1350-1355`, `client.ts:2966-3035`; facade/handshake/transport tests directly cover `connect`、`describeServer`、`close`、`query` and resource composition；`startup returns a warmed query handle that reuses its handshake` exercises the underlying `startup` warm-query path from `src/index.js`, not `client.startup` | `connect`/`describeServer`/`close`/`query` covered；`startup` only有实现审查与底层 warm-query 间接证据，client 默认参数/`initializeTimeoutMs` 映射及关闭后调用未直接验证 |
+| `PilotDeckClient` 顶层 | `connect`, `describeServer`, `close`, `query`, `startup` | `types.ts:1350-1355`, `client.ts:2966-3035`; facade/handshake/transport tests directly cover `connect`、`describeServer`、`close`、`query` and resource composition；新增 tests “client startup uses its connection defaults and Gateway-owned warm query”, “client startup applies initializeTimeoutMs to the handshake and closes the timed-out transport”, “client close rejects later asynchronous lifecycle calls...” | `connect`/`describeServer`/`close`/`query`/`startup` covered；`initializeTimeoutMs` 现在是 typed initialization timeout，默认连接参数、超时 transport teardown 和 close 后 Promise rejection 均有公共入口证据 |
 | `PilotDeckQuery` | Async iterator `next/return/throw`; `close`, `result`, `interrupt`, `steer`, `cancelSteer`, `submitAsyncHookResult`, `respondUserDialog`, `abort`, `setPermissionMode`, `setMcpPermissionModeOverride`, `setModel`, `setMaxThinkingTokens`, `applyFlagSettings`, `updateSettings`, `initializationResult`, `reinitialize`, `supportedCommands`, `supportedModels`, `supportedAgents`, `mcpServerStatus`, `getContextUsage`, `usage`, `modelUsage`, `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET`, `readFile`, `reloadPlugins`, `reloadSkills`, `outputStyles`, `setOutputStyle`, `reloadOutputStyles`, `accountInfo`, `rewindFiles`, `seedReadState`, `reconnectMcpServer`, `toggleMcpServer`, `setMcpServers`, `streamInput`, `stopTask`, `backgroundTasks` | `types.ts:1082`; `client.ts` Query object; tests include “query maps Gateway tool progress...”, “streamInput forwards later user messages...”, “SDK thinking and rewind controls...”, “SDK MCP controls...”, “query round-trips permission and elicitation callbacks”, “query reports result_unknown...” | all except `accountInfo` have implementation evidence; `accountInfo()` is an intentional `unsupported_capability` stub documented in `packages/sdk/README.md` and the SDK roadmap, with no Gateway account contract. Therefore SDK full correctness is not claimed |
 | `PilotDeckClient.sessions` | `create`, `get`, `resume`, `list`, `messages`, `info`, `exportTranscript`, `restoreTranscript`, `fork`, `prepareLastTurnReplacement`, `close`, `rename`, `tag`, `delete`; returned replacement has `start`/`rollback` | `types.ts:1279+`, `client.ts` session facade; tests “client exposes Gateway-authoritative session, run and resource facades”, “resumeSessionAt forks...”, “SDK exports and restores...”, transcript/replace E2E | covered |
 | `PilotDeckClient.runs` | `start`; `PilotDeckRunHandle.events`, `result`, `steer`, `cancelSteer`, `abort` | `types.ts:1259+`; transport/run observation, active turn and steer tests | covered |
@@ -164,7 +179,8 @@ The exact comparator declarations are in `tools/agent-loop-parity/run.py` (`BASE
 | 命令 | 结果 |
 | --- | --- |
 | `NODE_OPTIONS= PATH=... pnpm build` | PASS |
-| `NODE_OPTIONS= PATH=... pnpm --filter @pilotdeck/sdk test` | `123/123 PASS` |
+| `NODE_OPTIONS= PATH=... pnpm --filter @pilotdeck/sdk test` | `127/127 PASS`（含 top-level/client startup defaults/initialize timeout/close lifecycle 回归） |
+| `PATH=Node22 NODE_OPTIONS= node --test dist/tests/workflow/*.spec.js dist/tests/cron/{cron-control-port,cron-agent-gateway-port}.spec.js dist/tests/always-on/always-on-control-port.spec.js dist/tests/goal/goal-runtime.spec.js dist/tests/plan-todo/native-plan-todo-runtime.spec.js dist/tests/agent/modules/host-plan-todo-port.spec.js dist/tests/cli/project-goal-composition.spec.js` | `38/38 PASS`，含正式 stdio sidecar Goal composition、Cron/Always-On stop、Goal/Plan-Todo session owner、Workflow caller-owned dispose |
 | focused module/loop/session/sub/gateway/replay Node test | `433/433 PASS` |
 | `NODE_OPTIONS= PATH=... pnpm test` | `1721 PASS / 0 FAIL / 2 SKIPPED`，日志 `/tmp/pilotdeck-root-test-sdk-core-final-20260920.log` |
 | `python3 tools/agent-loop-parity/test_trace.py` | `53/53 PASS` |
@@ -178,4 +194,4 @@ The exact comparator declarations are in `tools/agent-loop-parity/run.py` (`BASE
 
 ## 交付状态
 
-本报告与 acceptance checklist、模块索引、roadmap 已按当前代码和验证产物更新。代码逻辑在 `b15d2080` 已完成上一轮修复，本轮没有新增 runtime diff；文档 diff 可审查。提交并 push 后需把最终 commit、报告路径、四项结论和 `待独立验收` 发送给独立验收线程。
+本报告与 acceptance checklist、模块索引、roadmap 已按当前代码和验证产物更新。本轮新增 startup 握手超时 teardown 与 client 生命周期回归，代码和文档 diff 均可审查。提交并 push 后需把最终 commit、报告路径、四项结论和 `待独立验收` 发送给独立验收线程。

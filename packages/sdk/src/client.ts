@@ -2558,7 +2558,12 @@ export function createQueryWithTransport(
 
 export async function createWarmQuery(options: PilotDeckOptions): Promise<PilotDeckWarmQuery> {
   const transport = new GatewayTransport({ ...connectionOptions(options), requestTimeoutMs: options.timeoutMs ?? 30_000 });
-  await transport.connect();
+  try {
+    await connectWarmTransport(transport, options.loadTimeoutMs);
+  } catch (error) {
+    transport.close();
+    throw error;
+  }
   let consumed = false;
   return {
     query(prompt) {
@@ -2573,8 +2578,14 @@ export async function createWarmQuery(options: PilotDeckOptions): Promise<PilotD
 export async function createWarmQueryWithTransport(
   options: PilotDeckOptions,
   transport: GatewayTransportClient,
+  initializeTimeoutMs?: number,
 ): Promise<PilotDeckWarmQuery> {
-  await transport.connect();
+  try {
+    await connectWarmTransport(transport, initializeTimeoutMs ?? options.loadTimeoutMs);
+  } catch (error) {
+    transport.close();
+    throw error;
+  }
   let consumed = false;
   return {
     query(prompt) {
@@ -2584,6 +2595,19 @@ export async function createWarmQueryWithTransport(
     },
     close: () => transport.close(),
   };
+}
+
+async function connectWarmTransport(transport: GatewayTransportClient, timeoutMs?: number): Promise<void> {
+  const connecting = transport.connect();
+  if (timeoutMs === undefined) {
+    await connecting;
+    return;
+  }
+  await withTimeout(connecting, timeoutMs, () => new PilotDeckError({
+    code: "timeout",
+    message: `SDK initialization exceeded ${timeoutMs}ms.`,
+    retryable: true,
+  }));
 }
 
 export async function listSessions(options: PilotDeckOptions & ListSessionsOptions): Promise<PilotDeckSessionInfo[]> {
@@ -3037,9 +3061,9 @@ export function createPilotDeckClientWithTransportFactory(
       assertOpen();
       return createQueryWithTransport(prompt, merged(options), createTransport());
     },
-    startup: (options) => {
+    startup: async (options) => {
       assertOpen();
-      return createWarmQueryWithTransport(merged({ timeoutMs: options?.initializeTimeoutMs }), createTransport());
+      return createWarmQueryWithTransport(merged(), createTransport(), options?.initializeTimeoutMs);
     },
     sessions: {
       create: async (input = {}) => {

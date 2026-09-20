@@ -19,7 +19,7 @@
 | 原始要求 | 实现 / owner | 验证入口与当前证据 | 状态 / 未完成工作 |
 | --- | --- | --- | --- |
 | Session admission、submit、abort、timeout、close、shutdown、dirty recreate、reload | Gateway session admission/fence 与 Session owner；AgentLoop 只消费 turn ports | `tests/gateway/*`、`tests/session/*`、production scenarios `deadline`/`cancel`/`checkpoint_resume`；parity summary 无 failure | 已关闭；未发现未解释差异 |
-| SDK config、MCP、seedReadState、flag settings 与 turn/maintenance 并发 | SDK client 将控制操作交给 Gateway；控制 admission 与 turn reservation 由 Gateway 维护 | `packages/sdk/test/transport.test.ts`、`tests/sdk/*`、`tests/agent/loop/seed-read-state.spec.ts`；SDK `123/123` | 已关闭 |
+| SDK config、MCP、seedReadState、flag settings 与 turn/maintenance 并发 | SDK client 将控制操作交给 Gateway；控制 admission 与 turn reservation 由 Gateway 维护 | `packages/sdk/test/transport.test.ts`、`tests/sdk/*`、`tests/agent/loop/seed-read-state.spec.ts`；SDK `127/127`，含 top-level/client startup defaults/initialize timeout/close lifecycle | 已关闭 |
 | current/base permission mode 在入口、失败、重建、退出一致 | Permission registry/Gateway session 持有 mode；plan override 不覆盖 base mode | permission/plan focused tests、`plan_mode_host_policy`、`plan_mode_bypass_host_policy`、root `1721 passed` | 已关闭 |
 | model prepare、materialize、stream、retry、fallback、pre-route/routed/recovery compaction | Model ports 与 host preparation owner；sidecar 只传 preparation reference/canonical request | `tests/agent/modules/llm-model-port.spec.ts`、AgentLoop compaction tests、`sidecar_full_request_compaction_budget`、`sidecar_projected_request_compaction_budget` | 已关闭 |
 | request controls、完整 prompt/tools/cache/output cap、budget、usage、错误分类 | Canonical request 与 ModelBudgetPort；错误分类留在 provider/module terminal | root AgentLoop/model tests、预算 scenarios、strict comparator budget tests | 已关闭；预算漂移归一化现要求 host accounting 的 request-linked evidence |
@@ -38,6 +38,8 @@
 | state/dispose owner 不迁移、不重复 | Session/transcript/permission/preparation/lease/dispose 仍由 host/module owner；sidecar 无 mailbox、Router、Session truth | `src/agent/modules/transport/agentLoopSidecarClient.ts` 注释与 composition、root owner tests、production proof，已关闭 |
 | Module Protocol 版本不变 | `MODULE_PROTOCOL_VERSION = "2.0"` | `src/agent/modules/protocol.ts`、module protocol focused tests，已关闭 |
 
+Host-owned 边界复核补充：Workflow generic core 只依赖 caller-owned event store/adapter/run handle，已通过 caller-owned composition/dispose 测试；Goal/Plan-Todo 只通过 session projection/transcript ports 持有 durable truth；Cron/Always-On 只接收窄 `*AgentGatewayPort`，scheduler、storage、lease 和 active-run dispose 留在各自 runtime。正式 Node 22 dist focused batch `38/38`（含 stdio sidecar Goal composition）通过。Cron/Always-On 的 host automation/read-side 耦合是明确产品边界，不等同于 AgentLoop 解耦失败；将其迁入 sidecar 需要单独产品决策。
+
 ## Comparator 可信度门槛
 
 | 门槛 | 精确证据 | 状态 |
@@ -53,7 +55,7 @@
 
 - `pnpm build`（Node 22.23.1）：PASS。
 - `pnpm test`（Node 22.23.1）：`1721` passed、`0` failed、`2` skipped，退出码 0。最终日志：`/tmp/pilotdeck-root-test-sdk-core-final-20260920.log`。
-- `pnpm --filter @pilotdeck/sdk test`：`123/123`。
+- `pnpm --filter @pilotdeck/sdk test`：`127/127`。
 - focused production module/Gateway/SDK seed suites：`135/135`。
 - comparator unit suite：`53/53`；新增 runner gate 负向回归；production evidence helper `2/2`，覆盖 evidence 生成前的预算篡改与 evidence 字段形状。
 - production raw trace 重跑：53 scenarios、native/sidecar、baseline native/sidecar；`blocked=0`、`failed=0`、`oracleFailures=0`。输出：`/tmp/pilotdeck-parity-sdk-core-final-20260920/summary.json`。

@@ -42,6 +42,6 @@ import { createWarmQuery } from "./client.js";
 
 export async function startup(params?: { options?: PilotDeckOptions; initializeTimeoutMs?: number }) {
   const options = { ...(params?.options ?? {}) };
-  if (params?.initializeTimeoutMs !== undefined) options.timeoutMs = params.initializeTimeoutMs;
+  if (params?.initializeTimeoutMs !== undefined) options.loadTimeoutMs = params.initializeTimeoutMs;
   return createWarmQuery(options);
 }
