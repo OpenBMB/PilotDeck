@@ -187,9 +187,14 @@ env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
   `plan_mode_bypass_host_policy` 是固定 main 的已确认缺陷：main 在成功的
   `exit_plan_mode` 后仍把第四轮留在 `plan`，再度拒绝 `parity_write_probe`；current 在该点
   恢复 `default` 或 `bypassPermissions`，得到一次批准和一次副作用，符合场景的公开
-  `policyModes` / `sideEffectCount: 1` 契约。该差异涉及 permission、tool execution 和最终
-  用户可见结果，按红线不能列为已验收的精确差异；它保持原始 raw trace 与失败对照，等待明确
-  产品决策，未使用 normalization 或白名单掩盖。
+  `policyModes` / `sideEffectCount: 1` 契约。该差异已获产品批准，且仅限以下精确契约：
+  `plan_mode_host_policy` 必须为 `default -> plan -> plan -> default`，
+  `plan_mode_bypass_host_policy` 必须为 `bypassPermissions -> plan -> plan -> bypassPermissions`；
+  两者都必须在 plan 内拒绝 write（`plan_mode_violation`、零 effect），并只在成功 exit 后的
+  第四轮允许一次 `parity_write_probe` effect。main 的第四轮继续拒绝 write 是已确认缺陷，保留
+  raw traces `/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v44-20260920/plan_mode_host_policy.pilotdeck-baseline-native.jsonl`
+  与 `/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v44-20260920/plan_mode_host_policy.pilotdeck-current-native.jsonl`
+  作为反向对照；未使用 normalization、白名单或 skip 隐藏该差异。
 - 跨进程 effect 的成功 reconciliation：本轮已证明 production TCP child crash 后的 exactly-once
   fail-closed terminal；没有具体产品 tool/provider 的 idempotency/status-query owner 时，不虚构
   “已知完成”状态查询。此 provider-specific success reconciliation 保持 unsupported，不计为 PASS。
