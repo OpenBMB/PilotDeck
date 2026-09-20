@@ -42,7 +42,7 @@ main 是共有可观察行为基准；core_agent_loop_0831 是依赖方向与状
 
 | 触发条件 / 入口 | main / native / sidecar 行为 | 根因与 owner | 回归与处理 |
 | --- | --- | --- | --- |
-| raw model request 因 SDK 工具/runtime projection 不同而产生 context budget usage 漂移 | 三侧的 limit、state、输出一致；合法 composition drift 只比较 decision fields | runner gate 不再按 path 后缀无条件放行；adapter 使用共有 `TokenBudgetManager`/o200k request breakdown 独立生成 request-linked evidence | 保留 breakdown 并校验组件非负、组件和、`used == total`；只有 evidence 与 provider-visible request、breakdown、usage 一致绑定时才剥离 usage；`50→80`、`displayUsed/budgetUsed=9999`、缺失 evidence、预算生成前篡改均有负向测试；两个受影响 raw traces 已重跑通过 |
+| raw model request 因 SDK 工具/runtime projection 不同而产生 context budget usage 漂移 | 三侧的 limit、state、输出一致；合法 composition drift 只比较 decision fields | runner gate 不再按 path 后缀无条件放行；adapter 使用共有 `TokenBudgetManager`/o200k request breakdown 独立生成 request-linked evidence，并记录 `observedFields`；无法唯一关联 nested/synthetic budget 时不生成 evidence | 保留 breakdown 并校验组件非负、组件和、`used == total`；只有 evidence 与 provider-visible request、breakdown、usage、字段形状一致绑定时才剥离 usage；`50→80`、`displayUsed/budgetUsed=9999`、真实 trace 新增 `budgetUsed`、缺失 evidence、预算生成前篡改均有负向测试；五个受影响 raw traces 已重跑通过 |
 | runtime-context 跨 block/message 顺序、close/abort settlement 后 late model request | 两侧保持内容/顺序与 settlement happens-before；非法重排或 settlement 后请求失败 | comparator 以前按 block 内 offset 丢失跨容器顺序，且没有 settlement fence 检查 | 顺序、重复/残余、close/abort late request 负向测试；production raw trace 覆盖 native 与正式 stdio sidecar |
 
 ## 验证命令
@@ -54,9 +54,11 @@ main 是共有可观察行为基准；core_agent_loop_0831 是依赖方向与状
 - `pnpm --filter @pilotdeck/sdk test`：`123/123`
 - `python3 -m unittest discover -s tools/agent-loop-parity -p 'test_trace.py'`：`53/53`
 - `node --test tools/agent-loop-parity/test_budget_evidence.mjs`：`2/2`
+- 真实 trace `budgetUsed=9999` 注入：两个 resume trace 均产生具体 `contextBudget.budgetUsed` semantic difference，最终 runner gate 返回 `False`。
 - production stdio parity：53/53 场景执行；`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable，19 个明确 `notApplicable`。`deadline`、`deadline_during_tool`、`auto_compact`、`sidecar_live_steer` 的 baseline drift 均仅命中已声明 extension contract。原始结果：`/tmp/pilotdeck-parity-merge-closure-20260918/summary.json`。
 - 2026-09-19 严格 comparator production stdio parity：53/53；`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable、19 个明确 `notApplicable`，9 条 extension 均逐路径命中声明契约。原始结果：`/tmp/pilotdeck-parity-closure-20260919-strict2/summary.json`。
 - Node 22 focused production module/Gateway/SDK seed matrix：`135/135`；根测试最终重跑：`1721/1723`，`0` failed、`2` skipped，退出码 0。日志：`/tmp/pilotdeck-root-test-20260920-final-retry.log`。
+- 共享 adapter 受影响场景：两个 resume 与三个 nested/compaction 场景均 `failed=[]`、`blocked=[]`、`oracleFailures=[]`；main 不适用项保持明确 `notApplicable`。
 
 ## 架构检查
 

@@ -70,11 +70,12 @@ const linkRequestBudgetEvidence = () => {
   while (pendingBudgetRecords.length > 0 && pendingRequestRecords.length > 0) {
     const budgetRecord = pendingBudgetRecords.shift();
     const requestRecord = pendingRequestRecords.shift();
-    budgetRecord.requestEvidence = createRequestBudgetEvidence({
+    const evidence = createRequestBudgetEvidence({
       request: requestRecord.modelView,
       tokenBudget: parityTokenBudget,
       observedBudget: budgetRecord,
     });
+    if (evidence) budgetRecord.requestEvidence = evidence;
   }
 };
 let modelAttempt = 0;

@@ -886,8 +886,16 @@ def _valid_request_budget_evidence(
         return False
     if evidence.get("breakdown") != budget.get("breakdown"):
         return False
+    observed_fields = evidence.get("observedFields")
+    if not isinstance(observed_fields, list) or any(
+        field not in {"used", "displayUsed", "budgetUsed"}
+        for field in observed_fields
+    ) or len(set(observed_fields)) != len(observed_fields):
+        return False
     for field in ("used", "displayUsed", "budgetUsed"):
-        if field in evidence and evidence.get(field) != budget.get(field):
+        if (field in budget) != (field in observed_fields):
+            return False
+        if field in observed_fields and evidence.get(field) != budget.get(field):
             return False
     return True
 

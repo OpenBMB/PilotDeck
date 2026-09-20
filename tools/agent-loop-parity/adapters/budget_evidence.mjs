@@ -22,12 +22,21 @@ export function createRequestBudgetEvidence({ request, tokenBudget, observedBudg
     memory,
   };
   const used = breakdown.total;
+  if (observedBudget.breakdown !== undefined
+    && JSON.stringify(observedBudget.breakdown) !== JSON.stringify(breakdown)) {
+    return undefined;
+  }
+  for (const field of ["used", "displayUsed", "budgetUsed"]) {
+    if (observedBudget[field] !== undefined && observedBudget[field] !== used) return undefined;
+  }
   const evidence = {
     source: "gateway_token_accounting",
     accountingContract: "TokenAccountingRuntime/o200k_base/v1",
     request,
     breakdown,
     used,
+    observedFields: ["used", "displayUsed", "budgetUsed"]
+      .filter((field) => observedBudget[field] !== undefined),
   };
   for (const field of ["used", "displayUsed", "budgetUsed"]) {
     if (observedBudget[field] !== undefined) evidence[field] = used;

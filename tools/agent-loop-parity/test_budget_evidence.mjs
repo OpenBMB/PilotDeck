@@ -14,24 +14,27 @@ const request = {
 };
 
 test("budget evidence is independently derived from the provider-visible request", () => {
+  const expected = createRequestBudgetEvidence({ request, tokenBudget });
   const evidence = createRequestBudgetEvidence({
     request,
     tokenBudget,
-    observedBudget: { used: 1, displayUsed: 1, budgetUsed: 1 },
+    observedBudget: {
+      used: expected.used,
+      displayUsed: expected.used,
+      budgetUsed: expected.used,
+      breakdown: expected.breakdown,
+    },
   });
 
   assert.equal(evidence.breakdown.source, "local_estimate");
   assert.equal(evidence.breakdown.total, evidence.used);
+  assert.deepEqual(evidence.observedFields, ["used", "displayUsed", "budgetUsed"]);
   assert.equal(evidence.displayUsed, evidence.used);
   assert.equal(evidence.budgetUsed, evidence.used);
 });
 
 test("a budget error injected before evidence generation remains observable", () => {
-  const cleanEvidence = createRequestBudgetEvidence({
-    request,
-    tokenBudget,
-    observedBudget: { used: 1, displayUsed: 1, budgetUsed: 1 },
-  });
+  const cleanEvidence = createRequestBudgetEvidence({ request, tokenBudget });
   const corruptedBudget = {
     used: cleanEvidence.used + 30,
     displayUsed: cleanEvidence.displayUsed + 30,
@@ -40,6 +43,5 @@ test("a budget error injected before evidence generation remains observable", ()
   };
   const evidence = createRequestBudgetEvidence({ request, tokenBudget, observedBudget: corruptedBudget });
 
-  assert.notEqual(corruptedBudget.used, evidence.used);
-  assert.notDeepEqual(corruptedBudget.breakdown, evidence.breakdown);
+  assert.equal(evidence, undefined);
 });

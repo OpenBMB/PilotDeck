@@ -260,6 +260,7 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "breakdown": current_budget["breakdown"],
             "used": current_budget["used"],
             "displayUsed": current_budget["displayUsed"],
+            "observedFields": ["used", "displayUsed"],
         }
         current = [current_budget, {
             "kind": "model.request",
@@ -284,6 +285,7 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "used": 50,
             "displayUsed": 50,
             "budgetUsed": 50,
+            "observedFields": ["used", "displayUsed", "budgetUsed"],
         }
         baseline = [{"kind": "model.request", "modelView": {"messages": [], "tools": []}}, {
             "kind": "context.budget", "used": 10, "displayUsed": 10, "total": 100,
@@ -310,6 +312,18 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
         paths = {difference.path for difference in compare_baseline_trace_details(baseline, missing_evidence, scenario).semantic}
         self.assertIn("trace[0]~[0].contextBudget.used", paths)
 
+        # Match the production trace shape where budgetUsed is absent when
+        # the event did not provide it; adding it after evidence generation is
+        # still a semantic mutation and must not be normalized away.
+        production_shape = json.loads(json.dumps(current))
+        production_shape[0]["requestEvidence"]["observedFields"] = ["used", "displayUsed"]
+        del production_shape[0]["requestEvidence"]["budgetUsed"]
+        del production_shape[0]["budgetUsed"]
+        production_shape[0]["budgetUsed"] = 9999
+        paths = {difference.path for difference in compare_baseline_trace_details(baseline, production_shape, scenario).semantic}
+        self.assertIn("trace[0]~[0].contextBudget.budgetUsed", paths)
+        self.assertFalse(declared_extension_matches(scenario, compare_baseline_trace_details(baseline, production_shape, scenario).semantic))
+
     def test_baseline_contract_rejects_inconsistent_budget_breakdown(self) -> None:
         baseline = [{
             "kind": "model.request",
@@ -335,6 +349,7 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "breakdown": current[0]["breakdown"],
             "used": 50,
             "displayUsed": 50,
+            "observedFields": ["used", "displayUsed"],
         }
         scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"], "allowEvidencedBudgetDrift": True}}
         paths = {difference.path for difference in compare_baseline_trace_details(baseline, current, scenario).semantic}
