@@ -25,6 +25,8 @@
 | `sop_knowledge_budget_exhausted` | 第三次 knowledge search 在 host bridge 拒绝；终态准确保留 `KNOWLEDGE_SEARCH_BUDGET_EXHAUSTED`，无第三次外部 tool execution | StaffDeck Harness/bridge/checkpoint | PASS |
 | `sop_task_dependency` | child TaskFrame 只在 durable prerequisite 完成后运行，并收到前置 capability result | StaffDeck TaskFrame store | PASS |
 | `sop_scheduled_task` | 已固定 snapshot 只在可见 SOP 上应用；trace 记录实际应用版本 `7` | StaffDeck Harness scheduled snapshot | PASS |
+| `sop_step_advance` | provider 按当前 SOP step 发出 `collect -> review`；两条路径执行 review 后完成 | StaffDeck Harness/SOP state owner | PASS |
+| `sop_conditional_transition` | provider 在 check 节点选择 `branch_a`；两条路径执行分支后完成 | StaffDeck Harness/SOP state owner | PASS |
 
 `PilotDeckAgentLoopClient` 仅把 sidecar 的 canonical module failure 和 capability
 exchange 投影回 StaffDeck-owned `TaskExecutionResult`。显式 `RESULT_UNKNOWN` 不得被
@@ -77,6 +79,8 @@ Raw traces:
 - `/tmp/pilotdeck-sdk-core-sop-dependency-v34-20260920/`
 - `/tmp/pilotdeck-sdk-core-sop-scheduled-v32-20260920/`
 - `/tmp/pilotdeck-sdk-core-sop-slots-v36-20260920/`
+- `/tmp/pilotdeck-sdk-core-sop-step-v39-20260920/`
+- `/tmp/pilotdeck-sdk-core-sop-conditional-v40-20260920/`
 
 附加验证：PilotDeck Node `v22.23.1` 下 `pnpm build` 通过，
 `capability-tool-port.spec.ts` 与 `sidecar.spec.ts` 为 `30/30`；StaffDeck
@@ -85,18 +89,15 @@ Raw traces:
 
 ## 限制
 
-最新全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v35-20260920/summary.json`：`62` 场景、
+最新全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v41-20260920/summary.json`：`62` 场景、
 `failed=[]`、`blocked=[]`、`baselineDifferences=[]`。其中 61 个适用场景没有 oracle failure；
 deadline 两项仅保留已枚举的精确内部时序差异。
 
 未验收范围仍明确保留，不计入 PASS：
 
-- `sop_team_task`：明确为 `unsupported`，不计 PASS。当前 stdio parity adapter 未创建可信
-  Team roster、TeamRun 与成员 worker，真实入口正确拒绝缺失上下文；不能把失败伪装成 completed。
-  该范围须由带真实 team worker 的 deployment E2E 补齐。
-- `sop_step_advance`、`sop_conditional_transition`：当前 mock provider 未发出 `next_step_id`，
-  因而不将其误报为 transition 覆盖。真实 next-step probe 暴露 legacy `completed` 与 sidecar
-  `action_budget` 的终态差异，路径为 `/tmp/pilotdeck-sdk-core-sop-step-v30-20260920/`；未验收。
+- `sop_team_task`：不计 PASS。当前 stdio parity adapter 未创建可信 Team roster、TeamRun
+  与成员 worker，因此真实入口正确拒绝缺失上下文。这是覆盖缺口，不是产品能力
+  `unsupported`；该范围须由带真实 team worker 的 deployment E2E 补齐。
 - PilotDeck main 对拍：`/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v37-20260920/summary.json`
   记录 31 个 `BLOCKED`，原因是固定 `origin/main` 不包含 baseline adapter 引用的
   `seedStateProjection`。`plan_mode_host_policy` 与 `plan_mode_bypass_host_policy` 另有 main
