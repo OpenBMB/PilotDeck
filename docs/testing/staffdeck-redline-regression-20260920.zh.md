@@ -68,6 +68,22 @@ env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
   --pair staffdeck --scenario sop_unknown_requeue ...
 ```
 
+在当前提交上，以下三条目标场景已分别重跑，均为
+`failed=[]`、`blocked=[]`、`oracleFailures=[]`：
+
+```sh
+env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
+  backend/.venv/bin/python tools/agent-loop-parity/run.py \
+  --pair staffdeck --comparison same-version --scenario max_turns \
+  --pilotdeck-root /Users/a1/Desktop/claw/openbmb/PilotDeck-sdk-core-integration \
+  --staffdeck-root /Users/a1/Desktop/claw/openbmb/StaffDeck-pilotdeck-agent-loop \
+  --output /tmp/pilotdeck-sdk-core-max-turns-v45-20260920
+```
+
+对应 `sop_blocked_transition` 与 `sop_multi_action_budget` 产物为
+`/tmp/pilotdeck-sdk-core-sop-blocked-v45-20260920/` 和
+`/tmp/pilotdeck-sdk-core-sop-budget-v45-20260920/`。
+
 Raw traces:
 
 - `/tmp/pilotdeck-sdk-core-goal-max-turns-20260920/`
@@ -87,6 +103,21 @@ Raw traces:
 `capability-tool-port.spec.ts` 与 `sidecar.spec.ts` 为 `30/30`；StaffDeck
 `test_harness_v2.py` 与 `test_pilotdeck_agent_loop_client.py` 为 `110` passed；trace tests
 为 `9` passed；两个工作区 `git diff --check` 通过。
+
+补充 transport 证据：
+
+```sh
+env -u NODE_OPTIONS PATH=/Users/a1/.nvm/versions/node/v22.23.1/bin:$PATH \
+  pnpm exec tsx --test \
+  tests/agent/modules/sidecar-client.spec.ts \
+  tests/agent/modules/tcp-sidecar-transport.spec.ts
+```
+
+结果 `58/58`。其中 built stdio CLI 测试证明正式 child、handshake 与 host model/tool
+dispatcher；built TCP CLI 测试证明正式 child 的 Protocol `2.0` handshake。TCP restart
+测试证明新 module instance 后 host ledger 记录 `result_unknown`、reconcile 已知 terminal，且
+`execute` 不重放。stdio 的 one-turn/one-child 边界不提供同一 stream 的 reconnect，因此它的
+进程中断契约是 fail-closed `result_unknown`，而非伪造 generation resume。
 
 固定 main 对拍补充命令：
 

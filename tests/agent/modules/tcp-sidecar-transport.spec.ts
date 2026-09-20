@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:net";
+import { resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import {
   AgentLoopSidecarServer,
@@ -935,7 +935,7 @@ function deterministicIds(): () => string {
 }
 
 function builtSidecarPath(): string {
-  return fileURLToPath(new URL("../../../src/cli/pilotdeck-agent-loop-sidecar.js", import.meta.url));
+  return resolve(process.cwd(), "dist/src/cli/pilotdeck-agent-loop-sidecar.js");
 }
 
 async function reservePort(): Promise<number> {
