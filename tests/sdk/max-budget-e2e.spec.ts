@@ -321,12 +321,15 @@ test("project taskBudget retention starts a new Gateway-owned budget period afte
   await mkdir(projectRoot, { recursive: true });
   await writeFile(join(pilotHome, "pilotdeck.yaml"), TEST_CONFIG, "utf8");
   const retentionMs = 25;
+  let nowMs = Date.now();
+  const now = () => new Date(nowMs);
   const firstModel = new BudgetToolCallModel();
   const firstGateway = createLocalGateway({
     projectRoot,
     pilotHome,
     fallbackProjectRoot: projectRoot,
     permissionMode: "bypassPermissions",
+    now,
     __testModelFactory: () => firstModel,
   });
 
@@ -362,7 +365,7 @@ test("project taskBudget retention starts a new Gateway-owned budget period afte
     await firstGateway.dispose();
   }
 
-  await new Promise<void>((resolve) => setTimeout(resolve, retentionMs + 25));
+  nowMs += retentionMs + 1;
 
   const restartedModel = new BudgetToolCallModel();
   const restartedGateway = createLocalGateway({
@@ -370,6 +373,7 @@ test("project taskBudget retention starts a new Gateway-owned budget period afte
     pilotHome,
     fallbackProjectRoot: projectRoot,
     permissionMode: "bypassPermissions",
+    now,
     __testModelFactory: () => restartedModel,
   });
 

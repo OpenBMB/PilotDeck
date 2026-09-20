@@ -136,6 +136,8 @@ import {
 export type CreateLocalGatewayOptions = {
   projectRoot?: string;
   pilotHome?: string;
+  /** Injected host clock for deterministic lifecycle and retention tests. */
+  now?: () => Date;
   /** Read-only skills shipped with this PilotDeck build. Auto-discovered when omitted. */
   builtinSkillsRoot?: string;
   env?: Record<string, string | undefined>;
@@ -581,7 +583,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     // eslint-disable-next-line no-console
     console.warn(`[pilotdeck] Could not migrate legacy skill '${failure.slug}': ${failure.message}`);
   }
-  const now = () => new Date();
+  const now = options.now ?? (() => new Date());
   const sessionCatalog = options.sessionCatalog
     ?? (options.nativeSessionStorage
       ? createGatewayNativeSessionCatalog(options.nativeSessionStorage)

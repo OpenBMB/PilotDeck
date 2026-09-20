@@ -58,6 +58,25 @@ if (hasStorageProviderEntrypoint) {
 
 let sequence = 0;
 const trace = [];
+const pendingBudgetRecords = [];
+const pendingRequestRecords = [];
+const linkRequestBudgetEvidence = () => {
+  while (pendingBudgetRecords.length > 0 && pendingRequestRecords.length > 0) {
+    const budgetRecord = pendingBudgetRecords.shift();
+    const requestRecord = pendingRequestRecords.shift();
+    const budget = budgetRecord;
+    const evidence = {
+      source: "gateway_token_accounting",
+      accountingContract: "TokenAccountingRuntime/o200k_base/v1",
+      request: requestRecord.modelView,
+      ...(budget.breakdown !== undefined ? { breakdown: budget.breakdown } : {}),
+      ...(budget.used !== undefined ? { used: budget.used } : {}),
+      ...(budget.displayUsed !== undefined ? { displayUsed: budget.displayUsed } : {}),
+      ...(budget.budgetUsed !== undefined ? { budgetUsed: budget.budgetUsed } : {}),
+    };
+    budgetRecord.requestEvidence = evidence;
+  }
+};
 let modelAttempt = 0;
 let scenarioTurnIndex = 0;
 let scenarioTurnModelAttempt = 0;
@@ -72,7 +91,11 @@ const toolStarted = new Promise((resolve) => {
   markToolStarted = resolve;
 });
 const push = (kind, extra = {}) => {
-  trace.push({ kind, scenarioId: scenario.scenarioId, q: scenario.q, invocationId, sequence: sequence++, ...extra });
+  const record = { kind, scenarioId: scenario.scenarioId, q: scenario.q, invocationId, sequence: sequence++, ...extra };
+  trace.push(record);
+  if (kind === "context.budget") pendingBudgetRecords.push(record);
+  if (kind === "model.request") pendingRequestRecords.push(record);
+  if (kind === "context.budget" || kind === "model.request") linkRequestBudgetEvidence();
 };
 const modelView = (request) => ({
   provider: request.provider,

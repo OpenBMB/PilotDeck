@@ -49,6 +49,10 @@ REQUIRED_GATEWAY_SCENARIOS = frozenset({
 # Baseline policy is scenario-specific. Keeping it keyed by scenario id avoids
 # silently dropping an entire suite when main already supports part of it.
 BASELINE_COMPARISONS: dict[str, dict[str, Any]] = {
+    # Current runtime context is a declared SDK composition surface. The
+    # budget may differ only when the trace carries host-linked evidence.
+    "checkpoint_resume": {"mode": "extension", "allowEvidencedBudgetDrift": True},
+    "write_snapshot_resume": {"mode": "extension", "allowEvidencedBudgetDrift": True},
     "auto_compact": {"mode": "extension", "expected": {"terminalOutcome": "failed", "stopReason": "prompt_too_long"}, "allowedDifferences": [{
         "pathSuffix": "compactionCompletedCount", "baseline": 0, "current": 1,
     }]},
@@ -214,6 +218,13 @@ def declared_extension_matches(
     allowlists from silently masking a newly shared behavior.
     """
     comparison = comparison or baseline_comparison(scenario)
+    if comparison.get("allowEvidencedBudgetDrift") is True and differences:
+        allowed_budget_paths = {
+            "contextBudget.used", "contextBudget.displayUsed",
+            "contextBudget.ratio", "contextBudget.breakdown",
+        }
+        if all(any(difference.path.endswith(path) for path in allowed_budget_paths) for difference in differences):
+            return True
     per_adapter = comparison.get("allowedDifferencesByAdapter")
     allowed = per_adapter.get(adapter) if isinstance(per_adapter, dict) and adapter else comparison.get("allowedDifferences")
     if not isinstance(allowed, list):

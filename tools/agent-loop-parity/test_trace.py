@@ -207,7 +207,7 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "kind": "model.request",
             "modelView": {"messages": [], "tools": [{"name": "sdk_extension"}]},
         }]
-        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"]}}
+        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"], "allowEvidencedBudgetDrift": True}}
         paths = {difference.path for difference in compare_baseline_trace_details(baseline, current, scenario).semantic}
         self.assertIn("trace.contextBudget.current[0].used", paths)
         del current[0]["used"]
@@ -246,17 +246,69 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "total": 100, "effectiveTotal": 90, "reservedOutputTokens": 10,
             "ratio": 1 / 9, "state": "ok",
         }]
-        current = [{
+        current_view = {"messages": [], "tools": [{"name": "sdk_extension"}]}
+        current_budget = {
             "kind": "context.budget", "used": 50, "displayUsed": 50,
             "total": 100, "effectiveTotal": 90, "reservedOutputTokens": 10,
             "ratio": 5 / 9, "state": "ok",
             "breakdown": {"system": 20, "tools": 10, "messages": 10, "mcp": 5, "memory": 5, "total": 50},
-        }, {
+        }
+        current_budget["requestEvidence"] = {
+            "source": "gateway_token_accounting",
+            "accountingContract": "TokenAccountingRuntime/o200k_base/v1",
+            "request": current_view,
+            "breakdown": current_budget["breakdown"],
+            "used": current_budget["used"],
+            "displayUsed": current_budget["displayUsed"],
+        }
+        current = [current_budget, {
             "kind": "model.request",
-            "modelView": {"messages": [], "tools": [{"name": "sdk_extension"}]},
+            "modelView": current_view,
         }]
-        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"]}}
+        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"], "allowEvidencedBudgetDrift": True}}
         self.assertEqual(compare_baseline_trace_details(baseline, current, scenario).semantic, [])
+
+    def test_baseline_contract_rejects_budget_tampering_under_declared_request_drift(self) -> None:
+        current_view = {"messages": [], "tools": [{"name": "sdk_extension"}]}
+        budget = {
+            "kind": "context.budget", "used": 50, "displayUsed": 50,
+            "budgetUsed": 50, "total": 100, "effectiveTotal": 90,
+            "reservedOutputTokens": 10, "ratio": 5 / 9, "state": "ok",
+            "breakdown": {"system": 20, "tools": 10, "messages": 10, "mcp": 5, "memory": 5, "total": 50},
+        }
+        budget["requestEvidence"] = {
+            "source": "gateway_token_accounting",
+            "accountingContract": "TokenAccountingRuntime/o200k_base/v1",
+            "request": current_view,
+            "breakdown": budget["breakdown"],
+            "used": 50,
+            "displayUsed": 50,
+            "budgetUsed": 50,
+        }
+        baseline = [{"kind": "model.request", "modelView": {"messages": [], "tools": []}}, {
+            "kind": "context.budget", "used": 10, "displayUsed": 10, "total": 100,
+            "effectiveTotal": 90, "reservedOutputTokens": 10, "ratio": 1 / 9, "state": "ok",
+        }]
+        current = [budget, {"kind": "model.request", "modelView": current_view}]
+        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"], "allowEvidencedBudgetDrift": True}}
+
+        forged = json.loads(json.dumps(current))
+        forged[0]["used"] = forged[0]["displayUsed"] = forged[0]["budgetUsed"] = 80
+        forged[0]["ratio"] = 8 / 9
+        forged[0]["breakdown"] = {"system": 30, "tools": 20, "messages": 15, "mcp": 10, "memory": 5, "total": 80}
+        paths = {difference.path for difference in compare_baseline_trace_details(baseline, forged, scenario).semantic}
+        self.assertIn("trace[0]~[0].contextBudget.used", paths)
+
+        for field in ("displayUsed", "budgetUsed"):
+            forged = json.loads(json.dumps(current))
+            forged[0][field] = 9999
+            paths = {difference.path for difference in compare_baseline_trace_details(baseline, forged, scenario).semantic}
+            self.assertIn(f"trace[0]~[0].contextBudget.{field}", paths)
+
+        missing_evidence = json.loads(json.dumps(current))
+        del missing_evidence[0]["requestEvidence"]
+        paths = {difference.path for difference in compare_baseline_trace_details(baseline, missing_evidence, scenario).semantic}
+        self.assertIn("trace[0]~[0].contextBudget.used", paths)
 
     def test_baseline_contract_rejects_inconsistent_budget_breakdown(self) -> None:
         baseline = [{
@@ -276,7 +328,15 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
             "kind": "model.request",
             "modelView": {"messages": [], "tools": [{"name": "sdk_extension"}]},
         }]
-        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"]}}
+        current[0]["requestEvidence"] = {
+            "source": "gateway_token_accounting",
+            "accountingContract": "TokenAccountingRuntime/o200k_base/v1",
+            "request": current[1]["modelView"],
+            "breakdown": current[0]["breakdown"],
+            "used": 50,
+            "displayUsed": 50,
+        }
+        scenario = {"baselineComparison": {"extensionTools": ["sdk_extension"], "allowEvidencedBudgetDrift": True}}
         paths = {difference.path for difference in compare_baseline_trace_details(baseline, current, scenario).semantic}
         self.assertEqual(paths, {"trace.contextBudget.current[0].breakdown.total_consistency"})
 

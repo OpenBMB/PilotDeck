@@ -287,7 +287,7 @@ _SEMANTIC_EVENT_FIELDS = {
     "durable.compaction_completed": {"operationId", "status"},
     "context.budget": {
         "used", "displayUsed", "budgetUsed", "total", "effectiveTotal",
-        "reservedOutputTokens", "ratio", "state", "source", "exact", "breakdown",
+        "reservedOutputTokens", "ratio", "state", "source", "exact", "breakdown", "requestEvidence",
     },
     "durable.state": {
         "durableStatusCount", "durableSteerCount", "compactionBoundaryCount",
@@ -556,10 +556,15 @@ def _diff_semantic_records(left: list[dict[str, Any]], right: list[dict[str, Any
 
 
 def compare_trace_details(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> Comparison:
+    def semantic_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        projected = project_semantic_trace(records)
+        for record in projected:
+            record.pop("requestEvidence", None)
+        return projected
     semantic = (
         _partial_order_differences(left, "left")
         + _partial_order_differences(right, "right")
-        + _diff_semantic_records(project_semantic_trace(left), project_semantic_trace(right))
+        + _diff_semantic_records(semantic_records(left), semantic_records(right))
     )
     format_differences = _diff_values(project_format_trace(left), project_format_trace(right))
     return Comparison(semantic=semantic, format_warnings=format_differences)
@@ -582,6 +587,10 @@ def compare_baseline_trace_details(
         {str(name) for name in comparison.get("extensionTools") or []}
         if isinstance(comparison, dict)
         else set()
+    )
+    allow_evidenced_budget_drift = (
+        not isinstance(comparison, dict)
+        or comparison.get("allowEvidencedBudgetDrift", True) is True
     )
     tool_description_contracts = (
         comparison.get("toolDescriptionContracts")
@@ -685,6 +694,11 @@ def compare_baseline_trace_details(
                     "state": detail.get("state") if isinstance(detail, dict) else None,
                 }
             result.append(candidate)
+        for budget in pending_current_budgets:
+            # An unassociated budget event is still comparable by its public
+            # fields, but request evidence is only meaningful when attached to
+            # the corresponding model request below.
+            budget.pop("requestEvidence", None)
         result.extend(pending_current_budgets)
         return result, raw_request_views
 
@@ -699,7 +713,16 @@ def compare_baseline_trace_details(
         right_shared,
         left_raw_requests,
         right_raw_requests,
+        allow_evidenced_budget_drift,
     )
+    # Evidence is comparator input, not a product-visible budget field. Keep
+    # it through validation/normalization, then remove it before shared trace
+    # projection so baseline/main envelopes do not gain a semantic event.
+    for records in (left_shared, right_shared):
+        for request in records:
+            budget = request.get("contextBudget")
+            if isinstance(budget, dict):
+                budget.pop("requestEvidence", None)
 
     semantic = (
         _partial_order_differences(left, "left")
@@ -722,6 +745,7 @@ _BASELINE_CONTEXT_BUDGET_FIELDS = (
     "reservedOutputTokens",
     "ratio",
     "state",
+    "requestEvidence",
 )
 
 _BASELINE_CONTEXT_BUDGET_DECISION_FIELDS = (
@@ -808,6 +832,7 @@ def _normalize_baseline_budget_for_declared_request_drift(
     right: list[dict[str, Any]],
     left_raw_requests: list[dict[str, Any] | None],
     right_raw_requests: list[dict[str, Any] | None],
+    allow_evidenced_budget_drift: bool,
 ) -> None:
     left_requests = [record for record in left if record.get("kind") == "model.request"]
     right_requests = [record for record in right if record.get("kind") == "model.request"]
@@ -828,6 +853,13 @@ def _normalize_baseline_budget_for_declared_request_drift(
         breakdown = current_budget.get("breakdown") if isinstance(current_budget, dict) else None
         if not isinstance(breakdown, dict):
             continue
+        evidence = current_budget.get("requestEvidence") if isinstance(current_budget, dict) else None
+        raw_request = right_raw_requests[index] if index < len(right_raw_requests) else None
+        if not allow_evidenced_budget_drift or not _valid_request_budget_evidence(current_budget, evidence, raw_request):
+            # A declared composition difference may change local metering, but
+            # it must remain linked to the exact provider-visible request. Do
+            # not normalize usage fields when that provenance is absent.
+            continue
         for request in (left_request, right_request):
             budget = request.get("contextBudget")
             if isinstance(budget, dict):
@@ -836,6 +868,28 @@ def _normalize_baseline_budget_for_declared_request_drift(
                     for key in _BASELINE_CONTEXT_BUDGET_DECISION_FIELDS
                     if key in budget
                 }
+
+
+def _valid_request_budget_evidence(
+    budget: dict[str, Any],
+    evidence: Any,
+    raw_request: dict[str, Any] | None,
+) -> bool:
+    """Validate host-produced request provenance before relaxing budget diffs."""
+    if not isinstance(evidence, dict) or not isinstance(raw_request, dict):
+        return False
+    if evidence.get("source") != "gateway_token_accounting":
+        return False
+    if evidence.get("accountingContract") != "TokenAccountingRuntime/o200k_base/v1":
+        return False
+    if canonicalize(evidence.get("request")) != canonicalize(raw_request):
+        return False
+    if evidence.get("breakdown") != budget.get("breakdown"):
+        return False
+    for field in ("used", "displayUsed", "budgetUsed"):
+        if field in evidence and evidence.get(field) != budget.get(field):
+            return False
+    return True
 
 
 def _baseline_shared_message(message: Any) -> Any:

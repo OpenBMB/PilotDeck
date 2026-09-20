@@ -1378,7 +1378,7 @@ export class ProjectRuntimeRegistry {
     ledger.settledRunIds.add(input.runId);
     ledger.spentUsd += input.turnSpentUsd;
     if (scope === "project" && ledger.projectRetentionMs !== undefined) {
-      ledger.lastActivityAtMs = Date.now();
+      ledger.lastActivityAtMs = this.options.now().getTime();
     }
     this.appendTaskBudgetLedgerRecord({
       version: 1,
@@ -1425,7 +1425,7 @@ export class ProjectRuntimeRegistry {
     }
     ledger.totalUsd = taskBudget.total;
     ledger.projectRetentionMs = taskBudget.projectRetentionMs;
-    if (taskBudget.projectRetentionMs !== undefined) ledger.lastActivityAtMs = Date.now();
+    if (taskBudget.projectRetentionMs !== undefined) ledger.lastActivityAtMs = this.options.now().getTime();
     this.appendTaskBudgetLedgerRecord({
       version: 1,
       kind: "configured",
@@ -1441,7 +1441,7 @@ export class ProjectRuntimeRegistry {
 
   private expireProjectTaskBudgetLedgerIfInactive(key: string, ledger: SdkTaskBudgetLedger): boolean {
     if (ledger.projectRetentionMs === undefined || ledger.lastActivityAtMs === undefined) return false;
-    if (Date.now() - ledger.lastActivityAtMs < ledger.projectRetentionMs) return false;
+    if (this.options.now().getTime() - ledger.lastActivityAtMs < ledger.projectRetentionMs) return false;
     const identity = taskBudgetLedgerIdentity(key);
     this.sdkTaskBudgetLedgers.delete(key);
     this.appendTaskBudgetLedgerRecord({ version: 1, kind: "cleared", ...identity });

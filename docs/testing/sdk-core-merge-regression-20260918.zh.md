@@ -42,7 +42,7 @@ main 是共有可观察行为基准；core_agent_loop_0831 是依赖方向与状
 
 | 触发条件 / 入口 | main / native / sidecar 行为 | 根因与 owner | 回归与处理 |
 | --- | --- | --- | --- |
-| raw model request 因 SDK 工具/runtime projection 不同而产生 context budget usage 漂移 | 三侧的 limit、state、输出一致；合法 composition drift 只比较 decision fields | comparator 关联独立 `context.budget` 时丢失 current breakdown，无法证明 usage 来自完整测量；预算 owner 仍为 host context/budget port | 保留 breakdown 并校验组件非负、组件和、`used == total`；只在 canonical request 相同、raw request 有声明差异且 current breakdown 完整时剥离 usage；`51/51` comparator tests 与 production `53/53` |
+| raw model request 因 SDK 工具/runtime projection 不同而产生 context budget usage 漂移 | 三侧的 limit、state、输出一致；合法 composition drift 只比较 decision fields | 旧 comparator 只校验自报 breakdown，自洽伪造仍可通过；现要求 Gateway `TokenAccountingRuntime/o200k_base/v1` request-linked evidence | 保留 breakdown 并校验组件非负、组件和、`used == total`；只有 evidence 与 provider-visible request、breakdown、usage 一致绑定时才剥离 usage；新增 `50→80`、`displayUsed/budgetUsed=9999` 负向测试；production raw traces 待重跑 |
 | runtime-context 跨 block/message 顺序、close/abort settlement 后 late model request | 两侧保持内容/顺序与 settlement happens-before；非法重排或 settlement 后请求失败 | comparator 以前按 block 内 offset 丢失跨容器顺序，且没有 settlement fence 检查 | 顺序、重复/残余、close/abort late request 负向测试；production raw trace 覆盖 native 与正式 stdio sidecar |
 
 ## 验证命令
@@ -52,7 +52,7 @@ main 是共有可观察行为基准；core_agent_loop_0831 是依赖方向与状
 - focused production module/Gateway/SDK seed matrix：`192/192`
 - compaction/replay/fork/deferred failure：`21/21`
 - `pnpm --filter @pilotdeck/sdk test`：`123/123`
-- `python3 -m unittest discover -s tools/agent-loop-parity -p 'test_trace.py'`：`51/51`
+- `python3 -m unittest discover -s tools/agent-loop-parity -p 'test_trace.py'`：`52/52`
 - production stdio parity：53/53 场景执行；`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable，19 个明确 `notApplicable`。`deadline`、`deadline_during_tool`、`auto_compact`、`sidecar_live_steer` 的 baseline drift 均仅命中已声明 extension contract。原始结果：`/tmp/pilotdeck-parity-merge-closure-20260918/summary.json`。
 - 2026-09-19 严格 comparator production stdio parity：53/53；`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable、19 个明确 `notApplicable`，9 条 extension 均逐路径命中声明契约。原始结果：`/tmp/pilotdeck-parity-closure-20260919-strict2/summary.json`。
 - Node 22 focused production module/Gateway/SDK seed matrix：`135/135`；根测试重跑：`1721/1723`，`0` failed、`2` skipped。
