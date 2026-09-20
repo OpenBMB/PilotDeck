@@ -726,6 +726,10 @@ test("sidecar terminal preserves the AgentLoop error instead of replacing it wit
     code: "agent_model_error",
     message: "temporary provider failure",
   });
+  assert.deepEqual((terminal?.payload as Record<string, unknown> | undefined)?.moduleFailure, {
+    code: "provider_unavailable",
+    message: "temporary provider failure",
+  });
 });
 
 test("sidecar abort releases a pending module call", async () => {

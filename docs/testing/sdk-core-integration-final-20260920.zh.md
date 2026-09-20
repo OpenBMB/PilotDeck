@@ -2,7 +2,9 @@
 
 ## 结论
 
-当前分支 `codex/integrate-sdk-0901` 在固定产品基线 `origin/main` 上完成了 Core、SDK、native/production-sidecar 和架构边界回归。没有发现需要新增的 P1/P2 根因；上一轮已提交的九类修复在代码验证锚点上全部有 focused regression 和 production trace 证据。本轮另修正 `PilotDeckClient.startup` 的初始化超时语义，并修复 socket 尚未 open 时的 connect cancellation/定时器泄漏；代码提交为 `836d81eb`、`71c2b0d8`，当前 worktree 干净。
+**本报告的历史“验收通过”结论已失效，当前不得视为验收完成。** 2026-09-20 的后续 StaffDeck production-stdio 收口在未提交工作树中发现并修复了 `ACTION_BUDGET_EXHAUSTED` 被宿主泛化为 `HARNESS_V2_ERROR`、SOP 跨节点通用消息边界以及 capability result/budget 回投；同时完整矩阵仍发现未收口的 PilotDeck deadline terminal/error 分类和 deadline 中 tool-result/terminal 因果差异。当前 authoritative matrix 是 `/tmp/pilotdeck-sdk-core-all-current-20260920/summary.json`：`62` 场景、`blocked=[]`、仍有 `6` 个 semantic failures 和未触发的 StaffDeck fixture/oracle failures。不得将本文件后文的历史 PASS、clean worktree、commit/push 或全绿表述用于当前验收。
+
+当前分支 `codex/integrate-sdk-0901` 仍以固定产品基线 `origin/main` 及 `refactor/core_agent_loop_0831` 架构边界继续回归。新的修复和验证尚未 commit/push；最终验收必须以更新后的全矩阵、raw trace、架构检查和可审查提交为准。
 
 Frontend integration 不在本轮授权范围内，不能解读为已验收。
 

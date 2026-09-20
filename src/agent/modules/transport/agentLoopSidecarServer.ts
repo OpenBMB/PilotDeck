@@ -301,6 +301,10 @@ export class AgentLoopSidecarServer {
       }
       const outcome = moduleOutcomeFromAgentResult(result.result);
       const moduleFailure = this.moduleFailures.get(request.operationId);
+      // Preserve a host module's structured failure as diagnostic terminal
+      // payload. The AgentLoop result remains the terminal classification;
+      // host-owned adapters may use this source detail for their own mapping.
+      const terminalModuleFailure = result.result.type === "error" ? moduleFailure : undefined;
       const terminalError = activeExecution.deadlineExceeded
         ? { code: "DEADLINE_EXCEEDED", message: "Module execution deadline exceeded." }
         : result.result.type === "max_turns"
@@ -332,6 +336,7 @@ export class AgentLoopSidecarServer {
         payload: {
           result: result.result,
           messages: result.messages,
+          ...(terminalModuleFailure ? { moduleFailure: terminalModuleFailure } : {}),
           // Test/integration runners may implement only the public run surface.
           // Seed state is an optional checkpoint projection, never a reason to
           // rewrite an otherwise valid execution terminal as failed.
