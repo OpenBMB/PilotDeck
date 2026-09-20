@@ -128,7 +128,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const detail = sessionStore.getSubagentDetailMessages('web:s_test', 'child');
     expect(detail.find(m => m.kind === 'error')?.content).toBe('Timeout detail');
     expect(detail.find(m => m.kind === 'thinking')).toMatchObject({ content: 'Restored thought', streamState: 'closed' });
-  });
+  }, 15_000);
 
   it.each(['completed', 'failed', 'cancelled'])('closes child detail on %s using its parent run identity', (state) => {
     const { result } = renderHook(useSessionStore);

@@ -196,3 +196,19 @@ The exact comparator declarations are in `tools/agent-loop-parity/run.py` (`BASE
 ## 交付状态
 
 本报告与 acceptance checklist、模块索引、roadmap 已按当前代码和验证产物更新。本轮新增 startup 握手超时 teardown、未 open connect cancellation 与 client 生命周期回归，代码和文档 diff 均可审查；代码与文档已统一提交、推送，并已发送 `待独立验收`。
+
+## 授权后的扩展验证（2026-09-20）
+
+用户随后授权检查 Frontend、Desktop、StaffDeck 和本地真实部署范围，并确认
+`PilotDeckQuery.accountInfo()` 继续维持文档化的 `unsupported_capability`；本节不把
+授权扩大为外部模型供应商或远端队列的验证结论。
+
+| 范围 | 命令 / 证据 | 结果 |
+| --- | --- | --- |
+| UI bridge 回归 | `pnpm --dir ui exec vitest run src/components/chat/hooks/useChatRealtimeHandlers.test.tsx` | `20/20` PASS。动态导入真实 Node bridge 的两个参数化分支在并行文件调度中偶发超过 Vitest 默认 5 秒；仅该用例显式使用 `15_000` ms，完整 transport mapping、错误内容和 stream-state 断言不变。 |
+| UI 完整测试、类型和构建 | Node `v22.23.1` 下 `pnpm --dir ui test`、`pnpm --dir ui typecheck`、`pnpm --dir ui build` | PASS。修复前的默认套件为 `1750/1751`，唯一失败是上述 bridge 启动时限；修复后命令链继续完成 typecheck 与 production build。最终 build 日志：`/tmp/pilotdeck-sdk-core-ui-final-20260920.log`。 |
+| Desktop | Node `v22.23.1` 下 `pnpm --filter pilotdeck-desktop test && pnpm --filter pilotdeck-desktop run compile` | `73/73` PASS，TypeScript compile PASS。 |
+| StaffDeck 本地真实部署 | `backend/.venv/bin/python tools/real-deployment-e2e.py --staffdeck-root ... --pilotdeck-root ...` | PASS。隔离 SQLite、PilotDeck Gateway WebSocket handshake、HTTP 页面、多轮会话、并发隔离、handoff、scheduled、team worker 和 durable 记录均完成。报告：`/var/folders/xd/mml9c6fj2g95x40hgf_n6lrr0000gn/T/staffdeck-e2e-8g34suj9/REAL_DEPLOYMENT_E2E.zh.md`。 |
+| StaffDeck/AgentLoop 全矩阵 | `tools/agent-loop-parity/run.py --pair all --comparison both --pilotdeck-surface gateway --scenario all` | `62` 场景、`blocked=[]`，但不是全绿：`max_turns`、`sop_blocked_transition`、`sop_multi_action_budget` 有 StaffDeck semantic difference，另有 StaffDeck oracle failure。它们同样出现在 `staffdeck-current-legacy` 与基线；不是当前 PilotDeck native/sidecar 回归，不能被算为 PASS。原始汇总：`/tmp/pilotdeck-sdk-core-expanded-parity-20260920/summary.json`。 |
+
+扩展范围仍有精确限制：没有真实外部 provider 凭据或可审查的 remote/queued 环境，因此该两项未运行；Desktop 仅完成脚本/编译验证，未执行原生 Electron 视觉交互；StaffDeck 全矩阵存在上述宿主 oracle/行为问题。与 `origin/main` 的严格字面一致性仍为 false，原因仍是本报告列出的已声明差异及 main 缺失 capability；用户尚未接受把这些差异作为产品扩展的决定，故不得将该状态改写为验收通过。
