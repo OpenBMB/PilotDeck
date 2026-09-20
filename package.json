@@ -19,7 +19,7 @@
     "check:runtime": "node scripts/check-node-runtime.mjs",
     "install:browser": "npx @playwright/mcp install-browser chrome-for-testing",
     "install:asr": "node scripts/install-asr.mjs",
-    "prebuild": "npm run check:runtime && cd src/context/memory/edgeclaw-memory-core && npm run build",
+    "prebuild": "npm run check:runtime && pnpm --filter @pilotdeck/sdk build && cd src/context/memory/edgeclaw-memory-core && npm run build",
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"const fs=require('fs'); fs.cpSync('src/extension/plugins/builtin','dist/src/extension/plugins/builtin',{recursive:true}); fs.cpSync('ui/server','dist/ui/server',{recursive:true})\"",
     "build:web": "npm run build && pnpm --dir ui run build",
     "build:desktop": "pnpm --filter pilotdeck-desktop run compile",
@@ -42,6 +42,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@pilotdeck/sdk": "workspace:*",
     "@google/genai": "^2.10.0",
     "@larksuiteoapi/node-sdk": "^1.65.0",
     "@modelcontextprotocol/sdk": "^1.29.0",

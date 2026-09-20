@@ -21,6 +21,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)
+      '@pilotdeck/sdk':
+        specifier: workspace:*
+        version: link:packages/sdk
       '@playwright/mcp':
         specifier: 0.0.75
         version: 0.0.75

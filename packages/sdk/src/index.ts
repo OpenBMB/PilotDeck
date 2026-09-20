@@ -20,6 +20,7 @@ export {
   tagSession,
   forkSession,
   resolveSettings,
+  updateSettings,
   defineTool,
   createPilotDeckMcpServer,
   createSdkMcpServer,

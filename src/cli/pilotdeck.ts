@@ -23,11 +23,16 @@ import { ProjectAutomationBundle } from "./ProjectAutomationBundle.js";
 import { PilotDeckServerShutdownBundle } from "./PilotDeckServerShutdownBundle.js";
 import { PilotDeckServerBootstrapBundle } from "./PilotDeckServerBootstrapBundle.js";
 import { ChannelAdapterBundle } from "./ChannelAdapterBundle.js";
+import { runSdkCli } from "./sdkCli.js";
 
 await installGlobalProxy();
 
 async function main(argv = process.argv.slice(2)): Promise<void> {
   const command = argv[0];
+  if (command === "run" || command === "resume" || command === "sessions" || command === "settings" || command === "help" || command === "--help" || command === "-h") {
+    await runSdkCli(argv);
+    return;
+  }
   if (command === "server") {
     const projectRoot = process.cwd();
     const env = process.env;

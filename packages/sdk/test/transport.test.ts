@@ -3683,6 +3683,8 @@ class FakeSdkClientWebSocket extends FakeWebSocket {
       }); return;
       case "reload_config":
       case "reload_extensions": respond({ reloaded: true }); return;
+      case "resolve_settings": respond({ schemaVersion: 1, version: 4, loadedAt: "now", contentHash: "hash", config: { agent: { maxContextTokens: 4096 } }, sources: [], diagnostics: [] }); return;
+      case "update_settings": respond({ applied: ["agent.maxContextTokens"], cleared: [], changedPaths: ["agent.maxContextTokens"] }); return;
       case "cron_create": respond({ task: {
         schemaVersion: 1,
         taskId: "cron-1",
@@ -3810,6 +3812,12 @@ test("client exposes Gateway-authoritative session, run and resource facades", a
   });
   assert.equal((await client.config.reload()).reloaded, true);
   assert.equal((await client.extensions.reload()).reloaded, true);
+  assert.deepEqual((await client.settings.resolve()).config["agent"], { maxContextTokens: 4096 });
+  await client.settings.update({ agent: { maxContextTokens: 8192 } });
+  assert.deepEqual(
+    FakeSdkClientWebSocket.requests.find((request) => request.method === "update_settings")?.params,
+    { source: "localSettings", settings: { agent: { maxContextTokens: 8192 } } },
+  );
 
   const scheduled = await client.cron.create({
     projectKey: "project",

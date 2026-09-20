@@ -2729,6 +2729,22 @@ export async function resolveSettings(
   }
 }
 
+/** Update the Gateway host's supported, non-secret local settings. */
+export async function updateSettings(
+  options: PilotDeckResolveSettingsOptions,
+  settings: PilotDeckLocalSettingsUpdate,
+): Promise<void> {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    throw new PilotDeckError({ code: "validation_error", message: "updateSettings settings must be an object." });
+  }
+  const transport = await connectedTransport(options);
+  try {
+    await transport.request("update_settings", { source: "localSettings", settings });
+  } finally {
+    transport.close();
+  }
+}
+
 async function connectedTransport(
   options: Pick<PilotDeckOptions, "gatewayUrl" | "authToken" | "clientVersion" | "timeoutMs" | "reconnect">,
 ): Promise<GatewayTransport> {
@@ -3410,6 +3426,15 @@ export function createPilotDeckClientWithTransportFactory(
       delete: async (input) => await request("cron_delete", input) as PilotDeckCronDeleteResult,
       stop: async (input) => await request("cron_stop", input) as PilotDeckCronStopResult,
       runNow: async (input) => await request("cron_run_now", input) as PilotDeckCronRunNowResult,
+    },
+    settings: {
+      resolve: async () => await request("resolve_settings", {}) as PilotDeckResolvedSettings,
+      update: async (settings) => {
+        if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+          throw new PilotDeckError({ code: "validation_error", message: "updateSettings settings must be an object." });
+        }
+        await request("update_settings", { source: "localSettings", settings });
+      },
     },
     config: { reload: async () => await request("reload_config", {}) as PilotDeckReloadResult },
     extensions: { reload: async (input) => await request("reload_extensions", input ?? {}) as PilotDeckReloadResult },

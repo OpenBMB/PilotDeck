@@ -41,6 +41,10 @@ export type PilotDeckResolveSettingsOptions = PilotDeckConnectionOptions & {
   timeoutMs?: number;
 };
 
+export type PilotDeckUpdateSettingsOptions = PilotDeckResolveSettingsOptions & {
+  settings: PilotDeckLocalSettingsUpdate;
+};
+
 /**
  * Gateway-owned, non-secret portion of `pilotdeck.yaml` accepted by
  * `Query.updateSettings("localSettings", ...)`. A `null` leaf removes the
@@ -1427,6 +1431,10 @@ export type PilotDeckClient = {
     delete(input: DeletePilotDeckCronTaskInput): Promise<PilotDeckCronDeleteResult>;
     stop(input: StopPilotDeckCronTaskInput): Promise<PilotDeckCronStopResult>;
     runNow(input: { taskId: string; projectKey?: string }): Promise<PilotDeckCronRunNowResult>;
+  };
+  settings: {
+    resolve(): Promise<PilotDeckResolvedSettings>;
+    update(settings: PilotDeckLocalSettingsUpdate): Promise<void>;
   };
   config: { reload(): Promise<PilotDeckReloadResult> };
   extensions: { reload(input?: { projectKey?: string; changedPaths?: string[] }): Promise<PilotDeckReloadResult> };
