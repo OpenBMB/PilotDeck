@@ -55,7 +55,7 @@ main 是共有可观察行为基准；core_agent_loop_0831 是依赖方向与状
 - `python3 -m unittest discover -s tools/agent-loop-parity -p 'test_trace.py'`：`52/52`
 - production stdio parity：53/53 场景执行；`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable，19 个明确 `notApplicable`。`deadline`、`deadline_during_tool`、`auto_compact`、`sidecar_live_steer` 的 baseline drift 均仅命中已声明 extension contract。原始结果：`/tmp/pilotdeck-parity-merge-closure-20260918/summary.json`。
 - 2026-09-19 严格 comparator production stdio parity：53/53；`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable、19 个明确 `notApplicable`，9 条 extension 均逐路径命中声明契约。原始结果：`/tmp/pilotdeck-parity-closure-20260919-strict2/summary.json`。
-- Node 22 focused production module/Gateway/SDK seed matrix：`135/135`；根测试重跑：`1721/1723`，`0` failed、`2` skipped。
+- Node 22 focused production module/Gateway/SDK seed matrix：`135/135`；根测试最终重跑：`1721/1723`，`0` failed、`2` skipped，退出码 0。日志：`/tmp/pilotdeck-root-test-20260920-final-retry.log`。
 
 ## 架构检查
 

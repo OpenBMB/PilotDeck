@@ -1202,9 +1202,9 @@ semantic difference 或 cleanup BLOCKED。
 
 #### 2026-09-19 严格 merge closure 复核
 
-固定 current `2a767d95b21bd66215a3c65ebdd92159ad6fa156`、`origin/main` `cd52c9af812a84c27a9dd1b7ccf246f48540045f` 与架构基线 `e55b0a82d07ee3951e5812c34103400dfa6043f7` 后，production stdio Gateway 矩阵 53/53 全部执行，`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable，19 个 `notApplicable`。严格 comparator 新增 budget breakdown 完整性约束和负向对照，不扩大 normalization；结果见 `/tmp/pilotdeck-parity-closure-20260919-strict2/summary.json`。
+固定 current `9ec5a957`、`origin/main` `cd52c9af812a84c27a9dd1b7ccf246f48540045f` 与架构基线 `e55b0a82d07ee3951e5812c34103400dfa6043f7` 后，production stdio Gateway 矩阵 53/53 全部执行，`failed=[]`、`blocked=[]`、`oracleFailures=[]`、`knownGaps=[]`；34 个 baseline applicable，19 个 `notApplicable`。严格 comparator 新增 budget breakdown 完整性约束和负向对照，不扩大 normalization；结果见 `/tmp/pilotdeck-parity-closure-20260920-accepted/summary.json`。
 
-历史验收命令证据：Node 22 `pnpm build` PASS，根测试 `1721/1723`（2 skipped）PASS，SDK `123/123`，focused module/Gateway/SDK seed `135/135`。本轮 comparator 已扩展为 `52/52`，但 declared-extension production raw traces 尚未重采集，旧 `51/51` 与 `53/53` budget 结论不再作为当前 PASS；当前环境 Node 25，不能冒充 Node 22 重验。真实 provider、StaffDeck Harness/TaskFrame/SOP lease、remote/queued deployment 与 Desktop/Web 视觉检查仍不在本 PilotDeck-only 矩阵内，不计为 PASS。
+验收命令证据：Node 22 `pnpm build` PASS，`pnpm test` `1721/1723`（2 skipped）PASS，SDK `123/123`，focused module/Gateway/SDK seed `135/135`，comparator `52/52`。production raw traces 已按新 evidence contract 重采集并通过；真实 provider、StaffDeck Harness/TaskFrame/SOP lease、remote/queued deployment 与 Desktop/Web 视觉检查仍不在本 PilotDeck-only 矩阵内，不计为 PASS。
 
 | 边界 | Definition | Provider / durable owner | Consumer | Composition |
 | --- | --- | --- | --- | --- |

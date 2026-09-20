@@ -50,12 +50,12 @@
 ## 完整验证证据
 
 - `pnpm build`（Node 22.23.1）：PASS。
-- `pnpm test`：Node 22 完成但因 8 个独立 test file 在并发 8 下超时而非零（`1654` passed、`8` cancelled、`2` skipped）；8 个取消文件以同一 Node 22 sequential focused command 重跑 `71/71` 通过，未发现本变更回归。完整日志：`/tmp/pilotdeck-root-test-20260920-final.log`。
+- `pnpm test`（Node 22.23.1）：`1721` passed、`0` failed、`2` skipped，退出码 0。最终日志：`/tmp/pilotdeck-root-test-20260920-final-retry.log`。此前并发运行中的取消来自同机另一工作区的 Vite 构建争用；在无该争用后完整命令通过，未修改测试阈值或产品断言。
 - `pnpm --filter @pilotdeck/sdk test`：`123/123`。
 - focused production module/Gateway/SDK seed suites：`135/135`。
 - comparator unit suite：`52/52`；新增 request-linked evidence 负向回归。
 - production raw trace 重跑：53 scenarios、native/sidecar、baseline native/sidecar；`blocked=0`、`failed=0`、`oracleFailures=0`。输出：`/tmp/pilotdeck-parity-closure-20260920-accepted/summary.json`。
-- `git diff --check`：PASS；最终 commit 已推送，远端 ref 与本地一致。
+- `git diff --check`：PASS；本轮最终 commit 与远端分支 ref 在 push 后核对一致。
 
 ## 明确不适用 / 未覆盖
 
