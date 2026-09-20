@@ -57,3 +57,11 @@ StaffDeck `test_pilotdeck_agent_loop_client.py`、`test_harness_v2.py`、
 这份子集报告不声称 full matrix 已验收。`sidecar_restart_*`、SOP lifecycle
 projection、team/scheduled 和外部 provider/deployment 覆盖仍须由全量矩阵独立验收；它们
 既不被归为 PASS，也没有加入 normalization 或 allowlist。
+
+提交后完整矩阵产物为
+`/tmp/pilotdeck-sdk-core-post-commit-all-20260920/summary.json`：`62` 场景、
+`failed=[]`、`blocked=[]`，但仍有 `28` 条共同 oracle failure。剩余项包括没有实际注入
+sidecar restart/reconciliation 的 `sidecar_restart_*`/`sop_unknown_requeue`，以及 SOP 完成
+后状态清理、knowledge budget、依赖任务、team 和 scheduled 的 fixture/projection 契约。
+它们不是 native/sidecar semantic diff，也不是本报告三条红线的 PASS 依据；全量验收必须先
+逐项消除或建立精确、已验证的产品契约。
