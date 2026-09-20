@@ -6,13 +6,13 @@
 
 | 项目 | 固定值 / 来源 |
 | --- | --- |
-| 当前分支起点 | `2a767d95b21bd66215a3c65ebdd92159ad6fa156` |
-| 本轮实现提交 | `c308a3109a179809a54d8af69fc40c9382cc946a`；本清单与 comparator 证据随最终验收提交 |
+| 当前分支起点 | `b15d2080ed06f0330485c96f8add48b14b3b721d` |
+| 本轮实现提交 | `b15d2080ed06f0330485c96f8add48b14b3b721d`；本轮为独立回归与证据收口，无新增产品代码 |
 | 产品行为基线 | `origin/main=cd52c9af812a84c27a9dd1b7ccf246f48540045f` |
 | 架构基线 | `Kaguya-19/refactor/core_agent_loop_0831=e55b0a82d07ee3951e5812c34103400dfa6043f7` |
 | 运行环境 | Node `v22.23.1`，Python `3.12.2` |
-| 主要报告 | `docs/testing/sdk-core-merge-regression-20260918.zh.md`、`docs/pilotdeck-agent-loop-parity-results.zh.md` |
-| production raw trace | `/tmp/pilotdeck-parity-closure-20260919-strict2/` |
+| 主要报告 | `docs/testing/sdk-core-integration-final-20260920.zh.md`、`docs/testing/sdk-core-merge-regression-20260918.zh.md`、`docs/pilotdeck-agent-loop-parity-results.zh.md` |
+| production raw trace | `/tmp/pilotdeck-parity-sdk-core-final-20260920/` |
 
 ## 行为验收
 
@@ -50,11 +50,11 @@
 ## 完整验证证据
 
 - `pnpm build`（Node 22.23.1）：PASS。
-- `pnpm test`（Node 22.23.1）：`1721` passed、`0` failed、`2` skipped，退出码 0。最终日志：`/tmp/pilotdeck-root-test-20260920-final-retry.log`。此前并发运行中的取消来自同机另一工作区的 Vite 构建争用；在无该争用后完整命令通过，未修改测试阈值或产品断言。
+- `pnpm test`（Node 22.23.1）：`1721` passed、`0` failed、`2` skipped，退出码 0。最终日志：`/tmp/pilotdeck-root-test-sdk-core-final-20260920.log`。
 - `pnpm --filter @pilotdeck/sdk test`：`123/123`。
 - focused production module/Gateway/SDK seed suites：`135/135`。
 - comparator unit suite：`53/53`；新增 runner gate 负向回归；production evidence helper `2/2`，覆盖 evidence 生成前的预算篡改与 evidence 字段形状。
-- production raw trace 重跑：53 scenarios、native/sidecar、baseline native/sidecar；`blocked=0`、`failed=0`、`oracleFailures=0`。输出：`/tmp/pilotdeck-parity-closure-20260920-accepted/summary.json`。
+- production raw trace 重跑：53 scenarios、native/sidecar、baseline native/sidecar；`blocked=0`、`failed=0`、`oracleFailures=0`。输出：`/tmp/pilotdeck-parity-sdk-core-final-20260920/summary.json`。
 - 受本次独立验收影响的 raw trace 已重新执行：`checkpoint_resume`、`write_snapshot_resume` 均 native/sidecar 对拍通过，`failed=[]`、`blocked=[]`、`oracleFailures=[]`。输出：`/tmp/pilotdeck-parity-budget-independent-20260920-checkpoint-final2/summary.json`、`/tmp/pilotdeck-parity-budget-independent-20260920-write-final2/summary.json`。
 - 共享 adapter 适用性重评：`sidecar_continuable_followup_cold`、`sidecar_continuable_followup_live`、`sidecar_durable_compaction` 均无 FAIL/BLOCKED/oracle failure；前两项因 main 缺少 continuable lifecycle、后一项因 main 无 durable compaction provider，均保留 `notApplicable`。嵌套请求或 synthetic compaction snapshot 无唯一 provider-visible request 时不生成 evidence，不宣称已独立计量。报告：`/tmp/pilotdeck-parity-budget-independent-20260920-sidecar_continuable_followup_cold-final/summary.json`、`/tmp/pilotdeck-parity-budget-independent-20260920-sidecar_continuable_followup_live-final/summary.json`、`/tmp/pilotdeck-parity-budget-independent-20260920-sidecar_durable_compaction-final/summary.json`。
 - `git diff --check`：PASS；本轮最终 commit 与远端分支 ref 在 push 后核对一致。
@@ -82,4 +82,4 @@
 | 已关闭 | lifecycle actor 分离后 close/abort 与后续 model request 或副作用缺少因果约束 | 已证实：settlement boundary 必须阻止 late model request；owner 为 operation ledger/Gateway fence | close/abort late-request test、partial-order checks、sidecar reconnect/replay traces | 无新增动作；关闭条件是 admission、durable commit、close/abort、terminal、副作用的必要 happens-before 保持 |
 | 已关闭 | project taskBudget retention 很短时，并发调度可能让冲突 retention 请求在到期后重新配置并进入 model | ledger 原先直接使用 `Date.now()`，绕过 Gateway 注入时钟；现统一使用 `ProjectRuntimeRegistry.options.now`，测试用可控时钟在冲突前不推进、重启前精确推进 | `tests/sdk/max-budget-e2e.spec.ts` retention 回归；Node 22 dist 单文件 `5/5`；TS 类型检查通过 | 后续 suite 保持该时钟注入契约 |
 
-本轮关键 blocker 已关闭：runner gate 与 production evidence 独立计量已补齐，真实 trace 的 `budgetUsed` 新增字段反例可检出；受影响 raw trace 无 FAIL/BLOCKED/oracle failure。完整 53 场景基线报告仍见 `/tmp/pilotdeck-parity-closure-20260920-accepted/summary.json`。外部 provider/deployment/StaffDeck/Desktop 范围属于明确未覆盖项。
+本轮关键 blocker 已关闭：runner gate 与 production evidence 独立计量已补齐，真实 trace 的 `budgetUsed` 新增字段反例可检出；本轮重新生成的 raw trace 无 FAIL/BLOCKED/oracle failure。外部 provider/deployment/StaffDeck/Desktop 范围属于明确未覆盖项；Frontend integration 按本 goal 明确排除。

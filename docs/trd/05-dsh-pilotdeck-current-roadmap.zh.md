@@ -1497,6 +1497,16 @@ reconciliation，也不证明远程 subagent，因此不改变 R2/R3 的开始�
   的 durable owner，也不创建 generic workflow registry。
 - 不将 transport 连接错误伪装成业务成功，也不把 `result_unknown` 当成 completed。
 
+## 2026-09-20 验收锚点
+
+SDK/core integration 当前验收锚点为 `codex/integrate-sdk-0901@b15d2080`，产品基线为
+`origin/main@cd52c9af`，架构边界基线为 `Kaguya-19/refactor/core_agent_loop_0831@e55b0a82`。
+独立回归报告 [`sdk-core-integration-final-20260920.zh.md`](../testing/sdk-core-integration-final-20260920.zh.md)
+记录了模块 inventory、state/dispose owner、SDK public matrix、九类 blocker 及 production
+trace。当前 gate 为 root `1721 pass / 2 skip`、SDK `123/123`、module focused `433/433`、
+comparator `53/53`、production `failed=0 / blocked=0 / oracleFailures=0`；19 个 baseline
+缺失能力仍明确标为 `notApplicable`。Frontend integration 不属于本轮覆盖范围。
+
 ## 代码锚点
 
 PilotDeck：

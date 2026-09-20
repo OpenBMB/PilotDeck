@@ -309,3 +309,17 @@ git diff --check
 
 对拍和真实部署命令、版本、退出码及临时产物位置见 StaffDeck 的实验记录，不将 trace、
 SQLite、日志或 token 提交到 PilotDeck。
+
+## 2026-09-20 SDK/Core 独立回归
+
+当前 `codex/integrate-sdk-0901@b15d2080` 已在固定 `origin/main@cd52c9af` 与架构基线
+`Kaguya-19/refactor/core_agent_loop_0831@e55b0a82` 上完成系统回归：Core build、根测试
+`1721/1721`、SDK `123/123`、模块/transport/session focused `433/433` 和 production
+parity `53` 场景均无 FAIL/BLOCKED/oracle failure。53 个 sidecar 场景均有正式 stdio
+handshake 与 host `module_call_received` raw proof。模块族到 port/provider/owner/test 的
+逐项 inventory、SDK public matrix 和九类 blocker ledger 见
+[`sdk-core-integration-final-20260920.zh.md`](testing/sdk-core-integration-final-20260920.zh.md)。
+
+19 个 main 缺少能力的场景在 baseline summary 中保留为 `notApplicable`，不计为 PASS；
+Frontend integration、真实外部 provider、remote/queued deployment、StaffDeck workflow
+和 Desktop 原生视觉检查明确未覆盖。
