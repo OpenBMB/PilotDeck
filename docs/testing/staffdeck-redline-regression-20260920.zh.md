@@ -7,7 +7,7 @@
 
 | 项目 | 固定值 |
 | --- | --- |
-| PilotDeck 当前提交 | `59169a6bd875d470a977d28c9bb43e98e37e8b94` |
+| PilotDeck 当前提交 | `7bca1938`（本轮 sidecar terminal capability 修复仍在可审查 diff 中） |
 | PilotDeck 产品基线 | `origin/main` `cd52c9af812a84c27a9dd1b7ccf246f48540045f` |
 | PilotDeck 分支 | `codex/integrate-sdk-0901` |
 | Node | `v22.23.1` |
@@ -22,6 +22,9 @@
 | `sidecar_restart_before_effect` | host 在 effect acknowledgement 前失联，terminal 为 `result_unknown`/`RESULT_UNKNOWN`；不继续模型循环，不产生 effect | PilotDeck canonical sidecar terminal；StaffDeck bridge/invocation durable record | PASS |
 | `sidecar_restart_after_effect` | host 在 effect acknowledgement 后失联，terminal 为 `result_unknown`/`RESULT_UNKNOWN`；effect 恰好一次 | 同上 | PASS |
 | `sop_unknown_requeue` | SOP frame 保持待协调状态；最终消息、`RESULT_UNKNOWN`、权限和一次 effect 一致 | StaffDeck TaskFrame/invocation owner | PASS |
+| `sop_knowledge_budget_exhausted` | 第三次 knowledge search 在 host bridge 拒绝；终态准确保留 `KNOWLEDGE_SEARCH_BUDGET_EXHAUSTED`，无第三次外部 tool execution | StaffDeck Harness/bridge/checkpoint | PASS |
+| `sop_task_dependency` | child TaskFrame 只在 durable prerequisite 完成后运行，并收到前置 capability result | StaffDeck TaskFrame store | PASS |
+| `sop_scheduled_task` | 已固定 snapshot 只在可见 SOP 上应用；trace 记录实际应用版本 `7` | StaffDeck Harness scheduled snapshot | PASS |
 
 `PilotDeckAgentLoopClient` 仅把 sidecar 的 canonical module failure 和 capability
 exchange 投影回 StaffDeck-owned `TaskExecutionResult`。显式 `RESULT_UNKNOWN` 不得被
@@ -70,6 +73,10 @@ Raw traces:
 - `/tmp/pilotdeck-sdk-core-restart-before-v18-20260920/`
 - `/tmp/pilotdeck-sdk-core-restart-after-v18-20260920/`
 - `/tmp/pilotdeck-sdk-core-sop-unknown-v19-20260920/`
+- `/tmp/pilotdeck-sdk-core-knowledge-budget-v28-20260920/`
+- `/tmp/pilotdeck-sdk-core-sop-dependency-v34-20260920/`
+- `/tmp/pilotdeck-sdk-core-sop-scheduled-v32-20260920/`
+- `/tmp/pilotdeck-sdk-core-sop-slots-v36-20260920/`
 
 附加验证：PilotDeck Node `v22.23.1` 下 `pnpm build` 通过，
 `capability-tool-port.spec.ts` 与 `sidecar.spec.ts` 为 `30/30`；StaffDeck
@@ -78,16 +85,22 @@ Raw traces:
 
 ## 限制
 
-全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v19-20260920/summary.json`：`62` 场景、
-`blocked=[]`。其中 restart/reconciliation 已不再出现 semantic diff 或 oracle failure。
+最新全量产物为 `/tmp/pilotdeck-sdk-core-full-parity-v35-20260920/summary.json`：`62` 场景、
+`failed=[]`、`blocked=[]`、`baselineDifferences=[]`。其中 61 个适用场景没有 oracle failure；
+deadline 两项仅保留已枚举的精确内部时序差异。
 
 未验收范围仍明确保留，不计入 PASS：
 
-- `cancel`、`cancel_late_completed`：sidecar 在取消获胜前可观察到一次无 tool 的 model
-  request/response；legacy 在此之前取消。两端 final message 都是“已停止生成”，无 tool
-  execution、permission decision 或 side effect。按本轮红线这是已声明的内部时序差异。
-- 两端共同 oracle failure：SOP active step/slot/knowledge budget/dependency/team/scheduled
-  fixture projection。这些不是 legacy/sidecar 差异的证据，仍须独立修正 fixture 或产品契约。
+- `sop_team_task`：明确为 `unsupported`，不计 PASS。当前 stdio parity adapter 未创建可信
+  Team roster、TeamRun 与成员 worker，真实入口正确拒绝缺失上下文；不能把失败伪装成 completed。
+  该范围须由带真实 team worker 的 deployment E2E 补齐。
+- `sop_step_advance`、`sop_conditional_transition`：当前 mock provider 未发出 `next_step_id`，
+  因而不将其误报为 transition 覆盖。真实 next-step probe 暴露 legacy `completed` 与 sidecar
+  `action_budget` 的终态差异，路径为 `/tmp/pilotdeck-sdk-core-sop-step-v30-20260920/`；未验收。
+- PilotDeck main 对拍：`/tmp/pilotdeck-sdk-core-pilotdeck-baseline-v37-20260920/summary.json`
+  记录 31 个 `BLOCKED`，原因是固定 `origin/main` 不包含 baseline adapter 引用的
+  `seedStateProjection`。`plan_mode_host_policy` 与 `plan_mode_bypass_host_policy` 另有 main
+  未具备的 SDK-only capability drift；按公开扩展契约保留，不伪装为 main parity PASS。
 - 原有 `SKIPPED_NOT_APPLICABLE` 仍以精确能力边界保留；特别是
   `unsupported_capability` 没有被删除、扩展 normalize 或改写为 PASS。
 

@@ -466,6 +466,9 @@ export class AgentLoopSidecarServer {
     if (isExplicitResultUnknownResponse(result)) {
       throw resultUnknownModuleCallError(result);
     }
+    if (call.module === "capability" && isExplicitTerminalFailureResponse(result)) {
+      throw terminalModuleCallError(result);
+    }
     if (recordFailure && call.operationId) {
       if (!result.ok) {
         this.moduleFailures.set(call.operationId, {
@@ -721,10 +724,24 @@ function resultUnknownModuleCallError(response: ModuleResponse): Error & { code:
   );
 }
 
+function terminalModuleCallError(response: ModuleResponse): Error & { code?: string; terminal: true } {
+  return Object.assign(
+    new Error(String(response.error?.message ?? "Host module execution failed.")),
+    {
+      ...(typeof response.code === "string" ? { code: response.code } : {}),
+      terminal: true as const,
+    },
+  );
+}
+
 function isExplicitResultUnknownResponse(response: ModuleResponse): boolean {
   return response.ok === false
     && response.outcome === "result_unknown"
     && response.code === "RESULT_UNKNOWN";
+}
+
+function isExplicitTerminalFailureResponse(response: ModuleResponse): boolean {
+  return response.ok === false && response.final === true && response.outcome === "failed";
 }
 
 function controlFailure(inReplyTo: string, code: string, messageId: string): ModuleResponse {

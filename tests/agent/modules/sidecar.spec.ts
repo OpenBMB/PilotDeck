@@ -823,6 +823,62 @@ test("sidecar does not continue after a host capability result_unknown response"
   assert.equal(terminal?.code, "RESULT_UNKNOWN");
 });
 
+test("sidecar preserves a terminal host capability failure without another model turn", async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const lines = collectLines(output);
+  let continued = false;
+  const factory: SidecarExecutionFactory = ({ callModule }) => ({
+    loop: {
+      async *run() {
+        await callModule({
+          runId: "terminal-failure-run",
+          operationId: "terminal-failure-operation",
+          requestId: "terminal-failure-module-request",
+          module: "capability",
+          payload: { name: "knowledge_search", arguments: {} },
+        });
+        continued = true;
+        return { result: { type: "success" }, messages: [] };
+      },
+    } as unknown as AgentLoop,
+    input: {} as never,
+  });
+  const serving = new AgentLoopSidecarServer(factory).serve(input, output);
+  output.on("data", () => {
+    const call = lines.find((message) => message.kind === "request" && message.method === "module_call");
+    if (!call || lines.some((message) => message.inReplyTo === call.messageId)) return;
+    input.write(`${JSON.stringify({
+      kind: "response",
+      messageId: "host-terminal-failure",
+      inReplyTo: call.messageId,
+      requestId: call.requestId,
+      ok: false,
+      final: true,
+      outcome: "failed",
+      code: "KNOWLEDGE_SEARCH_BUDGET_EXHAUSTED",
+      error: { code: "KNOWLEDGE_SEARCH_BUDGET_EXHAUSTED", message: "knowledge budget exhausted" },
+    })}\n`);
+  });
+  input.write(`${JSON.stringify({
+    kind: "request",
+    messageId: "execute-terminal-failure",
+    method: "execute",
+    runId: "terminal-failure-run",
+    operationId: "terminal-failure-operation",
+    requestId: "terminal-failure-request",
+    payload: {},
+  })}\n`);
+  await waitFor(() => lines.some((message) => message.kind === "event" && message.final === true));
+  input.end();
+  await serving;
+
+  const terminal = lines.find((message) => message.kind === "event" && message.final === true);
+  assert.equal(continued, false);
+  assert.equal(terminal?.outcome, "failed");
+  assert.equal(terminal?.code, "KNOWLEDGE_SEARCH_BUDGET_EXHAUSTED");
+});
+
 test("sidecar abort releases a pending module call", async () => {
   const input = new PassThrough();
   const output = new PassThrough();
