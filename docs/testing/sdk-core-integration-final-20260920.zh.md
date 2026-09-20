@@ -212,3 +212,11 @@ The exact comparator declarations are in `tools/agent-loop-parity/run.py` (`BASE
 | StaffDeck/AgentLoop 全矩阵 | `tools/agent-loop-parity/run.py --pair all --comparison both --pilotdeck-surface gateway --scenario all` | `62` 场景、`blocked=[]`，但不是全绿：`max_turns`、`sop_blocked_transition`、`sop_multi_action_budget` 有 StaffDeck semantic difference，另有 StaffDeck oracle failure。它们同样出现在 `staffdeck-current-legacy` 与基线；不是当前 PilotDeck native/sidecar 回归，不能被算为 PASS。原始汇总：`/tmp/pilotdeck-sdk-core-expanded-parity-20260920/summary.json`。 |
 
 扩展范围仍有精确限制：没有真实外部 provider 凭据或可审查的 remote/queued 环境，因此该两项未运行；Desktop 仅完成脚本/编译验证，未执行原生 Electron 视觉交互；StaffDeck 全矩阵存在上述宿主 oracle/行为问题。与 `origin/main` 的严格字面一致性仍为 false，原因仍是本报告列出的已声明差异及 main 缺失 capability；用户尚未接受把这些差异作为产品扩展的决定，故不得将该状态改写为验收通过。
+
+## 产品决策与 Core 验收（2026-09-20）
+
+用户已接受本报告中按精确 path/value 记录的 main 差异和 main 缺失 capability，前提是核心生产路径的最终 user-visible messages、工具执行及副作用、permission decision 不产生未声明差异。该决定只改变 main-extension 的验收状态，不扩大 comparator normalization，也不将外部宿主失败改写为通过。
+
+`/tmp/pilotdeck-parity-sdk-core-final-20260920/summary.json` 的 53 个 production native/sidecar 场景满足该红线：`failed=0`、`blocked=0`、`oracleFailures=0`；raw trace 覆盖 canonical messages、tool calls/results/order、permission decisions、terminal/error、durable projection 和副作用。故 SDK/Core integration 的 main compatibility 与架构边界验收通过。
+
+StaffDeck 扩展矩阵的 `max_turns` 仍有一项最终消息/terminal 差异：legacy 返回 `ACTION_BUDGET_EXHAUSTED` 和可继续提示，StaffDeck PilotDeck glue 将其映射为 `HARNESS_V2_ERROR`。这不是上述 PilotDeck production native/sidecar 矩阵中的差异，且 owner 为 StaffDeck host bridge；保留为跨宿主集成缺口，不能被本决定豁免或标记为 PASS。
