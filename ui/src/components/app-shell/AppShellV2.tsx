@@ -76,6 +76,10 @@ export default function AppShellV2() {
   const matchSettingsIndex = useMatch({ path: SETTINGS_PATH, end: true });
   const matchSettingsSection = useMatch(`${SETTINGS_PATH}/*`);
   const modulePage = composition.assembly?.pages.find((page) => page.path === location.pathname) ?? null;
+  const hasScheduledTasks = Boolean(composition.assembly?.pages.some((page) => page.path === SCHEDULED_TASKS_PATH));
+  const moduleUnavailableMessage = matchScheduledTasks && !modulePage && !composition.loading
+    ? 'Scheduled tasks are not installed in the current product profile.'
+    : null;
   const isSettingsRoute = Boolean(matchSettingsIndex || matchSettingsSection);
   const settingsSection = matchSettingsSection?.params['*'];
   const dedicatedTab = matchScheduledTasks
@@ -651,7 +655,8 @@ export default function AppShellV2() {
 	      onCollapse={onCollapseSidebar}
 	      onLoadMoreSessions={loadMoreSessions}
       loadingMoreProjectIds={loadingMoreProjectIds}
-      modulePages={(composition.assembly?.pages ?? []).filter((page) => page.path !== '/chat')}
+      modulePages={(composition.assembly?.pages ?? []).filter((page) => page.path !== '/chat' && page.path !== SCHEDULED_TASKS_PATH)}
+      hasScheduledTasks={hasScheduledTasks}
     />
   );
 
@@ -756,6 +761,7 @@ export default function AppShellV2() {
           moduleChatExtensions={composition.assembly?.chatExtensions}
           moduleCompositionError={composition.error}
           moduleCompositionLoading={composition.loading}
+          moduleUnavailableMessage={moduleUnavailableMessage}
         />
       </main>
       </div>

@@ -12,8 +12,17 @@ export type Binding = {
   transport?: string;
   methods?: string[];
 };
+export type BusinessBinding = {
+  /** Installed in this browser product build. Omission means not installed. */
+  enabled?: boolean;
+  /** Replaces the public business capability implementation. */
+  frontendModule?: string;
+};
 export type CompositionProfile = {
   modules?: Partial<Record<Slot, Binding>>;
+  frontend?: {
+    businessModules?: Record<string, BusinessBinding>;
+  };
 };
 
 export type SurfaceProps = {
@@ -59,7 +68,9 @@ export type ChatSurfaceContribution = {
 };
 export type FrontendModule = {
   id: string;
-  slot: Slot;
+  /** Backend-slot adapters have a slot; product capabilities have businessModuleId. */
+  slot?: Slot;
+  businessModuleId?: string;
   contract: string;
   source?: 'pilotdeck' | 'staffdeck' | 'third-party' | 'fixture';
   frontendApiVersion?: string;
@@ -78,9 +89,12 @@ export type FrontendModule = {
   historyFallback?: Contribution;
 };
 export type Selection = { slot: Slot; binding: Binding; frontend: FrontendModule };
+export type BusinessSelection = { businessModuleId: string; binding: BusinessBinding; frontend: FrontendModule };
 export type Assembly = {
   bindings: Record<Slot, Binding>;
   selections: Selection[];
+  businessBindings: Record<string, BusinessBinding>;
+  businessSelections: BusinessSelection[];
   pages: PageContribution[];
   settings: Contribution[];
   chatSurface: ChatSurfaceContribution | null;

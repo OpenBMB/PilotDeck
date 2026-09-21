@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BarChart3,
@@ -35,8 +35,6 @@ import { api } from '../../utils/api';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import { isGeneralProject } from './appShellSelection';
 import type { ChatSurfaceContribution, Contribution, PageContribution } from '../../composition/contracts';
-
-const CronV2 = lazy(() => import('../main-content-v2/CronV2'));
 
 function DedicatedWorkspacePage({
   title,
@@ -75,36 +73,6 @@ function DedicatedWorkspacePage({
         {children}
       </div>
     </div>
-  );
-}
-
-function PageFallback() {
-  return (
-    <div className="flex h-full w-full items-center justify-center">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-600 dark:border-neutral-600 dark:border-t-neutral-300" />
-    </div>
-  );
-}
-
-function ScheduledTasksArea({
-  isSidebarCollapsed,
-  onOpenSidebar,
-}: {
-  isSidebarCollapsed?: boolean;
-  onOpenSidebar?: () => void;
-}) {
-  const { t } = useTranslation();
-
-  return (
-    <DedicatedWorkspacePage
-      title={t('sidebar:quickActions.scheduledTasks', { defaultValue: 'Scheduled Tasks' })}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onOpenSidebar={onOpenSidebar}
-    >
-      <Suspense fallback={<PageFallback />}>
-        <CronV2 />
-      </Suspense>
-    </DedicatedWorkspacePage>
   );
 }
 
@@ -153,6 +121,7 @@ type MainAreaV2Props = MainContentProps & {
   moduleChatExtensions?: Contribution[];
   moduleCompositionError?: string | null;
   moduleCompositionLoading?: boolean;
+  moduleUnavailableMessage?: string | null;
 };
 
 function MainAreaV2Content(props: MainAreaV2Props) {
@@ -545,6 +514,11 @@ function MainAreaV2Content(props: MainAreaV2Props) {
 }
 
 export default function MainAreaV2(props: MainAreaV2Props) {
+  if (props.moduleUnavailableMessage) {
+    return <DedicatedWorkspacePage title="Unavailable feature" isSidebarCollapsed={props.isSidebarCollapsed} onOpenSidebar={props.onOpenSidebar}>
+      <div role="status" className="m-6 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">{props.moduleUnavailableMessage}</div>
+    </DedicatedWorkspacePage>;
+  }
   if (props.modulePage) {
     const Page = props.modulePage.component;
     return <DedicatedWorkspacePage title={props.modulePage.label} isSidebarCollapsed={props.isSidebarCollapsed} onOpenSidebar={props.onOpenSidebar}>
@@ -555,15 +529,6 @@ export default function MainAreaV2(props: MainAreaV2Props) {
       />
     </DedicatedWorkspacePage>;
   }
-  if (props.activeTab === 'cron') {
-    return (
-      <ScheduledTasksArea
-        isSidebarCollapsed={props.isSidebarCollapsed}
-        onOpenSidebar={props.onOpenSidebar}
-      />
-    );
-  }
-
   const generalConversation = Boolean(
     props.selectedProject && isGeneralProject(props.selectedProject),
   );

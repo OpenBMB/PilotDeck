@@ -165,10 +165,14 @@ export default function SettingsContent({
           </div>
         </header>
 
-        {moduleSection ? (
+        {moduleSection && selectedModuleSettings.length > 0 ? (
           <section className="mt-6 space-y-2" data-testid={`module-settings-${moduleSection}`}>
             {selectedModuleSettings.map((setting) => { const Setting = setting.component; return <Setting key={setting.id} host={host} />; })}
           </section>
+        ) : moduleSection ? (
+          <div role="status" data-testid={`module-settings-unavailable-${moduleSection}`} className="mt-6 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+            This feature is not installed in the current product profile.
+          </div>
         ) : selectedKey === "general" ? (
           <>
             <GeneralSections title={title} />

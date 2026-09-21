@@ -68,3 +68,9 @@ modules:
       - reject_discovery
       - query
       - resolve_citation
+frontend:
+  businessModules:
+    agent.routing: { enabled: true }
+    agent.resident: { enabled: true }
+    agent.scheduling: { enabled: true }
+    channels.integrations: { enabled: true }

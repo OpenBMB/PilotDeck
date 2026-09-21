@@ -38,7 +38,6 @@ import ErrorBoundary from "./ErrorBoundary";
 import ToolSidePanel from "./subcomponents/ToolSidePanel";
 
 const AlwaysOnV2 = React.lazy(() => import("../../main-content-v2/AlwaysOnV2"));
-const CronV2 = React.lazy(() => import("../../main-content-v2/CronV2"));
 const FilesV2 = React.lazy(() => import("../../main-content-v2/FilesV2"));
 const ShellV2 = React.lazy(() => import("../../main-content-v2/ShellV2"));
 const GitV2 = React.lazy(() => import("../../main-content-v2/GitV2"));
@@ -1076,7 +1075,6 @@ function SplitBody(props: SplitBodyProps) {
         />
       );
     }
-    if (activeTab === "cron") return <CronV2 />;
     if (activeTab === "dashboard")
       return (
         <DashboardV2

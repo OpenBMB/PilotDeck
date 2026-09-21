@@ -24,7 +24,7 @@ export function activateAssembly(assembly: Assembly): () => void {
     toolNames: panel.toolNames,
     component: panel.component as any,
   }))));
-  for (const selection of assembly.selections) {
+  for (const selection of [...assembly.selections, ...(assembly.businessSelections ?? [])]) {
     const init = selection.frontend.lifecycle?.init;
     if (!init) continue;
     Promise.resolve(init({ assembly })).then((cleanup) => {
@@ -36,7 +36,7 @@ export function activateAssembly(assembly: Assembly): () => void {
     disposed = true;
     if (activeAssembly === assembly) setActiveAssembly(null);
     for (const cleanup of cleanups) void cleanup();
-    for (const selection of assembly.selections) void selection.frontend.lifecycle?.dispose?.();
+    for (const selection of [...assembly.selections, ...(assembly.businessSelections ?? [])]) void selection.frontend.lifecycle?.dispose?.();
   };
 }
 

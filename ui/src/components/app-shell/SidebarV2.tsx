@@ -167,6 +167,7 @@ export type SidebarV2Props = {
   onLoadMoreSessions?: (projectName: string) => void;
   loadingMoreProjectIds?: Set<string>;
   modulePages?: ModuleNavigation[];
+  hasScheduledTasks?: boolean;
 };
 
 type SidebarContextMenu =
@@ -284,6 +285,7 @@ export default function SidebarV2({
   onLoadMoreSessions,
   loadingMoreProjectIds,
   modulePages = [],
+  hasScheduledTasks = false,
 }: SidebarV2Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -1163,7 +1165,7 @@ export default function SidebarV2({
             </button>
           );
         })}
-        <button
+        {hasScheduledTasks ? <button
           className={cn('primary-action', isCompact && 'compact', activeTab === 'cron' && 'active')}
           type="button"
           aria-pressed={activeTab === 'cron'}
@@ -1180,7 +1182,7 @@ export default function SidebarV2({
             </svg>
           </span>
           <span className="truncate">{t('sidebar:quickActions.scheduledTasks', { defaultValue: 'Scheduled Tasks' })}</span>
-        </button>
+        </button> : null}
       </nav>
       {isCompact ? <span className="compact-divider" /> : null}
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderGeneratedEntrypoint, selectFrontendModules } from './generate-frontend-modules.mjs';
+import { renderGeneratedEntrypoint, selectBusinessFrontendModules, selectFrontendModules } from './generate-frontend-modules.mjs';
 
 const native = {
   modules: {
@@ -33,4 +33,22 @@ test('maps StaffDeck implementations to public frontend modules', () => {
 
 test('rejects an explicit frontend registry key that is not registered', () => {
   assert.throws(() => selectFrontendModules({ modules: { knowledge: { enabled: true, implementationId: 'vendor.unknown', frontendModule: 'vendor.missing' } } }), /No registered frontend implementation/);
+});
+
+test('does not statically select business modules omitted from an explicit product profile', () => {
+  const profile = { ...native, frontend: { businessModules: {} } };
+  const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
+  assert.deepEqual(selectBusinessFrontendModules(profile), []);
+  assert.doesNotMatch(source, /agent-routing|agent-resident|agent-scheduling|channels-integrations|CronV2/);
+});
+
+test('selects only explicitly installed business modules', () => {
+  const profile = { ...native, frontend: { businessModules: {
+    'agent.routing': { enabled: true },
+    'agent.scheduling': { enabled: false },
+  } } };
+  const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
+  assert.deepEqual(selectBusinessFrontendModules(profile).map((item) => item.id), ['agent.routing']);
+  assert.match(source, /agent-routing/);
+  assert.doesNotMatch(source, /agent-scheduling|agent-resident|channels-integrations/);
 });

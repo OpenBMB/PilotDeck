@@ -8,6 +8,24 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 
+function compositionModuleGraphPlugin() {
+  const modulesRoot = path.resolve(__dirname, 'src', 'composition', 'modules')
+  return {
+    name: 'pilotdeck-composition-module-graph',
+    generateBundle() {
+      const modules = [...this.getModuleIds()]
+        .filter((id) => id.startsWith(modulesRoot))
+        .map((id) => path.relative(repoRoot, id).replaceAll(path.sep, '/'))
+        .sort()
+      this.emitFile({
+        type: 'asset',
+        fileName: 'composition-modules.json',
+        source: `${JSON.stringify({ modules }, null, 2)}\n`,
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // Load the single root .env and let exported shell vars override file values.
   const env = {
@@ -60,7 +78,7 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.VITE_DISABLE_LOCAL_AUTH': JSON.stringify(disableLocalAuth ? 'true' : 'false'),
     },
-    plugins: [react()],
+    plugins: [react(), compositionModuleGraphPlugin()],
     resolve: {
       // Extensions and the React wrapper must share the same CodeMirror state
       // instance, including after dependency updates or a Vite cache rebuild.

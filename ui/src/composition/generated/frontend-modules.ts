@@ -6,6 +6,10 @@ import module3 from '../modules/pilotdeck-context';
 import module4 from '../modules/pilotdeck-model';
 import module5 from '../modules/staffdeck-sop';
 import module6 from '../modules/staffdeck-knowledge';
+import module7 from '../modules/agent-routing';
+import module8 from '../modules/agent-resident';
+import module9 from '../modules/agent-scheduling';
+import module10 from '../modules/channels-integrations';
 
 export const generatedFrontendModules = [
   Object.assign({ slot: 'agentLoop' }, module0),
@@ -15,6 +19,10 @@ export const generatedFrontendModules = [
   Object.assign({ slot: 'modelProvider' }, module4),
   Object.assign({ slot: 'sop' }, module5),
   Object.assign({ slot: 'knowledge' }, module6),
+  module7,
+  module8,
+  module9,
+  module10,
 ] as const;
 
 export const generatedFrontendProfile = {
@@ -92,6 +100,22 @@ export const generatedFrontendProfile = {
         "query",
         "resolve_citation"
       ]
+    }
+  },
+  "frontend": {
+    "businessModules": {
+      "agent.routing": {
+        "enabled": true
+      },
+      "agent.resident": {
+        "enabled": true
+      },
+      "agent.scheduling": {
+        "enabled": true
+      },
+      "channels.integrations": {
+        "enabled": true
+      }
     }
   }
 } as const;
