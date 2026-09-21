@@ -39,7 +39,7 @@ test('does not statically select business modules omitted from an explicit produ
   const profile = { ...native, frontend: { businessModules: {} } };
   const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
   assert.deepEqual(selectBusinessFrontendModules(profile), []);
-  assert.doesNotMatch(source, /agent-routing|agent-resident|agent-scheduling|channels-integrations|model-providers|agent-model-selection|tools-search|tools-mcp|context-memory|workspace-office-preview|system-privacy|tools-permissions|system-telemetry|system-updates|CronV2/);
+  assert.doesNotMatch(source, /agent-routing|agent-resident|agent-scheduling|channels-integrations|model-providers|agent-model-selection|tools-search|tools-mcp|context-memory|workspace-office-preview|system-privacy|tools-permissions|system-telemetry|system-updates|host-preferences|chat-preferences|workspace-editor-preferences|CronV2/);
   assert.match(source, /generatedBusinessPaths/);
   assert.match(source, /"\/always-on"/);
   assert.match(source, /"\/cron"/);

@@ -4,7 +4,6 @@ import { cn } from "../../../lib/utils";
 import type { SettingsMenuKey } from "../types";
 import type { SettingsProject } from "../shared/types";
 import { SETTINGS_CONFIG_ICON } from "./navIcons";
-import GeneralSections from "./general";
 import type { Contribution, SurfaceProps } from "../../../composition/contracts";
 
 type SettingsContentProps = {
@@ -164,10 +163,6 @@ export default function SettingsContent({
           <div role="status" data-testid={`module-settings-unavailable-${moduleSection}`} className="mt-6 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
             This feature is not installed in the current product profile.
           </div>
-        ) : selectedKey === "general" ? (
-          <>
-            <GeneralSections title={title} />
-          </>
         ) : (
           <div className="mt-6 flex min-h-[360px] flex-1 items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
             <div className="text-center">

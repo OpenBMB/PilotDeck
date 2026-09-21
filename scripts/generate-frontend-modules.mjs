@@ -53,6 +53,9 @@ const MODULE_SOURCES = {
   'tools.permissions': 'modules/tools-permissions',
   'system.telemetry': 'modules/system-telemetry',
   'system.updates': 'modules/system-updates',
+  'host.preferences': 'modules/host-preferences',
+  'chat.preferences': 'modules/chat-preferences',
+  'workspace.editor-preferences': 'modules/workspace-editor-preferences',
 };
 
 const LEGACY_BUSINESS_MODULES = [
@@ -63,6 +66,7 @@ const LEGACY_BUSINESS_MODULES = [
   'system.advanced',
   'tools.permissions', 'system.telemetry',
   'system.updates',
+  'host.preferences', 'chat.preferences', 'workspace.editor-preferences',
 ];
 
 // Route ownership remains declarative even when a capability is omitted. This

@@ -16,6 +16,7 @@ export const legacyBusinessModuleIds = [
   'system.advanced',
   'tools.permissions', 'system.telemetry',
   'system.updates',
+  'host.preferences', 'chat.preferences', 'workspace.editor-preferences',
 ] as const;
 
 export function resolveBusinessBindings(profile: CompositionProfile): Record<string, BusinessBinding> {

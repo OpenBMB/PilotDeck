@@ -28,6 +28,7 @@ const KEY_BY_PAGE_SLUG: Record<string, SettingsMenuKey> = Object.fromEntries(
 // Keep existing deep links working while routing them to the selected module
 // contribution. These are aliases, not a second hard-coded settings surface.
 const LEGACY_MODULE_SECTION: Partial<Record<SettingsMenuKey, SettingsMenuKey>> = {
+  general: 'module:host-preferences',
   modelPool: 'module:model-providers',
   agentModel: 'module:agent-model',
   agentRoute: 'module:agent-route',
@@ -93,7 +94,7 @@ export function getSettingsPath(key: SettingsMenuKey = "general"): string {
 export function mapSettingsSectionToMenuKey(
   section: string | undefined,
 ): SettingsMenuKey {
-  if (!section) return "general";
+  if (!section) return "module:host-preferences";
   if (section.startsWith('module/')) return `module:${decodeURIComponent(section.slice('module/'.length))}`;
   const key = KEY_BY_PAGE_SLUG[section] ?? mapInitialTabToMenuKey(section);
   return LEGACY_MODULE_SECTION[key] ?? key;

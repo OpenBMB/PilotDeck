@@ -84,3 +84,6 @@ frontend:
     tools.permissions: { enabled: true }
     system.telemetry: { enabled: true }
     system.updates: { enabled: true }
+    host.preferences: { enabled: true }
+    chat.preferences: { enabled: true }
+    workspace.editor-preferences: { enabled: true }

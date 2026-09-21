@@ -23,13 +23,7 @@ type NavSection = {
   items: NavItem[];
 };
 
-const SHELL_ITEMS: NavItem[] = [
-  { key: "general", labelKey: "settingsPage.menu.general" },
-];
-
-const NAV_SECTIONS: NavSection[] = [
-  { id: "shell", items: SHELL_ITEMS },
-];
+const NAV_SECTIONS: NavSection[] = [];
 
 type SettingsSidebarProps = {
   selectedKey: SettingsMenuKey;

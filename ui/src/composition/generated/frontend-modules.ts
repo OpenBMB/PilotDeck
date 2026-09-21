@@ -20,6 +20,9 @@ import module17 from '../modules/system-advanced';
 import module18 from '../modules/tools-permissions';
 import module19 from '../modules/system-telemetry';
 import module20 from '../modules/system-updates';
+import module21 from '../modules/host-preferences';
+import module22 from '../modules/chat-preferences';
+import module23 from '../modules/workspace-editor-preferences';
 
 export const generatedFrontendModules = [
   Object.assign({ slot: 'agentLoop' }, module0),
@@ -43,6 +46,9 @@ export const generatedFrontendModules = [
   module18,
   module19,
   module20,
+  module21,
+  module22,
+  module23,
 ] as const;
 
 export const generatedBusinessPaths = [
@@ -170,6 +176,15 @@ export const generatedFrontendProfile = {
         "enabled": true
       },
       "system.updates": {
+        "enabled": true
+      },
+      "host.preferences": {
+        "enabled": true
+      },
+      "chat.preferences": {
+        "enabled": true
+      },
+      "workspace.editor-preferences": {
         "enabled": true
       }
     }

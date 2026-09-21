@@ -60,7 +60,7 @@ describe("settings route paths", () => {
   });
 
   it("reads the active menu key back from the URL section", () => {
-    expect(mapSettingsSectionToMenuKey(undefined)).toBe("general");
+    expect(mapSettingsSectionToMenuKey(undefined)).toBe("module:host-preferences");
     expect(mapSettingsSectionToMenuKey("models")).toBe("module:model-providers");
     expect(mapSettingsSectionToMenuKey("mcp")).toBe("module:mcp-servers");
     expect(mapSettingsSectionToMenuKey("office")).toBe("module:office-preview");

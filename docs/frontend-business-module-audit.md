@@ -24,7 +24,7 @@ Legacy profiles that have no `frontend.businessModules` select the documented
 `legacy-default` set of capabilities migrated so far (routing, resident,
 scheduling, integrations, model providers, agent model selection, tool search,
 MCP, context memory, Office preview, advanced settings, tool permissions,
-telemetry, and updates).
+telemetry, updates, host preferences, chat preferences, and editor preferences).
 New product profiles use an explicit map. Remaining
 audit rows are the next migration groups; they are not claimed to be statically
 removable until their slot/host aggregate imports have been split. This makes
@@ -51,7 +51,9 @@ from silently enabling a migrated business capability.
 | `SopWaitBanner`, SOP page `/sop`, SOP approval panel, SOP setting | `workflow.sop`; `sop`, `agentLoop` | Existing SOP status/prepare/resume lifecycle | Existing StaffDeck contribution. Disabled/replaced SOP removes its page/settings/banner/panel, while historical transcript rows use the host fallback. |
 | Knowledge page, citation artifact renderer, Knowledge setting | `knowledge.search`; `knowledge` | `/api/modules/knowledge/query`, `/citation` | Existing StaffDeck/replacement contribution. An absent module makes neither request; replacement owns its own form and query UI. |
 | `OfficePreviewSections`, legacy `/settings/office`; binary-file Office preview controls and status | `workspace.office-preview`; host workspace/file API | `officePreviewStatus`, preview/preflight/download requests and refresh effects | Settings migrated. Absent means no Office setting or legacy route; Office-specific file renderers remain a separate follow-up. Generic text/image/PDF file viewing remains host-owned. |
-| `GeneralSections`: project sorting, chat input preferences, code-editor preferences | `host.preferences`, `chat.preferences`, `workspace.editor-preferences` | Local settings controller only | Split before composition: project sorting is host shell; input preferences require chat; editor preferences require workspace editor. None may be hidden inside an omnibus General import. |
+| Appearance, language, and project sorting | `host.preferences` | Local preference storage and `pilotdeck-settings-changed` event | Migrated. Settings root resolves through this module; an omitted module does not mount or persist host preference controls. |
+| Chat input and message display preferences | `chat.preferences`; `agentLoop` | `uiPreferences` local preference storage/event | Migrated. The module requires the chat core and is absent with it. |
+| Code editor preferences | `workspace.editor-preferences` | Editor localStorage keys and `codeEditorSettingsChanged` event | Migrated. An omitted module does not mount its preference writer or event dispatch. |
 | Tool permission rules | `tools.permissions` (`tools`) | `/api/settings/permissions`, localStorage and `pilotdeck-settings-changed` subscription | Migrated. An omitted permissions module has no settings surface, permission fetch, or browser listeners. |
 | Telemetry setting | `system.telemetry` (host deployment capability) | Config parse/save only | Migrated separately from tool permissions. An omitted telemetry module has no settings surface or config toggle. `system.privacy` remains a compatibility-only implementation for old explicit profiles. |
 | `AdvancedSections`: retry policy, service/runtime settings, custom environment | `system.advanced`; declared host/runtime capabilities | `/api/config` on form save | Migrated explicit administrative module, never a fallback bucket for omitted product features. |
