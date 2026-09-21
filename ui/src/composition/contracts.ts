@@ -48,6 +48,7 @@ export type SurfaceProps = {
   request?: { requestId?: string; toolName?: string };
   onDecision?: (requestIds: string | string[], decision: { allow?: boolean; message?: string; updatedInput?: unknown }) => void;
   onPlanExecutionApproved?: () => void;
+  onClose?: () => void;
 };
 export type ModuleLifecycle = {
   init?: (host: unknown) => void | (() => void) | Promise<void | (() => void)>;

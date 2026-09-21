@@ -81,4 +81,6 @@ frontend:
     context.memory: { enabled: true }
     workspace.office-preview: { enabled: true }
     system.advanced: { enabled: true }
-    system.privacy: { enabled: true }
+    tools.permissions: { enabled: true }
+    system.telemetry: { enabled: true }
+    system.updates: { enabled: true }

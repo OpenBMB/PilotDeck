@@ -23,7 +23,9 @@ paths below are the trace points used by the generator and browser tests.
 Legacy profiles that have no `frontend.businessModules` select the documented
 `legacy-default` set of capabilities migrated so far (routing, resident,
 scheduling, integrations, model providers, agent model selection, tool search,
-MCP, and context memory). New product profiles use an explicit map. Remaining
+MCP, context memory, Office preview, advanced settings, tool permissions,
+telemetry, and updates).
+New product profiles use an explicit map. Remaining
 audit rows are the next migration groups; they are not claimed to be statically
 removable until their slot/host aggregate imports have been split. This makes
 compatibility deliberate while preventing an omitted entry in a new profile
@@ -50,9 +52,10 @@ from silently enabling a migrated business capability.
 | Knowledge page, citation artifact renderer, Knowledge setting | `knowledge.search`; `knowledge` | `/api/modules/knowledge/query`, `/citation` | Existing StaffDeck/replacement contribution. An absent module makes neither request; replacement owns its own form and query UI. |
 | `OfficePreviewSections`, legacy `/settings/office`; binary-file Office preview controls and status | `workspace.office-preview`; host workspace/file API | `officePreviewStatus`, preview/preflight/download requests and refresh effects | Settings migrated. Absent means no Office setting or legacy route; Office-specific file renderers remain a separate follow-up. Generic text/image/PDF file viewing remains host-owned. |
 | `GeneralSections`: project sorting, chat input preferences, code-editor preferences | `host.preferences`, `chat.preferences`, `workspace.editor-preferences` | Local settings controller only | Split before composition: project sorting is host shell; input preferences require chat; editor preferences require workspace editor. None may be hidden inside an omnibus General import. |
-| `PrivacySections`: tool permission rules and telemetry | `tools.permissions` (`tools`), `system.telemetry` (host) | Permission settings fetch/persist; config save | Permission UI follows Tools; telemetry is an explicit system module. Removing permissions stops its settings fetch/listeners. |
+| Tool permission rules | `tools.permissions` (`tools`) | `/api/settings/permissions`, localStorage and `pilotdeck-settings-changed` subscription | Migrated. An omitted permissions module has no settings surface, permission fetch, or browser listeners. |
+| Telemetry setting | `system.telemetry` (host deployment capability) | Config parse/save only | Migrated separately from tool permissions. An omitted telemetry module has no settings surface or config toggle. `system.privacy` remains a compatibility-only implementation for old explicit profiles. |
 | `AdvancedSections`: retry policy, service/runtime settings, custom environment | `system.advanced`; declared host/runtime capabilities | `/api/config` on form save | Migrated explicit administrative module, never a fallback bucket for omitted product features. |
-| `AboutSections`: version check, apply/restart status polling | `system.updates`; host deployment capability | `/api/update/check`, `/status` interval, apply/restart | Explicit system module. If excluded, no update polling or restart action is mounted. |
+| `AboutSections`: version check, apply/restart status polling | `system.updates`; host deployment capability | `/api/update/check`, `/status` interval, apply/restart | Migrated. The settings shell no longer imports update actions; if excluded, no update check, polling, apply, or restart action is mounted. |
 
 ## Route Rules
 

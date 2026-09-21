@@ -14,7 +14,8 @@ export const legacyBusinessModuleIds = [
   'tools.search', 'tools.mcp', 'context.memory',
   'workspace.office-preview',
   'system.advanced',
-  'system.privacy',
+  'tools.permissions', 'system.telemetry',
+  'system.updates',
 ] as const;
 
 export function resolveBusinessBindings(profile: CompositionProfile): Record<string, BusinessBinding> {

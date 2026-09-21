@@ -39,7 +39,8 @@ const LEGACY_MODULE_SECTION: Partial<Record<SettingsMenuKey, SettingsMenuKey>> =
   mcpServers: 'module:mcp-servers',
   officePreview: 'module:office-preview',
   advanced: 'module:system-advanced',
-  privacy: 'module:system-privacy',
+  privacy: 'module:tools-permissions',
+  about: 'module:system-updates',
 };
 
 export function mapInitialTabToMenuKey(
@@ -68,7 +69,7 @@ export function mapInitialTabToMenuKey(
   const [base, section] = normalized.split(":", 2);
   switch (base) {
     case "permissions":
-      return "module:system-privacy";
+      return "module:tools-permissions";
     case "mcp":
       return "mcpServers";
     case "gateway":

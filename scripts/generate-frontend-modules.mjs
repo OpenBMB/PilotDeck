@@ -50,6 +50,9 @@ const MODULE_SOURCES = {
   'workspace.office-preview': 'modules/workspace-office-preview',
   'system.advanced': 'modules/system-advanced',
   'system.privacy': 'modules/system-privacy',
+  'tools.permissions': 'modules/tools-permissions',
+  'system.telemetry': 'modules/system-telemetry',
+  'system.updates': 'modules/system-updates',
 };
 
 const LEGACY_BUSINESS_MODULES = [
@@ -58,7 +61,8 @@ const LEGACY_BUSINESS_MODULES = [
   'tools.search', 'tools.mcp', 'context.memory',
   'workspace.office-preview',
   'system.advanced',
-  'system.privacy',
+  'tools.permissions', 'system.telemetry',
+  'system.updates',
 ];
 
 // Route ownership remains declarative even when a capability is omitted. This

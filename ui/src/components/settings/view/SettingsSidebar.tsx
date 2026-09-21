@@ -27,10 +27,6 @@ const SHELL_ITEMS: NavItem[] = [
   { key: "general", labelKey: "settingsPage.menu.general" },
 ];
 
-const FOOTER_ITEMS: NavItem[] = [
-  { key: "about", labelKey: "settingsPage.menu.about", showDot: true },
-];
-
 const NAV_SECTIONS: NavSection[] = [
   { id: "shell", items: SHELL_ITEMS },
 ];
@@ -39,7 +35,6 @@ type SettingsSidebarProps = {
   selectedKey: SettingsMenuKey;
   onSelect: (key: SettingsMenuKey) => void;
   onClose: () => void;
-  showAboutDot?: boolean;
   mobileVisible?: boolean;
   moduleSettings?: Contribution[];
 };
@@ -58,12 +53,10 @@ function NavButton({
   item,
   selectedKey,
   onSelect,
-  showAboutDot,
 }: {
   item: NavItem;
   selectedKey: SettingsMenuKey;
   onSelect: (key: SettingsMenuKey) => void;
-  showAboutDot: boolean;
 }) {
   const { t } = useTranslation("settings");
   const active = item.key === selectedKey;
@@ -78,7 +71,7 @@ function NavButton({
     >
       {icon ? <SettingsIcon svg={icon} /> : null}
       <span>{item.label ?? t(item.labelKey)}</span>
-      {item.showDot && showAboutDot ? <i className="nav-dot" /> : null}
+      {item.showDot ? <i className="nav-dot" /> : null}
     </button>
   );
 }
@@ -87,7 +80,6 @@ export default function SettingsSidebar({
   selectedKey,
   onSelect,
   onClose,
-  showAboutDot = false,
   mobileVisible = true,
   moduleSettings = [],
 }: SettingsSidebarProps) {
@@ -128,7 +120,6 @@ export default function SettingsSidebar({
                   item={item}
                   selectedKey={selectedKey}
                   onSelect={onSelect}
-                  showAboutDot={showAboutDot}
                 />
               ))}
             </div>
@@ -140,25 +131,12 @@ export default function SettingsSidebar({
             <div className="nav-items">
               {Array.from(new Map(moduleSettings.map((setting) => [setting.settingsSection || setting.id, setting])).values()).map((setting) => {
                 const key = `module:${setting.settingsSection || setting.id}` as SettingsMenuKey;
-                return <NavButton key={key} item={{ key, labelKey: '', label: setting.label }} selectedKey={selectedKey} onSelect={onSelect} showAboutDot={showAboutDot} />;
+                return <NavButton key={key} item={{ key, labelKey: '', label: setting.label }} selectedKey={selectedKey} onSelect={onSelect} />;
               })}
             </div>
           </section>
         ) : null}
 
-        <section className="nav-section settings-footer-links">
-          <div className="nav-items">
-            {FOOTER_ITEMS.map((item) => (
-              <NavButton
-                key={item.key}
-                item={item}
-                selectedKey={selectedKey}
-                onSelect={onSelect}
-                showAboutDot={showAboutDot}
-              />
-            ))}
-          </div>
-        </section>
       </nav>
     </aside>
   );

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AboutSections from ".";
-import type { DesktopVersionCheckResult } from "../../Settings";
+import type { DesktopVersionCheckResult } from "../../version";
 const bridge = vi.hoisted(() => ({ getUpdateStatus: vi.fn(), startUpdate: vi.fn(), cancelUpdate: vi.fn() }));
 vi.mock("../../../../utils/desktopUpdates", () => ({ desktopUpdates: () => bridge }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));

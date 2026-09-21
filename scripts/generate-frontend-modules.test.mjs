@@ -39,7 +39,7 @@ test('does not statically select business modules omitted from an explicit produ
   const profile = { ...native, frontend: { businessModules: {} } };
   const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
   assert.deepEqual(selectBusinessFrontendModules(profile), []);
-  assert.doesNotMatch(source, /agent-routing|agent-resident|agent-scheduling|channels-integrations|model-providers|agent-model-selection|tools-search|tools-mcp|context-memory|workspace-office-preview|CronV2/);
+  assert.doesNotMatch(source, /agent-routing|agent-resident|agent-scheduling|channels-integrations|model-providers|agent-model-selection|tools-search|tools-mcp|context-memory|workspace-office-preview|system-privacy|tools-permissions|system-telemetry|system-updates|CronV2/);
   assert.match(source, /generatedBusinessPaths/);
   assert.match(source, /"\/always-on"/);
   assert.match(source, /"\/cron"/);
@@ -66,4 +66,25 @@ test('selects model-management modules independently from the model-provider slo
   assert.match(source, /modules\/model-providers/);
   assert.match(source, /modules\/agent-model-selection/);
   assert.match(source, /modules\/pilotdeck-model/);
+});
+
+test('selects update controls only when the product profile installs them', () => {
+  const profile = { ...native, frontend: { businessModules: {
+    'system.updates': { enabled: true },
+  } } };
+  const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
+  assert.deepEqual(selectBusinessFrontendModules(profile).map((item) => item.id), ['system.updates']);
+  assert.match(source, /modules\/system-updates/);
+});
+
+test('selects tool permissions and telemetry independently', () => {
+  const profile = { ...native, frontend: { businessModules: {
+    'tools.permissions': { enabled: true },
+    'system.telemetry': { enabled: true },
+  } } };
+  const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
+  assert.deepEqual(selectBusinessFrontendModules(profile).map((item) => item.id), ['tools.permissions', 'system.telemetry']);
+  assert.match(source, /modules\/tools-permissions/);
+  assert.match(source, /modules\/system-telemetry/);
+  assert.doesNotMatch(source, /modules\/system-privacy/);
 });

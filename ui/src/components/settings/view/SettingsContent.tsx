@@ -1,19 +1,15 @@
 import { useTranslation } from "react-i18next";
 import { ChevronLeft } from "lucide-react";
 import { cn } from "../../../lib/utils";
-import type { DesktopVersionCheckResult } from "../version";
 import type { SettingsMenuKey } from "../types";
 import type { SettingsProject } from "../shared/types";
 import { SETTINGS_CONFIG_ICON } from "./navIcons";
 import GeneralSections from "./general";
-import AboutSections from "./about";
 import type { Contribution, SurfaceProps } from "../../../composition/contracts";
 
 type SettingsContentProps = {
   selectedKey: SettingsMenuKey;
   projects: SettingsProject[];
-  versionInfo: DesktopVersionCheckResult;
-  checkingVersion: boolean;
   onCloseSettings?: () => void;
   mobileVisible?: boolean;
   onOpenMobileNavigation?: () => void;
@@ -96,8 +92,6 @@ const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
 export default function SettingsContent({
   selectedKey,
   projects,
-  versionInfo,
-  checkingVersion,
   onCloseSettings,
   mobileVisible = true,
   onOpenMobileNavigation,
@@ -164,7 +158,7 @@ export default function SettingsContent({
 
         {moduleSection && selectedModuleSettings.length > 0 ? (
           <section className="mt-6 space-y-2" data-testid={`module-settings-${moduleSection}`}>
-            {selectedModuleSettings.map((setting) => { const Setting = setting.component; return <Setting key={setting.id} host={host} />; })}
+            {selectedModuleSettings.map((setting) => { const Setting = setting.component; return <Setting key={setting.id} host={host} onClose={onCloseSettings} />; })}
           </section>
         ) : moduleSection ? (
           <div role="status" data-testid={`module-settings-unavailable-${moduleSection}`} className="mt-6 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -174,13 +168,6 @@ export default function SettingsContent({
           <>
             <GeneralSections title={title} />
           </>
-        ) : selectedKey === "about" ? (
-          <AboutSections
-            title={title}
-            versionInfo={versionInfo}
-            checkingVersion={checkingVersion}
-            onRestartConfirmed={onCloseSettings}
-          />
         ) : (
           <div className="mt-6 flex min-h-[360px] flex-1 items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
             <div className="text-center">

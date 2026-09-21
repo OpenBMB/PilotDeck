@@ -9,25 +9,25 @@ import {
 describe("mapInitialTabToMenuKey", () => {
   it("routes the Office preview deep link to its dedicated page", () => {
     expect(mapInitialTabToMenuKey("config:officePreview")).toBe(
-      "officePreview",
+      "module:office-preview",
     );
   });
 
   it("routes legacy config sections to their dedicated pages", () => {
-    expect(mapInitialTabToMenuKey("config:models")).toBe("modelPool");
-    expect(mapInitialTabToMenuKey("config:agents")).toBe("agentModel");
-    expect(mapInitialTabToMenuKey("config:memory")).toBe("agentMemory");
-    expect(mapInitialTabToMenuKey("config:tools")).toBe("agentSearch");
-    expect(mapInitialTabToMenuKey("config:webSearch")).toBe("agentSearch");
-    expect(mapInitialTabToMenuKey("config:router")).toBe("agentRoute");
-    expect(mapInitialTabToMenuKey("config:gateway")).toBe("integrations");
-    expect(mapInitialTabToMenuKey("config:alwaysOn")).toBe("agentResident");
-    expect(mapInitialTabToMenuKey("config:cron")).toBe("agentSchedule");
-    expect(mapInitialTabToMenuKey("config:customEnv")).toBe("advanced");
+    expect(mapInitialTabToMenuKey("config:models")).toBe("module:model-providers");
+    expect(mapInitialTabToMenuKey("config:agents")).toBe("module:agent-model");
+    expect(mapInitialTabToMenuKey("config:memory")).toBe("module:context-memory");
+    expect(mapInitialTabToMenuKey("config:tools")).toBe("module:tools-search");
+    expect(mapInitialTabToMenuKey("config:webSearch")).toBe("module:tools-search");
+    expect(mapInitialTabToMenuKey("config:router")).toBe("module:agent-route");
+    expect(mapInitialTabToMenuKey("config:gateway")).toBe("module:integrations");
+    expect(mapInitialTabToMenuKey("config:alwaysOn")).toBe("module:agent-resident");
+    expect(mapInitialTabToMenuKey("config:cron")).toBe("module:agent-schedule");
+    expect(mapInitialTabToMenuKey("config:customEnv")).toBe("module:system-advanced");
   });
 
   it("maps legacy top-level settings tabs to the new information architecture", () => {
-    expect(mapInitialTabToMenuKey("permissions")).toBe("privacy");
+    expect(mapInitialTabToMenuKey("permissions")).toBe("module:tools-permissions");
     expect(mapInitialTabToMenuKey("mcp")).toBe("mcpServers");
     expect(mapInitialTabToMenuKey("gateway")).toBe("integrations");
     expect(mapInitialTabToMenuKey("config")).toBe("modelPool");
@@ -55,14 +55,16 @@ describe("settings route paths", () => {
   it("maps menu keys and legacy tabs onto dedicated settings URLs", () => {
     expect(getSettingsPath("modelPool")).toBe("/settings/models");
     expect(getSettingsPath("agentSearch")).toBe("/settings/agent-search");
-    expect(getSettingsPathFromTab("config:tools")).toBe("/settings/agent-search");
-    expect(getSettingsPathFromTab("permissions")).toBe("/settings/privacy");
+    expect(getSettingsPathFromTab("config:tools")).toBe("/settings/module/tools-search");
+    expect(getSettingsPathFromTab("permissions")).toBe("/settings/module/tools-permissions");
   });
 
   it("reads the active menu key back from the URL section", () => {
     expect(mapSettingsSectionToMenuKey(undefined)).toBe("general");
-    expect(mapSettingsSectionToMenuKey("models")).toBe("modelPool");
-    expect(mapSettingsSectionToMenuKey("mcp")).toBe("mcpServers");
-    expect(mapSettingsSectionToMenuKey("office")).toBe("officePreview");
+    expect(mapSettingsSectionToMenuKey("models")).toBe("module:model-providers");
+    expect(mapSettingsSectionToMenuKey("mcp")).toBe("module:mcp-servers");
+    expect(mapSettingsSectionToMenuKey("office")).toBe("module:office-preview");
+    expect(mapSettingsSectionToMenuKey("privacy")).toBe("module:tools-permissions");
+    expect(mapSettingsSectionToMenuKey("about")).toBe("module:system-updates");
   });
 });
