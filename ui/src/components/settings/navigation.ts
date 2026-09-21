@@ -37,6 +37,9 @@ const LEGACY_MODULE_SECTION: Partial<Record<SettingsMenuKey, SettingsMenuKey>> =
   agentSchedule: 'module:agent-schedule',
   integrations: 'module:integrations',
   mcpServers: 'module:mcp-servers',
+  officePreview: 'module:office-preview',
+  advanced: 'module:system-advanced',
+  privacy: 'module:system-privacy',
 };
 
 export function mapInitialTabToMenuKey(
@@ -51,11 +54,11 @@ export function mapInitialTabToMenuKey(
     webSearch: "module:tools-search",
     router: "module:agent-route",
     gateway: "module:integrations",
-    officePreview: "officePreview",
-    customEnv: "advanced",
+    officePreview: "module:office-preview",
+    customEnv: "module:system-advanced",
     alwaysOn: "module:agent-resident",
     cron: "module:agent-schedule",
-    advanced: "advanced",
+    advanced: "module:system-advanced",
   };
 
   if (normalized in KEY_BY_PAGE_SLUG) {
@@ -65,7 +68,7 @@ export function mapInitialTabToMenuKey(
   const [base, section] = normalized.split(":", 2);
   switch (base) {
     case "permissions":
-      return "privacy";
+      return "module:system-privacy";
     case "mcp":
       return "mcpServers";
     case "gateway":

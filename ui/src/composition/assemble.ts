@@ -10,6 +10,11 @@ export const optionalSlots = new Set<Slot>(['skills', 'knowledge', 'sop']);
 /** Compatibility for profiles written before business capabilities were explicit. */
 export const legacyBusinessModuleIds = [
   'agent.routing', 'agent.resident', 'agent.scheduling', 'channels.integrations',
+  'model.providers', 'agent.model-selection',
+  'tools.search', 'tools.mcp', 'context.memory',
+  'workspace.office-preview',
+  'system.advanced',
+  'system.privacy',
 ] as const;
 
 export function resolveBusinessBindings(profile: CompositionProfile): Record<string, BusinessBinding> {

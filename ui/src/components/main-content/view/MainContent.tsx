@@ -9,9 +9,7 @@ import React, {
 import { useTranslation } from "react-i18next";
 import {
   BarChart3,
-  Database,
   FileText,
-  Radio,
   type LucideIcon,
 } from "lucide-react";
 import PluginTabContent from "../../plugins/view/PluginTabContent";
@@ -24,20 +22,17 @@ import { useEditorSidebar } from "../../code-editor/hooks/useEditorSidebar";
 import EditorSidebar from "../../code-editor/view/EditorSidebar";
 import type { CodeEditorDiffInfo } from "../../code-editor/types/types";
 import type {
-  AlwaysOnSessionTarget,
   AppTab,
   Project,
   ProjectSession,
 } from "../../../types/app";
 import { isReadOnlySession } from "../../../types/app";
-import { api } from "../../../utils/api";
 import { isExternalFileDrag } from "../../../utils/externalFileDrop";
 import MainContentStateView from "./subcomponents/MainContentStateView";
 import ConversationSwitcher from "./subcomponents/ConversationSwitcher";
 import ErrorBoundary from "./ErrorBoundary";
 import ToolSidePanel from "./subcomponents/ToolSidePanel";
 
-const AlwaysOnV2 = React.lazy(() => import("../../main-content-v2/AlwaysOnV2"));
 const FilesV2 = React.lazy(() => import("../../main-content-v2/FilesV2"));
 const ShellV2 = React.lazy(() => import("../../main-content-v2/ShellV2"));
 const GitV2 = React.lazy(() => import("../../main-content-v2/GitV2"));
@@ -45,7 +40,6 @@ const DashboardV2 = React.lazy(
   () => import("../../main-content-v2/DashboardV2"),
 );
 const TasksV2 = React.lazy(() => import("../../main-content-v2/TasksV2"));
-const MemoryPanel = React.lazy(() => import("./memory/MemoryPanel"));
 
 function TabSkeleton() {
   return (
@@ -65,8 +59,6 @@ type TasksSettingsContextValue = {
   isTaskMasterInstalled: boolean | null;
   isTaskMasterReady: boolean | null;
 };
-
-type MainContentToast = { kind: "error" | "info"; text: string } | null;
 
 const FILES_ASSISTANT_DEFAULT_WIDTH = 380;
 const FILES_ASSISTANT_MIN_WIDTH = 320;
@@ -151,20 +143,16 @@ const TOOL_PANEL_MIN_WIDTH = 360;
 const TOOL_PANEL_MAX_WIDTH = 720;
 const TOOL_PANEL_MAX_LAYOUT_RATIO = 0.48;
 
-type DashboardPanelTab = Extract<AppTab, "dashboard" | "memory" | "always-on">;
+type DashboardPanelTab = Extract<AppTab, "dashboard">;
 
 const DASHBOARD_PANEL_TABS = new Set<AppTab>([
   "dashboard",
-  "memory",
-  "always-on",
 ]);
 const DASHBOARD_PANEL_META: Record<
   DashboardPanelTab,
   { labelKey: string; icon: LucideIcon }
 > = {
   dashboard: { labelKey: "tabs.dashboard", icon: BarChart3 },
-  memory: { labelKey: "tabs.memory", icon: Database },
-  "always-on": { labelKey: "tabs.alwaysOn", icon: Radio },
 };
 
 function readStoredFilesAssistantWidth(): number {
@@ -192,22 +180,12 @@ function readStoredToolPanelWidth(): number {
   }
 }
 
-async function readJsonPayload<T>(response: Response): Promise<T | null> {
-  try {
-    return (await response.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
 function MainContent({
   projects,
   selectedProject,
   selectedSession,
   activeTab,
   setActiveTab,
-  alwaysOnSubTab = "dashboard",
-  onAlwaysOnSubTabChange,
   ws,
   sendMessage,
   latestMessage,
@@ -237,7 +215,6 @@ function MainContent({
   chatSurface: ChatSurface,
   chatUnavailableMessage,
 }: MainContentProps) {
-  const { i18n } = useTranslation();
   const { preferences } = useUiPreferences();
   const {
     autoExpandTools,
@@ -251,8 +228,6 @@ function MainContent({
     useTaskMaster() as TaskMasterContextValue;
   const { tasksEnabled, isTaskMasterInstalled } =
     useTasksSettings() as TasksSettingsContextValue;
-  const [toast, setToast] = useState<MainContentToast>(null);
-
   const shouldShowTasksTab = Boolean(tasksEnabled && isTaskMasterInstalled);
 
   const {
@@ -323,189 +298,6 @@ function MainContent({
     }
   }, [shouldShowTasksTab, activeTab, setActiveTab]);
 
-  const refreshProjectsSilently = useCallback(() => {
-    if (window.refreshProjects) {
-      void window.refreshProjects();
-    }
-  }, []);
-
-  const applyAndLaunchCycle = useCallback(
-    async (projectName: string, cycleId: string) => {
-      const response = await api.applyWorkCycle(projectName, cycleId);
-      const payload = await readJsonPayload<{
-        cycle?: { id: string };
-        sessionKey?: string;
-        executionToken?: string;
-        error?: { code: string; message: string } | string;
-      }>(response);
-      if (!response.ok || !payload) {
-        const errMsg =
-          typeof payload?.error === "string"
-            ? payload.error
-            : payload?.error?.message;
-        throw new Error(errMsg || "Failed to queue discovery plan apply");
-      }
-      if (payload.error) {
-        const errMsg =
-          typeof payload.error === "string"
-            ? payload.error
-            : payload.error.message;
-        throw new Error(errMsg);
-      }
-
-      refreshProjectsSilently();
-    },
-    [refreshProjectsSilently],
-  );
-
-  const flashToast = useCallback((toastValue: MainContentToast, ms = 2400) => {
-    setToast(toastValue);
-    if (toastValue) {
-      window.setTimeout(() => setToast(null), ms);
-    }
-  }, []);
-
-  const getProjectSessions = useCallback(
-    (project: Project): ProjectSession[] => project.sessions ?? [],
-    [],
-  );
-
-  const findSessionInProject = useCallback(
-    (project: Project, sessionId: string) =>
-      getProjectSessions(project).find((session) => session.id === sessionId),
-    [getProjectSessions],
-  );
-
-  const loadPilotDeckSession = useCallback(
-    async (projectName: string, sessionId: string) => {
-      const response = await api.sessions(
-        projectName,
-        Number.MAX_SAFE_INTEGER,
-        0,
-      );
-      if (!response.ok) {
-        return null;
-      }
-      const payload = await readJsonPayload<{ sessions?: ProjectSession[] }>(
-        response,
-      );
-      return (
-        payload?.sessions?.find((session) => session.id === sessionId) ?? null
-      );
-    },
-    [],
-  );
-
-  const handleOpenAlwaysOnSession = useCallback(
-    async (target: AlwaysOnSessionTarget) => {
-      if (!selectedProject) {
-        return;
-      }
-
-      const missingMessage = i18n.t("alwaysOn:sessionMissing", {
-        defaultValue: "This chat record no longer exists.",
-      });
-
-      if (target.kind === "origin") {
-        const lookupProjectName = target.projectName || selectedProject.name;
-        const targetProject =
-          target.projectName && target.projectName !== selectedProject.name
-            ? (projects.find((p) => p.name === target.projectName) ??
-              selectedProject)
-            : selectedProject;
-
-        const existingSession =
-          findSessionInProject(targetProject, target.sessionId) ??
-          (await loadPilotDeckSession(lookupProjectName, target.sessionId));
-
-        if (!existingSession) {
-          flashToast({ kind: "error", text: missingMessage });
-          return;
-        }
-
-        const fallbackSession: ProjectSession = {
-          ...existingSession,
-          isReadOnly: true,
-          __projectName: lookupProjectName,
-        };
-
-        setActiveTab("chat");
-        if (onSelectSession) {
-          onSelectSession(targetProject, target.sessionId, fallbackSession);
-          return;
-        }
-        onNavigateToSession(target.sessionId);
-        return;
-      }
-
-      const existingSession =
-        findSessionInProject(selectedProject, target.sessionId) ??
-        (await loadPilotDeckSession(selectedProject.name, target.sessionId));
-
-      if (!existingSession) {
-        flashToast({ kind: "error", text: missingMessage });
-        return;
-      }
-
-      const fallbackSession: ProjectSession = {
-        ...existingSession,
-        id: target.sessionId,
-        title:
-          target.title ||
-          existingSession.title ||
-          existingSession.summary ||
-          target.summary,
-        summary:
-          target.summary ||
-          existingSession.summary ||
-          existingSession.title ||
-          target.title,
-        lastActivity: target.lastActivity || existingSession.lastActivity,
-        sessionKind: "background_task",
-        parentSessionId: target.parentSessionId,
-        relativeTranscriptPath: target.relativeTranscriptPath,
-        transcriptKey: target.transcriptKey || existingSession.transcriptKey,
-        taskId: target.taskId || existingSession.taskId,
-        taskStatus: target.taskStatus || existingSession.taskStatus,
-        outputFile: target.outputFile || existingSession.outputFile,
-        isReadOnly: true,
-        __projectName: selectedProject.name,
-      };
-
-      setActiveTab("chat");
-      if (onSelectSession) {
-        onSelectSession(selectedProject, target.sessionId, fallbackSession);
-        return;
-      }
-      onNavigateToSession(target.sessionId);
-    },
-    [
-      findSessionInProject,
-      flashToast,
-      i18n,
-      loadPilotDeckSession,
-      onNavigateToSession,
-      onSelectSession,
-      projects,
-      selectedProject,
-      setActiveTab,
-    ],
-  );
-
-  const handleOpenExecutionSession = useCallback(
-    (projectKey: string, runId: string, projectName?: string) => {
-      const rawId = `always-on/execute:project=${projectKey}:run=${runId}`;
-      const sessionId =
-        rawId.replace(/[\\/]+/g, "-").replace(/^-+|-+$/g, "") || "session";
-      void handleOpenAlwaysOnSession({
-        kind: "origin",
-        sessionId,
-        projectName,
-      });
-    },
-    [handleOpenAlwaysOnSession],
-  );
-
   if (isLoading) {
     return (
       <MainContentStateView
@@ -537,8 +329,6 @@ function MainContent({
           shouldShowTasksTab={shouldShowTasksTab}
           tasksEnabled={tasksEnabled}
           setActiveTab={setActiveTab}
-          alwaysOnSubTab={alwaysOnSubTab}
-          onAlwaysOnSubTabChange={onAlwaysOnSubTabChange}
           ws={ws}
           sendMessage={sendMessage}
           latestMessage={latestMessage}
@@ -565,8 +355,6 @@ function MainContent({
           inlineThinking={inlineThinking}
           autoScrollToBottom={autoScrollToBottom}
           sendByCtrlEnter={sendByCtrlEnter}
-          applyAndLaunchCycle={applyAndLaunchCycle}
-          handleOpenExecutionSession={handleOpenExecutionSession}
           editorExpanded={editorExpanded}
           hasEditor={editingFile !== null}
           activeFilePath={activeFilePath}
@@ -596,17 +384,6 @@ function MainContent({
           }}
         />
       </div>
-      {toast ? (
-        <div
-          className={cn(
-            "pointer-events-none absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-3 py-1.5 text-[12px] shadow-lg",
-            toast.kind === "error" && "bg-red-600 text-white",
-            toast.kind === "info" && "bg-neutral-800 text-white",
-          )}
-        >
-          {toast.text}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -621,8 +398,6 @@ type SplitBodyProps = {
   shouldShowTasksTab: boolean;
   tasksEnabled: boolean;
   setActiveTab: (tab: any) => void;
-  alwaysOnSubTab: MainContentProps["alwaysOnSubTab"];
-  onAlwaysOnSubTabChange: MainContentProps["onAlwaysOnSubTabChange"];
   ws: any;
   sendMessage: any;
   latestMessage: any;
@@ -657,12 +432,6 @@ type SplitBodyProps = {
   inlineThinking: any;
   autoScrollToBottom: any;
   sendByCtrlEnter: any;
-  applyAndLaunchCycle: (projectName: string, cycleId: string) => Promise<void>;
-  handleOpenExecutionSession: (
-    projectKey: string,
-    runId: string,
-    projectName?: string,
-  ) => void;
   editorExpanded: boolean;
   hasEditor: boolean;
   activeFilePath: string | null;
@@ -685,8 +454,6 @@ function SplitBody(props: SplitBodyProps) {
     shouldShowTasksTab,
     tasksEnabled,
     setActiveTab,
-    alwaysOnSubTab = "dashboard",
-    onAlwaysOnSubTabChange,
     ws,
     sendMessage,
     latestMessage,
@@ -713,8 +480,6 @@ function SplitBody(props: SplitBodyProps) {
     inlineThinking,
     autoScrollToBottom,
     sendByCtrlEnter,
-    applyAndLaunchCycle,
-    handleOpenExecutionSession,
     editorExpanded,
     hasEditor,
     activeFilePath,
@@ -728,7 +493,7 @@ function SplitBody(props: SplitBodyProps) {
   } = props;
 
   // Shell, Git, Tasks, and plugin tabs retain their legacy full-screen mode.
-  // Skills, Routing, Memory, and Always-On are auxiliary dashboards paired
+  // Skills, Routing, and Memory are auxiliary dashboards paired
   // with chat. Files stays a separate explorer + artifact + assistant mode.
   const isPlugin =
     typeof activeTab === "string" && activeTab.startsWith("plugin:");
@@ -1063,18 +828,6 @@ function SplitBody(props: SplitBodyProps) {
         <GitV2 selectedProject={selectedProject} onFileOpen={handleFileOpen} />
       );
     }
-    if (activeTab === "always-on") {
-      return (
-        <AlwaysOnV2
-          selectedProject={selectedProject}
-          subTab={alwaysOnSubTab}
-          onSubTabChange={onAlwaysOnSubTabChange ?? (() => undefined)}
-          onApplyWorkCycle={applyAndLaunchCycle}
-          onOpenExecutionSession={handleOpenExecutionSession}
-          compact
-        />
-      );
-    }
     if (activeTab === "dashboard")
       return (
         <DashboardV2
@@ -1084,8 +837,6 @@ function SplitBody(props: SplitBodyProps) {
           compact
         />
       );
-    if (activeTab === "memory")
-      return <MemoryPanel selectedProject={selectedProject} />;
     if (renderTasksAsTool) return <TasksV2 isVisible />;
     if (isPlugin) {
       return (

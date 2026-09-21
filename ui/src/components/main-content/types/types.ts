@@ -1,4 +1,4 @@
-import type { AlwaysOnSubTab, AppTab, Project, ProjectSession } from '../../../types/app';
+import type { AppTab, Project, ProjectSession } from '../../../types/app';
 import type { ComponentType } from 'react';
 import type { ChatInterfaceProps } from '../../chat/types/types';
 
@@ -43,8 +43,6 @@ export type MainContentProps = {
   selectedSession: ProjectSession | null;
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
-  alwaysOnSubTab?: AlwaysOnSubTab;
-  onAlwaysOnSubTabChange?: (tab: AlwaysOnSubTab) => void;
   ws: WebSocket | null;
   sendMessage: (message: unknown) => void;
   latestMessage: unknown;

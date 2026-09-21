@@ -5,11 +5,8 @@ import type { DesktopVersionCheckResult } from "../version";
 import type { SettingsMenuKey } from "../types";
 import type { SettingsProject } from "../shared/types";
 import { SETTINGS_CONFIG_ICON } from "./navIcons";
-import AdvancedSections from "./advanced";
 import GeneralSections from "./general";
-import PrivacySections from "./privacy";
 import AboutSections from "./about";
-import OfficePreviewSections from "./officePreview";
 import type { Contribution, SurfaceProps } from "../../../composition/contracts";
 
 type SettingsContentProps = {
@@ -177,12 +174,6 @@ export default function SettingsContent({
           <>
             <GeneralSections title={title} />
           </>
-        ) : selectedKey === "officePreview" ? (
-          <OfficePreviewSections title={title} />
-        ) : selectedKey === "privacy" ? (
-          <PrivacySections title={title} />
-        ) : selectedKey === "advanced" ? (
-          <AdvancedSections title={title} />
         ) : selectedKey === "about" ? (
           <AboutSections
             title={title}

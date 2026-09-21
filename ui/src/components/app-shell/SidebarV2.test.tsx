@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../types/app';
 import SidebarV2 from './SidebarV2';
 
+const navigate = vi.fn();
+
 vi.mock('react-router-dom', () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigate,
 }));
 
 vi.mock('lucide-react', () => ({
@@ -49,6 +51,8 @@ function renderSidebar(selectedProject: Project | null, extra?: Partial<Componen
     onRequestDeleteProject: vi.fn(),
     onRequestDeleteSession: vi.fn(),
     onShowSettings: vi.fn(),
+    modulePages: [{ id: 'skills', path: '/skills', label: 'Skills', component: () => null }],
+    hasScheduledTasks: true,
     ...extra,
   };
 
@@ -58,6 +62,7 @@ function renderSidebar(selectedProject: Project | null, extra?: Partial<Componen
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  navigate.mockReset();
 });
 
 describe('SidebarV2 layout', () => {
@@ -125,12 +130,11 @@ describe('SidebarV2 layout', () => {
     expect(onSelectTab).toHaveBeenCalledWith('cron');
   });
 
-  it('opens skills from the sidebar quick action', () => {
-    const onSelectTab = vi.fn();
-    renderSidebar(null, { onSelectTab });
+  it('opens module pages from the sidebar composition', () => {
+    renderSidebar(null);
 
     fireEvent.click(screen.getByText('Skills'));
-    expect(onSelectTab).toHaveBeenCalledWith('skills');
+    expect(navigate).toHaveBeenCalledWith('/skills');
   });
 
   it('lists regular projects by lastActivity descending and excludes general', () => {

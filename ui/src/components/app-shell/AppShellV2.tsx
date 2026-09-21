@@ -34,6 +34,7 @@ import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
 import { useModuleComposition } from '../../composition/runtime';
+import { generatedBusinessPaths } from '../../composition/generated/frontend-modules';
 import {
   chooseDefaultProject,
   resolveHomeNewConversationProject,
@@ -77,8 +78,8 @@ export default function AppShellV2() {
   const matchSettingsSection = useMatch(`${SETTINGS_PATH}/*`);
   const modulePage = composition.assembly?.pages.find((page) => page.path === location.pathname) ?? null;
   const hasScheduledTasks = Boolean(composition.assembly?.pages.some((page) => page.path === SCHEDULED_TASKS_PATH));
-  const moduleUnavailableMessage = matchScheduledTasks && !modulePage && !composition.loading
-    ? 'Scheduled tasks are not installed in the current product profile.'
+  const moduleUnavailableMessage = generatedBusinessPaths.some((path) => path === location.pathname) && !modulePage && !composition.loading
+    ? 'This feature is not installed in the current product profile.'
     : null;
   const isSettingsRoute = Boolean(matchSettingsIndex || matchSettingsSection);
   const settingsSection = matchSettingsSection?.params['*'];
@@ -143,7 +144,7 @@ export default function AppShellV2() {
     isMobile,
     activeSessions,
   });
-  const workspaceTab = activeTab === 'cron' || activeTab === 'skills' ? 'chat' : activeTab;
+  const workspaceTab = activeTab === 'cron' || activeTab === 'skills' || activeTab === 'memory' || activeTab === 'always-on' ? 'chat' : activeTab;
   const shellActiveTab = dedicatedTab ?? workspaceTab;
   const { processingSessions: remoteProcessingSessions, unreadSessionIds, markRead, acknowledge, selectSession: acknowledgeNavigation } = useSessionIndicators({
     scope: String(user?.id ?? 'local'),
@@ -757,6 +758,7 @@ export default function AppShellV2() {
           misroutedFileFromUrl={misroutedFileFromUrl}
           onMisroutedFileUrlHandled={handleMisroutedFileUrlHandled}
           modulePage={modulePage}
+          moduleHost={{ selectedProject, selectedSession, projects: sidebarSharedProps.projects, navigate }}
           moduleChatSurface={composition.assembly?.chatSurface}
           moduleChatExtensions={composition.assembly?.chatExtensions}
           moduleCompositionError={composition.error}

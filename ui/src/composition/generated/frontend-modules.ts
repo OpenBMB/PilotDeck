@@ -10,6 +10,14 @@ import module7 from '../modules/agent-routing';
 import module8 from '../modules/agent-resident';
 import module9 from '../modules/agent-scheduling';
 import module10 from '../modules/channels-integrations';
+import module11 from '../modules/model-providers';
+import module12 from '../modules/agent-model-selection';
+import module13 from '../modules/tools-search';
+import module14 from '../modules/tools-mcp';
+import module15 from '../modules/context-memory';
+import module16 from '../modules/workspace-office-preview';
+import module17 from '../modules/system-advanced';
+import module18 from '../modules/system-privacy';
 
 export const generatedFrontendModules = [
   Object.assign({ slot: 'agentLoop' }, module0),
@@ -23,6 +31,20 @@ export const generatedFrontendModules = [
   module8,
   module9,
   module10,
+  module11,
+  module12,
+  module13,
+  module14,
+  module15,
+  module16,
+  module17,
+  module18,
+] as const;
+
+export const generatedBusinessPaths = [
+  "/always-on",
+  "/cron",
+  "/memory"
 ] as const;
 
 export const generatedFrontendProfile = {
@@ -114,6 +136,30 @@ export const generatedFrontendProfile = {
         "enabled": true
       },
       "channels.integrations": {
+        "enabled": true
+      },
+      "model.providers": {
+        "enabled": true
+      },
+      "agent.model-selection": {
+        "enabled": true
+      },
+      "tools.search": {
+        "enabled": true
+      },
+      "tools.mcp": {
+        "enabled": true
+      },
+      "context.memory": {
+        "enabled": true
+      },
+      "workspace.office-preview": {
+        "enabled": true
+      },
+      "system.advanced": {
+        "enabled": true
+      },
+      "system.privacy": {
         "enabled": true
       }
     }

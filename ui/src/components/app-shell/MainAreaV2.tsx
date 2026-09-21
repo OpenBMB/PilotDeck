@@ -1,17 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  BarChart3,
-  Database,
-  Folder,
-  PanelLeftOpen,
-  Radio,
-  type LucideIcon,
-} from 'lucide-react';
+import { BarChart3, Folder, PanelLeftOpen, type LucideIcon } from 'lucide-react';
 import type {
-  AlwaysOnDashboardEvent,
-  AlwaysOnDashboardEventsResponse,
-  AlwaysOnSubTab,
   AppTab,
   Project,
   ProjectSession,
@@ -31,10 +21,9 @@ import {
   useCustomNamesVersion,
 } from '../../lib/customNames';
 import { isImeEnterEvent } from '../../utils/ime';
-import { api } from '../../utils/api';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import { isGeneralProject } from './appShellSelection';
-import type { ChatSurfaceContribution, Contribution, PageContribution } from '../../composition/contracts';
+import type { ChatSurfaceContribution, Contribution, PageContribution, SurfaceProps } from '../../composition/contracts';
 
 function DedicatedWorkspacePage({
   title,
@@ -84,29 +73,10 @@ type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 const FILES_TAB: Tab = { id: 'files', labelKey: 'tabs.files', icon: Folder };
 const DASHBOARD_TABS: Tab[] = [
   { id: 'dashboard', labelKey: 'tabs.dashboard', icon: BarChart3 },
-  { id: 'memory',    labelKey: 'tabs.memory',    icon: Database },
-  { id: 'always-on', labelKey: 'tabs.alwaysOn',  icon: Radio },
 ];
 
 const ACTIVE_TOOL_BUTTON_CLASS =
   'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-950/70 dark:text-blue-200 dark:hover:bg-blue-900/70';
-
-const ALWAYS_ON_EVENT_BADGE_POLL_INTERVAL_MS = 15_000;
-const ALWAYS_ON_LAST_VIEWED_MARKER_KEY = 'pilotdeck:always-on-last-viewed-marker';
-const ALWAYS_ON_EVENT_BADGE_LIMIT = 200;
-
-const BADGE_EVENT_PHASES = new Set<AlwaysOnDashboardEvent['phase']>([
-  'plan_produced',
-  'report_produced',
-]);
-
-const getBadgeEventMarker = (events: AlwaysOnDashboardEvent[]): string | null => {
-  const latestBadgeEvent = events
-    .filter((event) => BADGE_EVENT_PHASES.has(event.phase))
-    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))[0];
-
-  return latestBadgeEvent ? `${latestBadgeEvent.timestamp}:${latestBadgeEvent.eventId}` : null;
-};
 
 // V2 main shell: breadcrumb on the left, tool switcher on the right, and the
 // active tool's content below. The sidebar stays focused on projects+sessions.
@@ -117,6 +87,7 @@ type MainAreaV2Props = MainContentProps & {
   isSidebarCollapsed?: boolean;
   onOpenSidebar?: () => void;
   modulePage?: PageContribution | null;
+  moduleHost?: SurfaceProps['host'];
   moduleChatSurface?: ChatSurfaceContribution | null;
   moduleChatExtensions?: Contribution[];
   moduleCompositionError?: string | null;
@@ -137,11 +108,6 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     moduleCompositionError,
     moduleCompositionLoading = false,
   } = props;
-  const [alwaysOnSubTab, setAlwaysOnSubTab] = useState<AlwaysOnSubTab>('dashboard');
-  const [latestAlwaysOnEventMarker, setLatestAlwaysOnEventMarker] = useState<string | null>(null);
-  const [lastViewedAlwaysOnEventMarker, setLastViewedAlwaysOnEventMarker] = useState<string | null>(
-    () => localStorage.getItem(ALWAYS_ON_LAST_VIEWED_MARKER_KEY),
-  );
   const [dashboardMenuOpen, setDashboardMenuOpen] = useState(false);
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [sessionTitleDraft, setSessionTitleDraft] = useState('');
@@ -200,50 +166,6 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     };
   }, [dashboardMenuOpen]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const refreshAlwaysOnEventMarker = async () => {
-      try {
-        const response = await api.alwaysOnDashboardEvents(ALWAYS_ON_EVENT_BADGE_LIMIT);
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as AlwaysOnDashboardEventsResponse;
-
-        if (!cancelled) {
-          const marker = Array.isArray(payload.events) ? getBadgeEventMarker(payload.events) : null;
-          setLatestAlwaysOnEventMarker(marker);
-
-          if (marker && !localStorage.getItem(ALWAYS_ON_LAST_VIEWED_MARKER_KEY)) {
-            setLastViewedAlwaysOnEventMarker(marker);
-            localStorage.setItem(ALWAYS_ON_LAST_VIEWED_MARKER_KEY, marker);
-          }
-        }
-      } catch {
-        // Keep the previous marker when the lightweight notification poll fails.
-      }
-    };
-
-    void refreshAlwaysOnEventMarker();
-    const timer = window.setInterval(() => {
-      void refreshAlwaysOnEventMarker();
-    }, ALWAYS_ON_EVENT_BADGE_POLL_INTERVAL_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'always-on' && latestAlwaysOnEventMarker) {
-      setLastViewedAlwaysOnEventMarker(latestAlwaysOnEventMarker);
-      localStorage.setItem(ALWAYS_ON_LAST_VIEWED_MARKER_KEY, latestAlwaysOnEventMarker);
-    }
-  }, [activeTab, latestAlwaysOnEventMarker]);
-
   // Re-render breadcrumb when the user renames a project/session via the
   // sidebar overlay (subscribes to localStorage + custom event).
   useCustomNamesVersion();
@@ -271,12 +193,6 @@ function MainAreaV2Content(props: MainAreaV2Props) {
   const isRenamingSessionTitle = Boolean(
     selectedSession && renamingSessionId === selectedSession.id,
   );
-  const alwaysOnUnread = Boolean(
-    latestAlwaysOnEventMarker &&
-    activeTab !== 'always-on' &&
-    latestAlwaysOnEventMarker !== lastViewedAlwaysOnEventMarker,
-  );
-
   useEffect(() => {
     setRenamingSessionId(null);
     setSessionTitleDraft('');
@@ -451,12 +367,6 @@ function MainAreaV2Content(props: MainAreaV2Props) {
                   <circle cx="5" cy="12" r="1" />
                 </svg>
                 <span>{t('dashboardSwitcher.explore', { defaultValue: 'Explore' })}</span>
-                {alwaysOnUnread ? (
-                  <span
-                    aria-hidden="true"
-                    className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-neutral-950"
-                  />
-                ) : null}
               </button>
 
               {dashboardMenuOpen ? (
@@ -481,9 +391,6 @@ function MainAreaV2Content(props: MainAreaV2Props) {
                       >
                         <Icon className="h-4 w-4 shrink-0 text-neutral-400" strokeWidth={1.75} />
                         <span>{t(tab.labelKey)}</span>
-                        {tab.id === 'always-on' && alwaysOnUnread ? (
-                          <span className="absolute right-2 h-2 w-2 rounded-full bg-blue-500" aria-label={t('common:uiText.unread')} />
-                        ) : null}
                       </button>
                     );
                   })}
@@ -504,8 +411,6 @@ function MainAreaV2Content(props: MainAreaV2Props) {
             chatSurface={props.moduleChatSurface?.component ?? null}
             chatUnavailableMessage={moduleCompositionLoading ? 'Verifying runtime modules before chat is available.' : null}
             activeTab={displayActiveTab}
-            alwaysOnSubTab={alwaysOnSubTab}
-            onAlwaysOnSubTabChange={setAlwaysOnSubTab}
           />
         </div>
       </div>
@@ -525,7 +430,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
       <Page
         sessionId={props.selectedSession?.id ?? ''}
         projectKey={props.selectedProject?.name}
-        host={{ selectedProject: props.selectedProject, selectedSession: props.selectedSession, projects: props.projects }}
+        host={props.moduleHost ?? { selectedProject: props.selectedProject, selectedSession: props.selectedSession, projects: props.projects }}
       />
     </DedicatedWorkspacePage>;
   }

@@ -39,7 +39,10 @@ test('does not statically select business modules omitted from an explicit produ
   const profile = { ...native, frontend: { businessModules: {} } };
   const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
   assert.deepEqual(selectBusinessFrontendModules(profile), []);
-  assert.doesNotMatch(source, /agent-routing|agent-resident|agent-scheduling|channels-integrations|CronV2/);
+  assert.doesNotMatch(source, /agent-routing|agent-resident|agent-scheduling|channels-integrations|model-providers|agent-model-selection|tools-search|tools-mcp|context-memory|workspace-office-preview|CronV2/);
+  assert.match(source, /generatedBusinessPaths/);
+  assert.match(source, /"\/always-on"/);
+  assert.match(source, /"\/cron"/);
 });
 
 test('selects only explicitly installed business modules', () => {
@@ -51,4 +54,16 @@ test('selects only explicitly installed business modules', () => {
   assert.deepEqual(selectBusinessFrontendModules(profile).map((item) => item.id), ['agent.routing']);
   assert.match(source, /agent-routing/);
   assert.doesNotMatch(source, /agent-scheduling|agent-resident|channels-integrations/);
+});
+
+test('selects model-management modules independently from the model-provider slot adapter', () => {
+  const profile = { ...native, frontend: { businessModules: {
+    'model.providers': { enabled: true },
+    'agent.model-selection': { enabled: true },
+  } } };
+  const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
+  assert.deepEqual(selectBusinessFrontendModules(profile).map((item) => item.id), ['model.providers', 'agent.model-selection']);
+  assert.match(source, /modules\/model-providers/);
+  assert.match(source, /modules\/agent-model-selection/);
+  assert.match(source, /modules\/pilotdeck-model/);
 });

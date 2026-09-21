@@ -74,3 +74,11 @@ frontend:
     agent.resident: { enabled: true }
     agent.scheduling: { enabled: true }
     channels.integrations: { enabled: true }
+    model.providers: { enabled: true }
+    agent.model-selection: { enabled: true }
+    tools.search: { enabled: true }
+    tools.mcp: { enabled: true }
+    context.memory: { enabled: true }
+    workspace.office-preview: { enabled: true }
+    system.advanced: { enabled: true }
+    system.privacy: { enabled: true }

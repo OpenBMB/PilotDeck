@@ -68,14 +68,6 @@ vi.mock('../../utils/api', () => ({
   },
 }));
 
-vi.mock('../main-content-v2/CronV2', () => ({
-  default: () => <div data-testid="cron-page" />,
-}));
-
-vi.mock('../main-content-v2/SkillsV2', () => ({
-  default: () => <div data-testid="skills-page" />,
-}));
-
 const project: Project = {
   name: 'pilotdeck',
   displayName: 'PilotDeck',
@@ -86,10 +78,12 @@ function Harness({
   initialTab = 'chat',
   withSession = false,
   selectedProject = project,
+  modulePage,
 }: {
   initialTab?: AppTab;
   withSession?: boolean;
   selectedProject?: Project;
+  modulePage?: ComponentProps<typeof MainAreaV2>['modulePage'];
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const props = {
@@ -98,6 +92,7 @@ function Harness({
     selectedSession: withSession ? { id: 'session-1', title: 'Searchable chat' } : null,
     activeTab,
     setActiveTab,
+    modulePage,
   } as unknown as ComponentProps<typeof MainAreaV2>;
 
   return <MainAreaV2 {...props} />;
@@ -266,16 +261,9 @@ describe('MainAreaV2 dashboard switcher', () => {
     const menu = screen.getByRole('menu', { name: 'Dashboards' });
     expect(menu.className).toContain('z-[90]');
     expect(menu.className).toContain('w-32');
-    expect(screen.getByRole('menuitem', { name: 'tabs.memory' }).className).toContain('justify-center');
-
     expect(screen.queryByRole('menuitem', { name: 'tabs.cron' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'tabs.skills' })).toBeNull();
-
-    fireEvent.click(screen.getByRole('menuitem', { name: 'tabs.memory' }));
-    expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('memory');
-    expect(screen.getByRole('button', { name: 'Open dashboards menu' })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open dashboards menu' }));
+    expect(screen.queryByRole('menuitem', { name: 'tabs.memory' })).toBeNull();
     fireEvent.click(screen.getByRole('menuitem', { name: 'tabs.dashboard' }));
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('dashboard');
     await waitFor(() => {
@@ -284,7 +272,7 @@ describe('MainAreaV2 dashboard switcher', () => {
   });
 
   it('replaces the workspace header with only the scheduled tasks title', async () => {
-    render(<Harness initialTab="cron" withSession />);
+    render(<Harness withSession modulePage={{ id: 'scheduled-tasks', path: '/cron', label: 'Scheduled Tasks', component: () => <div data-testid="cron-page" /> }} />);
 
     expect(await screen.findByRole('heading', { name: 'Scheduled Tasks' })).toBeTruthy();
     expect(screen.getByTestId('cron-page')).toBeTruthy();
@@ -295,7 +283,7 @@ describe('MainAreaV2 dashboard switcher', () => {
   });
 
   it('replaces the workspace header with only the skills title', async () => {
-    render(<Harness initialTab="skills" withSession />);
+    render(<Harness withSession modulePage={{ id: 'skills', path: '/skills', label: 'Skills', component: () => <div data-testid="skills-page" /> }} />);
 
     expect(await screen.findByRole('heading', { name: 'Skills' })).toBeTruthy();
     expect(screen.getByTestId('skills-page')).toBeTruthy();

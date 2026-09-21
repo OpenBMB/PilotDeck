@@ -25,12 +25,9 @@ type NavSection = {
 
 const SHELL_ITEMS: NavItem[] = [
   { key: "general", labelKey: "settingsPage.menu.general" },
-  { key: "officePreview", labelKey: "settingsPage.menu.officePreview" },
 ];
 
 const FOOTER_ITEMS: NavItem[] = [
-  { key: "privacy", labelKey: "settingsPage.menu.privacy" },
-  { key: "advanced", labelKey: "settingsPage.menu.system" },
   { key: "about", labelKey: "settingsPage.menu.about", showDot: true },
 ];
 
