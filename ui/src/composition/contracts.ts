@@ -61,6 +61,7 @@ export type Contribution = {
   settingsSection?: string;
   toolNames?: string[];
   artifactMimeTypes?: string[];
+  fileExtensions?: string[];
 };
 export type PageContribution = Contribution & { path: string };
 export type ChatSurfaceContribution = {
@@ -87,6 +88,7 @@ export type FrontendModule = {
   permissionPanels?: Contribution[];
   toolRenderers?: Contribution[];
   artifactRenderers?: Contribution[];
+  fileRenderers?: Contribution[];
   historyFallback?: Contribution;
 };
 export type Selection = { slot: Slot; binding: Binding; frontend: FrontendModule };
@@ -103,6 +105,7 @@ export type Assembly = {
   permissionPanels: Contribution[];
   toolRenderers: Contribution[];
   artifactRenderers: Contribution[];
+  fileRenderers: Contribution[];
   historyFallbacks: Array<{ moduleId: string; contribution: Contribution }>;
 };
 
