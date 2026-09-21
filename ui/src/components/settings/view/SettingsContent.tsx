@@ -5,20 +5,12 @@ import type { DesktopVersionCheckResult } from "../version";
 import type { SettingsMenuKey } from "../types";
 import type { SettingsProject } from "../shared/types";
 import { SETTINGS_CONFIG_ICON } from "./navIcons";
-import AgentModelSections from "./agentModel";
-import AgentMemorySections from "./agentMemory";
-import AgentResidentSections from "./agentResident";
-import AgentRouteSections from "./agentRoute";
-import AgentScheduleSections from "./agentSchedule";
-import AgentSearchSections from "./agentSearch";
 import AdvancedSections from "./advanced";
-import McpServersSection from "./extensions";
 import GeneralSections from "./general";
-import IntegrationsSections from "./integrations";
-import ModelPoolSections from "./modelPool";
 import PrivacySections from "./privacy";
 import AboutSections from "./about";
 import OfficePreviewSections from "./officePreview";
+import type { Contribution, SurfaceProps } from "../../../composition/contracts";
 
 type SettingsContentProps = {
   selectedKey: SettingsMenuKey;
@@ -28,6 +20,8 @@ type SettingsContentProps = {
   onCloseSettings?: () => void;
   mobileVisible?: boolean;
   onOpenMobileNavigation?: () => void;
+  moduleSettings?: Contribution[];
+  host?: SurfaceProps["host"];
 };
 
 const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
@@ -110,12 +104,17 @@ export default function SettingsContent({
   onCloseSettings,
   mobileVisible = true,
   onOpenMobileNavigation,
+  moduleSettings = [],
+  host,
 }: SettingsContentProps) {
   const { t } = useTranslation("settings");
-  const title = t(MENU_TITLE_KEYS[selectedKey]);
-  const heading = t(PAGE_HEADING_KEYS[selectedKey]);
+  const moduleSection = selectedKey.startsWith('module:') ? selectedKey.slice('module:'.length) : null;
+  const selectedModuleSetting = moduleSettings.find((setting) => (setting.settingsSection || setting.id) === moduleSection);
+  const title = moduleSection ? (selectedModuleSetting?.label || moduleSection) : t(MENU_TITLE_KEYS[selectedKey as keyof typeof MENU_TITLE_KEYS]);
+  const heading = moduleSection ? (selectedModuleSetting?.label || moduleSection) : t(PAGE_HEADING_KEYS[selectedKey as keyof typeof PAGE_HEADING_KEYS]);
   const descriptionKey = PAGE_DESCRIPTION_KEYS[selectedKey];
-  const pageClass = PAGE_CLASS[selectedKey];
+  const pageClass = PAGE_CLASS[selectedKey as keyof typeof PAGE_CLASS];
+  const selectedModuleSettings = moduleSettings.filter((setting) => (setting.settingsSection || setting.id) === moduleSection);
   const isAgentSubpage = selectedKey.startsWith("agent") && selectedKey !== "agent";
   const isExternalIntegrationPage =
     selectedKey === "integrations" ||
@@ -166,28 +165,16 @@ export default function SettingsContent({
           </div>
         </header>
 
-        {selectedKey === "general" ? (
-          <GeneralSections title={title} />
-        ) : selectedKey === "agentModel" ? (
-          <AgentModelSections title={title} />
-        ) : selectedKey === "agentRoute" ? (
-          <AgentRouteSections title={title} />
-        ) : selectedKey === "agentMemory" ? (
-          <AgentMemorySections title={title} projects={projects} />
-        ) : selectedKey === "agentResident" ? (
-          <AgentResidentSections title={title} projects={projects} />
-        ) : selectedKey === "agentSearch" ? (
-          <AgentSearchSections title={title} />
-        ) : selectedKey === "agentSchedule" ? (
-          <AgentScheduleSections title={title} />
-        ) : selectedKey === "integrations" ? (
-          <IntegrationsSections title={title} />
-        ) : selectedKey === "mcpServers" ? (
-          <McpServersSection title={title} projects={projects} />
+        {moduleSection ? (
+          <section className="mt-6 space-y-2" data-testid={`module-settings-${moduleSection}`}>
+            {selectedModuleSettings.map((setting) => { const Setting = setting.component; return <Setting key={setting.id} host={host} />; })}
+          </section>
+        ) : selectedKey === "general" ? (
+          <>
+            <GeneralSections title={title} />
+          </>
         ) : selectedKey === "officePreview" ? (
           <OfficePreviewSections title={title} />
-        ) : selectedKey === "modelPool" ? (
-          <ModelPoolSections title={title} />
         ) : selectedKey === "privacy" ? (
           <PrivacySections title={title} />
         ) : selectedKey === "advanced" ? (

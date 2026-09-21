@@ -143,6 +143,8 @@ export type CanonicalContentBlock = { timeline?: TimelinePosition } & (
   | CanonicalMediaReferenceBlock);
 
 export type CanonicalMessageMetadata = {
+  /** Durable backend implementation id that owns this module-originated message. */
+  moduleId?: string;
   /** Actual model that generated this assistant message. */
   model?: string;
   /** True for messages injected by the system (e.g. JSON self-correct prompts). */

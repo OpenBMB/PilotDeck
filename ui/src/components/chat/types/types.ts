@@ -86,6 +86,8 @@ export interface SubagentChildTool {
 }
 
 export interface ChatMessage {
+  /** Durable backend implementation id for module-owned transcript content. */
+  moduleId?: string;
   /** Actual generating model stored with this response. */
   model?: string;
   id?: string;

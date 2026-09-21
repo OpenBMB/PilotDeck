@@ -22,6 +22,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
+import type { ModuleNavigation } from '../../composition/contracts';
 import { cn } from '../../lib/utils.js';
 import { isImeEnterEvent } from '../../utils/ime';
 import {
@@ -165,6 +166,7 @@ export type SidebarV2Props = {
   onCollapse?: () => void;
   onLoadMoreSessions?: (projectName: string) => void;
   loadingMoreProjectIds?: Set<string>;
+  modulePages?: ModuleNavigation[];
 };
 
 type SidebarContextMenu =
@@ -281,6 +283,7 @@ export default function SidebarV2({
   onShowSettings,
   onLoadMoreSessions,
   loadingMoreProjectIds,
+  modulePages = [],
 }: SidebarV2Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -1144,23 +1147,22 @@ export default function SidebarV2({
             {t('sidebar:quickActions.newConversation', { defaultValue: '新对话' })}
           </span>
         </button>
-        <button
-          className={cn('primary-action', isCompact && 'compact', activeTab === 'skills' && 'active')}
-          type="button"
-          aria-pressed={activeTab === 'skills'}
-          onClick={() => onSelectTab?.('skills')}
-        >
-          <span className="primary-action-icon">
-            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />
-            </svg>
-          </span>
-          <span className="truncate">
-            {isCompact
-              ? t('sidebar:quickActions.skillsCompact', { defaultValue: 'Skill Tools' })
-              : t('sidebar:quickActions.skills', { defaultValue: 'Skills' })}
-          </span>
-        </button>
+        {modulePages.map((page) => {
+          const Icon = page.icon;
+          const active = window.location.pathname === page.path;
+          return (
+            <button
+              key={page.id}
+              className={cn('primary-action', isCompact && 'compact', active && 'active')}
+              type="button"
+              aria-pressed={active}
+              onClick={() => navigate(page.path)}
+            >
+              <span className="primary-action-icon">{Icon ? <Icon className="icon" /> : <span aria-hidden="true">◆</span>}</span>
+              <span className="truncate">{page.label}</span>
+            </button>
+          );
+        })}
         <button
           className={cn('primary-action', isCompact && 'compact', activeTab === 'cron' && 'active')}
           type="button"

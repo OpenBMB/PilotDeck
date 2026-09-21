@@ -10,3 +10,14 @@ sops:
           instruction: Wait for an operator decision before completing this request.
       terminal_node_ids:
         - approval
+  - id: operator_approval_alternate
+    version: "1"
+    name: Alternate operator approval
+    content:
+      start_node_id: alternate_approval
+      nodes:
+        - node_id: alternate_approval
+          type: handoff
+          instruction: Wait for the alternate operator approval before completing this request.
+      terminal_node_ids:
+        - alternate_approval

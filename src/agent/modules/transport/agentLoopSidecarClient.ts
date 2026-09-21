@@ -360,7 +360,7 @@ class AgentLoopSidecarRunner implements AgentLoopRunner {
           transportObserver: this.options.transportObserver,
         }),
       });
-      const hostEventProjector = new SidecarHostEventProjector(input);
+      const hostEventProjector = new SidecarHostEventProjector(input, () => protocol?.moduleId);
       protocol = new SidecarTurnProtocol({
         config: this.options.config,
         input,
@@ -524,6 +524,11 @@ class SidecarTurnProtocol {
     this.requestId = `request-${options.uuid()}`;
     this.handlers = options.moduleHandlers;
     this.manifest = options.manifest;
+  }
+
+  /** The implementation identity validated during the current sidecar handshake. */
+  get moduleId(): string | undefined {
+    return this.binding?.moduleId;
   }
 
   async *execute(connection: AgentLoopSidecarConnection): AsyncGenerator<AgentEvent, SidecarTerminal, unknown> {
@@ -1489,7 +1494,10 @@ class SidecarHostEventProjector {
   private readonly timeline: TurnTimeline;
   private readonly activeSubagents = new Map<string, ActiveHostSubagent>();
 
-  constructor(private readonly input: AgentLoopInput) {
+  constructor(
+    private readonly input: AgentLoopInput,
+    private readonly moduleId: () => string | undefined,
+  ) {
     this.timeline = new TurnTimeline(input.turnId);
   }
 
@@ -1511,7 +1519,12 @@ class SidecarHostEventProjector {
       return event;
     }
     const { timeline: _timeline, streamBoundary: _streamBoundary, ...untimed } = stripChildTimeline(event);
-    return this.timeline.event(untimed as AgentEvent);
+    const moduleId = this.moduleId();
+    const owned = moduleId ? markModuleOwnedEvent(untimed as AgentEvent, moduleId) : untimed;
+    return this.timeline.event({
+      ...owned,
+      ...(moduleId ? { moduleId } : {}),
+    } as AgentEvent);
   }
 
   projectTerminal(terminal: SidecarTerminal): SidecarTerminal {
@@ -1531,6 +1544,10 @@ class SidecarHostEventProjector {
 
   private projectTerminalMessage(message: CanonicalMessage): CanonicalMessage {
     const projected = stripMessageTimeline(message);
+    const moduleId = this.moduleId();
+    if (moduleId && isModuleOwnedTerminalMessage(projected)) {
+      projected.metadata = { ...projected.metadata, moduleId };
+    }
     for (const block of projected.content) {
       const id = timelineContentId(block);
       if (id) block.timeline = this.timeline.position(id);
@@ -1645,6 +1662,21 @@ function stripChildTimeline(event: AgentEvent): AgentEvent {
 
 function stripMessageTimeline(message: CanonicalMessage): CanonicalMessage {
   return { ...message, content: message.content.map(stripCanonicalContentTimeline) };
+}
+
+function isModuleOwnedTerminalMessage(message: CanonicalMessage): boolean {
+  return message.role === "assistant" || message.content.some((block) => block.type === "tool_result");
+}
+
+function markModuleOwnedEvent(event: AgentEvent, moduleId: string): AgentEvent {
+  if ((event.type === "assistant_message" || event.type === "tool_results_projected")
+    && isModuleOwnedTerminalMessage(event.message)) {
+    return {
+      ...event,
+      message: { ...event.message, metadata: { ...event.message.metadata, moduleId } },
+    };
+  }
+  return event;
 }
 
 function timelineContentId(block: CanonicalContentBlock): string | undefined {

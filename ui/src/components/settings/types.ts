@@ -14,7 +14,8 @@ export type SettingsMenuKey =
   | 'officePreview'
   | 'privacy'
   | 'advanced'
-  | 'about';
+  | 'about'
+  | `module:${string}`;
 
 export type SettingsMenuItem = {
   key: SettingsMenuKey;

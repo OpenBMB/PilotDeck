@@ -19,8 +19,14 @@ export function generateMessageId(prefix = 'msg') {
 }
 
 export function createNormalizedMessage(fields) {
+  const moduleId = typeof fields.moduleId === 'string' && fields.moduleId.trim()
+    ? fields.moduleId.trim()
+    : typeof fields.module_id === 'string' && fields.module_id.trim()
+      ? fields.module_id.trim()
+      : undefined;
   return {
     ...fields,
+    ...(moduleId ? { moduleId } : {}),
     id: fields.id || generateMessageId(fields.kind),
     sessionId: fields.sessionId || '',
     timestamp: fields.timestamp || new Date().toISOString(),

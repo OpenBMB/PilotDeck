@@ -35,12 +35,17 @@ export default function SopWaitBanner({
   onError,
 }: SopWaitBannerProps) {
   const [status, setStatus] = useState<SopStatus | null>(null);
-  const [message, setMessage] = useState('');
+  const draftKey = sessionKey ? `pilotdeck:sop:continuation:${sessionKey}` : null;
   const [loading, setLoading] = useState(false);
   const [resuming, setResuming] = useState(false);
   const waitIdRef = useRef<string | undefined>(undefined);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
   const statusRequestRef = useRef(0);
   const resumeInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (messageInputRef.current) messageInputRef.current.value = readDraft(draftKey);
+  }, [draftKey]);
 
   const loadStatus = useCallback(async () => {
     const requestId = ++statusRequestRef.current;
@@ -62,10 +67,14 @@ export default function SopWaitBanner({
       const body = await response.json();
       const nextStatus = isSopStatus(body?.status) ? body.status : null;
       const nextWaitId = nextStatus?.wait?.id;
-      if (waitIdRef.current !== nextWaitId) {
+      // The first status response may arrive after the operator starts
+      // typing. Only a subsequent, distinct handoff should replace a draft.
+      if (nextWaitId && waitIdRef.current && waitIdRef.current !== nextWaitId) {
         waitIdRef.current = nextWaitId;
-        setMessage('');
+        writeDraft(draftKey, '');
+        if (messageInputRef.current) messageInputRef.current.value = '';
       }
+      if (!waitIdRef.current && nextWaitId) waitIdRef.current = nextWaitId;
       setStatus(nextStatus);
     } catch (error) {
       if (requestId !== statusRequestRef.current) return;
@@ -84,7 +93,7 @@ export default function SopWaitBanner({
   const wait = status.wait;
 
   const resume = async () => {
-    const normalizedMessage = message.trim();
+    const normalizedMessage = messageInputRef.current?.value.trim() ?? '';
     if (!normalizedMessage || resuming || disabled || resumeInFlightRef.current) return;
     resumeInFlightRef.current = true;
     setResuming(true);
@@ -104,6 +113,7 @@ export default function SopWaitBanner({
         throw new Error('SOP resume did not return a continuation message.');
       }
       setStatus(null);
+      writeDraft(draftKey, '');
       onPrepared(result.message);
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
@@ -128,10 +138,13 @@ export default function SopWaitBanner({
         <div className="min-w-0 flex-1">
           <div className="text-[12px] font-medium text-neutral-700 dark:text-neutral-200">{label}</div>
           <input
+            ref={messageInputRef}
             aria-label="SOP continuation message"
             className="mt-1 h-9 w-full border-0 border-b border-neutral-300 bg-transparent px-0 text-[13px] text-neutral-900 outline-none focus:border-blue-500 dark:border-neutral-700 dark:text-neutral-100"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
+            defaultValue={readDraft(draftKey)}
+            onChange={(event) => {
+              writeDraft(draftKey, event.target.value);
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') void resume();
             }}
@@ -143,7 +156,7 @@ export default function SopWaitBanner({
           type="button"
           className="flex h-9 shrink-0 items-center gap-2 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
           onClick={() => void resume()}
-          disabled={!message.trim() || disabled || resuming}
+          disabled={disabled || resuming}
         >
           {resuming ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
           Continue
@@ -170,6 +183,19 @@ function isSopStatus(value: unknown): value is SopStatus {
     && Number.isSafeInteger(status.revision)
     && typeof status.state === 'object'
     && status.state !== null;
+}
+
+function readDraft(key: string | null): string {
+  if (!key) return '';
+  try { return window.sessionStorage.getItem(key) ?? ''; } catch { return ''; }
+}
+
+function writeDraft(key: string | null, value: string): void {
+  if (!key) return;
+  try {
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
+  } catch { /* Session storage is optional draft persistence. */ }
 }
 
 async function responseMessage(response: Response, fallback: string): Promise<string> {

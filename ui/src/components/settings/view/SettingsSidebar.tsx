@@ -3,6 +3,7 @@ import { cn } from "../../../lib/utils.js";
 import pilotdeckLogoDark from "../../../assets/pilotdeck-wordmark-dark.png";
 import pilotdeckLogoLight from "../../../assets/pilotdeck-wordmark-light.png";
 import type { SettingsMenuKey } from "../types";
+import type { Contribution } from "../../../composition/contracts";
 import {
   SETTINGS_BACK_ICON,
   SETTINGS_NAV_ICONS,
@@ -11,6 +12,7 @@ import {
 type NavItem = {
   key: SettingsMenuKey;
   labelKey: string;
+  label?: string;
   showDot?: boolean;
 };
 
@@ -21,22 +23,8 @@ type NavSection = {
   items: NavItem[];
 };
 
-const PRIMARY_ITEMS: NavItem[] = [
+const SHELL_ITEMS: NavItem[] = [
   { key: "general", labelKey: "settingsPage.menu.general" },
-  { key: "modelPool", labelKey: "settingsPage.menu.modelPool" },
-];
-
-const AGENT_ITEMS: NavItem[] = [
-  { key: "agentRoute", labelKey: "settingsPage.menu.agentRoute" },
-  { key: "agentMemory", labelKey: "settingsPage.menu.agentMemory" },
-  { key: "agentResident", labelKey: "settingsPage.menu.agentResident" },
-  { key: "agentSearch", labelKey: "settingsPage.menu.agentSearch" },
-  { key: "agentSchedule", labelKey: "settingsPage.menu.agentSchedule" },
-];
-
-const EXTERNAL_ITEMS: NavItem[] = [
-  { key: "integrations", labelKey: "settingsPage.menu.messageChannels" },
-  { key: "mcpServers", labelKey: "settingsPage.menu.mcpServers" },
   { key: "officePreview", labelKey: "settingsPage.menu.officePreview" },
 ];
 
@@ -47,9 +35,7 @@ const FOOTER_ITEMS: NavItem[] = [
 ];
 
 const NAV_SECTIONS: NavSection[] = [
-  { id: "primary", items: PRIMARY_ITEMS },
-  { id: "agent", titleKey: "settingsPage.menu.agent", nested: true, items: AGENT_ITEMS },
-  { id: "external", titleKey: "settingsPage.menu.external", nested: true, items: EXTERNAL_ITEMS },
+  { id: "shell", items: SHELL_ITEMS },
 ];
 
 type SettingsSidebarProps = {
@@ -58,6 +44,7 @@ type SettingsSidebarProps = {
   onClose: () => void;
   showAboutDot?: boolean;
   mobileVisible?: boolean;
+  moduleSettings?: Contribution[];
 };
 
 function SettingsIcon({ svg }: { svg: string }) {
@@ -93,7 +80,7 @@ function NavButton({
       aria-current={active ? "page" : undefined}
     >
       {icon ? <SettingsIcon svg={icon} /> : null}
-      <span>{t(item.labelKey)}</span>
+      <span>{item.label ?? t(item.labelKey)}</span>
       {item.showDot && showAboutDot ? <i className="nav-dot" /> : null}
     </button>
   );
@@ -105,6 +92,7 @@ export default function SettingsSidebar({
   onClose,
   showAboutDot = false,
   mobileVisible = true,
+  moduleSettings = [],
 }: SettingsSidebarProps) {
   const { t } = useTranslation("settings");
 
@@ -149,6 +137,17 @@ export default function SettingsSidebar({
             </div>
           </section>
         ))}
+        {moduleSettings.length > 0 ? (
+          <section className="nav-section nav-section-nested">
+            <h2>Modules</h2>
+            <div className="nav-items">
+              {Array.from(new Map(moduleSettings.map((setting) => [setting.settingsSection || setting.id, setting])).values()).map((setting) => {
+                const key = `module:${setting.settingsSection || setting.id}` as SettingsMenuKey;
+                return <NavButton key={key} item={{ key, labelKey: '', label: setting.label }} selectedKey={selectedKey} onSelect={onSelect} showAboutDot={showAboutDot} />;
+              })}
+            </div>
+          </section>
+        ) : null}
 
         <section className="nav-section settings-footer-links">
           <div className="nav-items">

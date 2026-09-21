@@ -4,6 +4,8 @@ import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { renderGeneratedEntrypoint } from "../../../scripts/generate-frontend-modules.mjs";
+import { resolveFrontendProfile } from "../../../scripts/frontend-profile.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const pilotdeckRoot = resolve(scriptDir, "../../..");
@@ -15,12 +17,15 @@ const defaults = {
 };
 
 const options = parseArgs(process.argv.slice(2));
-if (options.help || !options.profile) {
+if (options.help) {
   console.log("Usage: node products/pilotdeck-staffdeck-sop/scripts/export-composition.mjs --profile /path/to/pilotdeck.yaml [--out /path/to/export] [--staffdeck-root /path/to/StaffDeck]");
   process.exit(options.help ? 0 : 2);
 }
 
-const profilePath = resolve(options.profile);
+const profilePath = resolveFrontendProfile({
+  frontendProfile: options.profile ? resolve(options.profile) : process.env.PILOTDECK_FRONTEND_PROFILE,
+  configPath: options.profile ? resolve(options.profile) : process.env.PILOTDECK_CONFIG_PATH,
+}).path;
 const profileText = await readFile(profilePath, "utf8");
 const profile = materializeRuntimeReferences(YAML.parse(profileText));
 if (!isRecord(profile)) throw new Error(`Profile '${profilePath}' must be a YAML object.`);
@@ -30,6 +35,7 @@ await assertEmptyDirectory(output);
 
 await mkdir(output, { recursive: true });
 await copyPilotDeck(output);
+await writeGeneratedFrontend(output, profile);
 await copyStaffDeck(resolve(options.staffdeckRoot ?? defaults.staffdeckRoot), output, assembly.sop?.kind === "legacy");
 await writeDeploymentFiles(output, profile, profilePath, assembly);
 
@@ -212,6 +218,16 @@ async function copyPilotDeck(output) {
     "src", "scripts", "ui", "skills",
   ];
   for (const entry of entries) await copyRequired(join(pilotdeckRoot, entry), join(destination, entry));
+}
+
+async function writeGeneratedFrontend(output, profile) {
+  const destination = join(output, "pilotdeck/ui/src/composition/generated/frontend-modules.ts");
+  await mkdir(dirname(destination), { recursive: true });
+  await writeFile(destination, renderGeneratedEntrypoint(
+    profile,
+    destination,
+    join(output, "pilotdeck/ui/src/composition"),
+  ), "utf8");
 }
 
 async function copyStaffDeck(source, output, includeSop) {

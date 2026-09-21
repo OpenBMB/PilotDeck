@@ -1,0 +1,70 @@
+schemaVersion: 1
+agent:
+  model: smoke/operator
+model:
+  providers:
+    smoke:
+      protocol: openai
+      url: http://127.0.0.1:18092/v1
+      apiKey: local-only
+      models:
+        operator:
+          capabilities:
+            supportsToolUse: true
+modules:
+  agentLoop: { enabled: true, provider: pilotdeck }
+  skills: { enabled: true, provider: pilotdeck }
+  tools: { enabled: true, provider: pilotdeck }
+  context: { enabled: true, provider: pilotdeck }
+  modelProvider: { enabled: true, provider: pilotdeck }
+  sop:
+    enabled: true
+    implementationId: staffdeck.portable-sop
+    contract: sop.lifecycle/v2
+    transport: sop-http-v2
+    endpoint: http://127.0.0.1:18091
+    definitionsPath: /Users/a1/Desktop/claw/openbmb/PilotDeck-frontend-seven-slot/products/pilotdeck-staffdeck-sop/sops/operator-approval.yaml
+    defaultSopId: operator_approval
+    timeoutMs: 30000
+  knowledge:
+    enabled: true
+    implementationId: staffdeck.knowledge
+    contract: staffdeck.knowledge/v1
+    transport: module-http-v2
+    endpoint: http://127.0.0.1:18090
+    tenantId: tenant_demo
+    actorUserId: admin
+    defaultBaseId: kb_preset_data_001
+    methods:
+      - list_bases
+      - create_base
+      - get_base
+      - update_base
+      - delete_base
+      - list_versions
+      - sync_base
+      - publish_version
+      - rollback_version
+      - list_documents
+      - get_document
+      - import_document
+      - import_okf
+      - update_document
+      - delete_document
+      - list_document_buckets
+      - update_bucket
+      - list_bucket_chunks
+      - update_chunk
+      - get_job
+      - list_jobs
+      - cancel_job
+      - list_okf_concepts
+      - get_okf_concept
+      - upsert_okf_concept
+      - export_okf
+      - lint_okf
+      - list_discoveries
+      - confirm_discovery
+      - reject_discovery
+      - query
+      - resolve_citation

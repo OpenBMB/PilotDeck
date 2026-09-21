@@ -24,13 +24,20 @@ import {
 } from '../pilotdeck-bridge.js';
 import { createNormalizedMessage } from '../pilotdeck-message.js';
 
-const router = express.Router();
 const REPO_ROOT = process.cwd();
 
 function isSearchToolName(name) {
   const normalized = String(name || '').toLowerCase();
   return normalized === 'grep' || normalized === 'glob';
 }
+
+export function createMessagesRouter({
+  getGateway = getPilotDeckGateway,
+  toFrames = gatewayEventToFrames,
+  isGatewayUnavailable = isGatewayUnavailableError,
+  withGatewayReadRetry = withPilotDeckGatewayReadRetry,
+} = {}) {
+  const router = express.Router();
 
 router.get('/:sessionId/messages', async (req, res) => {
   try {
@@ -42,7 +49,7 @@ router.get('/:sessionId/messages', async (req, res) => {
       : null;
     const offset = parseInt(req.query.offset || '0', 10);
 
-    const result = await withPilotDeckGatewayReadRetry((gateway) => gateway.readSessionMessages({
+    const result = await withGatewayReadRetry((gateway) => gateway.readSessionMessages({
       sessionKey: sessionId,
       projectKey: projectPath,
       limit: limit ?? undefined,
@@ -65,7 +72,7 @@ router.get('/:sessionId/messages', async (req, res) => {
     return res.json({
       messages,
       ...(result.stream ? { stream: { active: result.stream.active, runId: result.stream.runId,
-        messages: result.stream.events.flatMap(event => gatewayEventToFrames(event, sessionId, 'pilotdeck')),
+        messages: result.stream.events.flatMap(event => toFrames(event, sessionId, 'pilotdeck')),
       } } : {}),
       total: totalKnown,
       hasMore,
@@ -75,7 +82,7 @@ router.get('/:sessionId/messages', async (req, res) => {
     });
   } catch (error) {
     console.error('[messages] read_session_messages failed:', error);
-    if (isGatewayUnavailableError(error)) {
+    if (isGatewayUnavailable(error)) {
       return res.status(503).json({
         error: {
           code: 'gateway_unavailable',
@@ -99,7 +106,7 @@ router.post('/:sessionId/fork', async (req, res) => {
       return res.status(400).json({ error: 'fromEntryId is required' });
     }
 
-    const gateway = await getPilotDeckGateway();
+    const gateway = await getGateway();
     const result = await gateway.forkSession({
       sessionKey: sessionId,
       projectKey: projectPath,
@@ -132,7 +139,7 @@ router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
     const { sessionId, subagentId } = req.params;
     const projectPath = String(req.query.projectPath || req.query.projectName || REPO_ROOT);
 
-    const result = await withPilotDeckGatewayReadRetry((gateway) => gateway.readSubagentMessages({
+    const result = await withGatewayReadRetry((gateway) => gateway.readSubagentMessages({
       sessionKey: sessionId,
       subagentId,
       projectKey: projectPath,
@@ -158,7 +165,7 @@ router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
     });
   } catch (error) {
     console.error('[messages] read_subagent_messages failed:', error);
-    if (isGatewayUnavailableError(error)) {
+    if (isGatewayUnavailable(error)) {
       return res.status(503).json({
         error: {
           code: 'gateway_unavailable',
@@ -169,6 +176,9 @@ router.get('/:sessionId/subagent/:subagentId/messages', async (req, res) => {
     return res.json({ messages: [], total: 0, hasMore: false });
   }
 });
+
+  return router;
+}
 
 function mapWebMessageToNormalized(message, sessionId) {
   const payload = message.payload && typeof message.payload === 'object'
@@ -187,6 +197,8 @@ function mapWebMessageToNormalized(message, sessionId) {
     timestamp: message.createdAt,
     provider: message.provider || 'pilotdeck',
     ...(message.entryId ? { entryId: message.entryId } : {}),
+    ...(typeof message.moduleId === 'string' && message.moduleId ? { moduleId: message.moduleId } : {}),
+    ...(typeof payload.moduleId === 'string' && payload.moduleId ? { moduleId: payload.moduleId } : {}),
     ...(turnId ? { turnId, runId: turnId } : {}),
     ...(Number.isFinite(message.sequence) ? { sequence: message.sequence } : {}),
   };
@@ -327,5 +339,7 @@ function mapWebMessageToNormalized(message, sessionId) {
       return createNormalizedMessage({ ...base, kind: 'status', text: message.kind });
   }
 }
+
+const router = createMessagesRouter();
 
 export default router;

@@ -43,8 +43,8 @@ import { useWebSocket } from '../../contexts/WebSocketContext';
 import MessagesPaneV2 from './MessagesPaneV2';
 import ComposerV2 from './ComposerV2';
 import QueuedMessagesTray from './QueuedMessagesTray';
-import SopWaitBanner from './SopWaitBanner';
 import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
+import { getActiveAssembly } from '../../composition/runtime';
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -847,16 +847,10 @@ function ChatInterfaceV2({
   );
   const composerSlot = (
     <div data-chat-composer-slot className="min-h-0 shrink-0">
-      {!sessionIsReadOnly ? (
-        <SopWaitBanner
-          sessionKey={selectedSession?.id || currentSessionId || null}
-          projectKey={selectedProject?.fullPath || selectedProject?.path || ''}
-          refreshKey={`${chatMessages.length}:${isLoading ? 'running' : 'idle'}`}
-          disabled={isLoading}
-          onPrepared={handleSopContinuationPrepared}
-          onError={handleSopControlError}
-        />
-      ) : null}
+      {!sessionIsReadOnly ? getActiveAssembly()?.chatExtensions.map((extension) => {
+        const Extension = extension.component;
+        return <Extension key={extension.id} sessionId={selectedSession?.id || currentSessionId || undefined} projectKey={selectedProject?.fullPath || selectedProject?.path || ''} refreshKey={`${chatMessages.length}:${isLoading ? 'running' : 'idle'}`} disabled={isLoading} onPrepared={handleSopContinuationPrepared} onError={handleSopControlError} />;
+      }) : null}
       {composer}
     </div>
   );

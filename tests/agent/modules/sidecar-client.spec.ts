@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 
@@ -25,6 +28,9 @@ import type { CanonicalModelEvent } from "../../../src/model/index.js";
 import { createPlanTodoSnapshot } from "../../../src/plan-todo/projection/PlanTodoProjection.js";
 import { emptyLifecycleDispatchResult, LifecycleRuntime, type LifecycleDispatchInput } from "../../../src/lifecycle/index.js";
 import { InMemoryTranscriptWriter } from "../../../src/session/transcript/InMemoryTranscriptWriter.js";
+import { createAgentProjectSessionStorage } from "../../../src/session/storage/ProjectSessionStorage.js";
+import type { AgentMessageTranscriptEntry } from "../../../src/session/transcript/TranscriptEntry.js";
+import { readWebSessionMessages } from "../../../src/web/server/readSessionMessages.js";
 import {
   createWebFetchTool,
   ToolRegistry,
@@ -670,11 +676,19 @@ test("sidecar execute wire preserves AgentLoop turn limits and model configurati
   assert.deepEqual(agent.metadata, { subagentId: "child-1", subagentType: "general-purpose" });
 });
 
-test("sidecar runner reprojects child and host events onto one visible timeline", async () => {
+test("sidecar runner reprojects child and host events onto one visible timeline", async (t) => {
   const responses = queue<unknown>();
   const hostEvents: AgentEvent[] = [];
   const sessionId = "projected-event-session";
   const turnId = "projected-event-turn";
+  const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-sidecar-module-history-"));
+  const projectRoot = pilotHome;
+  const storage = createAgentProjectSessionStorage({ projectRoot, pilotHome, sessionId });
+  t.after(async () => {
+    await storage.dispose();
+    await rm(pilotHome, { recursive: true, force: true });
+  });
+  const transcript = storage.transcript;
   const childAssistantMessage = {
     role: "assistant" as const,
     content: [{
@@ -787,6 +801,7 @@ test("sidecar runner reprojects child and host events onto one visible timeline"
   const session = createAgentSession({
     sessionId,
     config: config(),
+    transcript,
     dependencies: {
       router: {} as never,
       ports: { model: noopModel(), tools: noopTools() },
@@ -801,6 +816,8 @@ test("sidecar runner reprojects child and host events onto one visible timeline"
   for await (const event of session.submit({ type: "text", text: "project events" }, { turnId })) events.push(event);
 
   const assistant = events.find((event) => event.type === "assistant_message");
+  assert.equal(assistant?.moduleId, "test-sidecar");
+  assert.equal(assistant?.type === "assistant_message" && assistant.message.metadata?.moduleId, "test-sidecar");
   const text = assistant?.type === "assistant_message" ? assistant.message.content[0] : undefined;
   assert.equal(text?.type, "text");
   assert.equal(text?.timeline?.turnId, turnId);
@@ -823,6 +840,42 @@ test("sidecar runner reprojects child and host events onto one visible timeline"
   assert.equal(derivedStatus?.type, "subagent_status");
   assert.equal(derivedStatus?.type === "subagent_status" && derivedStatus.status, "tool_started");
   await session.dispose();
+  await storage.flush();
+  assert.ok(storage.readTranscript);
+  const persisted = await storage.readTranscript();
+  const durableAssistant = persisted.entries.find((entry): entry is AgentMessageTranscriptEntry =>
+    entry.type === "assistant_message");
+  assert.equal(durableAssistant?.message.metadata?.moduleId, "test-sidecar");
+
+  const history = await readWebSessionMessages({ sessionKey: sessionId, projectKey: projectRoot }, { projectRoot, pilotHome });
+  const historyAssistant = history.messages.find((message) => message.kind === "text" && message.role === "assistant");
+  assert.equal(historyAssistant?.moduleId, "test-sidecar");
+
+  // This is the actual UI HTTP router, supplied with the reader-backed Gateway
+  // seam so the proof does not construct normalized history by hand.
+  const uiRoot = resolve(process.cwd(), "ui");
+  const distRoot = resolve(process.cwd(), "dist");
+  const distNodeModules = join(distRoot, "node_modules");
+  await symlink(join(uiRoot, "node_modules"), distNodeModules, "dir");
+  t.after(async () => { await rm(distNodeModules, { recursive: true, force: true }); });
+  const { createMessagesRouter } = await import(pathToFileURL(join(distRoot, "ui/server/routes/messages.js")).href);
+  const { default: express } = await import(pathToFileURL(join(distNodeModules, "express/index.js")).href);
+  const app = express();
+  app.use("/api/sessions", createMessagesRouter({
+    withGatewayReadRetry: async (read: (gateway: { readSessionMessages: (input: unknown) => Promise<typeof history> }) => Promise<typeof history>) =>
+      read({ readSessionMessages: async () => history }),
+  }));
+  const server = app.listen(0);
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/sessions/${sessionId}/messages?projectPath=${encodeURIComponent(projectRoot)}`);
+    assert.equal(response.status, 200);
+    const body = await response.json() as { messages: Array<{ kind?: string; role?: string; moduleId?: string }> };
+    assert.equal(body.messages.find((message) => message.kind === "text" && message.role === "assistant")?.moduleId, "test-sidecar");
+  } finally {
+    await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+  }
 });
 
 test("sidecar known terminal keeps host tool checkpoint state and current attachment authorization", async () => {

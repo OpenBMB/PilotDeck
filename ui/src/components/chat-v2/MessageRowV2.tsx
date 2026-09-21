@@ -36,6 +36,7 @@ import { useUploadedAttachmentPreviews } from '../chat/hooks/useUploadedAttachme
 import DocumentReferenceChip from './DocumentReferenceChip';
 import ReplyQuoteChip from './ReplyQuoteChip';
 import { AgentFileArtifactGroup, UserAttachmentCards } from './MessageFileCards';
+import { getActiveAssembly } from '../../composition/runtime';
 
 type DiffLine = { type: string; content: string; lineNum: number };
 
@@ -161,6 +162,20 @@ function MessageRowV2({
   onRegenerate,
 }: MessageRowV2Props) {
   const { t } = useTranslation('chat');
+  const isActiveModuleOwnership = (moduleId: string) => getActiveAssembly()?.selections.some((selection) => (
+    selection.frontend.id === moduleId || selection.binding.implementationId === moduleId
+  ));
+  const historyFallback = useMemo(() => {
+    const moduleId = typeof message.moduleId === 'string' ? message.moduleId : null;
+    if (!moduleId) return null;
+    const assembly = getActiveAssembly();
+    if (isActiveModuleOwnership(moduleId)) return null;
+    return assembly?.historyFallbacks.find((entry) => entry.moduleId === moduleId)?.contribution ?? null;
+  }, [message.moduleId]);
+  const removedModuleId = typeof message.moduleId === 'string'
+    && !isActiveModuleOwnership(message.moduleId)
+    ? message.moduleId
+    : null;
   const delegate = useMemo(() => shouldDelegate(message), [message]);
 
   const formattedContent = useMemo(
@@ -251,6 +266,24 @@ function MessageRowV2({
     Boolean(message.forkUnsupportedContent) ||
     visibleImages.length > 0 ||
     messageAttachments.length > 0;
+
+  if (historyFallback) {
+    const Fallback = historyFallback.component;
+    return <Fallback sessionId={message.id} artifact={message} />;
+  }
+
+  // Module-specific renderers are intentionally not shipped when a module is
+  // disabled or replaced. Keep old sessions readable with a host-owned
+  // fallback instead of importing the removed implementation back into the
+  // build just to render history.
+  if (removedModuleId) {
+    return <section className="max-w-xl rounded border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900" data-testid="removed-module-history-fallback">
+      <p className="font-medium text-neutral-800 dark:text-neutral-100">Historical content from unavailable module</p>
+      <p className="mt-1 text-xs text-neutral-500">{removedModuleId}</p>
+      {message.content ? <p className="mt-2 whitespace-pre-wrap">{String(message.content)}</p> : null}
+      {message.toolResult ? <pre className="mt-2 overflow-auto text-xs">{JSON.stringify(message.toolResult, null, 2)}</pre> : null}
+    </section>;
+  }
 
   if (message.isAgentActivitySummary) {
     return (

@@ -3,6 +3,8 @@ import React, { memo, useMemo, useCallback } from 'react';
 import type { Project } from '../../../types/app';
 import type { SubagentChildTool } from '../types/types';
 import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
+import { getActiveAssembly } from '../../../composition/runtime';
+import type { Contribution } from '../../../composition/contracts';
 import { OneLineDisplay, CollapsibleDisplay, ToolDiffViewer, MarkdownContent, FileListContent, TodoListContent, TaskListContent, TextContent, QuestionAnswerContent, SubagentContainer, PlanApprovedCard } from './components';
 
 type DiffLine = {
@@ -145,6 +147,10 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
 }) => {
   const { t } = useTranslation('common');
   const canonicalToolName = getCanonicalToolName(toolName);
+  const customRenderer = useMemo<Contribution | null>(() => {
+    const assembly = getActiveAssembly();
+    return assembly?.toolRenderers.find((candidate) => candidate.toolNames?.includes(toolName) || candidate.toolNames?.includes(canonicalToolName)) ?? null;
+  }, [canonicalToolName, toolName]);
   const config = getToolConfig(toolName, t);
   const displayConfig: any = mode === 'input' ? config.input : config.result;
 
@@ -178,6 +184,18 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
         subagentState={subagentState}
       />
     );
+  }
+
+  if (customRenderer) {
+    const CustomRenderer = customRenderer.component;
+    return <CustomRenderer
+      sessionId={toolId}
+      toolName={toolName}
+      toolInput={toolInput}
+      toolResult={toolResult}
+      mode={mode}
+      host={{ selectedProject }}
+    />;
   }
 
   if (!displayConfig) return null;

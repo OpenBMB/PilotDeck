@@ -17,6 +17,7 @@ import { cn } from '../../lib/utils.js';
 import { FileTypeIcon } from '../file-tree/components/FileTypeIcon';
 import { getFileIconData } from '../file-tree/constants/fileIcons';
 import { isTransientUploadAttachment } from './messageFileCardUtils';
+import { getActiveAssembly } from '../../composition/runtime';
 
 type CardFile = {
   id: string;
@@ -243,13 +244,16 @@ export function AgentFileArtifactGroup({
       <div className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400">{label}</div>
       <div className="grid grid-cols-1 gap-2">
         {values.map((artifact) => (
-          <MessageFileCard
-            key={artifact.path}
-            file={artifact}
-            project={project}
-            source="agent"
-            onBrowse={onBrowse}
-          />
+          (() => {
+            const custom = getActiveAssembly()?.artifactRenderers.find((candidate) => (
+              candidate.artifactMimeTypes?.includes(artifact.mimeType || '')
+            ));
+            if (custom) {
+              const Renderer = custom.component;
+              return <Renderer key={artifact.path} sessionId={artifact.id} artifact={artifact} host={{ selectedProject: project }} />;
+            }
+            return <MessageFileCard key={artifact.path} file={artifact} project={project} source="agent" onBrowse={onBrowse} />;
+          })()
         ))}
       </div>
     </section>

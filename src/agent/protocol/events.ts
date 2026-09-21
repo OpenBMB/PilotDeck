@@ -8,7 +8,7 @@ import type { TokenBudgetSnapshot } from "../../context/budget/TokenBudgetManage
 import type { RouterRetryProgressEvent } from "../../router/protocol/events.js";
 import type { FileArtifact } from "../../session/artifacts/FileArtifact.js";
 
-export type AgentEvent = { timeline?: TimelinePosition; streamBoundary?: StreamBoundary } & (
+export type AgentEvent = { timeline?: TimelinePosition; streamBoundary?: StreamBoundary; moduleId?: string } & (
   | { type: "session_started"; sessionId: string }
   | { type: "session_ended"; sessionId: string; reason: string }
   | { type: "turn_started"; sessionId: string; turnId: string }

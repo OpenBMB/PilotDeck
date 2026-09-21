@@ -48,6 +48,8 @@ export interface CompactProgress {
 }
 
 export interface NormalizedMessage {
+  /** Durable backend implementation id for module-owned transcript content. */
+  moduleId?: string;
   timeline?: TimelinePosition;
   streamBoundary?: { turnId: string; through: number; revision: number };
   streamState?: "open" | "closed";

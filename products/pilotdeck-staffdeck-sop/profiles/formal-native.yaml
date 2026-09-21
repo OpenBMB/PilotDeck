@@ -1,0 +1,111 @@
+schemaVersion: 1
+agent:
+  model: smoke/operator
+  params: {}
+  subagents:
+    default: inherit
+    params: {}
+model:
+  providers:
+    smoke:
+      protocol: openai
+      url: http://127.0.0.1:18092/v1
+      apiKey: local-only
+      models:
+        operator:
+          capabilities:
+            supportsToolUse: true
+memory:
+  enabled: false
+  reasoningMode: answer_first
+  autoIndexIntervalMinutes: 30
+  autoDreamIntervalMinutes: 60
+  captureStrategy: last_turn
+  includeAssistant: true
+  maxMessageChars: 6000
+  heartbeatBatchSize: 30
+router:
+  enabled: true
+  scenarios:
+    default: smoke/operator
+  tokenSaver:
+    enabled: true
+    judge: smoke/operator
+    defaultTier: medium
+    judgeTimeoutMs: 15000
+    subagent:
+      policy: judge
+    rules:
+      - complex is ONLY for tasks that need sub-agent orchestration or parallel delegation
+      - Multi-file operations and multi-step workflows without orchestration should be reasoning
+      - Simple file creation or single code generation is medium
+      - Trivial confirmations or one-file short Q&A is simple
+    tiers:
+      simple:
+        model: smoke/operator
+        label: 简单任务
+        description: Simple greetings, confirmations, single-step Q&A, trivial file writes, remembering rules
+      medium:
+        model: smoke/operator
+        label: 常规任务
+        description: Single tool call, short text generation, 1-2 file read/write, code generation
+      complex:
+        model: smoke/operator
+        label: 复杂任务
+        description: "Needs sub-agent orchestration: parallel workstreams, delegation to specialized agents"
+      reasoning:
+        model: smoke/operator
+        label: 深度推理
+        description: "Deep single-agent work: multi-file operations, data analysis, multi-step workflows, web research, structured reports from many sources"
+  stats:
+    enabled: true
+  autoOrchestrate:
+    enabled: true
+    triggerTiers:
+      - complex
+    slimSystemPrompt: true
+tools:
+  webSearch:
+    enabled: false
+alwaysOn:
+  projects: {}
+adapters:
+  feishu:
+    enabled: false
+  weixin:
+    enabled: false
+  wecom:
+    enabled: false
+webui:
+  runtime:
+    host: 0.0.0.0
+    serverPort: 3001
+    vitePort: 5173
+    apiTimeoutMs: 120000
+    databasePath: /tmp/pilotdeck-jwt-native-evidence/auth.db
+    workspacesRoot: /Users/a1
+  officePreview:
+    service: builtin
+    binaryPath: ""
+telemetry:
+  enabled: false
+modules:
+  agentLoop:
+    enabled: true
+    provider: pilotdeck
+  skills:
+    enabled: true
+    provider: pilotdeck
+  tools:
+    enabled: true
+    provider: pilotdeck
+  context:
+    enabled: true
+    provider: pilotdeck
+  modelProvider:
+    enabled: true
+    provider: pilotdeck
+  sop:
+    enabled: false
+  knowledge:
+    enabled: false

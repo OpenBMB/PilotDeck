@@ -2,14 +2,8 @@ import type { PilotDeckToolInputSchema, PilotDeckToolKind } from "../tool/index.
 
 export const MODULE_HTTP_TRANSPORT = "module-http-v2" as const;
 
-export const MODULE_SLOT_CONTRACTS = {
-  agentLoop: "pilotdeck.agent-loop/v1",
-  skills: "pilotdeck.skills/v1",
-  tools: "pilotdeck.tools/v1",
-  context: "pilotdeck.context/v1",
-  modelProvider: "pilotdeck.model/v1",
-  knowledge: "staffdeck.knowledge/v1",
-} as const;
+import { MODULE_SLOT_CONTRACTS } from "./contracts.js";
+export { MODULE_SLOT_CONTRACTS } from "./contracts.js";
 
 export type ComposableModuleSlot = keyof typeof MODULE_SLOT_CONTRACTS;
 
@@ -52,6 +46,12 @@ export type ExternalModuleBinding = Readonly<{
   callPath: string;
   timeoutMs?: number;
   methods: readonly string[];
+  /** Optional static frontend registry key selected by the profile. */
+  frontendModule?: string;
+  /** Module-owned tenant scope used by integrations that require it. */
+  tenantId?: string;
+  /** Module-owned actor identity used by integrations that require it. */
+  actorUserId?: string;
   tools?: readonly ExternalToolDescriptor[];
   deployment?: ModuleDeployment;
 }>;
@@ -62,6 +62,7 @@ export type ExternalAgentLoopBinding = Readonly<{
   contract: typeof MODULE_SLOT_CONTRACTS.agentLoop;
   transport: "module-stdio-v2" | "module-tcp-v2";
   methods: readonly string[];
+  frontendModule?: string;
   command?: string;
   args?: readonly string[];
   env?: Readonly<Record<string, string>>;

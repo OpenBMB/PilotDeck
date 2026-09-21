@@ -79,6 +79,7 @@ function convertSingleMessage(
   options: ConvertSingleMessageOptions = {},
 ): ChatMessage | null {
   const turnIdentity = {
+    ...(msg.moduleId ? { moduleId: msg.moduleId } : {}),
     ...(msg.renderKey ? { renderKey: msg.renderKey } : {}),
     ...(msg.runId ? { runId: msg.runId } : {}),
     ...(msg.turnId || msg.runId ? { turnId: msg.turnId || msg.runId } : {}),

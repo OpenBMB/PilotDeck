@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import type { Contribution, SurfaceProps } from "../../../composition/contracts";
 
 export type SettingsMainTab =
   | "appearance"
@@ -29,6 +30,8 @@ export type SettingsProps = {
   onClose: () => void;
   projects?: SettingsProject[];
   section?: string;
+  moduleSettings?: Contribution[];
+  host?: SurfaceProps["host"];
 };
 
 export type SetState<T> = Dispatch<SetStateAction<T>>;

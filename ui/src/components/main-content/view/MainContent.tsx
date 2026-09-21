@@ -14,7 +14,6 @@ import {
   Radio,
   type LucideIcon,
 } from "lucide-react";
-import ChatInterfaceV2 from "../../chat-v2/ChatInterfaceV2";
 import PluginTabContent from "../../plugins/view/PluginTabContent";
 import { cn } from "../../../lib/utils.js";
 import type { MainContentProps } from "../types/types";
@@ -48,7 +47,6 @@ const DashboardV2 = React.lazy(
 );
 const TasksV2 = React.lazy(() => import("../../main-content-v2/TasksV2"));
 const MemoryPanel = React.lazy(() => import("./memory/MemoryPanel"));
-const SkillsV2 = React.lazy(() => import("../../main-content-v2/SkillsV2"));
 
 function TabSkeleton() {
   return (
@@ -237,6 +235,8 @@ function MainContent({
   externalMessageUpdate,
   misroutedFileFromUrl,
   onMisroutedFileUrlHandled,
+  chatSurface: ChatSurface,
+  chatUnavailableMessage,
 }: MainContentProps) {
   const { i18n } = useTranslation();
   const { preferences } = useUiPreferences();
@@ -574,6 +574,8 @@ function MainContent({
           onFileRename={handleFileRename}
           onFileDelete={handleFileDelete}
           onSelectProjectByName={onSelectProjectByName}
+          chatSurface={ChatSurface}
+          chatUnavailableMessage={chatUnavailableMessage}
           isMobile={isMobile}
           editorSidebarProps={{
             editorTabs,
@@ -668,6 +670,8 @@ type SplitBodyProps = {
   onFileRename: (oldPath: string, newPath: string) => void;
   onFileDelete: (deletedPath: string) => void;
   onSelectProjectByName?: (projectName: string) => void;
+  chatSurface?: MainContentProps["chatSurface"];
+  chatUnavailableMessage?: MainContentProps["chatUnavailableMessage"];
   isMobile: boolean;
   editorSidebarProps: React.ComponentProps<typeof EditorSidebar>;
 };
@@ -718,6 +722,8 @@ function SplitBody(props: SplitBodyProps) {
     onFileRename,
     onFileDelete,
     onSelectProjectByName,
+    chatSurface: ChatSurface,
+    chatUnavailableMessage,
     isMobile,
     editorSidebarProps,
   } = props;
@@ -1082,14 +1088,6 @@ function SplitBody(props: SplitBodyProps) {
       );
     if (activeTab === "memory")
       return <MemoryPanel selectedProject={selectedProject} />;
-    if (activeTab === "skills")
-      return (
-        <SkillsV2
-          selectedProject={selectedProject}
-          projects={projects}
-          compact
-        />
-      );
     if (renderTasksAsTool) return <TasksV2 isVisible />;
     if (isPlugin) {
       return (
@@ -1525,7 +1523,7 @@ function SplitBody(props: SplitBodyProps) {
             </header>
           ) : null}
           <ErrorBoundary showDetails>
-            <ChatInterfaceV2
+            {ChatSurface ? <ChatSurface
               selectedProject={selectedProject}
               selectedSession={selectedSession}
               ws={ws}
@@ -1557,7 +1555,7 @@ function SplitBody(props: SplitBodyProps) {
               onSelectWorkspace={onSelectWorkspace}
               workspaceBinding={workspaceBinding}
               onCreateProject={onCreateProject}
-            />
+            /> : <div role="status" className="flex h-full items-center justify-center p-6 text-sm text-neutral-600 dark:text-neutral-300">{chatUnavailableMessage || 'The selected AgentLoop does not provide a chat surface.'}</div>}
           </ErrorBoundary>
         </div>
       </div>

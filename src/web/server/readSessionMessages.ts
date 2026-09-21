@@ -596,10 +596,14 @@ export function flattenCanonicalMessage(
   }
   flushText();
   const queueItemId = message.metadata?.queueItemId;
+  const moduleId = message.metadata?.moduleId;
   if (typeof queueItemId === "string" && queueItemId) {
     for (const webMessage of out) {
       webMessage.queueItemId = queueItemId;
     }
+  }
+  if (typeof moduleId === "string" && moduleId) {
+    for (const webMessage of out) webMessage.moduleId = moduleId;
   }
   return out;
 }

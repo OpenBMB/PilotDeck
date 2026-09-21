@@ -26,6 +26,7 @@
     "package:desktop": "pnpm --filter pilotdeck-desktop run pack",
     "server": "npm run check:runtime && tsx src/cli/pilotdeck.ts server",
     "server:built": "npm run check:runtime && node dist/src/cli/pilotdeck.js server",
+    "generate:frontend": "node scripts/generate-frontend-modules.mjs",
     "skills:migrate": "tsx src/cli/pilotdeck.ts skills migrate",
     "predev": "npm run check:runtime",
     "dev": "node scripts/dev-launcher.mjs",

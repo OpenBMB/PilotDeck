@@ -2,7 +2,7 @@ import { useAuth } from '../auth/context/AuthContext';
 import { SessionViewReadyContext, useSessionIndicators } from './useSessionIndicators';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMatch, useNavigate } from 'react-router-dom';
+import { useLocation, useMatch, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
 import { useWebSocket } from '../../contexts/WebSocketContext';
@@ -28,10 +28,12 @@ import { api } from '../../utils/api';
 import { useRejectExternalFileDropOutsideTargets } from '../../utils/externalFileDrop';
 import { resolveMarkdownFileHref } from '../chat/utils/resolveMarkdownFileHref';
 import type { SessionNavigationOptions } from '../main-content/types/types';
+import type { Contribution, SurfaceProps } from '../../composition/contracts';
 import { getSettingsPathFromTab } from '../settings/navigation';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
+import { useModuleComposition } from '../../composition/runtime';
 import {
   chooseDefaultProject,
   resolveHomeNewConversationProject,
@@ -40,13 +42,14 @@ import {
   getDedicatedTabPath,
   SCHEDULED_TASKS_PATH,
   SETTINGS_PATH,
-  SKILLS_PATH,
 } from './appRoutes';
 
 type TypedSettingsProps = {
   onClose: () => void;
   projects: SettingsProject[];
   section?: string;
+  moduleSettings?: Contribution[];
+  host?: SurfaceProps['host'];
 };
 
 type DeleteSessionTarget = {
@@ -62,23 +65,23 @@ const SettingsComponent = Settings as unknown as (props: TypedSettingsProps) => 
 export default function AppShellV2() {
   useRejectExternalFileDropOutsideTargets();
   const navigate = useNavigate();
+  const location = useLocation();
+  const composition = useModuleComposition();
   // Match the V2 URL shapes and hoist params up. A single wildcard route
   // owns this shell so state survives every URL transition.
   const matchProjectChat = useMatch('/p/:projectName/c/:sessionId');
   const matchProject = useMatch('/p/:projectName');
   const matchLegacySession = useMatch('/session/:sessionId');
   const matchScheduledTasks = useMatch(SCHEDULED_TASKS_PATH);
-  const matchSkills = useMatch(SKILLS_PATH);
   const matchSettingsIndex = useMatch({ path: SETTINGS_PATH, end: true });
-  const matchSettingsSection = useMatch(`${SETTINGS_PATH}/:section`);
+  const matchSettingsSection = useMatch(`${SETTINGS_PATH}/*`);
+  const modulePage = composition.assembly?.pages.find((page) => page.path === location.pathname) ?? null;
   const isSettingsRoute = Boolean(matchSettingsIndex || matchSettingsSection);
-  const settingsSection = matchSettingsSection?.params.section;
-  const dedicatedTab = matchSkills
-    ? 'skills' as const
-    : matchScheduledTasks
+  const settingsSection = matchSettingsSection?.params['*'];
+  const dedicatedTab = matchScheduledTasks
       ? 'cron' as const
       : null;
-  const isDedicatedRoute = dedicatedTab !== null || isSettingsRoute;
+  const isDedicatedRoute = dedicatedTab !== null || isSettingsRoute || modulePage !== null;
   const projectNameParam =
     matchProjectChat?.params.projectName ?? matchProject?.params.projectName ?? undefined;
   const sessionId =
@@ -647,8 +650,9 @@ export default function AppShellV2() {
 	      onResetProjectSessionPreview={handleResetProjectSessionPreview}
 	      onCollapse={onCollapseSidebar}
 	      onLoadMoreSessions={loadMoreSessions}
-	      loadingMoreProjectIds={loadingMoreProjectIds}
-	    />
+      loadingMoreProjectIds={loadingMoreProjectIds}
+      modulePages={(composition.assembly?.pages ?? []).filter((page) => page.path !== '/chat')}
+    />
   );
 
   return (
@@ -660,6 +664,8 @@ export default function AppShellV2() {
           onClose={onCloseSettings}
           projects={sidebarSharedProps.projects.map(normalizeProjectForSettings)}
           section={settingsSection}
+          moduleSettings={composition.assembly?.settings}
+          host={{ selectedProject, selectedSession, projects: sidebarSharedProps.projects, navigate }}
         />
       ) : null}
       <div
@@ -745,6 +751,11 @@ export default function AppShellV2() {
           externalMessageUpdate={externalMessageUpdate}
           misroutedFileFromUrl={misroutedFileFromUrl}
           onMisroutedFileUrlHandled={handleMisroutedFileUrlHandled}
+          modulePage={modulePage}
+          moduleChatSurface={composition.assembly?.chatSurface}
+          moduleChatExtensions={composition.assembly?.chatExtensions}
+          moduleCompositionError={composition.error}
+          moduleCompositionLoading={composition.loading}
         />
       </main>
       </div>

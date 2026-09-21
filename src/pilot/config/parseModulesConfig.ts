@@ -91,8 +91,9 @@ function parseCoreModule(
   }
   warnUnknownKeys(value, [
     "enabled", "provider", "implementationId", "contract", "transport", "endpoint",
-    "manifestPath", "callPath", "timeoutMs", "methods", "catalog",
+    "manifestPath", "callPath", "timeoutMs", "methods", "catalog", "frontendModule",
     "command", "args", "env", "host", "port", "connectTimeoutMs", "deployment",
+    "defaultBaseId", "resultLimit", "tenantId", "actorUserId",
   ], path, diagnostics);
   if (value.enabled === false && (name === "skills" || name === "knowledge")) {
     return { enabled: false };
@@ -151,6 +152,9 @@ function parseExternalModule(
   }
   const tools = slot === "tools" ? readToolCatalog(value.catalog, diagnostics, `${path}.catalog`) : undefined;
   const deployment = parseDeployment(value.deployment, path, diagnostics);
+  const frontendModule = nonEmptyText(value.frontendModule);
+  const tenantId = nonEmptyText(value.tenantId);
+  const actorUserId = nonEmptyText(value.actorUserId);
   if (slot === "tools" && (!tools || tools.length === 0)) {
     fatal(diagnostics, "MODULE_TOOL_CATALOG_REQUIRED", `${path}.catalog must declare at least one tool for the synchronous ToolPort list operation.`, `${path}.catalog`);
   }
@@ -166,6 +170,9 @@ function parseExternalModule(
     methods,
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(tools ? { tools } : {}),
+    ...(frontendModule ? { frontendModule } : {}),
+    ...(tenantId ? { tenantId } : {}),
+    ...(actorUserId ? { actorUserId } : {}),
     ...(deployment ? { deployment } : {}),
   };
 }
@@ -193,7 +200,8 @@ function parseExternalAgentLoop(
     if (value.env !== undefined && !env) fatal(diagnostics, "MODULE_ENV_INVALID", `${path}.env must contain string values.`, `${path}.env`);
     const deployment = parseDeployment(value.deployment, path, diagnostics);
     if (!implementationId || contract !== supportedContract("agentLoop") || !command || !args || !methodsValid) return undefined;
-    return { enabled: true, implementationId, contract: MODULE_SLOT_CONTRACTS.agentLoop, transport, methods, command, args, ...(env ? { env } : {}), ...(deployment ? { deployment } : {}) };
+    const frontendModule = nonEmptyText(value.frontendModule);
+    return { enabled: true, implementationId, contract: MODULE_SLOT_CONTRACTS.agentLoop, transport, methods, command, args, ...(env ? { env } : {}), ...(frontendModule ? { frontendModule } : {}), ...(deployment ? { deployment } : {}) };
   }
   if (transport === "module-tcp-v2") {
     const host = nonEmptyText(value.host);
@@ -204,7 +212,8 @@ function parseExternalAgentLoop(
     if (!port) fatal(diagnostics, "MODULE_PORT_INVALID", `${path}.port must be an integer between 1 and 65535.`, `${path}.port`);
     if (value.connectTimeoutMs !== undefined && connectTimeoutMs === undefined) fatal(diagnostics, "MODULE_TIMEOUT_INVALID", `${path}.connectTimeoutMs must be a positive integer.`, `${path}.connectTimeoutMs`);
     if (!implementationId || contract !== supportedContract("agentLoop") || !host || !port || !methodsValid) return undefined;
-    return { enabled: true, implementationId, contract: MODULE_SLOT_CONTRACTS.agentLoop, transport, methods, host, port, ...(connectTimeoutMs ? { connectTimeoutMs } : {}), ...(deployment ? { deployment } : {}) };
+    const frontendModule = nonEmptyText(value.frontendModule);
+    return { enabled: true, implementationId, contract: MODULE_SLOT_CONTRACTS.agentLoop, transport, methods, host, port, ...(connectTimeoutMs ? { connectTimeoutMs } : {}), ...(frontendModule ? { frontendModule } : {}), ...(deployment ? { deployment } : {}) };
   }
   return undefined;
 }
@@ -230,7 +239,7 @@ function parseSopModule(
   }
   warnUnknownKeys(value, [
     "enabled", "provider", "implementationId", "contract", "transport", "manifestPath",
-    "endpoint", "definitionsPath", "defaultSopId", "timeoutMs", "deployment",
+    "endpoint", "definitionsPath", "defaultSopId", "timeoutMs", "deployment", "frontendModule",
   ], path, diagnostics);
   if (value.enabled === false) return undefined;
   if (value.enabled !== true) {
@@ -257,6 +266,7 @@ function parseSopModule(
   }
   const timeoutMs = optionalPositiveInteger(value.timeoutMs);
   const deployment = parseDeployment(value.deployment, path, diagnostics);
+  const frontendModule = nonEmptyText(value.frontendModule);
   if (value.timeoutMs !== undefined && timeoutMs === undefined) {
     fatal(diagnostics, "SOP_MODULE_TIMEOUT_INVALID", "modules.sop.timeoutMs must be a positive integer.", `${path}.timeoutMs`);
   }
@@ -297,6 +307,7 @@ function parseSopModule(
     contract: STAFFDECK_SOP_CONTRACT,
     transport: STAFFDECK_SOP_TRANSPORT,
     manifestPath,
+    ...(frontendModule ? { frontendModule } : {}),
   };
 }
 

@@ -22,6 +22,8 @@ function SettingsInner({
   onClose,
   projects = [],
   section,
+  moduleSettings = [],
+  host,
 }: SettingsProps) {
   const navigate = useNavigate();
   const isDesktopApp =
@@ -96,6 +98,7 @@ function SettingsInner({
         onClose={onClose}
         showAboutDot={versionInfo.hasUpdate}
         mobileVisible={mobileNavigationOpen}
+        moduleSettings={moduleSettings}
       />
       <SettingsContent
         selectedKey={selectedKey}
@@ -105,6 +108,8 @@ function SettingsInner({
         onCloseSettings={onClose}
         mobileVisible={!mobileNavigationOpen}
         onOpenMobileNavigation={() => setMobileNavigationOpen(true)}
+        moduleSettings={moduleSettings}
+        host={host}
       />
     </div>
   );

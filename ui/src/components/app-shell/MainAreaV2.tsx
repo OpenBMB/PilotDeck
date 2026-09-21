@@ -34,9 +34,9 @@ import { isImeEnterEvent } from '../../utils/ime';
 import { api } from '../../utils/api';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import { isGeneralProject } from './appShellSelection';
+import type { ChatSurfaceContribution, Contribution, PageContribution } from '../../composition/contracts';
 
 const CronV2 = lazy(() => import('../main-content-v2/CronV2'));
-const SkillsV2 = lazy(() => import('../main-content-v2/SkillsV2'));
 
 function DedicatedWorkspacePage({
   title,
@@ -108,32 +108,6 @@ function ScheduledTasksArea({
   );
 }
 
-function SkillsArea({
-  isSidebarCollapsed,
-  onOpenSidebar,
-  selectedProject,
-  projects,
-}: {
-  isSidebarCollapsed?: boolean;
-  onOpenSidebar?: () => void;
-  selectedProject: Project | null;
-  projects: Project[];
-}) {
-  const { t } = useTranslation();
-
-  return (
-    <DedicatedWorkspacePage
-      title={t('sidebar:quickActions.skills', { defaultValue: 'Skills' })}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onOpenSidebar={onOpenSidebar}
-    >
-      <Suspense fallback={<PageFallback />}>
-        <SkillsV2 selectedProject={selectedProject} projects={projects} />
-      </Suspense>
-    </DedicatedWorkspacePage>
-  );
-}
-
 type Tab = { id: AppTab; labelKey: string; icon: LucideIcon };
 
 // Chat is the shell's default surface rather than a visible destination.
@@ -174,6 +148,11 @@ type MainAreaV2Props = MainContentProps & {
   activeTab: AppTab;
   isSidebarCollapsed?: boolean;
   onOpenSidebar?: () => void;
+  modulePage?: PageContribution | null;
+  moduleChatSurface?: ChatSurfaceContribution | null;
+  moduleChatExtensions?: Contribution[];
+  moduleCompositionError?: string | null;
+  moduleCompositionLoading?: boolean;
 };
 
 function MainAreaV2Content(props: MainAreaV2Props) {
@@ -185,6 +164,9 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     setActiveTab,
     isSidebarCollapsed,
     onOpenSidebar,
+    moduleChatExtensions = [],
+    moduleCompositionError,
+    moduleCompositionLoading = false,
   } = props;
   const [alwaysOnSubTab, setAlwaysOnSubTab] = useState<AlwaysOnSubTab>('dashboard');
   const [latestAlwaysOnEventMarker, setLatestAlwaysOnEventMarker] = useState<string | null>(null);
@@ -544,35 +526,40 @@ function MainAreaV2Content(props: MainAreaV2Props) {
       </header>
 
       {/* Body */}
-      <div className="relative z-0 min-h-0 flex-1 overflow-hidden">
-        <MainContent
-          {...props}
-          activeTab={displayActiveTab}
-          alwaysOnSubTab={alwaysOnSubTab}
-          onAlwaysOnSubTabChange={setAlwaysOnSubTab}
-        />
+      <div className="relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+        {moduleCompositionError ? <div role="alert" className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{moduleCompositionError}</div> : null}
+        {moduleCompositionLoading ? <div role="status" className="shrink-0 border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">Verifying runtime modules. Module actions are temporarily read-only.</div> : null}
+        <div className="min-h-0 flex-1">
+          <MainContent
+            {...props}
+            chatSurface={props.moduleChatSurface?.component ?? null}
+            chatUnavailableMessage={moduleCompositionLoading ? 'Verifying runtime modules before chat is available.' : null}
+            activeTab={displayActiveTab}
+            alwaysOnSubTab={alwaysOnSubTab}
+            onAlwaysOnSubTabChange={setAlwaysOnSubTab}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
 export default function MainAreaV2(props: MainAreaV2Props) {
+  if (props.modulePage) {
+    const Page = props.modulePage.component;
+    return <DedicatedWorkspacePage title={props.modulePage.label} isSidebarCollapsed={props.isSidebarCollapsed} onOpenSidebar={props.onOpenSidebar}>
+      <Page
+        sessionId={props.selectedSession?.id ?? ''}
+        projectKey={props.selectedProject?.name}
+        host={{ selectedProject: props.selectedProject, selectedSession: props.selectedSession, projects: props.projects }}
+      />
+    </DedicatedWorkspacePage>;
+  }
   if (props.activeTab === 'cron') {
     return (
       <ScheduledTasksArea
         isSidebarCollapsed={props.isSidebarCollapsed}
         onOpenSidebar={props.onOpenSidebar}
-      />
-    );
-  }
-
-  if (props.activeTab === 'skills') {
-    return (
-      <SkillsArea
-        isSidebarCollapsed={props.isSidebarCollapsed}
-        onOpenSidebar={props.onOpenSidebar}
-        selectedProject={props.selectedProject}
-        projects={props.projects}
       />
     );
   }

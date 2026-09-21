@@ -5,7 +5,6 @@ export const SETTINGS_SECTION_PATH = '/settings/:section';
 
 export const DEDICATED_TAB_PATHS = {
   cron: SCHEDULED_TASKS_PATH,
-  skills: SKILLS_PATH,
 } as const;
 
 export type DedicatedTab = keyof typeof DEDICATED_TAB_PATHS;

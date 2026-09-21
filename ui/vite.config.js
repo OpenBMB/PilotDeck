@@ -49,6 +49,12 @@ export default defineConfig(({ mode }) => {
   const disableLocalAuth =
     env.PILOTDECK_DISABLE_LOCAL_AUTH !== '0' &&
     env.PILOTDECK_DISABLE_LOCAL_AUTH !== 'false'
+  const buildInputs = env.PILOTDECK_INCLUDE_COMPOSITION_PROTOTYPE === 'true'
+    ? {
+      app: path.resolve(__dirname, 'index.html'),
+      composition: path.resolve(__dirname, 'composition.html'),
+    }
+    : path.resolve(__dirname, 'index.html')
 
   return {
     define: {
@@ -95,6 +101,7 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
+        input: buildInputs,
         output: {
           manualChunks: {
             'vendor-react': ['react', 'react-dom', 'react-router-dom'],

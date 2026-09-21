@@ -5,6 +5,11 @@ const sopEnabled = process.env.LOCAL_OPENAI_MOCK_SOP_ENABLED !== "false";
 const mode = process.env.LOCAL_OPENAI_MOCK_MODE ?? "browser-smoke";
 
 createServer(async (request, response) => {
+  if (request.method === "GET" && request.url === "/health") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ status: "ok", mode }));
+    return;
+  }
   const chunks = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));

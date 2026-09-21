@@ -104,6 +104,8 @@ export type WebMessage = {
   provider: "pilotdeck" | (string & {});
   role: WebMessageRole;
   kind: WebMessageKind;
+  /** Durable backend implementation id for a module-owned history row. */
+  moduleId?: string;
   /** Logical agent turn that owns this message. Stable across live/history projections. */
   turnId?: string;
   /** Shared identity of a model output block in live events and history. */

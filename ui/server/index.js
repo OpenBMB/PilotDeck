@@ -135,6 +135,7 @@ import userRoutes from './routes/user.js';
 import pluginsRoutes from './routes/plugins.js';
 import messagesRoutes from './routes/messages.js';
 import sopRoutes from './routes/sop.js';
+import { createModuleRuntimeRouter } from './routes/modules.js';
 import { closeMemoryServices, startMemoryScheduler, stopMemoryScheduler } from './services/memoryService.js';
 import { createNormalizedMessage, createOptimisticUserFrames } from './pilotdeck-message.js';
 import { startEnabledPluginServers, stopAllPlugins, getPluginPort } from './utils/plugin-process-manager.js';
@@ -636,6 +637,7 @@ app.put('/api/sessions/model', authenticateToken, sessionModelHandlers.set);
 app.delete('/api/sessions/model', authenticateToken, sessionModelHandlers.clear);
 app.use('/api/sessions', authenticateToken, messagesRoutes);
 app.use('/api/sop', authenticateToken, sopRoutes);
+app.use('/api/modules', authenticateToken, createModuleRuntimeRouter());
 
 // Agent API Routes (uses API key authentication)
 app.use('/api/agent', agentRoutes);

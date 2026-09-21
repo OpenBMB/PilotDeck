@@ -1,0 +1,28 @@
+schemaVersion: 1
+agent:
+  model: smoke/operator
+model:
+  providers:
+    smoke:
+      protocol: openai
+      url: http://127.0.0.1:18092/v1
+      apiKey: local-only
+      models:
+        operator:
+          capabilities:
+            supportsToolUse: true
+modules:
+  agentLoop: { enabled: true, provider: pilotdeck }
+  skills: { enabled: false }
+  tools: { enabled: true, provider: pilotdeck }
+  context: { enabled: true, provider: pilotdeck }
+  modelProvider: { enabled: true, provider: pilotdeck }
+  sop: { enabled: false }
+  knowledge:
+    enabled: true
+    implementationId: replacement.knowledge
+    frontendModule: fixture.knowledge-search
+    contract: staffdeck.knowledge/v1
+    transport: module-http-v2
+    endpoint: http://127.0.0.1:18093
+    methods: [query, resolve_citation]

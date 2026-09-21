@@ -1,4 +1,6 @@
 import type { AlwaysOnSubTab, AppTab, Project, ProjectSession } from '../../../types/app';
+import type { ComponentType } from 'react';
+import type { ChatInterfaceProps } from '../../chat/types/types';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
 
@@ -84,6 +86,10 @@ export type MainContentProps = {
   /** When the URL uses /session/<file> by mistake, open the file in the editor. */
   misroutedFileFromUrl?: string | null;
   onMisroutedFileUrlHandled?: () => void;
+  /** Selected AgentLoop implementation; the shell does not import a chat client. */
+  chatSurface?: ComponentType<ChatInterfaceProps> | null;
+  /** Runtime capability verification is pending, so no module surface is active yet. */
+  chatUnavailableMessage?: string | null;
 };
 
 export type MainContentStateViewProps = {

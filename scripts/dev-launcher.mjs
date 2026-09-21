@@ -26,11 +26,28 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+import { resolveFrontendProfile } from './frontend-profile.mjs';
+import { generateFrontendModules } from './generate-frontend-modules.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '..');
-const launchConfigPath = resolveLaunchConfigPath(process.env.PILOTDECK_CONFIG_PATH);
+export function resolveDevProfile(env = process.env) {
+  return resolveFrontendProfile({
+    frontendProfile: env.PILOTDECK_FRONTEND_PROFILE,
+    configPath: env.PILOTDECK_CONFIG_PATH,
+  });
+}
+
+export async function prepareDevFrontend({ profilePath, outputPath } = {}) {
+  return generateFrontendModules({
+    profilePath: profilePath ?? resolveDevProfile().path,
+    ...(outputPath ? { outputPath } : {}),
+  });
+}
+
+const frontendProfile = resolveDevProfile();
+const launchConfigPath = frontendProfile.path;
 
 export function resolveLaunchConfigPath(value, launchCwd = process.cwd()) {
   const configuredPath = typeof value === 'string' ? value.trim() : '';
@@ -105,6 +122,8 @@ function envPortOverride(name) {
 }
 
 async function main() {
+  // The supervisor starts Vite itself, bypassing ui's predev hook.
+  await prepareDevFrontend({ profilePath: frontendProfile.path });
   const server = await findFreePort('server', SERVER_PORT_BASE, envPortOverride('SERVER_PORT'));
   const gateway = await findFreePort('gateway', GATEWAY_PORT_BASE, envPortOverride('PILOTDECK_GATEWAY_PORT'));
   const vite = await findFreePort('vite', VITE_PORT_BASE, envPortOverride('VITE_PORT'));
@@ -129,8 +148,7 @@ async function main() {
     PILOTDECK_RESTART_MODE: 'dev',
     VITE_PORT: String(vite.port),
   };
-  if (launchConfigPath) env.PILOTDECK_CONFIG_PATH = launchConfigPath;
-  else delete env.PILOTDECK_CONFIG_PATH;
+  env.PILOTDECK_CONFIG_PATH = launchConfigPath;
 
   const child = spawn(
     process.execPath,

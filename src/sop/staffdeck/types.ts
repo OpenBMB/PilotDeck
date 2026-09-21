@@ -14,6 +14,8 @@ type SopRuntimeConfigBase = Readonly<{
   stateRoot: string;
   timeoutMs?: number;
   deployment?: ModuleDeployment;
+  /** Optional static frontend registry key selected by the profile. */
+  frontendModule?: string;
 }>;
 
 /** Legacy shorthand retained for existing StaffDeck deployments. */
