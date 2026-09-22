@@ -1141,6 +1141,14 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
     models: {},
   },
 
+  orcarouter: {
+    displayName: "OrcaRouter",
+    protocol: "openai",
+    defaultUrl: "https://api.orcarouter.ai/v1",
+    apiKeyEnvVar: "ORCAROUTER_API_KEY",
+    models: {},
+  },
+
   ollama: {
     displayName: "Ollama",
     protocol: "openai",
