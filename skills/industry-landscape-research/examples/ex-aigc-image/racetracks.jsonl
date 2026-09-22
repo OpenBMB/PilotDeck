@@ -1,0 +1,66 @@
+{
+  "id": "image-pro",
+  "name": "专业生图工具",
+  "definition": "面向设计师/创作者的独立专业图像生成产品，含订阅制 SaaS、社区驱动产品、专业插件。",
+  "out_of_scope": [
+    "通用 LLM 附带的图像生成功能（如 ChatGPT 内嵌）",
+    "视频生成工具的图像导出功能",
+    "3D 模型生成"
+  ],
+  "archetype": "content-media",
+  "tam_usd_bn": {
+    "value": 12,
+    "methodology": "consensus-of-three",
+    "as_of_date": "2026-06-20",
+    "source_url": "internal-estimate"
+  },
+  "cagr_pct": {
+    "value": 35,
+    "horizon_years": 3,
+    "source_url": "https://example.com/aigc-2026-report"
+  },
+  "geographies": [
+    {"region": "global", "market_share_pct": 100, "notes": "全球"},
+    {"region": "us-canada", "market_share_pct": 45, "notes": "Midjourney/Adobe/Imagen 集中"},
+    {"region": "china", "market_share_pct": 20, "notes": "即梦/通义万相为主"},
+    {"region": "europe", "market_share_pct": 15, "notes": "Stability/Recraft"},
+    {"region": "southeast-asia", "market_share_pct": 5, "notes": "新兴市场"}
+  ],
+  "tier_thresholds": {
+    "tier_1_usd_bn_min": 5,
+    "tier_2_usd_bn_min": 1,
+    "tier_3_usd_bn_min": 0.1
+  },
+  "key_metrics": [
+    "paid_users",
+    "arpu",
+    "monthly_active_creator",
+    "image_generation_per_user",
+    "retention_d30"
+  ],
+  "lifecycle_stage": "scaling",
+  "concentration": {
+    "cr3": 55,
+    "cr5": 70,
+    "hhi": 1850
+  },
+  "structural_drivers": [
+    "扩散模型质量持续提升",
+    "推理成本下降推动免费层扩张",
+    "版权诉讼推动训练数据合规化",
+    "Adobe/Canva 等头部 SaaS 集成挤压独立工具"
+  ],
+  "color_code": "#3F51B5",
+  "as_of_date": "2026-06-20",
+  "sources": [
+    {
+      "url": "https://example.com/aigc-2026-report",
+      "title": "AIGC 2026 行业综述（示例链接）",
+      "publisher": "Example Research",
+      "publisher_tier": "L2-authoritative-media",
+      "published_date": "2026-05-15",
+      "fetched_date": "2026-06-20",
+      "grade": "L2"
+    }
+  ]
+}

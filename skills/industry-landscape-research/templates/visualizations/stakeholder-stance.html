@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<!-- 利益相关方立场图 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{{INDUSTRY_NAME}} 利益相关方立场</title>
+<style>
+  body { background: #0F1115; color: #E5E0D8; font-family: 'Inter','Noto Sans SC',sans-serif; margin: 0; padding: 32px; }
+  h1 { font-family: 'Playfair Display', serif; font-size: 28px; margin: 0; color: #E5E0D8; }
+  .subtitle { color: #8B8680; font-size: 13px; margin-bottom: 32px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #2A2A2E; vertical-align: top; }
+  th { color: #C9A87C; font-weight: 600; font-size: 13px; }
+  td { font-size: 13px; }
+  .stance-strong-support { color: #4A90E2; font-weight: 600; }
+  .stance-support { color: #6AB0F0; }
+  .stance-neutral { color: #8B8680; }
+  .stance-oppose { color: #E89060; }
+  .stance-strong-oppose { color: #C04040; font-weight: 600; }
+  .influence-high { background: #2A1A1A; }
+  .influence-medium { background: #1F1B16; }
+  .influence-low { background: #1A1C20; }
+  .matrix { margin-top: 40px; }
+  .matrix svg { width: 100%; height: 480px; background: #1A1C20; border-radius: 8px; }
+  .ai { color: #4A90E2; font-style: italic; }
+</style>
+</head>
+<body>
+  <h1>{{INDUSTRY_NAME}} 利益相关方立场图</h1>
+  <div class="subtitle">数据截止 {{AS_OF_DATE}} · 共 {{STAKEHOLDER_COUNT}} 类相关方 · L1+L2 占比 {{L1L2_PCT}}%</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>角色</th><th>立场</th><th>影响力</th><th>关键诉求</th><th>典型动作 / 来源</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="influence-high"><td>监管（{{REGULATOR_1}}）</td><td class="stance-oppose">反对偏中</td><td>高</td><td>{{R1_DEMAND}}</td><td>{{R1_ACTION}}</td></tr>
+      <tr class="influence-high"><td>监管（{{REGULATOR_2}}）</td><td class="stance-neutral">中立观望</td><td>高</td><td>{{R2_DEMAND}}</td><td>{{R2_ACTION}}</td></tr>
+      <tr class="influence-medium"><td>版权方 / 内容方</td><td class="stance-oppose">反对偏中</td><td>中</td><td>{{IP_DEMAND}}</td><td>{{IP_ACTION}}</td></tr>
+      <tr class="influence-medium"><td>渠道 / 平台方</td><td class="stance-support">支持偏中</td><td>中</td><td>{{CHANNEL_DEMAND}}</td><td>{{CHANNEL_ACTION}}</td></tr>
+      <tr class="influence-high"><td>头部客户</td><td class="stance-support">支持</td><td>高</td><td>{{CUST_DEMAND}}</td><td>{{CUST_ACTION}}</td></tr>
+      <tr class="influence-low"><td>媒体 / KOL</td><td class="stance-neutral">中立</td><td>低</td><td>流量</td><td>{{MEDIA_ACTION}}</td></tr>
+      <tr class="influence-medium"><td>资本市场（一二级）</td><td class="stance-strong-support">强支持</td><td>中</td><td>叙事 + 退出路径</td><td>{{CAPITAL_ACTION}}</td></tr>
+      <tr class="influence-low"><td>员工 / 工会</td><td class="stance-oppose">反对偏中</td><td>低</td><td>{{LABOR_DEMAND}}</td><td>{{LABOR_ACTION}}</td></tr>
+      <tr class="influence-medium"><td>公众舆论</td><td class="stance-neutral">中立</td><td>中</td><td>透明 / 隐私 / 公平</td><td>{{PUBLIC_ACTION}}</td></tr>
+      <tr class="influence-low"><td>竞争对手</td><td class="stance-strong-oppose">强反对</td><td>低</td><td>降速 / 调查</td><td>{{COMPETITOR_ACTION}}</td></tr>
+    </tbody>
+  </table>
+
+  <div class="matrix">
+    <h2 style="font-family:'Playfair Display',serif;color:#C9A87C;font-size:20px;">立场 × 影响力散点矩阵</h2>
+    <svg viewBox="0 0 1200 480" xmlns="http://www.w3.org/2000/svg">
+      <!-- 坐标系 -->
+      <line x1="600" y1="40" x2="600" y2="440" stroke="#C9A87C" stroke-width="1" stroke-dasharray="3,5"/>
+      <line x1="100" y1="240" x2="1100" y2="240" stroke="#C9A87C" stroke-width="1" stroke-dasharray="3,5"/>
+
+      <text x="600" y="30" fill="#C9A87C" font-size="12" text-anchor="middle">高影响力</text>
+      <text x="600" y="468" fill="#C9A87C" font-size="12" text-anchor="middle">低影响力</text>
+      <text x="105" y="244" fill="#C9A87C" font-size="12">强反对</text>
+      <text x="1095" y="244" fill="#C9A87C" font-size="12" text-anchor="end">强支持</text>
+
+      <!-- 高影响 + 反对（左上）= 重点关注 -->
+      <rect x="100" y="40" width="500" height="200" fill="#2A1A1A" fill-opacity="0.5"/>
+      <text x="350" y="60" fill="#C04040" font-size="14" font-weight="600" text-anchor="middle">🚨 重点关注 / 公关优先</text>
+
+      <!-- 高影响 + 支持（右上）= 战略联盟 -->
+      <rect x="600" y="40" width="500" height="200" fill="#1A2A40" fill-opacity="0.5"/>
+      <text x="850" y="60" fill="#4A90E2" font-size="14" font-weight="600" text-anchor="middle">⭐ 战略联盟 / 锁定背书</text>
+
+      <!-- 低影响 + 反对（左下）= 监控 -->
+      <rect x="100" y="240" width="500" height="200" fill="#1F1B16" fill-opacity="0.3"/>
+      <text x="350" y="430" fill="#8B8680" font-size="12" text-anchor="middle">监控即可</text>
+
+      <!-- 低影响 + 支持（右下）= 培养 -->
+      <rect x="600" y="240" width="500" height="200" fill="#1A1C20" fill-opacity="0.6"/>
+      <text x="850" y="430" fill="#8B8680" font-size="12" text-anchor="middle">培养 / 扩大基础</text>
+
+      <!-- 散点示例（10 个 stakeholder，按表格顺序）-->
+      <circle cx="280" cy="100" r="10" fill="#C04040"/>
+      <text x="296" y="104" fill="#E5E0D8" font-size="11">监管 1</text>
+      <circle cx="500" cy="120" r="10" fill="#8B8680"/>
+      <text x="516" y="124" fill="#E5E0D8" font-size="11">监管 2</text>
+      <circle cx="340" cy="290" r="8" fill="#E89060"/>
+      <text x="354" y="294" fill="#E5E0D8" font-size="11">版权方</text>
+      <circle cx="780" cy="290" r="8" fill="#6AB0F0"/>
+      <text x="794" y="294" fill="#E5E0D8" font-size="11">渠道方</text>
+      <circle cx="900" cy="120" r="10" fill="#6AB0F0"/>
+      <text x="916" y="124" fill="#E5E0D8" font-size="11">头部客户</text>
+      <circle cx="1020" cy="160" r="9" fill="#4A90E2"/>
+      <text x="1036" y="164" fill="#E5E0D8" font-size="11">资本市场</text>
+      <circle cx="380" cy="370" r="6" fill="#E89060"/>
+      <text x="392" y="374" fill="#E5E0D8" font-size="11">员工/工会</text>
+      <circle cx="600" cy="320" r="7" fill="#8B8680"/>
+      <text x="612" y="324" fill="#E5E0D8" font-size="11">公众</text>
+      <circle cx="180" cy="380" r="6" fill="#C04040"/>
+      <text x="192" y="384" fill="#E5E0D8" font-size="11">竞争对手</text>
+      <circle cx="780" cy="380" r="5" fill="#8B8680"/>
+      <text x="792" y="384" fill="#E5E0D8" font-size="11">媒体</text>
+    </svg>
+  </div>
+
+  <p class="ai" style="margin-top:32px;">行动建议：{{ACTION_PLAN}}</p>
+</body>
+</html>

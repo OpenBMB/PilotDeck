@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>SKU × Pricing Matrix</title>
+<style>
+:root {
+  --bg: #0F1115;
+  --panel: #181B22;
+  --line: #2A2E38;
+  --text: #E8E6E1;
+  --muted: #8A8D96;
+  --gold: #C9A87C;
+  --blue: #4A90E2;
+  --green: #7BC97D;
+  --red: #E07579;
+  --yellow: #E5C162;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  padding: 32px;
+  margin: 0;
+  font-size: 14px;
+}
+h1 { font-family: 'Playfair Display', 'Noto Serif SC', serif; font-weight: 600; font-size: 28px; margin: 0 0 8px; color: var(--gold); }
+.subtitle { color: var(--muted); margin: 0 0 24px; }
+.legend { display: flex; gap: 16px; margin-bottom: 16px; font-size: 12px; color: var(--muted); }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot.ga { background: var(--green); }
+.dot.beta { background: var(--yellow); }
+.dot.preview { background: var(--blue); }
+.dot.deprecated { background: var(--red); }
+table { width: 100%; border-collapse: collapse; background: var(--panel); }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 13px; }
+th { background: #11141A; color: var(--gold); font-weight: 600; position: sticky; top: 0; }
+tr:hover { background: #1F2330; }
+.company { font-weight: 600; color: var(--text); }
+.sku-name { font-family: 'JetBrains Mono', monospace; color: var(--blue); font-size: 12px; }
+.price { font-family: 'JetBrains Mono', monospace; color: var(--gold); }
+.price-secondary { color: var(--muted); font-size: 11px; }
+.grade { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+.grade.L1 { background: #1F4D2A; color: var(--green); }
+.grade.L2 { background: #1F3E5C; color: var(--blue); }
+.grade.L3 { background: #5C4A1F; color: var(--yellow); }
+.grade.L4 { background: #5C2A2A; color: var(--red); }
+.status { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+.status.ga { background: #1F4D2A; color: var(--green); }
+.status.beta { background: #5C4A1F; color: var(--yellow); }
+.status.preview { background: #1F3E5C; color: var(--blue); }
+.status.deprecated { background: #3A2C2C; color: var(--red); text-decoration: line-through; }
+.source { font-size: 10px; color: var(--muted); }
+.source a { color: var(--blue); text-decoration: none; }
+.note { background: var(--panel); border-left: 3px solid var(--gold); padding: 12px 16px; margin: 24px 0; font-size: 12px; color: var(--muted); }
+.cohort { margin-top: 32px; }
+.cohort-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.cohort-header h2 { font-size: 18px; margin: 0; color: var(--gold); }
+.cohort-header .meta { color: var(--muted); font-size: 12px; }
+.delta-up { color: var(--green); }
+.delta-down { color: var(--red); }
+</style>
+</head>
+<body>
+
+<h1>SKU × Pricing Matrix</h1>
+<p class="subtitle">{{INDUSTRY}} · 数据快照 {{AS_OF_DATE}} · 共 {{N_COMPANIES}} 家 / {{N_SKUS}} SKU</p>
+
+<div class="legend">
+  <span><span class="dot ga"></span> GA 通用版</span>
+  <span><span class="dot beta"></span> Beta 公测</span>
+  <span><span class="dot preview"></span> Preview 预览</span>
+  <span><span class="dot deprecated"></span> Deprecated 已弃用</span>
+  <span style="margin-left:auto;">数据等级：<span class="grade L1">L1</span> 官方 <span class="grade L2">L2</span> 权威 <span class="grade L3">L3</span> 估算 <span class="grade L4">L4</span> 传闻</span>
+</div>
+
+<!-- 一家公司一段（cohort），同公司内多 SKU。复用时复制 cohort 块。 -->
+
+<div class="cohort">
+  <div class="cohort-header">
+    <h2>{{COMPANY_NAME}}</h2>
+    <span class="meta">{{COMPANY_DESCRIPTION}} · 总 SKU 数 {{N}} · 近 90 天新增 <span class="delta-up">+{{N_NEW}}</span> · 已弃用 <span class="delta-down">-{{N_DEPRECATED}}</span></span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:14%;">SKU / 版本</th>
+        <th style="width:8%;">发布</th>
+        <th style="width:8%;">状态</th>
+        <th style="width:20%;">核心参数</th>
+        <th style="width:14%;">价格 (输入)</th>
+        <th style="width:14%;">价格 (输出)</th>
+        <th style="width:10%;">QPS / Rate</th>
+        <th style="width:12%;">来源</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="sku-name">{{SKU_NAME}}</span><br><span class="price-secondary">前代: {{PREV_SKU}}</span></td>
+        <td>{{RELEASE_DATE}}</td>
+        <td><span class="status ga">GA</span></td>
+        <td>{{PARAMS}}</td>
+        <td><span class="price">{{INPUT_PRICE}}</span><br><span class="price-secondary">{{INPUT_UNIT}}</span></td>
+        <td><span class="price">{{OUTPUT_PRICE}}</span><br><span class="price-secondary">{{OUTPUT_UNIT}}</span></td>
+        <td>{{QPS}}</td>
+        <td><span class="grade L1">L1</span> <a href="{{SOURCE_URL}}">官方</a><br><span class="source">{{SOURCE_AS_OF}}</span></td>
+      </tr>
+      <tr>
+        <td><span class="sku-name">{{SKU_NAME_2}}</span></td>
+        <td>{{RELEASE_DATE_2}}</td>
+        <td><span class="status beta">Beta</span></td>
+        <td>{{PARAMS_2}}</td>
+        <td><span class="price">{{INPUT_PRICE_2}}</span></td>
+        <td><span class="price">{{OUTPUT_PRICE_2}}</span></td>
+        <td>{{QPS_2}}</td>
+        <td><span class="grade L1">L1</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 横向价格对比（同任务跨公司） -->
+
+<div class="cohort">
+  <div class="cohort-header">
+    <h2>横向价格对比 — 同任务跨家</h2>
+    <span class="meta">假设：1M 输入 token + 0.5M 输出 token / 中文为主</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>公司</th>
+        <th>SKU</th>
+        <th>输入价</th>
+        <th>输出价</th>
+        <th>1.5M token 总成本</th>
+        <th>成本倍数</th>
+        <th>来源</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="company">{{C1}}</td>
+        <td class="sku-name">{{C1_SKU}}</td>
+        <td class="price">{{C1_IN}}</td>
+        <td class="price">{{C1_OUT}}</td>
+        <td class="price">{{C1_TOTAL}}</td>
+        <td>1.0× <span class="price-secondary">(基准)</span></td>
+        <td><span class="grade L1">L1</span></td>
+      </tr>
+      <tr>
+        <td class="company">{{C2}}</td>
+        <td class="sku-name">{{C2_SKU}}</td>
+        <td class="price">{{C2_IN}}</td>
+        <td class="price">{{C2_OUT}}</td>
+        <td class="price">{{C2_TOTAL}}</td>
+        <td><span class="delta-down">0.4×</span></td>
+        <td><span class="grade L1">L1</span></td>
+      </tr>
+      <tr>
+        <td class="company">{{C3}}</td>
+        <td class="sku-name">{{C3_SKU}}</td>
+        <td class="price">{{C3_IN}}</td>
+        <td class="price">{{C3_OUT}}</td>
+        <td class="price">{{C3_TOTAL}}</td>
+        <td><span class="delta-up">2.3×</span></td>
+        <td><span class="grade L1">L1</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note">
+  <strong>使用须知：</strong>
+  ① 价格单位务必明确（per 1K / 1M token、per 秒、per 张）。中英文 token 比例 ≈ 1:1.5-2，须按真实业务测算。
+  ② "总成本"按业务真实 in/out 比加权，禁止只看输入价。
+  ③ Cache 命中价 / Batch 价 / Reasoning Token 计费须在 footnote 注明。
+  ④ 每行价格必须给 L1 官方 pricing page 链接 + 抓取日期；超 7 天须重抓。
+  ⑤ Beta / Preview 价格不可外推到 GA 阶段做客户报价。
+</div>
+
+</body>
+</html>
