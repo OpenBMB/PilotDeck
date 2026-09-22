@@ -80,6 +80,12 @@ export type AgentToolInput = {
   subagent_type?: string;
   /** @deprecated camelCase alias retained for backwards compatibility. */
   subagentType?: string;
+  /**
+   * Queue the subagent as a background task and return immediately. The
+   * parent keeps working; the final report is delivered automatically as a
+   * `background_subagent_result` message before the current turn ends.
+   */
+  run_in_background?: boolean;
 };
 
 export type AgentToolOutput = {
@@ -90,6 +96,15 @@ export type AgentToolOutput = {
   turns?: number;
   durationMs?: number;
   parsed?: Record<string, string>;
+};
+
+/** Output shape of the background (`run_in_background: true`) branch. */
+export type AgentBackgroundOutput = {
+  taskId: string;
+  subagentId: string;
+  subagentType: string;
+  description: string;
+  runInBackground: true;
 };
 
 export type CreateAgentToolOptions = {
@@ -113,7 +128,7 @@ const PUBLIC_SUBAGENT_TYPES = ["general-purpose", "explore", "plan"] as const;
 
 export function createAgentTool(
   options: CreateAgentToolOptions = {},
-): PilotDeckToolDefinition<AgentToolInput, AgentToolOutput> {
+): PilotDeckToolDefinition<AgentToolInput, AgentToolOutput | AgentBackgroundOutput> {
   const fallbackPresets = options.subagents ?? BUILTIN_SUBAGENTS;
   const description = buildAgentToolDescription();
 
@@ -145,6 +160,11 @@ export function createAgentTool(
           type: "string",
           description: "Deprecated legacy alias for subagent_type. Prefer subagent_type.",
         },
+        run_in_background: {
+          type: "boolean",
+          description:
+            "Run the subagent as a background task and return immediately with a taskId. Keep working; the final report is delivered automatically as a background_subagent_result message before this turn ends. Inspect progress with task_output / task_wait, cancel with task_stop.",
+        },
       },
     },
     maxResultBytes: 200_000,
@@ -164,30 +184,37 @@ export function createAgentTool(
         input.subagent_type ?? input.subagentType,
       );
       const directive = input.prompt;
+      let requestedTypeForMode = explicit ?? "general-purpose";
+      if ((context.permissionContext?.mode === "plan" || context.runMode === "ask") && requestedTypeForMode === "general-purpose") {
+        requestedTypeForMode = "explore";
+      }
 
-      // Full fork path (C2): preferred when AgentLoop wired the fork API.
+      // Background branch (C5): must run BEFORE the sync paths so a queued
+      // call never blocks, and never silently falls back to a sync fork.
+      if (input.run_in_background) {
+        return runBackgroundFork({
+          input,
+          context,
+          requestedType: requestedTypeForMode,
+          directive,
+        });
+      }
+
+      // Full fork path (C): preferred when AgentLoop wired the fork API.
       if (context.subagent) {
-        let requestedType = explicit ?? "general-purpose";
-        if ((context.permissionContext?.mode === "plan" || context.runMode === "ask") && requestedType === "general-purpose") {
-          requestedType = "explore";
-        }
         return runFullFork({
           input,
           context,
-          requestedType,
+          requestedType: requestedTypeForMode,
           directive,
           fork: context.subagent,
         });
-      }
-      let requestedType = explicit ?? "general-purpose";
-      if ((context.permissionContext?.mode === "plan" || context.runMode === "ask") && requestedType === "general-purpose") {
-        requestedType = "explore";
       }
 
       return runFallback({
         input,
         context,
-        requestedType,
+        requestedType: requestedTypeForMode,
         directive,
         presets: fallbackPresets,
         model: options.model,
@@ -284,6 +311,11 @@ export function buildAskModeAgentToolSchema(): {
       subagentType: {
         type: "string",
         description: "Deprecated legacy alias for subagent_type. Prefer subagent_type.",
+      },
+      run_in_background: {
+        type: "boolean",
+        description:
+          "Run the subagent as a background task and return immediately with a taskId. Keep working; the final report is delivered automatically as a background_subagent_result message before this turn ends.",
       },
     },
   };
@@ -393,6 +425,93 @@ async function runFullFork(args: {
       forkMode: "full",
       turns: report.turns,
       durationMs: report.durationMs,
+    },
+  };
+}
+
+/**
+ * Background fork branch (`run_in_background: true`). Queues the subagent via
+ * the loop-provided `startBackground` API and returns immediately with a
+ * stable `taskId` (=== `subagentId`) the parent can track with the `task_*`
+ * tools. Validation mirrors the sync fork path and happens BEFORE queueing so
+ * a rejected call never leaves an orphan task. When no background backend is
+ * wired this fails with `unsupported_tool` — it must never silently fall back
+ * to a synchronous fork.
+ */
+async function runBackgroundFork(args: {
+  input: AgentToolInput;
+  context: PilotDeckToolRuntimeContext;
+  requestedType: string;
+  directive: string;
+}): Promise<PilotDeckToolExecutionOutput<AgentBackgroundOutput>> {
+  const { input, context, requestedType, directive } = args;
+  const fork = context.subagent;
+  const startBackground = fork?.startBackground;
+  if (!fork || !startBackground) {
+    throw new PilotDeckToolRuntimeError(
+      "unsupported_tool",
+      "run_in_background requires an agent runtime with BackgroundTaskRuntime wiring. This runtime cannot queue background subagents; omit run_in_background to run the subagent synchronously.",
+    );
+  }
+  if (!fork.isAllowedDefinition(requestedType)) {
+    const allowed = fork.listDefinitions().map((d) => d.id).join(", ");
+    throw new PilotDeckToolRuntimeError(
+      "invalid_tool_input",
+      `Unknown subagent_type "${requestedType}". Available: ${allowed}.`,
+    );
+  }
+  const currentDepth = context.subagentDepth ?? fork.depth ?? 0;
+  if (currentDepth >= fork.maxSubagentDepth) {
+    throw new PilotDeckToolRuntimeError(
+      "tool_execution_failed",
+      `subagent_depth_exceeded (depth=${currentDepth}, max=${fork.maxSubagentDepth}); nested background fork rejected.`,
+      { errorCode: "subagent_depth_exceeded" },
+    );
+  }
+  const subagentId = randomUUID();
+  let queued: { taskId: string; subagentId: string; subagentType: string };
+  try {
+    queued = await startBackground({
+      definitionId: requestedType,
+      directive,
+      description: input.description,
+      subagentId,
+      toolCallId: context.currentToolCallId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new PilotDeckToolRuntimeError(
+      "tool_execution_failed",
+      `agent background fork failed to queue: ${message}`,
+      { errorCode: "subagent_execution_failed" },
+    );
+  }
+  const output: AgentBackgroundOutput = {
+    taskId: queued.taskId,
+    subagentId: queued.subagentId,
+    subagentType: queued.subagentType,
+    description: input.description,
+    runInBackground: true,
+  };
+  return {
+    content: [
+      {
+        type: "text",
+        text: [
+          `[${requestedType}] ${input.description}`,
+          "",
+          `Queued as a background task: taskId=${output.taskId}. Keep working on independent steps; the subagent's final report is delivered automatically as a background_subagent_result message before this turn ends.`,
+          "- task_output / task_wait: inspect progress or block on this taskId",
+          "- task_stop: cancel this taskId if the result is no longer needed",
+        ].join("\n"),
+      },
+      { type: "json", value: output },
+    ],
+    data: output,
+    metadata: {
+      subagent: requestedType,
+      subagentId: output.subagentId,
+      forkMode: "background",
     },
   };
 }

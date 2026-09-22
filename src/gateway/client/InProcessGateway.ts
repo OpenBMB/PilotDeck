@@ -2275,6 +2275,17 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
           durationMs: event.durationMs,
         },
       }];
+    case "background_subagent_result":
+      return [{
+        type: "agent_status",
+        event: "background_subagent_result",
+        detail: {
+          taskId: event.taskId,
+          subagentId: event.subagentId,
+          subagentType: event.subagentType,
+          status: event.status,
+        },
+      }];
     case "retry_progress":
       return [{
         type: "agent_status",
