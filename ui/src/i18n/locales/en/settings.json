@@ -95,7 +95,8 @@
       "officePreview": "Configure Office file preview.",
       "privacy": "Manage tool rules and anonymous usage data. The chat composer controls global access permissions.",
       "advanced": "Manage application retry, service, and environment variable settings.",
-      "about": "View the current version and check for updates."
+      "about": "View the current version and check for updates.",
+      "aboutWeb": "View the current version and GitHub Releases."
     },
     "titles": {
       "general": "General",
@@ -139,6 +140,8 @@
       },
       "currentVersion": "Current version:",
       "latestVersion": "Latest version:",
+      "webReleaseHint": "Update the Web deployment using its deployment method. Releases and installation notes are available on GitHub.",
+      "webReleaseLink": "View GitHub Releases",
       "desktopUpdate": {
         "cancel": "Cancel download",
         "progress": "Download progress",

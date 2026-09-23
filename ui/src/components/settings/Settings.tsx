@@ -48,8 +48,8 @@ function SettingsInner({
       if (isDesktopApp) {
         data = await desktopUpdates().checkUpdates();
       } else {
-        const res = await authenticatedFetch("/api/update/check", { method: "POST" });
-        if (!res.ok) throw new Error("Failed to check version");
+        const res = await authenticatedFetch("/api/update/info");
+        if (!res.ok) throw new Error("Failed to read local version");
         data = await res.json();
       }
       setVersionInfo(

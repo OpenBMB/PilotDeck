@@ -84,15 +84,17 @@ Publishing and packaged repository metadata use the repository running the
 workflow. Upstream builds publish to `OpenBMB/PilotDeck`; fork builds publish to
 their own repository.
 
-Web and desktop updates both read these unified releases. See
-[Web updates](web-update.md) for supported Git deployments.
+Desktop updates read the Latest release manifest directly. The Web About page
+shows the local build version and links to GitHub Releases; command-line and IM
+updates retain their supported Git deployment policy in [Web updates](web-update.md).
 
 ## Desktop updates
 
-The client checks stable, non-draft `vYYYY.MM.DD[-rN]` releases in its packaged
-repository (or `PILOTDECK_UPDATE_REPOSITORY` override). It validates `release.json`
-against the release tag, numeric version, repository, source commit format, and
-published installer names and sizes. The newest release is compared numerically
+The client reads `release.json` from the GitHub Release explicitly marked
+**Latest** in its packaged repository (or `PILOTDECK_UPDATE_REPOSITORY` override).
+The release workflow marks each completed release Latest. The client validates
+the manifest's tag, numeric version, repository, source commit format, asset
+names, sizes and checksums. That version is compared numerically
 with Electron's `app.getVersion()`: only a higher version offers an update.
 Equal or older releases never trigger a downgrade. Release allocation uses the
 largest existing revision for the date plus one, including manually skipped
@@ -228,7 +230,8 @@ node apps/desktop/scripts/verify-installer.cjs
 
 The network check requires OpenSSL and uses a temporary local HTTPS origin and
 proxy, without contacting GitHub or installing anything. It covers both config
-and environment proxy discovery/download paths, proxy authentication, and loopback bypass. The installer
+and environment proxy discovery/download paths, the GitHub asset redirect,
+proxy authentication, and loopback bypass. The installer
 check downloads the builder's NSIS toolchain if uncached, compiles the launch
 paths using the installed templates, and checks that both use `explorer.exe`.
 It uses the builder's template working directory, stdin input, and include

@@ -29,8 +29,16 @@ app.whenReady().then(async () => {
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', path.join(root, 'key.pem'), '-out', path.join(root, 'cert.pem'), '-days', '1', '-subj', '/CN=pilotdeck-update-fixture'], { stdio: 'ignore' });
   const origin = https.createServer({ key: fs.readFileSync(path.join(root, 'key.pem')), cert: fs.readFileSync(path.join(root, 'cert.pem')) }, (req, res) => {
     requests.push(req.url);
-    if (req.url.includes('/repos/')) res.end(JSON.stringify([{ tag_name: manifest.tag, assets: [{ name: 'release.json' }, asset] }]));
+    if (req.url.includes('/repos/')) { res.writeHead(403); res.end('GitHub API quota exhausted'); }
+    else if (req.url.endsWith('/releases/latest/download/release.json')) {
+      res.writeHead(302, { Location: 'https://release-assets.githubusercontent.com/release.json' });
+      res.end();
+    }
     else if (req.url.endsWith('/release.json')) res.end(JSON.stringify(manifest));
+    else if (req.url.endsWith(`/releases/download/${manifest.tag}/${asset.name}`)) {
+      res.writeHead(302, { Location: `https://release-assets.githubusercontent.com/${asset.name}` });
+      res.end();
+    }
     else { res.setHeader('Content-Length', payload.length); res.end(payload); }
   });
   await listen(origin);
@@ -44,7 +52,7 @@ app.whenReady().then(async () => {
       return;
     }
     destinations.push(req.url);
-    assert.ok(['api.github.com:443', 'github.com:443'].includes(req.url));
+    assert.ok(['github.com:443', 'release-assets.githubusercontent.com:443'].includes(req.url));
     const upstream = net.connect(origin.address().port, '127.0.0.1', () => {
       socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       if (head.length) upstream.write(head);
@@ -54,7 +62,7 @@ app.whenReady().then(async () => {
   });
   await listen(proxy);
   const updater = process.platform === 'win32' ? new NsisUpdater() : new MacUpdater();
-  updater.netSession.setCertificateVerifyProc((request, callback) => callback(['api.github.com', 'github.com'].includes(request.hostname) ? 0 : -3));
+  updater.netSession.setCertificateVerifyProc((request, callback) => callback(['github.com', 'release-assets.githubusercontent.com'].includes(request.hostname) ? 0 : -3));
   let activeNetwork;
   updater.on('login', (auth, callback) => {
     const credentials = activeNetwork.credentialsFor(auth);
@@ -71,17 +79,20 @@ app.whenReady().then(async () => {
       activeNetwork = network;
       await network.prepare();
       assert.equal(await updater.netSession.resolveProxy('http://127.0.0.1:1234'), 'DIRECT');
-      const release = await getLatestRelease({ repository: manifest.repository, fetchImpl: network.fetch, env: {} });
+      const release = await getLatestRelease({ repository: manifest.repository, fetchImpl: network.fetch, env: {} })
+        .catch(error => { console.error('Discovery failed', { source, requestCount: requests.length,
+          recentRequests: requests.slice(-5), destinations }); throw error; });
       assert.equal(release.version, manifest.version);
       // The real updater download transport, including its separate net.request path.
       const cancellationToken = { createPromise: executor => new Promise((resolve, reject) => executor(resolve, reject, () => {})) };
       const destination = path.join(root, `${source}.zip`);
       await updater.httpExecutor.download(new URL(release.assets[0].downloadUrl), destination, { cancellationToken, sha512 });
       assert.deepEqual(fs.readFileSync(destination), payload);
-      assert.equal(requests.length, 3);
-      assert.ok(destinations.includes('api.github.com:443'));
+      assert.equal(requests.length, 4);
+      assert.ok(requests.includes('/fixture/PilotDeck/releases/latest/download/release.json'));
       assert.ok(destinations.includes('github.com:443'));
-      console.log(`PASS: ${source} proxy routes release list, manifest and updater payload; loopback bypasses proxy`);
+      assert.ok(destinations.includes('release-assets.githubusercontent.com:443'));
+      console.log(`PASS: ${source} proxy routes Latest manifest and updater payload without GitHub API; loopback bypasses proxy`);
     }
   } finally {
     await updater.netSession.closeAllConnections();

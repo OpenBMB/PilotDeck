@@ -29,51 +29,41 @@ export function compareVersions(current, latest) {
   return 0;
 }
 
-async function requestJson(url, { fetchImpl = fetch, env = process.env } = {}) {
-  const token = env.PILOTDECK_GITHUB_TOKEN || env.GITHUB_TOKEN;
+async function requestJson(url, { fetchImpl = fetch } = {}) {
   const response = await fetchImpl(url, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'PilotDeck-Updater', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { Accept: 'application/json', 'User-Agent': 'PilotDeck-Updater' },
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`Release request failed (${response.status}).`);
   return response.json();
 }
 
-export async function listReleases(options = {}) {
-  const repository = normalizeRepository(options.repository);
-  const releases = await requestJson(`https://api.github.com/repos/${repository}/releases?per_page=100`, options);
-  if (!Array.isArray(releases)) throw new Error('Invalid release response.');
-  return releases.filter((item) => {
-    if (item.draft || item.prerelease) return false;
-    try { releaseVersion(item.tag_name); return true; } catch { return false; }
-  }).sort((a, b) => compareVersions(releaseVersion(b.tag_name), releaseVersion(a.tag_name)));
-}
-
 export async function getLatestRelease(options = {}) {
   const repository = normalizeRepository(options.repository);
-  const [release] = await listReleases({ ...options, repository });
-  if (!release) throw new Error('No unified PilotDeck release is available.');
-  if (!release.assets?.some((asset) => asset.name === 'release.json')) throw new Error('The release has no release.json manifest.');
-  const base = `https://github.com/${repository}/releases/download/${release.tag_name}`;
-  const manifest = await requestJson(`${base}/release.json`, options);
-  if (manifest.schemaVersion !== 1 || manifest.tag !== release.tag_name
-      || manifest.repository !== repository || !COMMIT_SHA.test(manifest.sourceSha || '')
-      || manifest.version !== releaseVersion(release.tag_name) || !Array.isArray(manifest.assets)) {
+  // This public release asset is served without the GitHub REST API's shared
+  // unauthenticated IP quota. The release workflow explicitly marks it Latest.
+  const manifest = await requestJson(`https://github.com/${repository}/releases/latest/download/release.json`, options);
+  let expectedVersion;
+  try { expectedVersion = releaseVersion(manifest?.tag); }
+  catch { throw new Error('Release manifest does not match the published release.'); }
+  if (manifest.schemaVersion !== 1 || manifest.repository !== repository
+      || !COMMIT_SHA.test(manifest.sourceSha || '')
+      || manifest.version !== expectedVersion || !Array.isArray(manifest.assets) || !manifest.assets.length) {
     throw new Error('Release manifest does not match the published release.');
   }
+  const base = `https://github.com/${repository}/releases/download/${manifest.tag}`;
   const names = new Set();
   const assets = manifest.assets.map((asset) => {
     if (!/^[\w.-]+$/.test(asset.name || '') || /^\.+$/.test(asset.name) || names.has(asset.name)
         || !/^[a-f0-9]{64}$/i.test(asset.sha256 || '') || !Number.isSafeInteger(asset.size) || asset.size <= 0
+        || !/^[A-Za-z0-9+/]{86}==$/.test(asset.sha512 || '')
         || typeof asset.platform !== 'string' || typeof asset.arch !== 'string') throw new Error('Invalid installer manifest.');
     names.add(asset.name);
-    const published = release.assets.find((item) => item.name === asset.name);
-    if (!published || published.size !== asset.size) throw new Error('Installer manifest does not match the published assets.');
-    return { ...asset, id: published.id, sha256: asset.sha256.toLowerCase(), downloadUrl: `${base}/${encodeURIComponent(asset.name)}` };
+    return { ...asset, sha256: asset.sha256.toLowerCase(), downloadUrl: `${base}/${encodeURIComponent(asset.name)}` };
   });
   return {
-    tagName: release.tag_name, version: manifest.version, sourceSha: manifest.sourceSha, assets,
-    publishedAt: release.published_at || null, body: release.body || '',
-    htmlUrl: `https://github.com/${repository}/releases/tag/${release.tag_name}`,
+    tagName: manifest.tag, version: manifest.version, sourceSha: manifest.sourceSha, assets,
+    publishedAt: null, body: '',
+    htmlUrl: `https://github.com/${repository}/releases/tag/${manifest.tag}`,
   };
 }

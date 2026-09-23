@@ -114,7 +114,9 @@ export default function SettingsContent({
   const { t } = useTranslation("settings");
   const title = t(MENU_TITLE_KEYS[selectedKey]);
   const heading = t(PAGE_HEADING_KEYS[selectedKey]);
-  const descriptionKey = PAGE_DESCRIPTION_KEYS[selectedKey];
+  const descriptionKey = selectedKey === "about" && versionInfo.mode === "web"
+    ? "settingsPage.descriptions.aboutWeb"
+    : PAGE_DESCRIPTION_KEYS[selectedKey];
   const pageClass = PAGE_CLASS[selectedKey];
   const isAgentSubpage = selectedKey.startsWith("agent") && selectedKey !== "agent";
   const isExternalIntegrationPage =

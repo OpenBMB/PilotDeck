@@ -131,6 +131,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$SOURCE_SHA" \
             --title "$RELEASE_TAG" \
+            --latest \
             --generate-notes
 
   skipped:

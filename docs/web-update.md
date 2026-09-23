@@ -1,9 +1,13 @@
 # Web self-update
 
-Web self-update is a convenience for standard Git deployments. It installs the
+Web self-update through CLI and IM is a convenience for standard Git deployments. It installs the
 latest stable `vYYYY.MM.DD[-rN]` release from `OpenBMB/PilotDeck`, using the
 release manifest's `sourceSha` and verifying that it matches the published tag.
 It does not follow the moving tip of `main`.
+
+The Web About page does not check or install updates. It displays local build
+metadata and links to GitHub Releases so each deployment can use its own update
+method.
 
 ## Supported deployments
 
@@ -14,8 +18,7 @@ Node 22 and pnpm must be available for installation and building.
 
 Development mode, custom branches, detached HEADs, linked worktrees, local
 changes, custom/diverged/ahead commits, shallow clones, Docker, and source
-archives do not support the update button. The About page disables it and
-explains why. These deployments continue to use their normal manual update
+archives do not support CLI/IM self-update. These deployments continue to use their normal manual update
 process. Automatic downgrades and Git conflict resolution are not supported.
 
 ## Build and running versions
@@ -37,7 +40,7 @@ inconsistent metadata disables self-update; rebuild and restart manually.
 
 ## Update process
 
-1. Opening settings checks deployment eligibility and queries the latest stable
+1. A CLI/IM check validates deployment eligibility and queries the Latest
    unified release. Equal commits report up-to-date. Only an ancestor of the
    release commit may update; ahead/diverged histories require manual handling.
 2. Clicking Update submits the exact displayed tag and SHA. The server checks
@@ -69,23 +72,16 @@ before removing these retained files and retrying; the live deployment is not
 switched in this case.
 
 Preparation progress and failures are logged with `[web-update]`. In-process
-status allows the About page to recover an active update or pending restart
-when reopened. A pending one-click restart is remembered for the current browser
-session, associated with the specific update ID; reopening About resumes it.
-A broken progress stream or temporary network failure preserves this intent
-and polls `/api/update/status` until the backend confirms the outcome. A
-confirmed failure clears the intent, and results from other update IDs cannot
-trigger an automatic restart. Other pending updates retain the explicit
-restart action.
+status lets CLI and IM recover an interrupted apply stream using its update ID.
 
 ## CLI and IM
 
-`pilotdeck update --check`, `/update check` and the settings page use the same
+`pilotdeck update --check` and `/update check` use the same
 Release selection and deployment eligibility policy. The command loads the same
 Web configuration and proxy settings. When a Web service is running on the local
 `SERVER_PORT` (default 3001), it authenticates with the installation's existing
 local credentials, verifies the installation root, and calls the same check,
-apply, status and restart APIs as settings. If the Web server selected a fallback
+apply, status and restart APIs. If the Web server selected a fallback
 port, set `SERVER_PORT` to that actual port when using CLI/IM. Authentication,
 installation mismatch and unexpected server errors do not fall back to a separate
 filesystem update.
@@ -101,7 +97,7 @@ If the Web service is not running, `pilotdeck update` or `scripts/update.sh` can
 use the same Release service directly, with a manual restart afterward. `--check`
 is supported by both. `--restart` without a running Web service is explicitly
 rejected before updating files. Developer workspaces, containers and other
-unsupported deployments receive the same eligibility reason as settings.
+unsupported deployments receive the same eligibility reason as the check API.
 
 ## Process ownership boundary
 
