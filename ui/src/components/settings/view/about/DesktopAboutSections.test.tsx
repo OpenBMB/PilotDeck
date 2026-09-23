@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AboutSections from ".";
 import type { DesktopVersionCheckResult } from "../../Settings";
+import AboutSections from ".";
 const bridge = vi.hoisted(() => ({ getUpdateStatus: vi.fn(), startUpdate: vi.fn(), cancelUpdate: vi.fn() }));
 vi.mock("../../../../utils/desktopUpdates", () => ({ desktopUpdates: () => bridge }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -28,10 +28,13 @@ describe('desktop automatic update UI', () => {
   });
   it('one click starts the native update; progress advances to automatic installation', async () => {
     vi.useFakeTimers(); show(); await flush();
-    bridge.startUpdate.mockResolvedValue({ state: 'downloading', progress: .42 });
-    bridge.getUpdateStatus.mockResolvedValue({ state: 'downloading', progress: .42 });
+    bridge.startUpdate.mockResolvedValue({ state: 'downloading', progress: .42, bytesPerSecond: 2 * 1024 * 1024 });
+    bridge.getUpdateStatus.mockResolvedValue({ state: 'downloading', progress: .42, bytesPerSecond: 2 * 1024 * 1024 });
     fireEvent.click(screen.getByRole('button', { name: copy('updateAndRestart') })); await flush();
     expect(bridge.startUpdate).toHaveBeenCalledTimes(1); expect(screen.getByText('42%')).toBeTruthy();
+    expect(screen.getByText(`${copy('speed')} 2.0 MB/s`)).toBeTruthy();
+    bridge.getUpdateStatus.mockResolvedValue({ state: 'downloading', progress: .5, bytesPerSecond: 512 * 1024 }); await tick();
+    expect(screen.getByText(`${copy('speed')} 512.0 KB/s`)).toBeTruthy();
     bridge.getUpdateStatus.mockResolvedValue({ state: 'verifying', progress: 1 }); await tick();
     expect(screen.queryByRole('button', { name: copy('cancel') })).toBeNull();
     bridge.getUpdateStatus.mockResolvedValue({ state: 'installing', progress: 1 }); await tick();
@@ -47,6 +50,11 @@ describe('desktop automatic update UI', () => {
     bridge.getUpdateStatus.mockResolvedValue({ state: 'installing', progress: 1 }); await tick();
     expect(screen.getByRole('status').textContent).toBe(copy('status.installing'));
     view.unmount(); const count = bridge.getUpdateStatus.mock.calls.length; await tick(); expect(bridge.getUpdateStatus).toHaveBeenCalledTimes(count);
+  });
+  it('does not show the default click explanation when no update is running', async () => {
+    show({ hasUpdate: false, canDownload: false, latestVersion: '2026.906.0' }); await flush();
+    expect(screen.queryByText(copy('reasons.automatic'))).toBeNull();
+    expect(screen.queryByText(copy('speed'), { exact: false })).toBeNull();
   });
   it('keeps updating disabled until main-process status is known', async () => {
     vi.useFakeTimers(); bridge.getUpdateStatus.mockRejectedValueOnce(new Error('network'));

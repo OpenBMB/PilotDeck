@@ -145,6 +145,7 @@
       "desktopUpdate": {
         "cancel": "取消下载",
         "progress": "下载进度",
+        "speed": "下载速度：",
         "status": {
           "downloading": "正在下载",
           "checking": "检查中",
@@ -156,7 +157,6 @@
           "recovering": "正在恢复服务"
         },
         "reasons": {
-          "automatic": "点击后会自动下载、校验并安装更新，然后重新打开客户端。更新重启会中断正在运行的任务，请先保存工作。Windows 可能需要确认管理员授权。",
           "installing": "正在应用更新，客户端将自动重新打开，请稍候。",
           "noCompatibleInstaller": "该版本缺少当前系统或架构的自动更新文件，暂时无法更新。",
           "checkFailed": "暂时无法检查更新，请稍后重新打开“关于”重试。",

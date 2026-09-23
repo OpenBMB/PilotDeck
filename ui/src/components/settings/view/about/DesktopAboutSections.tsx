@@ -6,6 +6,12 @@ import type { AboutSectionsProps } from ".";
 
 const busyStates = new Set(["checking", "downloading", "verifying", "installing", "recovering"]);
 const buttonClass = "rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground";
+const formatDownloadSpeed = (bytesPerSecond = 0) => {
+  const speed = Number.isFinite(bytesPerSecond) ? Math.max(0, bytesPerSecond) : 0;
+  return speed >= 1024 * 1024
+    ? `${(speed / (1024 * 1024)).toFixed(1)} MB/s`
+    : `${(speed / 1024).toFixed(1)} KB/s`;
+};
 
 export default function DesktopAboutSections({ versionInfo, checkingVersion }: AboutSectionsProps) {
   const { t } = useTranslation("settings");
@@ -51,6 +57,7 @@ export default function DesktopAboutSections({ versionInfo, checkingVersion }: A
   };
 
   const reason = statusFailed ? "statusFailed" : update?.reason || versionInfo.desktopReason;
+  const message = reason || (update?.state === "installing" ? "installing" : null);
   const status = busy ? update!.state : checkingVersion ? "checking" : reason && reason !== "cancelled" ? "unavailable"
     : versionInfo.checkUnavailable ? "unavailable" : versionInfo.hasUpdate ? "updateAvailable" : "upToDate";
   const disabled = pending || !update || busy || checkingVersion || versionInfo.checkUnavailable
@@ -85,14 +92,15 @@ export default function DesktopAboutSections({ versionInfo, checkingVersion }: A
             {versionInfo.latestPublishedAt && <span>{t("settingsPage.about.latestReleaseTime")} {new Date(versionInfo.latestPublishedAt).toLocaleString()}</span>}
           </div>
           {update?.state === "downloading" && <div className="flex items-center gap-3">
-            <progress className="h-2 w-full accent-blue-600" max={100} value={progress} aria-label={t("settingsPage.about.desktopUpdate.progress")} />
-            <span>{progress}%</span>
+            <progress className="h-2 min-w-0 flex-1 accent-blue-600" max={100} value={progress} aria-label={t("settingsPage.about.desktopUpdate.progress")} />
+            <span className="whitespace-nowrap">{progress}%</span>
+            <span className="whitespace-nowrap">{t("settingsPage.about.desktopUpdate.speed")} {formatDownloadSpeed(update.bytesPerSecond)}</span>
           </div>}
-          <p role={reason ? "alert" : undefined}>
-            {t(`settingsPage.about.desktopUpdate.reasons.${reason || (update?.state === "installing" ? "installing" : "automatic")}`, {
+          {message && <p role={reason ? "alert" : undefined}>
+            {t(`settingsPage.about.desktopUpdate.reasons.${message}`, {
               defaultValue: t("settingsPage.about.desktopUpdate.reasons.updateFailed"),
             })}
-          </p>
+          </p>}
         </div>
       </SettingsCard>
     </div>

@@ -8,6 +8,7 @@ export type Release = { version: string; tagName: string; publishedAt?: string; 
 export type UpdateState = {
   state: "idle" | "checking" | "downloading" | "verifying" | "installing" | "recovering" | "failed" | "cancelled";
   progress: number;
+  bytesPerSecond?: number;
   reason?: string;
   version?: string;
 };
@@ -74,7 +75,11 @@ export function createUpdateController(options: {
     state = { ...state, state: cancelled ? "cancelled" : "failed", reason: cancelled ? "cancelled" : ["checksumMismatch", "invalidUpdateMetadata", "noCompatibleInstaller", "upToDate"].includes(message) ? message : "updateFailed" };
   };
   updater.on("download-progress", (progress) => {
-    if (state.state === "downloading") state = { ...state, progress: Math.min(.99, progress.percent / 100) };
+    if (state.state === "downloading") state = {
+      ...state,
+      progress: Math.min(.99, progress.percent / 100),
+      bytesPerSecond: Number.isFinite(progress.bytesPerSecond) ? Math.max(0, progress.bytesPerSecond) : 0,
+    };
   });
   const recover = async () => {
     installFailed = true;

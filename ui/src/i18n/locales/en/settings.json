@@ -145,6 +145,7 @@
       "desktopUpdate": {
         "cancel": "Cancel download",
         "progress": "Download progress",
+        "speed": "Speed:",
         "status": {
           "downloading": "Downloading",
           "checking": "Checking",
@@ -156,7 +157,6 @@
           "recovering": "Restoring services"
         },
         "reasons": {
-          "automatic": "Downloads, verifies and installs the update, then reopens the client. Restarting interrupts running tasks; save your work first. Windows may ask for administrator approval.",
           "installing": "Applying the update. The client will reopen automatically. Please wait.",
           "noCompatibleInstaller": "This release is missing automatic update files for this system or architecture.",
           "checkFailed": "Unable to check for updates. Reopen About later to retry.",
