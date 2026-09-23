@@ -910,7 +910,7 @@ function getUpdateController() {
   return updateController;
 }
 
-function requireUpdateSender(event: Electron.IpcMainInvokeEvent) {
+function requireUpdateSender(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) {
   const frame = event.senderFrame;
   // Only our loaded application can start or cancel an update; never a child
   // frame or external page. Status remains available while runtime is stopping.
@@ -932,6 +932,15 @@ function readAppearance(): DesktopAppearance {
     return normalizeAppearance(JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "appearance.json"), "utf8")), app.getLocale());
   } catch { return normalizeAppearance(null, app.getLocale()); }
 }
+
+ipcMain.on("pilotdeck:get-appearance", (event) => {
+  try {
+    requireUpdateSender(event);
+    event.returnValue = readAppearance();
+  } catch {
+    event.returnValue = null;
+  }
+});
 
 function updateApplicationMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(

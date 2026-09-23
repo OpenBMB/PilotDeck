@@ -11,6 +11,7 @@ declare global {
     // command handler) can surface a friendly "not found" message.
     switchProject?: (projectName: string) => boolean;
     pilotdeckDesktop?: {
+      getAppearance?: () => { language: "en" | "zh-CN"; themeMode: "light" | "dark" | "system" } | null;
       setAppearance?: (value: { language: "en" | "zh-CN"; themeMode: "light" | "dark" | "system" }) => Promise<void>;
       checkUpdates: () => Promise<DesktopUpdateCheck>;
       getUpdateStatus: () => Promise<DesktopUpdateState>;

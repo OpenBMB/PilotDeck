@@ -46,6 +46,8 @@ import { languages } from './languages.js';
 
 const getSavedLanguage = () => {
   try {
+    const desktopLanguage = window.pilotdeckDesktop?.getAppearance?.()?.language;
+    if (desktopLanguage && languages.some(lang => lang.value === desktopLanguage)) return desktopLanguage;
     const saved = localStorage.getItem('userLanguage');
     if (saved && languages.some(lang => lang.value === saved)) {
       return saved;

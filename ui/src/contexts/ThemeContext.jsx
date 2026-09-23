@@ -15,6 +15,10 @@ const normalizeThemeMode = (value) => (
 );
 
 const readInitialThemeMode = () => {
+  try {
+    const desktopMode = normalizeThemeMode(window.pilotdeckDesktop?.getAppearance?.()?.themeMode);
+    if (desktopMode) return desktopMode;
+  } catch { /* Fall back to this page's saved preference. */ }
   const savedMode = normalizeThemeMode(localStorage.getItem(THEME_MODE_KEY));
   if (savedMode) return savedMode;
 
