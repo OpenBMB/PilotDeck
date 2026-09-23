@@ -140,6 +140,7 @@ export declare class EdgeClawMemoryService {
     exportBundle(): MemoryExportBundle;
     importBundle(bundle: MemoryImportableBundle): MemoryImportResult;
     clear(scope?: ClearMemoryScope): ClearMemoryResult;
+    clearSession(sessionKey: string): ClearMemoryResult;
     act(input: MemoryActionRequest): MemoryActionResult;
 }
 export declare function summarizeTranscriptMessage(raw: unknown): TranscriptMessageInfo;

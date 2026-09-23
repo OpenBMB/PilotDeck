@@ -56,6 +56,21 @@ function sse(data: string): Response {
   return new Response(data, { headers: { "content-type": "text/event-stream" } });
 }
 
+function interruptedSse(data: string, message = "Connection prematurely closed DURING response"): Response {
+  const encoder = new TextEncoder();
+  let delivered = false;
+  return new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!delivered && data) {
+        delivered = true;
+        controller.enqueue(encoder.encode(data));
+        return;
+      }
+      controller.error(new Error(message));
+    },
+  }), { headers: { "content-type": "text/event-stream" } });
+}
+
 async function collect(stream: AsyncIterable<CanonicalModelEvent>): Promise<CanonicalModelEvent[]> {
   const events: CanonicalModelEvent[] = [];
   for await (const event of stream) events.push(event);
@@ -148,6 +163,20 @@ test("retries an interrupted stream only before the first content event", async 
   assert.equal(events.some((event) => event.type === "error"), false);
 });
 
+test("retries the original request when LLMCenter closes an empty stream", async () => {
+  const config = createConfig();
+  let requests = 0;
+  const events = await collect(streamModel(createRequest(), config, {
+    fetch: async () => {
+      requests += 1;
+      return requests === 1 ? interruptedSse("") : sse("data: [DONE]\n\n");
+    },
+  }));
+
+  assert.equal(requests, 2);
+  assert.equal(events.some((event) => event.type === "error"), false);
+});
+
 test("continues a pure text stream after interruption", async () => {
   const config = createConfig();
   const requestBodies: Array<Record<string, unknown>> = [];
@@ -163,6 +192,24 @@ test("continues a pure text stream after interruption", async () => {
   assert.equal(requestBodies.length, 2);
   const messages = requestBodies[1]!.messages as Array<{ role: string; content: string }>;
   assert.equal(messages.at(-2)?.role, "assistant");
+  assert.equal(messages.at(-2)?.content, "partial");
+  assert.equal(events.some((event) => event.type === "error"), false);
+});
+
+test("continues a pure text stream after an LLMCenter premature close", async () => {
+  const config = createConfig();
+  const requestBodies: Array<Record<string, unknown>> = [];
+  const events = await collect(streamModel(createRequest(), config, {
+    fetch: async (_input, init) => {
+      requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return requestBodies.length === 1
+        ? interruptedSse('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')
+        : sse("data: [DONE]\n\n");
+    },
+  }));
+
+  assert.equal(requestBodies.length, 2);
+  const messages = requestBodies[1]!.messages as Array<{ role: string; content: string }>;
   assert.equal(messages.at(-2)?.content, "partial");
   assert.equal(events.some((event) => event.type === "error"), false);
 });

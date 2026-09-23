@@ -28,6 +28,9 @@ export type TurnRunnerOptions = {
   input: AgentInput;
   /** Host-owned execution identity forwarded unchanged to the loop provider. */
   execution?: Pick<import("../modules/protocol.js").AgentExecutionContext, "runId" | "operationId" | "idempotencyKey" | "operationDeadline">;
+  workspaceId?: string;
+  storageConfigVersion?: string;
+  invocationLogSink?: import("../../storage/legalDataStorage.js").ModelInvocationLogSink;
   maxTurns?: number;
   /** Gateway-owned USD ceiling for this submitted turn. */
   maxBudgetUsd?: number;
@@ -289,6 +292,9 @@ export class TurnRunner {
           turnId: options.turnId,
           messages,
           execution: options.execution,
+          workspaceId: options.workspaceId,
+          storageConfigVersion: options.storageConfigVersion,
+          invocationLogSink: options.invocationLogSink,
           maxTurns: options.maxTurns,
           maxBudgetUsd: options.maxBudgetUsd,
           taskBudgetUsd: options.taskBudgetUsd,

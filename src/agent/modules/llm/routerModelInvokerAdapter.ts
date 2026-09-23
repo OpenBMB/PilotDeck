@@ -11,6 +11,9 @@ export type RouterModelInvokerAdapterOptions = {
     allow: readonly string[];
     deny: readonly string[];
   };
+  invocationLogSink?: import("../../../storage/legalDataStorage.js").ModelInvocationLogSink;
+  workspaceId?: string;
+  storageConfigVersion?: string;
   materialize?: (decision: RouterDecision, request: CanonicalModelRequest) => CanonicalModelRequest;
 };
 
@@ -55,6 +58,11 @@ export function createRouterModelInvokerPort(
       return router.execute(decision, prepared.request, {
         sessionId: context.sessionId,
         turnId: context.turnId,
+        runId: context.runId,
+        caller: options.isMainAgent === false ? "subagent" : "agent",
+        workspaceId: context.workspaceId ?? options.workspaceId,
+        storageConfigVersion: context.storageConfigVersion ?? options.storageConfigVersion,
+        invocationLogSink: context.invocationLogSink ?? options.invocationLogSink,
         projectPath: options.projectPath,
         abortSignal: context.abortSignal,
         fallbackModels: options.fallbackModels,

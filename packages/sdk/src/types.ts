@@ -7,6 +7,113 @@ export type PilotDeckTextMessage = {
   text: string;
 };
 
+/** An attachment reference interpreted by the Gateway, never by the SDK host. */
+export type PilotDeckAttachment = {
+  type: "file" | "image" | "text" | "unknown";
+  name?: string;
+  /** A path on the Gateway host, when the Gateway has explicitly authorized it. */
+  path?: string;
+  mimeType?: string;
+  content?: string;
+  bytes?: number;
+  metadata?: Record<string, unknown>;
+};
+
+/** A previously uploaded Gateway artifact to include in one turn. */
+export type PilotDeckUploadedAttachmentRef = {
+  uploadId: string;
+  attachmentIds?: string[];
+};
+
+export type PilotDeckUploadManifestEntry = {
+  clientFileId: string;
+  name: string;
+  relativePath: string;
+  size: number;
+  mimeType?: string;
+  sha256?: string;
+};
+export type PilotDeckUploadAttachment = {
+  attachmentId: string;
+  name: string;
+  relativePath: string;
+  mimeType?: string;
+  bytes: number;
+  sha256?: string;
+};
+export type PilotDeckUploadRecord = {
+  uploadId: string;
+  projectKey: string;
+  status: "created" | "uploading" | "completed" | "failed" | "cancelled" | "expired";
+  manifest: PilotDeckUploadManifestEntry[];
+  totalBytes: number;
+  uploadedBytes: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  attachments?: PilotDeckUploadAttachment[];
+  receivedClientFileIds?: string[];
+  errorCode?: string;
+  errorMessage?: string;
+};
+export type PilotDeckUploadCreateInput = {
+  projectKey: string;
+  files: PilotDeckUploadManifestEntry[];
+  idempotencyKey?: string;
+};
+export type PilotDeckUploadPartInput = { uploadId: string; clientFileId: string; contentBase64: string };
+
+export type PilotDeckTrustedContextMessage = {
+  text: string;
+  source: string;
+  purpose: "material_context" | "skill_context" | "application_context";
+  scope: "turn";
+};
+
+/** A Gateway-owned permission prompt that is currently blocking a tool. */
+export type PilotDeckPermissionRequest = {
+  requestId: string;
+  toolCallId: string;
+  toolName: string;
+  payload?: unknown;
+};
+export type PilotDeckPermissionResourceInput = { sessionId: string; projectKey?: string };
+export type PilotDeckPermissionResponseInput = PilotDeckPermissionResourceInput & {
+  requestId: string;
+  decision: "allow" | "deny";
+  remember?: boolean;
+  reason?: string;
+};
+export type PilotDeckPermissionChange = {
+  type: "requested" | "resolved";
+  sessionId: string;
+  projectKey?: string;
+  requestId: string;
+  request?: PilotDeckPermissionRequest;
+};
+export type PilotDeckMemoryResourceInput = { projectKey: string; sessionId?: string };
+export type PilotDeckSnapshotListInput = { projectKey: string; sessionId?: string; cursor?: string; limit?: number };
+export type PilotDeckSnapshotGetInput = { projectKey: string; snapshotId: string };
+export type PilotDeckSnapshotRestoreInput = { projectKey: string; snapshotId: string; targetProjectKey?: string };
+export type PilotDeckManagerResourceInput = { projectKey?: string; sessionId?: string };
+export type PilotDeckNativeArchiveManifest = {
+  schemaVersion: 1;
+  format: "native_transcript_entries";
+  sessionId: string;
+  entryCount: number;
+  firstSequence?: number;
+  lastSequence?: number;
+  subagentCount: number;
+  toolResultReferenceCount: number;
+};
+export type PilotDeckNativeArchiveArtifact = {
+  artifactName: string;
+  content: string;
+  encoding: "base64";
+  bytes: number;
+  truncated: boolean;
+};
+
 /**
  * Text-oriented input accepted by the SDK. The `user` shape mirrors Claude's
  * streaming SDK messages while the compact `text` shape remains convenient
@@ -1263,6 +1370,14 @@ export type CreatePilotDeckSessionInput = {
 export type PilotDeckRunInput = {
   sessionId: string;
   input: PilotDeckInput;
+  /** Caller-supplied run identity. This is not an idempotency guarantee. */
+  runId?: string;
+  /** Existing Gateway-owned attachment references for this run only. */
+  attachments?: PilotDeckAttachment[];
+  /** Previously uploaded Gateway artifacts for this run only. */
+  uploadedAttachments?: PilotDeckUploadedAttachmentRef[];
+  /** Gateway-authorized, turn-scoped context for this run only. */
+  trustedContext?: PilotDeckTrustedContextMessage[];
   options?: Omit<PilotDeckOptions, "gatewayUrl" | "authToken" | "clientVersion" | "sessionId" | "resume" | "continue" | "forkSession">;
 };
 
@@ -1276,11 +1391,47 @@ export type PilotDeckRunHandle = {
   cancelSteer(itemId?: string): Promise<PilotDeckCancelSteerReceipt>;
   abort(reason?: string): Promise<void>;
 };
+export type PilotDeckRunRecord = {
+  sessionId: string;
+  projectKey?: string;
+  runId: string;
+  state: "accepted" | "running" | "completed" | "failed" | "aborted" | "interrupted";
+  revision: number;
+  lastSeq: number;
+  acceptedAt: string;
+  updatedAt: string;
+  result?: PilotDeckMessage;
+};
+export type PilotDeckRunEvent = { seq: number; event: PilotDeckMessage };
+export type PilotDeckRunObserveInput = { sessionId: string; runId: string; projectKey?: string; afterSeq?: number; limit?: number };
 
 export type PilotDeckProject = Record<string, unknown> & { projectKey?: string; id?: string; name?: string };
 export type PilotDeckFileEntry = Record<string, unknown> & { id?: string; name?: string; relativePath?: string; kind?: "file" | "directory" };
 export type PilotDeckPage<T> = { items: T[]; nextCursor?: string };
 export type PilotDeckSkill = Record<string, unknown> & { id?: string; name?: string; content?: string };
+export type PilotDeckSkillScope = "builtin" | "user" | "project";
+export type PilotDeckSkillAddress = { scope: PilotDeckSkillScope; slug: string; projectKey?: string | null };
+export type PilotDeckSkillsListInput = { projectKey?: string | null; query?: string; scope?: PilotDeckSkillScope | "plugin" | "all"; cursor?: string; limit?: number };
+export type PilotDeckSkillWriteInput = PilotDeckSkillAddress & { content: string };
+export type PilotDeckSkillCreateInput = PilotDeckSkillAddress & { name?: string; description?: string; body?: string; content?: string };
+export type PilotDeckSkillImportInput = {
+  sourcePath: string;
+  scope: PilotDeckSkillScope;
+  slug?: string;
+  projectKey?: string | null;
+  mode?: "copy" | "symlink";
+  force?: boolean;
+};
+export type PilotDeckSkillValidateInput =
+  | { sourcePath: string }
+  | { skillMdContent?: string; files: Array<{ relativePath: string; size: number }> };
+export type PilotDeckSkillScanInput = { parentPath: string };
+export type PilotDeckSkillResult = Record<string, unknown> & { ok?: boolean; scope?: PilotDeckSkillScope; slug?: string };
+
+export type PilotDeckAlwaysOnApplyInput = { projectKey: string; workCycleId: string; projectName: string };
+export type PilotDeckAlwaysOnAbortInput = { projectKey: string; sessionId: string; reason?: string };
+export type PilotDeckAlwaysOnRerunPlanInput = { projectKey: string; planId: string; projectName?: string };
+export type PilotDeckAlwaysOnResult = Record<string, unknown>;
 
 /** PilotDeck-native scheduled task schedule. This is not a Claude background-tool task. */
 export type PilotDeckCronTaskSchedule =
@@ -1381,6 +1532,18 @@ export type PilotDeckClient = {
   };
   runs: {
     start(input: PilotDeckRunInput): PilotDeckRunHandle;
+    get(input: { sessionId: string; runId: string; projectKey?: string }): Promise<PilotDeckRunRecord | undefined>;
+    observe(input: PilotDeckRunObserveInput): Promise<{ events: PilotDeckRunEvent[]; nextSeq?: number; gap?: boolean }>;
+    result(input: { sessionId: string; runId: string; projectKey?: string }): Promise<PilotDeckResult>;
+    reattach(input: { sessionId: string; runId: string; projectKey?: string }): Promise<PilotDeckRunRecord | undefined>;
+    abort(input: { sessionId: string; runId: string; reason?: string }): Promise<void>;
+  };
+  uploads: {
+    create(input: PilotDeckUploadCreateInput): Promise<PilotDeckUploadRecord>;
+    get(input: { uploadId: string }): Promise<PilotDeckUploadRecord>;
+    part(input: PilotDeckUploadPartInput): Promise<PilotDeckUploadAttachment>;
+    complete(input: { uploadId: string }): Promise<PilotDeckUploadRecord>;
+    cancel(input: { uploadId: string }): Promise<PilotDeckUploadRecord>;
   };
   projects: {
     list(): Promise<PilotDeckProject[]>;
@@ -1400,8 +1563,19 @@ export type PilotDeckClient = {
     list(input: { projectKey: string; query?: string; cursor?: string; limit?: number }): Promise<PilotDeckPage<PilotDeckCommand>>;
   };
   skills: {
-    list(input?: Record<string, unknown>): Promise<PilotDeckSkill[]>;
-    read(input: Record<string, unknown>): Promise<PilotDeckSkill>;
+    list(input?: PilotDeckSkillsListInput): Promise<PilotDeckSkill[]>;
+    read(input: PilotDeckSkillAddress): Promise<PilotDeckSkill>;
+    write(input: PilotDeckSkillWriteInput): Promise<PilotDeckSkillResult>;
+    create(input: PilotDeckSkillCreateInput): Promise<PilotDeckSkillResult>;
+    delete(input: PilotDeckSkillAddress): Promise<PilotDeckSkillResult>;
+    import(input: PilotDeckSkillImportInput): Promise<PilotDeckSkillResult>;
+    validate(input: PilotDeckSkillValidateInput): Promise<PilotDeckSkillResult>;
+    scan(input: PilotDeckSkillScanInput): Promise<PilotDeckSkillResult>;
+  };
+  alwaysOn: {
+    apply(input: PilotDeckAlwaysOnApplyInput): Promise<PilotDeckAlwaysOnResult>;
+    abort(input: PilotDeckAlwaysOnAbortInput): Promise<PilotDeckAlwaysOnResult>;
+    rerunPlan(input: PilotDeckAlwaysOnRerunPlanInput): Promise<PilotDeckAlwaysOnResult>;
   };
   /** Controls SDK-owned MCP servers without creating or consuming a Query. */
   mcp: {
@@ -1422,6 +1596,30 @@ export type PilotDeckClient = {
     claim(input: PilotDeckUserDialogClaimInput): Promise<PilotDeckUserDialogClaimResult>;
     release(input: PilotDeckUserDialogReleaseInput): Promise<{ released: boolean }>;
     respond(input: PilotDeckUserDialogResponseInput): Promise<PilotDeckUserDialogResponseReceipt>;
+  };
+  /** Gateway-owned permission prompts; responding is independent of Query callbacks. */
+  permissions: {
+    list(input: PilotDeckPermissionResourceInput): Promise<PilotDeckPermissionRequest[]>;
+    watch(input: PilotDeckPermissionResourceInput, listener: (change: PilotDeckPermissionChange) => void): Promise<() => void>;
+    respond(input: PilotDeckPermissionResponseInput): Promise<{ delivered: boolean }>;
+  };
+  memory: {
+    list(input: PilotDeckMemoryResourceInput): Promise<unknown[]>;
+    wipe(input: PilotDeckMemoryResourceInput & { scope: "session" | "project" }): Promise<{ wiped: boolean; scope: "session" | "project" }>;
+  };
+  snapshots: {
+    list(input: PilotDeckSnapshotListInput): Promise<{ items: unknown[]; nextCursor?: string }>;
+    get(input: PilotDeckSnapshotGetInput): Promise<unknown>;
+    restore(input: PilotDeckSnapshotRestoreInput): Promise<{ restored: boolean; workspaceKey?: string }>;
+  };
+  manager: {
+    sessions(input?: PilotDeckManagerResourceInput): Promise<unknown[]>;
+    browsers(input?: PilotDeckManagerResourceInput): Promise<unknown[]>;
+  };
+  archives: {
+    manifest(input: { sessionId: string; projectKey?: string }): Promise<PilotDeckNativeArchiveManifest>;
+    entries(input: { sessionId: string; projectKey?: string; afterSequence?: number; limit?: number }): Promise<{ entries: unknown[]; nextSequence?: number; complete: boolean }>;
+    artifact(input: { sessionId: string; projectKey?: string; artifactName: string; maxBytes?: number }): Promise<PilotDeckNativeArchiveArtifact>;
   };
   /** PilotDeck-native scheduled work; deliberately separate from Claude background tool tasks. */
   cron: {

@@ -371,6 +371,73 @@ test("websocket reconnect receives a new binding and replays only the current in
   });
 });
 
+test("SDK permission resources can answer a prompt from a separate control connection", async (t) => {
+  const gateway = new InProcessGateway({ sessionCount: () => 0 } as unknown as SessionRouter);
+  t.after(() => gateway.dispose("test_dispose"));
+  let resolved: unknown;
+  gateway.getPermissionBus().register("sdk-permission", {
+    requestId: "permission-1",
+    toolCallId: "call-1",
+    toolName: "write_file",
+    resolve: (decision) => { resolved = decision; },
+    reject: (error) => assert.fail(error.message),
+  });
+
+  const runSocket = new FakeTextWebSocketConnection();
+  new GatewayWsConnection(runSocket as unknown as TextWebSocketConnection, {
+    token: "secret",
+    serverVersion: "test",
+    gateway,
+  });
+  runSocket.dispatch({
+    type: "hello",
+    protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION,
+    clientName: "sdk",
+    clientVersion: "test",
+    token: "secret",
+  });
+  await flushAsyncWork();
+  runSocket.dispatch({
+    type: "request",
+    id: "bind-run",
+    method: "reconnect_interaction",
+    params: { sessionKey: "sdk-permission" },
+  });
+  await flushAsyncWork();
+  assert.equal((runSocket.sent.at(-1) as { result: { outcome: string } }).result.outcome, "initial");
+  assert.equal(gateway.getPermissionBus().hasPending("sdk-permission", "permission-1"), true);
+
+  const controlSocket = new FakeTextWebSocketConnection();
+  new GatewayWsConnection(controlSocket as unknown as TextWebSocketConnection, {
+    token: "secret",
+    serverVersion: "test",
+    gateway,
+  });
+  controlSocket.dispatch({
+    type: "hello",
+    protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION,
+    clientName: "sdk",
+    clientVersion: "test",
+    token: "secret",
+  });
+  await flushAsyncWork();
+  controlSocket.dispatch({
+    type: "request",
+    id: "answer-permission",
+    method: "permission_decide",
+    params: { sessionKey: "sdk-permission", requestId: "permission-1", decision: "allow" },
+  });
+  await flushAsyncWork();
+
+  assert.deepEqual((controlSocket.sent.at(-1) as { result: unknown }).result, { delivered: true });
+  assert.deepEqual(resolved, {
+    requestId: "permission-1",
+    decision: "allow",
+    remember: undefined,
+    reason: undefined,
+  });
+});
+
 test("websocket disconnect preserves a pending question for a new binding and rejects an old reply", async () => {
   const gateway = new InProcessGateway({ sessionCount: () => 0 } as unknown as SessionRouter);
   let resolved = 0;

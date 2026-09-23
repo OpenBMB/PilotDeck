@@ -73,6 +73,25 @@ test("local Gateway composes its project session lister from the injected catalo
   assert.deepEqual(result, { sessions: [session("local-session")], nextCursor: "3" });
 });
 
+test("local Gateway forwards the host manager browser provider", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-manager-browser-provider-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "pilotdeck.yaml"), TEST_CONFIG, "utf8");
+  const local = createLocalGateway({
+    projectRoot: root,
+    pilotHome: root,
+    managerBrowsers: async (input) => ({
+      items: [{ browserId: "browser-1", projectKey: input.projectKey, sessionKey: input.sessionKey }],
+    }),
+  });
+  t.after(() => local.dispose());
+
+  assert.deepEqual(await local.gateway.managerBrowsers?.({ projectKey: root, sessionKey: "session-1" }), {
+    items: [{ browserId: "browser-1", projectKey: root, sessionKey: "session-1" }],
+  });
+  assert.ok((await local.gateway.describeServer()).capabilities?.includes("manager_browsers"));
+});
+
 test("default Gateway selects the catalog owned by its selected session storage provider", async () => {
   const calls: unknown[] = [];
   const provider: ProjectSessionStorageProvider = {

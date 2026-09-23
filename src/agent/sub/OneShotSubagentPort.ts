@@ -20,6 +20,9 @@ export type OneShotSubagentPortRequest = {
   turnId: string;
   parentReadFileState?: PilotDeckReadFileStateMap;
   parentWriteSnapshots?: PilotDeckWriteSnapshotMap;
+  workspaceId?: string;
+  storageConfigVersion?: string;
+  invocationLogSink?: import("../../storage/legalDataStorage.js").ModelInvocationLogSink;
 };
 
 /** Stable delegation Definition consumed by AgentLoop's tool runtime context. */
@@ -161,6 +164,10 @@ function createNativeForkApi(
           parentWriteSnapshots: options.parentWriteSnapshots,
           parentSessionId: options.sessionId,
           parentTurnId: options.turnId,
+          workspaceId: options.workspaceId,
+          storageConfigVersion: options.storageConfigVersion,
+          invocationLogSink: options.invocationLogSink,
+          parentToolCallId: toolCallId,
           subagentSessionId,
           subagentId,
           maxTurns: definition.maxTurns,

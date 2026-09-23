@@ -27,6 +27,13 @@ import type {
   PilotDeckContextUsage,
   PilotDeckFileEntry,
   PilotDeckInput,
+  PilotDeckAttachment,
+  PilotDeckUploadedAttachmentRef,
+  PilotDeckUploadCreateInput,
+  PilotDeckUploadPartInput,
+  PilotDeckUploadRecord,
+  PilotDeckUploadAttachment,
+  PilotDeckTrustedContextMessage,
   PilotDeckMcpServerConfig,
   PilotDeckMcpServer,
   PilotDeckMcpServerOptions,
@@ -43,6 +50,16 @@ import type {
   PilotDeckClient,
   PilotDeckProject,
   PilotDeckPermissionMode,
+  PilotDeckPermissionRequest,
+  PilotDeckPermissionResourceInput,
+  PilotDeckPermissionResponseInput,
+  PilotDeckPermissionChange,
+  PilotDeckMemoryResourceInput,
+  PilotDeckSnapshotListInput,
+  PilotDeckSnapshotGetInput,
+  PilotDeckSnapshotRestoreInput,
+  PilotDeckManagerResourceInput,
+  PilotDeckNativeArchiveManifest,
   PilotDeckQuery,
   PilotDeckReloadResult,
   PilotDeckOutputStyle,
@@ -63,7 +80,21 @@ import type {
   RestoreSessionTranscriptOptions,
   PilotDeckRunHandle,
   PilotDeckRunInput,
+  PilotDeckRunRecord,
+  PilotDeckRunObserveInput,
   PilotDeckSkill,
+  PilotDeckSkillAddress,
+  PilotDeckSkillWriteInput,
+  PilotDeckSkillCreateInput,
+  PilotDeckSkillImportInput,
+  PilotDeckSkillValidateInput,
+  PilotDeckSkillScanInput,
+  PilotDeckSkillResult,
+  PilotDeckSkillsListInput,
+  PilotDeckAlwaysOnApplyInput,
+  PilotDeckAlwaysOnAbortInput,
+  PilotDeckAlwaysOnRerunPlanInput,
+  PilotDeckAlwaysOnResult,
   PilotDeckSteerReceipt,
   PilotDeckToolDefinition,
   PilotDeckToolExtras,
@@ -90,6 +121,12 @@ type GatewayAgentDefinition = Omit<import("./types.js").PilotDeckAgentDefinition
   mcpServers?: Record<string, GatewayMcpTransportConfig> | GatewayAgentMcpServerSpec[];
 };
 
+type PilotDeckTurnSubmission = {
+  attachments?: PilotDeckAttachment[];
+  uploadedAttachments?: PilotDeckUploadedAttachmentRef[];
+  trustedContext?: PilotDeckTrustedContextMessage[];
+};
+
 function connectionOptions(options: Pick<PilotDeckOptions, "gatewayUrl" | "authToken" | "clientVersion" | "reconnect">): GatewayConnectionOptions {
   if (!options.gatewayUrl || !options.authToken) {
     throw new PilotDeckError({ code: "validation_error", message: "gatewayUrl and authToken are required; pass them in query options or createPilotDeckClient defaults." });
@@ -99,6 +136,21 @@ function connectionOptions(options: Pick<PilotDeckOptions, "gatewayUrl" | "authT
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function parsePermissionRequest(value: unknown, index: number): PilotDeckPermissionRequest {
+  const request = asRecord(value);
+  if (typeof request.requestId !== "string" || !request.requestId.trim()
+    || typeof request.toolCallId !== "string" || !request.toolCallId.trim()
+    || typeof request.toolName !== "string" || !request.toolName.trim()) {
+    throw new PilotDeckError({ code: "validation_error", message: `Gateway returned an invalid permission request at index ${index}.` });
+  }
+  return {
+    requestId: request.requestId,
+    toolCallId: request.toolCallId,
+    toolName: request.toolName,
+    ...(request.payload !== undefined ? { payload: request.payload } : {}),
+  };
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -242,6 +294,123 @@ function gatewayBasePermissionMode(
 ): "default" | "bypassPermissions" | undefined {
   if (mode === undefined) return undefined;
   return mode === "bypassPermissions" ? "bypassPermissions" : "default";
+}
+
+const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+
+function validateRunId(value: unknown, label = "runId"): string {
+  if (typeof value !== "string" || !RUN_ID_PATTERN.test(value)) {
+    throw new PilotDeckError({
+      code: "validation_error",
+      message: `${label} must be 1-128 characters and contain only letters, numbers, '.', '_', ':', or '-'.`,
+    });
+  }
+  return value;
+}
+
+function validateRunReference(sessionId: unknown, runId: unknown): { sessionId: string; runId: string } {
+  if (typeof sessionId !== "string" || !sessionId.trim()) {
+    throw new PilotDeckError({ code: "validation_error", message: "sessionId is required." });
+  }
+  return { sessionId, runId: validateRunId(runId) };
+}
+
+function validateRunObservation(input: PilotDeckRunObserveInput): { sessionId: string; runId: string } {
+  const reference = validateRunReference(input.sessionId, input.runId);
+  if (input.afterSeq !== undefined && (!Number.isSafeInteger(input.afterSeq) || input.afterSeq < 0)) {
+    throw new PilotDeckError({ code: "validation_error", message: "afterSeq must be a non-negative safe integer." });
+  }
+  if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 500)) {
+    throw new PilotDeckError({ code: "validation_error", message: "limit must be an integer between 1 and 500." });
+  }
+  return reference;
+}
+
+function validateAttachments(value: unknown): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new PilotDeckError({ code: "validation_error", message: "attachments must be an array." });
+  }
+  for (const [index, item] of value.entries()) {
+    const attachment = item as Partial<PilotDeckAttachment> | null;
+    if (!attachment || typeof attachment !== "object"
+      || !["file", "image", "text", "unknown"].includes(String(attachment.type))
+      || (attachment.path !== undefined && (typeof attachment.path !== "string" || !attachment.path.trim()))
+      || (attachment.content !== undefined && typeof attachment.content !== "string")
+      || (attachment.mimeType !== undefined && typeof attachment.mimeType !== "string")) {
+      throw new PilotDeckError({ code: "validation_error", message: `attachments[${index}] is invalid.` });
+    }
+  }
+}
+
+function validateUploadId(value: unknown): string {
+  if (typeof value !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(value) || value.includes("..")) {
+    throw new PilotDeckError({ code: "validation_error", message: "uploadId is invalid." });
+  }
+  return value;
+}
+
+function validateUploadCreateInput(input: PilotDeckUploadCreateInput): void {
+  if (!input.projectKey?.trim() || !Array.isArray(input.files) || input.files.length < 1) {
+    throw new PilotDeckError({ code: "validation_error", message: "projectKey and at least one upload file are required." });
+  }
+  for (const [index, file] of input.files.entries()) {
+    if (!file || typeof file.clientFileId !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(file.clientFileId)
+      || file.clientFileId.includes("..") || typeof file.name !== "string" || !file.name.trim()
+      || typeof file.relativePath !== "string" || !file.relativePath.trim() || file.relativePath.startsWith("/")
+      || file.relativePath.includes("\\") || file.relativePath.split("/").some((part) => part === "" || part === "." || part === "..")
+      || !Number.isSafeInteger(file.size) || file.size < 0) {
+      throw new PilotDeckError({ code: "validation_error", message: `files[${index}] is invalid.` });
+    }
+  }
+}
+
+function validateUploadPartInput(input: PilotDeckUploadPartInput): void {
+  validateUploadId(input.uploadId);
+  if (typeof input.clientFileId !== "string" || !input.clientFileId.trim()
+    || typeof input.contentBase64 !== "string" || input.contentBase64.length === 0
+    || input.contentBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(input.contentBase64)
+    || input.contentBase64.length > 12 * 1024 * 1024) {
+    throw new PilotDeckError({ code: "validation_error", message: "upload part is invalid or too large." });
+  }
+}
+
+function validateUploadedAttachments(value: unknown): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new PilotDeckError({ code: "validation_error", message: "uploadedAttachments must be an array." });
+  }
+  for (const [index, item] of value.entries()) {
+    const ref = item as Partial<PilotDeckUploadedAttachmentRef> | null;
+    if (!ref || typeof ref !== "object" || typeof ref.uploadId !== "string" || !ref.uploadId.trim()
+      || (ref.attachmentIds !== undefined
+        && (!Array.isArray(ref.attachmentIds) || ref.attachmentIds.some((id) => typeof id !== "string" || !id.trim())))) {
+      throw new PilotDeckError({ code: "validation_error", message: `uploadedAttachments[${index}] is invalid.` });
+    }
+  }
+}
+
+function validateTrustedContext(value: unknown): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    throw new PilotDeckError({ code: "validation_error", message: "trustedContext must be an array." });
+  }
+  for (const [index, item] of value.entries()) {
+    const context = item as Partial<PilotDeckTrustedContextMessage> | null;
+    if (!context || typeof context !== "object"
+      || typeof context.text !== "string" || !context.text.trim()
+      || typeof context.source !== "string" || !context.source.trim()
+      || !["material_context", "skill_context", "application_context"].includes(String(context.purpose))
+      || context.scope !== "turn") {
+      throw new PilotDeckError({ code: "validation_error", message: `trustedContext[${index}] is invalid.` });
+    }
+  }
+}
+
+function validateTurnSubmission(value: PilotDeckTurnSubmission): void {
+  validateAttachments(value.attachments);
+  validateUploadedAttachments(value.uploadedAttachments);
+  validateTrustedContext(value.trustedContext);
 }
 
 function validateOptions(options: PilotDeckOptions): void {
@@ -614,6 +783,54 @@ function mapPublicMessage(raw: PilotDeckMessage, sessionId?: string): PilotDeckM
   return mapped;
 }
 
+function durableRunOutput(events: Array<{ event?: Record<string, unknown> }>): unknown {
+  const textChunks: string[] = [];
+  let structuredOutput: unknown;
+  for (const item of events) {
+    const event = item.event;
+    if (!event) continue;
+    if (event.type === "structured_output") {
+      structuredOutput = event.payload;
+      continue;
+    }
+    if (event.type === "assistant_text_delta" && typeof event.text === "string") {
+      textChunks.push(event.text);
+      continue;
+    }
+    // Timeline-aware Gateway projections persist text as assistant_block
+    // instead of assistant_text_delta. Keep the same live-result projection.
+    if (event.type === "assistant_block" && event.kind === "text" && typeof event.text === "string") {
+      textChunks.push(event.text);
+    }
+  }
+  return structuredOutput ?? (textChunks.length > 0 ? textChunks.join("") : undefined);
+}
+
+async function readDurableRunEvents(
+  request: (method: string, params: Record<string, unknown>) => Promise<unknown>,
+  reference: { sessionId: string; runId: string; projectKey?: string },
+  lastSeq: number,
+): Promise<Array<{ event?: Record<string, unknown> }>> {
+  const events: Array<{ event?: Record<string, unknown> }> = [];
+  let afterSeq = 0;
+  while (afterSeq < lastSeq) {
+    const result = await request("run_events", {
+      sessionKey: reference.sessionId,
+      runId: reference.runId,
+      ...(reference.projectKey !== undefined ? { projectKey: reference.projectKey } : {}),
+      afterSeq,
+      limit: 500,
+    }) as { events?: Array<{ event?: Record<string, unknown>; seq?: number }>; nextSeq?: number };
+    const page = result.events ?? [];
+    if (page.length === 0) break;
+    events.push(...page);
+    const nextSeq = result.nextSeq ?? page.at(-1)?.seq;
+    if (typeof nextSeq !== "number" || nextSeq <= afterSeq) break;
+    afterSeq = nextSeq;
+  }
+  return events;
+}
+
 function parsePendingUserDialog(message: PilotDeckMessage, sessionId: string): PilotDeckUserDialogRequest {
   const requestId = String(message.requestId ?? "");
   const common = {
@@ -798,6 +1015,7 @@ class PilotDeckQueryImpl implements PilotDeckQuery {
     options: PilotDeckOptions,
     transport?: GatewayTransportClient,
     private readonly requestedRunId?: string,
+    private readonly turnSubmission?: PilotDeckTurnSubmission,
   ) {
     this.options = options;
     this.permissionHandler = options.canUseTool;
@@ -938,6 +1156,9 @@ class PilotDeckQueryImpl implements PilotDeckQuery {
       projectKey: this.options.projectKey,
       message: prompt,
       workspaceCwd: this.options.cwd,
+      ...(this.turnSubmission?.attachments ? { attachments: this.turnSubmission.attachments } : {}),
+      ...(this.turnSubmission?.uploadedAttachments ? { uploadedAttachments: this.turnSubmission.uploadedAttachments } : {}),
+      ...(this.turnSubmission?.trustedContext ? { trustedContext: this.turnSubmission.trustedContext } : {}),
       maxTurns: this.options.maxTurns,
       maxBudgetUsd: this.options.maxBudgetUsd,
       timeoutMs: this.options.timeoutMs,
@@ -2539,6 +2760,7 @@ export function createQuery(
   options: PilotDeckOptions,
   requestedRunId?: string,
 ): PilotDeckQuery {
+  if (requestedRunId !== undefined) validateRunId(requestedRunId);
   return new PilotDeckQueryImpl(prompt, options, undefined, requestedRunId);
 }
 
@@ -2552,8 +2774,11 @@ export function createQueryWithTransport(
   options: PilotDeckOptions,
   transport: GatewayTransportClient,
   requestedRunId?: string,
+  turnSubmission?: PilotDeckTurnSubmission,
 ): PilotDeckQuery {
-  return new PilotDeckQueryImpl(prompt, options, transport, requestedRunId);
+  if (requestedRunId !== undefined) validateRunId(requestedRunId);
+  validateTurnSubmission(turnSubmission ?? {});
+  return new PilotDeckQueryImpl(prompt, options, transport, requestedRunId, turnSubmission);
 }
 
 export async function createWarmQuery(options: PilotDeckOptions): Promise<PilotDeckWarmQuery> {
@@ -3199,14 +3424,126 @@ export function createPilotDeckClientWithTransportFactory(
     runs: {
       start: (input) => {
         assertOpen();
-        const id = randomUUID();
+        const id = input.runId === undefined ? randomUUID() : validateRunId(input.runId);
+        const turnSubmission: PilotDeckTurnSubmission = {
+          ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
+          ...(input.uploadedAttachments !== undefined ? { uploadedAttachments: input.uploadedAttachments } : {}),
+          ...(input.trustedContext !== undefined ? { trustedContext: input.trustedContext } : {}),
+        };
+        validateTurnSubmission(turnSubmission);
         const run = createQueryWithTransport(
           userMessageText(input.input),
           merged({ ...(input.options ?? {}), sessionId: input.sessionId }),
           createTransport(),
           id,
+          turnSubmission,
         );
         return createRunHandle(run, id, input.sessionId);
+      },
+      get: async (input) => {
+        const reference = validateRunReference(input.sessionId, input.runId);
+        const record = await request("run_get", {
+          sessionKey: reference.sessionId,
+          runId: reference.runId,
+          projectKey: input.projectKey ?? defaults.projectKey,
+        }) as Record<string, unknown> | undefined;
+        if (!record) return undefined;
+        return {
+          sessionId: String(record.sessionKey ?? input.sessionId),
+          projectKey: typeof record.projectKey === "string" ? record.projectKey : undefined,
+          runId: String(record.runId),
+          state: record.state as PilotDeckRunRecord["state"],
+          revision: Number(record.revision),
+          lastSeq: Number(record.lastSeq),
+          acceptedAt: String(record.acceptedAt),
+          updatedAt: String(record.updatedAt),
+          ...(record.result && typeof record.result === "object" ? { result: record.result as PilotDeckMessage } : {}),
+        };
+      },
+      observe: async (input: PilotDeckRunObserveInput) => {
+        const reference = validateRunObservation(input);
+        const result = await request("run_events", {
+          sessionKey: reference.sessionId,
+          runId: reference.runId,
+          projectKey: input.projectKey ?? defaults.projectKey,
+          afterSeq: input.afterSeq,
+          limit: input.limit,
+        }) as { events?: Array<{ seq: number; event: PilotDeckMessage }>; nextSeq?: number; gap?: boolean };
+        return {
+          events: result.events ?? [],
+          ...(result.nextSeq !== undefined ? { nextSeq: result.nextSeq } : {}),
+          ...(result.gap === true ? { gap: true } : {}),
+        };
+      },
+      result: async (input) => {
+        const reference = validateRunReference(input.sessionId, input.runId);
+        const record = await request("run_get", {
+          sessionKey: reference.sessionId,
+          runId: reference.runId,
+          projectKey: input.projectKey ?? defaults.projectKey,
+        }) as Record<string, unknown> | undefined;
+        if (!record) return { status: "result_unknown", recovery: { sessionId: reference.sessionId, runId: reference.runId } };
+        const terminal = record.result as Record<string, unknown> | undefined;
+        if (record.state === "aborted") return { status: "aborted", reason: "gateway_abort" };
+        if (terminal?.type === "turn_completed") {
+          let output: unknown;
+          if (Number.isSafeInteger(record.lastSeq) && Number(record.lastSeq) > 0) {
+            const events = await readDurableRunEvents(request, reference, Number(record.lastSeq));
+            output = durableRunOutput(events);
+          }
+          return {
+            status: "completed",
+            ...(output !== undefined ? { output } : {}),
+            usage: terminal.usage as Record<string, unknown> | undefined,
+            finishReason: terminal.finishReason as string | undefined,
+          };
+        }
+        if (terminal?.type === "error") {
+          return { status: "failed", error: new PilotDeckError({ code: String(terminal.code ?? "server_error"), message: String(terminal.message ?? "Gateway run failed") }) };
+        }
+        return { status: "result_unknown", recovery: { sessionId: reference.sessionId, runId: reference.runId } };
+      },
+      reattach: async (input) => await (async () => {
+        const reference = validateRunReference(input.sessionId, input.runId);
+        const record = await request("run_reattach", {
+          sessionKey: reference.sessionId,
+          runId: reference.runId,
+          projectKey: input.projectKey ?? defaults.projectKey,
+        }) as Record<string, unknown> | undefined;
+        if (!record) return undefined;
+        return {
+          sessionId: String(record.sessionKey ?? input.sessionId),
+          projectKey: typeof record.projectKey === "string" ? record.projectKey : undefined,
+          runId: String(record.runId),
+          state: record.state as PilotDeckRunRecord["state"],
+          revision: Number(record.revision),
+          lastSeq: Number(record.lastSeq),
+          acceptedAt: String(record.acceptedAt),
+          updatedAt: String(record.updatedAt),
+        };
+      })(),
+      abort: async (input) => {
+        const reference = validateRunReference(input.sessionId, input.runId);
+        await request("abort_turn", { sessionKey: reference.sessionId, runId: reference.runId, reason: input.reason });
+      },
+    },
+    uploads: {
+      create: async (input) => {
+        validateUploadCreateInput(input);
+        return await request("upload_create", input) as PilotDeckUploadRecord;
+      },
+      get: async (input) => {
+        return await request("upload_get", { uploadId: validateUploadId(input.uploadId) }) as PilotDeckUploadRecord;
+      },
+      part: async (input) => {
+        validateUploadPartInput(input);
+        return await request("upload_part", input) as PilotDeckUploadAttachment;
+      },
+      complete: async (input) => {
+        return await request("upload_complete", { uploadId: validateUploadId(input.uploadId) }) as PilotDeckUploadRecord;
+      },
+      cancel: async (input) => {
+        return await request("upload_cancel", { uploadId: validateUploadId(input.uploadId) }) as PilotDeckUploadRecord;
       },
     },
     projects: {
@@ -3236,8 +3573,25 @@ export function createPilotDeckClientWithTransportFactory(
       },
     },
     skills: {
-      list: async (input = {}) => (await request("skill_list", input) as { items?: PilotDeckSkill[] }).items ?? [],
-      read: async (input) => await request("skill_read", input) as PilotDeckSkill,
+      list: async (input: PilotDeckSkillsListInput = {}) => (await request("skill_list", {
+        ...input,
+        projectKey: input.projectKey ?? defaults.projectKey,
+      }) as { items?: PilotDeckSkill[] }).items ?? [],
+      read: async (input: PilotDeckSkillAddress) => await request("skill_read", input) as PilotDeckSkill,
+      write: async (input: PilotDeckSkillWriteInput) => await request("skill_write", input) as PilotDeckSkillResult,
+      create: async (input: PilotDeckSkillCreateInput) => await request("skill_create", input) as PilotDeckSkillResult,
+      delete: async (input: PilotDeckSkillAddress) => await request("skill_delete", input) as PilotDeckSkillResult,
+      import: async (input: PilotDeckSkillImportInput) => await request("skill_import", input) as PilotDeckSkillResult,
+      validate: async (input: PilotDeckSkillValidateInput) => await request("skill_validate", input) as PilotDeckSkillResult,
+      scan: async (input: PilotDeckSkillScanInput) => await request("skill_scan", input) as PilotDeckSkillResult,
+    },
+    alwaysOn: {
+      apply: async (input: PilotDeckAlwaysOnApplyInput) => await request("always_on_apply", input) as PilotDeckAlwaysOnResult,
+      abort: async (input: PilotDeckAlwaysOnAbortInput) => {
+        const { sessionId, ...rest } = input;
+        return await request("always_on_abort", { ...rest, sessionKey: sessionId }) as PilotDeckAlwaysOnResult;
+      },
+      rerunPlan: async (input: PilotDeckAlwaysOnRerunPlanInput) => await request("always_on_rerun_plan", input) as PilotDeckAlwaysOnResult,
     },
     mcp: {
       status: async (input = {}) => {
@@ -3411,6 +3765,125 @@ export function createPilotDeckClientWithTransportFactory(
           ...(response.reason === "gateway_restarted" ? { reason: "gateway_restarted" as const } : {}),
         };
       },
+    },
+    permissions: {
+      list: async (input: PilotDeckPermissionResourceInput) => {
+        if (!input.sessionId?.trim()) {
+          throw new PilotDeckError({ code: "validation_error", message: "sessionId is required." });
+        }
+        const result = await request("permission_list", {
+          sessionKey: input.sessionId,
+          projectKey: input.projectKey ?? defaults.projectKey,
+        }) as { requests?: unknown };
+        if (!Array.isArray(result.requests)) {
+          throw new PilotDeckError({ code: "validation_error", message: "Gateway returned an invalid permission list." });
+        }
+        return result.requests.map((entry, index) => parsePermissionRequest(entry, index));
+      },
+      watch: async (input: PilotDeckPermissionResourceInput, listener: (change: PilotDeckPermissionChange) => void) => {
+        if (!input.sessionId?.trim()) {
+          throw new PilotDeckError({ code: "validation_error", message: "sessionId is required." });
+        }
+        if (typeof listener !== "function") {
+          throw new PilotDeckError({ code: "validation_error", message: "A permission watch listener is required." });
+        }
+        await connect();
+        if (!transport.onNotification) throw unsupported("permissions.watch");
+        const sessionId = input.sessionId;
+        const projectKey = input.projectKey ?? defaults.projectKey;
+        return transport.onNotification((notification) => {
+          if (notification.name !== "permission_changed") return;
+          const payload = asRecord(notification.payload);
+          if (payload.sessionKey !== sessionId || (payload.projectKey !== undefined && payload.projectKey !== projectKey)) return;
+          if (payload.type !== "requested" && payload.type !== "resolved") return;
+          if (typeof payload.requestId !== "string" || !payload.requestId) return;
+          try {
+            listener({
+              type: payload.type,
+              sessionId,
+              ...(projectKey ? { projectKey } : {}),
+              requestId: payload.requestId,
+              ...(payload.request !== undefined ? { request: parsePermissionRequest(payload.request, 0) } : {}),
+            });
+          } catch {
+            // Application listeners cannot affect Gateway-owned permission state.
+          }
+        });
+      },
+      respond: async (input: PilotDeckPermissionResponseInput) => {
+        if (!input.sessionId?.trim() || !input.requestId?.trim()
+          || (input.decision !== "allow" && input.decision !== "deny")) {
+          throw new PilotDeckError({ code: "validation_error", message: "sessionId, requestId, and a valid permission decision are required." });
+        }
+        const result = await request("permission_decide", {
+          sessionKey: input.sessionId,
+          projectKey: input.projectKey ?? defaults.projectKey,
+          requestId: input.requestId,
+          decision: input.decision,
+          ...(input.remember !== undefined ? { remember: input.remember } : {}),
+          ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        }) as { delivered?: unknown };
+        if (typeof result.delivered !== "boolean") {
+          throw new PilotDeckError({ code: "validation_error", message: "Gateway returned an invalid permission response receipt." });
+        }
+        return { delivered: result.delivered };
+      },
+    },
+    memory: {
+      list: async (input: PilotDeckMemoryResourceInput) => {
+        if (!input.projectKey?.trim()) throw new PilotDeckError({ code: "validation_error", message: "projectKey is required." });
+        const result = await request("memory_list", { projectKey: input.projectKey, ...(input.sessionId ? { sessionKey: input.sessionId } : {}) }) as { items?: unknown[] };
+        return result.items ?? [];
+      },
+      wipe: async (input: PilotDeckMemoryResourceInput & { scope: "session" | "project" }) => {
+        if (!input.projectKey?.trim() || (input.scope !== "session" && input.scope !== "project")) throw new PilotDeckError({ code: "validation_error", message: "projectKey and a valid memory scope are required." });
+        if (input.scope === "session" && !input.sessionId?.trim()) {
+          throw new PilotDeckError({ code: "validation_error", message: "sessionId is required for session memory wipe." });
+        }
+        return await request("memory_wipe", { projectKey: input.projectKey, scope: input.scope, ...(input.sessionId ? { sessionKey: input.sessionId } : {}) }) as { wiped: boolean; scope: "session" | "project" };
+      },
+    },
+    snapshots: {
+      list: async (input: PilotDeckSnapshotListInput) => {
+        const { sessionId, ...rest } = input;
+        return await request("snapshot_list", {
+          ...rest,
+          ...(sessionId ? { sessionKey: sessionId } : {}),
+        }) as { items: unknown[]; nextCursor?: string };
+      },
+      get: async (input: PilotDeckSnapshotGetInput) => (await request("snapshot_get", input) as { snapshot?: unknown }).snapshot,
+      restore: async (input: PilotDeckSnapshotRestoreInput) => await request("snapshot_restore", input) as { restored: boolean; workspaceKey?: string },
+    },
+    manager: {
+      sessions: async (input: PilotDeckManagerResourceInput = {}) => {
+        const { sessionId, ...rest } = input;
+        return (await request("manager_sessions", {
+          ...rest,
+          ...(sessionId ? { sessionKey: sessionId } : {}),
+        }) as { items?: unknown[] }).items ?? [];
+      },
+      browsers: async (input: PilotDeckManagerResourceInput = {}) => {
+        const { sessionId, ...rest } = input;
+        return (await request("manager_browsers", {
+          ...rest,
+          ...(sessionId ? { sessionKey: sessionId } : {}),
+        }) as { items?: unknown[] }).items ?? [];
+      },
+    },
+    archives: {
+      manifest: async (input) => {
+        const result = await request("native_archive_manifest", { sessionKey: input.sessionId, projectKey: input.projectKey ?? defaults.projectKey }) as Record<string, unknown>;
+        return { ...result, sessionId: String(result.sessionKey ?? input.sessionId) } as PilotDeckNativeArchiveManifest;
+      },
+      entries: async (input) => await request("native_archive_entries", {
+        sessionKey: input.sessionId, projectKey: input.projectKey ?? defaults.projectKey, afterSequence: input.afterSequence, limit: input.limit,
+      }) as { entries: unknown[]; nextSequence?: number; complete: boolean },
+      artifact: async (input) => await request("native_archive_artifact", {
+        sessionKey: input.sessionId,
+        projectKey: input.projectKey ?? defaults.projectKey,
+        artifactName: input.artifactName,
+        maxBytes: input.maxBytes,
+      }) as import("./types.js").PilotDeckNativeArchiveArtifact,
     },
     cron: {
       create: async (input) => {

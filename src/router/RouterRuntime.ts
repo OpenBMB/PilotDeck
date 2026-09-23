@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   CanonicalModelEvent,
   CanonicalModelRequest,
@@ -1144,6 +1145,22 @@ async function* streamAttempt(
   try {
     for await (const event of modelRuntime.stream(request, {
       signal: abortSignal,
+      ...(ctx.invocationLogSink && ctx.workspaceId ? {
+        invocation: {
+          sink: ctx.invocationLogSink,
+          context: {
+            workspaceId: ctx.workspaceId,
+            sessionId: ctx.sessionId,
+            turnId: ctx.turnId,
+            runId: ctx.runId ?? ctx.turnId,
+            logicalCallId: ctx.logicalCallId ?? randomUUID(),
+            caller: ctx.caller ?? "agent",
+            ...(ctx.subSessionId ? { subSessionId: ctx.subSessionId } : {}),
+            ...(ctx.parentToolCallId ? { parentToolCallId: ctx.parentToolCallId } : {}),
+            ...(ctx.storageConfigVersion ? { storageConfigVersion: ctx.storageConfigVersion } : {}),
+          },
+        },
+      } : {}),
       onRetryProgress(progress) {
         events.emit({
           type: "pilotdeck_router_retry_progress",

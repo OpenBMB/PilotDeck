@@ -210,10 +210,15 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
 
     const server = await bootstrap.run(async () => {
       const envPort = Number.parseInt(env.PILOTDECK_GATEWAY_PORT ?? "", 10);
+      const host = readStringFlag(argv, "--host") ?? env.PILOTDECK_GATEWAY_HOST;
+      const allowRemoteHost = env.PILOTDECK_GATEWAY_ALLOW_REMOTE === "1";
       const startupChannels = await channelAdapters.createStartupAdapters(snapshot.config);
       const nextServer = await startPilotDeckServer({
         gateway,
         port: readPort(argv) ?? (Number.isFinite(envPort) ? envPort : 18789),
+        host,
+        allowRemoteHost,
+        token: env.PILOTDECK_GATEWAY_TOKEN || env.PILOTDECK_TOKEN,
         staticAssetsPath: resolve(projectRoot, "ui/dist"),
         feishu: startupChannels.feishu,
         weixin: startupChannels.weixin,

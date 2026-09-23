@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { CanonicalModelRequest, ModelRuntime } from "../../src/model/index.js";
+import type { InvocationLogContext } from "../../src/storage/legalDataStorage.js";
 import {
   createRouterRuntime,
   type RouterModelInvocationPort,
@@ -76,4 +77,62 @@ test("router delegates model execution and capability lookup to injected invocat
   assert.equal(calls.some((call) => call.startsWith("capabilities:")), true);
   await router.shutdown();
   assert.equal(disposed, true);
+});
+
+test("router forwards invocation audit provenance to the model runtime", async () => {
+  let invocationContext: InvocationLogContext | undefined;
+  const sink = {
+    stage() {},
+    async append() {},
+  };
+  const invocation: RouterModelInvocationPort = {
+    async *stream(_request, options) {
+      invocationContext = options?.invocation?.context;
+      yield { type: "message_start", role: "assistant" };
+      yield { type: "message_end", finishReason: "stop" };
+    },
+    getCapabilities(provider, model) {
+      return fallbackRuntime.getCapabilities(provider, model);
+    },
+    getMultimodal(provider, model) {
+      return fallbackRuntime.getMultimodal(provider, model);
+    },
+    getProviderProtocol() { return "openai"; },
+    getProviderBaseUrl() { return "https://injected.invalid"; },
+  };
+  const router = createRouterRuntime(config, { modelRuntime: fallbackRuntime, modelInvoker: invocation });
+
+  for await (const _event of router.execute({
+    provider: "provider", model: "model", scenarioType: "default", isSubagent: true,
+    orchestrating: false, resolvedFrom: "scenario", mutations: {},
+  }, {
+    provider: "provider", model: "model",
+    maxOutputTokens: 256,
+    messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+  }, {
+    workspaceId: "workspace-1",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    runId: "run-1",
+    caller: "subagent",
+    subSessionId: "sub-session-1",
+    parentToolCallId: "tool-call-1",
+    invocationLogSink: sink,
+  })) {
+    // Consume the stream so the invocation reaches the model boundary.
+  }
+
+  assert.ok(invocationContext);
+  const { logicalCallId, ...stableContext } = invocationContext;
+  assert.deepEqual(stableContext, {
+    workspaceId: "workspace-1",
+    sessionId: "session-1",
+    turnId: "turn-1",
+    runId: "run-1",
+    caller: "subagent",
+    subSessionId: "sub-session-1",
+    parentToolCallId: "tool-call-1",
+  });
+  assert.equal(typeof logicalCallId, "string");
+  await router.shutdown();
 });

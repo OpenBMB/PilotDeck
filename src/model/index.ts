@@ -154,6 +154,8 @@ export {
   PROMPT_TOO_LONG_OPENAI_PATTERN,
   REQUEST_TOO_LARGE_PATTERN,
   MAX_OUTPUT_REACHED_PATTERN,
+  PREMATURE_STREAM_CLOSE_PATTERN,
+  isPrematureStreamCloseMessage,
   parseRetryAfterFromMessage,
   parseRetryAfterHeader,
   type CanonicalModelError,

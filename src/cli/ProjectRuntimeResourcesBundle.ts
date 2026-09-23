@@ -48,6 +48,7 @@ import {
 import {
   ProjectMemoryBundle,
   type ProjectMemoryProviderFactory,
+  type ProjectMemoryManagementService,
   type ProjectMemoryMaintenanceService,
 } from "./ProjectMemoryBundle.js";
 import {
@@ -86,6 +87,7 @@ export type ProjectRuntimeResources = {
   lsp: LspServicePort;
   memory?: MemoryResolver;
   memoryService?: ProjectMemoryMaintenanceService;
+  memoryManagement?: ProjectMemoryManagementService;
 };
 
 export type ProjectRuntimeResourcesBundleOptions = {

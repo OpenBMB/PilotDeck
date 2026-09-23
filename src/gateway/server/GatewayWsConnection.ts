@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Gateway, GatewayEvent, GatewaySubmitTurnInput } from "../protocol/types.js";
-import type { WsHelloFrame, WsRequestFrame } from "../protocol/frames.js";
+import type { GatewayWsClientName, WsHelloFrame, WsRequestFrame } from "../protocol/frames.js";
 import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "../protocol/version.js";
 import { SkillManagerError, SkillValidationError } from "../../extension/skills/index.js";
 import { DialogGatewayError } from "../dialog/errors.js";
@@ -28,6 +28,7 @@ export type GatewayWsConnectionOptions = {
 
 export class GatewayWsConnection {
   private authed = false;
+  private clientName?: GatewayWsClientName;
   private readonly inFlightSessions = new Set<string>();
   /** Sessions whose interaction ownership is bound to this socket. */
   private readonly interactionSessions = new Set<string>();
@@ -105,6 +106,7 @@ export class GatewayWsConnection {
       return;
     }
     this.authed = true;
+    this.clientName = frame.clientName as GatewayWsClientName;
     this.ws.sendText(
       JSON.stringify({
         type: "hello_ok",
@@ -139,6 +141,14 @@ export class GatewayWsConnection {
             if (event.type === "error") {
               lastError = event;
             }
+            if (event.type === "permission_request" && sessionKey) {
+              this.sendNotification("permission_changed", {
+                type: "requested",
+                sessionKey,
+                projectKey: params.projectKey,
+                requestId: event.requestId,
+              });
+            }
             this.ws.sendText(JSON.stringify({ type: "event", id: frame.id, seq: seq++, final: false, event }));
           }
         } finally {
@@ -163,6 +173,17 @@ export class GatewayWsConnection {
       }
 
       const result = await this.dispatchRequest(frame);
+      if (frame.method === "permission_decide") {
+        const input = frame.params as { sessionKey?: unknown; projectKey?: unknown; requestId?: unknown };
+        if (typeof input.sessionKey === "string" && typeof input.requestId === "string") {
+          this.sendNotification("permission_changed", {
+            type: "resolved",
+            sessionKey: input.sessionKey,
+            ...(typeof input.projectKey === "string" ? { projectKey: input.projectKey } : {}),
+            requestId: input.requestId,
+          });
+        }
+      }
       this.ws.sendText(JSON.stringify({ type: "response", id: frame.id, ok: true, result }));
     } catch (error) {
       // SkillManagerError carries a structured `code` we want to round-
@@ -230,12 +251,69 @@ export class GatewayWsConnection {
 
   private dispatchRequest(frame: WsRequestFrame): Promise<unknown> {
     switch (frame.method) {
+      case "upload_create":
+        if (this.options.gateway.uploadCreate) return this.options.gateway.uploadCreate(frame.params as never);
+        return Promise.reject(Object.assign(new Error("upload_create is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "upload_get":
+        if (this.options.gateway.uploadGet) return this.options.gateway.uploadGet(frame.params as never);
+        return Promise.reject(Object.assign(new Error("upload_get is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "upload_part":
+        if (this.options.gateway.uploadPart) return this.options.gateway.uploadPart(frame.params as never);
+        return Promise.reject(Object.assign(new Error("upload_part is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "upload_complete":
+        if (this.options.gateway.uploadComplete) return this.options.gateway.uploadComplete(frame.params as never);
+        return Promise.reject(Object.assign(new Error("upload_complete is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "upload_cancel":
+        if (this.options.gateway.uploadCancel) return this.options.gateway.uploadCancel(frame.params as never);
+        return Promise.reject(Object.assign(new Error("upload_cancel is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
       case "steer_turn":
         return this.options.gateway.steerTurn(frame.params as never);
       case "cancel_steer":
         return this.options.gateway.cancelSteer(frame.params as never);
       case "abort_turn":
         return this.options.gateway.abortTurn(frame.params as never).then(() => ({ ok: true }));
+      case "run_get":
+        if (this.options.gateway.runGet) return this.options.gateway.runGet(frame.params as never);
+        return Promise.reject(Object.assign(new Error("run_get is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "run_events":
+        if (this.options.gateway.runEvents) return this.options.gateway.runEvents(frame.params as never);
+        return Promise.reject(Object.assign(new Error("run_events is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "run_reattach":
+        if (this.options.gateway.runReattach) return this.options.gateway.runReattach(frame.params as never);
+        return Promise.reject(Object.assign(new Error("run_reattach is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "permission_list":
+        if (this.options.gateway.listPermissions) return this.options.gateway.listPermissions(frame.params as never);
+        return Promise.reject(Object.assign(new Error("permission_list is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "memory_list":
+        if (this.options.gateway.memoryList) return this.options.gateway.memoryList(frame.params as never);
+        return Promise.reject(Object.assign(new Error("memory_list is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "memory_wipe":
+        if (this.options.gateway.memoryWipe) return this.options.gateway.memoryWipe(frame.params as never);
+        return Promise.reject(Object.assign(new Error("memory_wipe is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "snapshot_list":
+        if (this.options.gateway.snapshotList) return this.options.gateway.snapshotList(frame.params as never);
+        return Promise.reject(Object.assign(new Error("snapshot_list is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "snapshot_get":
+        if (this.options.gateway.snapshotGet) return this.options.gateway.snapshotGet(frame.params as never);
+        return Promise.reject(Object.assign(new Error("snapshot_get is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "snapshot_restore":
+        if (this.options.gateway.snapshotRestore) return this.options.gateway.snapshotRestore(frame.params as never);
+        return Promise.reject(Object.assign(new Error("snapshot_restore is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "manager_sessions":
+        if (this.options.gateway.managerSessions) return this.options.gateway.managerSessions(frame.params as never);
+        return Promise.reject(Object.assign(new Error("manager_sessions is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "manager_browsers":
+        if (this.options.gateway.managerBrowsers) return this.options.gateway.managerBrowsers(frame.params as never);
+        return Promise.reject(Object.assign(new Error("manager_browsers is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "native_archive_manifest":
+        if (this.options.gateway.nativeArchiveManifest) return this.options.gateway.nativeArchiveManifest(frame.params as never);
+        return Promise.reject(Object.assign(new Error("native_archive_manifest is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "native_archive_entries":
+        if (this.options.gateway.nativeArchiveEntries) return this.options.gateway.nativeArchiveEntries(frame.params as never);
+        return Promise.reject(Object.assign(new Error("native_archive_entries is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
+      case "native_archive_artifact":
+        if (this.options.gateway.nativeArchiveArtifact) return this.options.gateway.nativeArchiveArtifact(frame.params as never);
+        return Promise.reject(Object.assign(new Error("native_archive_artifact is unavailable."), { code: "CAPABILITY_UNAVAILABLE" }));
       case "list_sessions":
         return this.options.gateway.listSessions(frame.params as never);
       case "resume_session":
@@ -405,10 +483,20 @@ export class GatewayWsConnection {
       case "user_dialog_respond":
         return this.options.gateway.respondUserDialog(frame.params as never);
       case "permission_decide":
-        return this.options.gateway.permissionDecide({
-          ...((frame.params ?? {}) as Record<string, unknown>),
-          interactionBinding: this.interactionBinding,
-        } as never);
+        {
+          const params = (frame.params ?? {}) as Record<string, unknown>;
+          const sessionKey = typeof params.sessionKey === "string" ? params.sessionKey : undefined;
+          // SDK permission resources are intentionally independent of the
+          // WebSocket that owns the running turn. Keep binding checks on an
+          // SDK run connection (which owns the session interaction); only a
+          // separate SDK control connection takes the resource path.
+          const sdkControlConnection = this.clientName === "sdk"
+            && (!sessionKey || !this.interactionSessions.has(sessionKey));
+          return this.options.gateway.permissionDecide({
+            ...params,
+            ...(sdkControlConnection ? {} : { interactionBinding: this.interactionBinding }),
+          } as never);
+        }
       case "grant_session_permission":
         return this.options.gateway.grantSessionPermission(frame.params as never);
       case "read_session_messages":

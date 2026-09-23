@@ -31,7 +31,7 @@ const ROOT_RUNTIME_EXPORTS = [
   "getSessionMessages", "getSubagentMessages", "importSessionToStore", "listSessions",
   "listSubagents", "mapError", "prepareLastTurnReplacement", "query", "renameSession",
   "renderBrowserUserDialog", "renderDomBrowserUserDialog", "renderTerminalUserDialog", "resolveSettings",
-  "restoreSessionTranscript", "startup", "summaryToSessionInfo", "tagSession", "tool",
+  "restoreSessionTranscript", "startup", "summaryToSessionInfo", "tagSession", "tool", "updateSettings",
 ].sort();
 
 const EMBEDDED_RUNTIME_EXPORTS = [

@@ -9,6 +9,7 @@ import {
   MODEL_NOT_FOUND_PATTERN,
   MULTIMODAL_PROCESSOR_PATTERN,
   NETWORK_TIMEOUT_PATTERN,
+  isPrematureStreamCloseMessage,
   PROMPT_TOO_LONG_ANTHROPIC_PATTERN,
   PROMPT_TOO_LONG_OPENAI_PATTERN,
   RATE_LIMIT_MESSAGE_PATTERN,
@@ -111,6 +112,7 @@ function classifyNetworkError(error: unknown, message: string): CanonicalModelEr
     }
   }
   const text = message.toLowerCase();
+  if (isPrematureStreamCloseMessage(message)) return "connection_reset";
   if (text.includes("enotfound") || text.includes("eai_again") || text.includes("dns")) return "dns_error";
   if (text.includes("econnreset") || text.includes("socket hang up")) return "connection_reset";
   if (text.includes("econnrefused")) return "connection_refused";

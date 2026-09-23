@@ -158,6 +158,13 @@ export type CanonicalMessageMetadata = {
   /** Compaction id of the effective replacement snapshot persisted in the transcript. */
   compactSnapshotId?: string;
   purpose?: string;
+  /** Source and intended use of Gateway-verified turn context. */
+  trustedContext?: {
+    source: string;
+    purpose: "material_context" | "skill_context" | "application_context";
+    scope: "turn";
+    authorizedPrincipal: string;
+  };
   /** Stable queued-input id for a user message injected during an active turn. */
   queueItemId?: string;
   forkCarryover?: {

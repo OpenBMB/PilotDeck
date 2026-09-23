@@ -5,6 +5,7 @@ import {
   rename as renameAsync,
   rm as rmAsync,
   stat as statAsync,
+  mkdtemp,
 } from "node:fs/promises";
 import { resolve, join as joinPath } from "node:path";
 import { tmpdir } from "node:os";
@@ -34,6 +35,7 @@ import type { PilotDeckLoadedPlugin } from "../extension/index.js";
 import { isPilotDeckHookEvent } from "../extension/hooks/protocol/events.js";
 import {
   InProcessGateway,
+  type InProcessGatewayOptions,
   SessionRouter,
   GatewayAgentEventProjector,
   GatewayAgentEventTelemetryObserver,
@@ -47,6 +49,10 @@ import {
   type Gateway,
   type GatewayCronController,
   type GatewayToolResultArtifactStorePort,
+  type GatewayTrustedContextAuthorizer,
+  type GatewayNativeArchiveAuthorizer,
+  FileRunRegistry,
+  type RunRegistryPort,
 } from "../gateway/index.js";
 import {
   createGatewayNativeSessionCatalog,
@@ -86,6 +92,14 @@ import {
 import { createPilotConfigStoreSync, type PilotConfigStore } from "../pilot/config/PilotConfigStore.js";
 import { redactConfig } from "../pilot/config/redact.js";
 import type { PilotConfigSnapshot } from "../pilot/config/types.js";
+import {
+  ContentAddressedWorkspaceSnapshotRecorder,
+  createWorkspaceSnapshotProvider,
+  resolveWorkspaceSnapshotConfig,
+  JsonlInvocationLogSink,
+  resolveLegalStorageConfig,
+  type ModelInvocationLogSink,
+} from "../storage/index.js";
 import {
   createProjectSessionDataPlane,
   ProjectSessionWriteCoordinator,
@@ -153,6 +167,8 @@ export type CreateLocalGatewayOptions = {
   /** Read-only skills shipped with this PilotDeck build. Auto-discovered when omitted. */
   builtinSkillsRoot?: string;
   env?: Record<string, string | undefined>;
+  /** Host-injected provider request/response audit sink. */
+  invocationLogSink?: ModelInvocationLogSink;
   permissionMode?: AgentRuntimeConfig["permissionMode"];
   /** Maximum time an interactive permission request may wait for a host answer. */
   permissionTimeoutMs?: number;
@@ -172,6 +188,14 @@ export type CreateLocalGatewayOptions = {
    * but can never install or relax this host-owned restriction.
    */
   organizationPolicy?: GatewayOrganizationPolicy;
+  /** Host-owned authorization for SDK trusted context; never supplied by the SDK client. */
+  trustedContextAuthorizer?: GatewayTrustedContextAuthorizer;
+  /** Host-owned authorization for native transcript projections. */
+  nativeArchiveAuthorizer?: GatewayNativeArchiveAuthorizer;
+  /** Optional max age for filesystem-backed native archive artifacts. */
+  nativeArchiveRetentionMs?: number;
+  /** Optional durable run registry; defaults to a file under the Gateway home. */
+  runRegistry?: RunRegistryPort;
   /**
    * Host-owned layout for persistent native session files. The adapter is
    * evaluated only by this Gateway process; SDK clients cannot provide or
@@ -189,6 +213,8 @@ export type CreateLocalGatewayOptions = {
   sessionOverrides?: SessionConfigOverrides;
   /** Optional Cron runtime controller exposed through Gateway management methods. */
   cron?: GatewayCronController;
+  /** Application-selected manager for browser sessions; no local fallback is invented. */
+  managerBrowsers?: InProcessGatewayOptions["managerBrowsers"];
   /**
    * Additional directories the agent is allowed to read/write outside of `projectRoot`.
    * Passed to PermissionContext so `pathSafety` accepts paths within these roots.
@@ -544,6 +570,10 @@ export type CreateLocalGatewayResult = {
 };
 
 export function createLocalGateway(options: CreateLocalGatewayOptions = {}): CreateLocalGatewayResult {
+  if (options.nativeArchiveRetentionMs !== undefined
+    && (!Number.isSafeInteger(options.nativeArchiveRetentionMs) || options.nativeArchiveRetentionMs <= 0)) {
+    throw new TypeError("nativeArchiveRetentionMs must be a positive safe integer.");
+  }
   const bootConfig = resolveLocalGatewayBootConfig(options);
   const {
     env,
@@ -555,6 +585,16 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     permissionTimeoutMs,
     elicitationTimeoutMs,
   } = bootConfig;
+  const workspaceSnapshotConfig = resolveWorkspaceSnapshotConfig(env);
+  const legalStorageConfig = resolveLegalStorageConfig(env);
+  const invocationLogSink = options.invocationLogSink
+    ?? (legalStorageConfig ? new JsonlInvocationLogSink(legalStorageConfig) : undefined);
+  const workspaceSnapshotRecorder = workspaceSnapshotConfig
+    ? new ContentAddressedWorkspaceSnapshotRecorder(workspaceSnapshotConfig)
+    : undefined;
+  const workspaceSnapshotProvider = workspaceSnapshotConfig
+    ? createWorkspaceSnapshotProvider(workspaceSnapshotConfig)
+    : undefined;
   const organizationPolicy = normalizeGatewayOrganizationPolicy(options.organizationPolicy);
   const sessionOverrides = options.sessionOverrides ?? new SessionConfigOverrides();
   const deploymentProfile = resolveAgentLoopDeploymentProfile({ env, cwd: projectRoot });
@@ -832,8 +872,39 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     (requestedProjectKey) => registry.resolve(requestedProjectKey).snapshot.config.modules?.sop,
   );
   const restoringSessionKeys = new Set<string>();
+  const runRegistry = options.runRegistry ?? new FileRunRegistry(joinPath(pilotHome, "runs", "registry.json"));
+  void runRegistry.markOrphansInterrupted();
+  const nativeArchiveAuthorizer = options.nativeArchiveAuthorizer || options.nativeArchiveRetentionMs !== undefined
+    ? {
+        authorize: async (input: import("../gateway/protocol/types.js").GatewayNativeArchiveAuthorizationInput) => {
+          await options.nativeArchiveAuthorizer?.authorize(input);
+          if (input.operation !== "artifact" || options.nativeArchiveRetentionMs === undefined) return;
+          if (!input.artifactName || !/^[A-Za-z0-9_.-]+$/u.test(input.artifactName)) return;
+          const resolvedProjectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+          const storage = registry.createPersistentSessionStorage(resolvedProjectKey, input.sessionKey, now);
+          // External artifact stores own their metadata and retention policy.
+          // The local filesystem fallback can enforce the configured age here.
+          if (storage.toolResultArtifactStorage) return;
+          const artifactPath = joinPath(storage.toolResultsDir, input.artifactName);
+          const info = await statAsync(artifactPath).catch(() => undefined);
+          if (info && now().getTime() - info.mtimeMs > options.nativeArchiveRetentionMs!) {
+            throw new DialogGatewayError(
+              "ARCHIVE_ARTIFACT_EXPIRED",
+              `Archive artifact ${input.artifactName} is outside the configured retention window.`,
+            );
+          }
+        },
+      }
+    : undefined;
   let boundServer: { broadcastNotification(name: string, payload?: unknown): void } | undefined;
   const gateway = new InProcessGateway(router, {
+    invocationLogSink,
+    storageConfigVersion: legalStorageConfig?.storageConfigVersion,
+    runRegistry,
+    snapshotRecorder: workspaceSnapshotRecorder,
+    workspaceIdResolver: workspaceSnapshotRecorder
+      ? (requestedProjectKey) => resolveProjectStorageId(requestedProjectKey ?? fallbackProjectRoot, pilotHome)
+      : undefined,
     funasrInstallCommand: getPilotDeckInstallCommand(),
     attachmentTurnComposer: dialog.attachmentTurnComposer,
     now,
@@ -844,6 +915,10 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       || organizationPolicy?.settings?.enforcedSessionSettings !== undefined
       || organizationPolicy?.limits?.maxTaskBudgetUsd !== undefined,
     turnLimits: organizationPolicy?.limits,
+    trustedContextAuthorizer: options.trustedContextAuthorizer,
+    nativeArchiveAuthorizer,
+    uploadLifecycle: dialog.uploads,
+    resolveRunPolicy: () => configStore.getSnapshot().config.runPolicy,
     // A renderer notification is observational only. The Gateway user-dialog
     // bus remains the authority; disconnected or slow renderers resync with
     // user_dialog_list before acting.
@@ -955,6 +1030,138 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
         throw new DialogGatewayError("SESSION_TRANSCRIPT_EMPTY", "Session has no portable text messages to export.");
       }
       return archive;
+    },
+    async nativeArchiveManifest(input) {
+      const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const transcript = await readNativeArchiveTranscript(projectKey, input.sessionKey, registry, now);
+      const entries = transcript.entries;
+      return {
+        schemaVersion: 1,
+        format: "native_transcript_entries",
+        sessionKey: input.sessionKey,
+        entryCount: entries.length,
+        ...(entries.length ? { firstSequence: entries[0]!.sequence, lastSequence: entries.at(-1)!.sequence } : {}),
+        subagentCount: entries.filter((entry) => entry.type === "subagent_started").length,
+        toolResultReferenceCount: entries.filter((entry) => entry.type === "tool_result_message" || entry.type === "tool_result").length,
+      };
+    },
+    async nativeArchiveEntries(input) {
+      if (input.afterSequence !== undefined && (!Number.isSafeInteger(input.afterSequence) || input.afterSequence < -1)) {
+        throw new DialogGatewayError("INVALID_ARCHIVE_CURSOR", "afterSequence must be an integer greater than or equal to -1.");
+      }
+      const limit = input.limit ?? 100;
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+        throw new DialogGatewayError("INVALID_ARCHIVE_LIMIT", "limit must be an integer between 1 and 500.");
+      }
+      const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const entries = (await readNativeArchiveTranscript(projectKey, input.sessionKey, registry, now)).entries;
+      const page = entries.filter((entry) => entry.sequence > (input.afterSequence ?? -1)).slice(0, limit);
+      const last = page.at(-1)?.sequence;
+      return {
+        entries: page,
+        ...(last !== undefined && entries.some((entry) => entry.sequence > last) ? { nextSequence: last } : {}),
+        complete: last === undefined || !entries.some((entry) => entry.sequence > last),
+      };
+    },
+    async nativeArchiveArtifact(input) {
+      if (!input.artifactName || input.artifactName === "." || input.artifactName === ".." || !/^[A-Za-z0-9_.-]+$/u.test(input.artifactName)) {
+        throw new DialogGatewayError("INVALID_ARCHIVE_ARTIFACT", "artifactName must be a single safe artifact name.");
+      }
+      const maxBytes = input.maxBytes ?? 1_000_000;
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 10_000_000) {
+        throw new DialogGatewayError("INVALID_ARCHIVE_ARTIFACT_LIMIT", "maxBytes must be an integer between 1 and 10000000.");
+      }
+      const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const storage = registry.createPersistentSessionStorage(projectKey, input.sessionKey, now);
+      const stored = storage.toolResultArtifactStorage
+        ? await storage.toolResultArtifactStorage.read(input.artifactName)
+        : await readFileAsync(joinPath(storage.toolResultsDir, input.artifactName)).catch(() => undefined);
+      if (!stored) throw new DialogGatewayError("ARCHIVE_ARTIFACT_NOT_FOUND", `Archive artifact ${input.artifactName} was not found.`);
+      const content = stored.subarray(0, maxBytes);
+      return {
+        artifactName: input.artifactName,
+        content: content.toString("base64"),
+        encoding: "base64",
+        bytes: stored.byteLength,
+        truncated: stored.byteLength > content.byteLength,
+      };
+    },
+    async memoryList(input) {
+      const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const management = registry.resolve(projectKey).memoryManagement;
+      if (!management) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway memory provider is unavailable.");
+      const items = management.list({ limit: 100 });
+      return {
+        items: input.sessionKey
+          ? items.filter((item) => item.sourceSessionKey === input.sessionKey)
+          : items,
+      };
+    },
+    async memoryWipe(input) {
+      const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const management = registry.resolve(projectKey).memoryManagement;
+      if (!management) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway memory provider is unavailable.");
+      if (input.scope === "session") {
+        if (!input.sessionKey?.trim()) throw new DialogGatewayError("INVALID_MEMORY_SCOPE", "sessionKey is required for a session-scoped wipe.");
+        management.clearSession(input.sessionKey);
+        return { wiped: true, scope: "session" };
+      }
+      management.clear("current_project");
+      return { wiped: true, scope: "project" };
+    },
+    async managerSessions(input) {
+      const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const listed = await registry.listSessions({ projectKey, limit: 100 });
+      return {
+        items: input.sessionKey
+          ? listed.sessions.filter((session) => session.sessionId === input.sessionKey || session.sessionKey === input.sessionKey)
+          : listed.sessions,
+      };
+    },
+    managerBrowsers: options.managerBrowsers,
+    async snapshotList(input) {
+      if (!workspaceSnapshotProvider) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway snapshot provider is unavailable.");
+      const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const workspaceId = resolveProjectStorageId(projectKey, pilotHome);
+      const limit = input.limit ?? 100;
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+        throw new DialogGatewayError("INVALID_SNAPSHOT_LIMIT", "limit must be an integer between 1 and 500.");
+      }
+      const items = (await workspaceSnapshotProvider.list())
+        .filter((item) => item.workspaceId === workspaceId)
+        .filter((item) => !input.sessionKey || item.sessionId === input.sessionKey);
+      const start = input.cursor === undefined
+        ? 0
+        : items.findIndex((item) => item.snapshotId === input.cursor) + 1;
+      if (input.cursor !== undefined && start === 0) {
+        throw new DialogGatewayError("INVALID_SNAPSHOT_CURSOR", "snapshot cursor does not belong to this project.");
+      }
+      const page = items.slice(start, start + limit);
+      return {
+        items: page,
+        ...(start + page.length < items.length ? { nextCursor: page.at(-1)!.snapshotId } : {}),
+      };
+    },
+    async snapshotGet(input) {
+      if (!workspaceSnapshotProvider) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway snapshot provider is unavailable.");
+      const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const workspaceId = resolveProjectStorageId(projectKey, pilotHome);
+      const snapshot = await workspaceSnapshotProvider.get(input.snapshotId);
+      if (!snapshot || snapshot.workspaceId !== workspaceId) {
+        throw new DialogGatewayError("SNAPSHOT_NOT_FOUND", `Snapshot ${input.snapshotId} was not found.`);
+      }
+      return { snapshot };
+    },
+    async snapshotRestore(input) {
+      if (!workspaceSnapshotProvider) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway snapshot provider is unavailable.");
+      const sourceProject = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
+      const snapshot = await workspaceSnapshotProvider.get(input.snapshotId);
+      if (!snapshot || snapshot.workspaceId !== resolveProjectStorageId(sourceProject, pilotHome)) {
+        throw new DialogGatewayError("SNAPSHOT_NOT_FOUND", `Snapshot ${input.snapshotId} was not found.`);
+      }
+      const targetProject = await dialog.projects.resolveProjectKey(input.targetProjectKey ?? input.projectKey);
+      const target = await mkdtemp(joinPath(targetProject, ".pilotdeck-restore-"));
+      return workspaceSnapshotProvider.restore(input.snapshotId, target);
     },
     async restoreSessionTranscript(input) {
       const projectKey = await dialog.projects.resolveProjectKey(input.projectKey ?? fallbackProjectRoot);
@@ -1195,6 +1402,25 @@ function toGatewayResolvedSettings(
 const MAX_PORTABLE_SESSION_ARCHIVE_MESSAGES = 10_000;
 const MAX_PORTABLE_SESSION_ARCHIVE_BYTES = 2 * 1024 * 1024;
 const MAX_PORTABLE_SESSION_ARCHIVE_TITLE_LENGTH = 512;
+
+async function readNativeArchiveTranscript(
+  projectKey: string,
+  sessionKey: string,
+  registry: ProjectRuntimeRegistry,
+  now: () => Date,
+) {
+  if (!sessionKey?.trim()) throw new DialogGatewayError("INVALID_SESSION_KEY", "sessionKey is required.");
+  const transcript = await readAgentProjectSessionTranscript(
+    registry.createPersistentSessionStorage(projectKey, sessionKey, now),
+  );
+  if (transcript.diagnostics.some((diagnostic) => diagnostic.code === "transcript_missing")) {
+    throw new DialogGatewayError("SESSION_NOT_FOUND", `Session not found: ${sessionKey}`);
+  }
+  if (transcript.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+    throw new DialogGatewayError("SESSION_TRANSCRIPT_INVALID", "Cannot read a native archive with invalid entries.");
+  }
+  return transcript;
+}
 
 function toPortableSessionArchive(
   entries: import("../session/index.js").AgentTranscriptEntry[],

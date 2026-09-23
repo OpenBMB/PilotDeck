@@ -13,6 +13,12 @@ export type GatewayServerOptions = {
   gateway: Gateway;
   port?: number;
   host?: string;
+  /**
+   * Explicit opt-in for a non-loopback listener. Remote deployment must also
+   * provide an explicit token; the loopback-only token discovery endpoint is
+   * disabled for these listeners.
+   */
+  allowRemoteHost?: boolean;
   token?: string;
   staticAssetsPath?: string;
   serverVersion?: string;
@@ -35,8 +41,14 @@ export type GatewayServer = {
 
 export async function startGatewayServer(options: GatewayServerOptions): Promise<GatewayServer> {
   const host = options.host ?? "127.0.0.1";
-  if (host !== "127.0.0.1" && host !== "localhost") {
-    throw new Error("GatewayServer only supports localhost binding in the first phase.");
+  const loopback = host === "127.0.0.1" || host === "localhost";
+  if (!loopback) {
+    if (!options.allowRemoteHost) {
+      throw new Error("GatewayServer remote binding requires allowRemoteHost=true.");
+    }
+    if (!options.token?.trim()) {
+      throw new Error("GatewayServer remote binding requires an explicit auth token.");
+    }
   }
   const auth = options.token
     ? { token: options.token, tokenPath: undefined }
@@ -45,7 +57,7 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
   const connections = new Set<GatewayWsConnection>();
 
   const server = createServer((request, response) => {
-    void handleHttpRequest(request, response, options, auth.token);
+    void handleHttpRequest(request, response, options, auth.token, loopback);
   });
   server.on("upgrade", (request, socket) =>
     handleUpgrade(request, socket, options, auth.token, connections),
@@ -73,6 +85,7 @@ async function handleHttpRequest(
   response: ServerResponse,
   options: GatewayServerOptions,
   token: string,
+  loopback: boolean,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (url.pathname === "/health") {
@@ -81,6 +94,11 @@ async function handleHttpRequest(
     return;
   }
   if (url.pathname === "/auth/local-token") {
+    if (!loopback) {
+      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      response.end("not found");
+      return;
+    }
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ token }));
     return;

@@ -12,8 +12,8 @@
     "packages/sdk"
   ],
   "bin": {
-    "pilotdeck": "./dist/src/cli/pilotdeck.js",
-    "pilotdeck-agent-loop-sidecar": "./dist/src/cli/pilotdeck-agent-loop-sidecar.js"
+    "pilotdeck": "dist/src/cli/pilotdeck.js",
+    "pilotdeck-agent-loop-sidecar": "dist/src/cli/pilotdeck-agent-loop-sidecar.js"
   },
   "scripts": {
     "check:runtime": "node scripts/check-node-runtime.mjs",
@@ -80,5 +80,14 @@
       "@types/react-dom": "18.3.7"
     }
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@10.32.1",
+  "description": "<p align=\"center\">   <img src=\"assets/banner.png\" alt=\"PilotDeck\" width=\"680\"/> </p>",
+  "main": "vitest.config.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

@@ -110,6 +110,35 @@ export type ChannelAttachment = {
   metadata?: Record<string, unknown>;
 };
 
+export type GatewayTrustedContextMessage = {
+  text: string;
+  source: string;
+  purpose: "material_context" | "skill_context" | "application_context";
+  scope: "turn";
+};
+
+/** Host-owned authorization boundary for trusted context; shape validation is not authentication. */
+export type GatewayTrustedContextAuthorizer = {
+  authorize(input: {
+    sessionKey: string;
+    projectKey?: string;
+    channelKey: GatewayChannelKey;
+    context: GatewayTrustedContextMessage;
+  }): Promise<{ principal: string; source: string }>;
+};
+
+/** Host-owned authorization boundary for native transcript projections. */
+export type GatewayNativeArchiveOperation = "manifest" | "entries" | "artifact";
+export type GatewayNativeArchiveAuthorizationInput = {
+  operation: GatewayNativeArchiveOperation;
+  sessionKey: string;
+  projectKey?: string;
+  artifactName?: string;
+};
+export type GatewayNativeArchiveAuthorizer = {
+  authorize(input: GatewayNativeArchiveAuthorizationInput): void | Promise<void>;
+};
+
 export type GatewayOutboundAttachment = {
   type: "file" | "image" | "text" | "unknown";
   name?: string;
@@ -132,6 +161,8 @@ export type GatewaySubmitTurnInput = {
   workspaceCwd?: string;
   attachments?: ChannelAttachment[];
   uploadedAttachments?: UploadedAttachmentRef[];
+  /** Gateway-verified context projected into this turn only. */
+  trustedContext?: GatewayTrustedContextMessage[];
   /** A one-turn model override. Persisted session preferences are managed separately. */
   modelOverride?: ExplicitModelSelection;
   /** Submitted choice: used for this turn and recorded with accepted input; never updates the Web global preference. */
@@ -184,6 +215,21 @@ export type GatewaySubmitTurnInput = {
   /** @internal server-side binding used to scope reconnectable interaction requests. */
   interactionBinding?: InteractionConnectionBinding;
 };
+
+export type GatewayRunRefInput = { sessionKey: string; runId: string; projectKey?: string };
+export type GatewayRunRecord = {
+  sessionKey: string;
+  projectKey?: string;
+  runId: string;
+  state: "accepted" | "running" | "completed" | "failed" | "aborted" | "interrupted";
+  revision: number;
+  lastSeq: number;
+  acceptedAt: string;
+  updatedAt: string;
+  result?: GatewayEvent;
+};
+export type GatewayRunEventsInput = GatewayRunRefInput & { afterSeq?: number; limit?: number };
+export type GatewayRunEventsResult = { events: Array<{ seq: number; event: GatewayEvent }>; nextSeq?: number; gap?: boolean };
 
 export type GatewayReconnectInteractionInput = {
   sessionKey: string;
@@ -1002,6 +1048,31 @@ export type GatewayPermissionDecisionInput = {
   interactionBinding?: InteractionConnectionBinding;
 };
 
+/** Gateway-owned pending permission prompt, safe for an application renderer. */
+export type GatewayPermissionRequest = {
+  requestId: string;
+  toolCallId: string;
+  toolName: string;
+  payload?: unknown;
+};
+
+/** Reads the authoritative live prompt set. A reconnect must list before responding. */
+export type GatewayListPermissionsInput = { sessionKey: string; projectKey?: string };
+export type GatewayListPermissionsResult = { requests: GatewayPermissionRequest[] };
+
+export type GatewayMemoryListInput = { projectKey: string; sessionKey?: string };
+export type GatewayMemoryListResult = { items: unknown[] };
+export type GatewayMemoryWipeInput = { projectKey: string; sessionKey?: string; scope: "session" | "project" };
+export type GatewayMemoryWipeResult = { wiped: boolean; scope: "session" | "project" };
+export type GatewaySnapshotListInput = { projectKey: string; sessionKey?: string; cursor?: string; limit?: number };
+export type GatewaySnapshotListResult = { items: unknown[]; nextCursor?: string };
+export type GatewaySnapshotGetInput = { projectKey: string; snapshotId: string };
+export type GatewaySnapshotGetResult = { snapshot: unknown };
+export type GatewaySnapshotRestoreInput = { projectKey: string; snapshotId: string; targetProjectKey?: string };
+export type GatewaySnapshotRestoreResult = { restored: boolean; workspaceKey?: string };
+export type GatewayManagerResourceInput = { projectKey?: string; sessionKey?: string };
+export type GatewayManagerResourceResult = { items: unknown[] };
+
 export type GatewaySessionPermissionGrantInput = {
   sessionKey: string;
   entry: string;
@@ -1066,6 +1137,32 @@ export type GatewaySessionTranscriptArchive = {
   title?: string;
 };
 
+/** Full native transcript archive; separate from portable_text_messages. */
+export type GatewayNativeArchiveManifestInput = { sessionKey: string; projectKey?: string };
+export type GatewayNativeArchiveManifest = {
+  schemaVersion: 1;
+  format: "native_transcript_entries";
+  sessionKey: string;
+  entryCount: number;
+  firstSequence?: number;
+  lastSequence?: number;
+  subagentCount: number;
+  toolResultReferenceCount: number;
+};
+export type GatewayNativeArchiveEntriesInput = GatewayNativeArchiveManifestInput & { afterSequence?: number; limit?: number };
+export type GatewayNativeArchiveEntriesResult = { entries: unknown[]; nextSequence?: number; complete: boolean };
+export type GatewayNativeArchiveArtifactInput = GatewayNativeArchiveManifestInput & {
+  artifactName: string;
+  maxBytes?: number;
+};
+export type GatewayNativeArchiveArtifactResult = {
+  artifactName: string;
+  content: string;
+  encoding: "base64";
+  bytes: number;
+  truncated: boolean;
+};
+
 export type GatewayExportSessionTranscriptInput = {
   sessionKey: string;
   projectKey?: string;
@@ -1092,6 +1189,14 @@ export type GatewayServerInfo = {
 };
 
 export type GatewayCapability =
+  | "upload_create"
+  | "upload_get"
+  | "upload_part"
+  | "upload_complete"
+  | "upload_cancel"
+  | "run_get"
+  | "run_events"
+  | "run_reattach"
   | "project_files_list"
   | "commands_list"
   | "model_catalog_list"
@@ -1125,7 +1230,26 @@ export type GatewayCapability =
   | "model_usage_snapshot"
   | "async_hook_result"
   | "user_dialog_list"
-  | "session_transcript_archive";
+  | "permission_list"
+  | "memory_list"
+  | "snapshot_list"
+  | "snapshot_get"
+  | "snapshot_restore"
+  | "manager_sessions"
+  | "manager_browsers"
+  | "permission_decide"
+  | "native_transcript_archive"
+  | "native_transcript_archive_artifact"
+  | "session_transcript_archive"
+  | "cron_create"
+  | "cron_list"
+  | "cron_update"
+  | "cron_delete"
+  | "cron_stop"
+  | "cron_run_now"
+  | "always_on_apply"
+  | "always_on_abort"
+  | "always_on_rerun_plan";
 
 export type MatchRange = {
   field: string;
@@ -1250,6 +1374,52 @@ export type UploadedAttachmentRef = {
   attachmentIds?: string[];
 };
 
+/** Gateway-owned upload metadata exposed to Remote/Application SDK callers. */
+export type GatewayUploadManifestEntry = {
+  clientFileId: string;
+  name: string;
+  relativePath: string;
+  size: number;
+  mimeType?: string;
+  sha256?: string;
+};
+
+export type GatewayUploadAttachment = {
+  attachmentId: string;
+  name: string;
+  relativePath: string;
+  mimeType?: string;
+  bytes: number;
+  sha256?: string;
+};
+
+export type GatewayUploadRecord = {
+  uploadId: string;
+  projectKey: string;
+  status: "created" | "uploading" | "completed" | "failed" | "cancelled" | "expired";
+  manifest: GatewayUploadManifestEntry[];
+  totalBytes: number;
+  uploadedBytes: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  idempotencyKeyHash?: string;
+  attachments?: GatewayUploadAttachment[];
+  receivedClientFileIds?: string[];
+  errorCode?: string;
+  errorMessage?: string;
+};
+
+export type GatewayUploadCreateInput = {
+  projectKey: string;
+  files: GatewayUploadManifestEntry[];
+  idempotencyKey?: string;
+};
+export type GatewayUploadGetInput = { uploadId: string };
+export type GatewayUploadPartInput = { uploadId: string; clientFileId: string; contentBase64: string };
+export type GatewayUploadCompleteInput = { uploadId: string };
+export type GatewayUploadCancelInput = { uploadId: string };
+
 /** Gateway consumes the same provider-neutral schedule-control contract as tools. */
 export type GatewayCronController = CronControlPort;
 
@@ -1287,6 +1457,14 @@ export type {
 
 export interface Gateway {
   submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent>;
+  uploadCreate?(input: GatewayUploadCreateInput): Promise<GatewayUploadRecord>;
+  uploadGet?(input: GatewayUploadGetInput): Promise<GatewayUploadRecord>;
+  uploadPart?(input: GatewayUploadPartInput): Promise<GatewayUploadAttachment>;
+  uploadComplete?(input: GatewayUploadCompleteInput): Promise<GatewayUploadRecord>;
+  uploadCancel?(input: GatewayUploadCancelInput): Promise<GatewayUploadRecord>;
+  runGet?(input: GatewayRunRefInput): Promise<GatewayRunRecord | undefined>;
+  runEvents?(input: GatewayRunEventsInput): Promise<GatewayRunEventsResult>;
+  runReattach?(input: GatewayRunRefInput): Promise<GatewayRunRecord | undefined>;
   sopStatus?(input: GatewaySopStatusInput): Promise<GatewaySopStatusResult>;
   resumeSop?(input: GatewaySopResumeInput): Promise<GatewaySopResumeResult>;
   steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult>;
@@ -1376,6 +1554,18 @@ export interface Gateway {
    * `{ delivered: false }` if the requestId is unknown.
    */
   permissionDecide(input: GatewayPermissionDecisionInput): Promise<{ delivered: boolean }>;
+  /** Lists Gateway-owned pending permission prompts without requiring a Query callback. */
+  listPermissions?(input: GatewayListPermissionsInput): Promise<GatewayListPermissionsResult>;
+  memoryList?(input: GatewayMemoryListInput): Promise<GatewayMemoryListResult>;
+  memoryWipe?(input: GatewayMemoryWipeInput): Promise<GatewayMemoryWipeResult>;
+  snapshotList?(input: GatewaySnapshotListInput): Promise<GatewaySnapshotListResult>;
+  snapshotGet?(input: GatewaySnapshotGetInput): Promise<GatewaySnapshotGetResult>;
+  snapshotRestore?(input: GatewaySnapshotRestoreInput): Promise<GatewaySnapshotRestoreResult>;
+  managerSessions?(input: GatewayManagerResourceInput): Promise<GatewayManagerResourceResult>;
+  managerBrowsers?(input: GatewayManagerResourceInput): Promise<GatewayManagerResourceResult>;
+  nativeArchiveManifest?(input: GatewayNativeArchiveManifestInput): Promise<GatewayNativeArchiveManifest>;
+  nativeArchiveEntries?(input: GatewayNativeArchiveEntriesInput): Promise<GatewayNativeArchiveEntriesResult>;
+  nativeArchiveArtifact?(input: GatewayNativeArchiveArtifactInput): Promise<GatewayNativeArchiveArtifactResult>;
   /**
    * Grants a tool only for the current session. This is intentionally
    * non-persistent: global Settings / permissions.json stay unchanged.

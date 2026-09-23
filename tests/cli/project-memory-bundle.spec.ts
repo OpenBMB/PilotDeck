@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -40,7 +40,7 @@ test("project memory bundle passes project composition into its provider and clo
     },
   });
 
-  assert.deepEqual(bundle.stage(), { memory: provider, memoryService: service });
+  assert.deepEqual(bundle.stage(), { memory: provider, memoryService: service, memoryManagement: service });
   const first = bundle.dispose();
   const second = bundle.dispose();
   assert.equal(first, second);
@@ -88,6 +88,7 @@ test("local gateway composes and consumes an application-selected memory provide
 
   const retrieved: string[] = [];
   const captured: string[] = [];
+  const memoryWipes: string[] = [];
   let disposed = 0;
   const model = new MemoryInspectingModel();
   const memory: MemoryResolver = {
@@ -106,6 +107,11 @@ test("local gateway composes and consumes an application-selected memory provide
     __testModelFactory: () => model,
     memoryProviderFactory: () => ({
       memory,
+      management: {
+        list: () => [],
+        clear: () => undefined as never,
+        clearSession: (sessionKey) => { memoryWipes.push(sessionKey); return undefined as never; },
+      },
       dispose: () => { disposed += 1; },
     }),
   });
@@ -123,10 +129,68 @@ test("local gateway composes and consumes an application-selected memory provide
     assert.ok(retrieved.every((entry) => entry.startsWith("memory-composition-session:Recall the selected memory.")));
     assert.deepEqual(captured, ["memory-composition-session"]);
     assert.ok(model.requests.length > 0, "the real session should reach the selected model provider");
+    if (!local.gateway.managerSessions) throw new Error("manager_sessions was not composed");
+    const managed = await local.gateway.managerSessions({ projectKey: root });
+    assert.ok(managed.items.some((item) => (item as { sessionId?: string }).sessionId === "memory-composition-session"));
+    if (!local.gateway.memoryWipe) throw new Error("memory_wipe was not composed");
+    assert.deepEqual(await local.gateway.memoryWipe({
+      projectKey: root,
+      sessionKey: "memory-composition-session",
+      scope: "session",
+    }), { wiped: true, scope: "session" });
+    assert.deepEqual(memoryWipes, ["memory-composition-session"]);
   } finally {
     await local.dispose();
   }
   assert.equal(disposed, 1);
+});
+
+test("local Gateway enforces configured native archive artifact retention", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-archive-retention-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "pilotdeck.yaml"), [
+    "schemaVersion: 1",
+    "agent:",
+    "  model: test/test",
+    "  maxContextTokens: 128000",
+    "  maxOutputTokens: 1024",
+    "  router:",
+    "    enabled: false",
+    "model:",
+    "  providers:",
+    "    test:",
+    "      protocol: openai",
+    "      url: http://127.0.0.1:1",
+    "      apiKey: test-only",
+    "      models:",
+    "        test: {}",
+    "",
+  ].join("\n"));
+  const now = new Date(10_000);
+  const local = createLocalGateway({
+    projectRoot: root,
+    pilotHome: root,
+    env: { PILOT_HOME: root },
+    now: () => now,
+    nativeArchiveRetentionMs: 1_000,
+    __testModelFactory: () => new MemoryInspectingModel(),
+  });
+  try {
+    const storage = local.registry.createPersistentSessionStorage(root, "archive-session", () => now);
+    await mkdir(storage.toolResultsDir, { recursive: true });
+    const artifactPath = join(storage.toolResultsDir, "old.txt");
+    await writeFile(artifactPath, "expired");
+    await utimes(artifactPath, new Date(0), new Date(0));
+    if (!local.gateway.nativeArchiveArtifact) throw new Error("native archive artifact was not composed");
+    await assert.rejects(
+      () => local.gateway.nativeArchiveArtifact!({ sessionKey: "archive-session", projectKey: root, artifactName: "old.txt" }),
+      (error: unknown) => error instanceof Error
+        && "code" in error
+        && (error as { code?: string }).code === "ARCHIVE_ARTIFACT_EXPIRED",
+    );
+  } finally {
+    await local.dispose();
+  }
 });
 
 class MemoryInspectingModel implements ModelRuntime {
