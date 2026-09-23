@@ -28,6 +28,9 @@ export type AgentInput =
 
 export type AgentSubmitOptions = {
   turnId?: string;
+  workspaceId?: string;
+  storageConfigVersion?: string;
+  invocationLogSink?: import("../../storage/invocationStorage.js").ModelInvocationLogSink;
   /**
    * Host-owned execution identity. Gateway and external transports use this
    * to keep one run/operation identity across an AgentLoop provider boundary.

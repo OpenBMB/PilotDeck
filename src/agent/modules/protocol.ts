@@ -417,6 +417,9 @@ export type ModelExecutionContext = {
   operationId?: string;
   idempotencyKey?: string;
   operationDeadline?: string;
+  workspaceId?: string;
+  storageConfigVersion?: string;
+  invocationLogSink?: import("../../storage/invocationStorage.js").ModelInvocationLogSink;
   abortSignal?: AbortSignal;
   metadata?: Record<string, unknown>;
   modelOverride?: { provider: string; model: string };

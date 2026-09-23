@@ -20,7 +20,7 @@ export declare class MemoryBundleValidationError extends Error {
     constructor(message: string);
 }
 export interface ClearMemoryResult {
-    scope: ClearMemoryScope;
+    scope: ClearMemoryScope | "session";
     cleared: {
         l0Sessions: number;
         pipelineState: number;
@@ -197,4 +197,5 @@ export declare class MemoryRepository {
     getSnapshotVersion(): string;
     clearAllMemoryData(): ClearMemoryResult;
     clearCurrentWorkspaceMemoryData(): ClearMemoryResult;
+    clearSessionMemoryData(sessionKey: string): ClearMemoryResult;
 }

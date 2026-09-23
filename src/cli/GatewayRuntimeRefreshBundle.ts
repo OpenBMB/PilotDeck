@@ -1,4 +1,5 @@
 import type { ProjectMemoryMaintenancePort } from "./ProjectMemoryMaintenanceController.js";
+import { isRunPolicyOnlyChange } from "../pilot/config/classifyChanges.js";
 
 export type GatewayRuntimeConfigEvent = {
   changedPaths: string[];
@@ -135,6 +136,12 @@ export class GatewayRuntimeRefreshBundle {
     if (changeClasses.length === 0) return;
     if (changeClasses.every((changeClass) => changeClass === "restart-required")) {
       this.warn("[pilotdeck] Config change requires process restart:", changedPaths.join(", "));
+      return;
+    }
+    if (isRunPolicyOnlyChange(changedPaths)) {
+      this.log(`[pilotdeck] Config reloaded (runPolicy applies next turn): ${changedPaths.join(", ")}`);
+      this.options.dispatchSdkConfigChange?.({ changedPaths, changeClasses });
+      this.boundServer?.broadcastNotification("config_changed", { changedPaths, changeClasses });
       return;
     }
     this.log(`[pilotdeck] Config reloaded, refreshing runtimes: ${changedPaths.join(", ")}`);

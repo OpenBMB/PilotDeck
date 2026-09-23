@@ -54,6 +54,7 @@ export type PilotRawConfig = {
   proxy?: unknown;
   webui?: unknown;
   modules?: unknown;
+  runPolicy?: unknown;
 };
 
 export type PilotExtensionConfig = {
@@ -242,6 +243,17 @@ export type PilotTelemetryConfig = {
   enabled: boolean;
 };
 
+export type PilotFailureGuardConfig = {
+  enabled: boolean;
+  modelFailureLimit: number;
+  toolFailureLimits: Record<string, number>;
+  toolLabels: Record<string, string>;
+};
+
+export type PilotRunPolicyConfig = {
+  failureGuard?: PilotFailureGuardConfig;
+};
+
 export type PilotCoreModuleConfig = CoreModuleBinding;
 
 /** Deployment composition selected by YAML. */
@@ -269,6 +281,7 @@ export type PilotConfig = {
   telemetry?: PilotTelemetryConfig;
   proxy?: PilotProxyConfig;
   modules?: PilotModulesConfig;
+  runPolicy?: PilotRunPolicyConfig;
 };
 
 export type PilotConfigSnapshot = {

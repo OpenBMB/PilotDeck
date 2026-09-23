@@ -106,6 +106,7 @@ test("InProcessGateway delegates submit drain and abort waiting to an injected c
       return true;
     },
     endTurn(sessionKey: string) { activeTurns.delete(sessionKey); },
+    activeTurnRunId(sessionKey: string) { return activeTurns.get(sessionKey); },
     async getOrCreate() { return session; },
     async abort() { calls.push("router-abort"); },
   } as unknown as SessionRouter;

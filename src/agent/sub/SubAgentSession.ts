@@ -204,6 +204,9 @@ export class SubAgentSession {
       const generator = loop.run({
         sessionId: this.options.subagentSessionId,
         turnId,
+        workspaceId: this.options.workspaceId,
+        storageConfigVersion: this.options.storageConfigVersion,
+        invocationLogSink: this.options.invocationLogSink,
         messages,
         maxTurns: this.options.maxTurns,
         abortSignal: this.options.abortSignal,

@@ -1,13 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
+import { Readable } from "node:stream";
 import { isAbsolute, resolve } from "node:path";
 import { parseAgentRunMode } from "../../agent/protocol/input.js";
 import type { AgentEvent, AgentInput } from "../../agent/index.js";
+import {
+  buildGuardTripMessage,
+  FailureGuard,
+  type GuardTrip,
+  type LastModelInfo,
+} from "../../agent/policy/FailureGuard.js";
 import { SUBAGENT_DEFINITIONS } from "../../agent/sub/builtinSubagentTypes.js";
 import {
   type CanonicalMessage,
 } from "../../model/index.js";
 import type { SessionRouter } from "../SessionRouter.js";
+import type { PilotRunPolicyConfig } from "../../pilot/config/types.js";
 import { isPilotDeckHookEvent } from "../../extension/hooks/protocol/events.js";
 import {
   GatewayUserDialogBus,
@@ -19,6 +27,9 @@ import {
 import { AsyncQueue } from "../util/AsyncQueue.js";
 import type {
   ChannelAttachment,
+  GatewayTrustedContextMessage,
+  GatewayTrustedContextAuthorizer,
+  GatewayNativeArchiveAuthorizer,
   GatewayCronController,
   Gateway,
   GatewayActiveTurnSnapshot,
@@ -187,9 +198,16 @@ import type { GatewayManualCompactionCoordinatorPort } from "./GatewayManualComp
 import type { GatewayElicitationBus } from "../elicitation/GatewayElicitationBus.js";
 import type { GatewayPermissionBus } from "../permission/GatewayPermissionBus.js";
 import type { ResolvedUploadedAttachments, UploadedAttachmentResolverPort } from "../dialog/UploadedAttachmentResolverPort.js";
+import type { UploadLifecyclePort } from "../dialog/UploadLifecyclePort.js";
 import { listProjectFiles } from "../dialog/projectFiles.js";
 import { isPathWithinRoot } from "../../tool/builtin/filesystem/pathSafety.js";
 import { RouterRuntimeError } from "../../router/index.js";
+import { RunRegistryError, type RunRegistryPort, type RunRegistryRecord } from "../run/RunRegistry.js";
+import type {
+  WorkspaceSnapshotFailureKind,
+  WorkspaceSnapshotRecorder,
+} from "../../storage/workspaceSnapshot.js";
+import type { ModelInvocationLogSink } from "../../storage/invocationStorage.js";
 
 export { mapAgentEvent } from "./GatewayAgentEventProjector.js";
 
@@ -202,6 +220,21 @@ const ASYNC_HOOK_OUTCOME_RETENTION_MS = 5 * 60_000;
 const DEFAULT_USER_DIALOG_LEASE_MS = 30_000;
 const MIN_USER_DIALOG_LEASE_MS = 1_000;
 const MAX_USER_DIALOG_LEASE_MS = 5 * 60_000;
+const MAX_REMOTE_UPLOAD_PART_BYTES = 8 * 1024 * 1024;
+
+function toGatewayRunRecord(record: RunRegistryRecord): import("../protocol/types.js").GatewayRunRecord {
+  return {
+    sessionKey: record.sessionKey,
+    ...(record.projectKey === undefined ? {} : { projectKey: record.projectKey }),
+    runId: record.runId,
+    state: record.state,
+    revision: record.revision,
+    lastSeq: record.lastSeq,
+    acceptedAt: record.acceptedAt,
+    updatedAt: record.updatedAt,
+    ...(record.result === undefined ? {} : { result: structuredClone(record.result) }),
+  };
+}
 
 /** A configured host ceiling also supplies the default when callers omit it. */
 function capGatewayTurnLimit(value: number | undefined, cap: number | undefined): number | undefined {
@@ -210,6 +243,18 @@ function capGatewayTurnLimit(value: number | undefined, cap: number | undefined)
 }
 
 export type InProcessGatewayOptions = {
+  /** Host-owned provider request/response audit sink. */
+  invocationLogSink?: ModelInvocationLogSink;
+  storageConfigVersion?: string;
+  /** Durable Gateway-owned run registry. SDK mirrors and replay caches are not substitutes. */
+  runRegistry?: RunRegistryPort;
+  /** Host-owned authorization for trusted context; absent means unavailable. */
+  trustedContextAuthorizer?: GatewayTrustedContextAuthorizer;
+  /** Host-owned authorization for native archive projections. */
+  nativeArchiveAuthorizer?: GatewayNativeArchiveAuthorizer;
+  snapshotRecorder?: WorkspaceSnapshotRecorder;
+  workspaceId?: string;
+  workspaceIdResolver?: (projectKey?: string) => string | undefined;
   /** Absolute command used by the model to install bundled FunASR assets. */
   funasrInstallCommand?: string;
   /** Maximum time to wait for an aborted turn to finish unwinding. */
@@ -259,6 +304,9 @@ export type InProcessGatewayOptions = {
   restoreSessionTranscript?: (
     input: import("../protocol/types.js").GatewayRestoreSessionTranscriptInput,
   ) => Promise<import("../protocol/types.js").GatewayRestoreSessionTranscriptResult>;
+  nativeArchiveManifest?: (input: import("../protocol/types.js").GatewayNativeArchiveManifestInput) => Promise<import("../protocol/types.js").GatewayNativeArchiveManifest>;
+  nativeArchiveEntries?: (input: import("../protocol/types.js").GatewayNativeArchiveEntriesInput) => Promise<import("../protocol/types.js").GatewayNativeArchiveEntriesResult>;
+  nativeArchiveArtifact?: (input: import("../protocol/types.js").GatewayNativeArchiveArtifactInput) => Promise<import("../protocol/types.js").GatewayNativeArchiveArtifactResult>;
   deleteEphemeralSession?: (input: { sessionKey: string; projectKey?: string }) => Promise<boolean>;
   mcpServerStatus?: (input: import("../protocol/types.js").GatewayMcpServerStatusInput) => Promise<import("../protocol/types.js").GatewayMcpServerStatusResult>;
   setMcpServers?: (input: GatewaySetMcpServersInput) => Promise<GatewayMcpSetServersResult>;
@@ -328,6 +376,8 @@ export type InProcessGatewayOptions = {
     projectKey?: string;
   }) => Promise<void> | void;
   resolveUploadedAttachments?: UploadedAttachmentResolverPort["resolve"];
+  /** Gateway-owned upload lifecycle exposed through the Remote/Application API. */
+  uploadLifecycle?: UploadLifecyclePort;
   resolveTurnModelSelection?: (input: GatewaySubmitTurnInput) => Promise<{
     selection?: import("../protocol/types.js").ExplicitModelSelection;
     source: "turn" | "session" | "router" | "default";
@@ -361,6 +411,8 @@ export type InProcessGatewayOptions = {
    * block in-progress chats; the existing snapshot remains in use.
    */
   refreshConfigBeforeTurn?: () => Promise<void>;
+  /** Live run policy resolved after the pre-turn config refresh. */
+  resolveRunPolicy?: () => PilotRunPolicyConfig | undefined;
   /**
    * Authoritative skill CRUD manager for built-in, user, and project skills.
    * Wired by `createLocalGateway` so every host (CLI, TUI, Web UI bridge,
@@ -396,6 +448,14 @@ export type InProcessGatewayOptions = {
   permissionGrants?: GatewaySessionPermissionGrantPort;
   /** Provider-neutral owner of live session permission mode transitions. */
   permissionModes?: GatewaySessionPermissionModePort;
+  snapshotList?: (input: import("../protocol/types.js").GatewaySnapshotListInput) => Promise<import("../protocol/types.js").GatewaySnapshotListResult>;
+  snapshotGet?: (input: import("../protocol/types.js").GatewaySnapshotGetInput) => Promise<import("../protocol/types.js").GatewaySnapshotGetResult>;
+  snapshotRestore?: (input: import("../protocol/types.js").GatewaySnapshotRestoreInput) => Promise<import("../protocol/types.js").GatewaySnapshotRestoreResult>;
+  memoryList?: (input: import("../protocol/types.js").GatewayMemoryListInput) => Promise<import("../protocol/types.js").GatewayMemoryListResult>;
+  memoryWipe?: (input: import("../protocol/types.js").GatewayMemoryWipeInput) => Promise<import("../protocol/types.js").GatewayMemoryWipeResult>;
+  managerSessions?: (input: import("../protocol/types.js").GatewayManagerResourceInput) => Promise<import("../protocol/types.js").GatewayManagerResourceResult>;
+  /** Application-selected owner of managed browser sessions. */
+  managerBrowsers?: (input: import("../protocol/types.js").GatewayManagerResourceInput) => Promise<import("../protocol/types.js").GatewayManagerResourceResult>;
   /** Application-selected base mode used when a client omits its legacy mode field. */
   defaultPermissionMode?: PermissionMode;
   /** Provider-neutral Always-On control seam. */
@@ -450,6 +510,24 @@ type AsyncHookOutcome = {
   timeout?: ReturnType<typeof setTimeout>;
 };
 
+function turnKey(sessionKey: string, runId: string): string {
+  return `${sessionKey}\0${runId}`;
+}
+
+async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then(() => true, () => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class InProcessGateway implements Gateway {
   private readonly now: () => Date;
   private readonly uuid: () => string;
@@ -463,17 +541,27 @@ export class InProcessGateway implements Gateway {
   private readonly permissionModes: GatewaySessionPermissionModePort;
   private readonly turnCompletionFence: GatewayTurnCompletionFencePort;
   private readonly manualCompactionCoordinator: GatewayManualCompactionCoordinatorPort;
+  private readonly abortTurnTimeoutMs: number;
   private readonly pendingAsyncHooks = new Map<string, PendingAsyncHook>();
   private readonly asyncHookOutcomes = new Map<string, AsyncHookOutcome>();
   private readonly userDialogBus: GatewayUserDialogBus;
   /** Project identity used only to scope observational dialog notifications. */
   private readonly dialogProjectKeys = new Map<string, string>();
+  private readonly activeFailureGuards = new Map<string, {
+    runId: string;
+    guard: FailureGuard;
+    trip: (trip: GuardTrip, model?: LastModelInfo) => Promise<void>;
+  }>();
+  private readonly abortedTurnReasons = new Map<string, string>();
+  /** One active turn at a time for a host workspace, across session keys. */
+  private readonly workspaceAdmissions = new Map<string, string>();
   constructor(
     private readonly router: SessionRouter,
     private readonly options: InProcessGatewayOptions = {},
   ) {
     this.now = options.now ?? (() => new Date());
     this.uuid = options.uuid ?? randomUUID;
+    this.abortTurnTimeoutMs = Math.max(1, options.abortTurnTimeoutMs ?? DEFAULT_ABORT_TURN_TIMEOUT_MS);
     this.userDialogBus = new GatewayUserDialogBus({
       now: this.now,
       uuid: this.uuid,
@@ -639,6 +727,7 @@ export class InProcessGateway implements Gateway {
 
   broadcastRetryProgress(detail: {
     sessionId: string;
+    turnId?: string;
     attempt: number;
     maxAttempts: number;
     delayMs: number;
@@ -646,6 +735,7 @@ export class InProcessGateway implements Gateway {
     provider: string;
     model: string;
   }): void {
+    if (!detail.turnId || this.router.activeTurnRunId(detail.sessionId) !== detail.turnId) return;
     const event: GatewayEvent = {
       type: "agent_status",
       event: "retry_progress",
@@ -659,6 +749,12 @@ export class InProcessGateway implements Gateway {
       },
     };
     this.emitForSession(detail.sessionId, event);
+
+    const active = this.activeFailureGuards.get(detail.sessionId);
+    if (active?.runId === detail.turnId && !active.guard.isTripped) {
+      const trip = active.guard.onModelFailure();
+      if (trip) void active.trip(trip, { provider: detail.provider, model: detail.model });
+    }
   }
 
   async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
@@ -695,6 +791,16 @@ export class InProcessGateway implements Gateway {
         message: invalidPermission,
         recoverable: true,
       };
+      return;
+    }
+    const invalidRunId = validateGatewayRunId(input.runId);
+    if (invalidRunId) {
+      yield { type: "error", runId: typeof input.runId === "string" ? input.runId : undefined, code: "INVALID_RUN_ID", message: invalidRunId, recoverable: true };
+      return;
+    }
+    const invalidTrustedContext = validateGatewayTrustedContext(input.trustedContext);
+    if (invalidTrustedContext) {
+      yield { type: "error", runId: input.runId, code: "INVALID_TRUSTED_CONTEXT", message: invalidTrustedContext, recoverable: true };
       return;
     }
     const invalidMaxBudget = validateGatewayMaxBudget(input);
@@ -736,6 +842,47 @@ export class InProcessGateway implements Gateway {
       return;
     }
     input = plannedInput;
+    let authorizedTrustedContext: Array<{
+      context: GatewayTrustedContextMessage;
+      authorizedPrincipal: string;
+    }> | undefined;
+    if (input.trustedContext && input.trustedContext.length > 0) {
+      const authorizer = this.options.trustedContextAuthorizer;
+      if (!authorizer) {
+        yield {
+          type: "error",
+          runId: input.runId,
+          code: "CAPABILITY_UNAVAILABLE",
+          message: "trustedContext requires a Gateway trusted-context authorizer.",
+          recoverable: true,
+        };
+        return;
+      }
+      try {
+        authorizedTrustedContext = await Promise.all(input.trustedContext.map(async (context) => {
+          const decision = await authorizer.authorize({
+            sessionKey: input.sessionKey,
+            projectKey: input.projectKey,
+            channelKey: input.channelKey,
+            context,
+          });
+          if (!decision || typeof decision.principal !== "string" || !decision.principal.trim()
+            || typeof decision.source !== "string" || !decision.source.trim()) {
+            throw new DialogGatewayError("INVALID_TRUSTED_CONTEXT_AUTHORIZATION", "Trusted context authorizer returned an invalid decision.");
+          }
+          return { context: { ...context, source: decision.source }, authorizedPrincipal: decision.principal };
+        }));
+      } catch (error) {
+        yield {
+          type: "error",
+          runId: input.runId,
+          code: error instanceof DialogGatewayError ? error.code : "TRUSTED_CONTEXT_UNAUTHORIZED",
+          message: error instanceof Error ? error.message : String(error),
+          recoverable: true,
+        };
+        return;
+      }
+    }
     if (input.sdkPermissionMode) {
       // Older SDK callers may send the adapter mode as a turn field. Fold it
       // into the same session-config path so the runtime has one ownership
@@ -750,9 +897,75 @@ export class InProcessGateway implements Gateway {
     }
 
     const runId = input.runId ?? this.uuid();
+    if (this.options.runRegistry) {
+      try {
+        const accepted = await this.options.runRegistry.accept({
+          sessionKey: input.sessionKey,
+          projectKey: input.projectKey,
+          runId,
+          requestMaterial: serializeRunRequestMaterial(input),
+        });
+        if (accepted.duplicate) {
+          const replay = await this.options.runRegistry.events({ sessionKey: input.sessionKey, runId, projectKey: input.projectKey });
+          for (const item of replay) yield item.event;
+          return;
+        }
+      } catch (error) {
+        const isConflict = error instanceof RunRegistryError && error.code === "conflict";
+        yield {
+          type: "error",
+          runId,
+          code: isConflict ? "conflict" : "result_unknown",
+          message: error instanceof Error ? error.message : String(error),
+          recoverable: isConflict,
+          ...(isConflict ? {} : {
+            userHint: "Gateway acceptance could not be durably confirmed. Inspect the run state before retrying.",
+          }),
+        };
+        return;
+      }
+    }
+    const persistPreflightEvent = async (event: GatewayEvent): Promise<GatewayEvent> => {
+      if (!this.options.runRegistry) return event;
+      try {
+        await this.options.runRegistry.append({
+          sessionKey: input.sessionKey,
+          projectKey: input.projectKey,
+          runId,
+          event,
+        });
+      } catch (error) {
+        console.warn("[pilotdeck] failed to persist preflight terminal event:", error);
+        return {
+          type: "error",
+          runId,
+          code: "result_unknown",
+          message: "Gateway could not durably persist the preflight result.",
+          recoverable: false,
+          userHint: "Do not resubmit this run automatically. Inspect the Gateway run state before retrying.",
+        };
+      }
+      return event;
+    };
+    const workspaceId = this.options.workspaceId ?? this.options.workspaceIdResolver?.(input.projectKey);
     const setSdkSessionConfig = this.options.setSdkSessionConfig;
     const replacementClaim = this.turnReplacementCoordinator.claimForSubmit(input.sessionKey, runId);
     let turnReserved = false;
+    let workspaceReserved = false;
+    const workspaceTurnKey = turnKey(input.sessionKey, runId);
+    const releaseWorkspace = () => {
+      if (!workspaceReserved || !workspaceId) return;
+      if (this.workspaceAdmissions.get(workspaceId) === workspaceTurnKey) this.workspaceAdmissions.delete(workspaceId);
+      workspaceReserved = false;
+    };
+    const reserveWorkspace = (): boolean => {
+      if (!workspaceId) return true;
+      const owner = this.workspaceAdmissions.get(workspaceId);
+      if (owner && owner !== workspaceTurnKey) return false;
+      this.workspaceAdmissions.set(workspaceId, workspaceTurnKey);
+      workspaceReserved = true;
+      return true;
+    };
     let turnCompletion: GatewayTurnCompletionHandle | undefined;
     const reserveCompletionFence = () => {
       turnCompletion ??= this.turnCompletionFence.begin(input.sessionKey, runId);
@@ -762,6 +975,7 @@ export class InProcessGateway implements Gateway {
         this.router.endTurn(input.sessionKey, runId);
         turnReserved = false;
       }
+      releaseWorkspace();
       if (turnCompletion) {
         this.turnCompletionFence.complete(input.sessionKey, turnCompletion);
         turnCompletion = undefined;
@@ -770,52 +984,52 @@ export class InProcessGateway implements Gateway {
     };
     if (replacementClaim === "conflict") {
       const message = "This session is waiting for its edited replacement turn to be accepted.";
-      yield {
+      yield await persistPreflightEvent({
         type: "error",
         runId,
         code: "replace_turn_pending",
         message,
         recoverable: true,
         userHint: "Wait for the edited message transaction to finish, then try again.",
-      };
+      });
       return;
     }
 
     if (this.turnReplacementCoordinator.hasTranscriptWriteReservation(input.sessionKey)) {
       releasePreflight();
-      yield {
+      yield await persistPreflightEvent({
         type: "error",
         runId,
         code: "replace_turn_pending",
         message: "This session transcript is currently being updated.",
         recoverable: true,
         userHint: "Wait for the session update to finish, then try again.",
-      };
+      });
       return;
     }
     if (input.sdkSessionConfig) {
       if (!setSdkSessionConfig) {
         releasePreflight();
-        yield {
+        yield await persistPreflightEvent({
           type: "error",
           runId,
           code: "CAPABILITY_UNAVAILABLE",
           message: "sdk_session_config is unavailable.",
           recoverable: true,
-        };
+        });
         return;
       }
       try {
         validateSdkSessionConfig(input.sdkSessionConfig);
       } catch (error) {
         releasePreflight();
-        yield {
+        yield await persistPreflightEvent({
           type: "error",
           runId,
           code: error instanceof DialogGatewayError ? error.code : "INVALID_SDK_SESSION_CONFIG",
           message: error instanceof Error ? error.message : String(error),
           recoverable: true,
-        };
+        });
         return;
       }
     }
@@ -839,17 +1053,30 @@ export class InProcessGateway implements Gateway {
           }),
         };
       }
-      yield {
+      yield await persistPreflightEvent({
         type: "error",
         runId,
         code: sdkConfigAdmission ? "SESSION_BUSY" : "session_busy",
         message,
         recoverable: true,
         ...(sdkConfigAdmission ? {} : { userHint }),
-      };
+      });
       return;
     }
     turnReserved = true;
+    if (!reserveWorkspace()) {
+      releasePreflight();
+      const event: GatewayEvent = {
+        type: "error",
+        runId,
+        code: "workspace_busy",
+        message: `Workspace ${workspaceId} already has an active turn.`,
+        recoverable: true,
+        userHint: "Wait for the active workspace turn to finish before retrying.",
+      };
+      yield await persistPreflightEvent(event);
+      return;
+    }
     reserveCompletionFence();
     if (input.sdkSessionConfig) {
       try {
@@ -861,24 +1088,24 @@ export class InProcessGateway implements Gateway {
         );
         if (turnCompletion!.signal.aborted) {
           releasePreflight();
-          yield { type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" };
+          yield await persistPreflightEvent({ type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" });
           return;
         }
         if (configUpdate.changed) this.router.markSessionDirty(input.sessionKey, "sdk_session_config_changed");
       } catch (error) {
         if (turnCompletion?.signal.aborted) {
           releasePreflight();
-          yield { type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" };
+          yield await persistPreflightEvent({ type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" });
           return;
         }
         releasePreflight();
-        yield {
+        yield await persistPreflightEvent({
           type: "error",
           runId,
           code: error instanceof DialogGatewayError ? error.code : "INVALID_SDK_SESSION_CONFIG",
           message: error instanceof Error ? error.message : String(error),
           recoverable: true,
-        };
+        });
         return;
       }
     }
@@ -890,13 +1117,13 @@ export class InProcessGateway implements Gateway {
         this.options.assertSdkModelAllowed(input.sessionKey, explicitModel, input.projectKey);
       } catch (error) {
         releasePreflight();
-        yield {
+        yield await persistPreflightEvent({
           type: "error",
           runId,
           code: error instanceof DialogGatewayError ? error.code : "INVALID_SDK_SESSION_CONFIG",
           message: error instanceof Error ? error.message : String(error),
           recoverable: true,
-        };
+        });
         return;
       }
     }
@@ -909,36 +1136,43 @@ export class InProcessGateway implements Gateway {
         });
         if (turnCompletion?.signal.aborted) {
           releasePreflight();
-          yield { type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" };
+          yield await persistPreflightEvent({ type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" });
           return;
         }
       } catch (error) {
         releasePreflight();
-        throw error;
+        yield await persistPreflightEvent({
+          type: "error",
+          runId,
+          code: error instanceof DialogGatewayError ? error.code : "TASK_BUDGET_UNAVAILABLE",
+          message: error instanceof Error ? error.message : String(error),
+          recoverable: true,
+        });
+        return;
       }
       if (taskBudget && taskBudget.spentUsd >= taskBudget.totalUsd) {
         releasePreflight();
         const message = `Reached Gateway-owned taskBudget.total ($${taskBudget.totalUsd.toFixed(6)}) after spending $${taskBudget.spentUsd.toFixed(6)}.`;
-        yield {
+        yield await persistPreflightEvent({
           type: "error",
           runId,
           code: "agent_task_budget_reached",
           message,
           recoverable: false,
           userHint: "Increase taskBudget.total or start a new SDK session with a larger budget.",
-        };
-        yield { type: "turn_completed", runId, usage: {}, finishReason: "task_budget" };
+        });
+        yield await persistPreflightEvent({ type: "turn_completed", runId, usage: {}, finishReason: "task_budget" });
         return;
       }
     } else if (input.sdkSessionConfig?.taskBudget) {
       releasePreflight();
-      yield {
+      yield await persistPreflightEvent({
         type: "error",
         runId,
         code: "CAPABILITY_UNAVAILABLE",
         message: "Gateway task-budget accounting is unavailable.",
         recoverable: true,
-      };
+      });
       return;
     }
     try {
@@ -948,29 +1182,67 @@ export class InProcessGateway implements Gateway {
       });
       if (turnCompletion!.signal.aborted) {
         releasePreflight();
-        yield { type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" };
+        yield await persistPreflightEvent({ type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" });
         return;
       }
     } catch (error) {
       releasePreflight();
-      yield {
+      yield await persistPreflightEvent({
         type: "error",
         runId,
         code: "gateway_dialog_recovery_cleanup_failed",
         message: error instanceof Error ? error.message : String(error),
         recoverable: true,
         userHint: "Retry the turn after the Gateway storage is available.",
-      };
+      });
       return;
     }
 
     const activeTurnCompletion = turnCompletion!;
 
     const queue = new AsyncQueue<GatewayEvent>();
-    this.turnEventCoordinator.start(input.sessionKey, runId, (event) => queue.enqueue(event));
+    const pendingRunRegistryWrites = new Set<Promise<void>>();
+    // AgentSession dispatches SessionEnd after TurnRunner yields its native
+    // turn_completed event. Keep the Gateway terminal frame behind that
+    // lifecycle boundary so SDK hook projections can still be persisted and
+    // observed before RunRegistry fences the run as terminal.
+    const deferredTerminalEvents: GatewayEvent[] = [];
+    let registryPersistenceFailure: unknown;
+    let registryFailurePublished = false;
+    const enqueueGatewayEvent = (event: GatewayEvent): void => {
+      if (!this.options.runRegistry) {
+        queue.enqueue(event);
+        return;
+      }
+      const write = this.options.runRegistry.append({
+        sessionKey: input.sessionKey,
+        projectKey: input.projectKey,
+        runId,
+        event,
+      }).then(() => {
+        queue.enqueue(event);
+      }).catch((error) => {
+        registryPersistenceFailure ??= error;
+        console.warn("[pilotdeck] failed to persist run registry event:", error);
+        if (!registryFailurePublished) {
+          registryFailurePublished = true;
+          queue.enqueue({
+            type: "error",
+            runId,
+            code: "result_unknown",
+            message: "Gateway could not durably persist the run result.",
+            recoverable: false,
+            userHint: "Do not resubmit this run automatically. Inspect the Gateway run state before retrying.",
+          });
+        }
+      });
+      pendingRunRegistryWrites.add(write);
+      void write.finally(() => pendingRunRegistryWrites.delete(write));
+    };
+    this.turnEventCoordinator.start(input.sessionKey, runId, enqueueGatewayEvent);
     const stopCancelledAdmission = (): boolean => {
       if (!activeTurnCompletion.signal.aborted) return false;
-      queue.enqueue({ type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" });
+      enqueueGatewayEvent({ type: "turn_completed", runId, usage: {}, finishReason: "aborted_streaming" });
       return true;
     };
     const emitGatewayFailureStatus = async (status: GatewayRecordAgentStatusMessageInput["status"]): Promise<void> => {
@@ -987,7 +1259,7 @@ export class InProcessGateway implements Gateway {
         detail: status.detail,
       };
       this.turnEventCoordinator.record(input.sessionKey, statusEvent);
-      queue.enqueue(statusEvent);
+      enqueueGatewayEvent(statusEvent);
     };
 
     if (input.workspaceCwd && this.options.setSessionCwd) {
@@ -999,6 +1271,46 @@ export class InProcessGateway implements Gateway {
     let timeoutSettlement: Promise<void> | undefined;
     let timedOut = false;
     let uploadedAttachmentLease: ResolvedUploadedAttachments | undefined;
+    let failureGuard: FailureGuard | undefined;
+    let guardTripSettlement: Promise<void> | undefined;
+    let sessionWorkspaceDir: string | undefined;
+    let preSnapshotCommitted = false;
+    let turnSucceeded = false;
+    let postFailureKind: WorkspaceSnapshotFailureKind | undefined;
+    let postFailureReason: string | undefined;
+    let workspaceStable = true;
+
+    const capturePostAgentSnapshot = async (): Promise<void> => {
+      if (!this.options.snapshotRecorder || !workspaceId || !sessionWorkspaceDir
+        || !preSnapshotCommitted || turnSucceeded) return;
+      const abortReason = this.abortedTurnReasons.get(turnKey(input.sessionKey, runId));
+      const failureKind = timedOut
+        ? "timeout"
+        : postFailureKind ?? (abortReason ? "interrupted" : "unknown");
+      const failureReason = postFailureReason ?? abortReason ?? "turn_failed_or_aborted";
+      try {
+        const result = await this.options.snapshotRecorder.capturePostAgent({
+          workspaceId,
+          sessionId: input.sessionKey,
+          turnId: runId,
+          runId,
+          workspaceDir: sessionWorkspaceDir,
+          workspaceStable,
+          failureKind,
+          failureReason,
+        });
+        if (result.state === "failed") {
+          console.error(
+            `[pilotdeck] post_agent workspace snapshot failed session=${input.sessionKey} run=${runId}: ${result.error ?? "unknown error"}`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[pilotdeck] post_agent workspace snapshot threw session=${input.sessionKey} run=${runId}:`,
+          error,
+        );
+      }
+    };
 
     const timingStart = performance.now();
     let timingPrevious = timingStart;
@@ -1027,6 +1339,8 @@ export class InProcessGateway implements Gateway {
         }
         if (stopCancelledAdmission()) return;
         markTiming("configMs");
+        const failureGuardConfig = this.options.resolveRunPolicy?.()?.failureGuard;
+        failureGuard = failureGuardConfig?.enabled ? new FailureGuard(failureGuardConfig) : undefined;
         const session = await this.router.getOrCreate({
           sessionKey: input.sessionKey,
           projectKey: input.projectKey,
@@ -1035,10 +1349,39 @@ export class InProcessGateway implements Gateway {
           disallowedTools: input.disallowedTools,
         });
         if (stopCancelledAdmission()) return;
+        if (this.options.snapshotRecorder && workspaceId) {
+          sessionWorkspaceDir = session.snapshotForRuntimeReload().cwd;
+        }
+        if (failureGuard) {
+          const trip = (guardTrip: GuardTrip, model?: LastModelInfo): Promise<void> => {
+            const settlement = (async () => {
+              const built = buildGuardTripMessage(guardTrip, model);
+              try {
+                await emitGatewayFailureStatus(createGatewayFailureStatus({
+                  event: "run_policy_stopped",
+                  code: built.code,
+                  message: built.message,
+                  userHint: built.message,
+                  detail: { kind: guardTrip.kind, ...built.detail },
+                }));
+              } finally {
+                try {
+                  session.abort(`run_policy:${built.code}`);
+                } catch {
+                  // The existing AgentSession terminal path remains authoritative.
+                }
+              }
+            })();
+            guardTripSettlement = settlement;
+            return settlement;
+          };
+          this.activeFailureGuards.set(input.sessionKey, { runId, guard: failureGuard, trip });
+        }
         const operationDeadline = operationDeadlineForTimeout(input.timeoutMs, this.now);
         if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
           const settleTimeout = async (): Promise<void> => {
             timedOut = true;
+            turnSucceeded = false;
             const message = `Turn exceeded the ${input.timeoutMs}ms timeout.`;
             const timeoutStatus = createGatewayFailureStatus({
               event: "turn_timeout",
@@ -1068,7 +1411,7 @@ export class InProcessGateway implements Gateway {
                 detail: timeoutStatus.detail,
               };
               this.turnEventCoordinator.record(input.sessionKey, statusEvent);
-              queue.enqueue(statusEvent);
+              enqueueGatewayEvent(statusEvent);
             } catch (error) {
               console.warn("[pilotdeck] failed to persist gateway timeout status:", error);
             }
@@ -1081,7 +1424,7 @@ export class InProcessGateway implements Gateway {
               userHint: "The turn exceeded its wall-clock limit. Retry with a smaller task or increase the timeout.",
             };
             this.turnEventCoordinator.record(input.sessionKey, gatewayEvent);
-            queue.enqueue(gatewayEvent);
+            enqueueGatewayEvent(gatewayEvent);
             queue.close();
           };
           timeoutHandle = setTimeout(() => {
@@ -1137,11 +1480,27 @@ export class InProcessGateway implements Gateway {
           input.projectKey,
         );
         if (stopCancelledAdmission()) return;
-        const syntheticMessages: CanonicalMessage[] = (input.syntheticMessages ?? []).map((s) => ({
-          role: "user" as const,
-          content: [{ type: "text" as const, text: s.text }],
-          metadata: { synthetic: true, purpose: s.purpose ?? "channel_hint" },
-        }));
+        const syntheticMessages: CanonicalMessage[] = [
+          ...(input.syntheticMessages ?? []).map((s) => ({
+            role: "user" as const,
+            content: [{ type: "text" as const, text: s.text }],
+            metadata: { synthetic: true, purpose: s.purpose ?? "channel_hint" },
+          })),
+          ...(authorizedTrustedContext ?? []).map(({ context, authorizedPrincipal }) => ({
+            role: "user" as const,
+            content: [{ type: "text" as const, text: context.text }],
+            metadata: {
+              synthetic: true,
+              purpose: "trusted_context",
+              trustedContext: {
+                source: context.source,
+                purpose: context.purpose,
+                scope: context.scope,
+                authorizedPrincipal,
+              },
+            },
+          })),
+        ];
         const modelSelection = this.options.resolveTurnModelSelection
           ? await this.options.resolveTurnModelSelection(input)
           : input.modelSelection?.mode === "auto"
@@ -1165,7 +1524,7 @@ export class InProcessGateway implements Gateway {
             runId,
           };
           this.turnEventCoordinator.record(input.sessionKey, event);
-          queue.enqueue(event);
+          enqueueGatewayEvent(event);
           lastEmittedModel = `${modelSelection.selection.provider}\0${modelSelection.selection.model}`;
         }
         // A wall-clock timeout can fire while the Gateway is still resolving
@@ -1177,6 +1536,9 @@ export class InProcessGateway implements Gateway {
           agentInput,
           {
             turnId: runId,
+            workspaceId,
+            storageConfigVersion: this.options.storageConfigVersion,
+            invocationLogSink: this.options.invocationLogSink,
             modelSelection: input.modelSelection,
             execution: {
               runId,
@@ -1243,6 +1605,20 @@ export class InProcessGateway implements Gateway {
           }
           if (event.type === "input_accepted") {
             await this.turnReplacementCoordinator.commitAcceptedInput(input.sessionKey, runId);
+            if (this.options.snapshotRecorder && workspaceId && sessionWorkspaceDir) {
+              const result = await this.options.snapshotRecorder.capturePreUser({
+                workspaceId,
+                sessionId: input.sessionKey,
+                turnId: runId,
+                runId,
+                workspaceDir: sessionWorkspaceDir,
+              });
+              if (result.state !== "committed") {
+                session.abort("workspace_snapshot:pre_user_failed");
+                throw new Error(`pre_user workspace snapshot failed: ${result.error ?? "unknown error"}`);
+              }
+              preSnapshotCommitted = true;
+            }
             markTiming("acceptanceMs");
             const totalMs = Math.round(performance.now() - timingStart);
             if (totalMs >= 200) console.info("[gateway:turn-timing]", JSON.stringify({
@@ -1250,6 +1626,19 @@ export class InProcessGateway implements Gateway {
             }));
           }
           if (event.type === "turn_completed") completedEventAt = performance.now();
+          if (event.type === "turn_completed") {
+            turnSucceeded = event.result.type === "success" && event.result.stopReason === "completed";
+            if (!turnSucceeded) {
+              postFailureKind ??= event.result.type === "aborted" ? "interrupted" : "agent_error";
+              postFailureReason ??= `turn_completed:${event.result.stopReason}`;
+            }
+          } else if (event.type === "turn_failed") {
+            postFailureKind = "agent_error";
+            postFailureReason = `${event.error.code}: ${event.error.message}`;
+          } else if (event.type === "session_aborted") {
+            postFailureKind = "interrupted";
+            postFailureReason = event.reason ?? "session_aborted";
+          }
           if (event.type === "model_event" && event.event.type === "request_started") {
             actualRequestModel = event.event.model;
           }
@@ -1271,7 +1660,7 @@ export class InProcessGateway implements Gateway {
               runId,
             };
             this.turnEventCoordinator.record(input.sessionKey, selectionEvent);
-            queue.enqueue(selectionEvent);
+              enqueueGatewayEvent(selectionEvent);
             lastEmittedModel = `${event.event.provider}\0${event.event.model}`;
           }
           for (const gatewayEvent of this.agentEventProjector.project({
@@ -1294,15 +1683,29 @@ export class InProcessGateway implements Gateway {
                   event: "context_budget",
                   kind: "status",
                   text: "context_budget",
-                  detail: { ...gatewayEvent },
-                },
+                detail: { ...gatewayEvent },
+              },
               }).catch(() => {});
             }
-            this.turnEventCoordinator.record(input.sessionKey, gatewayEvent);
-            queue.enqueue(gatewayEvent);
+            if (gatewayEvent.type === "turn_completed") {
+              deferredTerminalEvents.push(gatewayEvent);
+            } else {
+              this.turnEventCoordinator.record(input.sessionKey, gatewayEvent);
+              enqueueGatewayEvent(gatewayEvent);
+            }
+          }
+          const active = failureGuard ? this.activeFailureGuards.get(input.sessionKey) : undefined;
+          if (active?.runId === runId && !active.guard.isTripped) {
+            const trip = active.guard.observe(event);
+            if (trip) await active.trip(trip, parseEmittedModel(lastEmittedModel));
           }
         }
       } catch (error) {
+        turnSucceeded = false;
+        if (!timedOut) {
+          postFailureKind ??= "gateway_error";
+          postFailureReason ??= error instanceof Error ? error.message : String(error);
+        }
         this.options.telemetry?.trackError(error, {
           module: "session",
           ownerModule: telemetryContext.ownerModule,
@@ -1349,7 +1752,7 @@ export class InProcessGateway implements Gateway {
             userHint,
           };
           this.turnEventCoordinator.record(input.sessionKey, gatewayEvent);
-          queue.enqueue(gatewayEvent);
+          enqueueGatewayEvent(gatewayEvent);
         }
       } finally {
         if (timeoutHandle) {
@@ -1364,6 +1767,21 @@ export class InProcessGateway implements Gateway {
           }
         }
         if (timedOut && timeoutSettlement) await timeoutSettlement;
+        if (guardTripSettlement) await guardTripSettlement.catch(() => undefined);
+        if (this.activeFailureGuards.get(input.sessionKey)?.runId === runId) {
+          this.activeFailureGuards.delete(input.sessionKey);
+        }
+        // SessionEnd and other lifecycle hooks are dispatched by AgentSession
+        // after the TurnRunner terminal event. Publish the terminal frame
+        // only after the session generator has completed so it remains the
+        // final durable event and closes the live stream exactly once.
+        for (const event of deferredTerminalEvents) {
+          this.turnEventCoordinator.record(input.sessionKey, event);
+          enqueueGatewayEvent(event);
+        }
+        // Do not close the live queue until every durable append has either
+        // published its event or surfaced result_unknown to the observer.
+        await Promise.all(pendingRunRegistryWrites);
         queue.close();
       }
     })();
@@ -1371,6 +1789,19 @@ export class InProcessGateway implements Gateway {
     try {
       for await (const event of queue) {
         yield event;
+      }
+      // The queue closes after the pump has emitted all events. Await the
+      // registry writes too, so callers can safely reattach immediately
+      // after submitTurn returns without racing terminal persistence.
+      await Promise.all(pendingRunRegistryWrites);
+      if (registryPersistenceFailure && !registryFailurePublished) {
+        yield {
+          type: "error",
+          runId,
+          code: "result_unknown",
+          message: "Gateway could not durably persist the run result.",
+          recoverable: false,
+        };
       }
     } finally {
       // Clean up the emit-sink and any orphaned elicitation / permission
@@ -1388,12 +1819,24 @@ export class InProcessGateway implements Gateway {
       if (timedOut) {
         // The timed-out AgentSession is never safe to reuse. Do not await a
         // misbehaving tool here: the hard timeout must release the Cron run.
+        if (this.options.snapshotRecorder && preSnapshotCommitted) {
+          workspaceStable = await settlesWithin(pump, this.abortTurnTimeoutMs);
+          if (!workspaceStable) {
+            postFailureReason = `timeout; workspace_not_quiescent_after_${this.abortTurnTimeoutMs}ms`;
+          }
+          await capturePostAgentSnapshot();
+        }
         void this.router.close(input.sessionKey).catch(() => undefined);
         void pump.catch(() => undefined);
       } else {
         // Defensive — make sure the pump promise is settled before we resolve.
         await pump.catch(() => undefined);
+        await capturePostAgentSnapshot();
       }
+      if (this.activeFailureGuards.get(input.sessionKey)?.runId === runId) {
+        this.activeFailureGuards.delete(input.sessionKey);
+      }
+      this.abortedTurnReasons.delete(turnKey(input.sessionKey, runId));
       // Signal any in-flight `abortTurn` awaiters after Router cleanup.
       // The fence only owns this short-lived drain promise; it does not
       // decide whether another turn may be admitted.
@@ -1404,6 +1847,7 @@ export class InProcessGateway implements Gateway {
         projectKey: input.projectKey,
         runId,
       });
+      releaseWorkspace();
     }
   }
 
@@ -1549,6 +1993,10 @@ export class InProcessGateway implements Gateway {
 
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {
     const reason = input.reason ?? (input.runId ? `aborted:${input.runId}` : "aborted");
+    const activeRunId = this.router.activeTurnRunId(input.sessionKey);
+    if (activeRunId && (!input.runId || activeRunId === input.runId)) {
+      this.abortedTurnReasons.set(turnKey(input.sessionKey, activeRunId), reason);
+    }
     const cancelled = this.turnCompletionFence.cancel(input.sessionKey, reason, input.runId);
     if (input.runId !== undefined && !cancelled) {
       // Replacement can observe a Router-admitted turn before submitTurn has
@@ -1633,6 +2081,12 @@ export class InProcessGateway implements Gateway {
 
   async describeServer(): Promise<GatewayServerInfo> {
     const capabilities = [
+      ...(this.options.uploadLifecycle
+        ? ["upload_create" as const, "upload_get" as const, "upload_part" as const, "upload_complete" as const, "upload_cancel" as const]
+        : []),
+      ...(this.options.runRegistry
+        ? ["run_get" as const, "run_events" as const, "run_reattach" as const]
+        : []),
       ...(this.options.listProjects ? ["project_files_list" as const] : []),
       ...(this.options.commandsList ? ["commands_list" as const] : []),
       ...(this.options.modelCatalogList ? ["model_catalog_list" as const] : []),
@@ -1642,6 +2096,27 @@ export class InProcessGateway implements Gateway {
       ...(this.options.deleteSession || this.options.deleteEphemeralSession ? ["delete_session" as const] : []),
       ...(this.options.exportSessionTranscript && this.options.restoreSessionTranscript
         ? ["session_transcript_archive" as const]
+        : []),
+      ...(this.options.nativeArchiveManifest && this.options.nativeArchiveEntries ? ["native_transcript_archive" as const] : []),
+      ...(this.options.nativeArchiveArtifact ? ["native_transcript_archive_artifact" as const] : []),
+      ...(this.options.memoryList && this.options.memoryWipe ? ["memory_list" as const, "memory_wipe" as const] : []),
+      ...(this.options.managerSessions ? ["manager_sessions" as const] : []),
+      ...(this.options.managerBrowsers ? ["manager_browsers" as const] : []),
+      ...(this.options.snapshotList && this.options.snapshotGet && this.options.snapshotRestore
+        ? ["snapshot_list" as const, "snapshot_get" as const, "snapshot_restore" as const]
+        : []),
+      ...(this.options.cron
+        ? [
+          "cron_create" as const,
+          "cron_list" as const,
+          "cron_update" as const,
+          "cron_delete" as const,
+          "cron_stop" as const,
+          "cron_run_now" as const,
+        ]
+        : []),
+      ...(this.options.alwaysOnControl
+        ? ["always_on_apply" as const, "always_on_abort" as const, "always_on_rerun_plan" as const]
         : []),
       ...(this.options.mcpServerStatus ? ["mcp_server_status" as const] : []),
       ...(this.options.setMcpServers ? ["set_mcp_servers" as const] : []),
@@ -1661,6 +2136,8 @@ export class InProcessGateway implements Gateway {
       ...(this.options.modelUsageSnapshot ? ["model_usage_snapshot" as const] : []),
       "async_hook_result" as const,
       "user_dialog_list" as const,
+      "permission_list" as const,
+      "permission_decide" as const,
       ...(this.options.rewindFiles ? ["rewind_files" as const] : []),
       ...(this.options.stopBackgroundTask ? ["background_task_stop" as const] : []),
       ...(this.options.backgroundTasks ? ["background_tasks" as const] : []),
@@ -1993,6 +2470,126 @@ export class InProcessGateway implements Gateway {
     return this.turnEventCoordinator.snapshot(input);
   }
 
+  async uploadCreate(input: import("../protocol/types.js").GatewayUploadCreateInput): Promise<import("../protocol/types.js").GatewayUploadRecord> {
+    const lifecycle = this.requireUploadLifecycle();
+    if (!input.projectKey?.trim()) throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required for uploads.");
+    if (!Array.isArray(input.files)) throw new DialogGatewayError("UPLOAD_MANIFEST_INVALID", "files must be an array.");
+    const record = await lifecycle.create(input.projectKey, input.files, input.idempotencyKey);
+    return toGatewayUploadRecord(record);
+  }
+
+  async uploadGet(input: import("../protocol/types.js").GatewayUploadGetInput): Promise<import("../protocol/types.js").GatewayUploadRecord> {
+    return toGatewayUploadRecord(await this.requireUploadLifecycle().get(assertUploadId(input.uploadId)));
+  }
+
+  async uploadPart(input: import("../protocol/types.js").GatewayUploadPartInput): Promise<import("../protocol/types.js").GatewayUploadAttachment> {
+    const uploadId = assertUploadId(input.uploadId);
+    if (typeof input.clientFileId !== "string" || !input.clientFileId.trim()) {
+      throw new DialogGatewayError("UPLOAD_MANIFEST_MISMATCH", "clientFileId is required.");
+    }
+    const bytes = decodeUploadPart(input.contentBase64);
+    const attachment = await this.requireUploadLifecycle().writePart(uploadId, input.clientFileId, Readable.from([bytes]));
+    return {
+      attachmentId: attachment.attachmentId,
+      name: attachment.name,
+      relativePath: attachment.relativePath,
+      ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
+      bytes: attachment.bytes,
+      sha256: attachment.sha256,
+    };
+  }
+
+  async uploadComplete(input: import("../protocol/types.js").GatewayUploadCompleteInput): Promise<import("../protocol/types.js").GatewayUploadRecord> {
+    return toGatewayUploadRecord(await this.requireUploadLifecycle().complete(assertUploadId(input.uploadId)));
+  }
+
+  async uploadCancel(input: import("../protocol/types.js").GatewayUploadCancelInput): Promise<import("../protocol/types.js").GatewayUploadRecord> {
+    return toGatewayUploadRecord(await this.requireUploadLifecycle().cancel(assertUploadId(input.uploadId)));
+  }
+
+  private requireUploadLifecycle(): UploadLifecyclePort {
+    if (!this.options.uploadLifecycle) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway uploads are unavailable.");
+    return this.options.uploadLifecycle;
+  }
+
+  async runGet(input: import("../protocol/types.js").GatewayRunRefInput): Promise<import("../protocol/types.js").GatewayRunRecord | undefined> {
+    if (!this.options.runRegistry) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Persistent run registry is unavailable.");
+    const record = await this.options.runRegistry.get(input);
+    return record ? toGatewayRunRecord(record) : undefined;
+  }
+
+  async runEvents(input: import("../protocol/types.js").GatewayRunEventsInput): Promise<import("../protocol/types.js").GatewayRunEventsResult> {
+    if (!this.options.runRegistry) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Persistent run registry is unavailable.");
+    if (input.afterSeq !== undefined && (!Number.isSafeInteger(input.afterSeq) || input.afterSeq < 0)) {
+      throw new DialogGatewayError("INVALID_RUN_CURSOR", "afterSeq must be a non-negative safe integer.");
+    }
+    if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 500)) {
+      throw new DialogGatewayError("INVALID_RUN_LIMIT", "limit must be an integer between 1 and 500.");
+    }
+    const record = await this.options.runRegistry.get(input);
+    if (!record) throw new DialogGatewayError("RUN_NOT_FOUND", `Run ${input.runId} is not registered.`);
+    if (input.afterSeq !== undefined && input.afterSeq > record.lastSeq) {
+      return { events: [], nextSeq: record.lastSeq, gap: true };
+    }
+    const events = await this.options.runRegistry.events(input);
+    return {
+      events: events as import("../protocol/types.js").GatewayRunEventsResult["events"],
+      ...(events.length > 0 ? { nextSeq: events.at(-1)!.seq } : {}),
+    };
+  }
+
+  async runReattach(input: import("../protocol/types.js").GatewayRunRefInput): Promise<import("../protocol/types.js").GatewayRunRecord | undefined> {
+    return this.runGet(input);
+  }
+
+  async nativeArchiveManifest(input: import("../protocol/types.js").GatewayNativeArchiveManifestInput): Promise<import("../protocol/types.js").GatewayNativeArchiveManifest> {
+    if (!this.options.nativeArchiveManifest) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Native transcript archive is unavailable.");
+    validateNativeArchiveSession(input);
+    await this.authorizeNativeArchive({ operation: "manifest", ...input });
+    return this.options.nativeArchiveManifest(input);
+  }
+
+  async nativeArchiveEntries(input: import("../protocol/types.js").GatewayNativeArchiveEntriesInput): Promise<import("../protocol/types.js").GatewayNativeArchiveEntriesResult> {
+    if (!this.options.nativeArchiveEntries) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Native transcript archive is unavailable.");
+    validateNativeArchiveSession(input);
+    if (input.afterSequence !== undefined && (!Number.isSafeInteger(input.afterSequence) || input.afterSequence < 0)) {
+      throw new DialogGatewayError("INVALID_ARCHIVE_CURSOR", "afterSequence must be a non-negative safe integer.");
+    }
+    if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 500)) {
+      throw new DialogGatewayError("INVALID_ARCHIVE_LIMIT", "limit must be an integer between 1 and 500.");
+    }
+    await this.authorizeNativeArchive({ operation: "entries", ...input });
+    return this.options.nativeArchiveEntries(input);
+  }
+
+  async nativeArchiveArtifact(input: import("../protocol/types.js").GatewayNativeArchiveArtifactInput): Promise<import("../protocol/types.js").GatewayNativeArchiveArtifactResult> {
+    if (!this.options.nativeArchiveArtifact) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Native transcript artifacts are unavailable.");
+    validateNativeArchiveSession(input);
+    if (!/^[A-Za-z0-9_.-]+$/u.test(input.artifactName) || input.artifactName === "." || input.artifactName === "..") {
+      throw new DialogGatewayError("INVALID_ARCHIVE_ARTIFACT", "artifactName must be a single safe artifact name.");
+    }
+    const maxBytes = input.maxBytes ?? 1_000_000;
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 10_000_000) {
+      throw new DialogGatewayError("INVALID_ARCHIVE_ARTIFACT_LIMIT", "maxBytes must be an integer between 1 and 10000000.");
+    }
+    await this.authorizeNativeArchive({ operation: "artifact", ...input });
+    return this.options.nativeArchiveArtifact(input);
+  }
+
+  private async authorizeNativeArchive(input: import("../protocol/types.js").GatewayNativeArchiveAuthorizationInput): Promise<void> {
+    const authorizer = this.options.nativeArchiveAuthorizer;
+    if (!authorizer) return;
+    try {
+      await authorizer.authorize(input);
+    } catch (error) {
+      if (error instanceof DialogGatewayError) throw error;
+      throw new DialogGatewayError(
+        "ARCHIVE_UNAUTHORIZED",
+        error instanceof Error ? error.message : "Native transcript archive access was denied.",
+      );
+    }
+  }
+
   async cronCreate(input: CronCreateInput): Promise<CronCreateResult> {
     return this.requireCron().createTask(input);
   }
@@ -2168,6 +2765,63 @@ export class InProcessGateway implements Gateway {
 
   async permissionDecide(input: GatewayPermissionDecisionInput): Promise<{ delivered: boolean }> {
     return this.interactionCoordinator.decidePermission(input);
+  }
+
+  async listPermissions(input: import("../protocol/types.js").GatewayListPermissionsInput): Promise<import("../protocol/types.js").GatewayListPermissionsResult> {
+    if (!input.sessionKey?.trim()) {
+      throw new DialogGatewayError("INVALID_PERMISSION_LIST", "sessionKey is required.");
+    }
+    return {
+      requests: this.interactionCoordinator.getPermissionBus().snapshot(input.sessionKey).map((request) => ({
+        requestId: request.requestId,
+        toolCallId: request.toolCallId ?? "",
+        toolName: request.toolName ?? "",
+        ...(request.payload !== undefined ? { payload: structuredClone(request.payload) } : {}),
+      })),
+    };
+  }
+
+  async memoryList(input: import("../protocol/types.js").GatewayMemoryListInput): Promise<import("../protocol/types.js").GatewayMemoryListResult> {
+    requireManagementProjectKey(input.projectKey);
+    requireOptionalManagementSessionKey(input.sessionKey);
+    if (!this.options.memoryList) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway memory provider is unavailable.");
+    return this.options.memoryList(input);
+  }
+  async memoryWipe(input: import("../protocol/types.js").GatewayMemoryWipeInput): Promise<import("../protocol/types.js").GatewayMemoryWipeResult> {
+    requireManagementProjectKey(input.projectKey);
+    requireOptionalManagementSessionKey(input.sessionKey);
+    if (input.scope === "session" && !input.sessionKey?.trim()) {
+      throw new DialogGatewayError("INVALID_MEMORY_SCOPE", "sessionKey is required for a session-scoped wipe.");
+    }
+    if (!this.options.memoryWipe) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway memory provider is unavailable.");
+    return this.options.memoryWipe(input);
+  }
+  async snapshotList(input: import("../protocol/types.js").GatewaySnapshotListInput): Promise<import("../protocol/types.js").GatewaySnapshotListResult> {
+    requireManagementProjectKey(input.projectKey);
+    requireOptionalManagementSessionKey(input.sessionKey);
+    if (!this.options.snapshotList) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway snapshot provider is unavailable.");
+    return this.options.snapshotList(input);
+  }
+  async snapshotGet(input: import("../protocol/types.js").GatewaySnapshotGetInput): Promise<import("../protocol/types.js").GatewaySnapshotGetResult> {
+    requireManagementProjectKey(input.projectKey);
+    requireManagementIdentifier(input.snapshotId, "snapshotId");
+    if (!this.options.snapshotGet) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway snapshot provider is unavailable.");
+    return this.options.snapshotGet(input);
+  }
+  async snapshotRestore(input: import("../protocol/types.js").GatewaySnapshotRestoreInput): Promise<import("../protocol/types.js").GatewaySnapshotRestoreResult> {
+    requireManagementProjectKey(input.projectKey);
+    requireManagementIdentifier(input.snapshotId, "snapshotId");
+    if (input.targetProjectKey !== undefined) requireManagementProjectKey(input.targetProjectKey);
+    if (!this.options.snapshotRestore) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway snapshot provider is unavailable.");
+    return this.options.snapshotRestore(input);
+  }
+  async managerSessions(input: import("../protocol/types.js").GatewayManagerResourceInput): Promise<import("../protocol/types.js").GatewayManagerResourceResult> {
+    if (!this.options.managerSessions) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway manager session provider is unavailable.");
+    return this.options.managerSessions(input);
+  }
+  async managerBrowsers(input: import("../protocol/types.js").GatewayManagerResourceInput): Promise<import("../protocol/types.js").GatewayManagerResourceResult> {
+    if (!this.options.managerBrowsers) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Gateway manager browser provider is unavailable.");
+    return this.options.managerBrowsers(input);
   }
 
   async grantSessionPermission(input: GatewaySessionPermissionGrantInput): Promise<{ granted: boolean; entry?: string }> {
@@ -2352,7 +3006,7 @@ export class InProcessGateway implements Gateway {
 
   private requireCron(): GatewayCronController {
     if (!this.options.cron) {
-      throw new Error("Cron runtime is not configured.");
+      throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "Cron runtime is not configured on this gateway.");
     }
     return this.options.cron;
   }
@@ -2378,6 +3032,18 @@ function createGatewayFailureStatus(args: {
       source: "gateway",
       detail: args.detail,
     }),
+  };
+}
+
+function parseEmittedModel(key: string | undefined): LastModelInfo | undefined {
+  if (!key) return undefined;
+  const separator = key.indexOf("\0");
+  if (separator < 0) return undefined;
+  const provider = key.slice(0, separator);
+  const model = key.slice(separator + 1);
+  return {
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
   };
 }
 
@@ -2411,6 +3077,76 @@ function validateGatewayMaxBudget(input: GatewaySubmitTurnInput): string | undef
     return "maxBudgetUsd must be a positive finite number.";
   }
   return undefined;
+}
+
+const GATEWAY_RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+
+function validateGatewayRunId(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !GATEWAY_RUN_ID_PATTERN.test(value)) {
+    return "runId must be 1-128 characters and contain only letters, numbers, '.', '_', ':', or '-'.";
+  }
+  return undefined;
+}
+
+function validateGatewayTrustedContext(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return "trustedContext must be an array.";
+  for (const [index, item] of value.entries()) {
+    const context = item as Record<string, unknown> | null;
+    if (!context || typeof context !== "object"
+      || typeof context.text !== "string" || !context.text.trim()
+      || typeof context.source !== "string" || !context.source.trim()
+      || (context.purpose !== "material_context" && context.purpose !== "skill_context" && context.purpose !== "application_context")
+      || context.scope !== "turn") {
+      return `trustedContext[${index}] is invalid.`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The run id is the caller's idempotency key, so every execution-affecting
+ * field must participate in the conflict fingerprint. Connection metadata is
+ * deliberately excluded because a reconnect may use a different binding.
+ */
+function serializeRunRequestMaterial(input: GatewaySubmitTurnInput): string {
+  const { runId: _runId, interactionBinding: _interactionBinding, telemetry: _telemetry, ...executionInput } = input;
+  return stableSerialize(executionInput);
+}
+
+function stableSerialize(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().flatMap((key) => {
+    const child = record[key];
+    return child === undefined ? [] : [`${JSON.stringify(key)}:${stableSerialize(child)}`];
+  }).join(",")}}`;
+}
+
+function validateNativeArchiveSession(input: { sessionKey: string }): void {
+  if (!input.sessionKey?.trim()) {
+    throw new DialogGatewayError("INVALID_SESSION_KEY", "sessionKey is required.");
+  }
+}
+
+function requireManagementProjectKey(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new DialogGatewayError("PROJECT_NOT_FOUND", "projectKey is required.");
+  }
+}
+
+function requireOptionalManagementSessionKey(value: unknown): void {
+  if (value !== undefined && (typeof value !== "string" || !value.trim())) {
+    throw new DialogGatewayError("INVALID_SESSION_KEY", "sessionKey must be non-empty when provided.");
+  }
+}
+
+function requireManagementIdentifier(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new DialogGatewayError("INVALID_MANAGEMENT_IDENTIFIER", `${label} is required.`);
+  }
 }
 
 function validateThinkingConfig(
@@ -2852,6 +3588,52 @@ function parseCompactCommand(message: string): { isCompactCommand: boolean; vali
   const trimmed = message.trim();
   if (!/^\/compact(?:\s|$)/u.test(trimmed)) return { isCompactCommand: false, valid: false };
   return { isCompactCommand: true, valid: /^\/compact$/u.test(trimmed) };
+}
+
+function assertUploadId(value: unknown): string {
+  if (typeof value !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(value) || value.includes("..")) {
+    throw new DialogGatewayError("UPLOAD_NOT_FOUND", "Invalid uploadId.");
+  }
+  return value;
+}
+
+function decodeUploadPart(value: unknown): Buffer {
+  if (typeof value !== "string" || value.length === 0 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+    throw new DialogGatewayError("UPLOAD_PART_INVALID", "contentBase64 must be a valid base64 string.");
+  }
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length > MAX_REMOTE_UPLOAD_PART_BYTES) {
+    throw new DialogGatewayError("UPLOAD_PART_TOO_LARGE", `Remote upload parts are limited to ${MAX_REMOTE_UPLOAD_PART_BYTES} bytes.`);
+  }
+  return bytes;
+}
+
+function toGatewayUploadRecord(record: import("../dialog/UploadLifecyclePort.js").UploadRecord): import("../protocol/types.js").GatewayUploadRecord {
+  return {
+    uploadId: record.uploadId,
+    projectKey: record.projectKey,
+    status: record.status,
+    manifest: record.manifest,
+    totalBytes: record.totalBytes,
+    uploadedBytes: record.uploadedBytes,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    expiresAt: record.expiresAt,
+    ...(record.idempotencyKeyHash ? { idempotencyKeyHash: record.idempotencyKeyHash } : {}),
+    ...(record.attachments ? {
+      attachments: record.attachments.map((attachment) => ({
+        attachmentId: attachment.attachmentId,
+        name: attachment.name,
+        relativePath: attachment.relativePath,
+        ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
+        bytes: attachment.bytes,
+        sha256: attachment.sha256,
+      })),
+    } : {}),
+    ...(record.receivedClientFileIds ? { receivedClientFileIds: record.receivedClientFileIds } : {}),
+    ...(record.errorCode ? { errorCode: record.errorCode } : {}),
+    ...(record.errorMessage ? { errorMessage: record.errorMessage } : {}),
+  };
 }
 
 function operationDeadlineForTimeout(

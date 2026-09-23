@@ -81,6 +81,26 @@ test("gateway runtime refresh bundle keeps config reload, router dirtying, and s
     payload: { changedPaths: ["agent.model"], changeClasses: ["hot-reload"] },
   }]);
 
+  const runtimeReloads = calls.filter((call) => call === "registry:reload").length;
+  const dirtyCalls = calls.filter((call) => call === "dirty-all:config_changed").length;
+  config.publish({
+    changedPaths: ["runPolicy.failureGuard.modelFailureLimit"],
+    changeClasses: ["next-request"],
+  });
+  await flush();
+  assert.equal(calls.filter((call) => call === "registry:reload").length, runtimeReloads);
+  assert.equal(calls.filter((call) => call === "dirty-all:config_changed").length, dirtyCalls);
+  assert.ok(calls.includes(
+    "log:[pilotdeck] Config reloaded (runPolicy applies next turn): runPolicy.failureGuard.modelFailureLimit",
+  ));
+  assert.deepEqual(broadcasts.at(-1), {
+    name: "config_changed",
+    payload: {
+      changedPaths: ["runPolicy.failureGuard.modelFailureLimit"],
+      changeClasses: ["next-request"],
+    },
+  });
+
   await bundle.reloadExtensions({ projectKey: "/project-a", changedPaths: ["plugin.ts"] });
   await bundle.reloadExtensions();
   assert.ok(calls.includes("invalidate:/project-a"));

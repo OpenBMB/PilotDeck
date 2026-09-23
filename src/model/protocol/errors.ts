@@ -140,6 +140,14 @@ export const TRANSIENT_USAGE_SIGNAL_PATTERN =
 export const USAGE_LIMIT_PATTERN =
   /usage limit|quota|limit exceeded|key limit exceeded/i;
 
+/** LLMCenter / undici mid-stream disconnect. */
+export const PREMATURE_STREAM_CLOSE_PATTERN =
+  /connection prematurely closed(?: during response)?|prematurely closed during response/i;
+
+export function isPrematureStreamCloseMessage(message: string | undefined): boolean {
+  return Boolean(message && PREMATURE_STREAM_CLOSE_PATTERN.test(message));
+}
+
 export const NETWORK_TIMEOUT_PATTERN =
   /fetch failed|terminated|socket hang up|ETIMEDOUT|ECONNRESET|ECONNREFUSED|network error|request timeout|stream idle timeout|no data received|client disconnected/i;
 

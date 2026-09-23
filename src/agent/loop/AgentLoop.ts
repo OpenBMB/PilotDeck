@@ -175,6 +175,9 @@ export type AgentLoopInput = {
   }) => void | Promise<void>;
   /** Host-owned execution identity. Gateway supplies runId; direct callers may omit it. */
   execution?: Pick<AgentExecutionContext, "runId" | "operationId" | "idempotencyKey" | "operationDeadline">;
+  workspaceId?: string;
+  storageConfigVersion?: string;
+  invocationLogSink?: import("../../storage/invocationStorage.js").ModelInvocationLogSink;
   /** Drain user guidance that should join this active turn before the next model request. */
   drainSteerMessages?: () => AgentSteerMessage[] | Promise<AgentSteerMessage[]>;
   /** Atomically drain pending guidance or close the inbox before terminal completion. */
@@ -712,6 +715,9 @@ export class AgentLoop {
           operationId: input.execution?.operationId,
           idempotencyKey: input.execution?.idempotencyKey,
         operationDeadline: input.execution?.operationDeadline,
+        workspaceId: input.workspaceId,
+        storageConfigVersion: input.storageConfigVersion,
+        invocationLogSink: input.invocationLogSink,
         abortSignal: input.abortSignal,
         metadata: stickyInfo
           ? {
@@ -2790,6 +2796,9 @@ export class AgentLoop {
         subagent: this.capabilities.subagent.oneShot.createForkApi({
           sessionId: input.sessionId,
           turnId: input.turnId,
+          workspaceId: input.workspaceId,
+          storageConfigVersion: input.storageConfigVersion,
+          invocationLogSink: input.invocationLogSink,
           parentReadFileState: this.readFileState,
           parentWriteSnapshots: this.writeSnapshots,
         }),

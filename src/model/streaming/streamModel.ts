@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { sanitizeProviderBody } from "../request/sanitizeProviderBody.js";
 import { normalizeModelError } from "../errors/normalizeModelError.js";
 import { createGoogleClient, type GoogleClientFactory } from "../providers/google/client.js";
@@ -12,7 +13,7 @@ import type {
   ModelProtocol,
   ProviderConfig,
 } from "../protocol/canonical.js";
-import { ModelProviderError, parseRetryAfterHeader } from "../protocol/errors.js";
+import { isPrematureStreamCloseMessage, ModelProviderError, parseRetryAfterHeader } from "../protocol/errors.js";
 import { parseModelResponse } from "../response/parseModelResponse.js";
 import { createStreamNormalizerState, normalizeStreamEvent } from "./normalizeStreamEvent.js";
 import { createGoogleStreamState, normalizeGoogleStreamEvent } from "../providers/google/stream.js";
@@ -23,6 +24,7 @@ import { buildLiteLLMContinuationRequest } from "./continuationRequest.js";
 import { requestFingerprint } from "./requestFingerprint.js";
 import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
 import { createNativeRetryPolicy, type RetryPolicy } from "../policy/index.js";
+import type { InvocationLogContext, ModelInvocationLogSink } from "../../storage/invocationStorage.js";
 
 export type ModelTransport = typeof fetch;
 
@@ -33,6 +35,11 @@ export type ModelRuntimeOptions = {
   streamTimeoutMs?: number;
   onRetryProgress?: (progress: ModelStreamRetryProgress) => void;
   retryPolicy?: RetryPolicy;
+  /** Gateway-owned raw provider audit; staging is synchronous before send. */
+  invocation?: {
+    context: InvocationLogContext;
+    sink: ModelInvocationLogSink;
+  };
 };
 
 export type ModelStreamRetryProgress = {
@@ -85,14 +92,18 @@ export async function complete(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     throwIfAborted(options.signal);
     if (provider.protocol === "google") {
+      const body = buildModelRequest(nonStreamingRequest, { providers: { [provider.id]: provider } });
+      const invocation = beginInvocation(options, provider, nonStreamingRequest.model, false, body, attempt + 1);
       try {
         const raw = await sendGoogleCompleteRequest(
           provider,
           nonStreamingRequest,
           options,
         );
+        finishInvocation(invocation, options, "success", JSON.stringify(raw), undefined, undefined, true);
         return parseGoogleResponse(raw, provider.id);
       } catch (error) {
+        finishInvocation(invocation, options, "transport_error", undefined, undefined, error);
         if (attempt < maxRetries && isRetryableRequestError(error)) {
           const { delayMs } = retryPolicy.decide({ provider, kind: "request", attempt });
           console.warn(
@@ -107,10 +118,12 @@ export async function complete(
     }
 
     const body = buildModelRequest(nonStreamingRequest, config);
+    const invocation = beginInvocation(options, provider, nonStreamingRequest.model, false, body, attempt + 1);
     let response: Response;
     try {
       response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal);
     } catch (error) {
+      finishInvocation(invocation, options, "transport_error", undefined, undefined, error);
       if (attempt < maxRetries && isRetryableRequestError(error)) {
         const { delayMs } = retryPolicy.decide({ provider, kind: "request", attempt });
         console.warn(
@@ -124,13 +137,17 @@ export async function complete(
     }
 
     if (!response.ok) {
-      const raw = await safeReadJson(response);
+      const rawText = await response.text();
+      const raw = parseRawJson(rawText);
+      finishInvocation(invocation, options, "provider_error", rawText, response.status, undefined, false);
       throw new ModelProviderError(
         normalizeModelError(provider.id, provider.protocol, raw, response.status),
       );
     }
 
-    const raw = await response.json();
+    const rawText = await response.text();
+    const raw = parseRawJson(rawText);
+    finishInvocation(invocation, options, "success", rawText, response.status, undefined, true);
     return parseModelResponse(provider.protocol, raw, provider.id);
   }
 
@@ -175,6 +192,7 @@ export async function* streamModel(
       metadata: currentRequest.metadata,
     };
     const body = buildModelRequest(currentRequest, config);
+    const invocation = beginInvocation(options, provider, currentRequest.model, true, body, attempt + 1);
     if (process.env.PILOTDECK_DUMP_REQUEST === "1") {
       const fs = await import("node:fs");
       const os = await import("node:os");
@@ -187,6 +205,7 @@ export async function* streamModel(
     try {
       response = await sendProviderRequest(provider, body, true, options.fetch ?? fetch, options.signal, options);
     } catch (error) {
+      finishInvocation(invocation, options, "transport_error", undefined, undefined, error);
       if (attempt < maxRetries && isRetryableStreamError(error)) {
         const delayMs = retryPolicy.decide({ provider, kind: "stream", attempt }).delayMs;
         emitModelRetryProgress(options, "network_error", attempt, maxRetries, delayMs, provider, currentRequest.model);
@@ -204,7 +223,9 @@ export async function* streamModel(
     }
 
     if (!response.ok) {
-      const raw = await safeReadJson(response);
+      const rawText = await response.text();
+      const raw = parseRawJson(rawText);
+      finishInvocation(invocation, options, "provider_error", rawText, response.status, undefined, false);
       const error = normalizeModelError(provider.id, provider.protocol, raw, response.status);
       if (error.retryAfterMs === undefined) {
         const headerMs = parseRetryAfterHeader(response.headers.get("retry-after"));
@@ -230,6 +251,7 @@ export async function* streamModel(
     }
 
     if (!response.body) {
+      finishInvocation(invocation, options, "incomplete", undefined, response.status, undefined, false);
       yield {
         type: "error",
         error: normalizeModelError(provider.id, provider.protocol, new Error("Missing response body.")),
@@ -243,9 +265,20 @@ export async function* streamModel(
 
     const streamIdleTimeoutMs = resolveStreamIdleTimeout(provider, options);
     const streamGuard = createStreamGuard(provider);
+    const rawResponseChunks: Buffer[] = [];
+    let rawResponseBytes = 0;
+    let decodedRawResponse: string | undefined;
+    const getRawResponse = (): string => {
+      decodedRawResponse ??= Buffer.concat(rawResponseChunks, rawResponseBytes).toString("utf8");
+      return decodedRawResponse;
+    };
 
     try {
-      for await (const sseEvent of readServerSentEvents(response.body, options.signal, streamIdleTimeoutMs)) {
+      for await (const sseEvent of readServerSentEvents(response.body, options.signal, streamIdleTimeoutMs, (chunk) => {
+        const copy = Buffer.from(chunk);
+        rawResponseChunks.push(copy);
+        rawResponseBytes += copy.byteLength;
+      })) {
         streamGuard.checkDuration();
         if (sseEvent.type === "done") {
           sawCompletionSentinel = true;
@@ -268,12 +301,14 @@ export async function* streamModel(
         throw new IncompleteStreamError();
       }
       streamCompleted = true;
+      finishInvocation(invocation, options, "success", getRawResponse(), response.status, undefined, true, rawResponseBytes);
     } catch (error) {
       if (
         attempt < maxRetries &&
         isRetryableStreamError(error) &&
         checkpoint.canContinueText()
       ) {
+        finishInvocation(invocation, options, "incomplete", getRawResponse(), response.status, error, false, rawResponseBytes);
         currentRequest = buildLiteLLMContinuationRequest(currentRequest, checkpoint.get().partialText);
         const delayMs = retryPolicy.decide({ provider, kind: "stream", attempt, retryAfterMs: retryAfterMsForError(error) }).delayMs;
         emitModelRetryProgress(options, "continuation", attempt, maxRetries, delayMs, provider, currentRequest.model);
@@ -286,6 +321,7 @@ export async function* streamModel(
         attempt < maxRetries &&
         checkpoint.interruption().phase === "empty"
       ) {
+        finishInvocation(invocation, options, "incomplete", getRawResponse(), response.status, error, false, rawResponseBytes);
         const delayMs = retryPolicy.decide({ provider, kind: "stream", attempt, retryAfterMs: retryAfterMsForError(error) }).delayMs;
         emitModelRetryProgress(options, retryReasonForThrownError(error), attempt, maxRetries, delayMs, provider, currentRequest.model);
         await delay(delayMs, options.signal);
@@ -293,12 +329,14 @@ export async function* streamModel(
       }
 
       if (isRetryableStreamError(error)) {
+        finishInvocation(invocation, options, "incomplete", getRawResponse(), response.status, error, false, rawResponseBytes);
         yield {
           type: "error",
           error: streamInterruptionError(provider, error, checkpoint),
         };
         return;
       }
+      finishInvocation(invocation, options, "transport_error", getRawResponse(), response.status, error, false, rawResponseBytes);
       throw error;
     }
 
@@ -347,10 +385,12 @@ async function* streamGoogleProviderRequest(params: {
     };
     const streamAbort = new AbortController();
     const detachAbort = params.options.signal ? forwardAbort(params.options.signal, streamAbort) : undefined;
+    let invocation: InvocationAttempt | undefined;
     try {
       const body = withGoogleAbortSignal(buildModelRequest(currentRequest, {
         providers: { [params.provider.id]: params.provider },
       }) as Record<string, unknown>, streamAbort.signal);
+      invocation = beginInvocation(params.options, params.provider, currentRequest.model, true, body, attempt + 1);
       if (process.env.PILOTDECK_DUMP_REQUEST === "1") {
         const fs = await import("node:fs");
         const os = await import("node:os");
@@ -400,12 +440,13 @@ async function* streamGoogleProviderRequest(params: {
             throw new ModelProviderError(event.error);
           }
           streamGuard.observe(event);
-          params.checkpoint.onEvent(event);
-          yield event;
-          if (terminalEvent) {
-            void stream.return(undefined).catch(() => undefined);
-            return;
-          }
+            params.checkpoint.onEvent(event);
+            yield event;
+            if (terminalEvent) {
+              void stream.return(undefined).catch(() => undefined);
+              finishInvocation(invocation, params.options, "success", undefined, undefined, undefined, true);
+              return;
+            }
         }
       }
       streamGuard.checkDuration();
@@ -413,10 +454,12 @@ async function* streamGoogleProviderRequest(params: {
       if (!sawTerminalEvent && !state.ended) {
         throw new IncompleteStreamError();
       }
+      finishInvocation(invocation, params.options, "success", undefined, undefined, undefined, true);
       return;
     } catch (error) {
       throwIfGoogleAbort(error, params.options.signal);
       const providerError = toProviderError(params.provider, error);
+      finishInvocation(invocation, params.options, "incomplete", undefined, undefined, error, false);
       const retryable = isRetryableGoogleStreamError(providerError, error);
       if (
         attempt < params.maxRetries &&
@@ -520,7 +563,7 @@ function extractStatus(error: unknown): number | undefined {
 function isRetryableRequestError(error: unknown): boolean {
   if (isAbortError(error)) return false;
   if (error instanceof ModelProviderError) {
-    return error.error.retryable;
+    return error.error.retryable || isPrematureStreamCloseMessage(error.error.message);
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
@@ -532,7 +575,8 @@ function isRetryableRequestError(error: unknown): boolean {
       msg.includes("timeout") ||
       msg.includes("etimedout") ||
       msg.includes("epipe") ||
-      msg.includes("econnrefused")
+      msg.includes("econnrefused") ||
+      isPrematureStreamCloseMessage(error.message)
     );
   }
   return false;
@@ -543,7 +587,7 @@ function isRetryableStreamError(error: unknown): boolean {
     return false;
   }
   if (error instanceof ModelProviderError) {
-    return error.error.retryable;
+    return error.error.retryable || isPrematureStreamCloseMessage(error.error.message);
   }
   if (error instanceof StreamIdleTimeoutError) {
     return true;
@@ -567,7 +611,8 @@ function isRetryableStreamError(error: unknown): boolean {
       msg.includes("aborted") ||
       msg.includes("timeout") ||
       msg.includes("epipe") ||
-      msg.includes("econnrefused")
+      msg.includes("econnrefused") ||
+      isPrematureStreamCloseMessage(error.message)
     );
   }
   return false;
@@ -807,13 +852,116 @@ function appendAnthropicBeta(headers: Record<string, string>, beta: string): voi
   headers[key] = values.join(", ");
 }
 
-async function safeReadJson(response: Response): Promise<unknown> {
-  const text = await response.text();
+function parseRawJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
     return text;
   }
+}
+
+type InvocationAttempt = {
+  requestLogId: string;
+  requestId: string;
+  startedAt: string;
+  requestBody: string;
+  attempt: number;
+  provider: ProviderConfig;
+  model: string;
+  stream: boolean;
+  finished: boolean;
+};
+
+function beginInvocation(
+  options: ModelRuntimeOptions,
+  provider: ProviderConfig,
+  model: string,
+  stream: boolean,
+  body: unknown,
+  attempt: number,
+): InvocationAttempt | undefined {
+  const invocation = options.invocation;
+  if (!invocation) return undefined;
+  const requestBody = JSON.stringify(provider.extraBody ? { ...(body as Record<string, unknown>), ...provider.extraBody } : body);
+  const startedAt = new Date().toISOString();
+  const state: InvocationAttempt = {
+    requestLogId: randomUUID(),
+    requestId: randomUUID(),
+    startedAt,
+    requestBody,
+    attempt,
+    provider,
+    model,
+    stream,
+    finished: false,
+  };
+  // This call is deliberately synchronous: a storage failure must prevent
+  // the provider request from being sent.
+  invocation.sink.stage({
+    ...invocation.context,
+    requestLogId: state.requestLogId,
+    requestId: state.requestId,
+    attempt,
+    provider: provider.id,
+    protocol: provider.protocol,
+    model,
+    stream,
+    requestBody,
+    requestBytes: Buffer.byteLength(requestBody),
+    outcome: "success",
+    responseComplete: false,
+    startedAt,
+    completedAt: startedAt,
+  });
+  return state;
+}
+
+function finishInvocation(
+  state: InvocationAttempt | undefined,
+  options: ModelRuntimeOptions,
+  outcome: "success" | "provider_error" | "transport_error" | "aborted" | "timeout" | "incomplete",
+  responseBody?: string,
+  httpStatus?: number,
+  error?: unknown,
+  responseComplete = false,
+  responseBytes?: number,
+): void {
+  if (!state || !options.invocation || state.finished) return;
+  state.finished = true;
+  const normalizedOutcome = options.signal?.aborted
+    ? "aborted"
+    : error instanceof StreamIdleTimeoutError
+      ? "timeout"
+      : outcome;
+  const record = {
+    ...options.invocation.context,
+    requestLogId: state.requestLogId,
+    requestId: state.requestId,
+    attempt: state.attempt,
+    provider: state.provider.id,
+    protocol: state.provider.protocol,
+    model: state.model,
+    stream: state.stream,
+    requestBody: state.requestBody,
+    responseBody,
+    requestBytes: Buffer.byteLength(state.requestBody),
+    responseBytes: responseBody === undefined ? undefined : responseBytes ?? Buffer.byteLength(responseBody),
+    httpStatus,
+    outcome: normalizedOutcome,
+    responseComplete,
+    startedAt: state.startedAt,
+    completedAt: new Date().toISOString(),
+  };
+  void options.invocation.sink.append(record).catch((appendError: unknown) => {
+    // The provider outcome is already fixed, but losing its audit terminal is
+    // operationally significant. Report only correlation fields, never bodies.
+    const context = options.invocation?.context;
+    console.error(
+      `[PilotDeck] failed to persist model invocation audit run=${context?.runId ?? "unknown"} ` +
+      `turn=${context?.turnId ?? "unknown"} requestLogId=${record.requestLogId} attempt=${record.attempt}`,
+      appendError instanceof Error ? appendError.message : appendError,
+    );
+  });
 }
 
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = LITELLM_COMPLETION_HTTP_FALLBACK_MS;
@@ -854,6 +1002,7 @@ async function* readServerSentEvents(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
   idleTimeoutMs?: number,
+  onChunk?: (chunk: Uint8Array) => void,
 ): AsyncIterable<ServerSentEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -879,6 +1028,8 @@ async function* readServerSentEvents(
         buffer += decoder.decode();
         break;
       }
+
+      onChunk?.(value);
 
       buffer += decoder.decode(value, { stream: true });
       const chunks = buffer.split(/\n\n/);

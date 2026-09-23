@@ -3674,6 +3674,43 @@ class FakeSdkClientWebSocket extends FakeWebSocket {
       case "commands_list": respond({ pinned: [{ name: "help" }], builtIn: [{ name: "clear" }], custom: [] }); return;
       case "skill_list": respond({ items: [{ name: "release", slug: "release" }] }); return;
       case "skill_read": respond({ name: "release", content: "# Release" }); return;
+      case "skill_write":
+      case "skill_create":
+      case "skill_delete":
+      case "skill_import":
+      case "skill_validate":
+      case "skill_scan": respond({ ok: true, scope: frame.params.scope, slug: frame.params.slug }); return;
+      case "always_on_apply": respond({ sessionKey: "always-on-session" }); return;
+      case "always_on_abort": respond({ aborted: true, sessionKey: frame.params.sessionKey }); return;
+      case "always_on_rerun_plan": respond({ runId: "always-on-run" }); return;
+      case "permission_list": respond({ requests: [{ requestId: "permission-1", toolCallId: "call-1", toolName: "write_file", payload: { path: "report.md" } }] }); return;
+      case "permission_decide": respond({ delivered: true }); return;
+      case "native_archive_manifest": respond({ schemaVersion: 1, format: "native_transcript_entries", sessionKey: frame.params.sessionKey, entryCount: 2, firstSequence: 1, lastSequence: 2, subagentCount: 0, toolResultReferenceCount: 1 }); return;
+      case "native_archive_entries": respond({ entries: [{ type: "accepted_input", sequence: 1 }], complete: true }); return;
+      case "native_archive_artifact": respond({ artifactName: frame.params.artifactName, content: "ZGF0YQ==", encoding: "base64", bytes: 4, truncated: false }); return;
+      case "snapshot_list": respond({ items: [{ snapshotId: "snapshot-1" }], nextCursor: "snapshot-1" }); return;
+      case "snapshot_get": respond({ snapshot: { snapshotId: frame.params.snapshotId } }); return;
+      case "snapshot_restore": respond({ restored: true, workspaceKey: "restored" }); return;
+      case "manager_sessions":
+      case "manager_browsers": respond({ items: [{ sessionKey: frame.params.sessionKey }] }); return;
+      case "upload_create": respond({
+        uploadId: "upload-1", projectKey: frame.params.projectKey, status: "created", manifest: frame.params.files,
+        totalBytes: 5, uploadedBytes: 0, createdAt: "now", updatedAt: "now", expiresAt: "later",
+      }); return;
+      case "upload_get": respond({
+        uploadId: frame.params.uploadId, projectKey: "project", status: "completed", manifest: [],
+        totalBytes: 5, uploadedBytes: 5, createdAt: "now", updatedAt: "now", expiresAt: "later",
+      }); return;
+      case "upload_part": respond({ attachmentId: frame.params.clientFileId, name: "material.txt", relativePath: "material", bytes: 5 }); return;
+      case "upload_complete": respond({
+        uploadId: frame.params.uploadId, projectKey: "project", status: "completed", manifest: [],
+        totalBytes: 5, uploadedBytes: 5, createdAt: "now", updatedAt: "now", expiresAt: "later",
+        attachments: [{ attachmentId: "material", name: "material.txt", relativePath: "material", bytes: 5 }],
+      }); return;
+      case "upload_cancel": respond({
+        uploadId: frame.params.uploadId, projectKey: "project", status: "cancelled", manifest: [],
+        totalBytes: 5, uploadedBytes: 0, createdAt: "now", updatedAt: "now", expiresAt: "later",
+      }); return;
       case "mcp_server_status": respond({ servers: [{ name: "tickets", status: "connected" }] }); return;
       case "set_mcp_servers": respond({ added: Object.keys(frame.params.servers ?? {}), removed: [], errors: [] }); return;
       case "mcp_server_reconnect":
@@ -3720,6 +3757,78 @@ class FakeSdkClientWebSocket extends FakeWebSocket {
   }
   emitForTest(frame: unknown): void { (this as any).emit("message", { data: JSON.stringify(frame) }); }
 }
+
+class DurableResultWebSocket extends FakeWebSocket {
+  static requests: Array<{ method: string; params: any }> = [];
+  static readonly events = [
+    { seq: 1, event: { type: "assistant_text_delta", text: "hello " } },
+    ...Array.from({ length: 499 }, (_, index) => ({ seq: index + 2, event: { type: "agent_status", event: "progress" } })),
+    { seq: 501, event: { type: "assistant_text_delta", text: "world" } },
+  ];
+
+  override send(raw: string): void {
+    const frame = JSON.parse(raw);
+    if (frame.type === "hello") {
+      super.send(raw);
+      return;
+    }
+    DurableResultWebSocket.requests.push({ method: frame.method, params: frame.params });
+    const respond = (result: unknown) => this.emitForTest({ type: "response", id: frame.id, ok: true, result });
+    if (frame.method === "run_get") {
+      const base = {
+        sessionKey: frame.params.sessionKey,
+        runId: frame.params.runId,
+        projectKey: frame.params.projectKey,
+        revision: 3,
+        acceptedAt: "now",
+        updatedAt: "now",
+      };
+      if (frame.params.runId === "durable-completed") {
+        respond({ ...base, state: "completed", lastSeq: 501, result: { type: "turn_completed", usage: { inputTokens: 2 }, finishReason: "stop" } });
+      } else if (frame.params.runId === "durable-failed") {
+        respond({ ...base, state: "failed", lastSeq: 1, result: { type: "error", code: "provider_error", message: "provider failed" } });
+      } else if (frame.params.runId === "durable-aborted") {
+        respond({ ...base, state: "aborted", lastSeq: 1, result: { type: "turn_completed", usage: {}, finishReason: "aborted_streaming" } });
+      } else {
+        respond(undefined);
+      }
+      return;
+    }
+    if (frame.method === "run_events") {
+      const afterSeq = frame.params.afterSeq ?? 0;
+      const events = DurableResultWebSocket.events.filter((item) => item.seq > afterSeq).slice(0, 500);
+      respond({ events, ...(events.length > 0 ? { nextSeq: events.at(-1)!.seq } : {}) });
+      return;
+    }
+    super.send(raw);
+  }
+
+  emitForTest(frame: unknown): void { (this as any).emit("message", { data: JSON.stringify(frame) }); }
+}
+
+test("runs.result reconstructs durable output across paged event history", async () => {
+  DurableResultWebSocket.requests = [];
+  (globalThis as any).WebSocket = DurableResultWebSocket;
+  const client = createPilotDeckClient({ gatewayUrl: "ws://fake", authToken: "token", projectKey: "project" });
+
+  assert.deepEqual(await client.runs.result({ sessionId: "session-existing", runId: "durable-completed" }), {
+    status: "completed",
+    output: "hello world",
+    usage: { inputTokens: 2 },
+    finishReason: "stop",
+  });
+  const eventRequests = DurableResultWebSocket.requests.filter((request) => request.method === "run_events");
+  assert.deepEqual(eventRequests.map((request) => request.params.afterSeq), [0, 500]);
+
+  const failed = await client.runs.result({ sessionId: "session-existing", runId: "durable-failed" });
+  assert.equal(failed.status, "failed");
+  assert.equal((failed as any).error.code, "provider_error");
+  assert.deepEqual(await client.runs.result({ sessionId: "session-existing", runId: "durable-aborted" }), {
+    status: "aborted",
+    reason: "gateway_abort",
+  });
+  await client.close();
+});
 
 test("client exposes Gateway-authoritative session, run and resource facades", async () => {
   FakeSdkClientWebSocket.connections = 0;
@@ -3793,6 +3902,47 @@ test("client exposes Gateway-authoritative session, run and resource facades", a
   assert.deepEqual((await client.commands.list({ projectKey: "project" })).items.map((command) => command.name), ["help", "clear"]);
   assert.equal((await client.skills.list())[0]?.name, "release");
   assert.equal((await client.skills.read({ scope: "user", slug: "release" })).content, "# Release");
+  assert.equal((await client.skills.write({ scope: "user", slug: "release", content: "# Release" })).ok, true);
+  assert.equal((await client.skills.create({ scope: "user", slug: "new-skill", content: "# New" })).ok, true);
+  assert.equal((await client.skills.delete({ scope: "user", slug: "new-skill" })).ok, true);
+  assert.equal((await client.skills.import({ scope: "user", sourcePath: "/tmp/release" })).ok, true);
+  assert.equal((await client.skills.validate({ sourcePath: "/tmp/release/SKILL.md" })).ok, true);
+  assert.equal((await client.skills.scan({ parentPath: "/tmp" })).ok, true);
+  const upload = await client.uploads.create({
+    projectKey: "project",
+    files: [{ clientFileId: "material", name: "material.txt", relativePath: "material", size: 5 }],
+  });
+  assert.equal(upload.uploadId, "upload-1");
+  assert.equal((await client.uploads.part({ uploadId: upload.uploadId, clientFileId: "material", contentBase64: "aGVsbG8=" })).attachmentId, "material");
+  assert.equal((await client.uploads.complete({ uploadId: upload.uploadId })).status, "completed");
+  assert.equal((await client.uploads.get({ uploadId: upload.uploadId })).status, "completed");
+  assert.equal((await client.uploads.cancel({ uploadId: upload.uploadId })).status, "cancelled");
+  assert.equal((await client.alwaysOn.apply({ projectKey: "project", workCycleId: "cycle-1", projectName: "Project" })).sessionKey, "always-on-session");
+  assert.equal((await client.alwaysOn.abort({ projectKey: "project", sessionId: "always-on-session" })).aborted, true);
+  assert.deepEqual(FakeSdkClientWebSocket.requests.find((request) => request.method === "always_on_abort")?.params, {
+    projectKey: "project", sessionKey: "always-on-session",
+  });
+  assert.equal((await client.alwaysOn.rerunPlan({ projectKey: "project", planId: "plan-1" })).runId, "always-on-run");
+  assert.deepEqual(await client.permissions.list({ sessionId: "session-existing" }), [{
+    requestId: "permission-1", toolCallId: "call-1", toolName: "write_file", payload: { path: "report.md" },
+  }]);
+  assert.deepEqual(await client.permissions.respond({
+    sessionId: "session-existing", requestId: "permission-1", decision: "allow",
+  }), { delivered: true });
+  assert.equal((await client.archives.manifest({ sessionId: "session-existing" })).entryCount, 2);
+  assert.equal((await client.archives.entries({ sessionId: "session-existing" })).entries.length, 1);
+  assert.equal((await client.archives.artifact({ sessionId: "session-existing", artifactName: "tool-1.txt" })).content, "ZGF0YQ==");
+  assert.equal((await client.snapshots.list({ projectKey: "project", sessionId: "session-existing" })).items.length, 1);
+  assert.equal((await client.snapshots.get({ projectKey: "project", snapshotId: "snapshot-1" }) as { snapshotId: string }).snapshotId, "snapshot-1");
+  assert.equal((await client.snapshots.restore({ projectKey: "project", snapshotId: "snapshot-1" })).restored, true);
+  assert.equal(((await client.manager.sessions({ projectKey: "project", sessionId: "session-existing" }))[0] as { sessionKey?: string })?.sessionKey, "session-existing");
+  assert.equal(((await client.manager.browsers({ projectKey: "project", sessionId: "session-existing" }))[0] as { sessionKey?: string })?.sessionKey, "session-existing");
+  assert.deepEqual(FakeSdkClientWebSocket.requests.find((request) => request.method === "snapshot_list")?.params, {
+    projectKey: "project", sessionKey: "session-existing",
+  });
+  assert.deepEqual(FakeSdkClientWebSocket.requests.find((request) => request.method === "manager_sessions")?.params, {
+    projectKey: "project", sessionKey: "session-existing",
+  });
   assert.equal((await client.mcp.status({ sessionId: "session-existing" }))[0]?.name, "tickets");
   assert.deepEqual(await client.mcp.setServers({
     sessionId: "session-existing",
@@ -3865,6 +4015,90 @@ test("client exposes Gateway-authoritative session, run and resource facades", a
   await client.close();
   await assert.rejects(() => client.describeServer(), { code: "transport_error" });
   assert.throws(() => client.query("after close"), { code: "transport_error" });
+});
+
+test("runs.start accepts a caller run id and forwards Gateway-owned attachments and trusted context", async () => {
+  FakeSdkClientWebSocket.requests = [];
+  (globalThis as any).WebSocket = FakeSdkClientWebSocket;
+  const client = createPilotDeckClient({ gatewayUrl: "ws://fake", authToken: "token", projectKey: "project" });
+  const run = client.runs.start({
+    sessionId: "session-existing",
+    runId: "caller-run-42",
+    input: { type: "text", text: "inspect these" },
+    attachments: [{ type: "file", path: "/gateway/project/README.md", name: "README.md" }],
+    uploadedAttachments: [{ uploadId: "upload-1", attachmentIds: ["attachment-1"] }],
+    trustedContext: [{
+      text: "Release policy",
+      source: "release-service",
+      purpose: "application_context",
+      scope: "turn",
+    }],
+  });
+  assert.equal(run.id, "caller-run-42");
+  assert.equal((await run.result()).status, "completed");
+  const submit = FakeSdkClientWebSocket.requests.find((request) => request.method === "submit_turn");
+  assert.deepEqual(submit?.params.attachments, [{ type: "file", path: "/gateway/project/README.md", name: "README.md" }]);
+  assert.deepEqual(submit?.params.uploadedAttachments, [{ uploadId: "upload-1", attachmentIds: ["attachment-1"] }]);
+  assert.deepEqual(submit?.params.trustedContext, [{
+    text: "Release policy",
+    source: "release-service",
+    purpose: "application_context",
+    scope: "turn",
+  }]);
+  const secondRun = client.runs.start({
+    sessionId: "session-existing",
+    runId: "caller-run-43",
+    input: { type: "text", text: "plain second turn" },
+  });
+  assert.equal((await secondRun.result()).status, "completed");
+  const secondSubmit = FakeSdkClientWebSocket.requests
+    .filter((request) => request.method === "submit_turn")
+    .find((request) => request.params.runId === "caller-run-43");
+  assert.equal("attachments" in (secondSubmit?.params ?? {}), false);
+  assert.equal("uploadedAttachments" in (secondSubmit?.params ?? {}), false);
+  assert.equal("trustedContext" in (secondSubmit?.params ?? {}), false);
+  assert.throws(() => client.runs.start({
+    sessionId: "session-existing",
+    runId: "bad run id",
+    input: { type: "text", text: "invalid" },
+  }), { code: "validation_error" });
+  await client.close();
+});
+
+test("run control methods validate references and observation pagination before transport", async () => {
+  FakeSdkClientWebSocket.requests = [];
+  (globalThis as any).WebSocket = FakeSdkClientWebSocket;
+  const client = createPilotDeckClient({ gatewayUrl: "ws://fake", authToken: "token", projectKey: "project" });
+
+  await assert.rejects(() => client.runs.get({ sessionId: "", runId: "run-1" }), { code: "validation_error" });
+  await assert.rejects(() => client.runs.observe({ sessionId: "session-1", runId: "bad run id" }), { code: "validation_error" });
+  await assert.rejects(() => client.runs.observe({ sessionId: "session-1", runId: "run-1", afterSeq: -1 }), { code: "validation_error" });
+  await assert.rejects(() => client.runs.observe({ sessionId: "session-1", runId: "run-1", limit: 501 }), { code: "validation_error" });
+  await assert.rejects(() => client.runs.result({ sessionId: "session-1", runId: "bad run id" }), { code: "validation_error" });
+  await assert.rejects(() => client.runs.reattach({ sessionId: "session-1", runId: "bad run id" }), { code: "validation_error" });
+  await assert.rejects(() => client.runs.abort({ sessionId: "session-1", runId: "bad run id" }), { code: "validation_error" });
+  assert.equal(FakeSdkClientWebSocket.requests.length, 0);
+  await client.close();
+});
+
+test("memory session wipe validates its session scope before opening transport", async () => {
+  class CountingWebSocket extends FakeWebSocket {
+    static connections = 0;
+    constructor(url: string) {
+      super(url);
+      CountingWebSocket.connections += 1;
+    }
+  }
+
+  CountingWebSocket.connections = 0;
+  (globalThis as any).WebSocket = CountingWebSocket;
+  const client = createPilotDeckClient({ gatewayUrl: "ws://fake", authToken: "token" });
+
+  await assert.rejects(
+    () => client.memory.wipe({ projectKey: "project", scope: "session" }),
+    { code: "validation_error" },
+  );
+  assert.equal(CountingWebSocket.connections, 0);
 });
 
 test("top-level last-turn replacement helper keeps its control connections short-lived", async () => {

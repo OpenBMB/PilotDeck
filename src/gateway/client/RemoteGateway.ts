@@ -124,6 +124,45 @@ export class RemoteGateway implements Gateway {
     return this.client.stream("submit_turn", input);
   }
 
+  async uploadCreate(input: import("../protocol/types.js").GatewayUploadCreateInput): Promise<import("../protocol/types.js").GatewayUploadRecord> {
+    return await this.client.request("upload_create", input) as import("../protocol/types.js").GatewayUploadRecord;
+  }
+  async uploadGet(input: import("../protocol/types.js").GatewayUploadGetInput): Promise<import("../protocol/types.js").GatewayUploadRecord> {
+    return await this.client.request("upload_get", input) as import("../protocol/types.js").GatewayUploadRecord;
+  }
+  async uploadPart(input: import("../protocol/types.js").GatewayUploadPartInput): Promise<import("../protocol/types.js").GatewayUploadAttachment> {
+    return await this.client.request("upload_part", input) as import("../protocol/types.js").GatewayUploadAttachment;
+  }
+  async uploadComplete(input: import("../protocol/types.js").GatewayUploadCompleteInput): Promise<import("../protocol/types.js").GatewayUploadRecord> {
+    return await this.client.request("upload_complete", input) as import("../protocol/types.js").GatewayUploadRecord;
+  }
+  async uploadCancel(input: import("../protocol/types.js").GatewayUploadCancelInput): Promise<import("../protocol/types.js").GatewayUploadRecord> {
+    return await this.client.request("upload_cancel", input) as import("../protocol/types.js").GatewayUploadRecord;
+  }
+
+  async runGet(input: import("../protocol/types.js").GatewayRunRefInput): Promise<import("../protocol/types.js").GatewayRunRecord | undefined> {
+    return await this.client.request("run_get", input) as import("../protocol/types.js").GatewayRunRecord | undefined;
+  }
+
+  async runEvents(input: import("../protocol/types.js").GatewayRunEventsInput): Promise<import("../protocol/types.js").GatewayRunEventsResult> {
+    return await this.client.request("run_events", input) as import("../protocol/types.js").GatewayRunEventsResult;
+  }
+
+  async runReattach(input: import("../protocol/types.js").GatewayRunRefInput): Promise<import("../protocol/types.js").GatewayRunRecord | undefined> {
+    return await this.client.request("run_reattach", input) as import("../protocol/types.js").GatewayRunRecord | undefined;
+  }
+
+  async listPermissions(input: import("../protocol/types.js").GatewayListPermissionsInput): Promise<import("../protocol/types.js").GatewayListPermissionsResult> {
+    return await this.client.request("permission_list", input) as import("../protocol/types.js").GatewayListPermissionsResult;
+  }
+  async memoryList(input: import("../protocol/types.js").GatewayMemoryListInput): Promise<import("../protocol/types.js").GatewayMemoryListResult> { return await this.client.request("memory_list", input) as import("../protocol/types.js").GatewayMemoryListResult; }
+  async memoryWipe(input: import("../protocol/types.js").GatewayMemoryWipeInput): Promise<import("../protocol/types.js").GatewayMemoryWipeResult> { return await this.client.request("memory_wipe", input) as import("../protocol/types.js").GatewayMemoryWipeResult; }
+  async snapshotList(input: import("../protocol/types.js").GatewaySnapshotListInput): Promise<import("../protocol/types.js").GatewaySnapshotListResult> { return await this.client.request("snapshot_list", input) as import("../protocol/types.js").GatewaySnapshotListResult; }
+  async snapshotGet(input: import("../protocol/types.js").GatewaySnapshotGetInput): Promise<import("../protocol/types.js").GatewaySnapshotGetResult> { return await this.client.request("snapshot_get", input) as import("../protocol/types.js").GatewaySnapshotGetResult; }
+  async snapshotRestore(input: import("../protocol/types.js").GatewaySnapshotRestoreInput): Promise<import("../protocol/types.js").GatewaySnapshotRestoreResult> { return await this.client.request("snapshot_restore", input) as import("../protocol/types.js").GatewaySnapshotRestoreResult; }
+  async managerSessions(input: import("../protocol/types.js").GatewayManagerResourceInput): Promise<import("../protocol/types.js").GatewayManagerResourceResult> { return await this.client.request("manager_sessions", input) as import("../protocol/types.js").GatewayManagerResourceResult; }
+  async managerBrowsers(input: import("../protocol/types.js").GatewayManagerResourceInput): Promise<import("../protocol/types.js").GatewayManagerResourceResult> { return await this.client.request("manager_browsers", input) as import("../protocol/types.js").GatewayManagerResourceResult; }
+
   async sopStatus(input: GatewaySopStatusInput): Promise<GatewaySopStatusResult> {
     return (await this.client.request("sop_status", input)) as GatewaySopStatusResult;
   }
@@ -177,6 +216,10 @@ export class RemoteGateway implements Gateway {
   ): Promise<GatewayRestoreSessionTranscriptResult> {
     return (await this.client.request("restore_session_transcript", input)) as GatewayRestoreSessionTranscriptResult;
   }
+
+  async nativeArchiveManifest(input: import("../protocol/types.js").GatewayNativeArchiveManifestInput): Promise<import("../protocol/types.js").GatewayNativeArchiveManifest> { return await this.client.request("native_archive_manifest", input) as import("../protocol/types.js").GatewayNativeArchiveManifest; }
+  async nativeArchiveEntries(input: import("../protocol/types.js").GatewayNativeArchiveEntriesInput): Promise<import("../protocol/types.js").GatewayNativeArchiveEntriesResult> { return await this.client.request("native_archive_entries", input) as import("../protocol/types.js").GatewayNativeArchiveEntriesResult; }
+  async nativeArchiveArtifact(input: import("../protocol/types.js").GatewayNativeArchiveArtifactInput): Promise<import("../protocol/types.js").GatewayNativeArchiveArtifactResult> { return await this.client.request("native_archive_artifact", input) as import("../protocol/types.js").GatewayNativeArchiveArtifactResult; }
 
   async renameSession(input: import("../protocol/types.js").GatewaySessionMetadataInput): Promise<{ updated: boolean }> {
     return (await this.client.request("rename_session", input)) as { updated: boolean };

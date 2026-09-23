@@ -7,11 +7,13 @@ import {
 import type { MemoryResolver } from "../context/index.js";
 
 export type ProjectMemoryMaintenanceService = Pick<EdgeClawMemoryService, "runDueScheduledMaintenance">;
+export type ProjectMemoryManagementService = Pick<EdgeClawMemoryService, "list" | "clear" | "clearSession">;
 
 /** Application-selected project memory provider and its exact lifecycle owner. */
 export type ProjectMemoryProvider = {
   memory: MemoryResolver;
   maintenance?: ProjectMemoryMaintenanceService;
+  management?: ProjectMemoryManagementService;
   dispose?: () => void | Promise<void>;
 };
 
@@ -22,6 +24,7 @@ export type ProjectMemoryProviderFactory = (
 export type ProjectMemoryResources = {
   memory?: MemoryResolver;
   memoryService?: ProjectMemoryMaintenanceService;
+  memoryManagement?: ProjectMemoryManagementService;
 };
 
 export type ProjectMemoryBundleOptions = CreateEdgeClawMemoryProviderOptions & {
@@ -58,16 +61,18 @@ export class ProjectMemoryBundle {
           const native = (createProvider ?? createEdgeClawMemoryProviderFromConfig)(input);
           return native
             ? {
-                memory: native.provider,
-                maintenance: native.service,
-                dispose: () => native.service.close(),
-              }
+              memory: native.provider,
+              maintenance: native.service,
+              management: native.service,
+              dispose: () => native.service.close(),
+            }
             : undefined;
         })();
     if (created) {
       this.resources = {
         memory: created.memory,
         memoryService: created.maintenance,
+        memoryManagement: created.management,
       };
       this.providerDisposer = created.dispose;
     }

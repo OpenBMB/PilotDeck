@@ -14,6 +14,7 @@ import {
   type SessionRouterOptions,
 } from "./SessionRouter.js";
 import type { Gateway, GatewayCronController, GatewayServerInfo } from "./protocol/types.js";
+import type { ModelInvocationLogSink } from "../storage/invocationStorage.js";
 
 export type GatewayProjectStorageOptions = {
   projectRoot: string;
@@ -23,6 +24,8 @@ export type GatewayProjectStorageOptions = {
 };
 
 export type CreateGatewayOptions = {
+  invocationLogSink?: ModelInvocationLogSink;
+  storageConfigVersion?: string;
   session?: {
     create?: GatewaySessionFactory;
     setup?: GatewaySessionSetup;
@@ -53,6 +56,8 @@ export function createGateway(options: CreateGatewayOptions): Gateway {
   });
 
   return new InProcessGateway(router, {
+    invocationLogSink: options.invocationLogSink,
+    storageConfigVersion: options.storageConfigVersion,
     now,
     uuid,
     serverInfo: {

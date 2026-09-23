@@ -109,7 +109,7 @@ export class MemoryBundleValidationError extends Error {
 }
 
 export interface ClearMemoryResult {
-  scope: ClearMemoryScope;
+  scope: ClearMemoryScope | "session";
   cleared: {
     l0Sessions: number;
     pipelineState: number;
@@ -1977,6 +1977,26 @@ export class MemoryRepository {
         pipelineState,
         memoryFiles: beforeWorkspace.memoryFiles.length,
         projectMetas: beforeWorkspace.projectMetas.length,
+      },
+      clearedAt: nowIso(),
+    };
+  }
+
+  clearSessionMemoryData(sessionKey: string): ClearMemoryResult {
+    const normalizedSessionKey = sessionKey.trim();
+    if (!normalizedSessionKey) throw new Error("sessionKey is required.");
+    const l0Sessions = Number((this.db.prepare("SELECT COUNT(*) AS count FROM l0_sessions WHERE session_key = ?").get(normalizedSessionKey) as DbRow | undefined)?.count ?? 0);
+    const entries = this.listMemoryEntries({ includeDeprecated: true, includeTmp: true, limit: 5000, offset: 0 })
+      .filter((entry) => entry.sourceSessionKey === normalizedSessionKey);
+    const deleted = this.deleteMemoryEntries(entries.map((entry) => entry.relativePath));
+    this.db.prepare("DELETE FROM l0_sessions WHERE session_key = ?").run(normalizedSessionKey);
+    return {
+      scope: "session",
+      cleared: {
+        l0Sessions,
+        pipelineState: 0,
+        memoryFiles: deleted.mutatedIds.length,
+        projectMetas: deleted.deletedProjectIds.length,
       },
       clearedAt: nowIso(),
     };

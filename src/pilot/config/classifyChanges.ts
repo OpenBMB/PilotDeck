@@ -17,6 +17,14 @@ export function classifyConfigChanges(changedPaths: string[]): PilotConfigChange
   return [...classes];
 }
 
+export function isRunPolicyOnlyChange(changedPaths: string[]): boolean {
+  return changedPaths.length > 0 && changedPaths.every(isRunPolicyPath);
+}
+
+function isRunPolicyPath(path: string): boolean {
+  return path === "runPolicy" || path.startsWith("runPolicy.");
+}
+
 function classifyPath(path: string): PilotConfigChangeClass {
   if (path.startsWith("agent.") || path.startsWith("model.")) {
     return "next-request";
@@ -44,6 +52,9 @@ function classifyPath(path: string): PilotConfigChangeClass {
   }
   if (path.startsWith("proxy.") || path === "proxy") {
     return "runtime-live";
+  }
+  if (isRunPolicyPath(path)) {
+    return "next-request";
   }
   return "next-runtime";
 }

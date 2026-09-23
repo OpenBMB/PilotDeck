@@ -52,6 +52,10 @@ export type SubagentRunRequest = {
   parentWriteSnapshots?: PilotDeckWriteSnapshotMap;
   parentSessionId: string;
   parentTurnId: string;
+  workspaceId?: string;
+  storageConfigVersion?: string;
+  invocationLogSink?: import("../../storage/invocationStorage.js").ModelInvocationLogSink;
+  parentToolCallId?: string;
   subagentSessionId: string;
   subagentId: string;
   maxTurns?: number;

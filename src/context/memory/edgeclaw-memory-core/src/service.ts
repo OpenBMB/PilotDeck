@@ -1090,6 +1090,12 @@ export class EdgeClawMemoryService {
     return result;
   }
 
+  clearSession(sessionKey: string): ClearMemoryResult {
+    const result = this.repository.clearSessionMemoryData(sessionKey);
+    this.retriever.resetTransientState();
+    return result;
+  }
+
   act(input: MemoryActionRequest): MemoryActionResult {
     const messages: string[] = [];
     let mutatedIds: string[] = [];

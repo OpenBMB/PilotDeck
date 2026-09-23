@@ -781,6 +781,11 @@ export class EdgeClawMemoryService {
         this.retriever.resetTransientState();
         return result;
     }
+    clearSession(sessionKey) {
+        const result = this.repository.clearSessionMemoryData(sessionKey);
+        this.retriever.resetTransientState();
+        return result;
+    }
     act(input) {
         const messages = [];
         let mutatedIds = [];

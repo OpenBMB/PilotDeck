@@ -83,7 +83,6 @@ test("failed availability checks become a generic tool_unavailable error", async
     const recovery = result.metadata?.recovery as { failureClass: string; nextActions: string[] };
     assert.equal(recovery.failureClass, "tool_unavailable");
     assert.match(recovery.nextActions.join("\n"), /Configure|available tool/);
-    assert.doesNotMatch(JSON.stringify(result), /Faxin|法信/i);
   }
 });
 

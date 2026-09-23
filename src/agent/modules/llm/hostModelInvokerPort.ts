@@ -299,6 +299,12 @@ function positiveInteger(value: unknown): number | undefined {
 }
 
 function serializeModelExecutionContext(context: ModelExecutionContext): Record<string, unknown> {
-  const { abortSignal: _abortSignal, ...serializable } = context;
+  // Audit sinks are host-local capabilities. Never attempt to clone or send
+  // them through a sidecar module payload; the sidecar host owns its sink.
+  const {
+    abortSignal: _abortSignal,
+    invocationLogSink: _invocationLogSink,
+    ...serializable
+  } = context;
   return serializable;
 }

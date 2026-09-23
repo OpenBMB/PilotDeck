@@ -12,8 +12,8 @@
     "packages/sdk"
   ],
   "bin": {
-    "pilotdeck": "./dist/src/cli/pilotdeck.js",
-    "pilotdeck-agent-loop-sidecar": "./dist/src/cli/pilotdeck-agent-loop-sidecar.js"
+    "pilotdeck": "dist/src/cli/pilotdeck.js",
+    "pilotdeck-agent-loop-sidecar": "dist/src/cli/pilotdeck-agent-loop-sidecar.js"
   },
   "scripts": {
     "check:runtime": "node scripts/check-node-runtime.mjs",
