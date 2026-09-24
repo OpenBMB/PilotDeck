@@ -597,6 +597,44 @@ describe('LlmConfigurationStep', () => {
     expect(screen.getByRole('button', { name: 'Retest model-b' })).toBeTruthy();
   });
 
+  it('cancels an unfinished model test when continuing without blocking the save', async () => {
+    const saves: Array<{ modelTestBindings?: Array<{ testId: string }> }> = [];
+    let testSignal: AbortSignal | undefined;
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        testSignal = init?.signal as AbortSignal;
+        return new Promise((_resolve, reject) => {
+          testSignal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+        });
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        saves.push(JSON.parse(String(init.body)));
+        return { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'model-a' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection model-a' }));
+    await waitFor(() => expect(testSignal).toBeDefined());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(testSignal?.aborted).toBe(true);
+    expect(saves).toHaveLength(1);
+    expect(saves[0]?.modelTestBindings).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Test connection model-a' })).toBeTruthy();
+  });
+
   it('preserves provider models that are not selected during onboarding', async () => {
     const existingRaw = `
 schemaVersion: 1

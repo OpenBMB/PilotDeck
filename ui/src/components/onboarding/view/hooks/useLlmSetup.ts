@@ -389,6 +389,17 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
 
   const handleSave = useCallback(async () => {
     if (!canContinue) throw new Error('Complete the model configuration before continuing.');
+    const activeTestIds = Object.keys(testAbortRefs.current);
+    if (activeTestIds.length > 0) {
+      // Continuing is allowed while testing. Cancel unfinished probes so the
+      // saved configuration and the visible test states describe the same run.
+      testGenerationRef.current += 1;
+      Object.values(testAbortRefs.current).forEach((controller) => controller.abort());
+      testAbortRefs.current = {};
+      setModelTests((current) => Object.fromEntries(Object.entries(current).map(([id, state]) => (
+        state.status === 'testing' ? [id, IDLE_MODEL_TEST] : [id, state]
+      ))));
+    }
     const saveGeneration = testGenerationRef.current;
     const providerId = effectiveProviderId;
     const modelId = effectiveModelId;
