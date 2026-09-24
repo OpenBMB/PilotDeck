@@ -40,6 +40,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const [environmentCredentialProviderIds, setEnvironmentCredentialProviderIds] = useState<string[]>([]);
   const testGenerationRef = useRef(0);
   const testAbortRefs = useRef<Record<string, AbortController>>({});
+  const savingRef = useRef(false);
 
   const isCustomMode = selectedProvider?.id === CUSTOM_PROVIDER_ID;
   const selectedModels = apiModels ?? selectedProvider?.models ?? [];
@@ -217,6 +218,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   }, [apiKey, canFetchModels, effectiveProviderId, effectiveProtocol, effectiveUrl, hasEnvironmentApiKeyFallback, isCustomMode, selectedProvider]);
 
   const handleProviderSelect = useCallback((provider: CatalogProvider) => {
+    if (savingRef.current) return;
     resetTest();
     setSelectedProvider((prev) => {
       if (prev?.id !== provider.id) {
@@ -234,6 +236,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   }, [resetTest]);
 
   const selectModelId = useCallback((modelId: string) => {
+    if (savingRef.current) return;
     const trimmed = modelId.trim();
     if (!trimmed) return;
     setModelIds((current) => {
@@ -244,6 +247,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   }, []);
 
   const deselectModelId = useCallback((modelId: string) => {
+    if (savingRef.current) return;
     const trimmed = modelId.trim();
     testGenerationRef.current += 1;
     setModelIds((current) => uniqueModelIds(current).filter((id) => id !== trimmed));
@@ -388,7 +392,9 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   }, [manualModelIds, patchModelTest, t]);
 
   const handleSave = useCallback(async () => {
+    if (savingRef.current) return;
     if (!canContinue) throw new Error('Complete the model configuration before continuing.');
+    savingRef.current = true;
     const activeTestIds = Object.keys(testAbortRefs.current);
     if (activeTestIds.length > 0) {
       // Continuing is allowed while testing. Cancel unfinished probes so the
@@ -526,6 +532,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       setTestMessage(err instanceof Error ? err.message : 'Failed to save.');
       throw err;
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [apiKey, canContinue, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, modelImageSupport, modelTests, onSaved, selectedProvider]);

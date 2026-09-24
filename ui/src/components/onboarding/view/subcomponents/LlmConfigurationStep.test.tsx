@@ -845,18 +845,31 @@ agent:
     fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
     fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'model-b' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove model ID' }).at(-1)!);
+    expect(screen.getByRole('button', { name: 'model-b' })).toBeTruthy();
     const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
     fireEvent.click(continueButtons[continueButtons.length - 1]!);
     await waitFor(() => expect(calls.some((call) => call.url === '/api/config' && call.init?.method === 'PUT')).toBe(true));
     expect(screen.getByLabelText('Provider ID')).toHaveProperty('disabled', true);
     expect(screen.getByLabelText('Endpoint')).toHaveProperty('disabled', true);
     expect(screen.getByLabelText(/API key/)).toHaveProperty('disabled', true);
+    const addModelButton = screen.getByRole('button', { name: 'Add model ID' });
+    expect(addModelButton).toHaveProperty('disabled', true);
+    const availableModel = screen.getByRole('button', { name: 'model-b' });
+    expect(availableModel).toHaveProperty('disabled', true);
+    fireEvent.click(availableModel);
+    fireEvent.click(addModelButton);
+    expect(screen.queryByPlaceholderText('model-id')).toBeNull();
     expect(onSaved).not.toHaveBeenCalled();
     resolveSave({ ok: true, json: async () => ({ raw: '' }) });
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
     expect(JSON.parse(String(saveCall?.init?.body)).raw).toContain('modelbest:');
+    expect(JSON.parse(String(saveCall?.init?.body)).raw).not.toContain('model-b');
   });
 
   it('aborts an in-flight connection test when the form changes', async () => {

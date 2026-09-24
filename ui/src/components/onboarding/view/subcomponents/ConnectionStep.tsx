@@ -30,6 +30,7 @@ type ModelChipProps = {
   title: string;
   removeLabel: string;
   onRemove: () => void;
+  removeDisabled?: boolean;
   onSelect?: () => void;
   selectDisabled?: boolean;
 };
@@ -39,6 +40,7 @@ function ModelChip({
   title,
   removeLabel,
   onRemove,
+  removeDisabled,
   onSelect,
   selectDisabled,
 }: ModelChipProps) {
@@ -57,6 +59,7 @@ function ModelChip({
         type="button"
         aria-label={removeLabel}
         title={removeLabel}
+        disabled={removeDisabled}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -196,6 +199,7 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
   };
 
   const commitDraftAvailableId = () => {
+    if (llm.saving) return;
     const nextId = draftAvailableId?.trim() ?? '';
     setDraftAvailableId(null);
     if (!nextId || selectedIdSet.has(nextId)) return;
@@ -208,6 +212,7 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
   };
 
   const addModelId = () => {
+    if (llm.saving) return;
     if (draftAvailableId != null) {
       commitDraftAvailableId();
       return;
@@ -357,6 +362,7 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
                       id="available-model-search"
                       type="text"
                       value={modelQuery}
+                      disabled={llm.saving}
                       onChange={(event) => setModelQuery(event.target.value)}
                       placeholder={t('connection.searchModelId')}
                       autoComplete="off"
@@ -367,6 +373,7 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
                     <button
                       className="add-model-button"
                       type="button"
+                      disabled={llm.saving}
                       onClick={addModelId}
                     >
                       <PlusIcon />
@@ -377,6 +384,7 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
                         className="model-chip-input"
                         type="text"
                         value={draftAvailableId}
+                        disabled={llm.saving}
                         placeholder={t('connection.modelIdPlaceholder')}
                         onChange={(event) => setDraftAvailableId(event.target.value)}
                         onBlur={commitDraftAvailableId}
@@ -402,8 +410,9 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
                         title={modelTitle(modelId)}
                         removeLabel={`${t('connection.hideAvailableModelId')} ${modelId}`}
                         onRemove={() => hideAvailableModel(modelId)}
+                        removeDisabled={llm.saving}
                         onSelect={() => selectAvailableModel(modelId)}
-                        selectDisabled={selectedIds.length >= MAX_ONBOARDING_MODELS}
+                        selectDisabled={llm.saving || selectedIds.length >= MAX_ONBOARDING_MODELS}
                       />
                     ))}
                   </div>
