@@ -287,7 +287,7 @@ export const api = {
     return appendAuthToken(`/api/projects/${encodeURIComponent(projectName)}/files/content?${params.toString()}`);
   },
   readFileBlob: (projectName, filePath) =>
-    authenticatedFetch(api.fileContentUrl(projectName, filePath)),
+    authenticatedFetch(api.fileContentUrl(projectName, filePath), { suppressServerErrorToast: true }),
   fileContentSha256: (projectName, filePath) => {
     const params = new URLSearchParams({ path: filePath, sha256: '1' });
     return authenticatedFetch(
@@ -311,6 +311,7 @@ export const api = {
       cacheKey: options.force ? Date.now() : options.cacheKey,
     }), {
       cache: 'no-store',
+      suppressServerErrorToast: true,
     });
   },
   preflightOfficePdfPreview: (projectName, filePath, options = {}) =>
@@ -323,6 +324,7 @@ export const api = {
         Range: 'bytes=0-0',
       },
       signal: options.signal,
+      suppressServerErrorToast: true,
     }),
   spreadsheetPreviewManifest: (projectName, filePath, options = {}) => {
     const params = new URLSearchParams({ path: filePath });
@@ -332,7 +334,7 @@ export const api = {
     }
     return authenticatedFetch(
       `/api/projects/${encodeURIComponent(projectName)}/files/preview/spreadsheet/manifest?${params.toString()}`,
-      { cache: 'no-store', signal: options.signal },
+      { cache: 'no-store', signal: options.signal, suppressServerErrorToast: true },
     );
   },
   spreadsheetInteractivePreview: (projectName, filePath, options = {}) => {
@@ -343,7 +345,7 @@ export const api = {
     }
     return authenticatedFetch(
       `/api/projects/${encodeURIComponent(projectName)}/files/preview/spreadsheet/data?${params.toString()}`,
-      { cache: 'no-store', signal: options.signal },
+      { cache: 'no-store', signal: options.signal, suppressServerErrorToast: true },
     );
   },
   spreadsheetSheetPreviewUrl: (projectName, filePath, sheetIndex, options = {}) => {
@@ -369,6 +371,7 @@ export const api = {
         Range: 'bytes=0-0',
       },
       signal: options.signal,
+      suppressServerErrorToast: true,
     }),
   officePreviewStatus: (options = {}) => {
     const params = new URLSearchParams();

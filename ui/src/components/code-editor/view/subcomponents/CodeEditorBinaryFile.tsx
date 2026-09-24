@@ -682,6 +682,19 @@ function DownloadButton({ projectName, file }: { projectName?: string; file: Cod
   );
 }
 
+function RetryPreviewButton({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation('codeEditor');
+  return (
+    <button
+      type="button"
+      onClick={onRetry}
+      className="rounded-md border border-neutral-200 px-3 py-1.5 text-[13px] text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-900"
+    >
+      {t('officePreview.refresh')}
+    </button>
+  );
+}
+
 function OfficePreviewSettingsButton() {
   const { t } = useTranslation('codeEditor');
   return (
@@ -984,7 +997,6 @@ function SpreadsheetPreview({
   service,
   projectName,
   file,
-  title,
   onClose,
   isFullscreen,
   onToggleFullscreen,
@@ -992,7 +1004,6 @@ function SpreadsheetPreview({
   service: OfficePreviewService;
   projectName?: string;
   file: CodeEditorFile;
-  title: string;
   onClose: () => void;
   isFullscreen: boolean;
   onToggleFullscreen?: (() => void) | null;
@@ -1005,6 +1016,7 @@ function SpreadsheetPreview({
   const {
     data: interactiveData,
     errorMessage: interactiveError,
+    errorCode: interactiveErrorCode,
     loading: interactiveLoading,
     reload: reloadInteractive,
   } = useSpreadsheetInteractivePreview(projectName, file.path, interactiveEnabled);
@@ -1061,6 +1073,24 @@ function SpreadsheetPreview({
     enabled: printPreviewEnabled && Boolean(manifest) && selectedSheetIndex !== null,
   });
 
+  const getFailureMessage = (code: string | null) => {
+    switch (code) {
+      case 'SPREADSHEET_PACKAGE_INVALID':
+      case 'SPREADSHEET_WORKBOOK_XML_MISSING':
+        return t('spreadsheetPreview.errors.invalidFile');
+      case 'SPREADSHEET_INTERACTIVE_PARSE_FAILED':
+        return t('spreadsheetPreview.errors.cannotParse');
+      case 'SPREADSHEET_INTERACTIVE_TOO_LARGE':
+        return t('spreadsheetPreview.errors.tooLarge');
+      case 'SPREADSHEET_VISIBLE_SHEET_MISSING':
+        return t('spreadsheetPreview.errors.noVisibleSheets');
+      case 'SPREADSHEET_PREVIEW_SOURCE_NOT_FOUND':
+        return t('spreadsheetPreview.errors.fileMissing');
+      default:
+        return t('spreadsheetPreview.errors.retry');
+    }
+  };
+
   let sheetContent: ReactNode;
   if (!usePrintPreview) {
     if (interactiveLoading && !interactiveData) {
@@ -1068,13 +1098,13 @@ function SpreadsheetPreview({
     } else if (interactiveFailure || !interactiveData || selectedSheetIndex === null) {
       sheetContent = (
         <FallbackContent
-          title={title}
-          message={interactiveFailure || t('spreadsheetPreview.interactiveFailedMessage')}
+          title={t('spreadsheetPreview.cannotPreviewTitle')}
+          message={getFailureMessage(interactiveErrorCode)}
           onClose={onClose}
           actions={(
             <>
+              <RetryPreviewButton onRetry={() => reload({ force: true })} />
               <DownloadButton projectName={projectName} file={file} />
-              <OfficePreviewSettingsButton />
             </>
           )}
         />
@@ -1103,13 +1133,14 @@ function SpreadsheetPreview({
     const needsLibreOffice = manifestErrorCode === 'LIBREOFFICE_NOT_FOUND';
     sheetContent = (
       <FallbackContent
-        title={needsLibreOffice ? t('officePreview.libreOfficeUnavailableTitle') : title}
+        title={needsLibreOffice ? t('officePreview.libreOfficeUnavailableTitle') : t('spreadsheetPreview.cannotPreviewTitle')}
         message={needsLibreOffice
           ? t('officePreview.libreOfficeUnavailableMessage')
-          : manifestError || t('spreadsheetPreview.failedMessage')}
+          : getFailureMessage(manifestErrorCode)}
         onClose={onClose}
         actions={(
           <>
+            <RetryPreviewButton onRetry={() => reloadPrint({ force: true })} />
             <DownloadButton projectName={projectName} file={file} />
             {needsLibreOffice && <OfficePreviewSettingsButton />}
           </>
@@ -1123,13 +1154,14 @@ function SpreadsheetPreview({
     } else if (sheetError || !previewUrl) {
       sheetContent = (
         <FallbackContent
-          title={needsLibreOffice ? t('officePreview.libreOfficeUnavailableTitle') : title}
+          title={needsLibreOffice ? t('officePreview.libreOfficeUnavailableTitle') : t('spreadsheetPreview.cannotPreviewTitle')}
           message={needsLibreOffice
             ? t('officePreview.libreOfficeUnavailableMessage')
-            : sheetError || t('spreadsheetPreview.failedMessage')}
+            : getFailureMessage(sheetErrorCode)}
           onClose={onClose}
           actions={(
             <>
+              <RetryPreviewButton onRetry={() => reloadPrint({ force: true })} />
               <DownloadButton projectName={projectName} file={file} />
               {needsLibreOffice && <OfficePreviewSettingsButton />}
             </>
@@ -1372,7 +1404,6 @@ function OfficeFilePreviewRouter({
           service={service}
           projectName={projectName}
           file={file}
-          title={title}
           onClose={onClose}
           isFullscreen={isFullscreen}
           onToggleFullscreen={onToggleFullscreen}
@@ -1414,7 +1445,6 @@ function OfficeFilePreviewRouter({
         service={service}
         projectName={projectName}
         file={file}
-        title={title}
         onClose={onClose}
         isFullscreen={isFullscreen}
         onToggleFullscreen={onToggleFullscreen}
