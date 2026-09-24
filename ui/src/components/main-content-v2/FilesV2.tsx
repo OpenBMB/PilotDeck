@@ -767,7 +767,7 @@ export default function FilesV2({
             <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
             <span>{t('loading', { defaultValue: 'Loading…' })}</span>
           </div>
-        ) : flat.length === 0 ? (
+        ) : flat.length === 0 && inlineEdit?.kind !== 'create' ? (
           <div className="py-6 text-center text-xxs text-neutral-500 dark:text-neutral-400">
             {t('fileTree.empty', { defaultValue: 'This project is empty.' })}
           </div>
