@@ -26,7 +26,7 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
         multimodal: {
           input: ["text", "image", "pdf"],
           maxImagesPerRequest: 20,
-          supportedImageMimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+          supportedImageMimeTypes: ["image/jpeg", "image/png", "image/webp"],
           imageDetail: "auto",
         },
         aliases: ["claude-sonnet-4.5", "claude-3-5-sonnet-20250929"],
@@ -377,6 +377,37 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
           maxOutputTokens: 100000,
         },
         multimodal: { input: ["text"] },
+        aliases: [],
+      },
+    },
+  },
+
+  // ── Atlas Cloud ───────────────────────────────────────────────────────
+
+  atlas_cloud: {
+    displayName: "Atlas Cloud",
+    protocol: "openai",
+    defaultUrl: "https://api.atlascloud.ai/v1",
+    apiKeyEnvVar: "ATLASCLOUD_API_KEY",
+    models: {
+      "qwen/qwen3.8-max": {
+        displayName: "Qwen3.8 Max",
+        capabilities: {
+          supportsToolUse: true,
+          supportsStreaming: true,
+          supportsParallelToolCalls: false,
+          supportsThinking: true,
+          supportsJsonSchema: true,
+          supportsSystemPrompt: true,
+          supportsPromptCache: false,
+          maxContextTokens: 1_000_000,
+          maxOutputTokens: 131_072,
+        },
+        multimodal: {
+          input: ["text", "image"],
+          supportedImageMimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+          imageDetail: "auto",
+        },
         aliases: [],
       },
     },
