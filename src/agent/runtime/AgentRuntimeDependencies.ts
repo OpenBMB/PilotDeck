@@ -79,8 +79,41 @@ export type AgentSubagentTranscriptHooks = {
       metadata?: Record<string, unknown>,
     ): Promise<void>;
     recordDurableMessage(sessionId: string, turnId: string, message: CanonicalMessage): Promise<void>;
+    /** Persist the terminal result of a sidechain round (replay completeness). */
+    recordTurnResult?(
+      sessionId: string,
+      turnId: string,
+      result: import("../protocol/result.js").AgentTurnResult,
+    ): Promise<void>;
+    /** Persist a compaction boundary inside the sidechain (replay semantics). */
+    recordControlBoundary?(
+      sessionId: string,
+      turnId: string,
+      boundary: import("../../session/transcript/TranscriptEntry.js").AgentControlBoundaryTranscriptEntry["boundary"],
+    ): Promise<void>;
+    /** Persist identity/runtime metadata inside the sidechain. */
+    recordSessionMetadata?(
+      sessionId: string,
+      turnId: string,
+      metadata: import("../../session/transcript/TranscriptEntry.js").SessionMetadataValue,
+    ): Promise<void>;
     transcriptRelativePath: string;
   };
+  /**
+   * task_id continuation loader. Given a task id, validates that it belongs
+   * to the calling parent session, that its sidechain history is complete
+   * and successful, and returns the restored child state (prior messages,
+   * saved definition / provider / model / session id, next round index).
+   * Throws a `SubagentContinuationError` (code `subagent_task_*`) on any
+   * unsupported case. Storage logic lives behind this hook — the agent loop
+   * never touches the filesystem itself.
+   */
+  loadSubagentContinuation?(args: {
+    sessionId: string;
+    subagentId: string;
+    /** Explicitly requested subagent type, if the caller supplied one. */
+    requestedDefinitionId?: string;
+  }): Promise<import("../sub/continuation.js").SubagentContinuationState>;
 };
 
 export type AgentRuntimeDependencies = {
@@ -105,6 +138,8 @@ export type AgentRuntimeDependencies = {
    */
   getModelMaxOutputTokens?: (provider: string, model: string) => number | undefined;
   getModelTokenLimits?: (provider: string, model: string) => { maxContextTokens: number; maxOutputTokens?: number } | undefined;
+  /** Resolve current input capabilities when resuming a saved child model. */
+  getModelMultimodal?: (provider: string, model: string) => import("../../model/index.js").MultimodalConstraints | undefined;
   /** Resolve the actual wire protocol; provider IDs may be compatible gateways. */
   getModelProtocol?: (provider: string) => ModelProtocol | undefined;
   /** Resolve prompt-cache support for the concrete provider/model. */
