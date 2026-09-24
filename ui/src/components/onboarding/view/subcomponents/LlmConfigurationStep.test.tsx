@@ -50,7 +50,7 @@ describe('LlmConfigurationStep', () => {
   beforeEach(() => {
     mocks.authenticatedFetch.mockImplementation(async (url: string) => {
       if (url === '/api/config/provider') {
-        return { ok: true, json: async () => ({ exists: false, provider: null }) };
+        return { ok: true, json: async () => ({ exists: false, provider: null, environmentCredentialProviderIds: ['openrouter', 'deepseek', 'moonshot'] }) };
       }
       if (url === '/api/v1/providers') {
         return {
@@ -208,6 +208,7 @@ describe('LlmConfigurationStep', () => {
           ok: true,
           json: async () => ({
             exists: true,
+            environmentCredentialProviderIds: ['moonshot'],
             provider: {
               type: 'openai',
               baseUrl: 'https://api.moonshot.cn/v1',
@@ -256,6 +257,28 @@ describe('LlmConfigurationStep', () => {
 
     expect(screen.getByRole('button', { name: 'deepseek-v4-pro' })).toBeTruthy();
     expect(screen.getByText('None')).toBeTruthy();
+  });
+
+  it('requires an API key when the catalog environment variable is unavailable', async () => {
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null, environmentCredentialProviderIds: [] }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /^DeepSeek$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'deepseek-v4-pro' }));
+
+    expect(screen.getByLabelText(/API key/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).some(
+      (button) => (button as HTMLButtonElement).disabled,
+    )).toBe(true);
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
+    )).toBe(true);
   });
 
   it('tests only the clicked model ID and keeps other selected models untested', async () => {

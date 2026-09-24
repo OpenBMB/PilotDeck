@@ -33,6 +33,20 @@ describe('pilotdeck config model validation', () => {
   });
 });
 
+describe('config provider credential availability', () => {
+  it('reports only environment-backed catalog credentials without exposing their values', async () => {
+    vi.stubEnv('DEEPSEEK_API_KEY', 'secret-for-test');
+    vi.stubEnv('OPENROUTER_API_KEY', '');
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/provider');
+
+    expect(response.status).toBe(200);
+    expect(response.body.environmentCredentialProviderIds).toContain('deepseek');
+    expect(response.body.environmentCredentialProviderIds).not.toContain('openrouter');
+    expect(JSON.stringify(response.body)).not.toContain('secret-for-test');
+  });
+});
+
 describe('config test-connection route', () => {
   it('uses protocol-versioned chat completions when the root base URL works', async () => {
     const calls = [];

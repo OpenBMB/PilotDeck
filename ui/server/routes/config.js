@@ -30,7 +30,7 @@ import {
   buildProviderModelsEndpointCandidates,
   isExpectedProviderModelsResponseShape,
 } from '../../../src/model/providerEndpoint.js';
-import { lookupCatalogProvider } from '../../../src/model/catalog/index.js';
+import { lookupCatalogProvider, PROVIDER_CATALOG } from '../../../src/model/catalog/index.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
@@ -949,10 +949,13 @@ router.post('/reload', async (_req, res) => {
 
 router.get('/provider', (_req, res) => {
   try {
+    const environmentCredentialProviderIds = Object.keys(PROVIDER_CATALOG).filter(
+      (providerId) => Boolean(resolveConfiguredProviderApiKey(providerId, null)),
+    );
     const record = readPilotDeckConfigFile();
     const providers = record.config?.model?.providers;
     if (!providers || typeof providers !== 'object') {
-      return res.json({ exists: false, provider: null });
+      return res.json({ exists: false, provider: null, environmentCredentialProviderIds });
     }
 
     const mainRef = typeof record.config?.agent?.model === 'string'
@@ -976,12 +979,13 @@ router.get('/provider', (_req, res) => {
           : '';
       }
     }
-    if (!providerId) return res.json({ exists: false, provider: null });
+    if (!providerId) return res.json({ exists: false, provider: null, environmentCredentialProviderIds });
 
     const provider = providers[providerId] || {};
 
     res.json({
       exists: true,
+      environmentCredentialProviderIds,
       provider: {
         type: provider.protocol || '',
         baseUrl: provider.url || '',

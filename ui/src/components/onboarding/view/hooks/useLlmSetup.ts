@@ -37,6 +37,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const [modelListMessage, setModelListMessage] = useState('');
   const [customProviderId, setCustomProviderId] = useState('');
   const [customProtocol, setCustomProtocol] = useState<CatalogProviderProtocol>('openai');
+  const [environmentCredentialProviderIds, setEnvironmentCredentialProviderIds] = useState<string[]>([]);
   const testGenerationRef = useRef(0);
   const testAbortRefs = useRef<Record<string, AbortController>>({});
 
@@ -56,7 +57,12 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     ? t('connection.providerIdReserved')
     : '';
   const selectedProviderRequiresApiKey = requiresApiKey(selectedProvider);
-  const hasEnvironmentApiKeyFallback = Boolean(!isCustomMode && selectedProvider?.apiKeyEnvVar);
+  const hasEnvironmentApiKeyFallback = Boolean(
+    !isCustomMode
+    && selectedProvider?.apiKeyEnvVar
+    && environmentCredentialProviderIds.includes(selectedProvider.id)
+    && effectiveUrl === selectedProvider.defaultUrl,
+  );
   const apiKeyInputRequired = selectedProviderRequiresApiKey && !hasEnvironmentApiKeyFallback;
   const modelListRequiresApiKey = selectedProvider?.modelListRequiresApiKey === true;
   const canFetchModels = Boolean(
@@ -102,6 +108,11 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         const res = await authenticatedFetch('/api/config/provider');
         if (!res.ok) return;
         const data = await res.json();
+        setEnvironmentCredentialProviderIds(
+          Array.isArray(data.environmentCredentialProviderIds)
+            ? data.environmentCredentialProviderIds.filter((id: unknown): id is string => typeof id === 'string')
+            : [],
+        );
         if (!data.exists || !data.provider) return;
 
         const p = data.provider;
