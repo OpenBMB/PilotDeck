@@ -1776,9 +1776,14 @@
   max-height: min(720px, calc(100vh - 32px));
   display: block;
   overflow: auto;
+  scrollbar-width: none;
   border-radius: 18px;
   background: rgb(255, 255, 255);
   box-shadow: rgba(32, 39, 53, 0.22) 0 24px 80px;
+}
+
+.onboarding-shell.create-workspace-dialog::-webkit-scrollbar {
+  display: none;
 }
 
 .onboarding-shell.create-workspace-dialog .create-workspace-dialog-close {
@@ -1805,11 +1810,11 @@
 
 .onboarding-shell.create-workspace-dialog .content-page {
   min-height: 0;
-  margin-top: 20px;
+  margin-top: 0;
 }
 
 .onboarding-shell.create-workspace-dialog .workspace-setup-page {
-  padding-top: 0;
+  padding-top: 20px;
 }
 
 .onboarding-shell.create-workspace-dialog .page-intro h1 {
