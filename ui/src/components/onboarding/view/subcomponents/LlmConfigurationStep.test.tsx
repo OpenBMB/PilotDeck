@@ -171,12 +171,7 @@ describe('LlmConfigurationStep', () => {
       expect(screen.getByRole('button', { name: 'anthropic/claude-sonnet-4.6' })).toBeTruthy();
     });
 
-    const button = await screen.findByRole('button', { name: /Test connection/i });
-    expect((button as HTMLButtonElement).disabled).toBe(false);
-
-    fireEvent.click(button);
-
-    expect(await screen.findByText('Select at least one model ID before testing the connection.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Test connection/i })).toBeNull();
     expect(mocks.authenticatedFetch).not.toHaveBeenCalledWith(
       '/api/config/test-connections',
       expect.anything(),
@@ -193,13 +188,16 @@ describe('LlmConfigurationStep', () => {
       return { ok: true, json: async () => ({}) };
     });
     fireEvent.click(await screen.findByRole('button', { name: 'anthropic/claude-sonnet-4.6' }));
+    const button = screen.getByRole('button', { name: 'Test connection anthropic/claude-sonnet-4.6' });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(button);
 
-    expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Retest anthropic/claude-sonnet-4.6' })).toBeTruthy();
     const testCall = calls.find((call) => call.url === '/api/config/test-connections');
     expect(JSON.parse(String(testCall?.init?.body))).toMatchObject({
       providerId: 'openrouter',
       apiKey: '',
+      models: ['anthropic/claude-sonnet-4.6'],
     });
   });
 
@@ -227,10 +225,10 @@ describe('LlmConfigurationStep', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Uses MOONSHOT_API_KEY when empty')).toBeTruthy();
     });
-    expect(screen.getByRole('button', { name: /Test connection/i })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'Test connection kimi-k2.6' })).toHaveProperty('disabled', false);
   });
 
-  it('moves models between available and selected lists', async () => {
+  it('requires a model but not a connection test to continue', async () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
@@ -249,6 +247,10 @@ describe('LlmConfigurationStep', () => {
     expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
     expect(screen.getByText('deepseek-v4-pro')).toBeTruthy();
     expect(screen.queryByText('None')).toBeNull();
+    expect(screen.getByText('Not tested')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
+    )).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove model ID' }));
 
@@ -256,7 +258,7 @@ describe('LlmConfigurationStep', () => {
     expect(screen.getByText('None')).toBeTruthy();
   });
 
-  it('tests only selected model IDs and enables continue after a successful test', async () => {
+  it('tests only the clicked model ID and keeps other selected models untested', async () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
     await waitFor(() => {
@@ -264,11 +266,10 @@ describe('LlmConfigurationStep', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'deepseek-v4-pro' }));
-    mocks.fetchProviderModels.mockResolvedValue([
-      { id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro' },
-      { id: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash' },
-    ]);
     fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'deepseek-v4-flash' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
 
     mocks.authenticatedFetch.mockImplementation(async (url: string) => {
       if (url === '/api/config/test-connections') {
@@ -280,7 +281,7 @@ describe('LlmConfigurationStep', () => {
       return { ok: true, json: async () => ({}) };
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection deepseek-v4-pro' }));
 
     await waitFor(() => {
       const testCalls = mocks.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/config/test-connections');
@@ -290,11 +291,12 @@ describe('LlmConfigurationStep', () => {
       }));
     });
 
-    expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Retest deepseek-v4-pro' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Test connection deepseek-v4-flash' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Continue' }).every(
       (button) => !(button as HTMLButtonElement).disabled,
     )).toBe(true);
-    expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+    expect(screen.getByText('deepseek-v4-flash')).toBeTruthy();
   });
 
   it('places a typed model ID into the selected list on enter', async () => {
@@ -369,8 +371,8 @@ describe('LlmConfigurationStep', () => {
     fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
-    expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+    expect(await screen.findByRole('button', { name: 'Retest gpt-5.6-luna' })).toBeTruthy();
 
     const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
     fireEvent.click(continueButtons[continueButtons.length - 1]!);
@@ -390,6 +392,145 @@ describe('LlmConfigurationStep', () => {
       expect(saveBody.raw).toContain('gpt-5.6-luna');
       expect(saveBody.modelTestBindings).toEqual([{ testId: 'test-123' }]);
     });
+  });
+
+  it('saves a complete custom model without a connection test', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config') return { ok: true, json: async () => ({ raw: '' }) };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'invalid-url' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    expect(screen.getAllByRole('button', { name: 'Continue' }).some((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+    const body = JSON.parse(String(saveCall?.init?.body));
+    const saved = parseYaml(body.raw) as { model: { providers: Record<string, { models: Record<string, unknown> }> } };
+    expect(body.modelTestBindings).toBeUndefined();
+    expect(saved.model.providers.modelbest.models['gpt-5.6-luna']).toEqual({});
+    expect(calls.some((call) => call.url === '/api/config/test-connections')).toBe(false);
+  });
+
+  it('allows saving after a failed single-model test', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        return { ok: false, json: async () => ({ error: { message: 'Invalid credential' }, status: 'failed' }) };
+      }
+      if (url === '/api/config') return { ok: true, json: async () => ({ raw: '' }) };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+
+    expect(await screen.findByText('Invalid credential')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+    expect(JSON.parse(String(saveCall?.init?.body)).modelTestBindings).toBeUndefined();
+  });
+
+  it('binds only the independently passed model tests', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        const modelId = JSON.parse(String(init?.body)).models[0] as string;
+        return { ok: true, json: async () => ({ ...connectionTestResult(modelId), testId: `test-${modelId}` }) };
+      }
+      if (url === '/api/config') return { ok: true, json: async () => ({ raw: '' }) };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    for (const modelId of ['model-a', 'model-b']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+      fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: modelId } });
+      fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection model-a' }));
+    expect(await screen.findByRole('button', { name: 'Retest model-a' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Test connection model-b' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection model-b' }));
+    expect(await screen.findByRole('button', { name: 'Retest model-b' })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const tests = calls.filter((call) => call.url === '/api/config/test-connections');
+    expect(tests.map((call) => JSON.parse(String(call.init?.body)).models)).toEqual([['model-a'], ['model-b']]);
+    const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+    expect(JSON.parse(String(saveCall?.init?.body)).modelTestBindings).toEqual([
+      { testId: 'test-model-a' }, { testId: 'test-model-b' },
+    ]);
+  });
+
+  it('saves without test bindings when a passing test has expired', async () => {
+    const saves: Array<{ raw: string; modelTestBindings?: Array<{ testId: string }> }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        return { ok: true, json: async () => connectionTestResult('model-a') };
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        saves.push(JSON.parse(String(init.body)));
+        return saves.length === 1
+          ? { ok: false, json: async () => ({ code: 'TEST_EXPIRED', error: 'Connection test has expired.' }) }
+          : { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'model-a' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection model-a' }));
+    expect(await screen.findByRole('button', { name: 'Retest model-a' })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(saves).toHaveLength(2);
+    expect(saves[0].modelTestBindings).toEqual([{ testId: 'test-123' }]);
+    expect(saves[1].modelTestBindings).toBeUndefined();
   });
 
   it('preserves provider models that are not selected during onboarding', async () => {
@@ -437,9 +578,9 @@ agent:
     fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
     fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
 
-    expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Retest gpt-5.6-luna' })).toBeTruthy();
     const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
     fireEvent.click(continueButtons[continueButtons.length - 1]!);
 
@@ -482,17 +623,18 @@ agent:
     fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Testing...' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Testing... gpt-5.6-luna' })).toBeTruthy());
     fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-new' } });
     resolveTest({
       ok: true,
       json: async () => connectionTestResult('gpt-5.6-luna', 'supported'),
     } as Response);
 
-    await waitFor(() => expect(screen.queryByRole('button', { name: /Test passed/i })).toBeNull());
-    expect(screen.getAllByRole('button', { name: 'Continue' }).some(
-      (button) => (button as HTMLButtonElement).disabled,
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retest gpt-5.6-luna' })).toBeNull());
+    expect(screen.getByText('Not tested')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
     )).toBe(true);
   });
 
@@ -524,9 +666,9 @@ agent:
     fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
     fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
 
-    expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Retest gpt-5.6-luna' })).toBeTruthy();
     const testCall = calls.find((call) => call.url === '/api/config/test-connections');
     expect(JSON.parse(String(testCall?.init?.body))).toMatchObject({ providerId: 'modelbest' });
     const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
@@ -566,15 +708,15 @@ agent:
     fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
     fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
 
     expect(await screen.findByRole('dialog')).toBeTruthy();
     const cancelButtons = screen.getAllByRole('button', { name: 'Cancel' });
     fireEvent.click(cancelButtons[cancelButtons.length - 1]!);
     expect(await screen.findByText(/cancelled/i)).toBeTruthy();
     expect(calls.filter((url) => url.includes('image-capabilities'))).toHaveLength(0);
-    expect(screen.getAllByRole('button', { name: 'Continue' }).some(
-      (button) => (button as HTMLButtonElement).disabled,
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
     )).toBe(true);
   });
 
@@ -601,9 +743,6 @@ agent:
     fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
     fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
-    expect(await screen.findByRole('button', { name: /Test passed/i })).toBeTruthy();
-
     const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
     fireEvent.click(continueButtons[continueButtons.length - 1]!);
     await waitFor(() => expect(calls.some((call) => call.url === '/api/config' && call.init?.method === 'PUT')).toBe(true));
@@ -639,7 +778,7 @@ agent:
     fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
     fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
     await waitFor(() => expect(signals).toHaveLength(1));
     fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-new' } });
     await waitFor(() => expect(signals[0]?.aborted).toBe(true));
