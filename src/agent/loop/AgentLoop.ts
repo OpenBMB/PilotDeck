@@ -933,28 +933,34 @@ export class AgentLoop {
           continue;
         }
 
-        // Phase A: token doubling (if not yet attempted)
-          if (!hasAttemptedOutputRetry) {
+        // Phase A: token doubling (if not yet attempted). Only mark the
+        // single-shot guard as consumed when we actually changed the cap; if
+        // `nextMaxOutputTokens` is undefined (already at model cap, or no
+        // model cap known), Phase A did nothing and Phase B must still be
+        // allowed to run, *and* a future recovery attempt should still be
+        // able to retry Phase A (e.g. transient state where the bump would
+        // succeed later).
+        if (!hasAttemptedOutputRetry) {
+          const nextMaxOutputTokens = resolveOutputTokenRetryBump({
+            currentMaxOutputTokens: this.currentMaxOutputTokens(decision.provider, decision.model),
+            modelMaxOutputTokens: routedMaxOutputTokens,
+          });
+          if (nextMaxOutputTokens !== undefined) {
             hasAttemptedOutputRetry = true;
-            const nextMaxOutputTokens = resolveOutputTokenRetryBump({
-              currentMaxOutputTokens: this.currentMaxOutputTokens(decision.provider, decision.model),
-              modelMaxOutputTokens: routedMaxOutputTokens,
-            });
-            if (nextMaxOutputTokens !== undefined) {
-              const previousOutput = this.currentMaxOutputTokens(decision.provider, decision.model);
-              this.setTransientTokenCap(decision.provider, decision.model, { requestedMaxOutputTokens: nextMaxOutputTokens });
-              yield {
-                type: "token_cap_adjusted",
-                sessionId: input.sessionId,
-                turnId: input.turnId,
-                provider: decision.provider,
-                model: decision.model,
-                cap: "output",
-                previous: previousOutput,
-                next: nextMaxOutputTokens,
-                reason: "max-output-retry-bump",
-              };
-              yield {
+            const previousOutput = this.currentMaxOutputTokens(decision.provider, decision.model);
+            this.setTransientTokenCap(decision.provider, decision.model, { requestedMaxOutputTokens: nextMaxOutputTokens });
+            yield {
+              type: "token_cap_adjusted",
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              provider: decision.provider,
+              model: decision.model,
+              cap: "output",
+              previous: previousOutput,
+              next: nextMaxOutputTokens,
+              reason: "max-output-retry-bump",
+            };
+            yield {
               type: "turn_continued",
               sessionId: input.sessionId,
               turnId: input.turnId,
