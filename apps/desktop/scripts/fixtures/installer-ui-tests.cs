@@ -54,13 +54,14 @@ class InstallerUiTests
                         EnumChildWindows(window, (child, data) => { children.Add(child); return true; }, IntPtr.Zero);
                         string text = String.Join("\n", children.ConvertAll(child => Text(child)));
                         lastWindowText = text;
-                        if (text.Contains("existing version was found") || text.Contains("检测到已安装版本"))
+                        if (text.Contains("existing version was found") || text.Contains("检测到已安装版本")
+                            || text.Contains("selected directory differs") || text.Contains("所选目录与旧版安装目录"))
                         {
                             if (!prompted)
                             {
                                 Check((SendMessage(window, 0x0400, IntPtr.Zero, IntPtr.Zero).ToInt32() & 65535) == 7, "Upgrade must default to in-place replacement");
                                 prompted = true;
-                                Click(GetDlgItem(window, mode == "decline" ? 2 : mode == "approve" ? 6 : 7));
+                                Click(GetDlgItem(window, mode == "decline" ? 2 : mode == "approve" || mode == "move-approve" ? 6 : 7));
                             }
                             continue;
                         }
@@ -120,9 +121,9 @@ class InstallerUiTests
                 Check(process.HasExited, "Installer UI timed out: " + lastWindowText);
                 Check(prompted == (mode != "approve-updated"), "Incorrect existing-installation confirmation behavior");
                 if (mode.StartsWith("cancel")) Check(cancelSent && cancelConfirmed && advances >= 2, "Cancellation/progress path not exercised");
-                if (mode.StartsWith("approve") || mode == "overwrite") Check(sawProgress && advances >= 3 && last >= 900, "Cumulative progress not exercised");
+                if (mode.StartsWith("approve") || mode == "overwrite" || mode == "move-approve") Check(sawProgress && advances >= 3 && last >= 900, "Cumulative progress not exercised");
                 if (mode == "approve-updated") Check(sawRunOption, "Visible update must offer to start the installed app");
-                Check(process.ExitCode == (mode.StartsWith("approve") || mode == "overwrite" ? 0 : 1223), "Unexpected exit " + process.ExitCode);
+                Check(process.ExitCode == (mode.StartsWith("approve") || mode == "overwrite" || mode == "move-approve" ? 0 : 1223), "Unexpected exit " + process.ExitCode);
                 Console.WriteLine("PASS: interactive " + mode + ", progress changes=" + advances + ", final=" + last);
                 return 0;
             }

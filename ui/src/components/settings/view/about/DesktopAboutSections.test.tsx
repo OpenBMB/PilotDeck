@@ -17,6 +17,10 @@ const tick = () => act(async () => { await vi.advanceTimersByTimeAsync(1000); })
 beforeEach(() => { vi.resetAllMocks(); bridge.getUpdateStatus.mockResolvedValue({ state: 'idle', progress: 0 }); });
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); });
 describe('desktop automatic update UI', () => {
+  it('shows the release date from the manifest without inventing a time of day', async () => {
+    show({ latestPublishedAt: '2026-09-07' }); await flush();
+    expect(screen.getByText('settingsPage.about.latestReleaseTime 2026-09-07')).toBeTruthy();
+  });
   it.each([
     { canDownload: false, desktopReason: 'noCompatibleInstaller' },
     { canDownload: false, hasUpdate: false },

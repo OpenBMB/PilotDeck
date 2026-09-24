@@ -47,6 +47,9 @@ uninstaller path.
   Cancel (keep the existing installation), with No as the default. A plain
   silent reinstall returns ERROR_CANCELLED (1223). An explicit `--updated`
   request replaces in place without a second prompt.
+- If a manual installer targets another directory, it permits only uninstalling
+  the registered old installation first or cancelling. In-place replacement
+  cannot silently create a second installation and repoint the registry.
 - Cancel is enabled during preparation/extraction, asks for confirmation, stops
   the decoder and cleans staging before exiting with 1223. The existing version
   remains intact. A pending cancellation dialog blocks the transition to commit.

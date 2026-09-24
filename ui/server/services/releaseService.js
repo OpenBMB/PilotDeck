@@ -48,7 +48,9 @@ export async function getLatestRelease(options = {}) {
   catch { throw new Error('Release manifest does not match the published release.'); }
   if (manifest.schemaVersion !== 1 || manifest.repository !== repository
       || !COMMIT_SHA.test(manifest.sourceSha || '')
-      || manifest.version !== expectedVersion || !Array.isArray(manifest.assets) || !manifest.assets.length) {
+      || manifest.version !== expectedVersion
+      || manifest.date !== manifest.tag.slice(1, 11).replaceAll('.', '-')
+      || !Array.isArray(manifest.assets) || !manifest.assets.length) {
     throw new Error('Release manifest does not match the published release.');
   }
   const base = `https://github.com/${repository}/releases/download/${manifest.tag}`;
@@ -63,7 +65,7 @@ export async function getLatestRelease(options = {}) {
   });
   return {
     tagName: manifest.tag, version: manifest.version, sourceSha: manifest.sourceSha, assets,
-    publishedAt: null, body: '',
+    publishedAt: manifest.date, body: '',
     htmlUrl: `https://github.com/${repository}/releases/tag/${manifest.tag}`,
   };
 }

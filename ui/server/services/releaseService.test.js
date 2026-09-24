@@ -5,7 +5,7 @@ import { compareVersions, getLatestRelease, normalizeRepository, releaseVersion 
 const asset = { name: 'PilotDeck-2026.907.9-mac-arm64.zip', platform: 'darwin', arch: 'arm64', size: 42,
   sha256: 'a'.repeat(64), sha512: 'A'.repeat(86) + '==' };
 const manifest = { schemaVersion: 1, tag: 'v2026.09.07-r10', sourceSha: 'a'.repeat(40),
-  repository: 'OpenBMB/PilotDeck', version: '2026.907.9', assets: [asset] };
+  repository: 'OpenBMB/PilotDeck', version: '2026.907.9', date: '2026-09-07', assets: [asset] };
 const response = (data, status = 200) => ({ ok: status === 200, status, json: async () => data });
 const discover = (data = manifest) => getLatestRelease({ fetchImpl: async () => response(data) });
 
@@ -13,7 +13,8 @@ describe('unified release discovery', () => {
   it('reads the Latest release manifest without calling the rate-limited REST API', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response(manifest));
     const latest = await getLatestRelease({ fetchImpl, env: { GITHUB_TOKEN: 'unused-public-asset-token' } });
-    expect(latest).toMatchObject({ tagName: manifest.tag, version: manifest.version, sourceSha: manifest.sourceSha });
+    expect(latest).toMatchObject({ tagName: manifest.tag, version: manifest.version,
+      sourceSha: manifest.sourceSha, publishedAt: manifest.date });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0][0]).toBe('https://github.com/OpenBMB/PilotDeck/releases/latest/download/release.json');
     expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBeUndefined();
@@ -24,6 +25,8 @@ describe('unified release discovery', () => {
     { ...manifest, sourceSha: 'main' },
     { ...manifest, repository: 'fork/PilotDeck' },
     { ...manifest, version: '2026.907.1' },
+    { ...manifest, date: '2026-09-08' },
+    { ...manifest, date: undefined },
     { ...manifest, assets: [] },
   ])('rejects inconsistent release metadata', async (data) => {
     await expect(discover(data)).rejects.toThrow('does not match');

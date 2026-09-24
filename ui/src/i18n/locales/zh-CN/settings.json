@@ -122,7 +122,7 @@
     },
     "about": {
       "versionStatus": "版本状态：",
-      "latestReleaseTime": "新版发布时间：",
+      "latestReleaseTime": "新版发布日期：",
       "buildTime": "构建时间：",
       "downloadAndInstall": "下载安装",
       "downloadingAndInstalling": "下载中...",

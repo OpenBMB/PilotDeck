@@ -122,7 +122,7 @@
     },
     "about": {
       "versionStatus": "Version Status:",
-      "latestReleaseTime": "Latest Release Time:",
+      "latestReleaseTime": "Latest Release Date:",
       "buildTime": "Build Time:",
       "downloadAndInstall": "Download & Install",
       "downloadingAndInstalling": "Downloading...",

@@ -3,17 +3,10 @@
   ; Updates replace the installed files in place. A manual installer lets the
   ; user choose whether to remove the previous installation first.
   StrCpy $PilotDeckReplaceMode "overwrite"
-  ; Never update a registered installation into another directory. This also
-  ; catches future builder changes to /D handling.
-  ${If} ${isUpdated}
-    ReadRegStr $R2 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
-    ${If} $R2 != ""
-    ${AndIf} $R2 != $INSTDIR
-      DetailPrint "Update destination differs from the installed location: $R2"
-      MessageBox MB_OK|MB_ICONSTOP "The update destination does not match the current installation. The existing version was kept. Please run the installer manually." /SD IDOK
-      SetErrorLevel 1
-      Quit
-    ${EndIf}
+  ReadRegStr $R2 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${If} $installMode == "all"
+  ${AndIf} $R2 == ""
+    ReadRegStr $R2 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
   ${EndIf}
   ReadRegStr $R0 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" UninstallString
   ${If} $R0 == ""
@@ -23,12 +16,45 @@
   ${AndIf} $R0 == ""
     ReadRegStr $R0 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString
   ${EndIf}
+  ; A directory containing the executable is an in-place install even when an
+  ; older installer did not register its location.
+  ${If} $R2 == ""
+  ${AndIf} $R0 == ""
+  ${AndIf} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    StrCpy $R2 "$INSTDIR"
+  ${EndIf}
+  ; Never overwrite a registered installation into another directory. The
+  ; updater cannot choose a new location; manual installation can move only
+  ; after the user explicitly chooses to uninstall the previous version.
+  ${If} ${isUpdated}
+  ${AndIf} $R2 != $INSTDIR
+    DetailPrint "Update destination differs from the installed location: $R2"
+    MessageBox MB_OK|MB_ICONSTOP "The update destination does not match the current installation. The existing version was kept. Please run the installer manually." /SD IDOK
+    SetErrorLevel 1
+    Quit
+  ${EndIf}
   ${If} $R0 != ""
   ${OrIf} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
     ; Only the explicit updater flag permits unattended replacement. A plain
     ; silent installer must leave the previous installation untouched.
     ${IfNot} ${isUpdated}
       ${If} ${Silent}
+        SetErrorLevel 1223
+        Quit
+      ${EndIf}
+      ${If} $R2 != $INSTDIR
+        StrCpy $R1 "The selected directory differs from the existing installation ($R2). To install here, uninstall the old version first. Continue?"
+        ${If} $R2 == ""
+          StrCpy $R1 "The existing installation directory could not be verified. To continue, uninstall the old version first. Continue?"
+        ${EndIf}
+        ${If} $LANGUAGE == 2052
+        ${OrIf} $LANGUAGE == 1028
+          StrCpy $R1 "所选目录与旧版安装目录（$R2）不同。要安装到此处，必须先卸载旧版。是否继续？"
+          ${If} $R2 == ""
+            StrCpy $R1 "无法确认旧版安装目录。要继续，必须先卸载旧版。是否继续？"
+          ${EndIf}
+        ${EndIf}
+        MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "$R1" /SD IDNO IDYES pilotdeck_uninstall_first
         SetErrorLevel 1223
         Quit
       ${EndIf}

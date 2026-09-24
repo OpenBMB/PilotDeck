@@ -89,7 +89,7 @@ export default function DesktopAboutSections({ versionInfo, checkingVersion }: A
           <div className="flex flex-wrap gap-x-6 gap-y-1">
             <span>{t("settingsPage.about.currentVersion")} {versionInfo.currentVersion}</span>
             <span>{t("settingsPage.about.latestVersion")} {versionInfo.latestVersion || "-"}</span>
-            {versionInfo.latestPublishedAt && <span>{t("settingsPage.about.latestReleaseTime")} {new Date(versionInfo.latestPublishedAt).toLocaleString()}</span>}
+            {versionInfo.latestPublishedAt && <span>{t("settingsPage.about.latestReleaseTime")} {versionInfo.latestPublishedAt}</span>}
           </div>
           {update?.state === "downloading" && <div className="flex items-center gap-3">
             <progress className="h-2 min-w-0 flex-1 accent-blue-600" max={100} value={progress} aria-label={t("settingsPage.about.desktopUpdate.progress")} />
