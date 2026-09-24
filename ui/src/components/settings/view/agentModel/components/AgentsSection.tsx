@@ -226,6 +226,25 @@ export default function AgentsSection({ config, onChange }: AgentsSectionProps) 
                 }
               />
             </FormRow>
+            <FormRow
+              label={t("pilotDeckConfig.panels.agents.subagents.timeoutLabel")}
+              description={t("pilotDeckConfig.panels.agents.subagents.timeoutDescription")}
+            >
+              <NumberInput
+                value={config.agent?.subagents?.timeoutMs === undefined
+                  ? undefined : config.agent.subagents.timeoutMs / 1000}
+                placeholder="3600"
+                min={0.001}
+                max={2147483.647}
+                step={0.001}
+                onChange={(seconds) => {
+                  const subagents = { ...config.agent?.subagents };
+                  if (seconds === undefined) delete subagents.timeoutMs;
+                  else subagents.timeoutMs = Math.round(seconds * 1000);
+                  onChange(patch(config, ["agent", "subagents"], subagents));
+                }}
+              />
+            </FormRow>
             <div className="flex gap-2 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
               <p>{t("pilotDeckConfig.panels.agents.subagents.routerNote")}</p>
