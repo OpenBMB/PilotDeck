@@ -44,6 +44,20 @@ describe("mapInitialTabToMenuKey", () => {
     expect(mapInitialTabToMenuKey("agent-search")).toBe("agentSearch");
     expect(mapInitialTabToMenuKey("privacy")).toBe("privacy");
   });
+
+  it("routes the subagents page and its legacy deep link next to agent routing", () => {
+    expect(mapInitialTabToMenuKey("agent-subagents")).toBe("agentSubagents");
+    expect(mapInitialTabToMenuKey("config:subagents")).toBe("agentSubagents");
+    expect(mapSettingsSectionToMenuKey("agent-subagents")).toBe(
+      "agentSubagents",
+    );
+    expect(getSettingsPath("agentSubagents")).toBe(
+      "/settings/agent-subagents",
+    );
+    expect(getSettingsPathFromTab("config:subagents")).toBe(
+      "/settings/agent-subagents",
+    );
+  });
 });
 
 describe("settings route paths", () => {
