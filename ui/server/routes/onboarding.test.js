@@ -248,6 +248,43 @@ describe('onboarding routes', () => {
     expect(signal.aborted).toBe(false);
   });
 
+  it('allows ten individual model tests per minute while retaining the aggregate probe budget', async () => {
+    const { request } = await createOnboardingApp({ probe: vi.fn().mockResolvedValue({ ok: true }) });
+    for (let index = 0; index < 10; index += 1) {
+      const response = await request('/api/v1/model-connection-tests', {
+        method: 'POST',
+        headers: { 'x-user': 'individual-model-tests' },
+        body: JSON.stringify({ providerId: 'openai', apiKey: 'key', models: [`model-${index}`], retryPolicy: retryPolicy() }),
+      });
+      expect(response.status).toBe(200);
+    }
+    const limited = await request('/api/v1/model-connection-tests', {
+      method: 'POST',
+      headers: { 'x-user': 'individual-model-tests' },
+      body: JSON.stringify({ providerId: 'openai', apiKey: 'key', models: ['model-11'], retryPolicy: retryPolicy() }),
+    });
+    expect(limited).toMatchObject({ status: 429, body: { code: 'RATE_LIMITED' } });
+
+    for (let index = 0; index < 5; index += 1) {
+      const response = await request('/api/v1/model-connection-tests', {
+        method: 'POST',
+        headers: { 'x-user': 'batch-model-tests' },
+        body: JSON.stringify({
+          providerId: 'openai', apiKey: 'key',
+          models: Array.from({ length: 10 }, (_, model) => `model-${index}-${model}`),
+          retryPolicy: retryPolicy(),
+        }),
+      });
+      expect(response.status).toBe(200);
+    }
+    const batchLimited = await request('/api/v1/model-connection-tests', {
+      method: 'POST',
+      headers: { 'x-user': 'batch-model-tests' },
+      body: JSON.stringify({ providerId: 'openai', apiKey: 'key', models: ['extra-model'], retryPolicy: retryPolicy() }),
+    });
+    expect(batchLimited).toMatchObject({ status: 429, body: { code: 'RATE_LIMITED' } });
+  });
+
   it('cancels model probes and releases their slot when the client disconnects', async () => {
     let probeSignal;
     const probe = vi.fn()

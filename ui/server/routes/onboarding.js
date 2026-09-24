@@ -15,7 +15,8 @@ const MAX_STREAM_RETRIES_PER_PROBE = 10;
 const MAX_RETRY_DELAY_MS = 60_000;
 const MAX_STREAM_IDLE_TIMEOUT_MS = 5 * 60_000;
 const TEST_RATE_WINDOW_MS = 60 * 1000;
-const TEST_RATE_MAX_REQUESTS = 5;
+const TEST_RATE_MAX_REQUESTS = MAX_MODELS_PER_TEST;
+const TEST_RATE_MAX_MODELS = 5 * MAX_MODELS_PER_TEST;
 const PROBE_GLOBAL_LIMIT = 3;
 const PROBE_PER_USER_LIMIT = 1;
 const CLONE_GLOBAL_LIMIT = 2;
@@ -242,12 +243,17 @@ setInterval(deleteExpiredTests, TEST_TTL_MS).unref();
 export function modelTestRateLimiter(req, res, next) {
   const now = Date.now();
   const key = String(req.user?.id || req.ip || 'anonymous');
-  const bucket = testRateBuckets.get(key);
+  let bucket = testRateBuckets.get(key);
   if (!bucket || now >= bucket.resetAt) {
-    testRateBuckets.set(key, { count: 1, resetAt: now + TEST_RATE_WINDOW_MS });
+    bucket = { count: 0, models: 0, resetAt: now + TEST_RATE_WINDOW_MS };
+    testRateBuckets.set(key, bucket);
+  }
+  const modelCount = Array.isArray(req.body?.models) ? Math.max(1, req.body.models.length) : 1;
+  if (bucket.count < TEST_RATE_MAX_REQUESTS && bucket.models + modelCount <= TEST_RATE_MAX_MODELS) {
+    bucket.count += 1;
+    bucket.models += modelCount;
     return next();
   }
-  if (++bucket.count <= TEST_RATE_MAX_REQUESTS) return next();
   res.setHeader('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
   return apiError(res, 429, 'RATE_LIMITED', 'Too many connection tests.');
 }
