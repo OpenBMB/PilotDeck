@@ -110,6 +110,16 @@ function toMediaBlock(
     };
   }
 
+  if (block.mediaType === "video") {
+    return {
+      type: "video",
+      source: "base64",
+      data,
+      mimeType: block.mimeType,
+      bytes: block.originalBytes,
+    };
+  }
+
   return undefined;
 }
 
