@@ -4,6 +4,7 @@
   Var PilotDeckPhase
   Var PilotDeckState
   Var PilotDeckProgress
+  Var PilotDeckReplaceMode
   !define MUI_CUSTOMFUNCTION_ABORT PilotDeckAbort
 !endif
 

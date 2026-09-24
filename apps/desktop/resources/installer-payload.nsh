@@ -1,7 +1,10 @@
 ; Included inside the install section, after the upstream extraction macro.
 !macro PilotDeckConfirmUpgrade
-  ; Never remove a registered installation while writing the replacement to
-  ; another directory. This also catches future builder changes to /D handling.
+  ; Updates replace the installed files in place. A manual installer lets the
+  ; user choose whether to remove the previous installation first.
+  StrCpy $PilotDeckReplaceMode "overwrite"
+  ; Never update a registered installation into another directory. This also
+  ; catches future builder changes to /D handling.
   ${If} ${isUpdated}
     ReadRegStr $R2 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
     ${If} $R2 != ""
@@ -22,19 +25,27 @@
   ${EndIf}
   ${If} $R0 != ""
   ${OrIf} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
-    ; --updated is the updater's explicit replacement request. Plain /S must
-    ; never implicitly authorize removal of an existing version.
-    ${IfNot} ${Silent}
-    ${OrIfNot} ${isUpdated}
-      StrCpy $R1 "An existing version was found. Uninstall it and install this version? Choosing No keeps the existing installation."
+    ; Only the explicit updater flag permits unattended replacement. A plain
+    ; silent installer must leave the previous installation untouched.
+    ${IfNot} ${isUpdated}
+      ${If} ${Silent}
+        SetErrorLevel 1223
+        Quit
+      ${EndIf}
+      StrCpy $R1 "An existing version was found. Yes: uninstall it first. No: replace its files in place. Cancel: keep the existing installation."
       ${If} $LANGUAGE == 2052
       ${OrIf} $LANGUAGE == 1028
-        StrCpy $R1 "检测到已安装版本。是否卸载旧版本并安装当前版本？选择“否”将保留原有安装。"
+        StrCpy $R1 "检测到已安装版本。选“是”先卸载旧版；选“否”直接覆盖原目录；选“取消”保留现有安装。"
       ${EndIf}
-      MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "$R1" /SD IDNO IDYES pilotdeck_upgrade_approved
+      MessageBox MB_YESNOCANCEL|MB_ICONQUESTION|MB_DEFBUTTON2 "$R1" /SD IDCANCEL IDYES pilotdeck_uninstall_first IDNO pilotdeck_overwrite
       SetErrorLevel 1223
       Quit
-      pilotdeck_upgrade_approved:
+      pilotdeck_uninstall_first:
+        StrCpy $PilotDeckReplaceMode "uninstall"
+        Goto pilotdeck_upgrade_choice_done
+      pilotdeck_overwrite:
+        StrCpy $PilotDeckReplaceMode "overwrite"
+      pilotdeck_upgrade_choice_done:
     ${EndIf}
   ${EndIf}
 !macroend

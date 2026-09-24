@@ -41,17 +41,22 @@ async function prepareWindowsInstaller(desktopRoot = path.resolve(__dirname, '..
   let section = replaceOnce(fs.readFileSync(path.join(templates, 'installSection.nsh'), 'utf8'),
     '!include installer.nsh', '!include installer.nsh\n!include "${PROJECT_DIR}\\resources\\installer-payload.nsh"');
   section = replaceOnce(section, 'SetDetailsPrint none', 'SetDetailsPrint both');
-  // Prepare the payload before the upstream uninstaller can touch the old app.
+  // Prepare the payload before an explicitly requested uninstall can touch the old app.
   const begin = section.indexOf('!insertmacro uninstallOldVersion SHELL_CONTEXT');
   const end = section.indexOf('!insertmacro installApplicationFiles');
   if (begin < 0 || end <= begin) throw new Error('Unsupported NSIS installation lifecycle');
-  let commit = section.slice(begin, end);
-  commit = commit.replace(/(!insertmacro uninstallOldVersion [^\r\n]+)/g,
+  let replacement = section.slice(begin, end);
+  replacement = replacement.replace(/(!insertmacro uninstallOldVersion [^\r\n]+)/g,
     '$1\n!insertmacro PilotDeckCheckUninstall');
+  const targetPreparation = replacement.indexOf('SetOutPath $INSTDIR');
+  if (targetPreparation < 0) throw new Error('Unsupported NSIS target preparation lifecycle');
+  const uninstall = replacement.slice(0, targetPreparation);
+  const prepareTarget = replacement.slice(targetPreparation);
   section = section.slice(0, begin) + section.slice(end);
   section = replaceOnce(section, 'InitPluginsDir',
     'InitPluginsDir\n!insertmacro PilotDeckConfirmUpgrade\nStrCpy $PilotDeckState "$PLUGINSDIR\\payload.state"');
-  section = '!macro PilotDeckReplaceOldVersion\n' + commit + '!macroend\n' + section;
+  section = '!macro PilotDeckReplaceOldVersion\n${If} $PilotDeckReplaceMode == "uninstall"\n'
+    + uninstall + '${EndIf}\n' + prepareTarget + '!macroend\n' + section;
   fs.writeFileSync(path.join(stagedTemplates, 'installSection.nsh'), section);
   // The directory page is skipped for --updated, but the install-page
   // pre-callback still appends APP_FILENAME to custom paths. A visible updater

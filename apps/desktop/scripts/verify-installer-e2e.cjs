@@ -67,12 +67,13 @@ const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
     for (const label of ['fresh install', 'upgrade']) {
       installed = true;
       if (label === 'upgrade') {
+        fs.writeFileSync(path.join(target, 'preserved-during-update.txt'), 'previous installation stays in place');
         const refused = spawnSync(setup, ['/S', '/currentuser', `/D=${target}`], { windowsHide: true, timeout: 90_000 });
         assert.equal(refused.status, 1223, 'unattended replacement requires explicit update intent');
         assert.equal(fs.readFileSync(path.join(target, 'resources', 'git', '组件.txt'), 'utf8'), 'all components retained');
         const wrongTarget = path.join(root, 'wrong update destination');
         const misdirected = spawnSync(setup, ['--updated', '/S', '/currentuser', `/D=${wrongTarget}`], { windowsHide: true, timeout: 90_000 });
-        assert.equal(misdirected.status, 1, 'update to a different directory must fail before old uninstall');
+        assert.equal(misdirected.status, 1, 'update to a different directory must fail before replacement');
         assert.ok(fs.existsSync(path.join(target, `${productName}.exe`)), 'wrong target keeps installed executable');
         assert.ok(!fs.existsSync(path.join(wrongTarget, `${productName}.exe`)), 'wrong target stays empty');
       }
@@ -83,14 +84,15 @@ const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
         : ['/S', '/currentuser', `/D=${target}`]);
       assert.equal(fs.readFileSync(path.join(target, 'resources', 'git', '组件.txt'), 'utf8'), 'all components retained', label);
       assert.ok(fs.existsSync(path.join(target, `Uninstall ${productName}.exe`)), 'uninstaller exists');
+      if (label === 'upgrade') assert.ok(fs.existsSync(path.join(target, 'preserved-during-update.txt')), 'automatic update must not uninstall the old version');
       assert.ok(!fs.readdirSync(root).some(file => file.startsWith('.pilotdeck-install-')), 'staging cleaned');
     }
     const marker = path.join(target, 'old-version-marker.txt');
     fs.writeFileSync(marker, 'must survive refusal and cancellation');
-    for (const mode of ['decline', 'cancel-now', 'cancel', 'approve']) {
+    for (const mode of ['decline', 'cancel-now', 'cancel', 'overwrite', 'approve']) {
       run(uiTests, [setup, target, mode]);
       assert.equal(fs.readFileSync(path.join(target, 'resources', 'git', '组件.txt'), 'utf8'), 'all components retained');
-      if (mode !== 'approve') assert.equal(fs.readFileSync(marker, 'utf8'), 'must survive refusal and cancellation');
+      if (mode !== 'approve') assert.equal(fs.readFileSync(marker, 'utf8'), 'must survive refusal and cancellation', 'in-place replacement preserves unknown files');
       else assert.ok(!fs.existsSync(marker), 'confirmed upgrade runs old-version uninstall');
       assert.ok(fs.existsSync(path.join(target, `Uninstall ${productName}.exe`)));
       assert.ok(!fs.readdirSync(root).some(file => file.startsWith('.pilotdeck-install-')), 'cancel/commit cleans staging');
@@ -98,8 +100,8 @@ const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
 
     // Older installers can register a custom directory that does not include
     // APP_FILENAME. An --updated run must use that exact path. Previously,
-    // instFilesPre appended APP_FILENAME, staged inside the old directory, and
-    // the old uninstaller then deleted the staged payload before commit.
+    // instFilesPre appended APP_FILENAME and staged inside the old directory;
+    // the previous uninstall-first flow then deleted that payload before commit.
     const registryRoot = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';
     const query = spawnSync('reg.exe', ['query', registryRoot, '/s', '/f', productName], { encoding: 'utf8', windowsHide: true });
     assert.equal(query.status, 0, query.stderr || 'test uninstall registry entry missing');

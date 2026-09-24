@@ -300,8 +300,8 @@ internal static class InstallPayload
         catch (Exception error)
         {
             Console.Error.WriteLine(error.ToString());
-            // An update has already removed the old installation by this
-            // point. Keep the extracted files and the exact failure for repair.
+            // A manually requested uninstall may already have removed the old
+            // installation. Keep the extracted files and the failure for repair.
             if (commitOnly && stage != null)
             {
                 try { File.WriteAllText(Path.Combine(stage, "install-error.log"), error.ToString()); }
