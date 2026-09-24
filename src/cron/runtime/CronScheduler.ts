@@ -2,7 +2,7 @@ import type { CronConfig } from "../config/parseCronConfig.js";
 import type { CronTask } from "../protocol/types.js";
 import type { CronTaskStore } from "../storage/CronTaskStore.js";
 import { resolveCronTimezone } from "../CronTimezone.js";
-import { computeNextRunAt } from "./CronSchedule.js";
+import { computeNextRunAt, CRON_SCHEDULE_COMPUTATION_VERSION } from "./CronSchedule.js";
 import type { CronFire } from "./CronFire.js";
 
 const DEFAULT_IDLE_POLL_MS = 60_000;
@@ -135,7 +135,7 @@ export class CronScheduler {
           return;
         }
 
-        if (task.scheduleComputationVersion === 2 && task.nextRunAt) {
+        if (task.scheduleComputationVersion === CRON_SCHEDULE_COMPUTATION_VERSION && task.nextRunAt) {
           return;
         }
         const timezone = resolveCronTimezone(
@@ -144,7 +144,14 @@ export class CronScheduler {
           this.deps.config.timezone,
         );
         const schedule = { ...task.schedule, timezone };
-        const nextRunAt = computeNextRunAt(schedule, now, timezone)?.toISOString();
+        // Version 2 used AND for restricted day fields. Refresh future runs, but keep
+        // an already-due run so upgrading does not skip the scheduler's catch-up.
+        const preserveDueRun = task.scheduleComputationVersion === 2
+          && task.nextRunAt !== undefined
+          && new Date(task.nextRunAt).getTime() <= now.getTime();
+        const nextRunAt = preserveDueRun
+          ? task.nextRunAt
+          : computeNextRunAt(schedule, now, timezone)?.toISOString();
         await this.deps.store.updateTask(task.taskId, (current) => {
           if (!matchesTaskSnapshot(current, task)) return current;
           return {
@@ -154,7 +161,7 @@ export class CronScheduler {
             status: "scheduled",
             nextRunAt,
             revision: (current.revision ?? 0) + 1,
-            scheduleComputationVersion: 2,
+            scheduleComputationVersion: CRON_SCHEDULE_COMPUTATION_VERSION,
             updatedAt: now.toISOString(),
           };
         });

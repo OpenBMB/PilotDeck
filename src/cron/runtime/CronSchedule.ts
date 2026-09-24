@@ -1,6 +1,8 @@
 import type { CronCreateSchedule } from "../protocol/types.js";
 import { isValidCronTimezone } from "../CronTimezone.js";
 
+export const CRON_SCHEDULE_COMPUTATION_VERSION = 3;
+
 const MINUTE_MS = 60_000;
 const MAX_SEARCH_MINUTES = 366 * 24 * 60;
 const DELAY_UNIT_MS: Record<"second" | "minute" | "hour" | "day", number> = {
@@ -56,7 +58,8 @@ export function computeNextCronRunAt(
 }
 
 function isLeapDayOnlySchedule(cron: ParsedCron): boolean {
-  return cron.daysOfMonth.size === 1
+  return !cron.dayFieldsUseOr
+    && cron.daysOfMonth.size === 1
     && cron.daysOfMonth.has(29)
     && cron.months.size === 1
     && cron.months.has(2)
@@ -93,6 +96,7 @@ type ParsedCron = {
   daysOfMonth: Set<number>;
   months: Set<number>;
   daysOfWeek: Set<number>;
+  dayFieldsUseOr: boolean;
 };
 
 function parseCronExpression(expression: string): ParsedCron | undefined {
@@ -107,6 +111,8 @@ function parseCronExpression(expression: string): ParsedCron | undefined {
     daysOfMonth: parseField(dayOfMonth, 1, 31),
     months: parseField(month, 1, 12),
     daysOfWeek: parseField(dayOfWeek, 0, 7),
+    // Unix cron keeps AND semantics when either day field starts with *, including */n.
+    dayFieldsUseOr: !dayOfMonth.startsWith("*") && !dayOfWeek.startsWith("*"),
   };
   if (
     !parsed.minutes ||
@@ -215,11 +221,15 @@ function readCronDateParts(date: Date, formatter: Intl.DateTimeFormat): CronDate
 function matchesCron(date: Date, cron: ParsedCron, formatter: Intl.DateTimeFormat): boolean {
   const parts = readCronDateParts(date, formatter);
   if (!parts) return false;
+  const dayOfMonthMatches = cron.daysOfMonth.has(parts.dayOfMonth);
+  const dayOfWeekMatches = cron.daysOfWeek.has(parts.dayOfWeek);
+  const dayMatches = cron.dayFieldsUseOr
+    ? dayOfMonthMatches || dayOfWeekMatches
+    : dayOfMonthMatches && dayOfWeekMatches;
   return (
     cron.minutes.has(parts.minute) &&
     cron.hours.has(parts.hour) &&
-    cron.daysOfMonth.has(parts.dayOfMonth) &&
     cron.months.has(parts.month) &&
-    cron.daysOfWeek.has(parts.dayOfWeek)
+    dayMatches
   );
 }

@@ -265,7 +265,7 @@ test("CronRuntime updates daily, weekly, monthly, yearly, and one-time schedules
       assert.equal(result.task.revision, revision);
       assert.equal(result.task.nextRunAt, scheduleCase.nextRunAt);
       assert.deepEqual(result.task.schedule, scheduleCase.schedule);
-      assert.equal(result.task.scheduleComputationVersion, scheduleCase.schedule.type === "cron" ? 2 : undefined);
+      assert.equal(result.task.scheduleComputationVersion, scheduleCase.schedule.type === "cron" ? 3 : undefined);
     }
   } finally {
     rmSync(pilotHome, { recursive: true, force: true });
@@ -412,6 +412,62 @@ test("CronFire completes when live event forwarding fails", async () => {
     assert.equal((await store.getTask(task.taskId))?.status, "scheduled");
     assert.ok(warnings.includes("cron turn event delivery failed"));
   } finally {
+    rmSync(pilotHome, { recursive: true, force: true });
+  }
+});
+
+test("CronScheduler refreshes legacy next runs without dropping overdue tasks", async () => {
+  const pilotHome = mkdtempSync(join(tmpdir(), "pilotdeck-cron-day-migration-"));
+  const projectKey = "/tmp/projects/cron-editing";
+  const now = new Date("2026-06-02T00:00:00.000Z");
+  const store = createStore(pilotHome, projectKey);
+  const createScheduler = () => new CronScheduler({
+    config: defaultCronConfig(),
+    store,
+    fire: { runTask: async () => undefined } as unknown as CronFire,
+    uuid: () => "run-1",
+    now: () => now,
+    activeRunCount: () => 0,
+  });
+  const scheduler = createScheduler();
+  const restartedScheduler = createScheduler();
+  try {
+    await store.putTask(makeTask({
+      taskId: "combined",
+      schedule: { type: "cron", expression: "0 9 1 * 1", timezone: "UTC" },
+      nextRunAt: "2027-02-01T09:00:00.000Z",
+    }));
+    await store.putTask(makeTask({
+      taskId: "overdue",
+      nextRunAt: "2026-06-01T09:00:00.000Z",
+    }));
+    await store.putTask(makeTask({
+      taskId: "once",
+      schedule: { type: "once", runAt: "2026-06-03T09:00:00.000Z" },
+      nextRunAt: "2026-06-03T09:00:00.000Z",
+      scheduleComputationVersion: undefined,
+    }));
+
+    await scheduler.start();
+    await scheduler.stop();
+
+    const combined = await store.getTask("combined");
+    assert.equal(combined?.nextRunAt, "2026-06-08T09:00:00.000Z");
+    assert.equal(combined?.scheduleComputationVersion, 3);
+    assert.equal(combined?.revision, 1);
+    const overdue = await store.getTask("overdue");
+    assert.equal(overdue?.nextRunAt, "2026-06-01T09:00:00.000Z");
+    assert.equal(overdue?.scheduleComputationVersion, 3);
+    const once = await store.getTask("once");
+    assert.equal(once?.nextRunAt, "2026-06-03T09:00:00.000Z");
+    assert.equal(once?.revision, 0);
+
+    await restartedScheduler.start();
+    assert.deepEqual(await store.getTask("combined"), combined);
+    assert.deepEqual(await store.getTask("overdue"), overdue);
+  } finally {
+    await scheduler.stop();
+    await restartedScheduler.stop();
     rmSync(pilotHome, { recursive: true, force: true });
   }
 });
