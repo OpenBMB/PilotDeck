@@ -535,7 +535,15 @@ export class AgentLoop {
       this.dispatchLifecycle(input, "PreModelRequest", {
         provider: request.provider,
         model: request.model,
-      }).catch(() => {});
+      }).catch((err) => {
+        // Lifecycle hooks are user-configured extensions; failures should
+        // be visible (not silently swallowed) so a misconfigured hook is
+        // diagnosable. Other fire-and-forget catch sites in this file
+        // handle shutdown / cleanup paths where logging would be noise.
+        console.warn(
+          `[agent:lifecycle] PreModelRequest dispatch failed sessionId=${input.sessionId} turnId=${input.turnId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
       yield {
         type: "model_request_started",
         sessionId: input.sessionId,
@@ -2037,7 +2045,11 @@ export class AgentLoop {
     if (options.emitInstructionEvents !== false) {
       this.dispatchLifecycle(input, "InstructionsLoaded", {
         hasSystemPrompt: !!prepared.systemPrompt,
-      }).catch(() => {});
+      }).catch((err) => {
+        console.warn(
+          `[agent:lifecycle] InstructionsLoaded dispatch failed sessionId=${input.sessionId} turnId=${input.turnId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
       this.dependencies.eventEmitter?.({
         type: "instructions_loaded",
         sessionId: input.sessionId,
@@ -2306,7 +2318,14 @@ export class AgentLoop {
     await Promise.resolve(input.onCompactPersisted({
       boundary,
       messages: markCompactReplacementMessages(compact.messages, compact.result.compactionId),
-    })).catch(() => {});
+    })).catch((err) => {
+      // `onCompactPersisted` is a user-provided callback. A silent swallow
+      // here would mask lost writes; surface the failure so the host can
+      // detect / retry.
+      console.warn(
+        `[agent:onCompactPersisted] callback failed sessionId=${input.sessionId} turnId=${input.turnId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
   }
 
   private applyTokenCapsToRequest(request: CanonicalModelRequest, provider: string, model: string): CanonicalModelRequest {
