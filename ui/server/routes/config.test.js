@@ -1198,7 +1198,7 @@ describe('config model-pool connection test routes', () => {
       body: JSON.stringify({ config: initial, modelTestBindings: [{ testId: 'missing-test' }] }),
     });
     expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({ code: 'TEST_NOT_FOUND', error: 'Connection test was not found.' });
+    expect(response.body).toMatchObject({ code: 'TEST_NOT_FOUND', error: 'Connection test was not found.', testId: 'missing-test' });
   });
 
   it('allows new subagent and memory references without separate test bindings', async () => {

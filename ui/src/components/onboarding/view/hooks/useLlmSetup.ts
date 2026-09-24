@@ -489,14 +489,20 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         method: 'PUT',
         body: JSON.stringify({ raw, ...(bindings.length ? { modelTestBindings: bindings } : {}) }),
       });
-      let saveRes = await saveConfig(modelTestBindings);
-      let saveError: { code?: string; error?: string } | null = null;
-      if (!saveRes.ok && modelTestBindings.length) {
+      let remainingBindings = modelTestBindings;
+      let saveRes = await saveConfig(remainingBindings);
+      let saveError: { code?: string; error?: string; testId?: string } | null = null;
+      while (!saveRes.ok && remainingBindings.length) {
         saveError = await saveRes.json().catch(() => ({}));
-        if (saveError?.code && ['TEST_EXPIRED', 'TEST_NOT_FOUND', 'TEST_NOT_PASSED', 'CONFIGURATION_MISMATCH'].includes(saveError.code)) {
-          saveRes = await saveConfig([]);
-          saveError = null;
-        }
+        if (!saveError?.code || !['TEST_EXPIRED', 'TEST_NOT_FOUND', 'TEST_NOT_PASSED', 'CONFIGURATION_MISMATCH'].includes(saveError.code)) break;
+        const invalidTestId = saveError.testId;
+        if (!invalidTestId || !remainingBindings.some((binding) => binding.testId === invalidTestId)) break;
+        remainingBindings = remainingBindings.filter((binding) => binding.testId !== invalidTestId);
+        setModelTests((current) => Object.fromEntries(Object.entries(current).map(([id, state]) => (
+          state.testId === invalidTestId ? [id, IDLE_MODEL_TEST] : [id, state]
+        ))));
+        saveRes = await saveConfig(remainingBindings);
+        saveError = null;
       }
 
       if (!saveRes.ok) {

@@ -472,11 +472,13 @@ function bindModelConnectionTests(config, bindings, userId) {
     return { error: { status: 400, code: 'INVALID_REQUEST', message: 'modelTestBindings must contain testId objects.' } };
   }
   for (const binding of bindings) {
-    const result = getConnectionTestRecord(userId, binding.testId.trim());
-    if (result.reason === 'expired') return { error: { status: 410, code: 'TEST_EXPIRED', message: 'Connection test has expired.' } };
+    const testId = binding.testId.trim();
+    const bindingError = (status, code, message) => ({ error: { status, code, message, testId } });
+    const result = getConnectionTestRecord(userId, testId);
+    if (result.reason === 'expired') return bindingError(410, 'TEST_EXPIRED', 'Connection test has expired.');
     const record = result.record;
-    if (!record) return { error: { status: 404, code: 'TEST_NOT_FOUND', message: 'Connection test was not found.' } };
-    if (record.status !== 'passed') return { error: { status: 409, code: 'TEST_NOT_PASSED', message: 'Complete a passing connection test before saving.' } };
+    if (!record) return bindingError(404, 'TEST_NOT_FOUND', 'Connection test was not found.');
+    if (record.status !== 'passed') return bindingError(409, 'TEST_NOT_PASSED', 'Complete a passing connection test before saving.');
     const provider = config?.model?.providers?.[record.provider.providerId];
     const testedProvider = provider && {
       ...provider,
@@ -484,12 +486,12 @@ function bindModelConnectionTests(config, bindings, userId) {
       apiKey: resolveConfiguredProviderApiKey(record.provider.providerId, provider),
     };
     if (!provider || !connectionTestMatchesProvider(record, testedProvider)) {
-      return { error: { status: 409, code: 'CONFIGURATION_MISMATCH', message: 'Configuration does not match the tested provider.' } };
+      return bindingError(409, 'CONFIGURATION_MISMATCH', 'Configuration does not match the tested provider.');
     }
     for (const tested of record.models) {
       const model = provider.models?.[tested.modelId];
       if (!model || typeof model !== 'object' || tested.textInput !== 'supported' || !['supported', 'unsupported'].includes(tested.imageInput)) {
-        return { error: { status: 409, code: 'CONFIGURATION_MISMATCH', message: 'Configuration does not match the tested models.' } };
+        return bindingError(409, 'CONFIGURATION_MISMATCH', 'Configuration does not match the tested models.');
       }
       model.connectionTest = {
         status: 'passed',
@@ -807,7 +809,7 @@ router.put('/', async (req, res) => {
       );
       if (renamed.error) return res.status(400).json({ error: renamed.error, code: renamed.code });
       const testBinding = bindModelConnectionTests(renamed.config, req.body?.modelTestBindings, req.user?.id || '');
-      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message });
+      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message, testId: testBinding.error.testId });
       const deletedReference = findDeletedModelReferences(diskRecord.config, renamed.config);
       if (deletedReference) {
         return res.status(409).json({
@@ -870,7 +872,7 @@ router.put('/', async (req, res) => {
       );
       if (renamed.error) return res.status(400).json({ error: renamed.error, code: renamed.code });
       const testBinding = bindModelConnectionTests(renamed.config, req.body?.modelTestBindings, req.user?.id || '');
-      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message });
+      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message, testId: testBinding.error.testId });
       const deletedReference = findDeletedModelReferences(diskRecord.config, renamed.config);
       if (deletedReference) {
         return res.status(409).json({

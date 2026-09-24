@@ -532,7 +532,7 @@ describe('LlmConfigurationStep', () => {
       if (url === '/api/config' && init?.method === 'PUT') {
         saves.push(JSON.parse(String(init.body)));
         return saves.length === 1
-          ? { ok: false, json: async () => ({ code: 'TEST_EXPIRED', error: 'Connection test has expired.' }) }
+          ? { ok: false, json: async () => ({ code: 'TEST_EXPIRED', error: 'Connection test has expired.', testId: 'test-123' }) }
           : { ok: true, json: async () => ({ raw: '' }) };
       }
       return { ok: true, json: async () => ({ raw: '' }) };
@@ -554,6 +554,47 @@ describe('LlmConfigurationStep', () => {
     expect(saves).toHaveLength(2);
     expect(saves[0].modelTestBindings).toEqual([{ testId: 'test-123' }]);
     expect(saves[1].modelTestBindings).toBeUndefined();
+  });
+
+  it('preserves other passed model bindings when one test expires', async () => {
+    const saves: Array<{ raw: string; modelTestBindings?: Array<{ testId: string }> }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        const modelId = JSON.parse(String(init?.body)).models[0] as string;
+        return { ok: true, json: async () => ({ ...connectionTestResult(modelId), testId: `test-${modelId}` }) };
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        saves.push(JSON.parse(String(init.body)));
+        return saves.length === 1
+          ? { ok: false, json: async () => ({ code: 'TEST_EXPIRED', error: 'Connection test has expired.', testId: 'test-model-a' }) }
+          : { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    for (const modelId of ['model-a', 'model-b']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+      fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: modelId } });
+      fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+      fireEvent.click(screen.getByRole('button', { name: `Test connection ${modelId}` }));
+      expect(await screen.findByRole('button', { name: `Retest ${modelId}` })).toBeTruthy();
+    }
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(saves.map((save) => save.modelTestBindings)).toEqual([
+      [{ testId: 'test-model-a' }, { testId: 'test-model-b' }],
+      [{ testId: 'test-model-b' }],
+    ]);
+    expect(screen.getByRole('button', { name: 'Test connection model-a' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retest model-b' })).toBeTruthy();
   });
 
   it('preserves provider models that are not selected during onboarding', async () => {
