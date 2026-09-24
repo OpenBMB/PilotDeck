@@ -3,6 +3,11 @@ import { isValidCronTimezone } from "../CronTimezone.js";
 
 export const CRON_SCHEDULE_COMPUTATION_VERSION = 3;
 
+/** Whether the expression uses the day-field OR rule introduced in version 3. */
+export function cronDayFieldsUseOr(expression: string): boolean {
+  return parseCronExpression(expression)?.dayFieldsUseOr ?? false;
+}
+
 const MINUTE_MS = 60_000;
 const MAX_SEARCH_MINUTES = 366 * 24 * 60;
 const DELAY_UNIT_MS: Record<"second" | "minute" | "hour" | "day", number> = {

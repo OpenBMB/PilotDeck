@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { computeNextCronRunAt } from "../../src/cron/runtime/CronSchedule.js";
+import { computeNextCronRunAt, cronDayFieldsUseOr } from "../../src/cron/runtime/CronSchedule.js";
+
+test("CronSchedule classifies v3 day semantics by syntax rather than expanded ranges", () => {
+  for (const expression of ["0 9 1 * 1", "0 9 1 * 0-6", "0 9 1-31 * 1", "0 9 1,* * 1"]) {
+    assert.equal(cronDayFieldsUseOr(expression), true, expression);
+  }
+  for (const expression of ["0 9 * * 1", "0 9 1 * *", "0 9 */2 * 1", "0 9 1 * */2", "0 9 *,1 * 1"]) {
+    assert.equal(cronDayFieldsUseOr(expression), false, expression);
+  }
+});
 
 const cases = [
   {

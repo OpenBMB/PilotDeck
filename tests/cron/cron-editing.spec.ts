@@ -431,7 +431,20 @@ test("CronScheduler refreshes legacy next runs without dropping overdue tasks", 
   });
   const scheduler = createScheduler();
   const restartedScheduler = createScheduler();
+  const cacheCases = [
+    { taskId: "full-weekday-range", expression: "0 9 1 * 0-6", nextRunAt: "2026-07-01T09:00:00.000Z" },
+    { taskId: "full-month-day-range", expression: "0 9 1-31 * 1", nextRunAt: "2026-06-08T09:00:00.000Z" },
+    { taskId: "missing-cache", expression: "0 9 * * *", nextRunAt: undefined },
+    { taskId: "invalid-cache", expression: "0 9 * * *", nextRunAt: "invalid" },
+  ];
   try {
+    for (const { taskId, expression, nextRunAt } of cacheCases) {
+      await store.putTask(makeTask({
+        taskId,
+        schedule: { type: "cron", expression, timezone: "UTC" },
+        nextRunAt,
+      }));
+    }
     await store.putTask(makeTask({
       taskId: "combined",
       schedule: { type: "cron", expression: "0 9 1 * 1", timezone: "UTC" },
@@ -439,6 +452,7 @@ test("CronScheduler refreshes legacy next runs without dropping overdue tasks", 
     }));
     await store.putTask(makeTask({
       taskId: "overdue",
+      schedule: { type: "cron", expression: "0 9 1 * 1", timezone: "UTC" },
       nextRunAt: "2026-06-01T09:00:00.000Z",
     }));
     await store.putTask(makeTask({
@@ -461,6 +475,11 @@ test("CronScheduler refreshes legacy next runs without dropping overdue tasks", 
     const once = await store.getTask("once");
     assert.equal(once?.nextRunAt, "2026-06-03T09:00:00.000Z");
     assert.equal(once?.revision, 0);
+    for (const { taskId } of cacheCases) {
+      const migrated = await store.getTask(taskId);
+      assert.equal(migrated?.nextRunAt, "2026-06-02T09:00:00.000Z", taskId);
+      assert.equal(migrated?.scheduleComputationVersion, 3, taskId);
+    }
 
     await restartedScheduler.start();
     assert.deepEqual(await store.getTask("combined"), combined);
@@ -468,6 +487,104 @@ test("CronScheduler refreshes legacy next runs without dropping overdue tasks", 
   } finally {
     await scheduler.stop();
     await restartedScheduler.stop();
+    rmSync(pilotHome, { recursive: true, force: true });
+  }
+});
+
+for (const expression of ["0 9 * * *", "0 9 1 * 1"]) {
+  test(`CronScheduler preserves a deferred v2 run when upgrading ${expression}`, async () => {
+    const pilotHome = mkdtempSync(join(tmpdir(), "pilotdeck-cron-deferred-migration-"));
+    const store = createStore(pilotHome, "/tmp/projects/cron-editing");
+    let now = new Date("2026-06-01T09:00:00.000Z");
+    let activeRunCount = 1;
+    const firedTasks: CronTask[] = [];
+    const createScheduler = () => new CronScheduler({
+      config: { ...defaultCronConfig(), maxConcurrentRuns: 1 },
+      store,
+      fire: { runTask: async (task: CronTask) => { firedTasks.push(task); } } as unknown as CronFire,
+      uuid: () => "run-1",
+      now: () => now,
+      activeRunCount: () => activeRunCount,
+    });
+    const beforeUpgrade = createScheduler();
+    const upgraded = createScheduler();
+    const restarted = createScheduler();
+    try {
+      await store.putTask(makeTask({
+        schedule: { type: "cron", expression, timezone: "UTC" },
+        nextRunAt: now.toISOString(),
+      }));
+      // The v2 scheduler defers an already-due run before the process upgrades.
+      await beforeUpgrade.runTickOnce();
+      await beforeUpgrade.stop();
+      assert.equal((await store.getTask("task-1"))?.nextRunAt, "2026-06-01T09:01:00.000Z");
+
+      now = new Date("2026-06-01T09:00:30.000Z");
+      activeRunCount = 0;
+      await upgraded.start();
+      await upgraded.stop();
+      const migrated = await store.getTask("task-1");
+      assert.equal(migrated?.nextRunAt, "2026-06-01T09:01:00.000Z");
+      assert.equal(migrated?.scheduleComputationVersion, 3);
+      assert.equal(migrated?.revision, 2);
+
+      await restarted.start();
+      assert.deepEqual(await store.getTask("task-1"), migrated);
+      await restarted.runTickOnce();
+      assert.equal(firedTasks.length, 0);
+      now = new Date("2026-06-01T09:01:00.000Z");
+      await restarted.runTickOnce();
+      assert.equal(firedTasks.length, 1);
+      assert.equal(firedTasks[0].taskId, "task-1");
+    } finally {
+      await beforeUpgrade.stop();
+      await upgraded.stop();
+      await restarted.stop();
+      rmSync(pilotHome, { recursive: true, force: true });
+    }
+  });
+}
+
+test("CronScheduler migrates unchanged v2 day semantics without searching calendar minutes", async (t) => {
+  const pilotHome = mkdtempSync(join(tmpdir(), "pilotdeck-cron-unchanged-migration-"));
+  const store = createStore(pilotHome, "/tmp/projects/cron-editing");
+  const now = new Date("2026-01-02T00:00:00.000Z");
+  const cases = [
+    { expression: "0 9 1 1 *", nextRunAt: "2027-01-01T09:00:00.000Z" },
+    { expression: "0 9 1 1 */1", nextRunAt: "2027-01-01T09:00:00.000Z" },
+    { expression: "0 9 * 1 1", nextRunAt: "2026-01-05T09:00:00.000Z" },
+    { expression: "0 9 */2 1 1", nextRunAt: "2026-01-05T09:00:00.000Z" },
+  ];
+  const scheduler = new CronScheduler({
+    config: defaultCronConfig(),
+    store,
+    fire: { runTask: async () => undefined } as unknown as CronFire,
+    uuid: () => "run-1",
+    now: () => now,
+    activeRunCount: () => 0,
+  });
+  try {
+    for (const { expression, nextRunAt } of cases) {
+      await store.putTask(makeTask({
+        taskId: expression,
+        schedule: { type: "cron", expression, timezone: "UTC" },
+        nextRunAt,
+      }));
+    }
+    // A deterministic performance guard: no minute-by-minute matcher may run.
+    const calendarSearch = t.mock.method(Intl.DateTimeFormat.prototype, "formatToParts", () => {
+      throw new Error("Unchanged v2 schedules must reuse their cached next run");
+    });
+    await scheduler.start();
+    assert.equal(calendarSearch.mock.callCount(), 0);
+    for (const { expression, nextRunAt } of cases) {
+      const migrated = await store.getTask(expression);
+      assert.equal(migrated?.nextRunAt, nextRunAt);
+      assert.equal(migrated?.scheduleComputationVersion, 3);
+      assert.equal(migrated?.revision, 1);
+    }
+  } finally {
+    await scheduler.stop();
     rmSync(pilotHome, { recursive: true, force: true });
   }
 });
