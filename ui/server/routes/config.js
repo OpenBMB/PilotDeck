@@ -30,7 +30,7 @@ import {
   buildProviderModelsEndpointCandidates,
   isExpectedProviderModelsResponseShape,
 } from '../../../src/model/providerEndpoint.js';
-import { lookupCatalogProvider } from '../../../src/model/catalog/index.js';
+import { lookupCatalogProvider, PROVIDER_CATALOG } from '../../../src/model/catalog/index.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
@@ -472,11 +472,13 @@ function bindModelConnectionTests(config, bindings, userId) {
     return { error: { status: 400, code: 'INVALID_REQUEST', message: 'modelTestBindings must contain testId objects.' } };
   }
   for (const binding of bindings) {
-    const result = getConnectionTestRecord(userId, binding.testId.trim());
-    if (result.reason === 'expired') return { error: { status: 410, code: 'TEST_EXPIRED', message: 'Connection test has expired.' } };
+    const testId = binding.testId.trim();
+    const bindingError = (status, code, message) => ({ error: { status, code, message, testId } });
+    const result = getConnectionTestRecord(userId, testId);
+    if (result.reason === 'expired') return bindingError(410, 'TEST_EXPIRED', 'Connection test has expired.');
     const record = result.record;
-    if (!record) return { error: { status: 404, code: 'TEST_NOT_FOUND', message: 'Connection test was not found.' } };
-    if (record.status !== 'passed') return { error: { status: 409, code: 'TEST_NOT_PASSED', message: 'Complete a passing connection test before saving.' } };
+    if (!record) return bindingError(404, 'TEST_NOT_FOUND', 'Connection test was not found.');
+    if (record.status !== 'passed') return bindingError(409, 'TEST_NOT_PASSED', 'Complete a passing connection test before saving.');
     const provider = config?.model?.providers?.[record.provider.providerId];
     const testedProvider = provider && {
       ...provider,
@@ -484,12 +486,12 @@ function bindModelConnectionTests(config, bindings, userId) {
       apiKey: resolveConfiguredProviderApiKey(record.provider.providerId, provider),
     };
     if (!provider || !connectionTestMatchesProvider(record, testedProvider)) {
-      return { error: { status: 409, code: 'CONFIGURATION_MISMATCH', message: 'Configuration does not match the tested provider.' } };
+      return bindingError(409, 'CONFIGURATION_MISMATCH', 'Configuration does not match the tested provider.');
     }
     for (const tested of record.models) {
       const model = provider.models?.[tested.modelId];
       if (!model || typeof model !== 'object' || tested.textInput !== 'supported' || !['supported', 'unsupported'].includes(tested.imageInput)) {
-        return { error: { status: 409, code: 'CONFIGURATION_MISMATCH', message: 'Configuration does not match the tested models.' } };
+        return bindingError(409, 'CONFIGURATION_MISMATCH', 'Configuration does not match the tested models.');
       }
       model.connectionTest = {
         status: 'passed',
@@ -807,7 +809,7 @@ router.put('/', async (req, res) => {
       );
       if (renamed.error) return res.status(400).json({ error: renamed.error, code: renamed.code });
       const testBinding = bindModelConnectionTests(renamed.config, req.body?.modelTestBindings, req.user?.id || '');
-      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message });
+      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message, testId: testBinding.error.testId });
       const deletedReference = findDeletedModelReferences(diskRecord.config, renamed.config);
       if (deletedReference) {
         return res.status(409).json({
@@ -870,7 +872,7 @@ router.put('/', async (req, res) => {
       );
       if (renamed.error) return res.status(400).json({ error: renamed.error, code: renamed.code });
       const testBinding = bindModelConnectionTests(renamed.config, req.body?.modelTestBindings, req.user?.id || '');
-      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message });
+      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message, testId: testBinding.error.testId });
       const deletedReference = findDeletedModelReferences(diskRecord.config, renamed.config);
       if (deletedReference) {
         return res.status(409).json({
@@ -949,10 +951,13 @@ router.post('/reload', async (_req, res) => {
 
 router.get('/provider', (_req, res) => {
   try {
+    const environmentCredentialProviderIds = Object.keys(PROVIDER_CATALOG).filter(
+      (providerId) => Boolean(resolveConfiguredProviderApiKey(providerId, null)),
+    );
     const record = readPilotDeckConfigFile();
     const providers = record.config?.model?.providers;
     if (!providers || typeof providers !== 'object') {
-      return res.json({ exists: false, provider: null });
+      return res.json({ exists: false, provider: null, environmentCredentialProviderIds });
     }
 
     const mainRef = typeof record.config?.agent?.model === 'string'
@@ -976,12 +981,13 @@ router.get('/provider', (_req, res) => {
           : '';
       }
     }
-    if (!providerId) return res.json({ exists: false, provider: null });
+    if (!providerId) return res.json({ exists: false, provider: null, environmentCredentialProviderIds });
 
     const provider = providers[providerId] || {};
 
     res.json({
       exists: true,
+      environmentCredentialProviderIds,
       provider: {
         type: provider.protocol || '',
         baseUrl: provider.url || '',

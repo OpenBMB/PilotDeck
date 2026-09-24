@@ -33,6 +33,20 @@ describe('pilotdeck config model validation', () => {
   });
 });
 
+describe('config provider credential availability', () => {
+  it('reports only environment-backed catalog credentials without exposing their values', async () => {
+    vi.stubEnv('DEEPSEEK_API_KEY', 'secret-for-test');
+    vi.stubEnv('OPENROUTER_API_KEY', '');
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/provider');
+
+    expect(response.status).toBe(200);
+    expect(response.body.environmentCredentialProviderIds).toContain('deepseek');
+    expect(response.body.environmentCredentialProviderIds).not.toContain('openrouter');
+    expect(JSON.stringify(response.body)).not.toContain('secret-for-test');
+  });
+});
+
 describe('config test-connection route', () => {
   it('uses protocol-versioned chat completions when the root base URL works', async () => {
     const calls = [];
@@ -1184,7 +1198,7 @@ describe('config model-pool connection test routes', () => {
       body: JSON.stringify({ config: initial, modelTestBindings: [{ testId: 'missing-test' }] }),
     });
     expect(response.status).toBe(404);
-    expect(response.body).toMatchObject({ code: 'TEST_NOT_FOUND', error: 'Connection test was not found.' });
+    expect(response.body).toMatchObject({ code: 'TEST_NOT_FOUND', error: 'Connection test was not found.', testId: 'missing-test' });
   });
 
   it('allows new subagent and memory references without separate test bindings', async () => {
