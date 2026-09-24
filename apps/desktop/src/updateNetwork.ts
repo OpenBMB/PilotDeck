@@ -1,7 +1,6 @@
 import type { Session, AuthInfo } from "electron";
 import { CancellationToken } from "electron-updater";
 import { ElectronHttpExecutor } from "electron-updater/out/electronHttpExecutor";
-import { urlToHttpOptions } from "node:url";
 
 type ProxyConfig = { url?: string; noProxy?: string } | string | undefined;
 export function resolveUpdateProxy(config: ProxyConfig, env: NodeJS.ProcessEnv = process.env) {
@@ -52,7 +51,12 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
       const abort = () => token.cancel();
       init?.signal?.addEventListener("abort", abort, { once: true });
       try {
-        const result = await executor.request({ ...urlToHttpOptions(new URL(url)),
+        const target = new URL(url);
+        // ElectronHttpExecutor rebuilds these fields after a release-asset
+        // redirect. Passing URL.href/pathname leaves the original URL attached
+        // and Electron repeatedly requests it instead of the redirect target.
+        const result = await executor.request({ protocol: target.protocol, hostname: target.hostname,
+          port: target.port || undefined, path: `${target.pathname}${target.search}`,
           headers: Object.fromEntries(new Headers(init?.headers).entries()), timeout: 15_000 }, token);
         // Non-success HTTP statuses reject in ElectronHttpExecutor. Discovery
         // only needs the successful JSON body and propagates those failures.

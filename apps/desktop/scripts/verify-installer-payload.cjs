@@ -60,6 +60,14 @@ function inventory(root, prefix = '') {
     assert.deepEqual(inventory(target), original);
     fs.unlinkSync(state + '.cancel');
     assert.equal(prepare().status, 0);
+    const staged = fs.readFileSync(state, 'utf8').split(/\r?\n/)[0];
+    fs.rmSync(path.join(staged, 'payload'), { recursive: true });
+    fs.mkdirSync(path.join(staged, 'payload'));
+    assert.equal(spawnSync(helper, ['--commit', state, '0', 'en'], { windowsHide: true }).status, 1);
+    assert.ok(fs.existsSync(path.join(staged, 'install-error.log')), 'failed commit leaves diagnostic and staged directory');
+    assert.deepEqual(inventory(target), original, 'failed commit does not change installed files');
+    assert.equal(spawnSync(helper, ['--discard', state], { windowsHide: true }).status, 0);
+    assert.equal(prepare().status, 0);
     assert.equal(spawnSync(helper, ['--commit', state, '0', 'en'], { windowsHide: true }).status, 0);
     assert.deepEqual(inventory(target), inventory(source));
     assert.ok(!fs.existsSync(state));

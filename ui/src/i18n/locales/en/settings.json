@@ -95,7 +95,8 @@
       "officePreview": "Configure Office file preview.",
       "privacy": "Manage tool rules and anonymous usage data. The chat composer controls global access permissions.",
       "advanced": "Manage application retry, service, and environment variable settings.",
-      "about": "View the current version and check for updates."
+      "about": "View the current version and check for updates.",
+      "aboutWeb": "View the current version and GitHub Releases."
     },
     "titles": {
       "general": "General",
@@ -121,7 +122,7 @@
     },
     "about": {
       "versionStatus": "Version Status:",
-      "latestReleaseTime": "Latest Release Time:",
+      "latestReleaseTime": "Latest Release Date:",
       "buildTime": "Build Time:",
       "downloadAndInstall": "Download & Install",
       "downloadingAndInstalling": "Downloading...",
@@ -139,9 +140,12 @@
       },
       "currentVersion": "Current version:",
       "latestVersion": "Latest version:",
+      "webReleaseHint": "Update the Web deployment using its deployment method. Releases and installation notes are available on GitHub.",
+      "webReleaseLink": "View GitHub Releases",
       "desktopUpdate": {
         "cancel": "Cancel download",
         "progress": "Download progress",
+        "speed": "Speed:",
         "status": {
           "downloading": "Downloading",
           "checking": "Checking",
@@ -153,7 +157,6 @@
           "recovering": "Restoring services"
         },
         "reasons": {
-          "automatic": "Downloads, verifies and installs the update, then reopens the client. Restarting interrupts running tasks; save your work first. Windows may ask for administrator approval.",
           "installing": "Applying the update. The client will reopen automatically. Please wait.",
           "noCompatibleInstaller": "This release is missing automatic update files for this system or architecture.",
           "checkFailed": "Unable to check for updates. Reopen About later to retry.",

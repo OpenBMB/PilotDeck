@@ -209,7 +209,10 @@ export function createWebUpdateService({
     }
   }
 
-  return { check, apply, status: () => ({ updateInProgress, currentUpdateId, lastUpdateResult }) };
+  return {
+    info: () => ({ current: running }),
+    check, apply, status: () => ({ updateInProgress, currentUpdateId, lastUpdateResult }),
+  };
 }
 
 async function buildStagedWeb(root, progress, env) {

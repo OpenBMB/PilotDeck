@@ -1,8 +1,10 @@
 # Windows installer payload
 
 The Windows installer keeps the complete application payload and the standard
-electron-builder uninstaller, updater-cache and shortcut steps. Replacement of
-an existing installation is confirmed before any existing files are changed.
+electron-builder uninstaller, updater-cache and shortcut steps. In-app updates
+replace files in the registered installation directory without uninstalling
+the old version first. Manual installation asks whether to uninstall first,
+replace in place, or cancel; replacement is the default choice.
 
 The stock `extractUsing7za` macro extracts the application into the Windows temp
 directory and then recursively copies it into the installation directory. With
@@ -21,7 +23,7 @@ code or invoke PowerShell on the user's machine.
 
 The preparation script stages a private copy of electron-builder's NSIS
 templates under the ignored `resources/.installer-tools/` directory. It replaces
-the extraction macro, defers old-version removal until extraction succeeds, and
+the extraction macro, runs old-version removal only if explicitly chosen, and
 enables details output. It redirects the builder's
 `nsisTemplatesDir` export in the build process; it does not change `node_modules`.
 This is an internal builder API, so template edits assert their expected shape
@@ -41,24 +43,30 @@ uninstaller path.
   time for the whole installer. It starts after three seconds of observations,
   rounds up to five seconds, and returns to estimating after ten seconds without
   reported progress. Disk and antivirus activity can still make it fluctuate.
-- Interactive replacement requires Yes/No confirmation with No as the default.
-  A plain silent reinstall returns ERROR_CANCELLED (1223); the updater's explicit
-  silent `--updated` request keeps its existing unattended behavior.
+- Manual replacement offers Yes (uninstall first), No (replace in place), and
+  Cancel (keep the existing installation), with No as the default. A plain
+  silent reinstall returns ERROR_CANCELLED (1223). An explicit `--updated`
+  request replaces in place without a second prompt.
+- If a manual installer targets another directory, it permits only uninstalling
+  the registered old installation first or cancelling. In-place replacement
+  cannot silently create a second installation and repoint the registry.
 - Cancel is enabled during preparation/extraction, asks for confirmation, stops
   the decoder and cleans staging before exiting with 1223. The existing version
   remains intact. A pending cancellation dialog blocks the transition to commit.
-  Cancellation is disabled during old-version removal, commit and finalization;
-  these steps cannot safely be interrupted without full upgrade rollback.
+  Cancellation is disabled during optional old-version removal, commit and
+  finalization; these steps cannot safely be interrupted without full upgrade
+  rollback.
 - A failed extraction expands details and offers retry or cancel.
   Silent installations fail with a nonzero exit code instead of waiting for input.
 - File moves retry for up to 15 seconds when files are temporarily held by another
   process; staging cleanup retries for five seconds. Persistent failures remain
   visible instead of silently skipping files.
-- A failed extraction does not commit partial files. A failed commit attempts to
-  restore the entries it replaced; backups are retained if restoration fails.
-  This is **not full upgrade rollback**: after successful extraction and consent,
-  the upstream uninstaller removes the old version before the prepared payload
-  is committed. Cancellation and extraction failure occur before that boundary.
+- A failed extraction does not commit partial files. A failed in-place commit
+  attempts to restore the entries it replaced; backups are retained if
+  restoration fails. Files outside the new payload remain untouched. If the
+  user explicitly chooses to uninstall first, a later commit failure cannot
+  restore files removed by the old uninstaller. NSIS registry and shortcut
+  steps after commit are not part of this file-level rollback.
 - Staging needs space on the destination volume and permission to create a
   sibling directory. Directory-junction installation paths are rejected rather
   than risking a cross-volume move. Only the uniquely created staging directory
@@ -77,8 +85,9 @@ node apps/desktop/scripts/verify-installer-e2e.cjs
 These checks compile the NSIS launch paths, compare complete fixture payloads
 byte for byte (including Unicode paths), exercise corrupt archives, commit
 rollback/retry and ETA boundaries, and build/install/upgrade/uninstall an isolated
-test application. The interactive fixture checks refusal, cancellation with a
-pending modal, enabled controls and monotonic progress across log updates. Its
+test application. The interactive fixture checks uninstall-first, in-place
+replacement, refusal, cancellation with a pending modal, enabled controls and
+monotonic progress across log updates. Its
 test-only decoder adds deterministic delays, then invokes the real decoder.
 They run in the Windows release workflow. The fixture has a
 unique application identity and never launches or changes the real PilotDeck app.

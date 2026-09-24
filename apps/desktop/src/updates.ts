@@ -8,6 +8,7 @@ export type Release = { version: string; tagName: string; publishedAt?: string; 
 export type UpdateState = {
   state: "idle" | "checking" | "downloading" | "verifying" | "installing" | "recovering" | "failed" | "cancelled";
   progress: number;
+  bytesPerSecond?: number;
   reason?: string;
   version?: string;
 };
@@ -59,7 +60,8 @@ export function createUpdateController(options: {
   const { updater } = options;
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
-  updater.autoRunAppAfterInstall = true;
+  // The assisted Windows installer offers a Run checkbox on its finish page.
+  updater.autoRunAppAfterInstall = options.platform !== "win32";
   updater.allowPrerelease = false;
   updater.allowDowngrade = false;
   updater.disableDifferentialDownload = true;
@@ -74,7 +76,11 @@ export function createUpdateController(options: {
     state = { ...state, state: cancelled ? "cancelled" : "failed", reason: cancelled ? "cancelled" : ["checksumMismatch", "invalidUpdateMetadata", "noCompatibleInstaller", "upToDate"].includes(message) ? message : "updateFailed" };
   };
   updater.on("download-progress", (progress) => {
-    if (state.state === "downloading") state = { ...state, progress: Math.min(.99, progress.percent / 100) };
+    if (state.state === "downloading") state = {
+      ...state,
+      progress: Math.min(.99, progress.percent / 100),
+      bytesPerSecond: Number.isFinite(progress.bytesPerSecond) ? Math.max(0, progress.bytesPerSecond) : 0,
+    };
   });
   const recover = async () => {
     installFailed = true;
@@ -142,7 +148,9 @@ export function createUpdateController(options: {
     state = { ...state, state: "installing" };
     try {
       await options.prepareToInstall();
-      updater.quitAndInstall(true, true);
+      // On Windows, show the installer, upgrade confirmation, progress/details,
+      // and finish-page Run choice. Keep macOS's existing silent relaunch flow.
+      updater.quitAndInstall(options.platform !== "win32", options.platform !== "win32");
     } catch {
       await recover();
     }

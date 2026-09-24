@@ -13,7 +13,7 @@ const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-nsis-e2e-'));
   const project = path.join(root, 'desktop project');
   const payload = path.join(root, 'payload');
-  const target = path.join(root, 'PilotDeck Installer Test');
+  let target = path.join(root, 'PilotDeck Installer Test');
   const resources = path.join(project, 'resources');
   const name = `pilotdeck-installer-test-${crypto.randomUUID()}`;
   const productName = 'PilotDeck Installer Test';
@@ -67,25 +67,75 @@ const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
     for (const label of ['fresh install', 'upgrade']) {
       installed = true;
       if (label === 'upgrade') {
+        fs.writeFileSync(path.join(target, 'preserved-during-update.txt'), 'previous installation stays in place');
         const refused = spawnSync(setup, ['/S', '/currentuser', `/D=${target}`], { windowsHide: true, timeout: 90_000 });
         assert.equal(refused.status, 1223, 'unattended replacement requires explicit update intent');
         assert.equal(fs.readFileSync(path.join(target, 'resources', 'git', '组件.txt'), 'utf8'), 'all components retained');
+        const wrongTarget = path.join(root, 'wrong update destination');
+        const misdirected = spawnSync(setup, ['--updated', '/S', '/currentuser', `/D=${wrongTarget}`], { windowsHide: true, timeout: 90_000 });
+        assert.equal(misdirected.status, 1, 'update to a different directory must fail before replacement');
+        assert.ok(fs.existsSync(path.join(target, `${productName}.exe`)), 'wrong target keeps installed executable');
+        assert.ok(!fs.existsSync(path.join(wrongTarget, `${productName}.exe`)), 'wrong target stays empty');
       }
-      run(setup, ['/S', '/currentuser', ...(label === 'upgrade' ? ['--updated'] : []), `/D=${target}`]);
+      // electron-updater launches upgrades without /D; NSIS must reuse the
+      // registered InstallLocation instead of installing in a default folder.
+      run(setup, label === 'upgrade'
+        ? ['--updated', '/S', '/currentuser']
+        : ['/S', '/currentuser', `/D=${target}`]);
       assert.equal(fs.readFileSync(path.join(target, 'resources', 'git', '组件.txt'), 'utf8'), 'all components retained', label);
       assert.ok(fs.existsSync(path.join(target, `Uninstall ${productName}.exe`)), 'uninstaller exists');
+      if (label === 'upgrade') assert.ok(fs.existsSync(path.join(target, 'preserved-during-update.txt')), 'automatic update must not uninstall the old version');
       assert.ok(!fs.readdirSync(root).some(file => file.startsWith('.pilotdeck-install-')), 'staging cleaned');
     }
     const marker = path.join(target, 'old-version-marker.txt');
     fs.writeFileSync(marker, 'must survive refusal and cancellation');
-    for (const mode of ['decline', 'cancel-now', 'cancel', 'approve']) {
+    for (const mode of ['decline', 'cancel-now', 'cancel', 'overwrite', 'approve']) {
       run(uiTests, [setup, target, mode]);
       assert.equal(fs.readFileSync(path.join(target, 'resources', 'git', '组件.txt'), 'utf8'), 'all components retained');
-      if (mode !== 'approve') assert.equal(fs.readFileSync(marker, 'utf8'), 'must survive refusal and cancellation');
+      if (mode !== 'approve') assert.equal(fs.readFileSync(marker, 'utf8'), 'must survive refusal and cancellation', 'in-place replacement preserves unknown files');
       else assert.ok(!fs.existsSync(marker), 'confirmed upgrade runs old-version uninstall');
       assert.ok(fs.existsSync(path.join(target, `Uninstall ${productName}.exe`)));
       assert.ok(!fs.readdirSync(root).some(file => file.startsWith('.pilotdeck-install-')), 'cancel/commit cleans staging');
     }
+
+    // Older installers can register a custom directory that does not include
+    // APP_FILENAME. An --updated run must use that exact path. Previously,
+    // instFilesPre appended APP_FILENAME and staged inside the old directory;
+    // the previous uninstall-first flow then deleted that payload before commit.
+    const registryRoot = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';
+    const query = spawnSync('reg.exe', ['query', registryRoot, '/s', '/f', productName], { encoding: 'utf8', windowsHide: true });
+    assert.equal(query.status, 0, query.stderr || 'test uninstall registry entry missing');
+    const registryMatch = query.stdout.match(/HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\([^\r\n]+)/i);
+    assert.ok(registryMatch, 'isolated uninstall registry key');
+    const key = registryMatch[1].trim();
+    const legacyTarget = path.join(root, 'legacy location');
+    fs.renameSync(target, legacyTarget);
+    target = legacyTarget;
+    run('reg.exe', ['add', `HKCU\\Software\\${key}`, '/v', 'InstallLocation', '/t', 'REG_SZ', '/d', target, '/f']);
+    run('reg.exe', ['add', `${registryRoot}\\${key}`, '/v', 'UninstallString', '/t', 'REG_SZ', '/d', `"${path.join(target, `Uninstall ${productName}.exe`)}" /currentuser`, '/f']);
+    run(setup, ['--updated', '/S', '/currentuser']);
+    assert.ok(fs.existsSync(path.join(target, `${productName}.exe`)), 'upgrade must install at original custom directory');
+    assert.ok(!fs.existsSync(path.join(target, productName)), 'upgrade must not create a nested application directory');
+    assert.ok(!fs.readdirSync(target).some(name => name.startsWith('.pilotdeck-install-')), 'staging must not remain in installed directory');
+    run(uiTests, [setup, target, 'approve-updated']);
+    assert.ok(fs.existsSync(path.join(target, `${productName}.exe`)), 'interactive updater must preserve original custom directory');
+    assert.ok(!fs.existsSync(path.join(target, productName)), 'interactive updater must not create a nested application directory');
+    const movedTarget = path.join(root, 'moved installation', productName);
+    run(uiTests, [setup, movedTarget, 'move-decline']);
+    assert.ok(fs.existsSync(path.join(target, `${productName}.exe`)), 'declining a move must keep the old installation');
+    assert.ok(!fs.existsSync(path.join(movedTarget, `${productName}.exe`)), 'declining a move must not create a second installation');
+    const locationKey = `HKCU\\Software\\${key}`;
+    const registeredLocation = () => {
+      const result = spawnSync('reg.exe', ['query', locationKey, '/v', 'InstallLocation'], { encoding: 'utf8', windowsHide: true });
+      assert.equal(result.status, 0, result.stderr || 'installed location missing');
+      return result.stdout;
+    };
+    assert.ok(registeredLocation().includes(target), 'declining a move must keep the old registered location');
+    run(uiTests, [setup, movedTarget, 'move-approve']);
+    assert.ok(!fs.existsSync(path.join(target, `${productName}.exe`)), 'moving to a different directory must uninstall the old version');
+    assert.ok(fs.existsSync(path.join(movedTarget, `${productName}.exe`)), 'moving with explicit consent installs in the new directory');
+    assert.ok(registeredLocation().includes(movedTarget), 'an approved move must register the new installation directory');
+    target = movedTarget;
     run(path.join(target, `Uninstall ${productName}.exe`), ['/S', '/currentuser', `_?=${target}`]);
     installed = false;
     assert.ok(!fs.existsSync(path.join(target, 'resources')), 'uninstall removed test payload');

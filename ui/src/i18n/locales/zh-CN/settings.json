@@ -95,7 +95,8 @@
       "officePreview": "选择 Office 文档的只读预览方式。PDF 始终使用 PilotDeck 内置浏览器，不受此设置影响。",
       "privacy": "管理工具规则和匿名使用数据。全局访问权限由聊天输入框统一设置。",
       "advanced": "管理应用级的重试、服务与环境变量配置。",
-      "about": "查看当前版本并检查更新。"
+      "about": "查看当前版本并检查更新。",
+      "aboutWeb": "查看当前版本和 GitHub 发行信息。"
     },
     "titles": {
       "general": "通用",
@@ -121,7 +122,7 @@
     },
     "about": {
       "versionStatus": "版本状态：",
-      "latestReleaseTime": "新版发布时间：",
+      "latestReleaseTime": "新版发布日期：",
       "buildTime": "构建时间：",
       "downloadAndInstall": "下载安装",
       "downloadingAndInstalling": "下载中...",
@@ -139,9 +140,12 @@
       },
       "currentVersion": "当前版本：",
       "latestVersion": "最新版本：",
+      "webReleaseHint": "网页版请按当前部署方式更新。发行版本和安装说明可在 GitHub 查看。",
+      "webReleaseLink": "查看 GitHub Releases",
       "desktopUpdate": {
         "cancel": "取消下载",
         "progress": "下载进度",
+        "speed": "下载速度：",
         "status": {
           "downloading": "正在下载",
           "checking": "检查中",
@@ -153,7 +157,6 @@
           "recovering": "正在恢复服务"
         },
         "reasons": {
-          "automatic": "点击后会自动下载、校验并安装更新，然后重新打开客户端。更新重启会中断正在运行的任务，请先保存工作。Windows 可能需要确认管理员授权。",
           "installing": "正在应用更新，客户端将自动重新打开，请稍候。",
           "noCompatibleInstaller": "该版本缺少当前系统或架构的自动更新文件，暂时无法更新。",
           "checkFailed": "暂时无法检查更新，请稍后重新打开“关于”重试。",
