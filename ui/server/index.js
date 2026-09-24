@@ -1746,7 +1746,9 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/data', authenticat
     } catch (error) {
         console.error('Error generating interactive spreadsheet preview:', error);
         return res.status(error.statusCode || 500).json({
-            error: error.message || 'Failed to generate interactive spreadsheet preview',
+            error: error.statusCode
+                ? error.message
+                : 'Unable to generate spreadsheet preview. Please retry.',
             code: error.code || 'SPREADSHEET_INTERACTIVE_PREVIEW_FAILED',
         });
     }

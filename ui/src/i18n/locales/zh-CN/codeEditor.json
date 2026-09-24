@@ -80,6 +80,7 @@
     "loadingPresentation": "正在解析演示文稿..."
   },
   "spreadsheetPreview": {
+    "cannotPreviewTitle": "无法预览此表格",
     "readingWorkbook": "正在读取工作簿...",
     "renderingSheet": "正在生成工作表预览...",
     "failedMessage": "未能生成工作表预览。",
@@ -90,6 +91,14 @@
     "worksheets": "工作表",
     "previousWorksheets": "向前浏览工作表",
     "nextWorksheets": "向后浏览工作表",
+    "errors": {
+      "invalidFile": "文件不是有效的工作簿，或文件内容已损坏。请下载后检查文件。",
+      "cannotParse": "当前预览器无法解析此工作簿，文件可能包含尚未支持的结构。可下载后在表格应用中打开。",
+      "tooLarge": "此工作簿内容过大，暂时无法在这里预览。可下载后在表格应用中打开。",
+      "noVisibleSheets": "此工作簿没有可显示的工作表。",
+      "fileMissing": "找不到这个文件，它可能已被移动或删除。",
+      "retry": "预览暂时失败，请重试；你也可以下载文件后在本地打开。"
+    },
     "warnings": {
       "SPREADSHEET_IMAGES_NOT_RENDERED": "交互式预览暂不显示工作簿中的嵌入图片。",
       "SPREADSHEET_MACROS_NOT_RENDERED": "交互式预览不会运行工作簿宏。"
