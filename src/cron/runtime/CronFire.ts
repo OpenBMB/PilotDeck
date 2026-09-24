@@ -2,7 +2,7 @@ import type { Gateway, GatewayEvent } from "../../gateway/index.js";
 import type { CronResultDeliveryHandler, CronRunRecord, CronRunOutcome, CronTask } from "../protocol/types.js";
 import type { CronTaskStore } from "../storage/CronTaskStore.js";
 import { resolveCronTimezone } from "../CronTimezone.js";
-import { computeNextRunAt } from "./CronSchedule.js";
+import { computeNextRunAt, CRON_SCHEDULE_COMPUTATION_VERSION } from "./CronSchedule.js";
 
 export type CronActiveRun = {
   runId: string;
@@ -271,7 +271,7 @@ export class CronFire {
         status: "scheduled",
         nextRunAt,
         revision: (current.revision ?? 0) + 1,
-        scheduleComputationVersion: 2,
+        scheduleComputationVersion: CRON_SCHEDULE_COMPUTATION_VERSION,
         updatedAt: finishedAt.toISOString(),
       };
     });

@@ -8,7 +8,7 @@ export function createCronCreateTool(runtime: CronToolRuntime): PilotDeckToolDef
   return {
     name: "cron_create",
     title: "Create Cron Task",
-    description: "Create a one-time or recurring background Cron task that submits future work back into a session. For relative reminders like 'in 10 minutes', use schedule.type='delay'. For absolute natural-language times like tonight, tomorrow morning, or next Monday, call get_current_time first to resolve the current local time/timezone, then pass a future schedule.type='once' runAt.",
+    description: "Create a one-time or recurring background Cron task that submits future work back into a session. For relative reminders like 'in 10 minutes', use schedule.type='delay'. For absolute natural-language times like tonight, tomorrow morning, or next Monday, call get_current_time first to resolve the current local time/timezone, then pass a future schedule.type='once' runAt. Recurring expressions use Unix cron day matching: if neither day field starts with '*', day-of-month and day-of-week match with OR, not AND; see the expression schema for examples.",
     kind: "session",
     inputSchema: {
       type: "object",

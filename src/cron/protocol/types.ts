@@ -39,7 +39,7 @@ export type CronTask = {
   nextRunAt?: string;
   lastRunId?: string;
   revision?: number;
-  scheduleComputationVersion?: 2;
+  scheduleComputationVersion?: 2 | 3;
   originSessionKey?: string;
   originChannelKey?: GatewayChannelKey;
 };

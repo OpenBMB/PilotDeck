@@ -4,6 +4,14 @@ PilotDeck keeps Web and desktop sources on `main`. The desktop application is a
 thin Electron shell around the same gateway and Web UI; desktop-specific runtime
 behavior is enabled only when Electron sets `PILOTDECK_DESKTOP=1`.
 
+## Cron upgrade compatibility
+
+The schedule computation version 3 upgrade changes existing recurring tasks
+with two restricted day fields from AND to Unix cron OR matching. These tasks
+may run more often. Review affected schedules before upgrading; see
+[Cron scheduling and the version 3 upgrade](cron-scheduling.md) for examples
+and pending-run migration behavior.
+
 ## Web compatibility
 
 - The existing root and `ui` build commands remain the source of the Web build.
