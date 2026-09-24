@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import LlmConfigurationStep from './LlmConfigurationStep';
@@ -21,12 +21,16 @@ const connectionTestResult = (modelId: string, imageInput: 'supported' | 'unsupp
 
 vi.mock('react-i18next', async () => {
   const enOnboarding = (await import('../../../../i18n/locales/en/onboarding.json')).default as Record<string, unknown>;
-  const lookupTranslation = (key: string) => {
+  const lookupTranslation = (key: string, values?: Record<string, unknown>) => {
     const value = key.split('.').reduce<unknown>(
       (current, segment) => (current && typeof current === 'object' ? (current as Record<string, unknown>)[segment] : undefined),
       enOnboarding,
     );
-    return typeof value === 'string' ? value : key;
+    if (typeof value !== 'string') return key;
+    return Object.entries(values || {}).reduce(
+      (result, [name, replacement]) => result.replaceAll(`{{${name}}}`, String(replacement)),
+      value,
+    );
   };
 
   return {
@@ -80,6 +84,7 @@ describe('LlmConfigurationStep', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     vi.clearAllMocks();
   });
@@ -295,6 +300,49 @@ describe('LlmConfigurationStep', () => {
       (button) => !(button as HTMLButtonElement).disabled,
     )).toBe(true);
     expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+  });
+
+  it.each([
+    ['RATE_LIMITED', 'Too many connection tests. Retry in 2 seconds.'],
+    ['TEST_BUSY', 'A previous connection test is still running. Retry in 2 seconds.'],
+  ])('shows the server retry delay and blocks repeated %s tests', async (code, expectedMessage) => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'deepseek-v4-pro' }));
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/config/test-connections') {
+        return {
+          ok: false,
+          status: 429,
+          headers: new Headers({ 'Retry-After': '2' }),
+          json: async () => ({ code, message: 'Connection test unavailable.' }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(expectedMessage)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry in 2s' })).toHaveProperty('disabled', true);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByText(expectedMessage.replace('2', '1'))).toBeTruthy();
+    expect(screen.queryByText(expectedMessage)).toBeNull();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.queryByText(expectedMessage.replace('2', '1'))).toBeNull();
+    expect(screen.getByRole('button', { name: /Test failed.*Retest/i })).toHaveProperty('disabled', false);
   });
 
   it('places a typed model ID into the selected list on enter', async () => {
