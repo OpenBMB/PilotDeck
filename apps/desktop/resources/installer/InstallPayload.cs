@@ -219,9 +219,10 @@ internal static class InstallPayload
         string stateFile = null;
         bool prepared = false;
         bool committed = false;
+        bool commitOnly = false;
         try
         {
-            bool commitOnly = args.Length == 4 && args[0] == "--commit";
+            commitOnly = args.Length == 4 && args[0] == "--commit";
             bool discard = args.Length == 2 && args[0] == "--discard";
             bool prepareOnly = args.Length == 6;
             if (!commitOnly && !discard && !prepareOnly && args.Length != 5)
@@ -299,6 +300,13 @@ internal static class InstallPayload
         catch (Exception error)
         {
             Console.Error.WriteLine(error.ToString());
+            // An update has already removed the old installation by this
+            // point. Keep the extracted files and the exact failure for repair.
+            if (commitOnly && stage != null)
+            {
+                try { File.WriteAllText(Path.Combine(stage, "install-error.log"), error.ToString()); }
+                catch { /* Keep the primary installation error. */ }
+            }
             Status(Text("Installation failed. See details below.", "安装失败，请查看下方详情。"), null);
             return 1;
         }
@@ -308,7 +316,7 @@ internal static class InstallPayload
             // recursively delete target or externally provided paths.
             try
             {
-                if (!prepared && stage != null && Directory.Exists(stage))
+                if (!prepared && !(commitOnly && !committed) && stage != null && Directory.Exists(stage))
                 {
                     string backup = Path.Combine(stage, "backup");
                     bool hasRecovery = !committed && Directory.Exists(backup) && Directory.GetFileSystemEntries(backup).Length != 0;

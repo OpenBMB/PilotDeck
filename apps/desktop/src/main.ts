@@ -881,6 +881,9 @@ function getUpdateController() {
   const releases = require(path.join(resolveRuntimeRoot(), "ui/server/services/releaseService.js"));
   const repository = releases.normalizeRepository(process.env.PILOTDECK_UPDATE_REPOSITORY || readBuildMetadata().repository || DEFAULT_UPDATE_REPOSITORY);
   const updater = process.platform === "darwin" ? new MacUpdater() : new NsisUpdater();
+  // The updater launches NSIS without a directory-page choice. Pass the
+  // executable's actual installed directory so custom paths survive upgrades.
+  if (updater instanceof NsisUpdater && app.isPackaged) updater.installDirectory = path.dirname(app.getPath("exe"));
   const network = createUpdateNetwork(updater.netSession, () => {
     const configService = require(path.join(resolveRuntimeRoot(), "ui/server/services/pilotdeckConfig.js"));
     const record = configService.readPilotDeckConfigFile();

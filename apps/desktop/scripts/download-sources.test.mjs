@@ -63,7 +63,7 @@ test("resolveDownloadSource prefers archive over explicit URL and base URL", () 
   });
 
   assert.equal(source.type, "archive");
-  assert.equal(source.path, "/cache/pkg.zip");
+  assert.equal(source.path, resolve("/cache/pkg.zip"));
   assert.equal(source.source, "ARCHIVE");
 });
 

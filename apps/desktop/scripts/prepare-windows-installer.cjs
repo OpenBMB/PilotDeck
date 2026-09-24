@@ -53,6 +53,13 @@ async function prepareWindowsInstaller(desktopRoot = path.resolve(__dirname, '..
     'InitPluginsDir\n!insertmacro PilotDeckConfirmUpgrade\nStrCpy $PilotDeckState "$PLUGINSDIR\\payload.state"');
   section = '!macro PilotDeckReplaceOldVersion\n' + commit + '!macroend\n' + section;
   fs.writeFileSync(path.join(stagedTemplates, 'installSection.nsh'), section);
+  // The directory page is skipped for --updated, but the install-page
+  // pre-callback still appends APP_FILENAME to custom paths. A visible updater
+  // must retain the registered installation directory byte for byte.
+  let assisted = fs.readFileSync(path.join(templates, 'assistedInstaller.nsh'), 'utf8');
+  assisted = replaceOnce(assisted, 'Function instFilesPre\n      ${StrContains}',
+    'Function instFilesPre\n      ${If} ${isUpdated}\n        Return\n      ${EndIf}\n      ${StrContains}');
+  fs.writeFileSync(path.join(stagedTemplates, 'assistedInstaller.nsh'), assisted);
   const nsisUtil = require(path.join(libRoot, 'out', 'targets', 'nsis', 'nsisUtil.js'));
   if (!Object.getOwnPropertyDescriptor(nsisUtil, 'nsisTemplatesDir')?.writable) {
     throw new Error('Unsupported electron-builder NSIS template directory API');

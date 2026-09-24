@@ -1,5 +1,17 @@
 ; Included inside the install section, after the upstream extraction macro.
 !macro PilotDeckConfirmUpgrade
+  ; Never remove a registered installation while writing the replacement to
+  ; another directory. This also catches future builder changes to /D handling.
+  ${If} ${isUpdated}
+    ReadRegStr $R2 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ${If} $R2 != ""
+    ${AndIf} $R2 != $INSTDIR
+      DetailPrint "Update destination differs from the installed location: $R2"
+      MessageBox MB_OK|MB_ICONSTOP "The update destination does not match the current installation. The existing version was kept. Please run the installer manually." /SD IDOK
+      SetErrorLevel 1
+      Quit
+    ${EndIf}
+  ${EndIf}
   ReadRegStr $R0 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" UninstallString
   ${If} $R0 == ""
     ReadRegStr $R0 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation

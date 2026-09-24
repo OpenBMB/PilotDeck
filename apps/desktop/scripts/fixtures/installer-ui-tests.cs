@@ -29,12 +29,13 @@ class InstallerUiTests
     static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
-        using (var process = Process.Start(new ProcessStartInfo(args[0], "/currentuser /D=" + args[1]) { UseShellExecute = false }))
+        string mode = args[2];
+        string installerArgs = mode == "approve-updated" ? "--updated /currentuser" : "/currentuser /D=" + args[1];
+        using (var process = Process.Start(new ProcessStartInfo(args[0], installerArgs) { UseShellExecute = false }))
         {
             try
             {
-                string mode = args[2];
-                bool prompted = false, cancelSent = false, cancelConfirmed = false, sawProgress = false, openedDetails = false;
+                bool prompted = false, cancelSent = false, cancelConfirmed = false, sawProgress = false, openedDetails = false, sawRunOption = false;
                 int last = 0, advances = 0;
                 var timer = Stopwatch.StartNew();
                 long nextClick = 0;
@@ -106,7 +107,10 @@ class InstallerUiTests
                             // Uncheck the finish-page 'run' option (fixture app is data).
                             foreach (var child in children)
                                 if (Text(child).Contains("Run ") || Text(child).Contains("运行"))
+                                {
+                                    sawRunOption = true;
                                     SendMessage(child, 0x00F1, IntPtr.Zero, IntPtr.Zero);
+                                }
                             Click(next);
                             nextClick = timer.ElapsedMilliseconds + 250;
                         }
@@ -116,8 +120,9 @@ class InstallerUiTests
                 Check(process.HasExited, "Installer UI timed out: " + lastWindowText);
                 Check(prompted, "Existing installation confirmation was not shown");
                 if (mode.StartsWith("cancel")) Check(cancelSent && cancelConfirmed && advances >= 2, "Cancellation/progress path not exercised");
-                if (mode == "approve") Check(sawProgress && advances >= 3 && last >= 900, "Cumulative progress not exercised");
-                Check(process.ExitCode == (mode == "approve" ? 0 : 1223), "Unexpected exit " + process.ExitCode);
+                if (mode.StartsWith("approve")) Check(sawProgress && advances >= 3 && last >= 900, "Cumulative progress not exercised");
+                if (mode == "approve-updated") Check(sawRunOption, "Visible update must offer to start the installed app");
+                Check(process.ExitCode == (mode.StartsWith("approve") ? 0 : 1223), "Unexpected exit " + process.ExitCode);
                 Console.WriteLine("PASS: interactive " + mode + ", progress changes=" + advances + ", final=" + last);
                 return 0;
             }
