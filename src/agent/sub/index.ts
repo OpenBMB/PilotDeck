@@ -7,6 +7,15 @@ export {
   type SubagentDefinitionId,
 } from "./builtinSubagentTypes.js";
 export {
+  MAX_SUBAGENT_DEPTH,
+  formatSubagentCatalog,
+  parseSubagentProfiles,
+  resolveSubagentProfiles,
+  selectDispatchableSubagentProfiles,
+  type ResolvedSubagentProfile,
+  type SubagentProfileConfig,
+} from "./subagentProfiles.js";
+export {
   FORK_BOILERPLATE_TAG,
   FORK_PLACEHOLDER_RESULT,
   buildChildMessage,

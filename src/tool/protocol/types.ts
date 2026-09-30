@@ -54,6 +54,8 @@ export type PilotDeckSubagentForkApi = {
   isAllowedDefinition(id: string): boolean;
   fork(args: {
     definitionId: string;
+    /** Exact configured provider/model reference; omission preserves routing. */
+    model?: string;
     directive: string;
     subagentId: string;
     toolCallId?: string;
