@@ -52,6 +52,7 @@ const CATALOG_PROVIDER_DEFAULT_URLS = {
   volc_ark: 'https://ark.cn-beijing.volces.com/api/v3',
   zhipu: 'https://api.z.ai/api/paas/v4',
   openrouter: 'https://openrouter.ai/api/v1',
+  requesty: 'https://router.requesty.ai/v1',
   ollama: 'http://localhost:11434/v1',
 };
 let configWriteQueue = Promise.resolve();

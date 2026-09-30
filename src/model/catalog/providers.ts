@@ -1141,6 +1141,14 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
     models: {},
   },
 
+  requesty: {
+    displayName: "Requesty",
+    protocol: "openai",
+    defaultUrl: "https://router.requesty.ai/v1",
+    apiKeyEnvVar: "REQUESTY_API_KEY",
+    models: {},
+  },
+
   ollama: {
     displayName: "Ollama",
     protocol: "openai",

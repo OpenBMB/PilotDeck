@@ -56,4 +56,18 @@ describe('catalogProviders maxOutputTokens', () => {
     expect(ollama?.models.find((model) => model.id === 'qwen3:0.6b')?.maxContextTokens).toBe(40_960);
     expect(ollama?.models.find((model) => model.id === 'llama3.1:8b')?.maxOutputTokens).toBe(8_192);
   });
+
+  it('exposes Requesty as an OpenAI-compatible gateway provider', () => {
+    const requesty = findCatalogProviderById('requesty');
+
+    expect(requesty?.protocol).toBe('openai');
+    expect(requesty?.defaultUrl).toBe('https://router.requesty.ai/v1');
+    expect(requesty?.apiKeyEnvVar).toBe('REQUESTY_API_KEY');
+    expect(requesty?.models.map((model) => model.id)).toEqual([
+      'anthropic/claude-sonnet-5',
+      'openai/gpt-5.4',
+      'google/gemini-3.1-pro-preview',
+      'deepseek/deepseek-chat',
+    ]);
+  });
 });
