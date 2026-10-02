@@ -1,4 +1,6 @@
 import path from "node:path";
+import { realpathSync } from "node:fs";
+import { resolveRealWritePath } from "../../tool/builtin/filesystem/pathSafety.js";
 import type { PermissionContext, PermissionRule } from "../protocol/types.js";
 
 const FILE_WRITE_TOOLS = new Set(["write_file", "edit_file"]);
@@ -61,9 +63,19 @@ function matchFilePathPattern(pattern: string, input: unknown, context: Permissi
 function isFileInputInsideWorkspace(input: unknown, context: PermissionContext | undefined): boolean {
   const filePath = resolveInputFilePath(input, context);
   if (!filePath || !context) return false;
-  return [context.cwd, ...context.additionalWorkingDirectories]
-    .map((root) => path.resolve(root))
-    .some((root) => isPathWithinRoot(filePath, root));
+  const roots = [context.cwd, ...context.additionalWorkingDirectories].map((root) => path.resolve(root));
+  if (!roots.some((root) => isPathWithinRoot(filePath, root))) return false;
+  // A symlink inside the workspace can still point the write elsewhere.
+  const realFilePath = resolveRealWritePath(filePath);
+  return roots.map(safeRealpath).some((root) => isPathWithinRoot(realFilePath, root));
+}
+
+function safeRealpath(value: string): string {
+  try {
+    return realpathSync(value);
+  } catch {
+    return value;
+  }
 }
 
 function resolveInputFilePath(input: unknown, context: PermissionContext | undefined): string | undefined {
