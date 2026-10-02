@@ -467,7 +467,8 @@ function shouldAutoOpenUrlFromOutput(value = '') {
 const wss = new WebSocketServer({
     server,
     verifyClient: (info) => {
-        console.log('WebSocket connection attempt to:', info.req.url);
+        // Log only the path: the query string carries the auth token.
+        console.log('WebSocket connection attempt to:', info.req.url?.split('?')[0]);
 
         // Platform / no-login mode: allow connection without token
         if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
@@ -2283,7 +2284,7 @@ function handlePluginWsProxy(clientWs, pathname) {
 // WebSocket connection handler that routes based on URL path
 wss.on('connection', (ws, request) => {
     const url = request.url;
-    console.log('[INFO] Client connected to:', url);
+    console.log('[INFO] Client connected to:', url?.split('?')[0]);
 
     // Parse URL to get pathname without query parameters
     const urlObj = new URL(url, 'http://localhost');
