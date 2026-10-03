@@ -22,6 +22,8 @@ import type {
   CanonicalUsage,
 } from "../../model/index.js";
 import { messageContent } from "../../model/protocol/clone.js";
+import { cloneMessages } from "../../model/index.js";
+import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
 import { ToolRegistry } from "../../tool/registry/ToolRegistry.js";
@@ -45,6 +47,7 @@ import {
   cloneReadFileState,
   cloneWriteSnapshots,
 } from "./contextInheritance.js";
+import { SubagentContinuationError } from "./continuation.js";
 
 
 const SUMMARY_FIELDS = ["Scope", "Result", "Key files", "Files changed", "Issues"] as const;
@@ -69,6 +72,28 @@ export type SubAgentSessionOptions = {
   subagentSessionId: string;
   /** Stable subagent UUID — mirrors C3 sidechain naming. */
   subagentId: string;
+  /**
+   * task_id continuation: prior durable child messages restored from the
+   * sidechain transcript. The new `directive` is appended as the only new
+   * message; the child identity (definition / provider / model / session id)
+   * stays the one saved with the task.
+   */
+  priorMessages?: CanonicalMessage[];
+  /**
+   * Round index for continuation runs — produces unique follow-up turn ids
+   * (`<subagentId>-t<index>`). Defaults to 0 (first fork round).
+   */
+  turnIndex?: number;
+  /**
+   * task_id continuation: provider/model pinned from the task's saved
+   * metadata, so a parent reload or changed subagent-model config cannot
+   * silently switch the child's model.
+   */
+  continuationModel?: {
+    provider: string;
+    model: string;
+    modelMultimodal?: import("../../model/index.js").MultimodalConstraints;
+  };
   /** Optional cap on AgentLoop turns inside the fork. Unbounded when omitted. */
   maxTurns?: number;
   /** Abort signal forwarded to the child loop. */
@@ -80,6 +105,11 @@ export type SubAgentSessionOptions = {
    */
   sidechainTranscript?: SidechainTranscriptWriter;
 };
+
+/** Unique per-round turn id inside a sidechain transcript. */
+export function subagentTurnId(subagentId: string, turnIndex: number): string {
+  return `${subagentId}-t${turnIndex}`;
+}
 
 /**
  * Minimal sidechain writer surface used by SubAgentSession. Lives in this
@@ -94,6 +124,24 @@ export type SidechainTranscriptWriter = {
     metadata?: Record<string, unknown>,
   ): Promise<void>;
   recordDurableMessage(sessionId: string, turnId: string, message: CanonicalMessage): Promise<void>;
+  /** Terminal result of the round — required for replayable transcripts. */
+  recordTurnResult?(
+    sessionId: string,
+    turnId: string,
+    result: import("../protocol/result.js").AgentTurnResult,
+  ): Promise<void>;
+  /** Compaction boundary inside the sidechain (replay slices after it). */
+  recordControlBoundary?(
+    sessionId: string,
+    turnId: string,
+    boundary: AgentControlBoundaryTranscriptEntry["boundary"],
+  ): Promise<void>;
+  /** Identity/runtime metadata for the sidechain (task_id continuation). */
+  recordSessionMetadata?(
+    sessionId: string,
+    turnId: string,
+    metadata: import("../../session/transcript/TranscriptEntry.js").SessionMetadataValue,
+  ): Promise<void>;
 };
 
 export type SubagentReport = {
@@ -116,10 +164,17 @@ export class SubAgentSession {
   async run(): Promise<SubagentReport> {
     const startedAt = Date.now();
 
+    const turnId = subagentTurnId(this.options.subagentId, this.options.turnIndex ?? 0);
     const messages = this.buildInitialMessages();
+    // Continuation rounds append ONLY the new directive to the transcript —
+    // the prior history is already durable there from earlier rounds.
+    const acceptedInputMessages = this.options.priorMessages?.length
+      ? messages.slice(messages.length - 1)
+      : messages;
     const subRegistry = this.buildScopedRegistry();
     const subDependencies = this.cloneDependencies(subRegistry);
     const subConfig = this.buildConfig();
+    let usedModel = { provider: subConfig.provider, model: subConfig.model };
 
     const loop = new AgentLoop(subConfig, subDependencies, {
       readFileState: cloneReadFileState(this.options.parentReadFileState),
@@ -127,20 +182,51 @@ export class SubAgentSession {
     });
 
     let last: AgentLoopRunResult | undefined;
-    const turnId = `${this.options.subagentId}-t0`;
-    if (this.options.sidechainTranscript) {
-      await this.options.sidechainTranscript.recordAcceptedInput(
-        this.options.subagentSessionId,
-        turnId,
-        messages,
-      );
+    const sidechain = this.options.sidechainTranscript;
+    const sidechainSessionId = this.options.subagentSessionId;
+    if (sidechain) {
+      await sidechain.recordAcceptedInput(sidechainSessionId, turnId, acceptedInputMessages);
+      // Persist the child's identity/runtime/model so a continuation after a
+      // parent session reload restores the same child. No permission state is
+      // recorded — current parent permissions always apply.
+      await sidechain.recordSessionMetadata?.(sidechainSessionId, turnId, {
+        subagentTask: {
+          formatVersion: 2,
+          subagentId: this.options.subagentId,
+          definitionId: this.options.definition.id,
+          provider: subConfig.provider,
+          model: subConfig.model,
+          parentSessionId: this.options.parentSessionId,
+          subagentSessionId: sidechainSessionId,
+        },
+      });
     }
     const generator = loop.run({
-      sessionId: this.options.subagentSessionId,
+      sessionId: sidechainSessionId,
       turnId,
       messages,
       maxTurns: this.options.maxTurns,
       abortSignal: this.options.abortSignal,
+      modelOverride: this.options.continuationModel,
+      ...(sidechain
+        ? {
+            onCompactPersisted: async ({
+              boundary,
+              messages: compactMessages,
+            }: {
+              boundary: AgentControlBoundaryTranscriptEntry["boundary"];
+              messages: CanonicalMessage[];
+            }) => {
+              // Mirror the parent-side persistence contract: boundary first,
+              // then the compact replacement messages (replay slices the
+              // history after the boundary).
+              await sidechain.recordControlBoundary?.(sidechainSessionId, turnId, boundary);
+              for (const message of compactMessages) {
+                await sidechain.recordDurableMessage(sidechainSessionId, turnId, message);
+              }
+            },
+          }
+        : {}),
     });
     while (true) {
       const next = await generator.next();
@@ -149,20 +235,40 @@ export class SubAgentSession {
         break;
       }
       const event = next.value;
+      if (event.type === "model_event" && event.event.type === "request_started") {
+        usedModel = { provider: event.event.provider, model: event.event.model };
+      }
       this.forwardActivity(event);
       if (
-        this.options.sidechainTranscript &&
+        sidechain &&
         (event.type === "assistant_message" || event.type === "tool_results_projected")
       ) {
-        await this.options.sidechainTranscript.recordDurableMessage(
-          this.options.subagentSessionId,
+        await sidechain.recordDurableMessage(
+          sidechainSessionId,
           turnId,
-          event.type === "assistant_message" ? event.message : event.message,
+          event.message,
         );
       }
     }
     if (!last) {
       throw new Error("SubAgentSession: AgentLoop returned no result");
+    }
+    // Record the terminal result BEFORE surfacing failure: the round is
+    // durable either way, and replay only trusts turns with a turn_result.
+    // The continuation loader refuses rounds whose result is not a success,
+    // so failed rounds keep their context separate from any future attempt.
+    if (sidechain) {
+      await sidechain.recordSessionMetadata?.(sidechainSessionId, turnId, {
+        subagentTask: {
+          formatVersion: 2,
+          subagentId: this.options.subagentId,
+          definitionId: this.options.definition.id,
+          ...usedModel,
+          parentSessionId: this.options.parentSessionId,
+          subagentSessionId: sidechainSessionId,
+        },
+      });
+      await sidechain.recordTurnResult?.(sidechainSessionId, turnId, last.result);
     }
     if (last.result.type === "aborted") {
       throw new Error(
@@ -189,6 +295,16 @@ export class SubAgentSession {
   }
 
   private buildInitialMessages(): CanonicalMessage[] {
+    const prior = this.options.priorMessages;
+    if (prior && prior.length > 0) {
+      // task_id continuation: restored durable history followed by exactly
+      // one new user directive.
+      const directiveMessage: CanonicalMessage = {
+        role: "user",
+        content: [{ type: "text", text: this.options.directive }],
+      };
+      return [...cloneMessages(prior), directiveMessage];
+    }
     return buildForkedMessages(this.options.directive);
   }
 
@@ -290,6 +406,7 @@ export class SubAgentSession {
       getModelMaxContextTokens: this.options.parentDependencies.getModelMaxContextTokens,
       getModelMaxOutputTokens: this.options.parentDependencies.getModelMaxOutputTokens,
       getModelTokenLimits: this.options.parentDependencies.getModelTokenLimits,
+      getModelMultimodal: this.options.parentDependencies.getModelMultimodal,
       getModelProtocol: this.options.parentDependencies.getModelProtocol,
       getModelSupportsPromptCache: this.options.parentDependencies.getModelSupportsPromptCache,
       subagentTranscript: this.options.parentDependencies.subagentTranscript,
@@ -298,7 +415,25 @@ export class SubAgentSession {
 
   private buildConfig(): AgentRuntimeConfig {
     const parent = this.options.parentConfig;
-    const subagentModel = parent.subagentModel;
+    // Continuation pins the saved provider/model (child identity) ahead of
+    // the parent's current subagent-model preference.
+    const savedModel = this.options.continuationModel;
+    let subagentModel = parent.subagentModel;
+    if (savedModel) {
+      const resolveLimits = this.options.parentDependencies.getModelTokenLimits;
+      const limits = resolveLimits?.(savedModel.provider, savedModel.model);
+      if (resolveLimits && !limits) {
+        throw new SubagentContinuationError(
+          "subagent_task_model_missing",
+          `The saved model ${savedModel.provider}/${savedModel.model} is no longer configured. Restore it or start a new agent task.`,
+        );
+      }
+      subagentModel = {
+        ...savedModel,
+        ...limits,
+        modelMultimodal: this.options.parentDependencies.getModelMultimodal?.(savedModel.provider, savedModel.model),
+      };
+    }
     const {
       maxContextTokens: _parentMaxContextTokens,
       maxOutputTokens: _parentMaxOutputTokens,
@@ -318,6 +453,7 @@ export class SubAgentSession {
         ? {
             provider: subagentModel.provider,
             model: subagentModel.model,
+            ...(savedModel ? { subagentModel, modelMultimodal: subagentModel.modelMultimodal } : {}),
             ...(subagentModel.modelMultimodal
               ? { modelMultimodal: subagentModel.modelMultimodal }
               : {}),
