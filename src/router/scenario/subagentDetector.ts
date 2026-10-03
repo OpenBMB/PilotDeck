@@ -1,7 +1,10 @@
 import type { CanonicalMessage, CanonicalToolSchema } from "../../model/index.js";
 
+// The opening and closing tag families must match (backreference \1), so a
+// malformed pair like `<ccr-subagent-model>…</pilotdeck-subagent-model>` is
+// NOT treated as a control tag and user text is never silently stripped.
 const SUBAGENT_TAG_PATTERN =
-  /<(?:pilotdeck|ccr)-subagent-model>([\s\S]+?)<\/(?:pilotdeck|ccr)-subagent-model>/i;
+  /<(pilotdeck|ccr)-subagent-model>([\s\S]+?)<\/\1-subagent-model>/i;
 
 export type SubagentDetection = {
   isSubagent: boolean;
@@ -32,7 +35,7 @@ export function detectSubagent(
       }
       const match = SUBAGENT_TAG_PATTERN.exec(block.text);
       if (match) {
-        modelHint = match[1].trim();
+        modelHint = match[2].trim();
         taggedInUserMessage = true;
       }
     }
