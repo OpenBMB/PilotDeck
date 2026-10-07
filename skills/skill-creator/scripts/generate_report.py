@@ -202,8 +202,12 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
         <tbody>
 """)
 
-    # Find best iteration for highlighting
-    if test_queries:
+    # Find best iteration for highlighting. history may be empty (e.g. a live
+    # report rendered before the first iteration completes); max() would raise
+    # ValueError, so skip highlighting when there is nothing to highlight.
+    if not history:
+        best_iter = None
+    elif test_queries:
         best_iter = max(history, key=lambda h: h.get("test_passed") or 0).get("iteration")
     else:
         best_iter = max(history, key=lambda h: h.get("train_passed", h.get("passed", 0))).get("iteration")
