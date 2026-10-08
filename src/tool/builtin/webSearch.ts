@@ -1,4 +1,6 @@
 import type { PermissionResult } from "../../permission/index.js";
+import { WEB_SEARCH_ENDPOINTS, type SerpApiEngine, type WebSearchProvider } from "../../pilot/config/webSearchProviders.js";
+import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError, type AdditionalSearchProvider } from "./additionalWebSearch.js";
 import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type {
@@ -13,7 +15,7 @@ import type {
  * provider. The model still sees one stable tool surface; provider-specific
  * request/response shapes stay behind this adapter.
  */
-export type WebSearchProvider = "glm" | "tavily" | "custom" | "serper" | "brave";
+export type { WebSearchProvider };
 export type WebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "none";
 export type WebSearchCustomMethod = "GET" | "POST";
 
@@ -33,6 +35,7 @@ export type WebSearchCustomProviderConfig = {
 
 export type CreateWebSearchToolOptions = {
   provider?: WebSearchProvider;
+  searchEngine?: SerpApiEngine;
   apiKey?: string;
   /** Override provider endpoint. */
   endpoint?: string;
@@ -87,14 +90,14 @@ export function createWebSearchTool(
   return {
     name: "web_search",
     aliases: ["WebSearch"],
-    description: `- Searches the web for current information using the configured GLM/Z.AI, Tavily, Serper, Brave, or custom provider
+    description: `- Searches the web for current information using the configured search provider
 - Takes a search query and optional country code (\`gl\`) as input
 - Returns structured search data including organic results and, when available, answer box content
 - Use this tool for current events, recent documentation, and information beyond the model's knowledge cutoff
 - Use this tool when API/SDK/framework usage is unknown, version-sensitive, or likely changed since training. Search with package/service name, version, framework, and the specific method/option/error.
 
 Usage notes:
-  - Configure \`tools.webSearch.provider\` as \`glm\`, \`tavily\`, \`serper\`, \`brave\`, or \`custom\` in \`pilotdeck.yaml\`
+  - Configure \`tools.webSearch.provider\` as \`glm\`, \`tavily\`, \`serper\`, \`brave\`, \`baidu\`, \`bocha\`, \`exa\`, \`serpapi\`, or \`custom\` in \`pilotdeck.yaml\`
   - Requires \`tools.webSearch.apiKey\`, the provider API key environment variable, or \`CUSTOM_WEB_SEARCH_API_KEY\` unless custom auth is \`none\`
   - The optional \`gl\` parameter is forwarded only by providers that support localization
   - This tool is read-only and does not modify files`,
@@ -170,6 +173,11 @@ Usage notes:
           organicLimit,
           custom,
         });
+      }
+      if (isAdditionalSearchProvider(provider)) {
+        return performAdditionalSearch({ input, context, apiKey: apiKey ?? "", provider,
+          endpoint: options.endpoint ?? WEB_SEARCH_ENDPOINTS[provider], searchEngine: options.searchEngine,
+          fetchImpl, timeoutMs, organicLimit });
       }
       if (provider === "tavily") {
         return performTavilySearch({
@@ -261,6 +269,10 @@ function resolveProvider(
     ["SERPER_API_KEY", "serper"],
     ["BRAVE_API_KEY", "brave"],
     ["CUSTOM_WEB_SEARCH_API_KEY", "custom"],
+    ["BAIDU_WEB_SEARCH_API_KEY", "baidu"],
+    ["BOCHA_API_KEY", "bocha"],
+    ["EXA_API_KEY", "exa"],
+    ["SERPAPI_API_KEY", "serpapi"],
   ];
   for (const [name, provider] of envProviders) {
     if (readEnv(context, name)) return provider;
@@ -281,7 +293,40 @@ function resolveApiKey(
   if (provider === "serper") return readEnv(context, "SERPER_API_KEY");
   if (provider === "brave") return readEnv(context, "BRAVE_API_KEY");
   if (provider === "custom") return readEnv(context, "CUSTOM_WEB_SEARCH_API_KEY");
+  if (provider === "baidu") return readEnv(context, "BAIDU_WEB_SEARCH_API_KEY");
+  if (provider === "bocha") return readEnv(context, "BOCHA_API_KEY");
+  if (provider === "exa") return readEnv(context, "EXA_API_KEY");
+  if (provider === "serpapi") return readEnv(context, "SERPAPI_API_KEY");
   return readEnv(context, "GLM_WEB_SEARCH_API_KEY") ?? readEnv(context, "ZAI_API_KEY");
+}
+
+async function performAdditionalSearch(args: {
+  input: WebSearchInput; context: PilotDeckToolRuntimeContext; apiKey: string;
+  provider: AdditionalSearchProvider; endpoint: string; searchEngine?: SerpApiEngine;
+  fetchImpl: typeof fetch; timeoutMs: number; organicLimit: number;
+}): Promise<PilotDeckToolExecutionOutput<WebSearchOutput>> {
+  const { input, context, apiKey, provider, endpoint, timeoutMs, fetchImpl, organicLimit } = args;
+  const query = input.query.trim();
+  if (!query) throw new PilotDeckToolRuntimeError("invalid_tool_input", "web_search requires a non-empty `query`.");
+  assertHttpEndpoint(endpoint, provider);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const detachAbort = forwardAbort(context.abortSignal, controller);
+  try {
+    const request = additionalSearchRequest(provider, { endpoint, apiKey, query, limit: organicLimit, searchEngine: args.searchEngine, gl: input.gl });
+    const response = await networkFetch(request.url, { ...request.init, signal: controller.signal }, {
+      timeoutMs, signal: controller.signal, fetchImpl,
+      retry: { maxRetries: 2, baseDelayMs: 500, maxDelayMs: 5_000, retryOnPost: request.init.method === "POST" },
+    });
+    if (!response.ok) throw new Error(`API error (${response.status}): ${await response.text()}`);
+    const organic = additionalSearchResults(provider, await response.json(), organicLimit);
+    const output: WebSearchOutput = { query, organic };
+    return { content: [{ type: "text", text: formatTextSummary(output) }, { type: "json", value: output }], data: output,
+      metadata: { provider, endpoint, ...(provider === "serpapi" ? { engine: args.searchEngine ?? "google" } : {}), organicCount: organic.length } };
+  } catch (error) {
+    if (isLocalTimeout(error, controller.signal, context.abortSignal)) throw new PilotDeckToolRuntimeError("tool_timeout", `web_search (${provider}) timed out after ${timeoutMs}ms.`);
+    throw new PilotDeckToolRuntimeError("tool_execution_failed", `web_search (${provider}) request failed: ${redactSearchError(error, apiKey)}`);
+  } finally { clearTimeout(timeout); detachAbort?.(); }
 }
 
 function normalizeCustomProviderConfig(

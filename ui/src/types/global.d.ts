@@ -1,4 +1,8 @@
+import type { DesktopCommand, DesktopMenuState } from "../../shared/desktopCommands";
 import type { DesktopUpdateCheck, DesktopUpdateState } from "../utils/desktopUpdates";
+import type { LightAppearance } from '../lib/lightAppearance';
+import type { InterfacePreferences } from '../lib/interfacePreferences';
+import type { DesktopAboutInfo } from '../utils/desktopAbout';
 export {};
 
 declare global {
@@ -11,11 +15,22 @@ declare global {
     // command handler) can surface a friendly "not found" message.
     switchProject?: (projectName: string) => boolean;
     pilotdeckDesktop?: {
-      setAppearance?: (value: { language: "en" | "zh-CN"; themeMode: "light" | "dark" | "system" }) => Promise<void>;
+      platform?: string;
+      getAboutInfo?: () => Promise<DesktopAboutInfo>;
+      setMenuState?: (state: DesktopMenuState) => Promise<void>;
+      onCommand?: (callback: (command: DesktopCommand) => void) => () => void;
+      getAppearance?: () => { language: "en" | "zh-CN"; themeMode: "light" | "dark" | "system"; lightAppearance?: LightAppearance; interfacePreferences?: InterfacePreferences } | null;
+      setAppearance?: (value: { language?: "en" | "zh-CN"; themeMode?: "light" | "dark" | "system"; lightAppearance?: LightAppearance; interfacePreferences?: InterfacePreferences }) => Promise<void>;
+      getAppearanceCapabilities?: () => Promise<{ hardwareAcceleration: boolean }>;
+      saveAppearanceImage?: (bytes: Uint8Array) => Promise<string>;
+      readAppearanceImage?: (id: string) => Promise<Uint8Array | string>;
+      deleteAppearanceImage?: (id: string) => Promise<void>;
       checkUpdates: () => Promise<DesktopUpdateCheck>;
       getUpdateStatus: () => Promise<DesktopUpdateState>;
       startUpdate: () => Promise<DesktopUpdateState>;
       cancelUpdate: () => Promise<DesktopUpdateState>;
+      pauseUpdate: () => Promise<DesktopUpdateState>;
+      resumeUpdate: () => Promise<DesktopUpdateState>;
       getRuntimeInfo: () => Promise<{
         serverPort: number;
         gatewayPort: number;
@@ -34,6 +49,7 @@ declare global {
       retryRuntime: () => Promise<void>;
       openRuntimeLog: () => Promise<void>;
       pickFolder: () => Promise<string | null>;
+      pickFiles?: (request: { inputId: string; accept: string; multiple: boolean; directory: boolean }) => Promise<'selected' | 'canceled' | 'busy'>;
     };
   }
 

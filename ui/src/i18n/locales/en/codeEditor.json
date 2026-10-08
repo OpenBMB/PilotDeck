@@ -80,6 +80,7 @@
     "loadingPresentation": "Parsing presentation..."
   },
   "spreadsheetPreview": {
+    "cannotPreviewTitle": "Cannot preview this spreadsheet",
     "readingWorkbook": "Reading workbook...",
     "renderingSheet": "Rendering worksheet preview...",
     "failedMessage": "Failed to generate worksheet preview.",
@@ -90,6 +91,14 @@
     "worksheets": "Worksheets",
     "previousWorksheets": "Previous worksheets",
     "nextWorksheets": "Next worksheets",
+    "errors": {
+      "invalidFile": "This file is not a valid workbook, or its contents are damaged. Download it to inspect the file.",
+      "cannotParse": "The previewer cannot parse this workbook. It may contain a structure that is not supported yet. You can download it and open it in a spreadsheet app.",
+      "tooLarge": "This workbook is too large to preview here. You can download it and open it in a spreadsheet app.",
+      "noVisibleSheets": "This workbook has no visible worksheets.",
+      "fileMissing": "This file could not be found. It may have been moved or deleted.",
+      "retry": "The preview failed. Please retry, or download the file and open it locally."
+    },
     "warnings": {
       "SPREADSHEET_IMAGES_NOT_RENDERED": "Embedded images are not shown in the interactive preview.",
       "SPREADSHEET_MACROS_NOT_RENDERED": "Workbook macros are not run in the interactive preview."

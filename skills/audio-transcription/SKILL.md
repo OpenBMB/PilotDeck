@@ -7,11 +7,13 @@ description: Transcribe a project-local audio recording, generate subtitles, ana
 
 Use this Skill only when the user explicitly asks to transcribe audio, create subtitles, analyze a recording, or make meeting notes from a recording. Do not invoke ASR merely because an audio attachment is present.
 
-PilotDeck provides this Skill itself; there is no Skill file to install. First check whether `mcp__funasr__transcribe_audio` is available. If its local runtime or models are missing, run the exact `npm --prefix "..." run install:asr` command shown by the attachment or MCP diagnostic. It points at the PilotDeck source checkout or installed app directory:
+PilotDeck provides this Skill itself; there is no Skill file to install. First check whether `mcp__funasr__transcribe_audio` is available. If its local runtime or models are missing, run the exact installation command shown by the attachment or MCP diagnostic. Source checkouts use npm:
 
 ```bash
 npm --prefix "<PilotDeck directory>" run install:asr
 ```
+
+Installed desktop apps invoke their bundled Node and `scripts/install-asr.mjs` directly. Use the displayed command through the Bash tool; do not substitute a system Node or npm installation.
 
 The installer downloads the platform-specific official FunASR llama.cpp runtime and the local models. It does not require Docker, Python, or a cloud API. After it completes, retry `mcp__funasr__transcribe_audio` in the same session.
 

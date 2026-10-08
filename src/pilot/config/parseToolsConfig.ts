@@ -1,3 +1,4 @@
+import { isWebSearchProvider, SERPAPI_ENGINES, type SerpApiEngine } from "./webSearchProviders.js";
 import { isRecord } from "../../model/config/schema.js";
 import type {
   PilotConfigDiagnostic,
@@ -14,13 +15,14 @@ import type {
  *   tools:
  *     webSearch:
  *       enabled: true
- *       provider: glm                    # glm | tavily | custom | serper | brave
+ *       provider: glm                    # See webSearchProviders.ts for supported providers
  *       apiKey: "..."
  *       endpoint: https://api.z.ai/api/paas/v4/web_search
  *
  * Unknown fields produce non-fatal warnings so future additions don't break
- * older deployments.  Returns `undefined` when the section is missing or
- * empty so callers can keep the field off the snapshot entirely.
+ * older deployments. Returns `undefined` when no webSearch block exists.
+ * Preserve a present but empty block: legacy configs use it to opt into
+ * search with credentials supplied by the environment.
  */
 export function parseToolsConfig(
   rawTools: unknown,
@@ -99,17 +101,11 @@ function parseWebSearch(
   }
 
   if (raw.provider !== undefined) {
-    if (
-      raw.provider !== "glm"
-      && raw.provider !== "tavily"
-      && raw.provider !== "custom"
-      && raw.provider !== "serper"
-      && raw.provider !== "brave"
-    ) {
+    if (!isWebSearchProvider(raw.provider)) {
       diagnostics.push({
         code: "TOOLS_WEB_SEARCH_PROVIDER_INVALID",
         severity: "fatal",
-        message: "tools.webSearch.provider must be \"glm\", \"tavily\", \"custom\", \"serper\", or \"brave\".",
+        message: "tools.webSearch.provider must be a supported search provider.",
         path: "tools.webSearch.provider",
         recoverable: false,
       });
@@ -117,6 +113,12 @@ function parseWebSearch(
       result.provider = raw.provider as PilotWebSearchProvider;
     }
   }
+
+  const searchEngine = parseEnumField<SerpApiEngine>(
+    raw.searchEngine, [...SERPAPI_ENGINES], "tools.webSearch.searchEngine",
+    "TOOLS_WEB_SEARCH_ENGINE_INVALID", diagnostics,
+  );
+  if (searchEngine) result.searchEngine = searchEngine;
 
   if (raw.apiKey !== undefined) {
     if (typeof raw.apiKey !== "string" || raw.apiKey.trim().length === 0) {
@@ -188,7 +190,7 @@ function parseWebSearch(
   }
 
   for (const key of Object.keys(raw)) {
-    if (key !== "enabled" && key !== "provider" && key !== "apiKey" && key !== "endpoint" && key !== "customProvider" && key !== "region" && key !== "tavilyApiKey") {
+    if (key !== "enabled" && key !== "provider" && key !== "apiKey" && key !== "endpoint" && key !== "customProvider" && key !== "searchEngine" && key !== "region" && key !== "tavilyApiKey") {
       diagnostics.push({
         code: "TOOLS_WEB_SEARCH_UNKNOWN_FIELD",
         severity: "warning",
@@ -199,7 +201,8 @@ function parseWebSearch(
     }
   }
 
-  return Object.keys(result).length > 0 ? result : undefined;
+  // Presence is meaningful even if every legacy/unknown field was discarded.
+  return result;
 }
 
 function parseCustomProvider(

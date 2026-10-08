@@ -1,8 +1,9 @@
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 // Includes PowerShell cold startup. Query failures remain explicit; no PID-only fallback.
-const WINDOWS_QUERY_TIMEOUT_MS = 15_000;
-const WINDOWS_STARTUP_TIMEOUT_MS = 60_000;
+const WINDOWS_QUERY_TIMEOUT_MS = 30_000;
+// The guardian and Job holder each need a query on a cold CI host.
+const WINDOWS_STARTUP_TIMEOUT_MS = 90_000;
 function windowsProcesses(pids, run = execFileSync) {
   if (pids && !pids.every(pid => Number.isSafeInteger(pid) && pid > 0)) throw new Error('Invalid process identity PID');
   if (pids?.length === 0) return [];

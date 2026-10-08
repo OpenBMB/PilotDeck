@@ -183,7 +183,12 @@ export class BackgroundTaskRuntime {
    * and `completed` / `failed` / `cancelled` later via the `exit` listener.
    */
   async start(spec: StartTaskSpec): Promise<PilotDeckBackgroundBashTask> {
-    if (this.entries.size >= this.options.maxTasks) {
+    // Retain finished tasks for history/output without consuming concurrency slots.
+    let activeTasks = 0;
+    for (const { task } of this.entries.values()) {
+      if (task.status === "pending" || task.status === "running") activeTasks++;
+    }
+    if (activeTasks >= this.options.maxTasks) {
       throw new Error(
         `BackgroundTaskRuntime: max tasks (${this.options.maxTasks}) exceeded.`,
       );

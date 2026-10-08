@@ -1,8 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { waitForManagedEvent } from './process-test-helpers.mjs';
 import { spawnManaged, stopProcessTree, listProcesses } from '../../../ui/server/utils/processTree.js';
 const options = { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] };
+test('Windows Job supervisor survives guardian termination and certifies descendant cleanup', { skip: process.platform !== 'win32', timeout: 120000 }, async () => {
+  const child = spawnManaged(process.execPath, ['-e', 'process.send(process.pid);setInterval(()=>{},1000)'], options);
+  child.stderr.on('data', data => process.stderr.write(data));
+  const scope = child[Symbol.for('pilotdeck.processScope')];
+  try {
+    const [pid] = await waitForManagedEvent(child, child, 'message');
+    const { job } = JSON.parse(readFileSync(scope.file, 'utf8'));
+    assert.ok(job?.holderIdentity, 'supervisor identity established before launching the command');
+    // The external holder must outlive an abruptly killed guardian. Without
+    // detached spawning, libuv kills the holder along with its parent.
+    const exited = new Promise((resolve, reject) => { child.once('exit', resolve); child.once('error', reject); });
+    child.kill('SIGKILL');
+    await exited;
+    const deadline = Date.now() + 15000;
+    while (!existsSync(job.stopped) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(existsSync(job.stopped), 'surviving supervisor certifies the empty Job after guardian death');
+    await stopProcessTree(child, { forceMs: 10000 });
+    assert.equal((await listProcesses()).some(row => row.pid === pid), false, 'business process is gone');
+    assert.equal(existsSync(scope.directory), false, 'certified cleanup removes the ownership registry');
+  } finally { await stopProcessTree(child, { forceMs: 10000 }).catch(() => {}); child.stdout.destroy(); child.stderr.destroy(); }
+});
 test('supervised runtime forwards IPC and stops its managed group', { timeout: 120000 }, async () => {
   const child = spawnManaged(process.execPath, ['-e', `const {spawn}=require('node:child_process');const task=spawn(process.execPath,['-e','process.send(process.pid);setInterval(()=>{},1000)'],{stdio:['ignore','pipe','pipe','ipc']});task.on('message',pid=>process.send(pid));setInterval(()=>{},1000)`], options);
   child.stderr.on('data', data => process.stderr.write(data));

@@ -2,7 +2,7 @@ import express from 'express';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
-import { readPilotDeckConfigFile, withPilotDeckConfigWrite, writePilotDeckConfig } from '../services/pilotdeckConfig.js';
+import { configRevision, readPilotDeckConfigFile, withPilotDeckConfigWrite, writePilotDeckConfig } from '../services/pilotdeckConfig.js';
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
@@ -15,7 +15,8 @@ const MAX_STREAM_RETRIES_PER_PROBE = 10;
 const MAX_RETRY_DELAY_MS = 60_000;
 const MAX_STREAM_IDLE_TIMEOUT_MS = 5 * 60_000;
 const TEST_RATE_WINDOW_MS = 60 * 1000;
-const TEST_RATE_MAX_REQUESTS = 5;
+const TEST_RATE_MAX_REQUESTS = MAX_MODELS_PER_TEST;
+const TEST_RATE_MAX_MODELS = 5 * MAX_MODELS_PER_TEST;
 const PROBE_GLOBAL_LIMIT = 3;
 const PROBE_PER_USER_LIMIT = 1;
 const CLONE_GLOBAL_LIMIT = 2;
@@ -242,12 +243,17 @@ setInterval(deleteExpiredTests, TEST_TTL_MS).unref();
 export function modelTestRateLimiter(req, res, next) {
   const now = Date.now();
   const key = String(req.user?.id || req.ip || 'anonymous');
-  const bucket = testRateBuckets.get(key);
+  let bucket = testRateBuckets.get(key);
   if (!bucket || now >= bucket.resetAt) {
-    testRateBuckets.set(key, { count: 1, resetAt: now + TEST_RATE_WINDOW_MS });
+    bucket = { count: 0, models: 0, resetAt: now + TEST_RATE_WINDOW_MS };
+    testRateBuckets.set(key, bucket);
+  }
+  const modelCount = Array.isArray(req.body?.models) ? Math.max(1, req.body.models.length) : 1;
+  if (bucket.count < TEST_RATE_MAX_REQUESTS && bucket.models + modelCount <= TEST_RATE_MAX_MODELS) {
+    bucket.count += 1;
+    bucket.models += modelCount;
     return next();
   }
-  if (++bucket.count <= TEST_RATE_MAX_REQUESTS) return next();
   res.setHeader('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
   return apiError(res, 429, 'RATE_LIMITED', 'Too many connection tests.');
 }
@@ -425,7 +431,7 @@ router.put('/model-configuration', async (req, res) => {
   try {
     const outcome = await withPilotDeckConfigWrite(async () => {
       const recordConfig = readPilotDeckConfigFile();
-      if (recordConfig.parseError) return { error: ['CONFIGURATION_MISMATCH', 'pilotdeck.yaml is invalid and must be repaired before saving.'] };
+      if (recordConfig.parseError) return { error: ['INVALID_CONFIG_YAML', 'pilotdeck.yaml is invalid and must be repaired before saving.'] };
       const existingProvider = recordConfig.config?.model?.providers?.[provider.providerId] || {};
       const suppliedKey = req.body?.apiKey;
       let apiKey;
@@ -471,8 +477,11 @@ router.put('/model-configuration', async (req, res) => {
         model: { ...recordConfig.config.model, providers: { ...recordConfig.config.model.providers, [provider.providerId]: savedProvider } },
         webui: { ...recordConfig.config.webui, onboarding: { modelConfigurationId: configurationId, savedAt } },
       };
-      suppressNextWatchEvent();
-      const saved = await writePilotDeckConfig(nextConfig);
+      const saved = await writePilotDeckConfig(nextConfig, {
+        previousConfig: recordConfig.config,
+        expectedRevision: configRevision(recordConfig.raw),
+        onWriteCommitted: suppressNextWatchEvent,
+      });
       return { saved, configurationId, savedAt };
     });
     if (outcome.error) return apiError(res, outcome.error[0] === 'INVALID_REQUEST' ? 400 : 409, outcome.error[0], outcome.error[1]);
@@ -480,6 +489,9 @@ router.put('/model-configuration', async (req, res) => {
     tests.delete(record.id);
     return res.json({ configurationId: outcome.configurationId, savedAt: outcome.savedAt });
   } catch (error) {
+    if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+      return apiError(res, error.statusCode || 409, error.code, error.message);
+    }
     return apiError(res, 409, 'CONFIGURATION_MISMATCH', error?.message || 'Unable to save configuration.');
   }
 });

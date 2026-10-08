@@ -403,27 +403,27 @@ router.post('/create-workspace', async (req, res) => {
 
     // Handle new workspace creation
     if (workspaceType === 'new') {
-      // Create the directory if it doesn't exist
-      await fs.mkdir(absolutePath, { recursive: true });
-
-      // If GitHub URL is provided, clone the repository
+      // Resolve the GitHub token before touching the filesystem. The workspace
+      // path may be an existing parent directory (e.g. ~/dev) that holds other
+      // projects, so a failed lookup must never lead to cleaning it up.
+      let githubToken = null;
       if (githubUrl) {
-        let githubToken = null;
-
-        // Get GitHub token if needed
         if (githubTokenId) {
-          // Fetch token from database
           const token = await getGithubTokenById(githubTokenId, req.user.id);
           if (!token) {
-            // Clean up created directory
-            await fs.rm(absolutePath, { recursive: true, force: true });
             return res.status(404).json({ error: 'GitHub token not found' });
           }
           githubToken = token.github_token;
         } else if (newGithubToken) {
           githubToken = newGithubToken;
         }
+      }
 
+      // Create the directory if it doesn't exist
+      await fs.mkdir(absolutePath, { recursive: true });
+
+      // If GitHub URL is provided, clone the repository
+      if (githubUrl) {
         // Extract repo name from URL for the clone destination
         const normalizedUrl = githubUrl.replace(/\/+$/, '').replace(/\.git$/, '');
         const repoName = normalizedUrl.split('/').pop() || 'repository';
@@ -538,13 +538,13 @@ router.get('/clone-progress', async (req, res) => {
 
     const absolutePath = validation.resolvedPath;
 
-    await fs.mkdir(absolutePath, { recursive: true });
-
+    // Resolve the GitHub token before touching the filesystem. The workspace
+    // path may be an existing parent directory (e.g. ~/dev) that holds other
+    // projects, so a failed lookup must never lead to cleaning it up.
     let githubToken = null;
     if (githubTokenId) {
       const token = await getGithubTokenById(parseInt(githubTokenId), req.user.id);
       if (!token) {
-        await fs.rm(absolutePath, { recursive: true, force: true });
         sendEvent('error', { message: 'GitHub token not found' });
         res.end();
         return;
@@ -553,6 +553,8 @@ router.get('/clone-progress', async (req, res) => {
     } else if (newGithubToken) {
       githubToken = newGithubToken;
     }
+
+    await fs.mkdir(absolutePath, { recursive: true });
 
     const normalizedUrl = githubUrl.replace(/\/+$/, '').replace(/\.git$/, '');
     const repoName = normalizedUrl.split('/').pop() || 'repository';

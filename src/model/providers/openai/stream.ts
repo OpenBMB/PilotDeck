@@ -5,8 +5,6 @@ import { ModelProviderError } from "../../protocol/errors.js";
 import { normalizeOpenAIFinishReason } from "../../response/normalizeFinishReason.js";
 import { normalizeOpenAIUsage } from "../../response/normalizeUsage.js";
 
-export type ThinkFsmMode = "NORMAL" | "THINKING";
-
 type OpenAIStreamToolCallState = Partial<CanonicalToolCall> & {
   argumentsBuffer?: string;
   choiceIndex: number;
@@ -20,8 +18,6 @@ export type OpenAIStreamState = {
   streamSyntheticId: string;
   streamResponseId?: string;
   toolCallBaseId?: string;
-  thinkFsm: ThinkFsmMode;
-  tagBuffer: string;
   reasoningSnapshot: string;
 };
 
@@ -31,97 +27,8 @@ export function createOpenAIStreamState(): OpenAIStreamState {
     toolCalls: new Map(),
     usedToolCallIds: new Set(),
     streamSyntheticId: `stream_${randomUUID().slice(0, 12)}`,
-    thinkFsm: "NORMAL",
-    tagBuffer: "",
     reasoningSnapshot: "",
   };
-}
-
-const THINK_OPEN = "<think>";
-const THINK_CLOSE = "</think>";
-
-/**
- * FSM-based parser that splits `<think>...</think>` tags from streamed
- * `delta.content` into separate `thinking_delta` / `text_delta` events.
- * Handles tags split across multiple chunks via `state.tagBuffer`.
- *
- * FSM that splits reasoning tags from streamed content deltas.
- */
-export function splitThinkContent(
-  content: string,
-  state: OpenAIStreamState,
-  raw: unknown,
-): CanonicalModelEvent[] {
-  const events: CanonicalModelEvent[] = [];
-  let current = state.tagBuffer + content;
-  state.tagBuffer = "";
-
-  while (current.length > 0) {
-    if (state.thinkFsm === "NORMAL") {
-      const idx = current.indexOf(THINK_OPEN);
-      if (idx !== -1) {
-        const before = current.substring(0, idx);
-        if (before.length > 0) {
-          events.push({ type: "text_delta", text: before, raw });
-        }
-        current = current.substring(idx + THINK_OPEN.length);
-        state.thinkFsm = "THINKING";
-      } else {
-        // Check if the tail could be a partial `<think>` open tag
-        const buffered = bufferPartialTag(current, THINK_OPEN);
-        if (buffered > 0) {
-          state.tagBuffer = current.substring(current.length - buffered);
-          const safe = current.substring(0, current.length - buffered);
-          if (safe.length > 0) {
-            events.push({ type: "text_delta", text: safe, raw });
-          }
-        } else {
-          events.push({ type: "text_delta", text: current, raw });
-        }
-        current = "";
-      }
-    } else {
-      // THINKING state
-      const idx = current.indexOf(THINK_CLOSE);
-      if (idx !== -1) {
-        const before = current.substring(0, idx);
-        if (before.length > 0) {
-          events.push({ type: "thinking_delta", text: before, raw });
-        }
-        current = current.substring(idx + THINK_CLOSE.length);
-        state.thinkFsm = "NORMAL";
-      } else {
-        // Check if the tail could be a partial `</think>` close tag
-        const buffered = bufferPartialTag(current, THINK_CLOSE);
-        if (buffered > 0) {
-          state.tagBuffer = current.substring(current.length - buffered);
-          const safe = current.substring(0, current.length - buffered);
-          if (safe.length > 0) {
-            events.push({ type: "thinking_delta", text: safe, raw });
-          }
-        } else {
-          events.push({ type: "thinking_delta", text: current, raw });
-        }
-        current = "";
-      }
-    }
-  }
-
-  return events;
-}
-
-/**
- * Returns the number of characters at the end of `text` that match a
- * prefix of `tag`. Used to detect partial tags split across chunks.
- */
-function bufferPartialTag(text: string, tag: string): number {
-  const maxCheck = Math.min(tag.length - 1, text.length);
-  for (let i = maxCheck; i > 0; i--) {
-    if (text.endsWith(tag.substring(0, i))) {
-      return i;
-    }
-  }
-  return 0;
 }
 
 export function normalizeOpenAIStreamEvent(
@@ -167,10 +74,8 @@ export function normalizeOpenAIStreamEvent(
     const choiceIndex = typeof choiceRecord.index === "number" ? choiceRecord.index : choicePosition;
     const delta = asRecord(choiceRecord.delta);
 
-    if (typeof delta.content === "string" && delta.content.length > 0) {
-      events.push(...splitThinkContent(delta.content, state, raw));
-    }
-
+    // Native fields define the reasoning channel, including when a provider
+    // sends reasoning and answer text together in the same chunk.
     const reasoning = delta.reasoning_content ?? delta.reasoning;
     if (typeof reasoning === "string" && reasoning.length > 0) {
       const prev = state.reasoningSnapshot;
@@ -185,6 +90,12 @@ export function normalizeOpenAIStreamEvent(
       if (emit.length > 0) {
         events.push({ type: "thinking_delta", text: emit, reasoningContent: emit, raw });
       }
+    }
+
+    // Content is always answer text. Literal tags in prose or Markdown must
+    // not switch channels, even when this chunk has no native reasoning field.
+    if (typeof delta.content === "string" && delta.content.length > 0) {
+      events.push({ type: "text_delta", text: delta.content, raw });
     }
 
     if (Array.isArray(delta.tool_calls)) {

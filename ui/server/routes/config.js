@@ -1,3 +1,5 @@
+import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../../../src/pilot/config/webSearchProviders.js";
+import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError } from "../../../src/tool/builtin/additionalWebSearch.js";
 import express from 'express';
 import { createConnectionTestTasks } from '../services/connectionTestTasks.js';
 import fsPromises from 'fs/promises';
@@ -7,7 +9,7 @@ import { prepareBackgroundSpawnOptions } from '../utils/processSpawn.js';
 import { parse as parseYaml } from 'yaml';
 import {
   buildDefaultPilotDeckConfig,
-  configToYaml,
+  configRevision,
   getPilotDeckConfigPath,
   hasUnresolvedMaskedSecrets,
   maskSecrets,
@@ -17,6 +19,7 @@ import {
   readPilotDeckConfigFile,
   resolveConfiguredProviderApiKey,
   serializePilotDeckConfigResponse,
+  updatePilotDeckConfig,
   withPilotDeckConfigWrite,
   validatePilotDeckConfig,
   writePilotDeckConfig,
@@ -29,13 +32,14 @@ import {
   buildProviderModelsEndpointCandidates,
   isExpectedProviderModelsResponseShape,
 } from '../../../src/model/providerEndpoint.js';
-import { lookupCatalogProvider } from '../../../src/model/catalog/index.js';
+import { lookupCatalogProvider, PROVIDER_CATALOG } from '../../../src/model/catalog/index.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
 import {
   configuredModelIds,
   findModelReferences,
+  planModelRemoval,
   rewriteModelReferences,
 } from '../services/modelReferences.js';
 import {
@@ -65,10 +69,6 @@ async function notifyGatewayConfigReload() {
 const router = express.Router();
 
 const MASKED_SECRET = '********';
-const DEFAULT_GLM_WEB_SEARCH_ENDPOINT = 'https://api.z.ai/api/paas/v4/web_search';
-const DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT = 'https://api.tavily.com/search';
-const DEFAULT_SERPER_WEB_SEARCH_ENDPOINT = 'https://google.serper.dev/search';
-const DEFAULT_BRAVE_WEB_SEARCH_ENDPOINT = 'https://api.search.brave.com/res/v1/web/search';
 
 function normalizeProviderProtocol(value) {
   const protocol = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -219,11 +219,7 @@ function imageSupportResultFromProbe(probe) {
 }
 
 function normalizeWebSearchProvider(provider) {
-  return ['glm', 'tavily', 'custom', 'serper', 'brave'].includes(provider) ? provider : 'glm';
-}
-
-function isWebSearchProvider(provider) {
-  return ['glm', 'tavily', 'custom', 'serper', 'brave'].includes(provider);
+  return isWebSearchProvider(provider) ? provider : 'glm';
 }
 
 function normalizeWebSearchCustomAuth(auth) {
@@ -232,17 +228,7 @@ function normalizeWebSearchCustomAuth(auth) {
 
 function normalizeWebSearchEndpoint(provider, endpoint) {
   const trimmed = typeof endpoint === 'string' ? endpoint.trim() : '';
-  const effective = trimmed || (
-    provider === 'tavily'
-      ? DEFAULT_TAVILY_WEB_SEARCH_ENDPOINT
-      : provider === 'serper'
-        ? DEFAULT_SERPER_WEB_SEARCH_ENDPOINT
-        : provider === 'brave'
-          ? DEFAULT_BRAVE_WEB_SEARCH_ENDPOINT
-          : provider === 'glm'
-            ? DEFAULT_GLM_WEB_SEARCH_ENDPOINT
-            : ''
-  );
+  const effective = trimmed || WEB_SEARCH_ENDPOINTS[provider] || '';
   if (!effective) return '';
   try {
     return new URL(effective).toString();
@@ -471,11 +457,13 @@ function bindModelConnectionTests(config, bindings, userId) {
     return { error: { status: 400, code: 'INVALID_REQUEST', message: 'modelTestBindings must contain testId objects.' } };
   }
   for (const binding of bindings) {
-    const result = getConnectionTestRecord(userId, binding.testId.trim());
-    if (result.reason === 'expired') return { error: { status: 410, code: 'TEST_EXPIRED', message: 'Connection test has expired.' } };
+    const testId = binding.testId.trim();
+    const bindingError = (status, code, message) => ({ error: { status, code, message, testId } });
+    const result = getConnectionTestRecord(userId, testId);
+    if (result.reason === 'expired') return bindingError(410, 'TEST_EXPIRED', 'Connection test has expired.');
     const record = result.record;
-    if (!record) return { error: { status: 404, code: 'TEST_NOT_FOUND', message: 'Connection test was not found.' } };
-    if (record.status !== 'passed') return { error: { status: 409, code: 'TEST_NOT_PASSED', message: 'Complete a passing connection test before saving.' } };
+    if (!record) return bindingError(404, 'TEST_NOT_FOUND', 'Connection test was not found.');
+    if (record.status !== 'passed') return bindingError(409, 'TEST_NOT_PASSED', 'Complete a passing connection test before saving.');
     const provider = config?.model?.providers?.[record.provider.providerId];
     const testedProvider = provider && {
       ...provider,
@@ -483,12 +471,12 @@ function bindModelConnectionTests(config, bindings, userId) {
       apiKey: resolveConfiguredProviderApiKey(record.provider.providerId, provider),
     };
     if (!provider || !connectionTestMatchesProvider(record, testedProvider)) {
-      return { error: { status: 409, code: 'CONFIGURATION_MISMATCH', message: 'Configuration does not match the tested provider.' } };
+      return bindingError(409, 'CONFIGURATION_MISMATCH', 'Configuration does not match the tested provider.');
     }
     for (const tested of record.models) {
       const model = provider.models?.[tested.modelId];
       if (!model || typeof model !== 'object' || tested.textInput !== 'supported' || !['supported', 'unsupported'].includes(tested.imageInput)) {
-        return { error: { status: 409, code: 'CONFIGURATION_MISMATCH', message: 'Configuration does not match the tested models.' } };
+        return bindingError(409, 'CONFIGURATION_MISMATCH', 'Configuration does not match the tested models.');
       }
       model.connectionTest = {
         status: 'passed',
@@ -521,15 +509,18 @@ const connectionTasks = createConnectionTestTasks({
     return !record || connectionTestMatchesProvider(record, { ...provider, providerId: task.providerId, apiKey: resolveConfiguredProviderApiKey(task.providerId, provider) });
   },
   persist: async (userId, testId) => {
-    const saved = await withPilotDeckConfigWrite(async () => {
-      const disk = readPilotDeckConfigFile();
-      if (disk.parseError) throw new Error('Invalid config YAML; repair it before saving test results.');
-      // Bind to the latest disk configuration, retaining unrelated edits made while testing.
-      const next = structuredClone(disk.rawYaml ?? disk.config);
-      const binding = bindModelConnectionTests(next, [{ testId }], userId);
+    const { record } = getConnectionTestRecord(userId, testId);
+    if (!record) throw Object.assign(new Error('Connection test was not found.'), { code: 'TEST_NOT_FOUND' });
+    const changedPaths = record.models.flatMap(({ modelId }) => [
+      ['model', 'providers', record.provider.providerId, 'models', modelId, 'connectionTest'],
+      ['model', 'providers', record.provider.providerId, 'models', modelId, 'multimodal'],
+    ]);
+    const saved = await updatePilotDeckConfig((config) => {
+      const binding = bindModelConnectionTests(config, [{ testId }], userId);
       if (binding.error) throw Object.assign(new Error(binding.error.message), binding.error);
-      suppressNextWatchEvent();
-      return writeRawPilotDeckYaml(next, { previousConfig: disk.config });
+    }, {
+      paths: changedPaths,
+      onWriteCommitted: suppressNextWatchEvent,
     });
     const reload = await reloadPilotDeckConfig(saved.config);
     void notifyGatewayConfigReload();
@@ -672,8 +663,9 @@ router.post('/validate', (req, res) => {
 router.get('/model-references', (req, res) => {
   const providerId = typeof req.query?.providerId === 'string' ? req.query.providerId.trim() : '';
   const modelId = typeof req.query?.modelId === 'string' ? req.query.modelId.trim() : '';
-  if (!providerId || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(providerId)
-    || (modelId && /\s/.test(modelId))) {
+  // Lookups must accept IDs already stored in older configs, including spaces,
+  // punctuation and non-ASCII names. Creation rules do not apply to references.
+  if (!providerId || (req.query?.modelId !== undefined && typeof req.query.modelId !== 'string')) {
     return res.status(400).json({ code: 'INVALID_REQUEST', message: 'providerId and modelId must be valid model identifiers.' });
   }
   try {
@@ -685,6 +677,99 @@ router.get('/model-references', (req, res) => {
   } catch (error) {
     return res.status(500).json({ code: 'CONFIG_READ_FAILED', message: error instanceof Error ? error.message : String(error) });
   }
+});
+
+const MODEL_REMOVAL_BLOCKED_STATUS = {
+  NOT_FOUND: 404,
+  REPLACEMENT_INVALID: 400,
+  REPLACEMENT_REQUIRED: 409,
+  ROUTER_REQUIRES_MODEL: 409,
+};
+
+function publicRemovalPlan(plan, revision) {
+  const { config: _config, ...rest } = plan;
+  return { ...rest, revision };
+}
+
+// Remove a provider or one of its models and repair every reference to it in
+// a single atomic write. `dryRun: true` returns the exact preview the UI shows;
+// the real request must carry the `baseRevision` from that preview so a
+// config edited in between is never repaired against a stale plan.
+router.post('/model-removal', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const optionalString = value => value === undefined || typeof value === 'string';
+  if (
+    typeof body.providerId !== 'string' || !body.providerId.trim()
+    || !optionalString(body.modelId) || !optionalString(body.replacement)
+    || !optionalString(body.baseRevision)
+    || (body.dryRun !== undefined && typeof body.dryRun !== 'boolean')
+  ) {
+    return res.status(400).json({ code: 'INVALID_REQUEST', message: 'providerId is required; modelId, replacement and baseRevision must be strings.' });
+  }
+  const target = { providerId: body.providerId.trim(), modelId: (body.modelId ?? '').trim() };
+  const replacement = (body.replacement ?? '').trim();
+  const baseRevision = (body.baseRevision ?? '').trim();
+
+  await withPilotDeckConfigWrite(async () => {
+    try {
+      const diskRecord = readPilotDeckConfigFile();
+      if (diskRecord.parseError) {
+        return res.status(400).json({ code: 'INVALID_CONFIG_YAML', message: 'pilotdeck.yaml is invalid. Repair it in the raw YAML editor first.' });
+      }
+      const revision = configRevision(diskRecord.raw);
+      if (baseRevision && baseRevision !== revision) {
+        return res.status(409).json({
+          code: 'CONFIG_CONFLICT',
+          message: 'Config changed since this preview was loaded. Review the changes again.',
+          currentRevision: revision,
+        });
+      }
+
+      const source = diskRecord.exists && isRecord(diskRecord.rawYaml) ? diskRecord.rawYaml : diskRecord.config;
+      const plan = planModelRemoval(source, target, { replacement });
+      if (body.dryRun) return res.json(publicRemovalPlan(plan, revision));
+      if (!baseRevision) {
+        return res.status(400).json({ code: 'INVALID_REQUEST', message: 'baseRevision from a preview is required to remove a model.' });
+      }
+      if (plan.blocked) {
+        return res.status(MODEL_REMOVAL_BLOCKED_STATUS[plan.blocked.code] || 409).json({
+          code: plan.blocked.code,
+          message: plan.blocked.message,
+          plan: publicRemovalPlan(plan, revision),
+        });
+      }
+      // Defence in depth: the plan must not leave a dangling reference behind.
+      const dangling = findDeletedModelReferences(diskRecord.config, plan.config);
+      if (dangling) {
+        return res.status(500).json({ code: 'MODEL_IN_USE', message: 'Removal plan left references behind.', references: dangling.references });
+      }
+
+      const saved = await writeRawPilotDeckYaml(plan.config, {
+        previousConfig: diskRecord.config,
+        expectedRevision: revision,
+        onWriteCommitted: suppressNextWatchEvent,
+      });
+      const reloadResult = await reloadPilotDeckConfig(saved.config);
+      void notifyGatewayConfigReload();
+      const freshRecord = readPilotDeckConfigFile();
+      const response = serializePilotDeckConfigResponse(freshRecord, reloadResult);
+      broadcastConfigEvent({ source: 'ui-save', ...response, timestamp: new Date().toISOString() });
+      return res.json({ ...response, removal: publicRemovalPlan(plan, revision) });
+    } catch (error) {
+      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+        return res.status(error.statusCode || 409).json({ code: error.code, message: error.message, error: error.message });
+      }
+      if (error?.validation) {
+        return res.status(400).json({
+          code: 'CONFIG_VALIDATION_FAILED',
+          message: error.validation.errors?.[0] || error.message,
+          error: error.message,
+          validation: error.validation,
+        });
+      }
+      return res.status(500).json({ code: 'CONFIG_WRITE_FAILED', message: error instanceof Error ? error.message : String(error) });
+    }
+  });
 });
 
 router.get('/office-preview/status', async (req, res) => {
@@ -803,7 +888,7 @@ router.put('/', async (req, res) => {
       );
       if (renamed.error) return res.status(400).json({ error: renamed.error, code: renamed.code });
       const testBinding = bindModelConnectionTests(renamed.config, req.body?.modelTestBindings, req.user?.id || '');
-      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message });
+      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message, testId: testBinding.error.testId });
       const deletedReference = findDeletedModelReferences(diskRecord.config, renamed.config);
       if (deletedReference) {
         return res.status(409).json({
@@ -814,9 +899,10 @@ router.put('/', async (req, res) => {
           references: deletedReference.references,
         });
       }
-      suppressNextWatchEvent();
       saved = await writeRawPilotDeckYaml(renamed.config, {
         previousConfig: diskRecord.config,
+        expectedRevision: configRevision(diskRecord.raw),
+        onWriteCommitted: suppressNextWatchEvent,
       });
     } else if (req.body?.config && typeof req.body.config === 'object') {
       if (diskRecord.parseError) {
@@ -865,7 +951,7 @@ router.put('/', async (req, res) => {
       );
       if (renamed.error) return res.status(400).json({ error: renamed.error, code: renamed.code });
       const testBinding = bindModelConnectionTests(renamed.config, req.body?.modelTestBindings, req.user?.id || '');
-      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message });
+      if (testBinding.error) return res.status(testBinding.error.status).json({ error: testBinding.error.message, code: testBinding.error.code, message: testBinding.error.message, testId: testBinding.error.testId });
       const deletedReference = findDeletedModelReferences(diskRecord.config, renamed.config);
       if (deletedReference) {
         return res.status(409).json({
@@ -876,9 +962,10 @@ router.put('/', async (req, res) => {
           references: deletedReference.references,
         });
       }
-      suppressNextWatchEvent();
       saved = await writePilotDeckConfig(renamed.config, {
         previousConfig: diskRecord.config,
+        expectedRevision: configRevision(diskRecord.raw),
+        onWriteCommitted: suppressNextWatchEvent,
       });
     } else {
       return res.status(400).json({ error: 'raw YAML or config object is required' });
@@ -894,6 +981,12 @@ router.put('/', async (req, res) => {
     broadcastConfigEvent({ source: 'ui-save', ...response, timestamp: new Date().toISOString() });
     res.json(response);
     } catch (error) {
+      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+        return res.status(error.statusCode || 409).json({
+          error: error.message,
+          code: error.code,
+        });
+      }
       if (error?.validation) {
         return res.status(400).json({
           error: error.message,
@@ -937,10 +1030,13 @@ router.post('/reload', async (_req, res) => {
 
 router.get('/provider', (_req, res) => {
   try {
+    const environmentCredentialProviderIds = Object.keys(PROVIDER_CATALOG).filter(
+      (providerId) => Boolean(resolveConfiguredProviderApiKey(providerId, null)),
+    );
     const record = readPilotDeckConfigFile();
     const providers = record.config?.model?.providers;
     if (!providers || typeof providers !== 'object') {
-      return res.json({ exists: false, provider: null });
+      return res.json({ exists: false, provider: null, environmentCredentialProviderIds });
     }
 
     const mainRef = typeof record.config?.agent?.model === 'string'
@@ -964,12 +1060,13 @@ router.get('/provider', (_req, res) => {
           : '';
       }
     }
-    if (!providerId) return res.json({ exists: false, provider: null });
+    if (!providerId) return res.json({ exists: false, provider: null, environmentCredentialProviderIds });
 
     const provider = providers[providerId] || {};
 
     res.json({
       exists: true,
+      environmentCredentialProviderIds,
       provider: {
         type: provider.protocol || '',
         baseUrl: provider.url || '',
@@ -1180,14 +1277,17 @@ router.put('/test-connections/:testId/image-capabilities', imageCapabilitiesHand
 
 /**
  * Probe the configured web-search provider. Mirrors
- * `src/tool/builtin/webSearch.ts`'s five-provider request shape. Returns:
+ * `src/tool/builtin/webSearch.ts`'s provider request shapes. Returns:
  * `{ ok, error?, latencyMs?, organicCount? }` to match the convention
  * established by `/test-connection`.
  */
 router.post('/test-web-search', async (req, res) => {
-  const { provider, apiKey, endpoint, customProvider } = req.body || {};
+  const { provider, apiKey, endpoint, customProvider, searchEngine } = req.body || {};
   if (provider !== undefined && !isWebSearchProvider(provider)) {
     return res.status(400).json({ ok: false, error: 'Unsupported web search provider.' });
+  }
+  if (searchEngine !== undefined && !isSerpApiEngine(searchEngine)) {
+    return res.status(400).json({ ok: false, error: 'Unsupported SerpAPI search engine.' });
   }
   const selectedProvider = normalizeWebSearchProvider(provider);
   const custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
@@ -1238,7 +1338,11 @@ router.post('/test-web-search', async (req, res) => {
     if (!['http:', 'https:'].includes(url.protocol)) {
       return res.status(400).json({ ok: false, error: `Invalid endpoint URL: ${effectiveEndpoint}` });
     }
-    if (selectedProvider === 'tavily') {
+    if (isAdditionalSearchProvider(selectedProvider)) {
+      const request = additionalSearchRequest(selectedProvider, { endpoint: effectiveEndpoint, apiKey: trimmedKey, query: 'hello', limit: 3, searchEngine });
+      requestUrl = request.url;
+      requestInit = request.init;
+    } else if (selectedProvider === 'tavily') {
       requestUrl = effectiveEndpoint;
       requestInit = {
           method: 'POST',
@@ -1345,6 +1449,11 @@ router.post('/test-web-search', async (req, res) => {
       raw = await response.json();
     } catch { /* not JSON */ }
 
+    if (isAdditionalSearchProvider(selectedProvider)) {
+      if (!response.ok) throw new Error(`API error (${response.status}): ${JSON.stringify(raw)}`);
+      const organic = additionalSearchResults(selectedProvider, raw, 3);
+      return res.json({ ok: true, latencyMs, organicCount: organic.length });
+    }
     if (!response.ok) {
       const detail = (raw && (raw.error || raw.msg)) || `${response.status} ${response.statusText}`;
       return res.json({ ok: false, error: String(detail), latencyMs });
@@ -1373,7 +1482,7 @@ router.post('/test-web-search', async (req, res) => {
     if (isNetworkTimeout(err)) {
       return res.json({ ok: false, error: `Connection timed out after ${timeout / 1000}s.` });
     }
-    return res.json({ ok: false, error: err.message || String(err) });
+    return res.json({ ok: false, error: isAdditionalSearchProvider(selectedProvider) ? redactSearchError(err, trimmedKey) : err.message || String(err) });
   }
 });
 
@@ -1391,7 +1500,10 @@ router.post('/open', async (_req, res) => {
     try {
       await fsPromises.access(configPath);
     } catch {
-      await fsPromises.writeFile(configPath, configToYaml(buildDefaultPilotDeckConfig()), 'utf8');
+      await writePilotDeckConfig(buildDefaultPilotDeckConfig(), {
+        expectedRevision: configRevision(''),
+        onWriteCommitted: suppressNextWatchEvent,
+      });
     }
 
     const command = process.platform === 'darwin'

@@ -107,3 +107,20 @@ test("mapAgentEvent preserves an aborted subagent completion", () => {
     durationMs: 10,
   });
 });
+
+
+test("subagent errors receive distinct identities before replay serialization", () => {
+  const error: AgentEvent = {
+    type: "subagent_model_event", sessionId: "session-1", turnId: "turn-1",
+    subagentId: "child", subagentType: "explore",
+    event: { type: "error", error: { provider: "test", protocol: "openai",
+      code: "timeout", message: "Timed out", retryable: true } },
+  };
+  const [first] = mapAgentEvent(error, "run-1");
+  const [second] = mapAgentEvent(error, "run-1");
+  assert.ok(first?.type === "agent_status" && second?.type === "agent_status");
+  assert.equal(typeof first.detail?.errorId, "string");
+  assert.ok(first.detail?.errorId);
+  assert.notEqual(first.detail?.errorId, second.detail?.errorId);
+  assert.equal(JSON.parse(JSON.stringify(first)).detail.errorId, first.detail?.errorId);
+});

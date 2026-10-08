@@ -18,6 +18,7 @@ const execFileAsync = promisify(execFile);
 const spreadsheetPreviewLocks = new Map();
 const MAX_INTERACTIVE_CELL_AREA = 1_000_000;
 const SPREADSHEET_MAIN_NAMESPACE = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+const SPREADSHEET_DRAWING_NAMESPACE = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing';
 
 export const SPREADSHEET_PREVIEW_EXTENSIONS = new Set(['xls', 'xlsx', 'et', 'ods']);
 
@@ -49,25 +50,56 @@ function escapeRegularExpression(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function normalizePrefixedSpreadsheetPackage(filePath) {
+function normalizeDrawingNamespace(xml) {
+  const root = /<(?:(\w[\w.-]*):)?wsDr\b([^>]*)>/.exec(xml);
+  if (!root) return xml;
+
+  const prefix = root[1] || '';
+  if (prefix === 'xdr') return xml;
+
+  const declaration = new RegExp(`\\bxmlns${prefix ? `:${escapeRegularExpression(prefix)}` : ''}\\s*=\\s*(["'])(.*?)\\1`, 'g');
+  const rootDeclaration = declaration.exec(root[2]);
+  if (!rootDeclaration || rootDeclaration[2] !== SPREADSHEET_DRAWING_NAMESPACE) return xml;
+
+  // A nested namespace change would make a package-wide tag rename unsafe.
+  declaration.lastIndex = 0;
+  if ([...xml.matchAll(declaration)].some((match) => match[2] !== SPREADSHEET_DRAWING_NAMESPACE)) {
+    return xml;
+  }
+  const xdrDeclaration = /\bxmlns:xdr\s*=\s*(["'])(.*?)\1/g;
+  if ([...xml.matchAll(xdrDeclaration)].some((match) => match[2] !== SPREADSHEET_DRAWING_NAMESPACE)) {
+    return xml;
+  }
+
+  const normalized = prefix
+    ? xml.replace(new RegExp(`(<\\/?)(?:${escapeRegularExpression(prefix)}):`, 'g'), '$1xdr:')
+    : xml.replace(/(<\/?)([A-Za-z_][\w.-]*)(?=[\s/>])/g, '$1xdr:$2');
+  if (/\bxmlns:xdr\s*=/.test(root[2])) return normalized;
+  return normalized.replace('<xdr:wsDr', `<xdr:wsDr xmlns:xdr="${SPREADSHEET_DRAWING_NAMESPACE}"`);
+}
+
+async function normalizeSpreadsheetPackage(filePath) {
   const zip = await JSZip.loadAsync(await fsPromises.readFile(filePath));
   let changed = false;
 
   for (const [entryName, entry] of Object.entries(zip.files)) {
     if (entry.dir || !entryName.endsWith('.xml')) continue;
     const xml = await entry.async('string');
-    const namespaceMatch = xml.match(
+    let normalized = /^xl\/drawings\/[^/]+\.xml$/i.test(entryName)
+      ? normalizeDrawingNamespace(xml)
+      : xml;
+    const namespaceMatch = normalized.match(
       /xmlns:([A-Za-z_][\w.-]*)=(["'])http:\/\/schemas\.openxmlformats\.org\/spreadsheetml\/2006\/main\2/,
     );
-    if (!namespaceMatch) continue;
-
-    const prefix = escapeRegularExpression(namespaceMatch[1]);
-    const quote = namespaceMatch[2];
-    let normalized = xml.replace(new RegExp(`(<\\/?)(?:${prefix}):`, 'g'), '$1');
-    const defaultNamespace = `xmlns=${quote}${SPREADSHEET_MAIN_NAMESPACE}${quote}`;
-    normalized = normalized.includes(defaultNamespace)
-      ? normalized.replace(namespaceMatch[0], '')
-      : normalized.replace(namespaceMatch[0], defaultNamespace);
+    if (namespaceMatch) {
+      const prefix = escapeRegularExpression(namespaceMatch[1]);
+      const quote = namespaceMatch[2];
+      normalized = normalized.replace(new RegExp(`(<\\/?)(?:${prefix}):`, 'g'), '$1');
+      const defaultNamespace = `xmlns=${quote}${SPREADSHEET_MAIN_NAMESPACE}${quote}`;
+      normalized = normalized.includes(defaultNamespace)
+        ? normalized.replace(namespaceMatch[0], '')
+        : normalized.replace(namespaceMatch[0], defaultNamespace);
+    }
 
     if (normalized !== xml) {
       zip.file(entryName, normalized);
@@ -307,11 +339,24 @@ async function loadInteractiveWorkbook(workbookPath) {
     await workbook.xlsx.readFile(workbookPath);
     return workbook;
   } catch (error) {
-    const normalizedPackage = await normalizePrefixedSpreadsheetPackage(workbookPath);
-    if (!normalizedPackage) throw error;
-    const normalizedWorkbook = new ExcelJS.Workbook();
-    await normalizedWorkbook.xlsx.load(normalizedPackage);
-    return normalizedWorkbook;
+    const normalizedPackage = await normalizeSpreadsheetPackage(workbookPath);
+    let parseError = error;
+    if (normalizedPackage) {
+      try {
+        const normalizedWorkbook = new ExcelJS.Workbook();
+        await normalizedWorkbook.xlsx.load(normalizedPackage);
+        return normalizedWorkbook;
+      } catch (normalizedError) {
+        parseError = normalizedError;
+      }
+    }
+    const previewError = createSpreadsheetPreviewError(
+      'This workbook could not be parsed for interactive preview.',
+      422,
+      'SPREADSHEET_INTERACTIVE_PARSE_FAILED',
+    );
+    previewError.cause = parseError;
+    throw previewError;
   }
 }
 

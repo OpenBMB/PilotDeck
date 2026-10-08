@@ -1,4 +1,4 @@
-name: Desktop Smoke
+name: Desktop
 
 on:
   pull_request:
@@ -23,16 +23,17 @@ env:
 
 jobs:
   static-checks:
+    name: Checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.32.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.23.1
           cache: pnpm
@@ -48,11 +49,17 @@ jobs:
 
       - name: Test desktop updater network
         # Requires electron-updater, intentionally absent from the Web-only job.
-        run: pnpm --dir ui exec vitest run server/services/desktopUpdateNetwork.test.ts
+        run: pnpm --dir ui exec vitest run server/services/desktopUpdateNetwork.test.ts server/services/desktopUpdates.spec.ts server/services/desktopAutoUpdate.test.ts
 
-  # Run the same installer build and artifact/feed validation as Daily Release.
-  # A process-only check cannot catch NSIS compilation or packaging regressions.
-  windows-installer:
+  # PRs exercise the same native packages and updater feeds as releases.
+  linux:
+    name: Linux
+    uses: ./.github/workflows/desktop-linux.yml
+
+  macos:
+    name: macOS
+    uses: ./.github/workflows/desktop-macos.yml
+
+  windows:
+    name: Windows
     uses: ./.github/workflows/desktop-windows.yml
-    with:
-      source_sha: ${{ github.sha }}

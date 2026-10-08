@@ -417,7 +417,7 @@ export default function MemoryDataSection({
                 <input
                   ref={importInputRef}
                   className="memory-import-input"
-                  accept="application/json,.json"
+                  accept=".json"
                   aria-label={t(
                     "pilotDeckConfig.panels.memory.data.actions.import",
                   )}

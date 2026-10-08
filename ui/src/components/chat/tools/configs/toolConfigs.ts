@@ -356,7 +356,7 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-500 dark:text-gray-400',
-        border: 'border-violet-400 dark:border-violet-500'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500'
       }
     },
     result: {
@@ -489,8 +489,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-700 dark:text-gray-300',
-        border: 'border-violet-400 dark:border-violet-500',
-        icon: 'text-violet-500 dark:text-violet-400'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500',
+        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-violet-400'
       }
     },
     result: {
@@ -512,8 +512,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-700 dark:text-gray-300',
-        border: 'border-violet-400 dark:border-violet-500',
-        icon: 'text-violet-500 dark:text-violet-400'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500',
+        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-violet-400'
       }
     },
     result: {
@@ -529,8 +529,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-500 dark:text-gray-400',
-        border: 'border-violet-400 dark:border-violet-500',
-        icon: 'text-violet-500 dark:text-violet-400'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500',
+        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-violet-400'
       }
     },
     result: {
@@ -552,8 +552,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-700 dark:text-gray-300',
-        border: 'border-violet-400 dark:border-violet-500',
-        icon: 'text-violet-500 dark:text-violet-400'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500',
+        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-violet-400'
       }
     },
     result: {
@@ -614,8 +614,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
         };
       },
       colorScheme: {
-        border: 'border-purple-500 dark:border-purple-400',
-        icon: 'text-purple-500 dark:text-purple-400'
+        border: 'border-[var(--pd-accent,#a855f7)] dark:border-purple-400',
+        icon: 'text-[var(--pd-accent,#a855f7)] dark:text-purple-400'
       }
     },
     result: {

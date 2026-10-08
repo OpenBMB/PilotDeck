@@ -51,7 +51,7 @@ function getDocumentReferenceFileMeta(fileName: string): DocumentReferenceFileMe
     },
     code: {
       label: 'CODE',
-      className: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300',
+      className: 'bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#7c3aed)] dark:bg-violet-950/40 dark:text-violet-300',
     },
     data: {
       label: 'DATA',
@@ -67,7 +67,7 @@ function getDocumentReferenceFileMeta(fileName: string): DocumentReferenceFileMe
     },
     image: {
       label: 'IMG',
-      className: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300',
+      className: 'bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#7c3aed)] dark:bg-violet-950/40 dark:text-violet-300',
     },
     video: {
       label: 'VIDEO',

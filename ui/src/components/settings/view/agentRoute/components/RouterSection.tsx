@@ -1,3 +1,4 @@
+import { isOptionalFeatureEnabled } from "../../../../../../../src/pilot/config/optionalFeature.js";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -15,7 +16,7 @@ import type { PilotDeckConfig } from "../../modelPool/types";
 import {
   buildModelRefOptions,
   ensureModelRefConfigured,
-} from "../../agentModel/utils/modelRefs";
+} from "../../modelPool/utils/modelRefs";
 import { findCatalogProviderById } from "../../../../../shared/catalogProviders";
 import {
   queueSettingsSaveSuccess,
@@ -27,10 +28,11 @@ import {
   getBuiltInPricing,
   ROUTER_TIER_KEYS,
 } from "../utils/router";
+import SubagentTimeoutSetting, { type SaveRouteConfig } from "./SubagentTimeoutSetting";
 
 type RouterSectionProps = {
   config: PilotDeckConfig;
-  onChange: (next: PilotDeckConfig) => void;
+  onChange: SaveRouteConfig;
 };
 
 type TierMap = Record<
@@ -81,7 +83,7 @@ export default function RouterSection({
   const [editingTiers, setEditingTiers] = useState(false);
   const [editingPricing, setEditingPricing] = useState(false);
   const r = config.router ?? {};
-  const enabled = r.enabled === true;
+  const enabled = isOptionalFeatureEnabled(config.router);
   const modelOpts = buildModelRefOptions(config);
   const tiers = r.tokenSaver?.tiers ?? EMPTY_TIERS;
   const defaultTier = r.tokenSaver?.defaultTier ?? "medium";
@@ -343,7 +345,7 @@ export default function RouterSection({
       </section>
 
       {!enabled ? (
-        <section className="route-card route-subagent-model-card">
+        <section className="route-card route-subagent-model-card" data-model-reference="agent.subagents.default" tabIndex={-1}>
           <div className="route-subagent-model-setting">
             <div className="route-subagent-model-copy">
               <label>
@@ -365,6 +367,9 @@ export default function RouterSection({
               true,
             )}
           </div>
+          <div className="px-5 pb-4">
+            <SubagentTimeoutSetting config={config} onSave={onChange} />
+          </div>
         </section>
       ) : (
         <fieldset
@@ -376,7 +381,7 @@ export default function RouterSection({
               <h2>{t("pilotDeckConfig.panels.router.ui.routingModels")}</h2>
             </header>
             <div className="route-model-list">
-              <div className="route-model-row judge-row">
+              <div className="route-model-row judge-row" data-model-reference="router.tokenSaver.judge" tabIndex={-1}>
                 <div className="route-model-copy">
                   <span className="route-row-icon">
                     <ListOrdered size={18} />
@@ -415,6 +420,7 @@ export default function RouterSection({
                   <div
                     key={key}
                     className={`route-model-row${defaultTier === key ? " is-default-tier" : ""}`}
+                    data-model-reference={`router.tokenSaver.tiers.${key}.model`} tabIndex={-1}
                   >
                     <div className="route-model-copy">
                       <span
@@ -551,7 +557,7 @@ export default function RouterSection({
                   </div>
                   {subagentPolicy === "skip" ? (
                     <div className="advanced-strategy-model-row">
-                      <div className="route-subagent-model-setting compact">
+                      <div className="route-subagent-model-setting compact" data-model-reference="agent.subagents.default" tabIndex={-1}>
                         <div className="route-subagent-model-copy">
                           <label>
                             {t(
@@ -579,6 +585,7 @@ export default function RouterSection({
                       </div>
                     </div>
                   ) : null}
+                  <SubagentTimeoutSetting config={config} onSave={onChange} />
                 </section>
 
                 <section className="route-card advanced-route-card tier-definition-card">
@@ -834,7 +841,7 @@ export default function RouterSection({
                         }));
                       };
                       return (
-                        <div className="model-pricing-row" key={ref}>
+                        <div className="model-pricing-row" key={ref} data-model-reference={`router.stats.modelPricing.${ref}`} tabIndex={-1}>
                           <strong title={label}>{label}</strong>
                           {(["input", "output", "cacheRead"] as const).map(
                             (field) => (

@@ -45,7 +45,7 @@ export function resolvePlaywrightHostPlatform({
   arch = process.arch,
   macMajor = readMacMajorVersion(),
 } = {}) {
-  if (platform === "win32" && arch === "x64") return "win64";
+  if (platform === "win32" && (arch === "x64" || arch === "arm64")) return "win64";
   if (platform === "darwin" && (arch === "arm64" || arch === "x64")) {
     const suffix = arch === "arm64" ? "-arm64" : "";
     return `mac${macMajor}${suffix}`;

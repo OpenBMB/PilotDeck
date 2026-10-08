@@ -39,9 +39,12 @@ import {
   readExternalFileDropTarget,
   resolveExternalFileDropTargetPath,
 } from '../../utils/externalFileDrop';
+import type { WorkspaceUploadController } from './useWorkspaceUpload';
+import { WorkspaceUploadStatus } from './WorkspaceUploadStatus';
 
 type FilesV2Props = {
   selectedProject: Project | null;
+  workspaceUpload: WorkspaceUploadController;
   onFileOpen?: (filePath: string) => void;
   activeFilePath?: string | null;
   onFileRename?: (oldPath: string, newPath: string) => void;
@@ -113,6 +116,7 @@ function flatten(
 
 export default function FilesV2({
   selectedProject,
+  workspaceUpload,
   onFileOpen,
   activeFilePath,
   onFileRename,
@@ -129,7 +133,8 @@ export default function FilesV2({
   const [activePath, setActivePath] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<FileContextMenu | null>(null);
   const [inlineEdit, setInlineEdit] = useState<InlineEdit | null>(null);
-  const [uploadingProject, setUploadingProject] = useState(false);
+  const uploadingProject = workspaceUpload.busy;
+  const startWorkspaceUpload = workspaceUpload.start;
   const [downloadingProject, setDownloadingProject] = useState(false);
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const [isExternalFileDropActive, setIsExternalFileDropActive] = useState(false);
@@ -138,6 +143,11 @@ export default function FilesV2({
   const escapePressedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+
+  const savedNames = workspaceUpload.upload?.savedNames;
+  useEffect(() => {
+    if (savedNames?.length) refreshFiles();
+  }, [savedNames, refreshFiles]);
 
   useEffect(() => {
     setExpanded(new Set());
@@ -440,40 +450,10 @@ export default function FilesV2({
     [canAddToChat, closeContextMenu, projectRoot, selectedProject?.name],
   );
 
-  const uploadSelectedFiles = useCallback(
-    async (fileList: FileList | File[] | null, targetPath = '') => {
-      if (!selectedProject?.name || !fileList || fileList.length === 0) return;
-
-      const fileArray = Array.from(fileList);
-      const relativePaths = fileArray.map((file) => {
-        const withDir = file as File & { webkitRelativePath?: string };
-        return withDir.webkitRelativePath || file.name;
-      });
-
-      const formData = new FormData();
-      formData.append('targetPath', targetPath);
-      formData.append('relativePaths', JSON.stringify(relativePaths));
-      for (const file of fileArray) {
-        formData.append('files', file);
-      }
-
-      try {
-        setUploadingProject(true);
-        setUploadMenuOpen(false);
-        const response = await api.uploadFiles(selectedProject.name, formData);
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => '');
-          throw new Error(errorText || `Upload failed: ${response.status}`);
-        }
-        await refreshFiles();
-      } catch (error) {
-        console.error('Failed to upload files:', error);
-      } finally {
-        setUploadingProject(false);
-      }
-    },
-    [refreshFiles, selectedProject?.name],
-  );
+  const uploadSelectedFiles = useCallback((fileList: FileList | File[] | null, targetPath = '') => {
+    setUploadMenuOpen(false);
+    return startWorkspaceUpload(fileList, targetPath);
+  }, [startWorkspaceUpload]);
 
   const resetExternalFileDrop = useCallback(() => {
     externalFileDragDepthRef.current = 0;
@@ -776,6 +756,8 @@ export default function FilesV2({
         </button>
       </div>
 
+      <WorkspaceUploadStatus upload={workspaceUpload.upload} onCancel={workspaceUpload.cancel} onRetry={workspaceUpload.retry} onDismiss={workspaceUpload.dismiss} />
+
       <div
         className="file-tree-scroll"
         onContextMenu={handleBlankContextMenu}
@@ -785,7 +767,7 @@ export default function FilesV2({
             <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
             <span>{t('loading', { defaultValue: 'Loading…' })}</span>
           </div>
-        ) : flat.length === 0 ? (
+        ) : flat.length === 0 && inlineEdit?.kind !== 'create' ? (
           <div className="py-6 text-center text-xxs text-neutral-500 dark:text-neutral-400">
             {t('fileTree.empty', { defaultValue: 'This project is empty.' })}
           </div>

@@ -132,7 +132,9 @@ describe('MainAreaV2 dashboard switcher', () => {
   it('renames the selected session inline after double-clicking the header title', () => {
     render(<Harness withSession />);
 
-    fireEvent.doubleClick(screen.getByTitle('Searchable chat'));
+    const title = screen.getByTitle('Searchable chat');
+    expect(title.hasAttribute('data-desktop-no-drag')).toBe(true);
+    fireEvent.doubleClick(title);
     const input = screen.getByRole('textbox', { name: 'Rename Session' });
     expect((input as HTMLInputElement).value).toBe('Searchable chat');
     expect(document.activeElement).toBe(input);

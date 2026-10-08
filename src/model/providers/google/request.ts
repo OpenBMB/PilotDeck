@@ -33,7 +33,6 @@ export function buildGoogleRequest(
   const tools = request.tools?.map(toGoogleFunctionDeclaration) ?? [];
   const config: GenerateContentConfig = {
     maxOutputTokens: request.maxOutputTokens ?? model.capabilities.maxOutputTokens,
-    temperature: request.temperature,
     systemInstruction: request.systemPrompt ? { text: request.systemPrompt } : undefined,
     automaticFunctionCalling: { disable: true },
     tools: tools.length > 0 ? [{ functionDeclarations: tools } satisfies Tool] : undefined,
@@ -88,22 +87,11 @@ function toGoogleThinkingConfig(
 ): GenerateContentConfig["thinkingConfig"] {
   const thinkingPlan = resolveThinkingPlan(request.thinking, { id: "google", protocol: "google", url: "", apiKey: "", headers: {}, models: {} }, model);
   throwIfUnsupportedThinkingPlan(thinkingPlan, request);
-  if (!thinkingPlan.enabled || !model.capabilities.supportsThinking) {
-    return undefined;
-  }
-  if (thinkingPlan.useGeminiLevel && thinkingPlan.thinkingLevel) {
-    return {
-      includeThoughts: true,
-      thinkingLevel: thinkingPlan.thinkingLevel,
-    } as unknown as GenerateContentConfig["thinkingConfig"];
-  }
-  const budget = thinkingPlan.budgetTokens;
+  if (!thinkingPlan.enabled) return undefined;
   return {
     includeThoughts: true,
-    ...(typeof budget === "number" && Number.isFinite(budget) && budget >= 0
-      ? { thinkingBudget: budget }
-      : {}),
-  };
+    ...(thinkingPlan.thinkingLevel ? { thinkingLevel: thinkingPlan.thinkingLevel } : {}),
+  } as GenerateContentConfig["thinkingConfig"];
 }
 
 function toGoogleContents(messages: CanonicalMessage[]): Content[] {

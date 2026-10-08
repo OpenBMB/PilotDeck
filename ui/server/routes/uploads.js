@@ -1,11 +1,49 @@
 import express from 'express';
+import { readUploadLimits } from '../services/uploadLimits.js';
 import multer from 'multer';
 import path from 'node:path';
+import { createReadStream } from 'node:fs';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { UploadStore } from '../../../src/gateway/dialog/UploadStore.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 import { resolvePilotHome } from '../utils/pilotPaths.js';
 
 const router = express.Router();
+
+// Allow a full supported 500-file batch, but bound repeated disk/hash work.
+export const previewRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  keyGenerator: req => req.user?.id != null
+    ? `user:${req.user.id}` : ipKeyGenerator(req.ip || req.socket.remoteAddress || 'unknown'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: 'PREVIEW_RATE_LIMITED', message: 'Too many image preview requests. Please retry later.' } },
+});
+
+// Base64 groups span three bytes. Preserve the trailing bytes between reads
+// so large files can be encoded with bounded memory and response backpressure.
+export function createPreviewEncoder(mimeType) {
+  let remainder = Buffer.alloc(0);
+  let started = false;
+  return new Transform({
+    transform(chunk, _encoding, callback) {
+      if (!started) { this.push(`{"data":"data:${mimeType};base64,`); started = true; }
+      const bytes = Buffer.concat([remainder, chunk]);
+      const end = bytes.length - bytes.length % 3;
+      if (end) this.push(bytes.subarray(0, end).toString('base64'));
+      remainder = Buffer.from(bytes.subarray(end));
+      callback();
+    },
+    flush(callback) {
+      if (!started) this.push(`{"data":"data:${mimeType};base64,`);
+      this.push(remainder.toString('base64') + '"}');
+      callback();
+    },
+  });
+}
 
 async function listProjectRoots() {
   const gateway = await getPilotDeckGateway();
@@ -28,11 +66,7 @@ const store = new UploadStore({
     return match;
   },
   listProjects: listProjectRoots,
-  maxFileBytes: envNumber('PILOTDECK_UPLOAD_MAX_FILE_BYTES'),
-  maxTaskBytes: envNumber('PILOTDECK_UPLOAD_MAX_TASK_BYTES'),
-  maxFiles: envNumber('PILOTDECK_UPLOAD_MAX_FILES'),
-  maxConcurrentPerProject: envNumber('PILOTDECK_UPLOAD_MAX_CONCURRENT'),
-  retentionMs: envNumber('PILOTDECK_UPLOAD_RETENTION_MS'),
+  ...readUploadLimits(),
 });
 
 const cleanupTimer = setInterval(() => void store.cleanupExpired().catch((error) => {
@@ -56,6 +90,8 @@ const storage = {
   _removeFile(_req, _file, callback) { callback(null); },
 };
 const uploadContent = multer({ storage, limits: { files: 500, fields: 20 } }).any();
+
+router.get('/limits', (_req, res) => res.json(readUploadLimits()));
 
 router.post('/', async (req, res) => {
   try {
@@ -125,6 +161,24 @@ router.get('/:uploadId', async (req, res) => {
   catch (error) { return sendError(res, error, req.id); }
 });
 
+// Read from the controlled upload store, never a client-supplied file path.
+// This router shares the authentication middleware of the upload endpoints.
+router.get('/:uploadId/attachments/:attachmentId/preview', previewRateLimiter, async (req, res) => {
+  try {
+    const record = await store.get(req.params.uploadId);
+    const [attachment] = await store.verifyAttachment(record.uploadId, record.projectKey, [req.params.attachmentId]);
+    if (!/^image\/[a-zA-Z0-9.+-]+$/.test(attachment.mimeType || '')) {
+      return res.status(415).json({ error: { code: 'ATTACHMENT_NOT_IMAGE', message: 'Attachment is not an image.' } });
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.type('json');
+    await pipeline(createReadStream(attachment.path), createPreviewEncoder(attachment.mimeType), res);
+  } catch (error) {
+    if (res.headersSent || res.destroyed) { res.destroy(); return; }
+    return sendError(res, error, req.id);
+  }
+});
+
 router.delete('/:uploadId', async (req, res) => {
   try { await store.cancel(req.params.uploadId); return res.status(204).end(); }
   catch (error) { return sendError(res, error, req.id); }
@@ -154,7 +208,6 @@ function eventName(record) {
   return 'upload_progress';
 }
 function isTerminal(status) { return ['completed', 'failed', 'cancelled', 'expired'].includes(status); }
-function envNumber(name) { const value = Number(process.env[name]); return Number.isFinite(value) && value > 0 ? value : undefined; }
 function sendError(res, error, requestId) {
   const code = typeof error?.code === 'string' ? error.code : 'gateway_request_failed';
   const statuses = {

@@ -45,18 +45,10 @@ export {
   type StreamNormalizerState,
 } from "./streaming/normalizeStreamEvent.js";
 export {
-  extractTextToolCalls,
-  detectFormatByText,
-  getSelfCorrectPrompt,
-  hasTextToolCallSyntax,
-  type PartialTextToolCallFormat,
-  type PartialTextToolCallInfo,
-  type TextToolCallParseResult,
-} from "./streaming/parseTextToolCalls.js";
-export {
   applyModelEventToAssembler,
   assembleAssistantMessage,
   createModelMessageAssemblerState,
+  getModelStreamBlockId,
   type AssembledAssistantMessage,
   type ModelMessageAssemblerState,
 } from "./streaming/assembleModelMessage.js";

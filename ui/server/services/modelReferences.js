@@ -31,50 +31,242 @@ function referenceKind(path) {
   return 'model';
 }
 
-function collectReference(references, path, value) {
-  const ref = parseModelRef(value);
-  if (!ref) return;
-  references.push({ path, value: `${ref.providerId}/${ref.modelId}`, kind: referenceKind(path), ...ref });
-}
+// How a reference is repaired when the model it points at is removed.
+//   replace — the slot needs a working model; it takes the chosen replacement
+//   inherit — the slot has an "inherit agent.model" value
+//   remove  — the slot is optional or pure metadata and can be dropped
+export const REFERENCE_ACTIONS = Object.freeze(['replace', 'inherit', 'remove', 'clear']);
 
-export function findModelReferences(config, { providerId = '', modelId = '' } = {}) {
-  const references = [];
+const REMOVED = Symbol('removed-reference');
+
+// Walk every model reference in the config exactly once. Each slot carries the
+// default repair action and small mutators bound to its container, so callers
+// never have to re-parse dotted paths (pricing keys such as `openai/gpt-4.1`
+// contain dots themselves).
+function collectReferenceSlots(config) {
+  const slots = [];
+  const add = (path, value, action, mutate) => {
+    const ref = parseModelRef(value);
+    if (!ref) return;
+    slots.push({
+      path,
+      value: `${ref.providerId}/${ref.modelId}`,
+      kind: referenceKind(path),
+      providerId: ref.providerId,
+      modelId: ref.modelId,
+      action,
+      raw: value,
+      ...mutate,
+    });
+  };
+
   const agent = config?.agent;
-  collectReference(references, 'agent.model', agent?.model);
-  collectReference(references, 'agent.subagents.default', agent?.subagents?.default);
-  collectReference(references, 'memory.model', config?.memory?.model);
+  add('agent.model', agent?.model, 'replace', {
+    set: (next) => { agent.model = next; },
+    clear: () => { agent.model = ''; },
+  });
+  add('agent.subagents.default', agent?.subagents?.default, 'inherit', {
+    inherit: () => { agent.subagents.default = 'inherit'; },
+  });
+  const memory = config?.memory;
+  add('memory.model', memory?.model, 'inherit', {
+    // Memory inherits by omitting its override; unlike subagents, the runtime
+    // parser does not accept the literal "inherit" as a model reference.
+    inherit: () => { delete memory.model; },
+  });
 
   const router = config?.router;
   if (isRecord(router?.scenarios)) {
-    for (const [name, value] of Object.entries(router.scenarios)) {
-      collectReference(references, `router.scenarios.${name}`, value);
+    const scenarios = router.scenarios;
+    for (const [name, value] of Object.entries(scenarios)) {
+      // Only the default route is consumed by the runtime; other scenario keys
+      // fall back to it when absent.
+      add(`router.scenarios.${name}`, value, name === 'default' ? 'replace' : 'remove', {
+        router: true,
+        set: (next) => { scenarios[name] = next; },
+        remove: () => { delete scenarios[name]; },
+      });
     }
   }
   if (isRecord(router?.fallback)) {
     for (const [name, values] of Object.entries(router.fallback)) {
       if (!Array.isArray(values)) continue;
       values.forEach((value, index) => {
-        collectReference(references, `router.fallback.${name}.${index}`, value);
+        add(`router.fallback.${name}.${index}`, value, 'remove', {
+          fallbackKey: name,
+          remove: () => { values[index] = REMOVED; },
+        });
       });
     }
   }
-  collectReference(references, 'router.tokenSaver.judge', router?.tokenSaver?.judge);
-  if (isRecord(router?.tokenSaver?.tiers)) {
-    for (const [name, tier] of Object.entries(router.tokenSaver.tiers)) {
-      collectReference(references, `router.tokenSaver.tiers.${name}.model`, tier?.model);
+  const tokenSaver = router?.tokenSaver;
+  add('router.tokenSaver.judge', tokenSaver?.judge, 'replace', {
+    router: true,
+    tokenSaver: true,
+    set: (next) => { tokenSaver.judge = next; },
+    remove: () => { delete tokenSaver.judge; },
+  });
+  if (isRecord(tokenSaver?.tiers)) {
+    for (const [name, tier] of Object.entries(tokenSaver.tiers)) {
+      add(`router.tokenSaver.tiers.${name}.model`, tier?.model, 'replace', {
+        router: true,
+        tokenSaver: true,
+        set: (next) => { tier.model = next; },
+        remove: () => { delete tier.model; },
+      });
     }
   }
-  if (isRecord(router?.stats?.modelPricing)) {
-    for (const key of Object.keys(router.stats.modelPricing)) {
-      collectReference(references, `router.stats.modelPricing.${key}`, key);
+  const stats = router?.stats;
+  if (isRecord(stats?.modelPricing)) {
+    const pricing = stats.modelPricing;
+    for (const key of Object.keys(pricing)) {
+      // Pricing is per-model cost metadata; copying it onto another model
+      // would silently produce wrong statistics, so it is dropped.
+      add(`router.stats.modelPricing.${key}`, key, 'remove', {
+        remove: () => { delete pricing[key]; },
+      });
     }
   }
-  collectReference(references, 'router.stats.baselineModel', router?.stats?.baselineModel);
+  add('router.stats.baselineModel', stats?.baselineModel, 'remove', {
+    remove: () => { delete stats.baselineModel; },
+  });
+  return slots;
+}
 
-  return references.filter((reference) => (
-    (!providerId || reference.providerId === providerId)
-    && (!modelId || reference.modelId === modelId)
-  )).map(({ providerId: _providerId, modelId: _modelId, ...reference }) => reference);
+function matchesTarget(slot, { providerId = '', modelId = '' }) {
+  return (!providerId || slot.providerId === providerId)
+    && (!modelId || slot.modelId === modelId);
+}
+
+export function findModelReferences(config, { providerId = '', modelId = '' } = {}) {
+  return collectReferenceSlots(config)
+    .filter(slot => matchesTarget(slot, { providerId, modelId }))
+    .map(({ path, value, kind }) => ({ path, value, kind }));
+}
+
+function replacementValue(value, replacement) {
+  if (!isRecord(value)) return replacement;
+  const ref = parseModelRef(replacement);
+  const next = { ...value };
+  if (Object.hasOwn(value, 'id')) next.id = replacement;
+  if (Object.hasOwn(value, 'provider')) next.provider = ref.providerId;
+  if (Object.hasOwn(value, 'providerId')) next.providerId = ref.providerId;
+  if (Object.hasOwn(value, 'model')) next.model = ref.modelId;
+  if (Object.hasOwn(value, 'modelId')) next.modelId = ref.modelId;
+  return next;
+}
+
+function remainingModelRefs(config, { providerId, modelId }) {
+  const refs = [];
+  const providers = config?.model?.providers;
+  if (!isRecord(providers)) return refs;
+  for (const [id, provider] of Object.entries(providers)) {
+    if (id === providerId && !modelId) continue;
+    if (!isRecord(provider?.models)) continue;
+    for (const model of Object.keys(provider.models)) {
+      if (id === providerId && model === modelId) continue;
+      refs.push(`${id}/${model}`);
+    }
+  }
+  return refs;
+}
+
+function blockedPlan(base, code, message) {
+  return { ...base, blocked: { code, message }, config: null };
+}
+
+/**
+ * Plan the removal of a provider (or one of its models) together with every
+ * repair needed to keep the configuration valid.
+ *
+ * The input config is never mutated. The returned `config` is the complete
+ * next configuration (or null when the plan is blocked), and `changes` lists
+ * every slot that will be touched so the UI can preview the exact result.
+ */
+export function planModelRemoval(config, { providerId = '', modelId = '' } = {}, { replacement = '' } = {}) {
+  const target = { providerId: text(providerId), ...(text(modelId) ? { modelId: text(modelId) } : {}) };
+  const provider = config?.model?.providers?.[target.providerId];
+  const base = {
+    target,
+    replacement: '',
+    replacementOptions: [],
+    requiresReplacement: false,
+    changes: [],
+  };
+  if (!target.providerId || !isRecord(provider)) {
+    return blockedPlan(base, 'NOT_FOUND', `Provider "${target.providerId}" is not configured.`);
+  }
+  if (target.modelId && !(isRecord(provider.models) && Object.hasOwn(provider.models, target.modelId))) {
+    return blockedPlan(base, 'NOT_FOUND', `Model "${target.modelId}" is not configured for provider "${target.providerId}".`);
+  }
+
+  const next = JSON.parse(JSON.stringify(config));
+  const options = remainingModelRefs(next, target);
+  const slots = collectReferenceSlots(next).filter(slot => matchesTarget(slot, target));
+  const requiresReplacement = slots.some(slot => slot.action === 'replace');
+  const chosen = text(replacement);
+  const plan = { ...base, replacementOptions: options, requiresReplacement, replacement: requiresReplacement ? chosen : '' };
+
+  const router = next.router;
+  const routerEnabled = isRecord(router) && router.enabled !== false;
+  const tokenSaverEnabled = routerEnabled && router.tokenSaver?.enabled !== false;
+  const slotIsActive = slot => (slot.tokenSaver ? tokenSaverEnabled : slot.router ? routerEnabled : true);
+
+  // Resolve the final action of each slot.
+  for (const slot of slots) {
+    let action = slot.action;
+    if (action === 'replace' && !chosen && options.length === 0) {
+      // Nothing left to switch to. An empty agent model is allowed (onboarding
+      // state); router slots that are not active can simply be dropped.
+      if (slot.path === 'agent.model') action = 'clear';
+      else if (!slotIsActive(slot)) action = 'remove';
+    }
+    slot.finalAction = action;
+  }
+  plan.changes = slots.map(slot => ({
+    path: slot.path,
+    value: slot.value,
+    kind: slot.kind,
+    action: slot.finalAction,
+    ...(slot.finalAction === 'replace' && chosen ? { to: chosen } : {}),
+  }));
+
+  const unresolved = slots.filter(slot => slot.finalAction === 'replace');
+  if (unresolved.length && !chosen) {
+    return options.length
+      ? blockedPlan(plan, 'REPLACEMENT_REQUIRED', 'Choose a replacement model for the references that need one.')
+      : blockedPlan(plan, 'ROUTER_REQUIRES_MODEL', 'Smart routing is enabled and needs at least one other model.');
+  }
+  if (unresolved.length && !options.includes(chosen)) {
+    return blockedPlan(plan, 'REPLACEMENT_INVALID', `Replacement "${chosen}" is not an available model.`);
+  }
+
+  for (const slot of slots) {
+    if (slot.finalAction === 'replace') slot.set(replacementValue(slot.raw, chosen));
+    else if (slot.finalAction === 'clear') slot.clear();
+    else if (slot.finalAction === 'inherit') slot.inherit();
+    else slot.remove();
+  }
+
+  // Remove only entries that reference the deleted model/provider. Dynamic
+  // routes can select another tier or subagent model and fall back to the main
+  // model, so matching agent.model does not make a configured backup redundant.
+  // The runtime deduplicates attempts against its actual selection.
+  const touchedFallbacks = new Set(slots.map(slot => slot.fallbackKey).filter(Boolean));
+  if (isRecord(router?.fallback)) {
+    for (const name of touchedFallbacks) {
+      const values = router.fallback[name];
+      if (!Array.isArray(values)) continue;
+      const kept = values.filter(value => value !== REMOVED);
+      if (kept.length) router.fallback[name] = kept;
+      else delete router.fallback[name];
+    }
+  }
+
+  if (target.modelId) delete next.model.providers[target.providerId].models[target.modelId];
+  else delete next.model.providers[target.providerId];
+
+  return { ...plan, blocked: null, config: next };
 }
 
 function renameRef(value, providerRenames, modelRenames) {

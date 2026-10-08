@@ -73,9 +73,6 @@ export async function classifyAndRoute(
       },
     ],
     maxOutputTokens: 256,
-    // Provider defaults are more compatible than an explicit temperature for
-    // lightweight routing requests. Some compatible gateways reject the
-    // field for particular models (including Claude-backed ones).
     thinking: { enabled: false },
     stream: false,
   };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PilotDeckConfigProvider } from "../../hooks/usePilotDeckConfig";
 import { desktopUpdates } from "../../utils/desktopUpdates";
 import { authenticatedFetch } from "../../utils/api";
@@ -24,6 +24,7 @@ function SettingsInner({
   section,
 }: SettingsProps) {
   const navigate = useNavigate();
+  const { search } = useLocation();
   const isDesktopApp =
     typeof window !== "undefined" && !!(window as any).pilotdeckDesktop;
   const selectedKey = mapSettingsSectionToMenuKey(section);
@@ -41,6 +42,10 @@ function SettingsInner({
   });
   const [checkingVersion, setCheckingVersion] = useState(false);
 
+  useEffect(() => {
+    if (section === 'agent-model') navigate(`${getSettingsPath('modelPool')}${search}`, { replace: true });
+  }, [section, search, navigate]);
+
   const checkVersion = useCallback(async () => {
     setCheckingVersion(true);
     try {
@@ -48,8 +53,8 @@ function SettingsInner({
       if (isDesktopApp) {
         data = await desktopUpdates().checkUpdates();
       } else {
-        const res = await authenticatedFetch("/api/update/check", { method: "POST" });
-        if (!res.ok) throw new Error("Failed to check version");
+        const res = await authenticatedFetch("/api/update/info");
+        if (!res.ok) throw new Error("Failed to read local version");
         data = await res.json();
       }
       setVersionInfo(
@@ -73,7 +78,13 @@ function SettingsInner({
   }, [isDesktopApp]);
 
   useEffect(() => {
-    void checkVersion();
+    if (selectedKey === 'about') void checkVersion();
+  }, [selectedKey, checkVersion]);
+
+  useEffect(() => {
+    const checkFromMenu = () => { void checkVersion(); };
+    window.addEventListener('pilotdeck:check-updates', checkFromMenu);
+    return () => window.removeEventListener('pilotdeck:check-updates', checkFromMenu);
   }, [checkVersion]);
 
   useEffect(() => {
@@ -102,6 +113,7 @@ function SettingsInner({
         projects={projects}
         versionInfo={versionInfo}
         checkingVersion={checkingVersion}
+        onCheckUpdates={checkVersion}
         onCloseSettings={onClose}
         mobileVisible={!mobileNavigationOpen}
         onOpenMobileNavigation={() => setMobileNavigationOpen(true)}

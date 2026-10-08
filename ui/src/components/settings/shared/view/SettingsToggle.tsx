@@ -11,6 +11,7 @@ type SettingsToggleProps = {
   disabled?: boolean;
   suppressNextSaveToast?: boolean;
   successLabel?: string;
+  showSuccessToast?: boolean;
 };
 
 export default function SettingsToggle({
@@ -20,15 +21,16 @@ export default function SettingsToggle({
   disabled,
   suppressNextSaveToast = false,
   successLabel = ariaLabel,
+  showSuccessToast = true,
 }: SettingsToggleProps) {
   const handleClick = () => {
     const nextValue = !checked;
     const message = `${successLabel}已${nextValue ? "开启" : "关闭"}`;
-    if (suppressNextSaveToast) {
+    if (showSuccessToast && suppressNextSaveToast) {
       queueSettingsSaveSuccess(message);
     }
     onChange(nextValue);
-    if (!suppressNextSaveToast) showSettingsSuccess(message);
+    if (showSuccessToast && !suppressNextSaveToast) showSettingsSuccess(message);
   };
 
   return (

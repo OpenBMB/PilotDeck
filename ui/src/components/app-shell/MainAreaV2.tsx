@@ -52,7 +52,7 @@ function DedicatedWorkspacePage({
   const { t } = useTranslation();
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="pd-workspace-content flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <header className="workspace-header relative z-[80] shrink-0 overflow-visible">
         {isSidebarCollapsed ? (
           <button
@@ -356,7 +356,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="pd-workspace-content flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <header className="workspace-header relative z-[80] shrink-0 overflow-visible">
         {isSidebarCollapsed ? (
           // Just the "expand sidebar" affordance — the PilotDeck logo lives
@@ -399,6 +399,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
                 selectedSession && 'cursor-text',
               )}
               title={headerTitle}
+              data-desktop-no-drag={selectedSession ? '' : undefined}
               onDoubleClick={selectedSession ? beginSessionTitleRename : undefined}
             >
               {headerTitle}

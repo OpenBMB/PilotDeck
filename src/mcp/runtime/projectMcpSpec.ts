@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PilotDeckMcpServerSpec } from "../protocol/types.js";
@@ -25,7 +25,15 @@ function findPackageRoot(start: string): string {
 }
 
 export function getPilotDeckInstallCommand(): string {
-  return `npm --prefix "${findPackageRoot(MODULE_DIR)}" run install:asr`;
+  const packageRoot = findPackageRoot(MODULE_DIR);
+  // Desktop packages ship Node and this installer, but deliberately omit npm.
+  const desktopRoot = process.env.PILOTDECK_RUNTIME_ROOT;
+  if (desktopRoot && existsSync(desktopRoot) && realpathSync(desktopRoot) === realpathSync(packageRoot)) {
+    // The desktop Bash tool uses POSIX quoting, including its bundled Git Bash.
+    const quote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
+    return `${quote(process.execPath)} ${quote(join(packageRoot, "scripts", "install-asr.mjs"))}`;
+  }
+  return `npm --prefix "${packageRoot}" run install:asr`;
 }
 
 function funasrEntrypoint(): string {

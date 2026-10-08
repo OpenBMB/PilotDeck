@@ -604,6 +604,22 @@ describe('completed turn folding', () => {
     messages, buildRenderableMessageItems(messages, { isAssistantWorking: working }), working,
   );
 
+  it.each(['thinking', 'prose'])('keeps mid-turn compaction after preceding %s when the turn completes', (kind) => {
+    const preceding = kind === 'thinking' ? thinking('before') : assistant('before', 'Before compact');
+    const items = fold([user('u'), preceding, compact('middle'), assistant('final', 'After compact')]);
+    const row = items.flatMap(item => item.turnTrace?.items ?? []).find(item => item.message.id === 'before');
+    expect(row?.beforeProcessAttachments).toEqual([]);
+    expect(row?.afterProcessAttachments).toHaveLength(1);
+    expect(row?.afterProcessAttachments[0].processSummary.compactCount).toBe(1);
+  });
+
+  it('does not move a trailing compaction ahead of unfinished thinking', () => {
+    const items = fold([user('u'), thinking('before'), compact('middle')]);
+    const row = items.find(item => item.message.id === 'before');
+    expect(row?.beforeProcessAttachments).toEqual([]);
+    expect(row?.afterProcessAttachments).toHaveLength(1);
+  });
+
   it('moves user/final-hosted process attachments inside the trace without modifying messages', () => {
     const messages = [user('u'), thinking('t'), tool('tool', 'Read'), assistant('final', 'Answer')];
     const original = JSON.stringify(messages);

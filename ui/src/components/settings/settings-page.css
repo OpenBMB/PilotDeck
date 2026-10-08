@@ -2,15 +2,15 @@
    .pilotdeck-settings-app so they never leak into the workspace chrome. */
 
 .pilotdeck-settings-app {
-  --ink: #252737;
-  --muted: #858998;
+  --ink: var(--pd-ink, #252737);
+  --muted: var(--pd-muted, #858998);
   --soft: #a0a4b2;
-  --line: #e4e5ee;
-  --line-strong: #d8d9e6;
-  --brand: #5b5ce2;
-  --brand-strong: #4948cf;
-  --brand-soft: #eeecff;
-  --brand-tint: #f7f6ff;
+  --line: var(--pd-border, #e4e5ee);
+  --line-strong: var(--pd-border, #d8d9e6);
+  --brand: var(--pd-accent, #5b5ce2);
+  --brand-strong: var(--pd-accent-strong, #4948cf);
+  --brand-soft: var(--pd-accent-soft, #eeecff);
+  --brand-tint: var(--pd-accent-soft, #f7f6ff);
   --success: #168966;
   --success-soft: #e9f7f1;
   --danger: #cf4d5d;
@@ -23,10 +23,10 @@
   display: grid;
   grid-template-columns: 234px minmax(0, 1fr);
   overflow: hidden;
-  border: 1px solid rgba(75, 73, 136, 0.14);
+  border: 1px solid rgba(var(--pd-accent-rgb, 75, 73, 136), 0.14);
   border-radius: 14px;
   background: var(--surface);
-  box-shadow: 0 20px 60px #3835741f;
+  box-shadow: 0 20px 60px rgba(var(--pd-accent-rgb, 56, 53, 116), 0.122);
   color: var(--ink);
   font-family: "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei", Inter, system-ui, sans-serif;
 }
@@ -58,8 +58,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid rgb(225, 223, 240);
-  background: rgb(248, 247, 255);
+  border-right: 1px solid var(--pd-accent-border, rgb(225, 223, 240));
+  background: var(--pd-neutral-soft, rgb(248, 247, 255));
 }
 
 :where(.pilotdeck-settings-app) .sidebar-brand {
@@ -67,16 +67,19 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  padding: 0 19px;
-  border-bottom: 1px solid rgb(225, 223, 240);
-  background: rgba(255, 255, 255, 0.54);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--pd-accent-border, rgb(225, 223, 240));
+  background: transparent;
 }
 
 :where(.pilotdeck-settings-app) .sidebar-brand-logo {
-  width: 180px;
+  /* Keep the wordmark aligned with the workspace's .brand-lockup. */
+  width: 165px;
   max-width: 100%;
-  height: auto;
+  height: 36px;
   display: block;
+  object-fit: contain;
+  object-position: left center;
 }
 
 :where(.pilotdeck-settings-app) .sidebar-brand-logo-dark {
@@ -110,13 +113,13 @@
   border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
-  color: rgb(109, 112, 128);
+  color: var(--settings-panel-muted, rgb(109, 112, 128));
   font-size: 14px;
   text-align: left;
 }
 
 :where(.pilotdeck-settings-app) .back-to-app:hover {
-  border-color: rgb(223, 223, 240);
+  border-color: var(--pd-accent-border, rgb(223, 223, 240));
   background: rgba(255, 255, 255, 0.75);
   color: var(--ink);
 }
@@ -140,7 +143,7 @@
 
 :where(.pilotdeck-settings-app) .nav-section h2 {
   margin: 0 10px 7px;
-  color: rgb(77, 81, 97);
+  color: var(--settings-panel-ink, rgb(77, 81, 97));
   font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.08em;
@@ -161,7 +164,7 @@
   border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
-  color: rgb(108, 112, 129);
+  color: var(--settings-panel-muted, rgb(108, 112, 129));
   font-size: 14px;
   text-align: left;
 }
@@ -192,18 +195,18 @@
 
 :where(.pilotdeck-settings-app) .nav-item svg {
   flex: 0 0 auto;
-  color: rgb(134, 137, 162);
+  color: var(--settings-panel-muted, rgb(134, 137, 162));
 }
 
 :where(.pilotdeck-settings-app) .nav-item:hover {
   background: rgba(255, 255, 255, 0.7);
-  color: rgb(70, 74, 90);
+  color: var(--settings-panel-ink, rgb(70, 74, 90));
 }
 
 :where(.pilotdeck-settings-app) .nav-item.active {
-  border-color: rgb(216, 214, 251);
+  border-color: var(--pd-accent-border, rgb(216, 214, 251));
   background: var(--brand-soft);
-  color: rgb(75, 73, 200);
+  color: var(--pd-accent, rgb(75, 73, 200));
   font-weight: 700;
   box-shadow: inset 3px 0 0 var(--brand);
 }
@@ -248,14 +251,14 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  color: rgb(138, 142, 157);
+  color: var(--settings-panel-muted, rgb(138, 142, 157));
   font-size: 14px;
 }
 
 :where(.pilotdeck-settings-app) .topbar-title > svg:first-child,
 :where(.pilotdeck-settings-app) .topbar-config-icon {
   margin-right: 2px;
-  color: rgb(107, 109, 209);
+  color: var(--pd-accent, rgb(107, 109, 209));
 }
 
 :where(.pilotdeck-settings-app) .topbar-config-icon {
@@ -272,7 +275,7 @@
 }
 
 :where(.pilotdeck-settings-app) .topbar-title strong {
-  color: rgb(64, 68, 83);
+  color: var(--settings-panel-ink, rgb(64, 68, 83));
   font-weight: 680;
 }
 
@@ -299,7 +302,7 @@
 
 :where(.pilotdeck-settings-app) .page-header h1 {
   margin: 0;
-  color: rgb(31, 34, 48);
+  color: var(--settings-panel-ink, rgb(31, 34, 48));
   font-size: 20px;
   line-height: 1.2;
   letter-spacing: -0.035em;
@@ -308,7 +311,7 @@
 :where(.pilotdeck-settings-app) .page-header p:last-child {
   max-width: 690px;
   margin: 9px 0 0;
-  color: rgb(122, 127, 143);
+  color: var(--settings-panel-muted, rgb(122, 127, 143));
   font-size: 13px;
   line-height: 1.65;
 }
@@ -318,8 +321,8 @@
 }
 
 :where(.pilotdeck-settings-app) .settings-page.about-settings-page,
+:where(.pilotdeck-settings-app) .settings-page.appearance-settings-page,
 :where(.pilotdeck-settings-app) .settings-page.general-settings-page,
-:where(.pilotdeck-settings-app) .settings-page.agent-model-page,
 :where(.pilotdeck-settings-app) .settings-page.advanced-settings-page,
 :where(.pilotdeck-settings-app) .settings-page.agent-memory-page,
 :where(.pilotdeck-settings-app) .settings-page.agent-resident-page,
@@ -333,20 +336,22 @@
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgb(217, 218, 228) transparent;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
 }
 
 :where(.pilotdeck-settings-app) .settings-page.general-settings-page {
   background:
-    radial-gradient(circle at 78% 6%, rgba(238, 236, 255, 0.5), transparent 24%),
-    linear-gradient(rgb(255, 255, 255), rgb(252, 252, 255));
+    radial-gradient(circle at 78% 6%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.5), transparent 24%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
 }
 
 :where(.pilotdeck-settings-app) .settings-page.model-pool-page {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 78% 6%, rgba(238, 236, 255, 0.5), transparent 24%),
-    linear-gradient(rgb(255, 255, 255), rgb(252, 252, 255));
+    radial-gradient(circle at 78% 6%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.5), transparent 24%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
 }
 
 :where(.pilotdeck-settings-app) .settings-page.model-pool-page .page-header h1 {
@@ -357,20 +362,19 @@
   font-size: 14px;
 }
 
-:where(.pilotdeck-settings-app) .settings-page.general-settings-page .page-header h1 {
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .page-header h1 {
   font-size: 16px;
 }
 
-:where(.pilotdeck-settings-app) .settings-page.general-settings-page .page-header p,
-:where(.pilotdeck-settings-app) .settings-page.general-settings-page .general-card-header h2,
-:where(.pilotdeck-settings-app) .settings-page.general-settings-page .general-setting-title,
-:where(.pilotdeck-settings-app) .settings-page.general-settings-page .general-setting-copy p,
-:where(.pilotdeck-settings-app) .settings-page.general-settings-page .general-select-wrap select {
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .page-header p,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-card-header h2,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-setting-title,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-setting-copy p,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-select-wrap select {
   font-size: 14px;
 }
 
 :where(.pilotdeck-settings-app) .settings-page.about-settings-page,
-:where(.pilotdeck-settings-app) .settings-page.agent-model-page,
 :where(.pilotdeck-settings-app) .settings-page.advanced-settings-page,
 :where(.pilotdeck-settings-app) .settings-page.agent-memory-page,
 :where(.pilotdeck-settings-app) .settings-page.agent-resident-page,
@@ -382,13 +386,12 @@
 :where(.pilotdeck-settings-app) .settings-page.office-settings-page,
 :where(.pilotdeck-settings-app) .settings-page.mcp-settings-page {
   background:
-    radial-gradient(circle at 76% 10%, rgba(238, 236, 255, 0.42), transparent 24%),
+    radial-gradient(circle at 76% 10%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.42), transparent 24%),
     rgb(255, 255, 255);
 }
 
 :where(.pilotdeck-settings-app) .general-page-content,
 :where(.pilotdeck-settings-app) .about-page-content,
-:where(.pilotdeck-settings-app) .agent-model-page-content,
 :where(.pilotdeck-settings-app) .advanced-page-content,
 :where(.pilotdeck-settings-app) .memory-page-content,
 :where(.pilotdeck-settings-app) .resident-page-content,
@@ -426,7 +429,7 @@
 
 :where(.pilotdeck-settings-app) .general-card-header h2 {
   margin: 0;
-  color: rgb(47, 51, 65);
+  color: var(--settings-panel-ink, rgb(47, 51, 65));
   font-size: 14px;
   line-height: 1.4;
 }
@@ -486,7 +489,7 @@
   place-items: center;
   border-radius: 10px;
   background: var(--brand-tint);
-  color: rgb(106, 107, 206);
+  color: var(--pd-accent, rgb(106, 107, 206));
 }
 
 :where(.pilotdeck-settings-app) .general-setting-copy {
@@ -500,7 +503,7 @@
 }
 
 :where(.pilotdeck-settings-app) .general-setting-title {
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 14px;
   font-weight: 710;
   line-height: 1.45;
@@ -508,7 +511,7 @@
 
 :where(.pilotdeck-settings-app) .general-setting-copy p {
   margin-top: 4px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 14px;
   line-height: 1.5;
 }
@@ -534,7 +537,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-size: 14px;
   font-weight: 530;
   box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
@@ -546,7 +549,7 @@
   top: 50%;
   right: 13px;
   pointer-events: none;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   transform: translateY(-50%);
 }
 
@@ -555,8 +558,8 @@
 }
 
 :where(.pilotdeck-settings-app) .general-select-wrap select:focus {
-  border-color: #9294e9;
-  box-shadow: 0 0 0 3px #5b5ce217;
+  border-color: var(--pd-accent, #9294e9);
+  box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   outline: none;
 }
 
@@ -587,7 +590,7 @@
 
 :where(.pilotdeck-settings-app) .route-switch.on {
   background: var(--brand);
-  box-shadow: rgba(91, 92, 226, 0.23) 0 5px 12px;
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.23) 0 5px 12px;
 }
 
 :where(.pilotdeck-settings-app) .route-switch.on span {
@@ -629,7 +632,7 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--line);
-  background: #fafafe;
+  background: var(--pd-neutral-soft, #fafafe);
 }
 
 :where(.pilotdeck-settings-app) .provider-detail {
@@ -653,7 +656,7 @@
 
 :where(.pilotdeck-settings-app) .section-kicker {
   display: block;
-  color: #424653;
+  color: var(--settings-panel-ink, #424653);
   font-size: 14px;
   font-weight: 650;
   letter-spacing: 0.06em;
@@ -662,7 +665,7 @@
 :where(.pilotdeck-settings-app) .provider-rail-header strong {
   display: block;
   margin-top: 2px;
-  color: #9699a8;
+  color: var(--settings-panel-muted, #9699a8);
   font-size: 12px;
   font-weight: 720;
 }
@@ -679,7 +682,7 @@
   color: #fff;
   font-size: 14px;
   font-weight: 650;
-  box-shadow: rgba(91, 92, 226, 0.23) 0 5px 12px;
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.23) 0 5px 12px;
 }
 
 :where(.pilotdeck-settings-app) .add-provider-rail-button:hover {
@@ -696,12 +699,12 @@
   border: 1px solid rgb(218, 220, 230);
   border-radius: 10px;
   background: #fff;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
 }
 
 .pilotdeck-settings-app .provider-search:focus-within {
-  border-color: #a7a8eb;
-  box-shadow: 0 0 0 3px #5b5ce214;
+  border-color: var(--pd-accent-border, #a7a8eb);
+  box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.078);
 }
 
 :where(.pilotdeck-settings-app) .provider-search input {
@@ -710,7 +713,7 @@
   height: 100%;
   border: 0;
   background: transparent;
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 12px;
   outline: none;
 }
@@ -725,7 +728,7 @@
 
 :where(.pilotdeck-settings-app) .provider-empty {
   margin: 18px 8px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 13px;
   line-height: 1.6;
 }
@@ -751,10 +754,10 @@
 }
 
 :where(.pilotdeck-settings-app) .provider-row.selected {
-  border-color: #d6d5fb;
+  border-color: var(--pd-accent-border, #d6d5fb);
   background: var(--brand-soft);
-  color: #403fb4;
-  box-shadow: 0 6px 16px #4443a814;
+  color: var(--pd-accent-strong, #403fb4);
+  box-shadow: 0 6px 16px rgba(var(--pd-accent-rgb, 68, 67, 168), 0.078);
 }
 
 :where(.pilotdeck-settings-app) .provider-row.selected::before {
@@ -777,8 +780,8 @@
   place-items: center;
   overflow: hidden;
   border-radius: 10px;
-  background: #f0efff;
-  color: #6d70c8;
+  background: var(--pd-accent-tint, #f0efff);
+  color: var(--pd-accent, #6d70c8);
 }
 
 :where(.pilotdeck-settings-app) .provider-avatar img,
@@ -800,7 +803,7 @@
 
 :where(.pilotdeck-settings-app) .provider-row-copy strong {
   overflow: hidden;
-  color: rgb(47, 51, 65);
+  color: var(--settings-panel-ink, rgb(47, 51, 65));
   font-size: 14px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -808,7 +811,7 @@
 }
 
 :where(.pilotdeck-settings-app) .provider-row-copy small {
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 12px;
 }
 
@@ -827,7 +830,7 @@
 :where(.pilotdeck-settings-app) .provider-detail.empty {
   align-items: center;
   justify-content: center;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 13px;
 }
 
@@ -861,7 +864,7 @@
 
 .pilotdeck-settings-app .detail-title-line h2 {
   margin: 0;
-  color: rgb(31, 34, 48);
+  color: var(--settings-panel-ink, rgb(31, 34, 48));
   font-size: 16px;
   font-weight: 740;
   letter-spacing: -0.03em;
@@ -908,13 +911,13 @@
   border: 1px solid var(--brand);
   background: var(--brand);
   color: #fff;
-  box-shadow: 0 7px 18px #5b5ce23d;
+  box-shadow: 0 7px 18px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.239);
 }
 
 :where(.pilotdeck-settings-app) .button.secondary {
   border: 1px solid rgb(218, 220, 230);
   background: #fff;
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
 }
 
 :where(.pilotdeck-settings-app) .button.destructive-outline {
@@ -930,11 +933,11 @@
 
 :where(.pilotdeck-settings-app) .button.secondary:hover:not(:disabled) {
   border-color: #cacbdc;
-  background: #fafafd;
+  background: var(--pd-neutral-soft, #fafafd);
 }
 
 :where(.pilotdeck-settings-app) .button.destructive-outline:hover {
-  background: rgb(248, 248, 252);
+  background: var(--pd-neutral-soft, rgb(248, 248, 252));
 }
 
 :where(.pilotdeck-settings-app) .detail-scroll {
@@ -967,7 +970,7 @@
 
 :where(.pilotdeck-settings-app) .section-heading h3 {
   margin: 0;
-  color: rgb(47, 51, 65);
+  color: var(--settings-panel-ink, rgb(47, 51, 65));
   font-size: 14px;
   font-weight: 720;
 }
@@ -978,8 +981,8 @@
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: #f0efff;
-  color: #6d70c8;
+  background: var(--pd-accent-tint, #f0efff);
+  color: var(--pd-accent, #6d70c8);
 }
 
 :where(.pilotdeck-settings-app) .model-count {
@@ -1004,7 +1007,7 @@
 }
 
 :where(.pilotdeck-settings-app) .field > span {
-  color: rgb(90, 94, 110);
+  color: var(--settings-panel-ink, rgb(90, 94, 110));
   font-size: 12px;
   font-weight: 650;
 }
@@ -1017,8 +1020,8 @@
   padding: 0 12px;
   border: 1px solid rgb(218, 220, 230);
   border-radius: 9px;
-  background: rgb(248, 248, 252);
-  color: rgb(52, 56, 70);
+  background: var(--pd-neutral-soft, rgb(248, 248, 252));
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 13px;
   outline: none;
 }
@@ -1031,8 +1034,8 @@
 :where(.pilotdeck-settings-app) .field input:focus,
 :where(.pilotdeck-settings-app) .field select:focus,
 :where(.pilotdeck-settings-app) .model-token-field input:focus {
-  border-color: #9294e9;
-  box-shadow: 0 0 0 3px #5b5ce217;
+  border-color: var(--pd-accent, #9294e9);
+  box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   background: #fff;
 }
 
@@ -1051,8 +1054,8 @@
   padding: 0 12px;
   border: 1px solid rgb(218, 220, 230);
   border-radius: 9px;
-  background: rgb(248, 248, 252);
-  color: rgb(139, 143, 158);
+  background: var(--pd-neutral-soft, rgb(248, 248, 252));
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
 }
 
 :where(.pilotdeck-settings-app) .secret-input input {
@@ -1071,8 +1074,8 @@
 }
 
 :where(.pilotdeck-settings-app) .secret-input:focus-within {
-  border-color: #9294e9;
-  box-shadow: 0 0 0 3px #5b5ce217;
+  border-color: var(--pd-accent, #9294e9);
+  box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   background: #fff;
 }
 
@@ -1080,7 +1083,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 12px;
 }
 
@@ -1112,7 +1115,7 @@
 :where(.pilotdeck-settings-app) .fetch-models-button {
   border: 0;
   background: transparent;
-  color: rgb(109, 112, 128);
+  color: var(--settings-panel-muted, rgb(109, 112, 128));
   font-size: 12px;
 }
 
@@ -1158,8 +1161,8 @@
   gap: 8px;
   border: 1px solid #dadce6;
   border-radius: 9px;
-  background: #f8f8fc;
-  color: #8b8f9e;
+  background: var(--pd-neutral-soft, #f8f8fc);
+  color: var(--settings-panel-muted, #8b8f9e);
 }
 
 :where(.pilotdeck-settings-app) .candidate-model-search input {
@@ -1168,7 +1171,7 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: #343846;
+  color: var(--settings-panel-ink, #343846);
   font-size: 12px;
 }
 
@@ -1188,16 +1191,16 @@
   padding: 0 10px;
   border: 1px solid #dadce6;
   border-radius: 8px;
-  background: #f8f8fc;
-  color: #5a5e6e;
+  background: var(--pd-neutral-soft, #f8f8fc);
+  color: var(--settings-panel-ink, #5a5e6e);
   font-size: 12px;
   text-align: left;
 }
 
 :where(.pilotdeck-settings-app) .candidate-model:hover {
-  border-color: #c4c5e8;
+  border-color: var(--pd-accent-border, #c4c5e8);
   background: var(--brand-tint);
-  color: #343846;
+  color: var(--settings-panel-ink, #343846);
 }
 
 :where(.pilotdeck-settings-app) .candidate-model span {
@@ -1215,9 +1218,9 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px dashed rgb(184, 188, 232);
+  border: 1px dashed var(--pd-accent-border, rgb(184, 188, 232));
   border-radius: 8px;
-  background: rgb(248, 248, 255);
+  background: var(--pd-neutral-soft, rgb(248, 248, 255));
   color: var(--brand);
   font-size: 12px;
   font-weight: 650;
@@ -1225,7 +1228,7 @@
 }
 
 :where(.pilotdeck-settings-app) .candidate-add-model:hover {
-  border-color: rgb(146, 151, 222);
+  border-color: var(--pd-accent, rgb(146, 151, 222));
   background: var(--brand-soft);
 }
 
@@ -1237,13 +1240,13 @@
   border-radius: 8px;
   outline: 0;
   background: #fff;
-  box-shadow: 0 0 0 3px #5b5ce217;
-  color: #343846;
+  box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
+  color: var(--settings-panel-ink, #343846);
   font-size: 12px;
 }
 
 :where(.pilotdeck-settings-app) .candidate-model-input::placeholder {
-  color: #b4b8c4;
+  color: var(--settings-panel-muted, #b4b8c4);
 }
 
 :where(.pilotdeck-settings-app) .model-row {
@@ -1264,7 +1267,7 @@
   min-width: 0;
   padding-bottom: 0;
   overflow: hidden;
-  color: rgb(47, 51, 65);
+  color: var(--settings-panel-ink, rgb(47, 51, 65));
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1280,7 +1283,7 @@
 }
 
 :where(.pilotdeck-settings-app) .model-token-field span {
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 11px;
 }
 
@@ -1294,7 +1297,7 @@
   border-radius: 7px;
   outline: 0;
   background: #fff;
-  color: #484c5b;
+  color: var(--settings-panel-ink, #484c5b);
   font-size: 12px;
   font-weight: 520;
   font-variant-numeric: tabular-nums;
@@ -1306,7 +1309,7 @@
 :where(.pilotdeck-settings-app) .model-token-field input:disabled {
   border-color: #e6e7ed;
   background: #fafafa;
-  color: #686c79;
+  color: var(--settings-panel-muted, #686c79);
   opacity: 1;
 }
 
@@ -1319,7 +1322,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
 }
 
 :where(.pilotdeck-settings-app) .model-row button:not(.model-settings-trigger):hover:not(:disabled) {
@@ -1337,7 +1340,7 @@
 
 :where(.pilotdeck-settings-app) .test-cost-note {
   margin: 0 0 8px;
-  color: #9295a3;
+  color: var(--settings-panel-muted, #9295a3);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
@@ -1394,13 +1397,13 @@
   border: 1px solid #d9dae5;
   border-radius: 8px;
   background: #fff;
-  color: #555a69;
+  color: var(--settings-panel-ink, #555a69);
   font-size: 14px;
   font-weight: 680;
 }
 
 :where(.pilotdeck-settings-app) .test-button:hover:not(:disabled) {
-  border-color: #9294e9;
+  border-color: var(--pd-accent, #9294e9);
   color: var(--brand);
 }
 
@@ -1454,7 +1457,7 @@
 
 .pilotdeck-settings-app .image-capability-header h2 {
   margin: 0;
-  color: #303744;
+  color: var(--settings-panel-ink, #303744);
   font-size: 15px;
   font-weight: 700;
   line-height: 1.45;
@@ -1469,12 +1472,12 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #828b9c;
+  color: var(--settings-panel-muted, #828b9c);
 }
 
 .pilotdeck-settings-app .image-capability-close:hover {
   background: #f6f7fa;
-  color: #303744;
+  color: var(--settings-panel-ink, #303744);
 }
 
 .pilotdeck-settings-app .image-capability-list {
@@ -1495,12 +1498,12 @@
   gap: 18px;
   border: 1px solid #e2e5ec;
   border-radius: 12px;
-  background: #faf8fc;
+  background: var(--pd-neutral-soft, #faf8fc);
 }
 
 .pilotdeck-settings-app .image-capability-model {
   overflow: hidden;
-  color: #303744;
+  color: var(--settings-panel-ink, #303744);
   font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -1511,7 +1514,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #4d5667;
+  color: var(--settings-panel-ink, #4d5667);
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
@@ -1540,7 +1543,7 @@
 .pilotdeck-settings-app .image-capability-cancel {
   border: 1px solid var(--line);
   background: #fff;
-  color: #596274;
+  color: var(--settings-panel-muted, #596274);
 }
 
 .pilotdeck-settings-app .image-capability-confirm {
@@ -1593,7 +1596,7 @@
 
 .pilotdeck-settings-app .modal-header h2 {
   margin: 0;
-  color: #343846;
+  color: var(--settings-panel-ink, #343846);
   font-size: 16px;
   font-weight: 500;
 }
@@ -1649,8 +1652,8 @@
   align-items: center;
   border: 1px solid #e1e2eb;
   border-radius: 10px;
-  background: #faf9fd;
-  color: #666a79;
+  background: var(--pd-neutral-soft, #faf9fd);
+  color: var(--settings-panel-muted, #666a79);
   font-size: 14px;
 }
 
@@ -1666,14 +1669,14 @@
 
 :where(.pilotdeck-settings-app) .provider-usage-model {
   overflow: hidden;
-  color: #7671cb;
+  color: var(--pd-accent, #7671cb);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 :where(.pilotdeck-settings-app) .delete-confirm-copy,
 :where(.pilotdeck-settings-app) .delete-dialog-status {
-  color: #666a79;
+  color: var(--settings-panel-muted, #666a79);
 }
 
 .pilotdeck-settings-app .modal-actions {
@@ -1684,7 +1687,7 @@
   justify-content: flex-end;
   gap: 10px;
   border-top: 1px solid #e3e4ec;
-  background: #fcfbfe;
+  background: var(--pd-neutral-soft, #fcfbfe);
 }
 
 .pilotdeck-settings-app .modal-actions .button {
@@ -1819,7 +1822,7 @@
   border: 1px solid #dedfeb;
   border-radius: 18px;
   background: #fff;
-  box-shadow: 0 28px 80px #2828503d;
+  box-shadow: 0 28px 80px rgba(var(--pd-accent-rgb, 40, 40, 80), 0.239);
   animation: modal-in 0.22s ease both;
 }
 
@@ -1834,7 +1837,7 @@
 
 .pilotdeck-settings-app .provider-picker-header h2 {
   margin: 0;
-  color: #2f3340;
+  color: var(--settings-panel-ink, #2f3340);
   font-size: 20px;
   font-weight: 680;
   line-height: 1.4;
@@ -1842,7 +1845,7 @@
 
 :where(.pilotdeck-settings-app) .provider-picker-header p {
   margin: 5px 0 0;
-  color: #969baa;
+  color: var(--settings-panel-muted, #969baa);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1856,12 +1859,12 @@
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: #797e8e;
+  color: var(--settings-panel-muted, #797e8e);
 }
 
 :where(.pilotdeck-settings-app) .icon-button:hover {
   border-color: #e1e1ee;
-  background: #fafafe;
+  background: var(--pd-neutral-soft, #fafafe);
 }
 
 :where(.pilotdeck-settings-app) .provider-picker-grid {
@@ -1886,7 +1889,7 @@
   border: 1px solid #dcdeea;
   border-radius: 13px;
   background: #fff;
-  color: #333744;
+  color: var(--settings-panel-ink, #333744);
   text-align: left;
   transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
@@ -1899,12 +1902,12 @@
   overflow: hidden;
   border-radius: 10px;
   background: #f4f5f7;
-  color: #22252d;
+  color: var(--settings-panel-ink, #22252d);
 }
 
 :where(.pilotdeck-settings-app) .provider-option-icon.custom {
-  background: #f0efff;
-  color: #696bea;
+  background: var(--pd-accent-tint, #f0efff);
+  color: var(--pd-accent, #696bea);
 }
 
 :where(.pilotdeck-settings-app) .provider-option-icon img,
@@ -1925,7 +1928,7 @@
 
 :where(.pilotdeck-settings-app) .provider-option-copy strong {
   overflow: hidden;
-  color: #2f3340;
+  color: var(--settings-panel-ink, #2f3340);
   font-size: 13px;
   font-weight: 680;
   line-height: 1.4;
@@ -1935,7 +1938,7 @@
 
 :where(.pilotdeck-settings-app) .provider-option-copy small {
   margin-top: 2px;
-  color: #969baa;
+  color: var(--settings-panel-muted, #969baa);
   font-size: 10px;
   line-height: 1.4;
 }
@@ -1950,10 +1953,10 @@
 
 :where(.pilotdeck-settings-app) .provider-option.selected,
 :where(.pilotdeck-settings-app) .provider-option:hover {
-  border-color: #7778ec;
+  border-color: var(--pd-accent, #7778ec);
   outline: 0;
-  background: #fbfbff;
-  box-shadow: 0 0 0 3px #5b5ce214;
+  background: var(--pd-neutral-soft, #fbfbff);
+  box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.078);
 }
 
 :where(.pilotdeck-settings-app) .provider-option:hover {
@@ -2120,7 +2123,6 @@
 .dark :where(.pilotdeck-settings-app) .settings-page.general-settings-page,
 .dark :where(.pilotdeck-settings-app) .settings-page.about-settings-page,
 .dark :where(.pilotdeck-settings-app) .settings-page.model-pool-page,
-.dark :where(.pilotdeck-settings-app) .settings-page.agent-model-page,
 .dark :where(.pilotdeck-settings-app) .settings-page.advanced-settings-page,
 .dark :where(.pilotdeck-settings-app) .settings-page.agent-memory-page,
 .dark :where(.pilotdeck-settings-app) .settings-page.agent-resident-page,
@@ -2250,7 +2252,7 @@
     padding: 0;
     border: 0;
     background: transparent;
-    color: rgb(109, 112, 128);
+    color: var(--settings-panel-muted, rgb(109, 112, 128));
     font-size: 14px;
   }
 
@@ -2274,8 +2276,8 @@
 :where(.pilotdeck-settings-app) .settings-page.agent-memory-page {
   overflow-y: auto;
   background:
-    radial-gradient(circle at 79% 9%, rgba(238, 236, 255, 0.48), transparent 25%),
-    linear-gradient(rgb(255, 255, 255), rgb(252, 252, 255));
+    radial-gradient(circle at 79% 9%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.48), transparent 25%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
   scrollbar-width: thin;
   scrollbar-color: rgb(217, 218, 228) transparent;
 }
@@ -2379,7 +2381,7 @@
 }
 
 :where(.pilotdeck-settings-app) .memory-setting-copy label {
-  color: rgb(55, 59, 73);
+  color: var(--settings-panel-ink, rgb(55, 59, 73));
   font-size: 14px;
   font-weight: 710;
   line-height: 1.45;
@@ -2387,7 +2389,7 @@
 
 :where(.pilotdeck-settings-app) .memory-setting-copy p {
   margin-top: 5px;
-  color: rgb(142, 146, 160);
+  color: var(--settings-panel-muted, rgb(142, 146, 160));
   font-size: 14px;
   line-height: 1.55;
 }
@@ -2411,7 +2413,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-size: 14px;
   font-weight: 510;
   box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
@@ -2428,7 +2430,7 @@
   top: 50%;
   right: 13px;
   pointer-events: none;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   transform: translateY(-50%);
 }
 
@@ -2439,14 +2441,14 @@
 
 :where(.pilotdeck-settings-app) .memory-select-wrap select:focus,
 :where(.pilotdeck-settings-app) .memory-interval-control > input:focus {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .memory-select-wrap select:disabled,
 :where(.pilotdeck-settings-app) .memory-interval-control > input:disabled {
   background: rgb(247, 247, 249);
-  color: rgb(146, 149, 162);
+  color: var(--settings-panel-muted, rgb(146, 149, 162));
   opacity: 1;
 }
 
@@ -2486,14 +2488,14 @@
   border: 1px solid rgb(217, 218, 229);
   border-radius: 9px;
   background: rgb(255, 255, 255);
-  color: rgb(105, 109, 124);
+  color: var(--settings-panel-muted, rgb(105, 109, 124));
   font-size: 14px;
   font-weight: 680;
   transition: border-color 0.16s, background 0.16s, color 0.16s, transform 0.16s;
 }
 
 :where(.pilotdeck-settings-app) .memory-edit-button:hover:not(:disabled) {
-  border-color: rgb(200, 199, 239);
+  border-color: var(--pd-accent-border, rgb(200, 199, 239));
   background: var(--brand-tint);
   color: var(--brand-strong);
   transform: translateY(-1px);
@@ -2507,7 +2509,7 @@
 
 :where(.pilotdeck-settings-app) .memory-edit-button:disabled {
   background: rgb(247, 247, 250);
-  color: rgb(176, 178, 188);
+  color: var(--settings-panel-muted, rgb(176, 178, 188));
 }
 
 :where(.pilotdeck-settings-app) .memory-data-section {
@@ -2523,14 +2525,14 @@
 }
 
 :where(.pilotdeck-settings-app) .memory-data-section h2 {
-  color: rgb(48, 51, 63);
+  color: var(--settings-panel-ink, rgb(48, 51, 63));
   font-size: 14px;
   line-height: 1.4;
 }
 
 :where(.pilotdeck-settings-app) .memory-data-header p {
   margin-top: 5px;
-  color: rgb(139, 143, 157);
+  color: var(--settings-panel-muted, rgb(139, 143, 157));
   font-size: 14px;
   line-height: 1.55;
 }
@@ -2613,8 +2615,8 @@
   gap: 8px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: rgb(250, 250, 253);
-  color: rgb(119, 123, 138);
+  background: var(--pd-neutral-soft, rgb(250, 250, 253));
+  color: var(--settings-panel-muted, rgb(119, 123, 138));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -2649,7 +2651,7 @@
   border: 1px solid rgb(222, 223, 235);
   border-radius: 16px;
   background: rgb(255, 255, 255);
-  box-shadow: rgba(40, 40, 80, 0.22) 0 26px 70px;
+  box-shadow: rgba(var(--pd-accent-rgb, 40, 40, 80), 0.22) 0 26px 70px;
 }
 
 :where(.pilotdeck-settings-app) .memory-clear-modal .modal-header {
@@ -2665,7 +2667,7 @@
 
 :where(.pilotdeck-settings-app) .memory-clear-modal .modal-header p {
   margin: 6px 0 0;
-  color: rgb(137, 141, 155);
+  color: var(--settings-panel-muted, rgb(137, 141, 155));
   font-size: 14px;
   line-height: 1.5;
 }
@@ -2677,7 +2679,7 @@
 
 :where(.pilotdeck-settings-app) .memory-clear-modal .modal-actions {
   padding: 13px 20px;
-  background: rgb(250, 250, 253);
+  background: var(--pd-neutral-soft, rgb(250, 250, 253));
 }
 
 @media (max-width: 860px) {
@@ -2732,8 +2734,8 @@
 :where(.pilotdeck-settings-app) .settings-page.agent-resident-page {
   overflow-y: auto;
   background:
-    radial-gradient(circle at 79% 7%, rgba(238, 236, 255, 0.5), transparent 25%),
-    linear-gradient(rgb(255, 255, 255), rgb(252, 252, 255));
+    radial-gradient(circle at 79% 7%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.5), transparent 25%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
   scrollbar-width: thin;
   scrollbar-color: rgb(217, 218, 228) transparent;
 }
@@ -2813,7 +2815,7 @@
 :where(.pilotdeck-settings-app) .resident-project-panel-header h2,
 :where(.pilotdeck-settings-app) .resident-section-header h2 {
   margin: 0;
-  color: rgb(41, 45, 59);
+  color: var(--settings-panel-ink, rgb(41, 45, 59));
   font-size: 14px;
   font-weight: 700;
   line-height: 20px;
@@ -2822,7 +2824,7 @@
 :where(.pilotdeck-settings-app) .resident-project-panel-heading p,
 :where(.pilotdeck-settings-app) .resident-section-header p {
   margin: 0;
-  color: rgb(133, 137, 151);
+  color: var(--settings-panel-muted, rgb(133, 137, 151));
   font-size: 12px;
   font-weight: 400;
   line-height: 20px;
@@ -2839,7 +2841,7 @@
   top: 50%;
   left: 28px;
   z-index: 1;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   pointer-events: none;
   transform: translateY(-50%);
 }
@@ -2852,7 +2854,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-family: inherit;
   font-size: 12px;
   transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
@@ -2863,13 +2865,13 @@
 }
 
 :where(.pilotdeck-settings-app) .resident-project-search input:focus {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .resident-project-search input:disabled {
   background: rgb(247, 247, 249);
-  color: rgb(146, 149, 162);
+  color: var(--settings-panel-muted, rgb(146, 149, 162));
 }
 
 :where(.pilotdeck-settings-app) .resident-project-list {
@@ -2894,7 +2896,7 @@
 :where(.pilotdeck-settings-app) .resident-project-row > span {
   min-width: 0;
   overflow: hidden;
-  color: rgb(74, 78, 93);
+  color: var(--settings-panel-ink, rgb(74, 78, 93));
   font-size: 13px;
   line-height: 1.45;
   text-overflow: ellipsis;
@@ -2903,7 +2905,7 @@
 
 :where(.pilotdeck-settings-app) .resident-project-empty {
   margin: 20px 8px;
-  color: rgb(150, 153, 167);
+  color: var(--settings-panel-muted, rgb(150, 153, 167));
   font-size: 12px;
   text-align: center;
 }
@@ -3051,7 +3053,7 @@
 }
 
 :where(.pilotdeck-settings-app) .resident-setting-copy label {
-  color: rgb(55, 59, 73);
+  color: var(--settings-panel-ink, rgb(55, 59, 73));
   font-size: 13px;
   font-weight: 710;
   line-height: 1.45;
@@ -3059,7 +3061,7 @@
 
 :where(.pilotdeck-settings-app) .resident-setting-copy p {
   margin-top: 3px;
-  color: rgb(142, 146, 160);
+  color: var(--settings-panel-muted, rgb(142, 146, 160));
   font-size: 12px;
   line-height: 1.55;
 }
@@ -3087,7 +3089,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-family: inherit;
   font-size: 12px;
   font-weight: 510;
@@ -3118,7 +3120,7 @@
   top: 50%;
   right: 13px;
   pointer-events: none;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   transform: translateY(-50%);
 }
 
@@ -3129,14 +3131,14 @@
 
 :where(.pilotdeck-settings-app) .resident-input-wrap input:focus,
 :where(.pilotdeck-settings-app) .resident-select-wrap select:focus {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .resident-input-wrap input:disabled,
 :where(.pilotdeck-settings-app) .resident-select-wrap select:disabled {
   background: rgb(247, 247, 249);
-  color: rgb(146, 149, 162);
+  color: var(--settings-panel-muted, rgb(146, 149, 162));
   opacity: 1;
 }
 
@@ -3212,8 +3214,8 @@
 :where(.pilotdeck-settings-app) .settings-page.agent-search-page {
   overflow-y: auto;
   background:
-    radial-gradient(circle at 79% 8%, rgba(238, 236, 255, 0.5), transparent 25%),
-    linear-gradient(rgb(255, 255, 255), rgb(252, 252, 255));
+    radial-gradient(circle at 79% 8%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.5), transparent 25%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
   scrollbar-width: thin;
   scrollbar-color: rgb(217, 218, 228) transparent;
 }
@@ -3229,6 +3231,7 @@
 :where(.pilotdeck-settings-app) .settings-page.agent-search-page .page-header p,
 :where(.pilotdeck-settings-app) .settings-page.agent-search-page .search-enable-card h2,
 :where(.pilotdeck-settings-app) .settings-page.agent-search-page .search-card label,
+:where(.pilotdeck-settings-app) .settings-page.agent-search-page .search-provider-help,
 :where(.pilotdeck-settings-app) .settings-page.agent-search-page .search-card p,
 :where(.pilotdeck-settings-app) .settings-page.agent-search-page .search-card input,
 :where(.pilotdeck-settings-app) .settings-page.agent-search-page .search-card select,
@@ -3295,14 +3298,40 @@
 }
 
 :where(.pilotdeck-settings-app) .search-setting-copy label {
-  color: rgb(55, 59, 73);
+  color: var(--settings-panel-ink, rgb(55, 59, 73));
   font-weight: 710;
   line-height: 1.45;
 }
 
+:where(.pilotdeck-settings-app) .search-provider-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--settings-panel-ink, var(--ink));
+  font-weight: 710;
+  line-height: 1.45;
+  text-decoration: none;
+}
+
+:where(.pilotdeck-settings-app) .search-provider-help svg {
+  width: 14px;
+  height: 14px;
+  color: var(--settings-panel-muted, var(--muted));
+}
+
+:where(.pilotdeck-settings-app) .search-provider-help:is(:hover, :focus-visible),
+:where(.pilotdeck-settings-app) .search-provider-help:is(:hover, :focus-visible) svg {
+  color: var(--brand);
+}
+
+:where(.pilotdeck-settings-app) .search-provider-help:hover span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 :where(.pilotdeck-settings-app) .search-setting-copy p {
   margin-top: 5px;
-  color: rgb(142, 146, 160);
+  color: var(--settings-panel-muted, rgb(142, 146, 160));
   line-height: 1.55;
 }
 
@@ -3336,7 +3365,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-weight: 510;
   box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
   transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
@@ -3351,7 +3380,7 @@
   position: absolute;
   top: 50%;
   right: 13px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   pointer-events: none;
   transform: translateY(-50%);
 }
@@ -3365,7 +3394,7 @@
   z-index: 1;
   top: 50%;
   left: 12px;
-  color: rgb(141, 144, 165);
+  color: var(--settings-panel-muted, rgb(141, 144, 165));
   pointer-events: none;
   transform: translateY(-50%);
 }
@@ -3381,14 +3410,14 @@
 
 :where(.pilotdeck-settings-app) .search-select-wrap select:focus,
 :where(.pilotdeck-settings-app) .search-input-wrap input:focus {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .search-select-wrap select:disabled,
 :where(.pilotdeck-settings-app) .search-input-wrap input:disabled {
   background: rgb(247, 247, 249);
-  color: rgb(108, 112, 126);
+  color: var(--settings-panel-muted, rgb(108, 112, 126));
   opacity: 1;
   -webkit-text-fill-color: rgb(108, 112, 126);
 }
@@ -3415,7 +3444,7 @@
 :where(.pilotdeck-settings-app) .search-edit-button:disabled {
   border-color: rgb(228, 229, 236);
   background: rgb(246, 247, 249);
-  color: rgb(174, 177, 188);
+  color: var(--settings-panel-muted, rgb(174, 177, 188));
   opacity: 1;
 }
 
@@ -3426,7 +3455,7 @@
   justify-content: flex-end;
   padding: 12px 20px;
   border-top: 1px solid var(--line);
-  background: rgb(253, 253, 255);
+  background: var(--pd-neutral-soft, rgb(253, 253, 255));
 }
 
 :where(.pilotdeck-settings-app) .search-test-footer .search-test-row {
@@ -3499,12 +3528,12 @@
   border: 1px solid rgb(217, 218, 229);
   border-radius: 8px;
   background: rgb(255, 255, 255);
-  color: rgb(85, 90, 105);
+  color: var(--settings-panel-ink, rgb(85, 90, 105));
   font-weight: 680;
 }
 
 :where(.pilotdeck-settings-app) .search-test-footer .test-button:hover:not(:disabled) {
-  border-color: rgb(191, 192, 223);
+  border-color: var(--pd-accent-border, rgb(191, 192, 223));
   color: var(--brand);
 }
 
@@ -3566,8 +3595,8 @@
 :where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page {
   overflow-y: auto;
   background:
-    radial-gradient(circle at 79% 8%, rgba(238, 236, 255, 0.5), transparent 25%),
-    linear-gradient(rgb(255, 255, 255), rgb(252, 252, 255));
+    radial-gradient(circle at 79% 8%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.5), transparent 25%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
   scrollbar-width: thin;
   scrollbar-color: rgb(217, 218, 228) transparent;
 }
@@ -3581,6 +3610,7 @@
 }
 
 :where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .page-header p,
+:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-enable-card h2,
 :where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card label,
 :where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card p,
 :where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card input,
@@ -3593,6 +3623,10 @@
 :where(.pilotdeck-settings-app) .scheduled-page-content {
   width: 100%;
   padding-bottom: 26px;
+}
+
+:where(.pilotdeck-settings-app) .scheduled-enable-card {
+  margin-bottom: 18px;
 }
 
 :where(.pilotdeck-settings-app) .scheduled-card {
@@ -3635,14 +3669,14 @@
 }
 
 :where(.pilotdeck-settings-app) .scheduled-setting-copy label {
-  color: rgb(55, 59, 73);
+  color: var(--settings-panel-ink, rgb(55, 59, 73));
   font-weight: 710;
   line-height: 1.45;
 }
 
 :where(.pilotdeck-settings-app) .scheduled-setting-copy p {
   margin-top: 5px;
-  color: rgb(142, 146, 160);
+  color: var(--settings-panel-muted, rgb(142, 146, 160));
   line-height: 1.55;
 }
 
@@ -3671,7 +3705,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-family: inherit;
   font-weight: 510;
   box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
@@ -3691,7 +3725,7 @@
   position: absolute;
   top: 50%;
   right: 13px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   pointer-events: none;
   transform: translateY(-50%);
 }
@@ -3703,14 +3737,14 @@
 
 :where(.pilotdeck-settings-app) .scheduled-select-wrap select:focus,
 :where(.pilotdeck-settings-app) .scheduled-input-wrap input:focus {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .scheduled-select-wrap select:disabled,
 :where(.pilotdeck-settings-app) .scheduled-input-wrap input:disabled {
   background: rgb(247, 247, 249);
-  color: rgb(108, 112, 126);
+  color: var(--settings-panel-muted, rgb(108, 112, 126));
   opacity: 1;
   -webkit-text-fill-color: rgb(108, 112, 126);
 }
@@ -3737,7 +3771,7 @@
 :where(.pilotdeck-settings-app) .scheduled-edit-button:disabled {
   border-color: rgb(228, 229, 236);
   background: rgb(246, 247, 249);
-  color: rgb(174, 177, 188);
+  color: var(--settings-panel-muted, rgb(174, 177, 188));
   opacity: 1;
 }
 
@@ -3768,8 +3802,8 @@
 :where(.pilotdeck-settings-app) .settings-page.integration-settings-page {
   overflow-y: auto;
   background:
-    radial-gradient(circle at 78% 6%, rgba(238, 236, 255, 0.5), transparent 24%),
-    linear-gradient(rgb(255, 255, 255), rgb(252, 252, 255));
+    radial-gradient(circle at 78% 6%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.5), transparent 24%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
   scrollbar-width: thin;
   scrollbar-color: rgb(217, 218, 228) transparent;
 }
@@ -3813,8 +3847,8 @@
 }
 
 :where(.pilotdeck-settings-app) .integration-gateway-card.enabled {
-  border-color: rgb(206, 205, 245);
-  background: linear-gradient(110deg, rgb(251, 250, 255), rgb(249, 251, 255));
+  border-color: var(--pd-accent-border, rgb(206, 205, 245));
+  background: linear-gradient(110deg, var(--pd-neutral-soft, rgb(251, 250, 255)), var(--pd-neutral-soft, rgb(249, 251, 255)));
   box-shadow: rgba(61, 60, 105, 0.075) 0 11px 30px;
 }
 
@@ -3842,14 +3876,14 @@
 
 :where(.pilotdeck-settings-app) .integration-gateway-copy strong,
 :where(.pilotdeck-settings-app) .integration-gateway-copy label {
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 14px;
   font-weight: 710;
 }
 
 :where(.pilotdeck-settings-app) .integration-gateway-copy p {
   margin-top: 4px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -3873,16 +3907,16 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(248, 248, 251);
-  color: rgb(111, 116, 131);
+  color: var(--settings-panel-muted, rgb(111, 116, 131));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
 }
 
 :where(.pilotdeck-settings-app) .integration-gateway-directory-row input:not([readonly]) {
-  border-color: rgb(146, 148, 233);
+  border-color: var(--pd-accent, rgb(146, 148, 233));
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .integration-gateway-directory-row input[aria-invalid="true"] {
@@ -3903,14 +3937,14 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  color: rgb(133, 137, 152);
+  color: var(--settings-panel-muted, rgb(133, 137, 152));
   font-size: 12px;
   line-height: 1.5;
 }
 
 :where(.pilotdeck-settings-app) .integration-gateway-note svg {
   flex: 0 0 auto;
-  color: rgb(136, 137, 201);
+  color: var(--pd-accent, rgb(136, 137, 201));
 }
 
 :where(.pilotdeck-settings-app) .integration-channels-card {
@@ -3935,7 +3969,7 @@
 
 :where(.pilotdeck-settings-app) .integration-channels-header p {
   margin-top: 3px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 12px;
   line-height: 1.45;
 }
@@ -3957,7 +3991,7 @@
 }
 
 :where(.pilotdeck-settings-app) .integration-channel.expanded {
-  background: linear-gradient(rgb(255, 255, 255), rgb(253, 253, 255));
+  background: linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(253, 253, 255)));
 }
 
 :where(.pilotdeck-settings-app) .integration-channel-summary {
@@ -3974,7 +4008,7 @@
 }
 
 :where(.pilotdeck-settings-app) .integration-channel-summary:hover {
-  background: rgba(247, 246, 255, 0.72);
+  background: rgba(var(--pd-accent-soft-rgb, 247, 246, 255), 0.72);
 }
 
 :where(.pilotdeck-settings-app) .integration-platform-icon {
@@ -4007,7 +4041,7 @@
 }
 
 :where(.pilotdeck-settings-app) .integration-channel-copy strong {
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 14px;
   font-weight: 710;
 }
@@ -4015,7 +4049,7 @@
 :where(.pilotdeck-settings-app) .integration-channel-copy small {
   margin-top: 4px;
   overflow: hidden;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 12px;
   line-height: 1.45;
   text-overflow: ellipsis;
@@ -4027,7 +4061,7 @@
   padding: 1px 5px;
   border-radius: 4px;
   background: rgb(241, 242, 246);
-  color: rgb(128, 133, 148);
+  color: var(--settings-panel-muted, rgb(128, 133, 148));
   font-size: 10px;
   font-style: normal;
   font-weight: 650;
@@ -4041,7 +4075,7 @@
   padding: 0 9px;
   border-radius: 999px;
   background: rgb(244, 245, 248);
-  color: rgb(147, 151, 165);
+  color: var(--settings-panel-muted, rgb(147, 151, 165));
   font-size: 11px;
   font-weight: 680;
   white-space: nowrap;
@@ -4078,7 +4112,7 @@
   height: 30px;
   place-items: center;
   border-radius: 8px;
-  color: rgb(150, 154, 167);
+  color: var(--settings-panel-muted, rgb(150, 154, 167));
 }
 
 :where(.pilotdeck-settings-app) .integration-channel.expanded .integration-channel-toggle {
@@ -4104,12 +4138,12 @@
 }
 
 :where(.pilotdeck-settings-app) .integration-detail-heading strong {
-  color: rgb(74, 78, 92);
+  color: var(--settings-panel-ink, rgb(74, 78, 92));
   font-size: 12px;
 }
 
 :where(.pilotdeck-settings-app) .integration-detail-heading span {
-  color: rgb(145, 149, 163);
+  color: var(--settings-panel-muted, rgb(145, 149, 163));
   font-size: 11px;
 }
 
@@ -4135,20 +4169,20 @@
 }
 
 :where(.pilotdeck-settings-app) .integration-setup-choice:hover {
-  border-color: rgb(199, 198, 237);
+  border-color: var(--pd-accent-border, rgb(199, 198, 237));
   box-shadow: rgba(61, 60, 105, 0.07) 0 8px 18px;
   transform: translateY(-1px);
 }
 
 :where(.pilotdeck-settings-app) .integration-choice-copy strong {
-  color: rgb(59, 63, 77);
+  color: var(--settings-panel-ink, rgb(59, 63, 77));
   font-size: 13px;
 }
 
 :where(.pilotdeck-settings-app) .integration-choice-copy small {
   margin-top: 4px;
   overflow: hidden;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4165,7 +4199,7 @@
   margin-top: 12px;
   border: 1px solid rgb(222, 223, 235);
   border-radius: 13px;
-  background: linear-gradient(130deg, rgb(250, 249, 255), rgb(248, 251, 255));
+  background: linear-gradient(130deg, var(--pd-neutral-soft, rgb(250, 249, 255)), var(--pd-neutral-soft, rgb(248, 251, 255)));
 }
 
 :where(.pilotdeck-settings-app) .integration-scan-launcher {
@@ -4179,7 +4213,7 @@
   min-width: 0;
   display: grid;
   gap: 6px;
-  color: rgb(85, 90, 105);
+  color: var(--settings-panel-ink, rgb(85, 90, 105));
   font-size: 12px;
   font-weight: 680;
 }
@@ -4199,7 +4233,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-size: 12px;
 }
 
@@ -4207,14 +4241,14 @@
   position: absolute;
   top: 50%;
   right: 12px;
-  color: rgb(126, 131, 145);
+  color: var(--settings-panel-muted, rgb(126, 131, 145));
   pointer-events: none;
   transform: translateY(-50%);
 }
 
 :where(.pilotdeck-settings-app) .integration-select-control select:focus {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .integration-setup-actions {
@@ -4267,8 +4301,8 @@
 :where(.pilotdeck-settings-app) .settings-page.agent-route-page {
   overflow-y: auto;
   background:
-    radial-gradient(circle at 78% 4%, rgba(238, 236, 255, 0.54), transparent 23%),
-    linear-gradient(rgb(255, 255, 255), rgb(252, 252, 255));
+    radial-gradient(circle at 78% 4%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.54), transparent 23%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
   scrollbar-width: thin;
   scrollbar-color: rgb(217, 218, 228) transparent;
 }
@@ -4317,8 +4351,8 @@
   justify-content: space-between;
   gap: 20px;
   padding: 12px 20px;
-  border-color: rgb(216, 215, 244);
-  background: linear-gradient(90deg, rgba(247, 246, 255, 0.98), rgba(255, 255, 255, 0.98));
+  border-color: var(--pd-accent-border, rgb(216, 215, 244));
+  background: linear-gradient(90deg, rgba(var(--pd-accent-soft-rgb, 247, 246, 255), 0.98), rgba(255, 255, 255, 0.98));
 }
 
 :where(.pilotdeck-settings-app) .route-card-heading,
@@ -4335,7 +4369,7 @@
 :where(.pilotdeck-settings-app) .route-section-header h2,
 :where(.pilotdeck-settings-app) .advanced-section-title h2 {
   margin: 0;
-  color: rgb(37, 39, 53);
+  color: var(--settings-panel-ink, rgb(37, 39, 53));
   font-size: 14px;
   font-weight: 650;
 }
@@ -4381,7 +4415,7 @@
 
 :where(.pilotdeck-settings-app) .route-switch.on {
   background: var(--brand);
-  box-shadow: rgba(91, 92, 226, 0.23) 0 5px 12px;
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.23) 0 5px 12px;
 }
 
 :where(.pilotdeck-settings-app) .route-switch.on span {
@@ -4432,7 +4466,7 @@
 }
 
 :where(.pilotdeck-settings-app) .route-model-row.is-default-tier {
-  background: rgb(250, 249, 255);
+  background: var(--pd-neutral-soft, rgb(250, 249, 255));
 }
 
 :where(.pilotdeck-settings-app) .route-model-copy > div,
@@ -4449,7 +4483,7 @@
 
 :where(.pilotdeck-settings-app) .route-label-line strong {
   overflow: hidden;
-  color: rgb(44, 46, 60);
+  color: var(--settings-panel-ink, rgb(44, 46, 60));
   font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -4460,7 +4494,7 @@
   padding: 2px 6px;
   border-radius: 5px;
   background: rgb(240, 241, 246);
-  color: rgb(145, 148, 162);
+  color: var(--settings-panel-muted, rgb(145, 148, 162));
   font-size: 12px;
   font-weight: 670;
 }
@@ -4469,7 +4503,7 @@
 :where(.pilotdeck-settings-app) .advanced-section-title p,
 :where(.pilotdeck-settings-app) .advanced-strategy-row p {
   margin: 4px 0 0;
-  color: rgb(128, 132, 148);
+  color: var(--settings-panel-muted, rgb(128, 132, 148));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -4495,7 +4529,7 @@
 :where(.pilotdeck-settings-app) .route-tier-index.tone-1 { background: #eef7ff; color: #3976a8; }
 :where(.pilotdeck-settings-app) .route-tier-index.tone-2 { background: #eef8f1; color: #3c8055; }
 :where(.pilotdeck-settings-app) .route-tier-index.tone-3 { background: #fff5e9; color: #aa6a29; }
-:where(.pilotdeck-settings-app) .route-tier-index.tone-4 { background: #f5efff; color: #7551aa; }
+:where(.pilotdeck-settings-app) .route-tier-index.tone-4 { background: var(--pd-accent-tint, #f5efff); color: var(--pd-accent-strong, #7551aa); }
 
 :where(.pilotdeck-settings-app) .route-default-badge,
 :where(.pilotdeck-settings-app) .route-default-action {
@@ -4507,8 +4541,8 @@
 
 :where(.pilotdeck-settings-app) .route-default-badge {
   padding: 0 7px;
-  background: rgb(236, 233, 255);
-  color: rgb(86, 74, 181);
+  background: var(--pd-accent-tint, rgb(236, 233, 255));
+  color: var(--pd-accent, rgb(86, 74, 181));
 }
 
 :where(.pilotdeck-settings-app) .route-default-action {
@@ -4534,7 +4568,7 @@
 :where(.pilotdeck-settings-app) .route-default-action:hover,
 :where(.pilotdeck-settings-app) .route-default-action:focus-visible {
   outline: 0;
-  background: rgb(239, 239, 255);
+  background: var(--pd-accent-tint, rgb(239, 239, 255));
 }
 
 :where(.pilotdeck-settings-app) .route-select-wrap {
@@ -4553,7 +4587,7 @@
   border-radius: 9px;
   outline: none;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-size: 13px;
   font-weight: 510;
   box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
@@ -4588,14 +4622,14 @@
 }
 
 :where(.pilotdeck-settings-app) .route-subagent-model-copy label {
-  color: rgb(48, 52, 66);
+  color: var(--settings-panel-ink, rgb(48, 52, 66));
   font-size: 13px;
   font-weight: 710;
 }
 
 :where(.pilotdeck-settings-app) .route-subagent-model-copy p {
   margin-top: 6px;
-  color: rgb(140, 144, 158);
+  color: var(--settings-panel-muted, rgb(140, 144, 158));
   font-size: 12px;
   line-height: 1.55;
 }
@@ -4606,15 +4640,15 @@
 :where(.pilotdeck-settings-app) .tier-definition-row textarea:focus,
 :where(.pilotdeck-settings-app) .model-pricing-row input:focus,
 :where(.pilotdeck-settings-app) .model-pricing-row select:focus {
-  border-color: rgb(133, 124, 214);
-  box-shadow: 0 0 0 2px rgba(105, 94, 199, 0.1);
+  border-color: var(--pd-accent, rgb(133, 124, 214));
+  box-shadow: 0 0 0 2px rgba(var(--pd-accent-rgb, 105, 94, 199), 0.1);
 }
 
 :where(.pilotdeck-settings-app) .route-select-wrap > svg {
   position: absolute;
   top: 11px;
   right: 11px;
-  color: rgb(132, 135, 150);
+  color: var(--settings-panel-muted, rgb(132, 135, 150));
   pointer-events: none;
 }
 
@@ -4633,7 +4667,7 @@
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: rgb(83, 85, 101);
+  color: var(--settings-panel-ink, rgb(83, 85, 101));
   font-size: 11px;
   font-weight: 680;
   cursor: pointer;
@@ -4676,13 +4710,13 @@
 }
 
 :where(.pilotdeck-settings-app) .advanced-strategy-title {
-  color: rgb(49, 51, 65);
+  color: var(--settings-panel-ink, rgb(49, 51, 65));
   font-size: 13px;
   font-weight: 650;
 }
 
 :where(.pilotdeck-settings-app) .advanced-strategy-title svg {
-  color: rgb(101, 90, 193);
+  color: var(--pd-accent, rgb(101, 90, 193));
 }
 
 :where(.pilotdeck-settings-app) .advanced-strategy-row > select {
@@ -4692,13 +4726,13 @@
 
 :where(.pilotdeck-settings-app) .advanced-strategy-row p {
   margin: 0;
-  color: rgb(131, 135, 149);
+  color: var(--settings-panel-muted, rgb(131, 135, 149));
   font-size: 12px;
   line-height: 1.55;
 }
 
 :where(.pilotdeck-settings-app) .advanced-strategy-row p b {
-  color: #5b5fc5;
+  color: var(--pd-accent, #5b5fc5);
   font-weight: 680;
 }
 
@@ -4745,7 +4779,7 @@
 
 :where(.pilotdeck-settings-app) .agent-route-page .button.secondary {
   background: white;
-  color: rgb(83, 85, 99);
+  color: var(--settings-panel-ink, rgb(83, 85, 99));
 }
 
 :where(.pilotdeck-settings-app) .advanced-edit-button {
@@ -4757,7 +4791,7 @@
   border-color: var(--brand);
   background: var(--brand);
   color: #fff;
-  box-shadow: 0 7px 18px #5b5ce23d;
+  box-shadow: 0 7px 18px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.239);
 }
 
 :where(.pilotdeck-settings-app) .tier-definition-list,
@@ -4784,12 +4818,12 @@
   border: 1px solid transparent;
   outline: none;
   background: transparent;
-  color: rgb(68, 72, 86);
+  color: var(--settings-panel-ink, rgb(68, 72, 86));
   font-size: 12px;
 }
 
 :where(.pilotdeck-settings-app) .tier-definition-row input {
-  color: rgb(80, 84, 98);
+  color: var(--settings-panel-ink, rgb(80, 84, 98));
   font-size: 13px;
   font-weight: 650;
 }
@@ -4825,7 +4859,7 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: rgb(153, 155, 169);
+  color: var(--settings-panel-muted, rgb(153, 155, 169));
   cursor: pointer;
 }
 
@@ -4852,7 +4886,7 @@
   border: 1px solid rgb(216, 217, 229);
   border-radius: 8px;
   background: rgb(255, 255, 255);
-  color: rgb(89, 92, 202);
+  color: var(--pd-accent, rgb(89, 92, 202));
   font-size: 11px;
   cursor: pointer;
 }
@@ -4877,7 +4911,7 @@
 :where(.pilotdeck-settings-app) .model-pricing-row strong {
   align-self: center;
   overflow: hidden;
-  color: rgb(55, 57, 70);
+  color: var(--settings-panel-ink, rgb(55, 57, 70));
   font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -4887,7 +4921,7 @@
 :where(.pilotdeck-settings-app) .model-pricing-row label span {
   display: inline;
   margin: 0;
-  color: rgb(137, 140, 154);
+  color: var(--settings-panel-muted, rgb(137, 140, 154));
   font-size: 13px;
 }
 
@@ -4908,7 +4942,7 @@
   border-radius: 8px;
   outline: none;
   background: white;
-  color: rgb(68, 72, 86);
+  color: var(--settings-panel-ink, rgb(68, 72, 86));
   font-size: 11px;
 }
 
@@ -5456,9 +5490,9 @@
 :where(.pilotdeck-settings-app) .settings-page.mcp-settings-page {
   padding-bottom: 0;
   background:
-    radial-gradient(circle at 80% 5%, rgba(232, 237, 255, 0.66), transparent 23%),
-    radial-gradient(circle at 18% 26%, rgba(243, 238, 255, 0.46), transparent 24%),
-    linear-gradient(rgb(255, 255, 255), rgb(251, 252, 255));
+    radial-gradient(circle at 80% 5%, rgba(var(--pd-accent-soft-rgb, 232, 237, 255), 0.66), transparent 23%),
+    radial-gradient(circle at 18% 26%, rgba(var(--pd-accent-soft-rgb, 243, 238, 255), 0.46), transparent 24%),
+    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(251, 252, 255)));
 }
 
 :where(.pilotdeck-settings-app) .mcp-page-header {
@@ -5504,7 +5538,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-config-card.project {
-  border-color: rgb(216, 220, 239);
+  border-color: var(--pd-accent-border, rgb(216, 220, 239));
   box-shadow: rgba(54, 71, 122, 0.075) 0 13px 34px;
 }
 
@@ -5519,8 +5553,8 @@
   border-bottom: 1px solid var(--line);
   background: linear-gradient(
     105deg,
-    rgba(249, 248, 255, 0.95),
-    rgba(248, 251, 255, 0.72)
+    rgba(var(--pd-accent-soft-rgb, 249, 248, 255), 0.95),
+    rgba(var(--pd-accent-soft-rgb, 248, 251, 255), 0.72)
   );
 }
 
@@ -5528,8 +5562,8 @@
   grid-template-columns: 42px minmax(0, 1fr);
   background: linear-gradient(
     105deg,
-    rgba(247, 246, 255, 0.98),
-    rgba(244, 249, 255, 0.84)
+    rgba(var(--pd-accent-soft-rgb, 247, 246, 255), 0.98),
+    rgba(var(--pd-accent-soft-rgb, 244, 249, 255), 0.84)
   );
 }
 
@@ -5540,8 +5574,8 @@
   display: grid;
   place-items: center;
   border-radius: 12px;
-  background: rgb(239, 237, 255);
-  color: rgb(92, 95, 225);
+  background: var(--pd-accent-tint, rgb(239, 237, 255));
+  color: var(--pd-accent, rgb(92, 95, 225));
 }
 
 :where(.pilotdeck-settings-app) .mcp-config-card.project .mcp-config-card-icon {
@@ -5564,7 +5598,7 @@
 
 :where(.pilotdeck-settings-app) .mcp-config-card-header strong,
 :where(.pilotdeck-settings-app) .mcp-raw-config-header strong {
-  color: rgb(48, 52, 65);
+  color: var(--settings-panel-ink, rgb(48, 52, 65));
   font-size: 14px;
   font-weight: 720;
   line-height: 1.4;
@@ -5573,7 +5607,7 @@
 :where(.pilotdeck-settings-app) .mcp-config-card-header p,
 :where(.pilotdeck-settings-app) .mcp-raw-config-header p {
   margin-top: 5px;
-  color: rgb(135, 139, 153);
+  color: var(--settings-panel-muted, rgb(135, 139, 153));
   font-size: 11px;
   line-height: 1.5;
 }
@@ -5586,11 +5620,11 @@
 
 :where(.pilotdeck-settings-app) .mcp-header-location svg {
   flex: 0 0 auto;
-  color: rgb(133, 137, 200);
+  color: var(--pd-accent, rgb(133, 137, 200));
 }
 
 :where(.pilotdeck-settings-app) .mcp-header-location code {
-  color: rgb(118, 122, 152);
+  color: var(--settings-panel-muted, rgb(118, 122, 152));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 10px;
 }
@@ -5600,10 +5634,10 @@
   padding: 0 10px;
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgb(220, 221, 240);
+  border: 1px solid var(--pd-accent-border, rgb(220, 221, 240));
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.88);
-  color: rgb(105, 108, 181);
+  color: var(--pd-accent, rgb(105, 108, 181));
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
@@ -5622,17 +5656,17 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgb(226, 228, 237);
-  background: rgb(250, 250, 254);
+  background: var(--pd-neutral-soft, rgb(250, 250, 254));
 }
 
 :where(.pilotdeck-settings-app) .mcp-project-rail {
   grid-row: 1 / 3;
-  border-color: rgb(221, 222, 240);
-  background: linear-gradient(rgb(247, 245, 255), rgb(250, 251, 255));
+  border-color: var(--pd-accent-border, rgb(221, 222, 240));
+  background: linear-gradient(var(--pd-accent-tint, rgb(247, 245, 255)), var(--pd-neutral-soft, rgb(250, 251, 255)));
 }
 
 :where(.pilotdeck-settings-app) .mcp-project-server-rail {
-  background: rgb(251, 251, 254);
+  background: var(--pd-neutral-soft, rgb(251, 251, 254));
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-rail > header,
@@ -5643,7 +5677,7 @@
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid rgb(231, 232, 239);
-  color: rgb(85, 89, 104);
+  color: var(--settings-panel-ink, rgb(85, 89, 104));
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-rail > header span,
@@ -5661,8 +5695,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgb(235, 234, 246);
-  color: rgb(123, 127, 145);
+  background: var(--pd-accent-tint, rgb(235, 234, 246));
+  color: var(--settings-panel-muted, rgb(123, 127, 145));
   font-size: 9px;
   font-weight: 700;
 }
@@ -5678,7 +5712,7 @@
   border: 1px solid rgb(216, 217, 232);
   border-radius: 8px;
   background: rgb(255, 255, 255);
-  color: rgb(146, 150, 167);
+  color: var(--settings-panel-muted, rgb(146, 150, 167));
 }
 
 :where(.pilotdeck-settings-app) .mcp-project-search {
@@ -5688,8 +5722,8 @@
 
 :where(.pilotdeck-settings-app) .mcp-server-search:focus-within,
 :where(.pilotdeck-settings-app) .mcp-project-search:focus-within {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.08) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.08) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-search input,
@@ -5699,7 +5733,7 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: rgb(77, 81, 96);
+  color: var(--settings-panel-ink, rgb(77, 81, 96));
   font-size: 11px;
 }
 
@@ -5724,7 +5758,7 @@
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-  color: rgb(84, 88, 103);
+  color: var(--settings-panel-ink, rgb(84, 88, 103));
   text-align: left;
 }
 
@@ -5734,9 +5768,9 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-options > button.selected {
-  border-color: rgb(215, 214, 250);
-  background: linear-gradient(90deg, rgb(240, 239, 255), rgb(245, 247, 255));
-  box-shadow: rgba(70, 72, 148, 0.055) 0 3px 10px;
+  border-color: var(--pd-accent-border, rgb(215, 214, 250));
+  background: linear-gradient(90deg, var(--pd-accent-tint, rgb(240, 239, 255)), var(--pd-accent-tint, rgb(245, 247, 255)));
+  box-shadow: rgba(var(--pd-accent-rgb, 70, 72, 148), 0.055) 0 3px 10px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-rail-icon {
@@ -5748,8 +5782,8 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-rail-icon.stdio {
-  background: rgb(236, 234, 255);
-  color: rgb(91, 92, 226);
+  background: var(--pd-accent-tint, rgb(236, 234, 255));
+  color: var(--pd-accent, rgb(91, 92, 226));
 }
 
 :where(.pilotdeck-settings-app) .mcp-rail-icon.http {
@@ -5770,14 +5804,14 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-options strong {
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-size: 12px;
   font-weight: 700;
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-options small {
   margin-top: 4px;
-  color: rgb(150, 154, 168);
+  color: var(--settings-panel-muted, rgb(150, 154, 168));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 9px;
 }
@@ -5786,7 +5820,7 @@
   padding: 2px 5px;
   border-radius: 5px;
   background: rgb(236, 238, 245);
-  color: rgb(123, 127, 142);
+  color: var(--settings-panel-muted, rgb(123, 127, 142));
   font-size: 8px;
   font-style: normal;
   font-weight: 760;
@@ -5794,7 +5828,7 @@
 
 :where(.pilotdeck-settings-app) .mcp-server-search-empty {
   margin: 14px 5px;
-  color: rgb(154, 157, 170);
+  color: var(--settings-panel-muted, rgb(154, 157, 170));
   font-size: 10px;
   text-align: center;
 }
@@ -5818,14 +5852,14 @@
   border: 1px solid rgb(223, 224, 233);
   border-radius: 8px;
   background: rgb(255, 255, 255);
-  color: rgb(100, 105, 121);
+  color: var(--settings-panel-muted, rgb(100, 105, 121));
   font-size: 11px !important;
   font-weight: 680;
   white-space: nowrap;
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-rail > footer button:hover:not(:disabled) {
-  border-color: rgb(191, 192, 234);
+  border-color: var(--pd-accent-border, rgb(191, 192, 234));
   background: var(--brand-tint);
   color: var(--brand);
 }
@@ -5833,7 +5867,7 @@
 :where(.pilotdeck-settings-app) .mcp-server-rail > footer button:disabled {
   border-color: rgb(229, 230, 236);
   background: rgb(250, 250, 250);
-  color: rgb(176, 179, 190);
+  color: var(--settings-panel-muted, rgb(176, 179, 190));
 }
 
 :where(.pilotdeck-settings-app) .mcp-project-workbench {
@@ -5868,7 +5902,7 @@
 
 :where(.pilotdeck-settings-app) .mcp-selected-project-header strong {
   overflow: hidden;
-  color: rgb(62, 66, 80);
+  color: var(--settings-panel-ink, rgb(62, 66, 80));
   font-size: 12px;
   font-weight: 720;
   text-overflow: ellipsis;
@@ -5876,7 +5910,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-selected-project-header small {
-  color: rgb(146, 150, 164);
+  color: var(--settings-panel-muted, rgb(146, 150, 164));
   font-size: 9px;
 }
 
@@ -5902,7 +5936,7 @@
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: rgb(86, 90, 105);
+  color: var(--settings-panel-ink, rgb(86, 90, 105));
   font-size: 11px;
   text-align: left;
 }
@@ -5912,11 +5946,11 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-project-options button.selected {
-  border-color: rgb(210, 209, 245);
-  background: linear-gradient(90deg, rgb(236, 234, 255), rgb(244, 243, 255));
-  color: rgb(79, 82, 200);
+  border-color: var(--pd-accent-border, rgb(210, 209, 245));
+  background: linear-gradient(90deg, var(--pd-accent-tint, rgb(236, 234, 255)), var(--pd-accent-tint, rgb(244, 243, 255)));
+  color: var(--pd-accent, rgb(79, 82, 200));
   font-weight: 700;
-  box-shadow: rgb(105, 107, 230) 3px 0 inset;
+  box-shadow: var(--pd-accent, rgb(105, 107, 230)) 3px 0 inset;
 }
 
 :where(.pilotdeck-settings-app) .mcp-project-options button small {
@@ -5927,13 +5961,13 @@
   justify-content: center;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.8);
-  color: rgb(133, 137, 154);
+  color: var(--settings-panel-muted, rgb(133, 137, 154));
   font-size: 9px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-project-options > p {
   margin: 14px 5px;
-  color: rgb(154, 157, 170);
+  color: var(--settings-panel-muted, rgb(154, 157, 170));
   font-size: 10px;
   text-align: center;
 }
@@ -5962,8 +5996,8 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-transport-icon.stdio {
-  background: rgb(240, 239, 255);
-  color: rgb(91, 92, 226);
+  background: var(--pd-accent-tint, rgb(240, 239, 255));
+  color: var(--pd-accent, rgb(91, 92, 226));
 }
 
 :where(.pilotdeck-settings-app) .mcp-transport-icon.http {
@@ -5989,7 +6023,7 @@
 
 :where(.pilotdeck-settings-app) .mcp-detail-title strong {
   overflow: hidden;
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 13px;
   font-weight: 720;
   text-overflow: ellipsis;
@@ -5998,7 +6032,7 @@
 
 :where(.pilotdeck-settings-app) .mcp-detail-title small {
   margin-top: 4px;
-  color: rgb(146, 150, 164);
+  color: var(--settings-panel-muted, rgb(146, 150, 164));
   font-size: 10px;
 }
 
@@ -6011,8 +6045,8 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-detail-type.stdio {
-  background: rgb(239, 237, 255);
-  color: rgb(91, 92, 226);
+  background: var(--pd-accent-tint, rgb(239, 237, 255));
+  color: var(--pd-accent, rgb(91, 92, 226));
 }
 
 :where(.pilotdeck-settings-app) .mcp-detail-type.http {
@@ -6024,13 +6058,13 @@
   width: min(260px, 100%);
   height: 30px;
   padding: 0 8px;
-  border: 1px solid rgb(148, 150, 234);
+  border: 1px solid var(--pd-accent, rgb(148, 150, 234));
   border-radius: 7px;
   outline: 0;
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 13px;
   font-weight: 720;
-  box-shadow: rgba(91, 92, 226, 0.08) 0 0 0 3px;
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.08) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-detail-actions {
@@ -6056,21 +6090,21 @@
 
 :where(.pilotdeck-settings-app) .mcp-edit-server-button {
   border: 0;
-  color: rgb(87, 89, 210);
+  color: var(--pd-accent, rgb(87, 89, 210));
 }
 
 :where(.pilotdeck-settings-app) .mcp-edit-server-button:hover:not(:disabled) {
-  background: rgb(241, 240, 255);
+  background: var(--pd-accent-tint, rgb(241, 240, 255));
 }
 
 :where(.pilotdeck-settings-app) .mcp-edit-server-button.secondary {
   border: 1px solid rgb(217, 218, 228);
-  color: rgb(105, 109, 124);
+  color: var(--settings-panel-muted, rgb(105, 109, 124));
 }
 
 :where(.pilotdeck-settings-app) .mcp-edit-server-button.primary {
-  border: 1px solid rgb(93, 95, 227);
-  background: rgb(93, 95, 227);
+  border: 1px solid var(--pd-accent, rgb(93, 95, 227));
+  background: var(--pd-accent, rgb(93, 95, 227));
   color: rgb(255, 255, 255);
 }
 
@@ -6087,7 +6121,7 @@
   padding: 11px 14px 13px;
   display: grid;
   gap: 9px;
-  background: linear-gradient(rgb(255, 255, 255), rgb(253, 253, 255));
+  background: linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(253, 253, 255)));
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-editor > .mcp-form-field,
@@ -6100,7 +6134,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-field-label {
-  color: rgb(76, 81, 96);
+  color: var(--settings-panel-ink, rgb(76, 81, 96));
   font-size: 12px;
   font-weight: 700;
 }
@@ -6114,19 +6148,19 @@
   border-radius: 8px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(72, 76, 91);
+  color: var(--settings-panel-ink, rgb(72, 76, 91));
   font-size: 12px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-form-field > input:focus {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.08) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.08) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-form-field > input:disabled {
   border-color: rgb(226, 227, 234);
   background: rgb(248, 249, 252);
-  color: rgb(102, 106, 120);
+  color: var(--settings-panel-muted, rgb(102, 106, 120));
   opacity: 1;
   -webkit-text-fill-color: rgb(102, 106, 120);
 }
@@ -6140,7 +6174,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-empty-field-value {
-  color: rgb(148, 152, 166);
+  color: var(--settings-panel-muted, rgb(148, 152, 166));
   font-size: 12px;
   line-height: 36px;
 }
@@ -6166,7 +6200,7 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: rgb(72, 76, 91);
+  color: var(--settings-panel-ink, rgb(72, 76, 91));
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6177,8 +6211,8 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-repeatable-row:focus-within {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.08) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.08) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-editor.readonly .mcp-repeatable-row {
@@ -6195,7 +6229,7 @@
   border: 0;
   border-left: 1px solid rgb(226, 227, 234);
   background: transparent;
-  color: rgb(150, 154, 167);
+  color: var(--settings-panel-muted, rgb(150, 154, 167));
 }
 
 :where(.pilotdeck-settings-app) .mcp-icon-button.danger:hover:not(:disabled) {
@@ -6215,13 +6249,13 @@
   border: 1px dashed rgb(215, 216, 229);
   border-radius: 8px;
   background: rgb(247, 247, 250);
-  color: rgb(102, 107, 122);
+  color: var(--settings-panel-muted, rgb(102, 107, 122));
   font-size: 11px !important;
   font-weight: 680;
 }
 
 :where(.pilotdeck-settings-app) .mcp-add-row-button:hover:not(:disabled) {
-  border-color: rgb(188, 188, 231);
+  border-color: var(--pd-accent-border, rgb(188, 188, 231));
   background: var(--brand-tint);
   color: var(--brand);
 }
@@ -6240,7 +6274,7 @@
   gap: 14px;
   border: 1px solid rgb(225, 226, 235);
   border-radius: 10px;
-  background: rgb(253, 253, 255);
+  background: var(--pd-neutral-soft, rgb(253, 253, 255));
 }
 
 :where(.pilotdeck-settings-app) .mcp-session-row strong,
@@ -6250,13 +6284,13 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-session-row strong {
-  color: rgb(70, 74, 88);
+  color: var(--settings-panel-ink, rgb(70, 74, 88));
   font-size: 12px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-session-row p {
   margin-top: 3px;
-  color: rgb(146, 150, 164);
+  color: var(--settings-panel-muted, rgb(146, 150, 164));
   font-size: 10px;
   line-height: 1.45;
 }
@@ -6270,7 +6304,7 @@
   border: 1px solid rgb(227, 232, 243);
   border-radius: 9px;
   background: rgb(245, 248, 253);
-  color: rgb(133, 137, 152);
+  color: var(--settings-panel-muted, rgb(133, 137, 152));
   font-size: 11px;
   line-height: 1.5;
 }
@@ -6301,13 +6335,13 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-detail-empty strong {
-  color: rgb(72, 76, 91);
+  color: var(--settings-panel-ink, rgb(72, 76, 91));
   font-size: 13px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-detail-empty p {
   margin: 0;
-  color: rgb(146, 150, 164);
+  color: var(--settings-panel-muted, rgb(146, 150, 164));
   font-size: 11px;
 }
 
@@ -6317,7 +6351,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-detail-invalid > small {
-  color: rgb(146, 150, 164);
+  color: var(--settings-panel-muted, rgb(146, 150, 164));
   font-size: 10px;
 }
 
@@ -6349,7 +6383,7 @@
   gap: 12px;
   border: 0;
   background: transparent;
-  color: rgb(77, 81, 96);
+  color: var(--settings-panel-ink, rgb(77, 81, 96));
   cursor: pointer;
   list-style: none;
 }
@@ -6359,7 +6393,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-trigger:hover {
-  background: rgb(250, 250, 255);
+  background: var(--pd-neutral-soft, rgb(250, 250, 255));
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-trigger > span {
@@ -6379,7 +6413,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-trigger small {
-  color: rgb(153, 156, 169);
+  color: var(--settings-panel-muted, rgb(153, 156, 169));
   font-size: 10px;
 }
 
@@ -6398,7 +6432,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(247, 247, 250);
-  color: rgb(74, 78, 92);
+  color: var(--settings-panel-ink, rgb(74, 78, 92));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
   line-height: 1.6;
@@ -6406,9 +6440,9 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-body textarea:focus {
-  border-color: rgb(146, 148, 233);
+  border-color: var(--pd-accent, rgb(146, 148, 233));
   background: rgb(255, 255, 255);
-  box-shadow: rgba(91, 92, 226, 0.08) 0 0 0 3px;
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.08) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-actions {
@@ -6421,7 +6455,7 @@
 
 :where(.pilotdeck-settings-app) .mcp-raw-actions > span {
   margin-right: auto;
-  color: rgb(145, 149, 163);
+  color: var(--settings-panel-muted, rgb(145, 149, 163));
   font-size: 10px;
 }
 
@@ -6535,7 +6569,7 @@
   border: 1px solid #dedfeb;
   border-radius: 16px;
   background: #fff;
-  box-shadow: 0 26px 70px #28285038;
+  box-shadow: 0 26px 70px rgba(var(--pd-accent-rgb, 40, 40, 80), 0.22);
   animation: modal-in 0.22s ease both;
 }
 
@@ -6560,7 +6594,7 @@
 
 .pilotdeck-settings-app .mcp-page-content .modal-header p {
   margin-top: 6px;
-  color: #898d9b;
+  color: var(--settings-panel-muted, #898d9b);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -6574,7 +6608,7 @@
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: #797e8e;
+  color: var(--settings-panel-muted, #797e8e);
 }
 
 .pilotdeck-settings-app .mcp-page-content .icon-button:hover {
@@ -6596,7 +6630,7 @@
   justify-content: flex-end;
   gap: 8px;
   border-top: 1px solid var(--line);
-  background: #fafafd;
+  background: var(--pd-neutral-soft, #fafafd);
 }
 
 .pilotdeck-settings-app .mcp-page-content .modal-actions .button {
@@ -6626,7 +6660,7 @@
 .pilotdeck-settings-app .mcp-page-content .button.secondary {
   border-color: #dfe0e9;
   background: #fff;
-  color: #565b6b;
+  color: var(--settings-panel-ink, #565b6b);
 }
 
 .pilotdeck-settings-app .mcp-page-content .button.danger {
@@ -6758,7 +6792,7 @@
 }
 
 :where(.pilotdeck-settings-app) .office-setting-row > div:first-of-type > div:first-child {
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 13px;
   font-weight: 710;
   line-height: 1.45;
@@ -6766,7 +6800,7 @@
 
 :where(.pilotdeck-settings-app) .office-setting-row > div:first-of-type > div:last-child {
   margin-top: 4px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -6786,7 +6820,7 @@
   border: 1px solid rgb(218, 220, 230);
   border-radius: 9px;
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
   font-size: 12px;
   font-weight: 530;
   box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
@@ -6798,13 +6832,13 @@
 }
 
 :where(.pilotdeck-settings-app) .office-select-wrap > div:focus-within > div:first-child {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .office-select-wrap > div > span {
   right: 13px;
-  color: rgb(139, 143, 158);
+  color: var(--settings-panel-muted, rgb(139, 143, 158));
   font-size: 14px;
 }
 
@@ -6836,17 +6870,17 @@
   border: 1px solid rgb(218, 220, 230);
   border-radius: 9px;
   background: rgb(248, 248, 251);
-  color: rgb(111, 116, 131);
+  color: var(--settings-panel-muted, rgb(111, 116, 131));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   box-shadow: none;
 }
 
 :where(.pilotdeck-settings-app) .office-path-input input:not([readonly]) {
-  border-color: rgb(146, 148, 233);
+  border-color: var(--pd-accent, rgb(146, 148, 233));
   background: rgb(255, 255, 255);
-  color: rgb(65, 69, 84);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  color: var(--settings-panel-ink, rgb(65, 69, 84));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .office-path-input button,
@@ -6861,7 +6895,7 @@
   border: 1px solid rgb(223, 224, 233);
   border-radius: 9px;
   background: rgb(255, 255, 255);
-  color: rgb(86, 91, 107);
+  color: var(--settings-panel-ink, rgb(86, 91, 107));
   font-size: 12px;
   font-weight: 680;
 }
@@ -6869,7 +6903,7 @@
 :where(.pilotdeck-settings-app) .office-path-input button:hover,
 :where(.pilotdeck-settings-app) .office-path-actions .button:hover:not(:disabled) {
   border-color: rgb(202, 203, 220);
-  background: rgb(250, 250, 253);
+  background: var(--pd-neutral-soft, rgb(250, 250, 253));
   color: var(--brand);
 }
 
@@ -6877,7 +6911,7 @@
   border-color: var(--brand);
   background: var(--brand);
   color: rgb(255, 255, 255);
-  box-shadow: rgba(91, 92, 226, 0.2) 0 6px 14px;
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.2) 0 6px 14px;
 }
 
 :where(.pilotdeck-settings-app) .office-path-actions .button.primary:hover:not(:disabled) {
@@ -6888,8 +6922,8 @@
 
 :where(.pilotdeck-settings-app) .office-path-actions .button.secondary:disabled {
   border-color: rgb(235, 232, 240);
-  background: rgb(252, 251, 253);
-  color: rgb(181, 178, 190);
+  background: var(--pd-neutral-soft, rgb(252, 251, 253));
+  color: var(--settings-panel-muted, rgb(181, 178, 190));
   box-shadow: none;
   cursor: not-allowed;
   opacity: 1;
@@ -6911,7 +6945,7 @@
   overflow: hidden;
   border: 1px solid rgb(224, 225, 233);
   border-radius: 12px;
-  background: rgb(251, 251, 253);
+  background: var(--pd-neutral-soft, rgb(251, 251, 253));
 }
 
 :where(.pilotdeck-settings-app) .office-status-panel.available {
@@ -6960,7 +6994,7 @@
 
 :where(.pilotdeck-settings-app) .office-status-heading strong {
   overflow: hidden;
-  color: rgb(79, 83, 98);
+  color: var(--settings-panel-ink, rgb(79, 83, 98));
   font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -6979,7 +7013,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: rgb(119, 124, 139);
+  color: var(--settings-panel-muted, rgb(119, 124, 139));
   font-size: 11px;
   font-weight: 650;
 }
@@ -7001,7 +7035,7 @@
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
   gap: 8px;
-  color: rgb(133, 137, 152);
+  color: var(--settings-panel-muted, rgb(133, 137, 152));
   font-size: 11px;
   line-height: 1.6;
 }
@@ -7011,13 +7045,13 @@
 }
 
 :where(.pilotdeck-settings-app) .office-status-detail p > span {
-  color: rgb(154, 158, 171);
+  color: var(--settings-panel-muted, rgb(154, 158, 171));
 }
 
 :where(.pilotdeck-settings-app) .office-status-detail code {
   min-width: 0;
   overflow: hidden;
-  color: rgb(111, 116, 131);
+  color: var(--settings-panel-muted, rgb(111, 116, 131));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
   text-overflow: ellipsis;
@@ -7032,10 +7066,10 @@
   grid-template-columns: 38px minmax(0, 1fr);
   align-items: center;
   gap: 11px;
-  border: 1px solid rgb(216, 215, 240);
+  border: 1px solid var(--pd-accent-border, rgb(216, 215, 240));
   border-radius: 12px;
-  background: linear-gradient(110deg, rgb(248, 247, 255), rgb(251, 252, 255));
-  color: rgb(133, 137, 152);
+  background: linear-gradient(110deg, var(--pd-neutral-soft, rgb(248, 247, 255)), var(--pd-neutral-soft, rgb(251, 252, 255)));
+  color: var(--settings-panel-muted, rgb(133, 137, 152));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -7045,7 +7079,7 @@
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background-color: rgb(233, 231, 255);
+  background-color: var(--pd-accent-tint, rgb(233, 231, 255));
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='19' height='19' viewBox='0 0 256 256' fill='%235b5ce2'%3E%3Cpath d='M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5ZM128 192c-30.78 0-57.67-11.19-79.93-33.26A130.36 130.36 0 0 1 25 128a130.36 130.36 0 0 1 23.07-30.74C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.26A130.36 130.36 0 0 1 231 128c-7.21 13.46-42.78 64-103 64Zm0-112a48 48 0 1 0 48 48 48.05 48.05 0 0 0-48-48Zm0 80a32 32 0 1 1 32-32 32 32 0 0 1-32 32Z'/%3E%3C/svg%3E");
   background-position: center;
   background-repeat: no-repeat;
@@ -7214,14 +7248,14 @@
 }
 
 :where(.pilotdeck-settings-app) .security-card-header h2 {
-  color: rgb(47, 51, 65);
+  color: var(--settings-panel-ink, rgb(47, 51, 65));
   font-size: 14px !important;
   line-height: 1.4;
 }
 
 :where(.pilotdeck-settings-app) .security-card-header p {
   margin-top: 3px;
-  color: rgb(138, 142, 157);
+  color: var(--settings-panel-muted, rgb(138, 142, 157));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -7266,7 +7300,7 @@
 }
 
 :where(.pilotdeck-settings-app) .security-permission-heading h3 {
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 14px;
   line-height: 1.4;
 }
@@ -7279,8 +7313,8 @@
   place-items: center;
   border: 1px solid rgb(225, 225, 236);
   border-radius: 999px;
-  background: rgb(246, 246, 250);
-  color: rgb(119, 123, 138);
+  background: var(--pd-neutral-soft, rgb(246, 246, 250));
+  color: var(--settings-panel-muted, rgb(119, 123, 138));
   font-size: 12px;
   font-weight: 720;
 }
@@ -7306,13 +7340,13 @@
   flex: 0 0 auto;
   border: 1px solid rgb(225, 226, 235);
   border-radius: 9px;
-  background: rgb(251, 251, 253);
+  background: var(--pd-neutral-soft, rgb(251, 251, 253));
   transition: border-color 0.16s, background 0.16s;
 }
 
 :where(.pilotdeck-settings-app) .security-tool-tag:hover,
 :where(.pilotdeck-settings-app) .security-tool-tag:focus-within {
-  border-color: rgb(211, 211, 232);
+  border-color: var(--pd-accent-border, rgb(211, 211, 232));
   background: rgb(255, 255, 255);
 }
 
@@ -7320,7 +7354,7 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  color: rgb(69, 73, 87);
+  color: var(--settings-panel-ink, rgb(69, 73, 87));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 14px;
   text-overflow: ellipsis;
@@ -7339,7 +7373,7 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: rgb(161, 164, 177);
+  color: var(--settings-panel-muted, rgb(161, 164, 177));
   opacity: 0;
   pointer-events: none;
   transform: translateY(-50%);
@@ -7365,8 +7399,8 @@
   align-items: center;
   border: 1px dashed rgb(225, 226, 235);
   border-radius: 9px;
-  background: rgb(251, 251, 253);
-  color: rgb(161, 164, 177);
+  background: var(--pd-neutral-soft, rgb(251, 251, 253));
+  color: var(--settings-panel-muted, rgb(161, 164, 177));
   font-size: 14px;
 }
 
@@ -7379,13 +7413,13 @@
   border: 1px solid rgb(217, 217, 230);
   border-radius: 9px;
   background: rgb(255, 255, 255);
-  color: rgb(92, 95, 112);
+  color: var(--settings-panel-muted, rgb(92, 95, 112));
   font-size: 14px !important;
   font-weight: 680;
 }
 
 :where(.pilotdeck-settings-app) .security-add-button:hover {
-  border-color: rgb(170, 169, 228);
+  border-color: var(--pd-accent-border, rgb(170, 169, 228));
   background: var(--brand-tint);
   color: var(--brand);
 }
@@ -7406,16 +7440,16 @@
   min-width: 0;
   height: 36px;
   padding: 0 10px;
-  border: 1px solid rgb(204, 202, 237);
+  border: 1px solid var(--pd-accent-border, rgb(204, 202, 237));
   border-radius: 9px;
   background: rgb(255, 255, 255);
-  color: rgb(61, 65, 80);
+  color: var(--settings-panel-ink, rgb(61, 65, 80));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 14px;
 }
 
 :where(.pilotdeck-settings-app) .security-add-form input:focus {
-  border-color: rgb(146, 148, 233);
+  border-color: var(--pd-accent, rgb(146, 148, 233));
   outline: 0;
 }
 
@@ -7431,7 +7465,7 @@
 
 :where(.pilotdeck-settings-app) .security-add-cancel {
   background: rgb(242, 242, 246);
-  color: rgb(118, 122, 137);
+  color: var(--settings-panel-muted, rgb(118, 122, 137));
 }
 
 :where(.pilotdeck-settings-app) .security-add-confirm {
@@ -7441,7 +7475,7 @@
 
 :where(.pilotdeck-settings-app) .security-add-confirm:disabled {
   background: rgb(222, 222, 232);
-  color: rgb(164, 166, 177);
+  color: var(--settings-panel-muted, rgb(164, 166, 177));
 }
 
 :where(.pilotdeck-settings-app) .security-quick-add {
@@ -7450,7 +7484,7 @@
 
 :where(.pilotdeck-settings-app) .security-quick-add > span {
   display: block;
-  color: rgb(111, 115, 130);
+  color: var(--settings-panel-muted, rgb(111, 115, 130));
   font-size: 14px;
   font-weight: 680;
 }
@@ -7469,7 +7503,7 @@
   border: 1px solid rgb(228, 228, 236);
   border-radius: 8px;
   background: rgb(255, 255, 255);
-  color: rgb(94, 98, 112);
+  color: var(--settings-panel-muted, rgb(94, 98, 112));
   box-shadow: rgba(48, 49, 77, 0.043) 0 2px 7px;
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 14px !important;
@@ -7477,20 +7511,20 @@
 }
 
 :where(.pilotdeck-settings-app) .security-quick-add button:hover {
-  border-color: rgb(201, 200, 235);
+  border-color: var(--pd-accent-border, rgb(201, 200, 235));
   background: var(--brand-tint);
   color: var(--brand);
 }
 
 :where(.pilotdeck-settings-app) .security-quick-add small {
   align-self: center;
-  color: rgb(162, 165, 177);
+  color: var(--settings-panel-muted, rgb(162, 165, 177));
   font-size: 14px;
 }
 
 :where(.pilotdeck-settings-app) .security-telemetry-section > h2 {
   margin: 0 2px 10px;
-  color: rgb(42, 46, 60);
+  color: var(--settings-panel-ink, rgb(42, 46, 60));
   font-size: 14px !important;
   line-height: 1.4;
 }
@@ -7510,7 +7544,7 @@
 
 :where(.pilotdeck-settings-app) .security-telemetry-copy strong {
   display: block;
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
   font-size: 14px;
   line-height: 1.4;
 }
@@ -7518,7 +7552,7 @@
 :where(.pilotdeck-settings-app) .security-telemetry-copy p {
   max-width: 680px;
   margin-top: 4px;
-  color: rgb(144, 148, 162);
+  color: var(--settings-panel-muted, rgb(144, 148, 162));
   font-size: 12px;
   line-height: 1.55;
 }
@@ -7614,7 +7648,7 @@
   align-items: center;
   gap: 14px;
   border-bottom: 1px solid var(--line);
-  color: rgb(68, 72, 86);
+  color: var(--settings-panel-ink, rgb(68, 72, 86));
 }
 
 :where(.pilotdeck-settings-app) .agent-retry-icon {
@@ -7640,7 +7674,7 @@
 :where(.pilotdeck-settings-app) .agent-retry-header small {
   max-width: 720px;
   margin-top: 4px;
-  color: rgb(145, 149, 164);
+  color: var(--settings-panel-muted, rgb(145, 149, 164));
   font-size: 12px;
   font-weight: 450;
   line-height: 1.45;
@@ -7686,14 +7720,14 @@
 }
 
 :where(.pilotdeck-settings-app) .agent-retry-field strong {
-  color: rgb(68, 72, 86);
+  color: var(--settings-panel-ink, rgb(68, 72, 86));
   font-size: 13px;
   line-height: 1.45;
 }
 
 :where(.pilotdeck-settings-app) .agent-retry-field small {
   margin-top: 6px;
-  color: rgb(147, 151, 166);
+  color: var(--settings-panel-muted, rgb(147, 151, 166));
   font-size: 12px;
   font-weight: 450;
   line-height: 1.45;
@@ -7711,7 +7745,7 @@
   border-radius: 9px;
   outline: 0;
   background: rgb(255, 255, 255);
-  color: rgb(85, 90, 105);
+  color: var(--settings-panel-ink, rgb(85, 90, 105));
   font-size: 12px;
   transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
 }
@@ -7720,8 +7754,8 @@
 :where(.pilotdeck-settings-app) .advanced-service-field input:focus,
 :where(.pilotdeck-settings-app) .advanced-environment-form input:focus,
 :where(.pilotdeck-settings-app) .advanced-environment-item input:focus {
-  border-color: rgb(146, 148, 233);
-  box-shadow: rgba(91, 92, 226, 0.09) 0 0 0 3px;
+  border-color: var(--pd-accent, rgb(146, 148, 233));
+  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
 }
 
 :where(.pilotdeck-settings-app) .agent-retry-field input:disabled,
@@ -7729,18 +7763,18 @@
 :where(.pilotdeck-settings-app) .advanced-environment-form input:disabled {
   border-color: rgb(226, 227, 234);
   background: rgb(250, 250, 250);
-  color: rgb(103, 107, 121);
+  color: var(--settings-panel-muted, rgb(103, 107, 121));
   opacity: 1;
 }
 
 :where(.pilotdeck-settings-app) .advanced-settings-page .agent-retry-field input:disabled,
 :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:disabled {
-  color: rgb(160, 164, 178);
+  color: var(--settings-panel-muted, rgb(160, 164, 178));
 }
 
 :where(.pilotdeck-settings-app) .advanced-settings-page .agent-retry-field input:not(:disabled),
 :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:not(:disabled) {
-  color: rgb(52, 56, 70);
+  color: var(--settings-panel-ink, rgb(52, 56, 70));
 }
 
 :where(.pilotdeck-settings-app) .advanced-service-grid {
@@ -7780,14 +7814,14 @@
 }
 
 :where(.pilotdeck-settings-app) .advanced-service-copy strong {
-  color: rgb(60, 64, 78);
+  color: var(--settings-panel-ink, rgb(60, 64, 78));
   font-size: 13px;
   font-weight: 700;
 }
 
 :where(.pilotdeck-settings-app) .advanced-service-copy p {
   margin-top: 5px;
-  color: rgb(141, 145, 160);
+  color: var(--settings-panel-muted, rgb(141, 145, 160));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -7808,7 +7842,7 @@
   place-items: center;
   border: 1px dashed rgb(223, 224, 233);
   border-radius: 10px;
-  color: rgb(144, 148, 163);
+  color: var(--settings-panel-muted, rgb(144, 148, 163));
   font-size: 12px;
 }
 
@@ -7833,14 +7867,14 @@
 }
 
 :where(.pilotdeck-settings-app) .advanced-environment-item code {
-  color: rgb(72, 76, 91);
+  color: var(--settings-panel-ink, rgb(72, 76, 91));
   font-size: 12px;
   font-weight: 700;
 }
 
 :where(.pilotdeck-settings-app) .advanced-environment-item > span {
   overflow: hidden;
-  color: rgb(143, 147, 161);
+  color: var(--settings-panel-muted, rgb(143, 147, 161));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   text-overflow: ellipsis;
@@ -7855,7 +7889,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: rgb(155, 158, 170);
+  color: var(--settings-panel-muted, rgb(155, 158, 170));
 }
 
 :where(.pilotdeck-settings-app) .advanced-environment-item button:hover:not(:disabled) {
@@ -7872,7 +7906,7 @@
 :where(.pilotdeck-settings-app) .advanced-environment-compose > strong {
   display: block;
   margin-bottom: 9px;
-  color: rgb(65, 69, 82);
+  color: var(--settings-panel-ink, rgb(65, 69, 82));
   font-size: 12px;
 }
 
@@ -7884,7 +7918,7 @@
 }
 
 :where(.pilotdeck-settings-app) .advanced-environment-form > span {
-  color: rgb(118, 122, 137);
+  color: var(--settings-panel-muted, rgb(118, 122, 137));
   font-size: 13px;
   text-align: center;
 }
@@ -7903,7 +7937,7 @@
 :where(.pilotdeck-settings-app) .advanced-environment-quick > span {
   display: block;
   margin-bottom: 9px;
-  color: rgb(119, 123, 137);
+  color: var(--settings-panel-muted, rgb(119, 123, 137));
   font-size: 12px;
 }
 
@@ -7922,13 +7956,13 @@
   border: 1px solid rgb(222, 223, 234);
   border-radius: 8px;
   background: rgb(248, 248, 251);
-  color: rgb(102, 106, 120);
+  color: var(--settings-panel-muted, rgb(102, 106, 120));
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 11px !important;
 }
 
 :where(.pilotdeck-settings-app) .advanced-environment-quick button:hover:not(:disabled) {
-  border-color: rgb(201, 200, 239);
+  border-color: var(--pd-accent-border, rgb(201, 200, 239));
   background: var(--brand-tint);
   color: var(--brand-strong);
 }
@@ -7936,14 +7970,14 @@
 :where(.pilotdeck-settings-app) .advanced-environment-quick button:disabled {
   border-color: rgb(226, 227, 234);
   background: rgb(250, 250, 250);
-  color: rgb(141, 144, 156);
+  color: var(--settings-panel-muted, rgb(141, 144, 156));
   cursor: not-allowed;
   opacity: 1;
 }
 
 :where(.pilotdeck-settings-app) .advanced-config-file-note {
   margin: 10px 2px 0;
-  color: rgb(141, 145, 160);
+  color: var(--settings-panel-muted, rgb(141, 145, 160));
   font-size: 12px;
   line-height: 1.6;
 }
@@ -8314,7 +8348,7 @@
   color: inherit;
 }
 :where(.pilotdeck-settings-app) .model-row button.model-settings-trigger:is(:hover, :focus-visible):not(:disabled) {
-  background: rgb(117 101 233 / 6%);
+  background: rgba(var(--pd-accent-rgb, 117, 101, 233), 0.06);
 }
 .dark :where(.pilotdeck-settings-app) .model-row button.model-settings-trigger:is(:hover, :focus-visible):not(:disabled) {
   background: rgb(117 101 233 / 16%);
@@ -8324,5 +8358,18 @@
   align-items: center;
   flex-shrink: 0;
   gap: 12px;
-  color: #8a84a8;
+  color: var(--settings-panel-muted, #8a84a8);
 }
+
+/* Deep links from model-removal previews identify the current editable owner. */
+:where(.pilotdeck-settings-app) .model-pool-default { margin-bottom: 20px; }
+:where(.pilotdeck-settings-app) .model-reference-detail { flex: 0 0 auto; margin-bottom: 20px; }
+:where(.pilotdeck-settings-app) .model-reference-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+:where(.pilotdeck-settings-app) [data-reference-highlight] {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  scroll-margin-block: 24px;
+}
+:where(.pilotdeck-settings-app) .model-reference-pricing { display: flex; flex-wrap: wrap; gap: 20px; margin: 0; }
+:where(.pilotdeck-settings-app) .model-reference-pricing dt { color: var(--muted); font-size: 12px; }
+:where(.pilotdeck-settings-app) .model-reference-pricing dd { margin: 4px 0 0; font-variant-numeric: tabular-nums; }

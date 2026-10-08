@@ -47,6 +47,7 @@ const { build } = require(path.join(projectDir, 'package.json'));
 !include "${path.resolve(fixtureDir, build.nsis.include)}"
 !include "common.nsh"
 !include "MUI2.nsh"
+!insertmacro customPageAfterChangeDir
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro customFinishPage
 !insertmacro MUI_LANGUAGE "English"

@@ -62,7 +62,7 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
   const title = t('uiText.subagentTitle', { type: subagentType, description });
 
   return (
-    <div className="my-1 border-l-2 border-l-purple-500 py-0.5 pl-3 dark:border-l-purple-400">
+    <div className="my-1 border-l-2 border-l-[var(--pd-accent,#a855f7)] py-0.5 pl-3 dark:border-l-purple-400">
       <CollapsibleSection
         title={title}
         toolName="Task"
@@ -78,7 +78,7 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
         {/* Current tool indicator (while running) */}
         {currentTool && !isComplete && (
           <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-            <span className="h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-purple-500 dark:bg-purple-400" />
+            <span className="h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-[var(--pd-accent,#a855f7)] dark:bg-purple-400" />
             <span className="text-gray-400 dark:text-gray-500">{t('common:uiText.currently')}</span>
             <span className="font-medium text-gray-600 dark:text-gray-300">{currentTool.toolName}</span>
             {getCompactToolDisplay(currentTool.toolName, currentTool.toolInput) && (
@@ -94,7 +94,7 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
 
         {!currentTool && !isComplete && (
           <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-            <span className="h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-purple-500 dark:bg-purple-400" />
+            <span className="h-1.5 w-1.5 flex-shrink-0 animate-pulse rounded-full bg-[var(--pd-accent,#a855f7)] dark:bg-purple-400" />
             <span>{t('common:uiText.runningSubagent')}</span>
           </div>
         )}

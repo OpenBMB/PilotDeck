@@ -1,3 +1,4 @@
+import { isOptionalFeatureEnabled } from "../../../../../../src/pilot/config/optionalFeature.js";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePilotDeckConfig } from "../../../../hooks/usePilotDeckConfig";
@@ -10,7 +11,7 @@ import type { PilotDeckConfig } from "../modelPool/types";
 import {
   buildModelRefOptions,
   ensureModelRefConfigured,
-} from "../agentModel/utils/modelRefs";
+} from "../modelPool/utils/modelRefs";
 import type { SettingsProject } from "../../shared/types";
 import MemoryDataSection from "./MemoryDataSection";
 import {
@@ -87,7 +88,7 @@ function MemorySection({
 }) {
   const { t } = useTranslation("settings");
   const m = config.memory ?? {};
-  const enabled = Boolean(m.enabled);
+  const enabled = isOptionalFeatureEnabled(config.memory);
   const selected = m.model && m.model.trim() ? m.model : "inherit";
   const modelOptions = buildModelRefOptions(config);
 
@@ -394,6 +395,7 @@ function MemorySection({
             <div className="memory-select-wrap memory-model-select">
               <select
                 id="memory-model"
+                data-model-reference="memory.model"
                 disabled={!enabled}
                 value={selected}
                 onChange={(event) => {

@@ -121,7 +121,17 @@ async function stopRegisteredTree(child, {
     await send('SIGTERM');
     if (!(await waitForExit(graceMs))) {
       await send('SIGKILL');
-      if (!(await waitForExit(forceMs))) throw new Error('Managed processes or pending launches remain.');
+      if (!(await waitForExit(forceMs))) {
+        const details = platform === 'win32' ? records().map(entry => ({
+          state: entry.state, guardian: entry.identity?.pid, holder: entry.job?.holder,
+          ready: Boolean(entry.job?.ready && existsSync(entry.job.ready)),
+          stopRequested: Boolean(entry.job?.stop && existsSync(entry.job.stop)),
+          stopped: Boolean(entry.job?.stopped && existsSync(entry.job.stopped)),
+          diagnostic: entry.job?.log && existsSync(entry.job.log) ? readFileSync(entry.job.log, 'utf8').slice(-4000) : '',
+          nativeTrace: entry.job?.stopped && existsSync(`${entry.job.stopped}.trace`) ? readFileSync(`${entry.job.stopped}.trace`, 'utf8').slice(-4000) : '',
+        })) : undefined;
+        throw new Error(`Managed processes or pending launches remain.${details ? ` ${JSON.stringify(details)}` : ''}`);
+      }
     }
     if (uncertain) throw new Error('Process ownership or descendant cleanup could not be confirmed.');
     cleanup();

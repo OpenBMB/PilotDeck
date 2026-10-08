@@ -75,8 +75,6 @@ export type CreateWebFetchToolOptions = {
   modelId?: string;
   /** Max output tokens for the secondary call. Default: 1024. */
   maxOutputTokens?: number;
-  /** Temperature for the secondary call. Default: 0. */
-  temperature?: number;
   /** Test seam for replacing the low-level URL fetcher. */
   fetchUrl?: typeof getURLMarkdownContent;
 };
@@ -391,7 +389,6 @@ export function createWebFetchTool(
           },
         ],
         maxOutputTokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-        temperature: options.temperature ?? 0,
         stream: true,
         metadata: { tool: "web_fetch", url },
       };

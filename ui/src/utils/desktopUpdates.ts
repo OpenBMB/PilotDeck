@@ -1,6 +1,9 @@
 export type DesktopUpdateState = {
-  state: "idle" | "checking" | "downloading" | "verifying" | "installing" | "recovering" | "failed" | "cancelled";
+  state: "idle" | "checking" | "downloading" | "paused" | "cancelling" | "verifying" | "installing" | "recovering" | "failed" | "cancelled";
   progress: number;
+  bytesPerSecond?: number;
+  transferred?: number;
+  total?: number;
   reason?: string;
   version?: string;
 };
