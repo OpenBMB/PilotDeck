@@ -38,7 +38,7 @@ export type ConfigReload = {
   proxy?: SubsystemResult;
 } & Record<string, unknown>;
 
-type ConfigResponse = {
+export type ConfigResponse = {
   exists: boolean;
   path: string;
   raw: string;
@@ -448,6 +448,13 @@ function usePilotDeckConfigState() {
 
   const dismissExternalNotice = useCallback(() => setExternalChangeNotice(null), []);
 
+  // Adopt a config the server already wrote through a dedicated endpoint
+  // (e.g. atomic model removal) without another round-trip.
+  const acceptServerConfig = useCallback((data: ConfigResponse) => {
+    setError(null);
+    applyResponse(data, 'ui-save');
+  }, [applyResponse]);
+
   return {
     path,
     raw,
@@ -471,6 +478,7 @@ function usePilotDeckConfigState() {
     refresh,
     save,
     commitRaw,
+    acceptServerConfig,
     reloadConfig,
     openFile,
   };

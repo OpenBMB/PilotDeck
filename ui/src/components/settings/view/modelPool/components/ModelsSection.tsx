@@ -8,12 +8,10 @@ import type {
   ConfigSaveOptions,
   ConfigSaveResult,
 } from "../../../../../hooks/usePilotDeckConfig";
+import type { ModelRemovalConfigResponse } from "../utils/modelRemoval";
 import { patch } from "../utils/patch";
 import type { PilotDeckConfig, V2Provider } from "../types";
-import {
-  providerDisplayName,
-  rewriteProviderRefs,
-} from "../utils/providerRefs";
+import { providerDisplayName } from "../utils/providerRefs";
 import {
   countEnabledModels,
   isProviderPending,
@@ -30,6 +28,8 @@ type ModelsSectionProps = {
     next: PilotDeckConfig,
     options?: ConfigSaveOptions,
   ) => void | ConfigSaveResult | Promise<void | ConfigSaveResult>;
+  /** Adopt the config the server wrote after an atomic model/provider removal. */
+  onServerConfig?: (response: ModelRemovalConfigResponse) => void;
 };
 
 type PendingProvider = {
@@ -37,7 +37,7 @@ type PendingProvider = {
   provider: V2Provider;
 };
 
-export default function ModelsSection({ config, onChange }: ModelsSectionProps) {
+export default function ModelsSection({ config, onChange, onServerConfig }: ModelsSectionProps) {
   const { t } = useTranslation("settings");
   const providers = useMemo(
     () => config.model?.providers ?? {},
@@ -82,12 +82,6 @@ export default function ModelsSection({ config, onChange }: ModelsSectionProps) 
     return (await onChange(next, options)) ?? { ok: true };
   };
 
-  const removeProvider = async (id: string) => {
-    const next = { ...providers };
-    delete next[id];
-    await applyChange(patch(config, ["model", "providers"], next));
-  };
-
   const buildRenamedConfig = (oldId: string, newId: string) => {
     const id = newId.trim();
     if (!id || id === oldId) return { ok: true as const, config };
@@ -96,10 +90,9 @@ export default function ModelsSection({ config, onChange }: ModelsSectionProps) 
     for (const [k, v] of Object.entries(providers)) {
       next[k === oldId ? id : k] = v;
     }
-    return {
-      ok: true as const,
-      config: rewriteProviderRefs(patch(config, ["model", "providers"], next), oldId, id),
-    };
+    // References to the old ID (agent, memory, routing, statistics) are
+    // rewritten by the server from the `providerRenames` save metadata.
+    return { ok: true as const, config: patch(config, ["model", "providers"], next) };
   };
 
   const saveProvider = async (
@@ -288,36 +281,14 @@ export default function ModelsSection({ config, onChange }: ModelsSectionProps) 
             isProviderConfigured(value, findCatalogProviderById(id))
               ? Object.keys(value.models ?? {}).map(modelId => `${id}/${modelId}`)
               : [])}
-          onReplaceDefaultModel={async (modelRef, modelId) => {
-            const slash = modelRef.indexOf("/");
-            const candidateId = modelRef.slice(0, slash);
-            const candidate = providers[candidateId];
-            if (modelRef && (slash < 1 || !Object.prototype.hasOwnProperty.call(candidate?.models ?? {}, modelRef.slice(slash + 1))
-              || !isProviderConfigured(candidate, findCatalogProviderById(candidateId)))) {
-              return { ok: false, error: t("pilotDeckConfig.panels.models.deleteDialog.replacementUnavailable") };
-            }
-            const remaining = { ...providers };
-            if (modelId !== undefined) {
-              const models = { ...remaining[selectedId]?.models };
-              delete models[modelId];
-              remaining[selectedId] = { ...remaining[selectedId], models };
-            } else {
-              delete remaining[selectedId];
-            }
-            // Submit a valid final configuration; an intermediate save would still
-            // contain the broken provider and fail validation before deletion.
-            const next = patch(patch(config, ["agent", "model"], modelRef), ["model", "providers"], remaining);
-            return applyChange(next);
-          }}
+          currentDefaultModel={typeof config.agent?.model === "string" ? config.agent.model : ""}
+          onRemoved={onServerConfig}
           onSave={(nextId, nextProvider) => (
             selectedIsPending
               ? savePendingProvider(nextId, nextProvider)
               : saveProvider(selectedId, nextId, nextProvider)
           )}
-          onRemove={() => {
-            if (selectedIsPending) discardPendingProvider();
-            else void removeProvider(selectedId);
-          }}
+          onRemove={discardPendingProvider}
           onCancelNew={discardPendingProvider}
           onPendingChange={setSelectedPending}
         />

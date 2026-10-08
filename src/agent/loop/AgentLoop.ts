@@ -1,10 +1,13 @@
+import { TurnTimeline } from "../stream/TurnTimeline.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   applyModelEventToAssembler,
   assembleAssistantMessage,
   cloneMessages,
   createModelMessageAssemblerState,
+  getModelStreamBlockId,
   messageContent,
   type CanonicalToolCall,
   PROMPT_TOO_LONG_ANTHROPIC_PATTERN,
@@ -16,11 +19,7 @@ import {
   type CanonicalModelRequest,
   type CanonicalToolSchema,
   type CanonicalUsage,
-  type CanonicalToolCallBlock,
   materializeMediaReferences,
-  type PartialTextToolCallInfo,
-  getSelfCorrectPrompt,
-  detectFormatByText,
 } from "../../model/index.js";
 import type {
   PilotDeckToolDefinition,
@@ -35,6 +34,8 @@ import {
   SUBAGENT_DEFINITIONS,
   getSubagentDefinition,
 } from "../sub/builtinSubagentTypes.js";
+import { SubagentContinuationError } from "../sub/continuation.js";
+import { PilotDeckToolRuntimeError } from "../../tool/protocol/errors.js";
 import { agentError } from "../protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
 import type { AgentPermissionDenial, AgentTurnResult } from "../protocol/result.js";
@@ -69,13 +70,15 @@ import {
   isAskModeAllowedTool,
 } from "../../tool/askModeConstraints.js";
 import { buildAskModeAgentToolSchema } from "../../tool/builtin/agent.js";
-import { repairToolName } from "../../model/streaming/repairToolName.js";
 import { requestFingerprint } from "../../model/streaming/requestFingerprint.js";
 import {
   createAgentStatusDetail,
   createVisibleErrorStatusDetail,
   type AgentStatusI18nDescriptor,
 } from "../../status/agentStatus.js";
+
+// Protect direct fork callers as well as calls through the agent tool.
+const activeSubagentContinuations = new Set<string>();
 
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
 const SUBAGENT_STATUS_HEARTBEAT_MS = 2_000;
@@ -193,6 +196,36 @@ export class AgentLoop {
   }
 
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+    const timeline = new TurnTimeline(input.turnId);
+    const generator = this.runOrdered({
+      ...input,
+      onCompactPersisted: async (compact) => {
+        if (compact.boundary.kind === "compact" && "compactMetadata" in compact.boundary) {
+          const metadata = compact.boundary.compactMetadata;
+          if (metadata.compactionId) metadata.timeline = timeline.position(`compact:${metadata.compactionId}`);
+        }
+        await input.onCompactPersisted?.(compact);
+      },
+      onDurableMessage: async (message) => {
+        timeline.message(message);
+        await input.onDurableMessage?.(message);
+      },
+    });
+    let completed = false;
+    try {
+      while (true) {
+        const next = await generator.next();
+        if (next.done) { completed = true; return next.value; }
+        yield timeline.event(next.value);
+      }
+    } finally {
+      // Forward consumer cancellation to the underlying agent iterator. Its
+      // return value is intentionally unused when the consumer has stopped.
+      if (!completed) await generator.return(undefined as never);
+    }
+  }
+
+  private async *runOrdered(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
     this.clearTurnScopedTokenCaps();
     this.applyRunModeOverride(input.runMode);
     this.applyPermissionOverrides(input.permissionMode, input.permissionRules, input.basePermissionMode);
@@ -285,7 +318,6 @@ export class AgentLoop {
     let consecutiveEmptyCount = 0;
     const MAX_JSON_SELF_CORRECT_RETRIES = 3;
     let jsonSelfCorrectCount = 0;
-    let hasAttemptedToolCallRetry = false;
     let hasAttemptedReasoningContentRetry = false;
     /** Prevent a provider that keeps rejecting text-only retries from looping forever. */
     let hasAttemptedImageStrip = false;
@@ -446,7 +478,7 @@ export class AgentLoop {
       if (ctx?.tryAutoCompact) {
         try {
           const reservedOutputTokens = this.getReservedOutputTokens();
-          const compact = await ctx.tryAutoCompact({
+          const compact = yield* this.awaitCompactionWithEvents(ctx.tryAutoCompact({
             sessionId: input.sessionId,
             turnId: input.turnId,
             messages,
@@ -456,7 +488,7 @@ export class AgentLoop {
               maxContextTokens: preRoutingMaxContextTokens,
               reservedOutputTokens,
             }),
-          });
+          }));
           if (compact.type === "compacted") {
             messages = compact.messages;
             this.tokenCalibrationByRoute.clear();
@@ -550,7 +582,7 @@ export class AgentLoop {
         if (routedMaxCtx !== undefined && routedMaxCtx !== currentBudgetMaxCtx) {
           try {
             const reservedOutputTokens = this.getReservedOutputTokens(decision.provider, decision.model);
-            const recompact = await ctx.tryAutoCompact({
+            const recompact = yield* this.awaitCompactionWithEvents(ctx.tryAutoCompact({
               sessionId: input.sessionId,
               turnId: input.turnId,
               messages,
@@ -563,7 +595,7 @@ export class AgentLoop {
                 maxContextTokens: routedMaxCtx,
                 reservedOutputTokens,
               }),
-            });
+            }));
             if (recompact.type === "compacted") {
               messages = recompact.messages;
               this.tokenCalibrationByRoute.clear();
@@ -621,7 +653,7 @@ export class AgentLoop {
         : { ...request, provider: decision.provider, model: decision.model };
       const requestInputEstimate = this.dependencies.tokenAccounting?.estimateRequestInput?.(calibrationRequest);
       const calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
-      const assembler = createModelMessageAssemblerState();
+      const assembler = createModelMessageAssemblerState(randomUUID());
       let executedRequest: { provider: string; model: string; fingerprint?: string } | undefined;
       try {
         for await (const event of this.dependencies.router.execute(decision, request, {
@@ -637,7 +669,10 @@ export class AgentLoop {
               fingerprint: event.requestFingerprint,
             };
           }
-          yield { type: "model_event", sessionId: input.sessionId, turnId: input.turnId, event };
+          const blockId = event.type === 'text_delta' || event.type === 'thinking_delta'
+            ? getModelStreamBlockId(assembler, event.type === 'text_delta' ? 'text' : 'thinking') : undefined;
+          yield { type: "model_event", sessionId: input.sessionId, turnId: input.turnId, event,
+            ...(blockId ? { blockId } : {}) };
           applyModelEventToAssembler(assembler, event);
           if (event.type === "error") {
             break;
@@ -649,7 +684,6 @@ export class AgentLoop {
           const partialAssembled = assembleAssistantMessage(assembler);
           const safePartialMessage = safeFinalTextMessage(
             partialAssembled.message,
-            partialAssembled.hasPartialTextToolCall || partialAssembled.hasTextFallbackToolCalls,
             partialAssembled.toolCalls,
           );
           if (safePartialMessage) {
@@ -706,7 +740,6 @@ export class AgentLoop {
         const partialAssembled = assembleAssistantMessage(assembler);
         const safePartialMessage = safeFinalTextMessage(
           partialAssembled.message,
-          partialAssembled.hasPartialTextToolCall || partialAssembled.hasTextFallbackToolCalls,
           partialAssembled.toolCalls,
         );
         if (safePartialMessage) {
@@ -747,13 +780,8 @@ export class AgentLoop {
       ) {
         this.recordTokenCalibration(calibrationRequest, assembled.usage, requestInputEstimate);
       }
-      let assistantMessage = assembled.message;
-      let toolCalls = collectToolCalls(assistantMessage);
-      if (assembled.hasTextFallbackToolCalls) {
-        const repaired = this.repairTextExtractedToolNames(assistantMessage, toolCalls);
-        assistantMessage = repaired.message;
-        toolCalls = repaired.toolCalls;
-      }
+      const assistantMessage = assembled.message;
+      const toolCalls = collectToolCalls(assistantMessage);
       finalMessage = assistantMessage;
       expireConsumedTransientPrompts();
 
@@ -761,15 +789,12 @@ export class AgentLoop {
       if (streamInterruption) {
         if (streamInterruptionRecoveryCount < MAX_STREAM_INTERRUPTION_RECOVERIES) {
           streamInterruptionRecoveryCount++;
-          const hasTextToolCall = assembled.hasPartialTextToolCall
-            || assembled.hasTextFallbackToolCalls
-            || toolCalls.length > 0;
-          if (hasTextToolCall) {
-            // Do not expose a text-encoded tool-call fragment if recovery is
-            // cancelled before the replacement response arrives.
+          const hasStructuredToolCall = toolCalls.length > 0 || streamInterruption.phase === "tool_call";
+          if (hasStructuredToolCall) {
+            // Never persist unexecuted structured calls when recovery is cancelled.
             finalMessage = undefined;
           }
-          if (streamInterruption.phase === "text" && !hasTextToolCall) {
+          if (streamInterruption.phase === "text" && !hasStructuredToolCall) {
             const partialTextMessage = withoutThinkingBlocks(assistantMessage);
             if (textFromMessage(partialTextMessage).trim().length > 0) {
               finalMessage = partialTextMessage;
@@ -778,12 +803,11 @@ export class AgentLoop {
               await input.onDurableMessage?.(partialTextMessage);
             }
           }
-          const recoveryPrompt = hasTextToolCall
-            ? buildPartialTextToolCallRecoveryPrompt(assembled.partialTextToolCall)
-            : buildStreamInterruptionRecoveryPrompt(streamInterruption);
           pushTransientSyntheticPrompt(
-            recoveryPrompt,
-            hasTextToolCall ? "max_output_recovery" : "stream_interruption_recovery",
+            buildStreamInterruptionRecoveryPrompt(
+              hasStructuredToolCall ? { ...streamInterruption, phase: "tool_call" } : streamInterruption,
+            ),
+            "stream_interruption_recovery",
           );
           yield {
             type: "turn_continued",
@@ -800,7 +824,7 @@ export class AgentLoop {
           assembled.error,
           "The model stream repeatedly disconnected. Retry the turn or switch providers.",
         );
-        const exhaustedMessage = safeFinalTextMessage(assistantMessage, assembled.hasPartialTextToolCall || assembled.hasTextFallbackToolCalls, toolCalls);
+        const exhaustedMessage = safeFinalTextMessage(assistantMessage, toolCalls);
         finalMessage = exhaustedMessage;
         if (exhaustedMessage) {
           messages.push(exhaustedMessage);
@@ -828,7 +852,7 @@ export class AgentLoop {
       }
       streamInterruptionRecoveryCount = 0;
 
-      if (!assembled.error && assembled.hasMessageEnd && !assembled.hasPartialTextToolCall && assembled.finishReason === "unknown") {
+      if (!assembled.error && assembled.hasMessageEnd && assembled.finishReason === "unknown") {
         if (unknownFinishRecoveryCount < MAX_UNKNOWN_FINISH_RECOVERIES) {
           unknownFinishRecoveryCount++;
           const partialTextMessage = withoutThinkingBlocks(assistantMessage);
@@ -857,7 +881,7 @@ export class AgentLoop {
           undefined,
           "The provider repeatedly ended the stream without a recognized finish reason. Retry the turn or switch providers.",
         );
-        const exhaustedMessage = safeFinalTextMessage(assistantMessage, assembled.hasPartialTextToolCall || assembled.hasTextFallbackToolCalls, toolCalls);
+        const exhaustedMessage = safeFinalTextMessage(assistantMessage, toolCalls);
         finalMessage = exhaustedMessage;
         if (exhaustedMessage) {
           messages.push(exhaustedMessage);
@@ -884,54 +908,6 @@ export class AgentLoop {
         return { result, messages };
       }
       unknownFinishRecoveryCount = 0;
-
-      if (assembled.hasPartialTextToolCall) {
-        if (maxOutputRecoveryCount < MAX_OUTPUT_RECOVERY_LIMIT) {
-          maxOutputRecoveryCount++;
-          // The current assistant message contains an unsafe tool fragment;
-          // clear it before yielding so cancellation cannot return it.
-          finalMessage = undefined;
-          pushTransientSyntheticPrompt(
-            buildPartialTextToolCallRecoveryPrompt(assembled.partialTextToolCall),
-            "max_output_recovery",
-          );
-          yield {
-            type: "turn_continued",
-            sessionId: input.sessionId,
-            turnId: input.turnId,
-            reason: "model_error",
-          };
-          continue;
-        }
-
-        const detail = assembled.partialTextToolCall
-          ? `${assembled.partialTextToolCall.format}/${assembled.partialTextToolCall.reason}`
-          : "unknown partial text tool-call";
-        finalMessage = safeFinalTextMessage(assistantMessage, true, toolCalls);
-        const result = this.createTurnResult(input, {
-          type: "error",
-          stopReason: "model_error",
-          usage,
-          permissionDenials,
-          turns: turnCount,
-          startedAt,
-          finalMessage,
-          structuredOutput,
-          errors: [agentError(
-            "agent_model_error",
-            `Partial text tool-call recovery exhausted after ${MAX_OUTPUT_RECOVERY_LIMIT} attempts (${detail}).`,
-          )],
-        });
-        yield await emitStatus(createToolCallRecoveryExhaustedStatus({
-          error: result.errors![0]!,
-          attempts: maxOutputRecoveryCount,
-          reason: detail,
-        }));
-        yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error: result.errors![0]! };
-        await captureTurn(result.type === "error");
-        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
-        return { result, messages };
-      }
 
       // When jsonrepair silently "fixed" truncated JSON and the response
       // was cut by max_tokens, the tool call arguments are likely incomplete
@@ -1293,7 +1269,7 @@ export class AgentLoop {
                 provider: target.provider,
                 model: target.model,
               };
-              const compact = await ctx.tryAutoCompact({
+              const compact = yield* this.awaitCompactionWithEvents(ctx.tryAutoCompact({
                 sessionId: input.sessionId,
                 turnId: input.turnId,
                 messages,
@@ -1307,7 +1283,7 @@ export class AgentLoop {
                   reservedOutputTokens,
                 }),
                 allowFallbackOnFailure: true,
-              });
+              }));
               if (compact.type === "compacted") {
                 messages = compact.messages;
                 this.tokenCalibrationByRoute.clear();
@@ -1624,34 +1600,6 @@ export class AgentLoop {
           continue;
         }
 
-        if (!assembled.hasPartialTextToolCall && assembled.hasUnparsedTextToolCall) {
-          if (!hasAttemptedToolCallRetry) {
-            hasAttemptedToolCallRetry = true;
-            pushTransientSyntheticPrompt(
-              getSelfCorrectPrompt(this.config.toolCallFormat ?? assembled.textToolCallFormat, assistantText),
-              "unparsed_tool_call_retry",
-            );
-            yield {
-              type: "turn_continued",
-              sessionId: input.sessionId,
-              turnId: input.turnId,
-              reason: "model_error",
-            };
-            continue;
-          }
-
-          yield {
-            type: "warning",
-            sessionId: input.sessionId,
-            turnId: input.turnId,
-            code: "unparsed_tool_call",
-            message: "Model attempted to call a tool but the output could not be parsed. The response may be incomplete.",
-            metadata: {
-              detectedFormat: assembled.textToolCallFormat ?? detectFormatByText(assistantText)?.id,
-            },
-          };
-        }
-
         // A steer starts another model iteration, so it must obey the same
         // turn budget as tool-driven continuation. Leave guidance in the
         // mailbox when the budget is exhausted; TurnRunner will report it as
@@ -1966,7 +1914,6 @@ export class AgentLoop {
         consecutiveEmptyCount = 0;
         hasAttemptedOutputRetry = false;
         hasAttemptedEmptyRetry = false;
-        hasAttemptedToolCallRetry = false;
         hasAttemptedImageStrip = false;
       }
 
@@ -2137,7 +2084,6 @@ export class AgentLoop {
       tools: prepared.tools,
       toolChoice: this.config.toolChoice,
       maxOutputTokens: this.config.maxOutputTokens,
-      temperature: input.modelOverride?.temperature ?? this.config.temperature,
       speed: input.modelOverride?.speed,
       thinking: input.modelOverride?.thinking ?? this.config.thinking,
       stream: true,
@@ -2377,34 +2323,6 @@ export class AgentLoop {
     };
   }
 
-  private repairTextExtractedToolNames(
-    message: CanonicalMessage,
-    toolCalls: CanonicalToolCall[],
-  ): { message: CanonicalMessage; toolCalls: CanonicalToolCall[] } {
-    if (toolCalls.length === 0) return { message, toolCalls };
-    const validNames = new Set(this.dependencies.tools.registry.list().map((tool) => tool.name));
-    const repairedById = new Map<string, string>();
-    const repairedToolCalls = toolCalls.map((call) => {
-      const repaired = repairToolName(call.name, validNames, this.config.toolAliases);
-      if (!repaired) return call;
-      repairedById.set(call.id, repaired.name);
-      return { ...call, name: repaired.name };
-    });
-    if (repairedById.size === 0) return { message, toolCalls };
-
-    return {
-      message: {
-        ...message,
-        content: message.content.map((block) => {
-          if (block.type !== "tool_call") return block;
-          const repairedName = repairedById.get(block.id);
-          return repairedName ? ({ ...block, name: repairedName } satisfies CanonicalToolCallBlock) : block;
-        }),
-      },
-      toolCalls: repairedToolCalls,
-    };
-  }
-
   private createToolContext(
     input: AgentLoopInput,
     messages: CanonicalMessage[],
@@ -2510,202 +2428,228 @@ export class AgentLoop {
           abortSignal,
           timeoutMs,
         } = args;
-        // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
-        const { SubAgentSession } = await import("../sub/SubAgentSession.js");
-        const { SubagentContinuationError } = await import("../sub/continuation.js");
-        const transcriptHooks = this.dependencies.subagentTranscript;
-
-        // task_id continuation — validate ownership/history BEFORE opening
-        // anything else. Storage logic lives behind the persistence hook.
-        let continuation: import("../sub/continuation.js").SubagentContinuationState | undefined;
-        let definitionId = requestedDefinitionId;
-        if (taskId) {
-          const loader = transcriptHooks?.loadSubagentContinuation;
-          if (!loader) {
-            throw new SubagentContinuationError(
-              "subagent_task_unsupported",
-              "task_id continuation requires subagent transcript persistence, which is not configured in this runtime.",
-            );
+        // Runtime callers must obey the same depth bound as model-facing tools.
+        if (depth >= maxDepth) {
+          throw new PilotDeckToolRuntimeError(
+            "tool_execution_failed",
+            `subagent_depth_exceeded (depth=${depth}, max=${maxDepth}); nested fork rejected.`,
+            { errorCode: "subagent_depth_exceeded" },
+          );
+        }
+        const guardKey = taskId ? JSON.stringify([this.config.cwd, input.sessionId, taskId]) : undefined;
+        if (guardKey) {
+          if (activeSubagentContinuations.has(guardKey)) {
+            throw new SubagentContinuationError("subagent_task_busy", `Subagent task ${taskId} is already being continued.`);
           }
-          continuation = await loader({
-            sessionId: input.sessionId,
-            subagentId: taskId,
-            requestedDefinitionId,
-          });
-          definitionId = continuation.definitionId;
+          activeSubagentContinuations.add(guardKey);
         }
-        if (!definitionId) {
-          throw new Error("Subagent fork requires a subagent definition id.");
-        }
-        const def = getSubagentDefinition(definitionId);
-        if (!def) {
-          if (continuation) {
-            throw new SubagentContinuationError(
-              "subagent_task_history_unsupported",
-              `saved task definition "${definitionId}" is unknown in this runtime.`,
-            );
-          }
-          throw new Error(`Unknown subagent type: ${definitionId}`);
-        }
-        // A continuation reuses the task's UUID as the child identity.
-        const effectiveSubagentId = taskId ?? subagentId;
-        const composedAbort = composeAbortSignal({
-          parent: abortSignal,
-          timeoutMs,
-        });
-
-        const subagentSessionId =
-          continuation?.subagentSessionId ?? `${this.config.cwd}::sub::${effectiveSubagentId}`;
-        const sidechain = transcriptHooks?.subagentTranscriptResolver?.(effectiveSubagentId);
-        const transcriptRelativePath = sidechain?.transcriptRelativePath ?? "";
-
-        await transcriptHooks?.recordSubagentStarted?.({
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          subagentId: effectiveSubagentId,
-          subagentType: def.id,
-          prompt: directive,
-          transcriptRelativePath,
-          subagentSessionId,
-        });
-        await this.dispatchLifecycle(input, "SubagentStart", {
-          subagentId: effectiveSubagentId,
-          subagentType: def.id,
-        });
-        this.dependencies.eventEmitter?.({
-          type: "subagent_started",
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          subagentId: effectiveSubagentId,
-          subagentType: def.id,
-          toolCallId,
-        });
-
-        const subSession = new SubAgentSession({
-          definition: def,
-          directive,
-          ...(continuation
-            ? {
-                priorMessages: continuation.messages,
-                turnIndex: continuation.nextTurnIndex,
-                continuationModel: {
-                  provider: continuation.provider,
-                  model: continuation.model,
-                },
-              }
-            : {}),
-          parentConfig: {
-            ...this.config,
-            subagentDepth: depth + 1,
-            isSubagent: true,
-          },
-          parentDependencies: this.dependencies,
-          parentReadFileState: this.readFileState,
-          parentWriteSnapshots: this.writeSnapshots,
-          parentSessionId: input.sessionId,
-          parentTurnId: input.turnId,
-          subagentSessionId,
-          subagentId: effectiveSubagentId,
-          abortSignal: composedAbort.signal,
-          sidechainTranscript: sidechain
-            ? {
-                recordAcceptedInput: sidechain.recordAcceptedInput.bind(sidechain),
-                recordDurableMessage: sidechain.recordDurableMessage.bind(sidechain),
-                ...(sidechain.recordTurnResult
-                  ? { recordTurnResult: sidechain.recordTurnResult.bind(sidechain) }
-                  : {}),
-                ...(sidechain.recordControlBoundary
-                  ? { recordControlBoundary: sidechain.recordControlBoundary.bind(sidechain) }
-                  : {}),
-                ...(sidechain.recordSessionMetadata
-                  ? { recordSessionMetadata: sidechain.recordSessionMetadata.bind(sidechain) }
-                  : {}),
-              }
-            : undefined,
-        });
-
-        let report;
-        let errored = false;
+        let cleanupAbort: (() => void) | undefined;
         try {
-          report = await subSession.run();
-          if (composedAbort.timedOut()) {
-            throw new Error(`Subagent timed out after ${timeoutMs}ms.`);
+          // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
+          const { SubAgentSession, subagentTurnId } = await import("../sub/SubAgentSession.js");
+          const transcriptHooks = this.dependencies.subagentTranscript;
+
+          // task_id continuation — validate ownership/history BEFORE opening
+          // anything else. Storage logic lives behind the persistence hook.
+          let continuation: import("../sub/continuation.js").SubagentContinuationState | undefined;
+          let definitionId = requestedDefinitionId;
+          if (taskId) {
+            const loader = transcriptHooks?.loadSubagentContinuation;
+            if (!loader) {
+              throw new SubagentContinuationError(
+                "subagent_task_unsupported",
+                "task_id continuation requires subagent transcript persistence, which is not configured in this runtime.",
+              );
+            }
+            continuation = await loader({
+              sessionId: input.sessionId,
+              subagentId: taskId,
+              requestedDefinitionId,
+            });
+            definitionId = continuation.definitionId;
           }
-          if (abortSignal?.aborted) {
-            throw new Error("Subagent aborted before completion.");
+          if (!definitionId) {
+            throw new Error("Subagent fork requires a subagent definition id.");
           }
-        } catch (err) {
-          const timedOut = composedAbort.timedOut();
-          const aborted = Boolean(abortSignal?.aborted && !timedOut);
-          const failure = timedOut
-            ? new Error(`Subagent timed out after ${timeoutMs}ms.`)
-            : err;
+          const def = getSubagentDefinition(definitionId);
+          if (!def) {
+            if (continuation) {
+              throw new SubagentContinuationError(
+                "subagent_task_history_unsupported",
+                `saved task definition "${definitionId}" is unknown in this runtime.`,
+              );
+            }
+            throw new Error(`Unknown subagent type: ${definitionId}`);
+          }
+          // A continuation reuses the task's UUID as the child identity.
+          const effectiveSubagentId = taskId ?? subagentId;
+          const childTurnId = subagentTurnId(effectiveSubagentId, continuation?.nextTurnIndex ?? 0);
+          const composedAbort = composeAbortSignal({
+            parent: abortSignal,
+            timeoutMs,
+          });
+          cleanupAbort = composedAbort.cleanup;
+
+          const subagentSessionId =
+            continuation?.subagentSessionId ?? `${this.config.cwd}::sub::${effectiveSubagentId}`;
+          const sidechain = transcriptHooks?.subagentTranscriptResolver?.(effectiveSubagentId);
+          const transcriptRelativePath = sidechain?.transcriptRelativePath ?? "";
+
+          await transcriptHooks?.recordSubagentStarted?.({
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            subagentId: effectiveSubagentId,
+            subagentType: def.id,
+            prompt: directive,
+            transcriptRelativePath,
+            subagentSessionId,
+          });
+          await this.dispatchLifecycle(input, "SubagentStart", {
+            subagentId: effectiveSubagentId,
+            subagentType: def.id,
+          });
+          this.dependencies.eventEmitter?.({
+            type: "subagent_started",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            subagentId: effectiveSubagentId,
+            subagentTurnId: childTurnId,
+            subagentType: def.id,
+            toolCallId,
+          });
+
+          const subSession = new SubAgentSession({
+            definition: def,
+            directive,
+            ...(continuation
+              ? {
+                  priorMessages: continuation.messages,
+                  turnIndex: continuation.nextTurnIndex,
+                  continuationModel: {
+                    provider: continuation.provider,
+                    model: continuation.model,
+                  },
+                }
+              : {}),
+            parentConfig: {
+              ...this.config,
+              subagentDepth: depth + 1,
+              isSubagent: true,
+              maxSubagentDepth: maxDepth,
+            },
+            parentDependencies: this.dependencies,
+            parentAllowedReadFiles: [...this.allowedReadFiles],
+            parentWriteSnapshots: this.writeSnapshots,
+            parentSessionId: input.sessionId,
+            parentTurnId: input.turnId,
+            subagentSessionId,
+            subagentId: effectiveSubagentId,
+            abortSignal: composedAbort.signal,
+            sidechainTranscript: sidechain
+              ? {
+                  recordAcceptedInput: sidechain.recordAcceptedInput.bind(sidechain),
+                  recordDurableMessage: sidechain.recordDurableMessage.bind(sidechain),
+                  ...(sidechain.recordTurnResult
+                    ? { recordTurnResult: sidechain.recordTurnResult.bind(sidechain) }
+                    : {}),
+                  ...(sidechain.recordControlBoundary
+                    ? { recordControlBoundary: sidechain.recordControlBoundary.bind(sidechain) }
+                    : {}),
+                  ...(sidechain.recordSessionMetadata
+                    ? { recordSessionMetadata: sidechain.recordSessionMetadata.bind(sidechain) }
+                    : {}),
+                }
+              : undefined,
+          });
+
+          let report;
+          let errored = false;
+          try {
+            report = await subSession.run();
+            if (composedAbort.timedOut()) {
+              throw new Error(`Subagent timed out after ${timeoutMs}ms.`);
+            }
+            if (abortSignal?.aborted) {
+              throw new Error("Subagent aborted before completion.");
+            }
+          } catch (err) {
+            const timedOut = composedAbort.timedOut();
+            const aborted = Boolean(abortSignal?.aborted && !timedOut);
+            const failure = timedOut
+              ? new Error(`Subagent timed out after ${timeoutMs}ms.`)
+              : err;
+            composedAbort.cleanup();
+            errored = true;
+            await transcriptHooks?.recordSubagentCompleted?.({
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              subagentId: effectiveSubagentId,
+              subagentType: def.id,
+              summary: failure instanceof Error ? failure.message : String(failure),
+              turns: 0,
+              durationMs: 0,
+              errored: true,
+            });
+            await this.dispatchLifecycle(input, "SubagentStop", {
+              subagentId: effectiveSubagentId,
+              subagentType: def.id,
+              success: false,
+            });
+            this.dependencies.eventEmitter?.({
+              type: "subagent_completed",
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              subagentId: effectiveSubagentId,
+              subagentTurnId: childTurnId,
+              subagentType: def.id,
+              success: false,
+              aborted,
+              durationMs: 0,
+            });
+            throw failure;
+          }
           composedAbort.cleanup();
-          errored = true;
+
           await transcriptHooks?.recordSubagentCompleted?.({
             sessionId: input.sessionId,
             turnId: input.turnId,
             subagentId: effectiveSubagentId,
             subagentType: def.id,
-            summary: failure instanceof Error ? failure.message : String(failure),
-            turns: 0,
-            durationMs: 0,
-            errored: true,
+            summary: report.markdown,
+            usage: report.usage,
+            turns: report.turns,
+            durationMs: report.durationMs,
+            errored,
           });
           await this.dispatchLifecycle(input, "SubagentStop", {
             subagentId: effectiveSubagentId,
             subagentType: def.id,
-            success: false,
+            success: !errored,
           });
           this.dependencies.eventEmitter?.({
             type: "subagent_completed",
             sessionId: input.sessionId,
             turnId: input.turnId,
             subagentId: effectiveSubagentId,
+            subagentTurnId: childTurnId,
             subagentType: def.id,
-            success: false,
-            aborted,
-            durationMs: 0,
+            success: !errored,
+            durationMs: report.durationMs,
           });
-          throw failure;
+
+          return {
+            markdown: report.markdown,
+            usage: report.usage,
+            turns: report.turns,
+            durationMs: report.durationMs,
+            parsed: report.parsed as unknown as Record<string, string> | undefined,
+            subagentId: effectiveSubagentId,
+            definitionId: def.id,
+          };
+        } finally {
+          cleanupAbort?.();
+          if (guardKey) activeSubagentContinuations.delete(guardKey);
         }
-        composedAbort.cleanup();
-
-        await transcriptHooks?.recordSubagentCompleted?.({
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          subagentId: effectiveSubagentId,
-          subagentType: def.id,
-          summary: report.markdown,
-          usage: report.usage,
-          turns: report.turns,
-          durationMs: report.durationMs,
-          errored,
-        });
-        await this.dispatchLifecycle(input, "SubagentStop", {
-          subagentId: effectiveSubagentId,
-          subagentType: def.id,
-          success: !errored,
-        });
-        this.dependencies.eventEmitter?.({
-          type: "subagent_completed",
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          subagentId: effectiveSubagentId,
-          subagentType: def.id,
-          success: !errored,
-          durationMs: report.durationMs,
-        });
-
-        return {
-          markdown: report.markdown,
-          usage: report.usage,
-          turns: report.turns,
-          durationMs: report.durationMs,
-          parsed: report.parsed as unknown as Record<string, string> | undefined,
-          subagentId: effectiveSubagentId,
-          definitionId: def.id,
-        };
       },
     };
   }
@@ -2739,6 +2683,23 @@ export class AgentLoop {
       blockingErrors: [],
       nonBlockingErrors: [],
     };
+  }
+
+  /** Keep compaction progress live while its summary model request is pending. */
+  private async *awaitCompactionWithEvents<T>(operation: Promise<T>): AsyncGenerator<AgentEvent, T, unknown> {
+    let settled = false;
+    const completion = operation.then(
+      value => ({ ok: true as const, value }),
+      error => ({ ok: false as const, error }),
+    ).finally(() => { settled = true; });
+    while (!settled) {
+      yield* this.drainEventBuffer();
+      await Promise.race([completion, sleep(TOOL_EVENT_PUMP_INTERVAL_MS)]);
+    }
+    yield* this.drainEventBuffer();
+    const result = await completion;
+    if (!result.ok) throw result.error;
+    return result.value;
   }
 
   private *drainEventBuffer(): Generator<AgentEvent> {
@@ -3007,10 +2968,9 @@ function withoutThinkingBlocks(message: CanonicalMessage): CanonicalMessage {
 
 function safeFinalTextMessage(
   message: CanonicalMessage,
-  hasPartialTextToolCall: boolean | undefined,
   toolCalls: CanonicalToolCall[],
 ): CanonicalMessage | undefined {
-  if (hasPartialTextToolCall || toolCalls.length > 0) {
+  if (toolCalls.length > 0) {
     return undefined;
   }
   const textMessage = withoutThinkingBlocks(message);
@@ -3123,20 +3083,6 @@ function subagentIdFromSessionId(sessionId: string): string | undefined {
   if (index < 0) return undefined;
   const subagentId = sessionId.slice(index + marker.length).trim();
   return subagentId.length > 0 ? subagentId : undefined;
-}
-
-function buildPartialTextToolCallRecoveryPrompt(
-  partial: PartialTextToolCallInfo | undefined,
-): string {
-  const evidence = partial
-    ? `Detected partial text tool-call syntax (${partial.format}/${partial.reason}).`
-    : "Detected partial text tool-call syntax.";
-  return [
-    "The previous response contained partial tool-call XML/text and could not be safely executed.",
-    evidence,
-    "Resend the complete intended tool call with all required parameters, or continue in visible text if no tool is needed.",
-    "Do not repeat dangling XML/tool-call fragments.",
-  ].join("\n");
 }
 
 /** Keep a bounded tail without dropping the user request that initiated it. */

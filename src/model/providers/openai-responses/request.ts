@@ -20,7 +20,6 @@ export type OpenAIResponsesRequestBody = {
   instructions?: string;
   max_output_tokens: number;
   stream?: boolean;
-  temperature?: number;
   service_tier?: "priority";
   metadata?: Record<string, unknown>;
   tools?: OpenAIResponsesTool[];
@@ -38,8 +37,6 @@ export type OpenAIResponsesRequestBody = {
   reasoning?: {
     effort?: string;
   };
-  enable_thinking?: boolean;
-  thinking_budget?: number;
 };
 
 type OpenAIResponsesInputItem =
@@ -81,7 +78,6 @@ export function buildOpenAIResponsesRequest(
     max_output_tokens: request.maxOutputTokens ?? model.capabilities.maxOutputTokens,
     tools: request.tools?.map(toResponsesTool),
     tool_choice: toResponsesToolChoice(request.toolChoice),
-    temperature: request.temperature,
     service_tier: request.speed !== undefined && model.capabilities.supportsSpeed === true
       && hasSpeedMapping(_provider?.speedMapping, "openai_service_tier")
       ? mapSpeedToOpenAIServiceTier(request.speed)

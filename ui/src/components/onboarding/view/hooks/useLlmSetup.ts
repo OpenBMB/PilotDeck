@@ -4,12 +4,22 @@ import { authenticatedFetch } from '../../../../utils/api';
 import { findCatalogProviderByUrl, type CatalogProvider, type CatalogProviderProtocol } from '../../../../shared/catalogProviders';
 import { fetchProviderModels, fetchRemoteDefaultModels, type ApiModelListItem } from '../../../../shared/modelListApi';
 import { CUSTOM_PROVIDER_ID, DEFAULT_PROVIDER, MAX_ONBOARDING_MODELS, RESERVED_CUSTOM_PROVIDER_IDS } from '../constants';
-import { hasUsableApiKey, providerIdFromEndpoint, requiresApiKey, uniqueModelIds, unknownImageProbeCount } from '../llmSetupUtils';
-import type { LlmSetupController, ModelImageSupport, ModelListStatus, TestStatus } from '../types';
+import { hasUsableApiKey, providerIdFromEndpoint, requiresApiKey, uniqueModelIds } from '../llmSetupUtils';
+import type { LlmSetupController, ModelImageSupport, ModelListStatus, ModelTestState } from '../types';
 
 type UseLlmSetupOptions = {
   onSaved?: () => void | Promise<void>;
 };
+
+const IDLE_MODEL_TEST: ModelTestState = { status: 'idle', message: '', testId: '' };
+
+function validEndpoint(value: string) {
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
 
 export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSetupController {
   const { t } = useTranslation('onboarding');
@@ -17,8 +27,8 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const [modelIds, setModelIds] = useState<string[]>([]);
   const [apiKey, setApiKey] = useState('');
   const [customUrl, setCustomUrl] = useState('');
-  const [testStatus, setTestStatus] = useState<TestStatus>('idle');
   const [testMessage, setTestMessage] = useState('');
+  const [modelTests, setModelTests] = useState<Record<string, ModelTestState>>({});
   const [modelImageSupport, setModelImageSupport] = useState<Record<string, ModelImageSupport>>({});
   const [manualModelIds, setManualModelIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -27,9 +37,10 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const [modelListMessage, setModelListMessage] = useState('');
   const [customProviderId, setCustomProviderId] = useState('');
   const [customProtocol, setCustomProtocol] = useState<CatalogProviderProtocol>('openai');
-  const [connectionTestId, setConnectionTestId] = useState('');
+  const [environmentCredentialProviderIds, setEnvironmentCredentialProviderIds] = useState<string[]>([]);
   const testGenerationRef = useRef(0);
-  const testAbortRef = useRef<AbortController | null>(null);
+  const testAbortRefs = useRef<Record<string, AbortController>>({});
+  const savingRef = useRef(false);
 
   const isCustomMode = selectedProvider?.id === CUSTOM_PROVIDER_ID;
   const selectedModels = apiModels ?? selectedProvider?.models ?? [];
@@ -47,7 +58,12 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     ? t('connection.providerIdReserved')
     : '';
   const selectedProviderRequiresApiKey = requiresApiKey(selectedProvider);
-  const hasEnvironmentApiKeyFallback = Boolean(!isCustomMode && selectedProvider?.apiKeyEnvVar);
+  const hasEnvironmentApiKeyFallback = Boolean(
+    !isCustomMode
+    && selectedProvider?.apiKeyEnvVar
+    && environmentCredentialProviderIds.includes(selectedProvider.id)
+    && effectiveUrl === selectedProvider.defaultUrl,
+  );
   const apiKeyInputRequired = selectedProviderRequiresApiKey && !hasEnvironmentApiKeyFallback;
   const modelListRequiresApiKey = selectedProvider?.modelListRequiresApiKey === true;
   const canFetchModels = Boolean(
@@ -57,28 +73,34 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       && !customProviderIdError
       && (!modelListRequiresApiKey || hasUsableApiKey(apiKey) || hasEnvironmentApiKeyFallback),
   );
-  const canTest = Boolean(
-    selectedProvider &&
-    (!selectedProviderRequiresApiKey || hasUsableApiKey(apiKey) || hasEnvironmentApiKeyFallback) &&
-    effectiveModelId &&
-    effectiveProviderId &&
-    !customProviderIdError &&
-    (!isCustomMode || effectiveUrl.trim()),
+  const canContinue = Boolean(
+    selectedProvider
+    && effectiveProviderId
+    && !customProviderIdError
+    && validEndpoint(effectiveUrl)
+    && (!selectedProviderRequiresApiKey || hasUsableApiKey(apiKey) || hasEnvironmentApiKeyFallback)
+    && effectiveModelIds.length > 0,
   );
-  const unknownProbeCount = unknownImageProbeCount(isCustomMode ? null : selectedProvider, effectiveModelIds);
-  const canContinue = testStatus === 'success'
-    && effectiveModelIds.length > 0
-    && effectiveModelIds.every((id) => typeof modelImageSupport[id]?.supportsImage === 'boolean');
 
   const resetTest = useCallback(() => {
     testGenerationRef.current += 1;
-    testAbortRef.current?.abort();
-    testAbortRef.current = null;
-    setTestStatus('idle');
+    Object.values(testAbortRefs.current).forEach((controller) => controller.abort());
+    testAbortRefs.current = {};
     setTestMessage('');
-    setConnectionTestId('');
+    setModelTests({});
     setModelImageSupport({});
     setManualModelIds([]);
+  }, []);
+
+  const getModelTestState = useCallback((modelId: string): ModelTestState => (
+    modelTests[modelId] ?? IDLE_MODEL_TEST
+  ), [modelTests]);
+
+  const patchModelTest = useCallback((modelId: string, patch: Partial<ModelTestState>) => {
+    setModelTests((current) => ({
+      ...current,
+      [modelId]: { ...(current[modelId] ?? IDLE_MODEL_TEST), ...patch },
+    }));
   }, []);
 
   useEffect(() => {
@@ -87,6 +109,11 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         const res = await authenticatedFetch('/api/config/provider');
         if (!res.ok) return;
         const data = await res.json();
+        setEnvironmentCredentialProviderIds(
+          Array.isArray(data.environmentCredentialProviderIds)
+            ? data.environmentCredentialProviderIds.filter((id: unknown): id is string => typeof id === 'string')
+            : [],
+        );
         if (!data.exists || !data.provider) return;
 
         const p = data.provider;
@@ -191,6 +218,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   }, [apiKey, canFetchModels, effectiveProviderId, effectiveProtocol, effectiveUrl, hasEnvironmentApiKeyFallback, isCustomMode, selectedProvider]);
 
   const handleProviderSelect = useCallback((provider: CatalogProvider) => {
+    if (savingRef.current) return;
     resetTest();
     setSelectedProvider((prev) => {
       if (prev?.id !== provider.id) {
@@ -208,6 +236,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   }, [resetTest]);
 
   const selectModelId = useCallback((modelId: string) => {
+    if (savingRef.current) return;
     const trimmed = modelId.trim();
     if (!trimmed) return;
     setModelIds((current) => {
@@ -215,40 +244,51 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       if (selected.includes(trimmed) || selected.length >= MAX_ONBOARDING_MODELS) return current;
       return [...selected, trimmed];
     });
-    resetTest();
-  }, [resetTest]);
+  }, []);
 
   const deselectModelId = useCallback((modelId: string) => {
-    setModelIds((current) => uniqueModelIds(current).filter((id) => id !== modelId));
-    resetTest();
-  }, [resetTest]);
+    if (savingRef.current) return;
+    const trimmed = modelId.trim();
+    testGenerationRef.current += 1;
+    setModelIds((current) => uniqueModelIds(current).filter((id) => id !== trimmed));
+    testAbortRefs.current[trimmed]?.abort();
+    delete testAbortRefs.current[trimmed];
+    setModelTests((current) => {
+      const next = { ...current };
+      delete next[trimmed];
+      return next;
+    });
+    setModelImageSupport((current) => {
+      const next = { ...current };
+      delete next[trimmed];
+      return next;
+    });
+    setManualModelIds((current) => current.filter((id) => id !== trimmed));
+  }, []);
 
-  const handleTest = useCallback(async () => {
-    if (testStatus === 'testing') return;
-    if (!selectedProvider) return;
-    if (!effectiveModelId) {
-      setTestStatus('error');
-      setTestMessage(t('connection.testNeedModel'));
-      return;
-    }
+  const handleTest = useCallback(async (modelId: string) => {
+    const trimmed = modelId.trim();
+    if (!trimmed || !effectiveModelIds.includes(trimmed) || !selectedProvider) return;
+    if (Object.keys(testAbortRefs.current).length > 0) return;
     if (selectedProviderRequiresApiKey && !hasUsableApiKey(apiKey) && !hasEnvironmentApiKeyFallback) {
-      setTestStatus('error');
-      setTestMessage(t('connection.testNeedApiKey'));
+      patchModelTest(trimmed, { status: 'error', message: t('connection.testNeedApiKey'), testId: '' });
       return;
     }
-    if (!effectiveProviderId || customProviderIdError || (isCustomMode && !effectiveUrl.trim())) {
-      setTestStatus('error');
-      setTestMessage(customProviderIdError || t('connection.testNeedConnection'));
+    if (!effectiveProviderId || customProviderIdError || !validEndpoint(effectiveUrl)) {
+      patchModelTest(trimmed, { status: 'error', message: customProviderIdError || t('connection.testNeedConnection'), testId: '' });
       return;
     }
     const generation = testGenerationRef.current;
     const controller = new AbortController();
-    testAbortRef.current?.abort();
-    testAbortRef.current = controller;
-    setTestStatus('testing');
-    setTestMessage('');
-    setConnectionTestId('');
+    testAbortRefs.current[trimmed] = controller;
+    patchModelTest(trimmed, { status: 'testing', message: '', testId: '' });
+    setModelImageSupport((current) => {
+      const next = { ...current };
+      delete next[trimmed];
+      return next;
+    });
     setManualModelIds([]);
+    setTestMessage('');
     try {
       const res = await authenticatedFetch('/api/config/test-connections', {
         method: 'POST',
@@ -257,7 +297,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
           protocol: effectiveProtocol,
           endpoint: effectiveUrl,
           apiKey: apiKey.trim(),
-          models: effectiveModelIds,
+          models: [trimmed],
           retryPolicy: {},
         }),
         signal: controller.signal,
@@ -269,52 +309,50 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         const message = typeof data.error === 'string'
           ? data.error
           : data.error?.message || data.message || 'Connection failed.';
-        setTestStatus('error');
-        setTestMessage(message);
+        patchModelTest(trimmed, { status: 'error', message, testId: '' });
         return;
       }
-      const nextSupport: Record<string, ModelImageSupport> = {};
-      for (const model of Array.isArray(data.models) ? data.models : []) {
-        if (!effectiveModelIds.includes(model.modelId)) continue;
-        nextSupport[model.modelId] = {
-          supportsImage: model.imageInput === 'supported'
-            ? true
-            : model.imageInput === 'unsupported'
-              ? false
-              : null,
-          source: model.imageInput === 'unknown' ? null : 'probe',
-        };
-      }
-      setConnectionTestId(data.testId);
-      setModelImageSupport(nextSupport);
-      const unresolved = effectiveModelIds.filter((id) => nextSupport[id]?.supportsImage == null);
-      if (data.status === 'manual_input_required' && unresolved.length > 0) {
-        setManualModelIds(unresolved);
-        setTestStatus('manual');
-        setTestMessage('');
+      const modelResult = Array.isArray(data.models)
+        ? data.models.find((model: { modelId?: string }) => model.modelId === trimmed)
+        : null;
+      const supportsImage = modelResult?.imageInput === 'supported'
+        ? true
+        : modelResult?.imageInput === 'unsupported'
+          ? false
+          : null;
+      setModelImageSupport((current) => ({
+        ...current,
+        [trimmed]: { supportsImage, source: supportsImage === null ? null : 'probe' },
+      }));
+      if (data.status === 'manual_input_required' && supportsImage === null) {
+        setManualModelIds([trimmed]);
+        patchModelTest(trimmed, { status: 'manual', message: '', testId: data.testId });
         return;
       }
-      if (data.status !== 'passed' || unresolved.length > 0) {
-        setConnectionTestId('');
-        setTestStatus('error');
-        setTestMessage(data.error?.message || 'Connection test returned an incomplete result.');
+      if (data.status !== 'passed' || supportsImage === null) {
+        patchModelTest(trimmed, {
+          status: 'error',
+          message: data.error?.message || 'Connection test returned an incomplete result.',
+          testId: '',
+        });
         return;
       }
-      setTestStatus('success');
-      setTestMessage(t('common:uiText.connected'));
+      patchModelTest(trimmed, { status: 'success', message: '', testId: data.testId });
     } catch (err) {
       if (controller.signal.aborted || generation !== testGenerationRef.current) return;
-      setTestStatus('error');
-      setTestMessage(err instanceof Error ? err.message : 'Connection failed.');
+      patchModelTest(trimmed, { status: 'error', message: err instanceof Error ? err.message : 'Connection failed.', testId: '' });
     } finally {
-      if (testAbortRef.current === controller) testAbortRef.current = null;
+      if (testAbortRefs.current[trimmed] === controller) delete testAbortRefs.current[trimmed];
     }
-  }, [apiKey, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, hasEnvironmentApiKeyFallback, isCustomMode, selectedProvider, selectedProviderRequiresApiKey, t, testStatus]);
+  }, [apiKey, customProviderIdError, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, hasEnvironmentApiKeyFallback, patchModelTest, selectedProvider, selectedProviderRequiresApiKey, t]);
 
   const submitManualImageSupport = useCallback(async (values: Record<string, boolean>) => {
-    if (!connectionTestId) return;
+    const modelId = Object.keys(values)[0];
+    const testId = modelId ? modelTests[modelId]?.testId : '';
+    if (!modelId || !testId) return;
+    const generation = testGenerationRef.current;
     try {
-      const res = await authenticatedFetch(`/api/config/test-connections/${connectionTestId}/image-capabilities`, {
+      const res = await authenticatedFetch(`/api/config/test-connections/${testId}/image-capabilities`, {
         method: 'PUT',
         body: JSON.stringify({
           models: Object.entries(values).map(([modelId, supportsImage]) => ({
@@ -324,6 +362,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         }),
       });
       const data = await res.json();
+      if (generation !== testGenerationRef.current) return;
       if (!res.ok || data.status !== 'passed') {
         throw new Error(data.error?.message || data.message || 'Image capability confirmation failed.');
       }
@@ -335,24 +374,39 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
         return next;
       });
       setManualModelIds([]);
-      setTestStatus('success');
-      setTestMessage(t('common:uiText.connected'));
+      patchModelTest(modelId, { status: 'success', message: '', testId });
     } catch (err) {
-      setTestStatus('error');
-      setTestMessage(err instanceof Error ? err.message : 'Image capability confirmation failed.');
+      if (generation !== testGenerationRef.current) return;
+      patchModelTest(modelId, {
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Image capability confirmation failed.',
+        testId: '',
+      });
     }
-  }, [connectionTestId, t]);
+  }, [modelTests, patchModelTest]);
 
   const cancelManualImageSupport = useCallback(() => {
+    const modelId = manualModelIds[0];
     setManualModelIds([]);
-    setTestStatus('error');
-    setTestMessage(t('common:uiText.imageConfirmationCancelled'));
-  }, [t]);
+    if (modelId) patchModelTest(modelId, { status: 'error', message: t('common:uiText.imageConfirmationCancelled'), testId: '' });
+  }, [manualModelIds, patchModelTest, t]);
 
   const handleSave = useCallback(async () => {
-    if (!selectedProvider || customProviderIdError) return;
+    if (savingRef.current) return;
+    if (!canContinue) throw new Error('Complete the model configuration before continuing.');
+    savingRef.current = true;
+    const activeTestIds = Object.keys(testAbortRefs.current);
+    if (activeTestIds.length > 0) {
+      // Continuing is allowed while testing. Cancel unfinished probes so the
+      // saved configuration and the visible test states describe the same run.
+      testGenerationRef.current += 1;
+      Object.values(testAbortRefs.current).forEach((controller) => controller.abort());
+      testAbortRefs.current = {};
+      setModelTests((current) => Object.fromEntries(Object.entries(current).map(([id, state]) => (
+        state.status === 'testing' ? [id, IDLE_MODEL_TEST] : [id, state]
+      ))));
+    }
     const saveGeneration = testGenerationRef.current;
-    const saveConnectionTestId = connectionTestId;
     const providerId = effectiveProviderId;
     const modelId = effectiveModelId;
     const modelIds = effectiveModelIds;
@@ -360,7 +414,9 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     const url = effectiveUrl;
     const key = apiKey.trim();
     const imageSupport = modelImageSupport;
+    const testsSnapshot = modelTests;
     setSaving(true);
+    setTestMessage('');
     try {
       const { stringify: stringifyYaml, parse: parseYaml } = await import('yaml');
 
@@ -375,10 +431,6 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
 
       if (!providerId) throw new Error('Provider ID is required.');
       if (!modelId) throw new Error('At least one model ID is required.');
-      if (!saveConnectionTestId) throw new Error('A passing connection test is required.');
-      if (modelIds.some((id) => typeof imageSupport[id]?.supportsImage !== 'boolean')) {
-        throw new Error('Image capability must be confirmed for every model.');
-      }
 
       if (!existingConfig.schemaVersion) {
         existingConfig.schemaVersion = 1;
@@ -419,13 +471,13 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
               const existingMultimodal = existingModel.multimodal && typeof existingModel.multimodal === 'object'
                 ? existingModel.multimodal as Record<string, unknown>
                 : {};
-              const supportsImage = imageSupport[id]?.supportsImage === true;
+              const catalogModel = selectedProvider?.models.find((model) => model.id === id || model.aliases?.includes(id));
+              const supportsImage = imageSupport[id]?.supportsImage ?? catalogModel?.supportsImage;
               return [id, {
                 ...existingModel,
-                multimodal: {
-                  ...existingMultimodal,
-                  input: supportsImage ? ['text', 'image'] : ['text'],
-                },
+                ...(typeof supportsImage === 'boolean'
+                  ? { multimodal: { ...existingMultimodal, input: supportsImage ? ['text', 'image'] : ['text'] } }
+                  : {}),
               }];
             }),
           ),
@@ -442,39 +494,56 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       delete existingConfig.version;
 
       if (testGenerationRef.current !== saveGeneration) {
-        throw new Error('Configuration changed while saving. Test the current configuration again.');
+        throw new Error('Configuration changed while saving. Review the current configuration and continue again.');
       }
 
-      const saveRes = await authenticatedFetch('/api/config', {
-        method: 'PUT',
-        body: JSON.stringify({
-          raw: stringifyYaml(existingConfig, { indent: 2, lineWidth: 0 }),
-          modelTestBindings: [{ testId: saveConnectionTestId }],
-        }),
+      const raw = stringifyYaml(existingConfig, { indent: 2, lineWidth: 0 });
+      const modelTestBindings = modelIds.flatMap((id) => {
+        const state = testsSnapshot[id];
+        return state?.status === 'success' && state.testId ? [{ testId: state.testId }] : [];
       });
+      const saveConfig = (bindings: Array<{ testId: string }>) => authenticatedFetch('/api/config', {
+        method: 'PUT',
+        body: JSON.stringify({ raw, ...(bindings.length ? { modelTestBindings: bindings } : {}) }),
+      });
+      let remainingBindings = modelTestBindings;
+      let saveRes = await saveConfig(remainingBindings);
+      let saveError: { code?: string; error?: string; testId?: string } | null = null;
+      while (!saveRes.ok && remainingBindings.length) {
+        saveError = await saveRes.json().catch(() => ({}));
+        if (!saveError?.code || !['TEST_EXPIRED', 'TEST_NOT_FOUND', 'TEST_NOT_PASSED', 'CONFIGURATION_MISMATCH'].includes(saveError.code)) break;
+        const invalidTestId = saveError.testId;
+        if (!invalidTestId || !remainingBindings.some((binding) => binding.testId === invalidTestId)) break;
+        remainingBindings = remainingBindings.filter((binding) => binding.testId !== invalidTestId);
+        setModelTests((current) => Object.fromEntries(Object.entries(current).map(([id, state]) => (
+          state.testId === invalidTestId ? [id, IDLE_MODEL_TEST] : [id, state]
+        ))));
+        saveRes = await saveConfig(remainingBindings);
+        saveError = null;
+      }
 
       if (!saveRes.ok) {
-        const err = await saveRes.json();
+        const err = saveError ?? await saveRes.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to save configuration');
       }
 
       await onSaved?.();
     } catch (err) {
-      setTestStatus('error');
       setTestMessage(err instanceof Error ? err.message : 'Failed to save.');
       throw err;
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
-  }, [apiKey, connectionTestId, customProviderIdError, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, modelImageSupport, onSaved, selectedProvider]);
+  }, [apiKey, canContinue, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, modelImageSupport, modelTests, onSaved, selectedProvider]);
 
   return {
     selectedProvider,
     modelIds,
     apiKey,
     customUrl,
-    testStatus,
     testMessage,
+    modelTests,
     saving,
     apiModels,
     modelListStatus,
@@ -494,9 +563,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     hasEnvironmentApiKeyFallback,
     apiKeyInputRequired,
     canFetchModels,
-    canTest,
     canContinue,
-    unknownImageProbeCount: unknownProbeCount,
     manualModelIds,
     setModelIds,
     selectModelId,
@@ -506,6 +573,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
     setCustomProviderId,
     setCustomProtocol,
     resetTest,
+    getModelTestState,
     handleProviderSelect,
     handleFetchModels,
     handleTest,

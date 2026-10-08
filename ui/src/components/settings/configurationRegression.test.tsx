@@ -91,7 +91,8 @@ it('fetches catalog provider models from the configured proxy endpoint', async (
 it.each([undefined, { enabled: false, timezone: 'UTC' }])('offers a way to enable a missing or disabled scheduler: %j', (cron) => {
   const onChange = vi.fn();
   render(<CronSection config={{ cron }} onChange={onChange} />);
-  fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.panels.cron.enableAction' }));
+  fireEvent.click(screen.getByRole('switch', { name: 'pilotDeckConfig.panels.cron.enableLabel', checked: false }));
+  expect(onChange).toHaveBeenCalledOnce();
   expect(onChange.mock.calls[0][0].cron).toEqual({...cron, enabled: true});
 });
 

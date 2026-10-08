@@ -608,11 +608,10 @@ test("loader returns only post-boundary history for a compacted sidechain", asyn
       kind: "compact",
       subtype: "compact_boundary",
       compactMetadata: { trigger: "auto", preTokens: 90, postTokens: 20, messagesSummarized: 1 },
-    });
-    await writer.recordDurableMessage(subagentSessionId, turn1, {
-      role: "user",
-      metadata: { compactReplacement: true },
-      content: [{ type: "text", text: "[compacted child summary]" }],
+      snapshot: {
+        version: 1,
+        messages: [userMessage("[compacted child summary]")],
+      },
     });
     await writer.recordDurableMessage(subagentSessionId, turn1, {
       role: "assistant",

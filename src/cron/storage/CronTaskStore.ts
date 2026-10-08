@@ -216,7 +216,9 @@ function normalizeTask(value: unknown): CronTask | undefined {
     revision: Number.isSafeInteger(candidate.revision) && candidate.revision! >= 0
       ? candidate.revision
       : 0,
-    scheduleComputationVersion: candidate.scheduleComputationVersion === 2 ? 2 : undefined,
+    scheduleComputationVersion: candidate.scheduleComputationVersion === 2 || candidate.scheduleComputationVersion === 3
+      ? candidate.scheduleComputationVersion
+      : undefined,
     originSessionKey: typeof candidate.originSessionKey === "string" ? candidate.originSessionKey : undefined,
     originChannelKey: typeof candidate.originChannelKey === "string" ? candidate.originChannelKey : undefined,
   };

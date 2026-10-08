@@ -50,6 +50,7 @@ function inferPlatform(file) {
   const name = basename(file).toLowerCase();
   if (name.endsWith(".dmg") || name.includes("mac")) return "darwin";
   if (name.endsWith(".exe") || name.includes("win")) return "win32";
+  if (name.endsWith(".deb") || name.endsWith(".rpm") || name.includes("linux")) return "linux";
   return "unknown";
 }
 
@@ -57,7 +58,7 @@ function inferArch(file) {
   const name = basename(file).toLowerCase();
   if (name.includes("universal")) return "universal";
   if (name.includes("arm64") || name.includes("aarch64")) return "arm64";
-  if (name.includes("x64") || name.includes("x86_64") || name.includes("amd64")) return "x64";
+  if (name.includes("x64") || name.includes("x86_64")) return "x64";
   return "unknown";
 }
 

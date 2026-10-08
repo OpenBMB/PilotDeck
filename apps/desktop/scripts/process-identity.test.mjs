@@ -9,13 +9,13 @@ test('Windows startup queries only requested PIDs without CIM enumeration', () =
     assert.match(args.at(-1), /@\(123,456\)/);
     assert.match(args.at(-1), /GetProcessById/);
     assert.doesNotMatch(args.at(-1), /Get-CimInstance|GetProcesses\(\)/);
-    assert.equal(options.timeout, 15000);
+    assert.equal(options.timeout, 30000);
     return '[{"ProcessId":123,"Birth":"2026-09-07T12:34:56.1234567Z"}]';
   });
   assert.deepEqual(result,[{pid:123,birth:'2026-09-07T12:34:56.1234567Z'}]);
 });
 test('Windows query timeout is explicit and never fabricates ownership', () => {
-  assert.throws(()=>identities.windowsProcesses([123],()=>{throw Object.assign(new Error('spawn timed out'),{code:'ETIMEDOUT'});}), {code:'ETIMEDOUT',message:'Windows process identity query timed out after 15000 ms'});
+  assert.throws(()=>identities.windowsProcesses([123],()=>{throw Object.assign(new Error('spawn timed out'),{code:'ETIMEDOUT'});}), {code:'ETIMEDOUT',message:'Windows process identity query timed out after 30000 ms'});
 });
 test('invalid PID and missing creation time fail closed', () => {
   assert.throws(()=>identities.windowsProcesses(['1;exit']),/Invalid process identity PID/);

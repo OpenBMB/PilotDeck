@@ -27,6 +27,9 @@ public static class PilotDeckJob {
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateJobObject(IntPtr job, uint code);
   [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr handle, uint timeout);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+  [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool IsProcessInJob(IntPtr process, IntPtr job, out bool result);
+  static void Trace(string stopped, string message) { File.AppendAllText(stopped + ".trace", DateTime.UtcNow.ToString("o") + " " + message + Environment.NewLine); }
   static void Check(bool success) { if (!success) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()); }
   public static void Run(int pid, string ready, string stopped, string stop, string birth) {
     IntPtr job = CreateJobObject(IntPtr.Zero, null), process = IntPtr.Zero;
@@ -43,13 +46,19 @@ public static class PilotDeckJob {
       // handle before assigning it: the bootstrap PID might already be reused.
       if (creation / 10 != expected / 10) throw new Exception("Guardian process identity changed");
       Check(AssignProcessToJobObject(job, process));
+      bool selfInJob;
+      Check(IsProcessInJob(GetCurrentProcess(), job, out selfInJob));
+      if (selfInJob) throw new Exception("Job supervisor must remain outside the managed Job");
+      Trace(stopped, "guardian assigned; supervisor outside Job");
       File.WriteAllText(ready, "ready"); // The guardian cannot launch the command before this.
       while (true) {
         uint state = WaitForSingleObject(process, 25);
         if (state == 0 || File.Exists(stop)) break;
         if (state != 258) throw new Exception("Guardian wait failed");
       }
+      Trace(stopped, "terminating Job");
       Check(TerminateJobObject(job, 1));
+      Trace(stopped, "termination requested");
       var deadline = DateTime.UtcNow.AddSeconds(5);
       while (true) {
         Accounting state;
@@ -59,6 +68,10 @@ public static class PilotDeckJob {
         Thread.Sleep(25);
       }
       File.WriteAllText(stopped, "stopped");
+      Trace(stopped, "Job empty");
+    } catch (Exception error) {
+      Trace(stopped, error.ToString());
+      throw;
     } finally { if (process != IntPtr.Zero) CloseHandle(process); CloseHandle(job); }
   }
 }

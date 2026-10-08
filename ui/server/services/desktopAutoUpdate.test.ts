@@ -28,11 +28,53 @@ function setup(overrides: Record<string, unknown> = {}) {
   return { controller, updater, cancel, release, latestRelease, prepareToInstall, recoverRuntime, verifyFile };
 }
 describe('automatic update policy', () => {
-  it.each([['darwin', 'arm64'], ['darwin', 'x64'], ['win32', 'x64']])('requires the exact %s %s payload and feed', (platform, arch) => {
+  it.each([['darwin', 'arm64'], ['darwin', 'x64'], ['win32', 'x64'], ['win32', 'arm64']])('requires the exact %s %s payload and feed', (platform, arch) => {
     const release = releaseFor(platform, arch);
     expect(selectUpdateAssets(release, platform, arch)?.asset).toEqual(asset(platform, arch));
     expect(selectUpdateAssets(release, platform, 'other')).toBeNull();
     expect(selectUpdateAssets({ ...release, assets: release.assets.slice(0, 1) }, platform, arch)).toBeNull();
+  });
+  it.each(['x64', 'arm64'])('keeps Windows %s updates on their own architecture feed', async (arch) => {
+    const own = releaseFor('win32', arch);
+    const other = releaseFor('win32', arch === 'arm64' ? 'x64' : 'arm64');
+    const release = { ...own, assets: [...own.assets, ...other.assets] };
+    const info = infoFor(own);
+    expect(selectUpdateAssets(release, 'win32', arch)).toEqual({ asset: own.assets[0], feed: `latest-${arch}.yml` });
+    expect(validateUpdateInfo(info, release, 'win32', arch)).toEqual(own.assets[0]);
+    expect(() => validateUpdateInfo(infoFor(other), release, 'win32', arch)).toThrow('invalidUpdateMetadata');
+    expect(() => validateUpdateInfo(infoFor(release), release, 'win32', arch)).toThrow('invalidUpdateMetadata');
+    expect(selectUpdateAssets(other, 'win32', arch)).toBeNull();
+    const { controller, updater } = setup({ platform: 'win32', arch, latestRelease: async () => release });
+    updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: info, cancellationToken: { cancel: vi.fn() } });
+    controller.start(); await controller.wait();
+    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ channel: `latest-${arch}` }));
+    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(updater.autoRunAppAfterInstall).toBe(false);
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+  it.each(['x64', 'arm64'])('keeps DEB and RPM updates separate on Linux %s', async (arch) => {
+    const deb = { ...asset('linux', arch), name: `PilotDeck-linux-${arch}.deb` };
+    const rpm = { ...deb, name: `PilotDeck-linux-${arch}.rpm` };
+    const release: Release = { version: '2026.907.1', tagName: 'v2026.09.07-r2', assets: [deb, rpm,
+      { ...deb, name: `latest-linux${arch === 'arm64' ? '-arm64' : ''}.yml` },
+      { ...rpm, name: `latest-rpm-linux${arch === 'arm64' ? '-arm64' : ''}.yml` }] };
+    for (const type of ['deb', 'rpm']) {
+      const expected = type === 'rpm' ? rpm : deb;
+      const selected = selectUpdateAssets(release, 'linux', arch, type)!;
+      expect(selected.asset).toEqual(expected);
+      expect(selected.feed).toBe(`latest${type === 'rpm' ? '-rpm' : ''}-linux${arch === 'arm64' ? '-arm64' : ''}.yml`);
+      expect(validateUpdateInfo({ version: release.version, files: [{ url: expected.name, sha512: expected.sha512, size: expected.size }] }, release, 'linux', arch, type)).toEqual(expected);
+      const wrong = type === 'rpm' ? deb : rpm;
+      expect(() => validateUpdateInfo({ version: release.version, files: [{ url: wrong.name, sha512: wrong.sha512, size: wrong.size }] }, release, 'linux', arch, type)).toThrow('invalidUpdateMetadata');
+      expect(() => validateUpdateInfo({ version: release.version, files: [expected, wrong].map(a => ({ url: a.name, sha512: a.sha512, size: a.size })) }, release, 'linux', arch, type)).toThrow('invalidUpdateMetadata');
+      expect(selectUpdateAssets({ ...release, assets: release.assets.filter(a => a.name !== expected.name) }, 'linux', arch, type)).toBeNull();
+      const { controller, updater } = setup({ platform: 'linux', arch, linuxPackageType: type, latestRelease: async () => release });
+      updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: { version: release.version, files: [{ url: expected.name, sha512: expected.sha512, size: expected.size }] }, cancellationToken: { cancel: vi.fn() } });
+      controller.start(); await controller.wait();
+      expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ channel: type === 'rpm' ? 'latest-rpm' : 'latest' }));
+      expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    }
+    expect(selectUpdateAssets(release, 'linux', arch, 'unknown')).toBeNull();
   });
   it('refuses dev runtimes, equal versions, downgrades and missing packages', async () => {
     for (const overrides of [{ packaged: false }, { version: '2026.907.1' }, { version: '2026.908.0' }, { latestRelease: async () => ({ ...releaseFor(), assets: [] }) }]) {
@@ -52,6 +94,58 @@ describe('automatic update policy', () => {
   });
 });
 describe('automatic update lifecycle', () => {
+  it('keeps a paused download locked and resumes without another check or download', async () => {
+    const downloadControl = { pause: vi.fn(), resume: vi.fn() };
+    const { controller, updater, prepareToInstall } = setup({ downloadControl });
+    let resolve!: (files: string[]) => void;
+    updater.downloadUpdate.mockImplementation(() => new Promise(r => { resolve = r; }));
+    controller.start(); await vi.waitFor(() => expect(controller.status().state).toBe('downloading'));
+    updater.emit('download-progress', { percent: 42, total: 100, transferred: 42, bytesPerSecond: 20 });
+    expect(controller.pause()).toMatchObject({ state: 'paused', progress: .42, transferred: 42, total: 100, bytesPerSecond: 0 });
+    expect(downloadControl.pause).toHaveBeenCalledTimes(1);
+    updater.emit('download-progress', { percent: 60, total: 100, transferred: 60 });
+    expect(controller.status().progress).toBe(.42);
+    controller.start(); await controller.check();
+    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    resolve(['/tmp/file']); await new Promise(r => setImmediate(r));
+    expect(prepareToInstall).not.toHaveBeenCalled();
+    expect(controller.resume()).toMatchObject({ state: 'downloading', progress: .42 });
+    await controller.wait();
+    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+  it('cancels a completed but paused payload without verifying or installing', async () => {
+    const { controller, updater, cancel, verifyFile, prepareToInstall } = setup();
+    let resolve!: (files: string[]) => void;
+    updater.downloadUpdate.mockImplementation(() => new Promise(r => { resolve = r; }));
+    controller.start(); await vi.waitFor(() => expect(controller.status().state).toBe('downloading'));
+    controller.pause(); resolve(['/tmp/file']); await new Promise(r => setImmediate(r));
+    expect(controller.cancel().state).toBe('cancelling');
+    await controller.wait();
+    expect(controller.status().state).toBe('cancelled');
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(verifyFile).not.toHaveBeenCalled(); expect(prepareToInstall).not.toHaveBeenCalled();
+  });
+  it('rejects pause/resume outside downloading and preserves installation policy', async () => {
+    const { controller, updater } = setup();
+    expect(controller.pause().state).toBe('idle'); expect(controller.resume().state).toBe('idle');
+    controller.start(); await controller.wait();
+    expect(controller.pause().state).toBe('installing'); expect(controller.resume().state).toBe('installing');
+    expect(controller.cancel().state).toBe('installing');
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+  it('excludes paused time from the next download speed sample', async () => {
+    const { controller, updater } = setup();
+    let resolve!: (files: string[]) => void;
+    updater.downloadUpdate.mockImplementation(() => new Promise(r => { resolve = r; }));
+    controller.start(); await vi.waitFor(() => expect(controller.status().state).toBe('downloading'));
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    updater.emit('download-progress', { percent: 20, total: 1000, transferred: 200 });
+    controller.pause(); now.mockReturnValue(60000); controller.resume(); now.mockReturnValue(61000);
+    updater.emit('download-progress', { percent: 40, total: 1000, transferred: 400 });
+    expect(controller.status().bytesPerSecond).toBe(200);
+    now.mockRestore(); controller.cancel(); resolve(['/tmp/file']); await controller.wait();
+  });
   it('one click downloads, verifies, stops services then installs and relaunches', async () => {
     const { controller, updater, prepareToInstall, verifyFile } = setup();
     expect(controller.start().state).toBe('checking'); await controller.wait();
@@ -104,10 +198,31 @@ describe('automatic update lifecycle', () => {
       expect(controller.status().state).toBe('failed'); expect(prepareToInstall).not.toHaveBeenCalled(); expect(updater.quitAndInstall).not.toHaveBeenCalled();
     }
   });
+  it('clears a previous download failure after a successful fresh check without downloading', async () => {
+    const { controller, updater, latestRelease } = setup();
+    updater.downloadUpdate.mockRejectedValueOnce(new Error('network'));
+    controller.start(); await controller.wait();
+    expect(controller.status()).toMatchObject({ state: 'failed', reason: 'updateFailed' });
+    expect(await controller.check()).toMatchObject({ hasUpdate: true, canDownload: true, checkUnavailable: false });
+    expect(controller.status()).toEqual({ state: 'idle', progress: 0 });
+    expect(latestRelease).toHaveBeenCalledTimes(2); expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    controller.start(); await controller.wait(); expect(updater.downloadUpdate).toHaveBeenCalledTimes(2);
+  });
+  it('preserves a download failure if the fresh check also fails', async () => {
+    const { controller, updater, latestRelease } = setup();
+    updater.downloadUpdate.mockRejectedValueOnce(new Error('network'));
+    controller.start(); await controller.wait();
+    latestRelease.mockRejectedValueOnce(new Error('offline'));
+    expect(await controller.check()).toMatchObject({ canDownload: false, checkUnavailable: true, reason: 'checkFailed' });
+    expect(controller.status()).toMatchObject({ state: 'failed', reason: 'updateFailed' });
+    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+  });
   it('restores services after a native install error and requires app restart before retry', async () => {
     const { controller, updater, recoverRuntime } = setup();
     controller.start(); await controller.wait(); updater.emit('error', new Error('signature rejected'));
     await vi.waitFor(() => expect(controller.status()).toMatchObject({ state: 'failed', reason: 'installFailed' }));
+    expect(await controller.check()).toMatchObject({ hasUpdate: true, canDownload: false, reason: 'installFailed' });
+    expect(controller.status()).toMatchObject({ state: 'failed', reason: 'installFailed' });
     expect(recoverRuntime).toHaveBeenCalledTimes(1); controller.start(); expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
   });
   it('recovers when runtime shutdown fails', async () => {

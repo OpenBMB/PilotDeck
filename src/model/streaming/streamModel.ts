@@ -1,3 +1,4 @@
+import { sanitizeProviderBody } from "../request/sanitizeProviderBody.js";
 import { normalizeModelError } from "../errors/normalizeModelError.js";
 import { createGoogleClient, type GoogleClientFactory } from "../providers/google/client.js";
 import { parseGoogleResponse } from "../providers/google/response.js";
@@ -691,9 +692,7 @@ async function sendProviderRequest(
     )), effectiveTimeoutMs)
     : undefined;
 
-  const finalBody = provider.extraBody
-    ? { ...(body as Record<string, unknown>), ...provider.extraBody }
-    : body;
+  const finalBody = sanitizeProviderBody({ ...(body as Record<string, unknown>), ...provider.extraBody });
 
   try {
     const fetchOptions: RequestInit = {

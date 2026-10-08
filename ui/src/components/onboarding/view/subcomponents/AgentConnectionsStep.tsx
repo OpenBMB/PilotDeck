@@ -17,9 +17,9 @@ const providerCards = [
   {
     provider: 'cursor' as const,
     title: 'Cursor',
-    connectedClassName: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800',
-    iconContainerClassName: 'bg-purple-100 dark:bg-purple-900/30',
-    loginButtonClassName: 'bg-purple-600 hover:bg-purple-700',
+    connectedClassName: 'bg-[var(--pd-accent-soft,#faf5ff)] dark:bg-purple-900/20 border-[var(--pd-accent-border,#e9d5ff)] dark:border-purple-800',
+    iconContainerClassName: 'bg-[var(--pd-accent-soft,#f3e8ff)] dark:bg-purple-900/30',
+    loginButtonClassName: 'bg-[var(--pd-accent,#9333ea)] hover:bg-[var(--pd-accent,#7e22ce)]',
   },
   {
     provider: 'codex' as const,

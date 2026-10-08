@@ -50,9 +50,9 @@ tool input. Replayable sidechains contain, per round:
 
 1. one `accepted_input` entry (the round's directive only — never a full
    history copy),
-2. the round's durable messages (`assistant_message` / `tool_result_message`),
-3. any `control_boundary` compaction entries followed by their replacement
-   messages (replay slices history after the boundary), and
+2. the round's durable messages,
+3. any `control_boundary` compaction entries with an atomic replacement
+   `snapshot` (replay uses only a complete snapshot), and
 4. a `turn_result` entry closing the round.
 
 A `session_metadata` entry (`subagentTask`) records the child identity,
@@ -66,8 +66,10 @@ so entry ordering stays monotonic.
   reloads are fine; forked/renamed parent session keys are not).
 - Only transcripts written in formatVersion 2 (older sidechains are rejected,
   never guessed at).
-- Continuation preserves the existing subagent depth and tool restrictions;
-  it does not enable nested delegation.
+- Continuation keeps the saved model and built-in child identity while applying
+  current parent permissions and tool restrictions. Nested delegation stays disabled.
+- Repeated continuations within one parent turn retain distinct child round IDs
+  so live output can reopen without admitting stale output from earlier rounds.
 - Hosts opt in through `PilotDeckSubagentForkApi.supportsContinuation`.
   Unsupported hosts omit resumable task ids and reject `task_id` instead of
   silently creating a new child.

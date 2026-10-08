@@ -13,6 +13,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { platform } from "node:process";
 import type { CanonicalContentBlock, CanonicalMessage } from "../../model/index.js";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
+import { readCompactSnapshot } from "../../session/transcript/CompactSnapshot.js";
 import { readTranscript } from "../../session/transcript/TranscriptReader.js";
 import {
   sanitizeSessionIdForPath,
@@ -225,63 +226,59 @@ function markMessageAsForkCarryover(
   };
 }
 
-function retargetTranscriptEntryAuxiliaryPaths(
+function mapTranscriptEntryMessages(
   entry: AgentTranscriptEntry,
-  sourceSessionDir: string,
-  targetSessionDir: string,
+  transform: (message: CanonicalMessage) => CanonicalMessage,
 ): AgentTranscriptEntry {
   if (entry.type === "accepted_input") {
-    return {
-      ...entry,
-      messages: entry.messages.map((message) => ({
-        ...message,
-        content: message.content.map((block) =>
-          retargetContentBlock(block, sourceSessionDir, targetSessionDir),
-        ),
-      })),
-    };
+    return { ...entry, messages: entry.messages.map(transform) };
   }
   if (
     entry.type === "assistant_message" ||
     entry.type === "tool_result_message" ||
     entry.type === "durable_message"
   ) {
-    return {
-      ...entry,
-      message: {
-        ...entry.message,
-        content: entry.message.content.map((block) =>
-          retargetContentBlock(block, sourceSessionDir, targetSessionDir),
-        ),
-      },
-    };
+    return { ...entry, message: transform(entry.message) };
+  }
+  if (
+    entry.type === "control_boundary" &&
+    entry.boundary.kind === "compact" &&
+    entry.boundary.subtype === "compact_boundary"
+  ) {
+    const messages = readCompactSnapshot(entry);
+    if (messages) {
+      return {
+        ...entry,
+        boundary: {
+          ...entry.boundary,
+          snapshot: { version: 1, messages: messages.map(transform) },
+        },
+      };
+    }
   }
   return entry;
+}
+
+function retargetTranscriptEntryAuxiliaryPaths(
+  entry: AgentTranscriptEntry,
+  sourceSessionDir: string,
+  targetSessionDir: string,
+): AgentTranscriptEntry {
+  return mapTranscriptEntryMessages(entry, (message) => ({
+    ...message,
+    content: message.content.map((block) =>
+      retargetContentBlock(block, sourceSessionDir, targetSessionDir),
+    ),
+  }));
 }
 
 function markTranscriptEntryAsForkCarryover(
   entry: AgentTranscriptEntry,
   sourceSessionId: string,
 ): AgentTranscriptEntry {
-  if (entry.type === "accepted_input") {
-    return {
-      ...entry,
-      messages: entry.messages.map((message) =>
-        markMessageAsForkCarryover(message, sourceSessionId, entry.turnId),
-      ),
-    };
-  }
-  if (
-    entry.type === "assistant_message" ||
-    entry.type === "tool_result_message" ||
-    entry.type === "durable_message"
-  ) {
-    return {
-      ...entry,
-      message: markMessageAsForkCarryover(entry.message, sourceSessionId, entry.turnId),
-    };
-  }
-  return entry;
+  return mapTranscriptEntryMessages(entry, (message) =>
+    markMessageAsForkCarryover(message, sourceSessionId, entry.turnId),
+  );
 }
 
 function retargetAcceptedInputEntry(
@@ -327,7 +324,8 @@ function retargetEntriesToSession(
     if (
       entry.type === "assistant_message" ||
       entry.type === "tool_result_message" ||
-      entry.type === "durable_message"
+      entry.type === "durable_message" ||
+      entry.type === "control_boundary"
     ) {
       const retargeted = {
         ...retargetTranscriptEntryAuxiliaryPaths(

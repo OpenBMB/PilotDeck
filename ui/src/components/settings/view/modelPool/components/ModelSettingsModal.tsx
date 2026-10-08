@@ -1,13 +1,15 @@
+import { THINKING_EFFORTS, thinkingFormatsForProtocol, type ModelThinkingSettings, type ThinkingFormat } from '../../../../../../../src/model/thinking/settings.js';
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CircleHelp, Loader2, Plug, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '../../../../ui/ConfirmDialog';
 import type { ConnectionTestTask } from '../hooks/useConnectionTestTasks';
 
-export type ModelSettingsPatch = { maxOutputTokens: number; maxContextTokens: number; supportsImage: boolean };
+export type ModelSettingsPatch = { maxOutputTokens: number; maxContextTokens: number; supportsImage: boolean; thinking?: ModelThinkingSettings };
 
 type Props = {
   modelId: string;
+  protocol?: string;
   initial: ModelSettingsPatch;
   task?: ConnectionTestTask;
   testDisabled: boolean;
@@ -19,12 +21,15 @@ type Props = {
   onClose: () => void;
 };
 
-export default function ModelSettingsModal({ modelId, initial, task, testDisabled, applyTestResult = true, testError, onTest, onCancelTest, onSave, onClose }: Props) {
+export default function ModelSettingsModal({ modelId, protocol = 'openai', initial, task, testDisabled, applyTestResult = true, testError, onTest, onCancelTest, onSave, onClose }: Props) {
   const { t } = useTranslation('settings');
   const label = (key: string) => t(`pilotDeckConfig.panels.models.modelSettings.${key}`);
   const [output, setOutput] = useState(String(initial.maxOutputTokens));
   const [context, setContext] = useState(String(initial.maxContextTokens));
   const [image, setImage] = useState(initial.supportsImage);
+  const [thinking, setThinking] = useState<ModelThinkingSettings>(initial.thinking ?? { state: 'default', efforts: [], format: 'provider' });
+  const formats = thinkingFormatsForProtocol(protocol);
+  const effectiveFormat = formats.includes(thinking.format) ? thinking.format : 'provider';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const manual = useRef(false);
@@ -42,7 +47,7 @@ export default function ModelSettingsModal({ modelId, initial, task, testDisable
     if (!valid || saveLock.current) return;
     saveLock.current = true; setSaving(true); setError('');
     try {
-      const saved = await onSave({ maxOutputTokens: Number(output), maxContextTokens: Number(context), supportsImage: image });
+      const saved = await onSave({ maxOutputTokens: Number(output), maxContextTokens: Number(context), supportsImage: image, thinking: { ...thinking, format: effectiveFormat } });
       if (saved.ok) onClose(); else setError(saved.error || label('saveFailed'));
     } catch { setError(label('saveFailed')); }
     finally { saveLock.current = false; setSaving(false); }
@@ -67,10 +72,34 @@ export default function ModelSettingsModal({ modelId, initial, task, testDisable
         <input className={inputClass} aria-label={t('pilotDeckConfig.panels.models.maxContextTokens')} inputMode="numeric" value={context} onChange={e => setContext(e.target.value)} disabled={saving} />
       </label>
     </div>
-    <label className="my-5 flex cursor-pointer items-center justify-between gap-4 text-sm text-foreground">
-      {label('imageInput')}
-      <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary,#7565e9)]" checked={image} disabled={saving} onChange={e => { manual.current = true; setImage(e.target.checked); }} />
-    </label>
+    <div className="my-5 flex flex-wrap gap-x-5 gap-y-3 text-sm text-foreground">
+      <label className="flex cursor-pointer items-center gap-2">
+        <input type="checkbox" checked={image} disabled={saving} onChange={e => { manual.current = true; setImage(e.target.checked); }} />{label('imageInput')}
+      </label>
+      <label className="flex cursor-pointer items-center gap-2">
+        <input type="checkbox" checked={thinking.state === 'enabled'} disabled={saving} onChange={e => setThinking({ ...thinking, state: e.target.checked ? 'enabled' : 'default' })} />{label('thinkingEnabled')}
+      </label>
+      <label className="flex cursor-pointer items-center gap-2">
+        <input type="checkbox" checked={thinking.state === 'disabled'} disabled={saving} onChange={e => setThinking({ ...thinking, state: e.target.checked ? 'disabled' : 'default' })} />{label('thinkingDisabled')}
+      </label>
+    </div>
+    <p className="mb-4 text-xs text-muted-foreground" role="status">{label(`thinkingHelp.${thinking.state}`)}</p>
+    {thinking.state === 'enabled' && <fieldset disabled={saving} className="mb-4">
+      <legend className="mb-2 text-xs font-medium">{label('thinkingEfforts')}</legend>
+      <div className="flex flex-wrap gap-4">{THINKING_EFFORTS.map(effort => <label key={effort} className="flex cursor-pointer items-center gap-2 text-sm">
+        <input type="checkbox" checked={thinking.efforts.includes(effort)} onChange={e => setThinking({ ...thinking, efforts: THINKING_EFFORTS.filter(value => value === effort ? e.target.checked : thinking.efforts.includes(value)) })} />{effort}
+      </label>)}</div>
+      <p className="mt-2 text-xs text-muted-foreground">{label('thinkingEffortsHelp')}</p>
+    </fieldset>}
+    <details className="mb-5 text-sm">
+      <summary className="cursor-pointer">{label('thinkingAdvanced')}</summary>
+      <label className="mt-3 block text-xs font-medium">{label('thinkingFormat')}
+        <select className={inputClass} value={effectiveFormat} disabled={saving} onChange={e => setThinking({ ...thinking, format: e.target.value as ThinkingFormat })}>
+          {formats.map(format => <option key={format} value={format}>{label(`thinkingFormats.${format}`)}</option>)}
+        </select>
+      </label>
+      <p className="mt-2 text-xs text-muted-foreground">{label('thinkingFormatHelp')}</p>
+    </details>
     <div className="border-t border-border pt-4">
       <div className="flex items-center justify-between gap-3">
         <button type="button" disabled={testDisabled || saving} onClick={() => { manual.current = false; onTest(); }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40">

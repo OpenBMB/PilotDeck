@@ -17,8 +17,8 @@ COPY src/context/memory/edgeclaw-memory-core/ src/context/memory/edgeclaw-memory
 COPY ui/package.json ui/
 COPY ui/scripts/ ui/scripts/
 
-# Install only the Web/Gateway workspaces. The Electron workspace is kept out
-# of the Docker context and must never add desktop dependencies to this image.
+# Install only the Web/Gateway workspaces. Shared appearance sources do not
+# require the Electron workspace or desktop dependencies in this image.
 # Pin pnpm so CI builds do not pick up stricter build-script policy changes
 # before the lockfile/workspace config is updated.
 RUN npm install -g pnpm@10.32.1 \
@@ -29,6 +29,7 @@ RUN npm install -g pnpm@10.32.1 \
 COPY src/ src/
 COPY scripts/ scripts/
 COPY ui/ ui/
+COPY apps/desktop/src/lightAppearance.ts apps/desktop/src/interfacePreferences.ts apps/desktop/src/
 COPY skills/ skills/
 
 # Build edgeclaw-memory-core (src/ → lib/)

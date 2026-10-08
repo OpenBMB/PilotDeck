@@ -87,7 +87,7 @@ export default function DocxBuiltinPreview({
   const onErrorRef = useRef(onError);
   const [rendered, setRendered] = useState(false);
   const [outline, setOutline] = useState<OutlineItem[]>([]);
-  const [navigationVisible, setNavigationVisible] = useState(true);
+  const [navigationVisible, setNavigationVisible] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

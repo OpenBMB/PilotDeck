@@ -37,7 +37,7 @@ export default function PermissionControlSection({
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/json,.json"
+        accept=".json"
         className="hidden"
         onChange={onFileChosen}
       />

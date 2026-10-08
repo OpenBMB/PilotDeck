@@ -198,6 +198,69 @@ describe('spreadsheet workbook manifest parsing', () => {
     }
   });
 
+  it.each(['default', 'alternate'])('normalizes %s drawing namespace before interactive parsing', async (namespaceStyle) => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'pilotdeck-spreadsheet-drawing-'));
+    const workbookPath = path.join(tempDir, 'workbook.xlsx');
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Summary');
+      sheet.getCell('A1').value = 'Sales';
+      const imageId = workbook.addImage({
+        buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/4VEAAAAASUVORK5CYII=', 'base64'),
+        extension: 'png',
+      });
+      sheet.addImage(imageId, 'C2:D3');
+      await workbook.xlsx.writeFile(workbookPath);
+
+      const zip = await JSZip.loadAsync(await readFile(workbookPath));
+      const drawingEntry = zip.file('xl/drawings/drawing1.xml');
+      const drawingXml = await drawingEntry.async('string');
+      const prefix = namespaceStyle === 'default' ? '' : 'drawing';
+      zip.file(
+        'xl/drawings/drawing1.xml',
+        drawingXml
+          .replace('xmlns:xdr=', `xmlns${prefix ? `:${prefix}` : ''}=`)
+          .replace(/(<\/?)(?:xdr):/g, `$1${prefix ? `${prefix}:` : ''}`),
+      );
+      await writeFile(workbookPath, await zip.generateAsync({ type: 'nodebuffer' }));
+
+      const unnormalizedWorkbook = new ExcelJS.Workbook();
+      await expect(unnormalizedWorkbook.xlsx.readFile(workbookPath)).rejects.toThrow();
+
+      const preview = await getSpreadsheetInteractivePreview(workbookPath);
+      expect(preview.workbook.sheets['sheet-0'].cellData[0][0].v).toBe('Sales');
+      expect(preview.warnings).toContainEqual(expect.objectContaining({
+        code: 'SPREADSHEET_IMAGES_NOT_RENDERED',
+      }));
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns a stable preview error instead of a parser exception for unreadable drawing XML', async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'pilotdeck-spreadsheet-unreadable-'));
+    const workbookPath = path.join(tempDir, 'workbook.xlsx');
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Summary');
+      sheet.getCell('A1').value = 'Sales';
+      const imageId = workbook.addImage({ buffer: Buffer.from('image'), extension: 'png' });
+      sheet.addImage(imageId, 'C2:D3');
+      await workbook.xlsx.writeFile(workbookPath);
+      const zip = await JSZip.loadAsync(await readFile(workbookPath));
+      zip.file('xl/drawings/drawing1.xml', '<unexpected/>');
+      await writeFile(workbookPath, await zip.generateAsync({ type: 'nodebuffer' }));
+
+      await expect(getSpreadsheetInteractivePreview(workbookPath)).rejects.toMatchObject({
+        code: 'SPREADSHEET_INTERACTIVE_PARSE_FAILED',
+        statusCode: 422,
+        message: 'This workbook could not be parsed for interactive preview.',
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('falls back to the first visible sheet when the saved active sheet is hidden', async () => {
     const tempDir = await mkdtemp(path.join(tmpdir(), 'pilotdeck-spreadsheet-hidden-active-'));
     const workbookPath = path.join(tempDir, 'workbook.xlsx');

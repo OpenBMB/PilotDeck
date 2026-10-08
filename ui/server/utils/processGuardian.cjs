@@ -30,20 +30,34 @@ async function launch() {
   writeRecord(file, record);
   if (process.platform === 'win32') {
     const ready = `${file}.ready`, stopped = `${file}.stopped`, stop = `${file}.stop`;
-    const holder = cp.spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-      '-File', path.join(__dirname, 'processJob.ps1'), String(process.pid), ready, stopped, stop, identity.birth], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    // The Job terminates this guardian too. Keep supervisor diagnostics outside
+    // its pipes so failures during termination survive the guardian's exit.
+    const log = `${file}.job.log`;
+    const logFd = fs.openSync(log, 'a');
+    let holder;
+    try {
+      holder = cp.spawn(process.execPath, [path.join(__dirname, 'processJobHost.cjs'),
+        String(process.pid), ready, stopped, stop, identity.birth], {
+        stdio: ['ignore', logFd, logFd], windowsHide: true,
+        // libuv otherwise puts the holder in its own kill-on-parent-exit Job.
+        // It must survive this guardian to certify native Job termination.
+        detached: true,
+      });
+    } finally { fs.closeSync(logFd); }
     let failed = false;
     let diagnostic = '';
-    holder.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk.toString()).slice(-4000); });
     holder.on('error', error => { failed = true; diagnostic = error.message; });
-    holder.on('exit', () => { if (!fs.existsSync(ready)) failed = true; });
-    record.job = { ready, stopped, stop, holder: holder.pid };
+    holder.on('exit', (code, signal) => {
+      if (!fs.existsSync(ready)) failed = true;
+      if (code !== 0) fs.appendFileSync(log, `Job host exited: code=${code}, signal=${signal}\n`);
+    });
+    record.job = { ready, stopped, stop, log, holder: holder.pid };
     writeRecord(file, record);
     record.job.holderIdentity = getProcessIdentity(holder.pid);
     if (!record.job.holderIdentity) throw new Error('Windows Job supervisor identity unavailable');
     writeRecord(file, record);
     while (!fs.existsSync(ready)) {
-      if (failed || Date.now() >= deadline) throw new Error(`Windows process containment could not be established: ${diagnostic.trim() || 'startup deadline exceeded'}`);
+      if (failed || Date.now() >= deadline) throw new Error(`Windows process containment could not be established: ${diagnostic.trim() || fs.readFileSync(log, 'utf8').trim().slice(-4000) || 'startup deadline exceeded'}`);
       await new Promise(resolve => setTimeout(resolve, 25));
     }
   }

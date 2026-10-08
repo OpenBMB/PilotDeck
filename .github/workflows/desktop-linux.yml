@@ -1,0 +1,227 @@
+name: Linux
+
+on:
+  workflow_call:
+    inputs:
+      release_date:
+        description: Optional release date in YYYY-MM-DD
+        required: false
+        default: ""
+        type: string
+      revision:
+        description: Zero-based same-day build revision
+        required: false
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PILOTDECK_UPDATE_REPOSITORY: ${{ github.repository }}
+
+jobs:
+  deb:
+    name: DEB ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            deb_arch: amd64
+            unpacked_dir: linux-unpacked
+            runner: ubuntu-22.04
+          - arch: arm64
+            deb_arch: arm64
+            unpacked_dir: linux-arm64-unpacked
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      PILOTDECK_RELEASE_DATE: ${{ inputs.release_date }}
+      PILOTDECK_RELEASE_REVISION: ${{ inputs.revision }}
+      PILOTDECK_COMMIT_SHA: ${{ github.sha }}
+      PILOTDECK_DESKTOP_NODE_ARCH: ${{ matrix.arch }}
+      NODE_OPTIONS: --max-old-space-size=2560
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Verify native Ubuntu 22.04 build host
+        run: node apps/desktop/scripts/check-linux-build-host.mjs ${{ matrix.arch }}
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Linux background and quit lifecycle
+        run: node --test apps/desktop/scripts/desktop-lifecycle.test.mjs
+
+      - name: Set desktop release metadata
+        run: node apps/desktop/scripts/set-ci-version.mjs
+
+      - name: Build Ubuntu ${{ matrix.arch }} DEB
+        run: pnpm --filter pilotdeck-desktop run dist:linux:${{ matrix.arch }}
+
+      - name: Verify Ubuntu artifact and updater
+        shell: bash
+        env:
+          EXPECTED_DEB_ARCH: ${{ matrix.deb_arch }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+          UNPACKED_DIR: ${{ matrix.unpacked_dir }}
+        run: |
+          set -euo pipefail
+          deb_path="$(find apps/desktop/dist-electron -maxdepth 1 -name "*-linux-${EXPECTED_ARCH}.deb" -print -quit)"
+          test -n "$deb_path"
+          test "$(dpkg-deb --field "$deb_path" Architecture)" = "$EXPECTED_DEB_ARCH"
+          feed="latest-linux.yml"
+          if [ "$EXPECTED_ARCH" = arm64 ]; then feed="latest-linux-arm64.yml"; fi
+          test -s "apps/desktop/dist-electron/$feed"
+          grep -Fq "$(basename "$deb_path")" "apps/desktop/dist-electron/$feed"
+          app_dir="apps/desktop/dist-electron/$UNPACKED_DIR"
+          test -f "$app_dir/resources/package-type"
+          test "$(cat "$app_dir/resources/package-type")" = deb
+          ELECTRON_RUN_AS_NODE=1 "$app_dir/pilotdeck-desktop" \
+            apps/desktop/scripts/verify-updater.cjs "$app_dir/resources/app.asar"
+          echo "DEB_PATH=$deb_path" >> "$GITHUB_ENV"
+
+      - name: Install headless display and launcher validation tools
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            dbus-x11 desktop-file-utils weston x11-utils xauth xvfb
+
+      - name: Install DEB and exercise bundled native modules
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "./$DEB_PATH"
+          desktop-file-validate /usr/share/applications/pilotdeck-desktop.desktop
+          /opt/PilotDeck/resources/node/bin/node \
+            apps/desktop/scripts/verify-linux-package.cjs "$EXPECTED_ARCH"
+
+      - name: Smoke installed app under X11
+        run: bash apps/desktop/scripts/run-linux-display-smoke.sh x11
+
+      - name: Smoke installed app under Wayland
+        run: bash apps/desktop/scripts/run-linux-display-smoke.sh wayland
+
+      - name: Verify Linux menus, language and theme under X11
+        run: bash apps/desktop/scripts/run-linux-chrome-smoke.sh x11
+
+      - name: Verify Linux menus, language and theme under Wayland
+        run: bash apps/desktop/scripts/run-linux-chrome-smoke.sh wayland
+
+      - name: Upload Linux chrome screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: pilotdeck-linux-chrome-${{ matrix.arch }}
+          path: outputs/desktop-chrome-review/linux-*/linux-*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Ubuntu installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: pilotdeck-desktop-ubuntu-${{ matrix.arch }}
+          overwrite: true
+          path: |
+            apps/desktop/dist-electron/*-linux-${{ matrix.arch }}.deb
+            apps/desktop/dist-electron/latest-linux*.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  rpm:
+    name: RPM ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rpm_arch: x86_64
+            unpacked_dir: linux-unpacked
+            runner: ubuntu-22.04
+          - arch: arm64
+            rpm_arch: aarch64
+            unpacked_dir: linux-arm64-unpacked
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: rockylinux:9
+    timeout-minutes: 90
+    env:
+      PILOTDECK_RELEASE_DATE: ${{ inputs.release_date }}
+      PILOTDECK_RELEASE_REVISION: ${{ inputs.revision }}
+      PILOTDECK_COMMIT_SHA: ${{ github.sha }}
+      PILOTDECK_DESKTOP_NODE_ARCH: ${{ matrix.arch }}
+      USE_SYSTEM_FPM: "true"
+      NODE_OPTIONS: --max-old-space-size=2560
+    steps:
+      - name: Bootstrap container tools
+        run: dnf install -y git tar gzip xz which findutils
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install RPM build tools
+        run: bash apps/desktop/scripts/install-rpm-build-deps.sh
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+      - name: Verify Rocky Linux 9 build baseline
+        run: node apps/desktop/scripts/check-linux-build-host.mjs ${{ matrix.arch }} rpm
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Set desktop release metadata
+        run: node apps/desktop/scripts/set-ci-version.mjs
+      - name: Build RPM
+        run: pnpm --filter pilotdeck-desktop run dist:linux:rpm:${{ matrix.arch }}
+      - name: Verify RPM architecture, updater and baseline installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rpm_path="$(find apps/desktop/dist-electron -maxdepth 1 -name '*-linux-${{ matrix.arch }}.rpm' -print -quit)"
+          test -n "$rpm_path"
+          test "$(rpm -qp --qf '%{ARCH}' "$rpm_path")" = '${{ matrix.rpm_arch }}'
+          feed=latest-rpm-linux.yml
+          if [ '${{ matrix.arch }}' = arm64 ]; then feed=latest-rpm-linux-arm64.yml; fi
+          test -s "apps/desktop/dist-electron/$feed"
+          grep -Fq "$(basename "$rpm_path")" "apps/desktop/dist-electron/$feed"
+          test "$(cat apps/desktop/dist-electron/${{ matrix.unpacked_dir }}/resources/package-type)" = rpm
+          bash apps/desktop/scripts/verify-rpm-upgrade.sh "$rpm_path"
+          desktop-file-validate /usr/share/applications/pilotdeck-desktop.desktop
+          /opt/PilotDeck/resources/node/bin/node apps/desktop/scripts/verify-linux-package.cjs '${{ matrix.arch }}' rpm
+          ELECTRON_RUN_AS_NODE=1 /opt/PilotDeck/pilotdeck-desktop apps/desktop/scripts/verify-updater.cjs /opt/PilotDeck/resources/app.asar
+      - name: Install headless display tools
+        # Weston is a test-only EPEL dependency; verify the RPM baseline first.
+        run: |
+          dnf install -y epel-release
+          dnf --enablerepo=crb install -y dbus-x11 xorg-x11-server-Xvfb xorg-x11-xauth xwininfo weston
+      - name: Smoke installed app under X11
+        run: bash apps/desktop/scripts/run-linux-display-smoke.sh x11
+      - name: Smoke installed app under Wayland
+        run: bash apps/desktop/scripts/run-linux-display-smoke.sh wayland
+      - name: Upload RPM installer and feed
+        uses: actions/upload-artifact@v7
+        with:
+          name: pilotdeck-desktop-rpm-${{ matrix.arch }}
+          path: |
+            apps/desktop/dist-electron/*-linux-${{ matrix.arch }}.rpm
+            apps/desktop/dist-electron/latest-rpm-linux*.yml
+          if-no-files-found: error
+          retention-days: 14

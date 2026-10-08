@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+import { useFloatingPanel } from "../../../ui/useFloatingPanel";
 import {
   Check,
   Loader2,
@@ -68,7 +70,6 @@ export default function ConversationSwitcher({
   useCustomNamesVersion();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const sessionButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -95,24 +96,12 @@ export default function ConversationSwitcher({
     }
   }, []);
 
+  const menu = useFloatingPanel(open, triggerRef, close, { width: 320, maxHeight: 480, side: 'below' });
   useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) close();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      close(true);
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    requestAnimationFrame(() => searchRef.current?.focus());
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [close, open]);
+    if (!open) return;
+    const frame = requestAnimationFrame(() => searchRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
 
   const focusSession = useCallback((index: number) => {
     if (filteredSessions.length === 0) return;
@@ -155,7 +144,7 @@ export default function ConversationSwitcher({
     : t('filesWorkbench.conversations.newConversation');
 
   return (
-    <div ref={rootRef} className="conversation-title-wrap">
+    <div className="conversation-title-wrap">
       <span className="header-icon">
         <svg aria-hidden="true" className="icon" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="17">
           <path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
@@ -202,12 +191,15 @@ export default function ConversationSwitcher({
         </svg>
       </button>
 
-      {open ? (
+      {open ? createPortal(
         <div
+          ref={menu.panelRef}
+          style={menu.style}
           role="dialog"
+          data-dialog-surface
           aria-label={t('filesWorkbench.conversations.switchConversation')}
           data-testid="files-conversation-switcher-popover"
-          className="absolute left-0 top-[calc(100%+0.4rem)] z-[70] flex max-h-[min(30rem,calc(100vh-7rem))] w-[calc(100%+2.25rem)] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+          className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
         >
           <div className="border-b border-neutral-100 p-2 dark:border-neutral-800">
             <div className="relative">
@@ -314,7 +306,7 @@ export default function ConversationSwitcher({
               {t('filesWorkbench.conversations.recentOnly')}
             </div>
           ) : null}
-        </div>
+        </div>, document.body
       ) : null}
     </div>
   );

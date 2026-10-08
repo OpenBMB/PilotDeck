@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Project } from '../../../../types/app';
 import { AUTH_TOKEN_STORAGE_KEY } from '../../../auth/constants';
 import { useTheme } from '../../../../contexts/ThemeContext';
+import { applyMemoryAppearance } from '../../../../lib/memoryAppearance';
 
 type MemoryPanelProps = {
   selectedProject: Project | null;
@@ -50,7 +52,20 @@ function buildMemoryDashboardUrl(project: Project, locale: 'zh' | 'en', theme: '
 
 export default function MemoryPanel({ selectedProject }: MemoryPanelProps) {
   const { i18n } = useTranslation();
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, lightAppearance, preferences } = useTheme();
+  const frame = useRef<HTMLIFrameElement>(null);
+  const syncAppearance = useCallback(() => {
+    try {
+      const doc = frame.current?.contentDocument;
+      if (doc) applyMemoryAppearance(doc, lightAppearance, isDarkMode, document.documentElement.hasAttribute('data-reduced-motion'));
+    } catch { /* Never access external documents if a dashboard navigates away. */ }
+  }, [isDarkMode, lightAppearance]);
+  useEffect(() => {
+    syncAppearance();
+    const observer = new MutationObserver(syncAppearance);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-reduced-motion'] });
+    return () => observer.disconnect();
+  }, [syncAppearance, preferences]);
   const memoryLocale = normalizeMemoryLocale(i18n.language);
   const memoryTheme = normalizeMemoryTheme(isDarkMode);
   const text = MEMORY_PANEL_TEXT[memoryLocale];
@@ -79,6 +94,8 @@ export default function MemoryPanel({ selectedProject }: MemoryPanelProps) {
   return (
     <div className="h-full w-full bg-white dark:bg-neutral-950">
       <iframe
+        ref={frame}
+        onLoad={syncAppearance}
         key={`${selectedProject.fullPath || selectedProject.path || 'memory'}:${memoryLocale}:${memoryTheme}`}
         title={text.title}
         src={dashboardUrl}

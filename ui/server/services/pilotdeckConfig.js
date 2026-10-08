@@ -1,9 +1,10 @@
+import { parseThinkingSettings } from '../../../src/model/thinking/settings.js';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { createHash } from 'crypto';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { createHash, randomUUID } from 'crypto';
+import { parse as parseYaml, parseDocument, stringify as stringifyYaml } from 'yaml';
 import { parseGatewayConfig } from '../../../src/pilot/config/parseGatewayConfig.js';
 import { parseToolsConfig } from '../../../src/pilot/config/parseToolsConfig.js';
 import { lookupCatalogProvider } from '../../../src/model/catalog/index.js';
@@ -54,6 +55,8 @@ const CATALOG_PROVIDER_DEFAULT_URLS = {
   ollama: 'http://localhost:11434/v1',
 };
 let configWriteQueue = Promise.resolve();
+const DEFAULT_CONFIG_SETTLE_MS = 250;
+const DEFAULT_CONFIG_WRITE_ATTEMPTS = 3;
 
 // Serialize every read-modify-write caller against the same local YAML file.
 // The callback must read the config inside this critical section.
@@ -61,6 +64,14 @@ export function withPilotDeckConfigWrite(operation) {
   const run = configWriteQueue.then(operation, operation);
   configWriteQueue = run.catch(() => undefined);
   return run;
+}
+
+function configFileError(code, message) {
+  return Object.assign(new Error(message), { code, statusCode: 409 });
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function clone(value) {
@@ -104,7 +115,7 @@ export function buildDefaultPilotDeckConfig() {
       providers: {},
     },
     memory: {
-      enabled: true,
+      enabled: false,
       reasoningMode: 'answer_first',
       autoIndexIntervalMinutes: 30,
       autoDreamIntervalMinutes: 60,
@@ -112,6 +123,14 @@ export function buildDefaultPilotDeckConfig() {
       includeAssistant: true,
       maxMessageChars: 6000,
       heartbeatBatchSize: 30,
+    },
+    router: { enabled: false },
+    tools: { webSearch: { enabled: false } },
+    alwaysOn: { projects: {} },
+    adapters: {
+      feishu: { enabled: false },
+      weixin: { enabled: false },
+      wecom: { enabled: false },
     },
     webui: {
       runtime: {
@@ -138,6 +157,16 @@ export function buildDefaultPilotDeckConfig() {
 export function normalizePilotDeckConfig(input) {
   const source = isRecord(input) ? input : {};
   const normalized = deepMerge(buildDefaultPilotDeckConfig(), source);
+  // Older configured sections implied enabled. Do not let new-user defaults
+  // silently switch those existing features off during a read/save cycle.
+  for (const key of ['memory', 'router']) {
+    if (isRecord(source[key]) && source[key].enabled === undefined) {
+      normalized[key].enabled = true;
+    }
+  }
+  if (isRecord(source.tools?.webSearch) && source.tools.webSearch.enabled === undefined) {
+    normalized.tools.webSearch.enabled = true;
+  }
   const sourceOfficePreview = isRecord(source.webui?.officePreview)
     ? source.webui.officePreview
     : {};
@@ -279,6 +308,10 @@ function validateProvider(id, provider, errors) {
       }
       if (model !== null && model !== undefined && !isRecord(model)) {
         errors.push(`model.providers.${id}.models.${modelId} must be an object`);
+      }
+      if (isRecord(model)) {
+        try { parseThinkingSettings(model.thinking, protocol); }
+        catch (error) { errors.push(`model.providers.${id}.models.${modelId}: ${error.message}`); }
       }
     }
   }
@@ -769,9 +802,9 @@ export function configRevision(raw) {
   return createHash('sha256').update(String(raw ?? '')).digest('hex');
 }
 
-// Keep every config publisher on the same masked representation and revision.
-// The revision deliberately matches what the UI receives, not the secret-bearing
-// source file, so it can be sent back safely as an optimistic-lock token.
+// Keep every config publisher on the same masked representation. The opaque
+// revision is derived from the actual disk bytes so secret-only external edits
+// still invalidate an older settings draft.
 export function serializePilotDeckConfigResponse(record, reloadResult = null) {
   if (record.parseError) {
     return {
@@ -803,7 +836,7 @@ export function serializePilotDeckConfigResponse(record, reloadResult = null) {
     exists: record.exists,
     path: record.configPath,
     raw,
-    revision: configRevision(raw),
+    revision: configRevision(record.raw),
     config: maskedConfig,
     validation: {
       valid: validation.valid,
@@ -812,6 +845,222 @@ export function serializePilotDeckConfigResponse(record, reloadResult = null) {
     },
     ...(reloadResult ? { reload: reloadResult } : {}),
   };
+}
+
+async function readStablePilotDeckConfigFile({
+  settleMs = DEFAULT_CONFIG_SETTLE_MS,
+  maxAttempts = DEFAULT_CONFIG_WRITE_ATTEMPTS,
+} = {}) {
+  let previous = readPilotDeckConfigFile();
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (settleMs > 0) await sleep(settleMs);
+    const current = readPilotDeckConfigFile();
+    if (current.exists === previous.exists && current.raw === previous.raw) {
+      if (current.parseError) {
+        throw configFileError(
+          'INVALID_CONFIG_YAML',
+          `Invalid config YAML; repair it before saving: ${current.parseError}`,
+        );
+      }
+      return current;
+    }
+    previous = current;
+  }
+  throw configFileError(
+    'CONFIG_BUSY',
+    'Config is still changing on disk; retry after the external save finishes.',
+  );
+}
+
+function detectYamlIndent(raw) {
+  const indents = String(raw ?? '')
+    .split(/\r?\n/)
+    .filter(line => line.trim() && !line.trimStart().startsWith('#'))
+    .map(line => line.match(/^ +/)?.[0].length ?? 0)
+    .filter(value => value > 0);
+  return indents.length ? Math.max(2, Math.min(8, Math.min(...indents))) : 2;
+}
+
+function valueAtPath(value, keys) {
+  let current = value;
+  for (const key of keys) {
+    if (!isRecord(current) && !Array.isArray(current)) return undefined;
+    current = current[key];
+  }
+  return current;
+}
+
+function prepareYamlPathParents(doc, next, keys) {
+  for (let length = 1; length < keys.length; length += 1) {
+    const prefix = keys.slice(0, length);
+    if (doc.getIn(prefix) !== null) continue;
+    const nextParent = valueAtPath(next, prefix);
+    if (Array.isArray(nextParent)) doc.setIn(prefix, doc.createNode([]));
+    else if (isRecord(nextParent)) doc.setIn(prefix, doc.createNode({}));
+  }
+}
+
+async function resolveConfigWritePath(configPath) {
+  let current = path.resolve(configPath);
+  const visited = new Set();
+  for (;;) {
+    if (visited.has(current)) {
+      const error = new Error(`Too many symbolic links while resolving config path: ${configPath}`);
+      error.code = 'ELOOP';
+      throw error;
+    }
+    visited.add(current);
+
+    let stat;
+    try {
+      stat = await fsPromises.lstat(current);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      const resolvedDir = await fsPromises.realpath(path.dirname(current)).catch((dirError) => {
+        if (dirError?.code === 'ENOENT') return path.dirname(current);
+        throw dirError;
+      });
+      return path.join(resolvedDir, path.basename(current));
+    }
+    if (!stat.isSymbolicLink()) return fsPromises.realpath(current);
+
+    const linkTarget = await fsPromises.readlink(current);
+    current = path.resolve(path.dirname(current), linkTarget);
+  }
+}
+
+async function atomicWritePilotDeckYaml(raw, {
+  expectedRevision,
+  beforeWrite,
+  onWriteCommitted,
+} = {}) {
+  const configPath = getPilotDeckConfigPath();
+  const writePath = await resolveConfigWritePath(configPath);
+  const configDir = path.dirname(writePath);
+  await fsPromises.mkdir(configDir, { recursive: true });
+
+  let mode = 0o600;
+  try {
+    mode = (await fsPromises.stat(writePath)).mode & 0o777;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+
+  const tempPath = path.join(
+    configDir,
+    `.${path.basename(writePath)}.${process.pid}.${randomUUID()}.tmp`,
+  );
+  let handle;
+  try {
+    handle = await fsPromises.open(tempPath, 'wx', mode);
+    await handle.writeFile(raw, 'utf8');
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await beforeWrite?.();
+    const finalWritePath = await resolveConfigWritePath(configPath);
+    if (finalWritePath !== writePath) {
+      throw configFileError(
+        'CONFIG_CONFLICT',
+        'Config path changed while this update was being saved.',
+      );
+    }
+
+    let currentRaw;
+    try {
+      currentRaw = fs.readFileSync(writePath, 'utf8');
+    } catch (error) {
+      if (error?.code === 'ENOENT') currentRaw = '';
+      else throw error;
+    }
+    if (expectedRevision && configRevision(currentRaw) !== expectedRevision) {
+      throw configFileError(
+        'CONFIG_CONFLICT',
+        'Config changed while this update was being saved.',
+      );
+    }
+    // Keep the final version check and atomic replacement adjacent without
+    // yielding back to the event loop, so a detected external save cannot be
+    // overwritten by a queued local callback.
+    fs.renameSync(tempPath, writePath);
+    onWriteCommitted?.();
+    try {
+      const dirHandle = await fsPromises.open(configDir, 'r');
+      try { await dirHandle.sync(); } finally { await dirHandle.close(); }
+    } catch {
+      // Directory fsync is not supported on every platform/filesystem.
+    }
+  } finally {
+    if (handle) await handle.close().catch(() => undefined);
+    await fsPromises.unlink(tempPath).catch(error => {
+      if (error?.code !== 'ENOENT') throw error;
+    });
+  }
+}
+
+export async function updatePilotDeckConfig(
+  mutate,
+  {
+    paths,
+    beforeWrite,
+    onWriteCommitted,
+    settleMs = DEFAULT_CONFIG_SETTLE_MS,
+    maxAttempts = DEFAULT_CONFIG_WRITE_ATTEMPTS,
+  } = {},
+) {
+  if (!Array.isArray(paths) || paths.length === 0) {
+    throw new TypeError('updatePilotDeckConfig requires at least one changed path');
+  }
+  return withPilotDeckConfigWrite(async () => {
+    let lastConflict;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const disk = await readStablePilotDeckConfigFile({ settleMs, maxAttempts });
+      const next = clone(disk.rawYaml ?? {});
+      if (await mutate(next) === false) {
+        return { changed: false, config: disk.config, raw: disk.raw, configPath: disk.configPath };
+      }
+
+      const doc = parseDocument(disk.raw, { keepSourceTokens: true });
+      if (doc.errors.length) {
+        throw configFileError('INVALID_CONFIG_YAML', doc.errors[0].message);
+      }
+      for (const keys of paths) {
+        prepareYamlPathParents(doc, next, keys);
+        const value = valueAtPath(next, keys);
+        if (value === undefined) doc.deleteIn(keys);
+        else doc.setIn(keys, value);
+      }
+      const raw = doc.toString({ indent: detectYamlIndent(disk.raw), lineWidth: 0 });
+      try {
+        parseYaml(raw);
+      } catch (error) {
+        throw configFileError(
+          'INVALID_CONFIG_YAML',
+          `Config update produced invalid YAML: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      try {
+        await atomicWritePilotDeckYaml(raw, {
+          expectedRevision: configRevision(disk.raw),
+          beforeWrite,
+          onWriteCommitted,
+        });
+        const saved = readPilotDeckConfigFile();
+        return {
+          changed: true,
+          configPath: saved.configPath,
+          raw: saved.raw,
+          validation: validatePilotDeckConfig(saved.config),
+          config: saved.config,
+        };
+      } catch (error) {
+        if (error?.code !== 'CONFIG_CONFLICT' || attempt === maxAttempts - 1) throw error;
+        lastConflict = error;
+      }
+    }
+    throw lastConflict;
+  });
 }
 
 // Keep `router.scenarios.default` aligned with `agent.model` whenever we
@@ -987,7 +1236,12 @@ function finalizeBootstrapPlaceholder(config) {
 // after running through validation. UI-internal === disk schema, so
 // there's no read-modify-write needed anymore (the previous translation
 // layer existed only to bridge an older internal schema).
-export async function writePilotDeckConfig(config, { previousConfig } = {}) {
+export async function writePilotDeckConfig(config, {
+  previousConfig,
+  expectedRevision,
+  beforeWrite,
+  onWriteCommitted,
+} = {}) {
   let previous = previousConfig;
   if (!isRecord(previous)) {
     try {
@@ -1029,7 +1283,7 @@ export async function writePilotDeckConfig(config, { previousConfig } = {}) {
     }
   }
   const raw = stringifyYaml(yamlObj, { lineWidth: 0 });
-  await fsPromises.writeFile(configPath, raw, 'utf8');
+  await atomicWritePilotDeckYaml(raw, { expectedRevision, beforeWrite, onWriteCommitted });
   return { configPath, raw, validation, config: yamlObj };
 }
 

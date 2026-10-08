@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, appendFile } from "node:fs/promises";
+import { mkdir, appendFile, open } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import type { CanonicalMessage } from "../../model/index.js";
 import type { AgentTurnResult } from "../../agent/protocol/result.js";
@@ -44,6 +44,7 @@ export class JsonlTranscriptWriter implements AgentTranscriptWriter {
   private closed = false;
   private writeChain: Promise<void> = Promise.resolve();
   private lastEntryId: string | null = null;
+  private tailPrepared = false;
   private readonly now: () => Date;
 
   constructor(private readonly options: JsonlTranscriptWriterOptions) {
@@ -150,14 +151,40 @@ export class JsonlTranscriptWriter implements AgentTranscriptWriter {
 
   recordEntry(entry: AgentTranscriptEntry): Promise<void> {
     if (this.closed) return Promise.resolve();
+    // Capture the whole record before queued IO, so callers cannot mutate a
+    // replacement snapshot while an earlier append is still pending.
+    const line = `${JSON.stringify(entry)}\n`;
+    const flush = entry.type === "control_boundary" &&
+      entry.boundary.kind === "compact" && entry.boundary.subtype === "compact_boundary";
     this.sequence = Math.max(this.sequence, entry.sequence);
     this.lastEntryId = entry.entryId ?? this.lastEntryId;
     this.writeChain = this.writeChain.then(async () => {
       if (this.closed) return;
       await mkdir(dirname(this.options.path), { recursive: true, mode: 0o700 });
-      await appendFile(this.options.path, `${JSON.stringify(entry)}\n`, { encoding: "utf8", mode: 0o600 });
+      await this.prepareTail();
+      await appendFile(this.options.path, line, { encoding: "utf8", mode: 0o600, flush });
     });
     return this.writeChain;
+  }
+
+  private async prepareTail(): Promise<void> {
+    if (this.tailPrepared) return;
+    const file = await open(this.options.path, "a+", 0o600);
+    try {
+      const { size } = await file.stat();
+      if (size > 0) {
+        const lastByte = Buffer.alloc(1);
+        await file.read(lastByte, 0, 1, size - 1);
+        if (lastByte[0] !== 0x0a) {
+          // Keep crash debris for diagnostics, but never concatenate the next
+          // entry onto it. Also preserves valid JSON lacking a final newline.
+          await file.appendFile("\n");
+        }
+      }
+      this.tailPrepared = true;
+    } finally {
+      await file.close();
+    }
   }
 
   /**

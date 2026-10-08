@@ -50,6 +50,10 @@ export function useModelMenuLayout(open: boolean, advancedOpen: boolean, onClose
     const menu = menuRef.current;
     if (!trigger || !menu) return;
     const update = () => {
+      if (!trigger.isConnected || trigger.closest('[aria-hidden="true"]') || getComputedStyle(trigger).visibility === 'hidden') {
+        closeRef.current();
+        return;
+      }
       const viewport = window.visualViewport;
       const outerHeight = (element: HTMLElement) => element.scrollHeight + element.offsetHeight - element.clientHeight;
       const list = menu.querySelector<HTMLElement>('[data-model-list]');
@@ -75,7 +79,7 @@ export function useModelMenuLayout(open: boolean, advancedOpen: boolean, onClose
       trigger.focus();
     };
     const observer = new ResizeObserver(update);
-    observer.observe(trigger);
+    for (let node: HTMLElement | null = trigger; node; node = node.parentElement) observer.observe(node);
     observer.observe(menu);
     const composer = trigger.closest('.pd-composer-container');
     if (composer) observer.observe(composer);

@@ -28,7 +28,6 @@ import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
 import { ToolRegistry } from "../../tool/registry/ToolRegistry.js";
 import type {
-  PilotDeckReadFileStateMap,
   PilotDeckToolDefinition,
   PilotDeckWriteSnapshotMap,
 } from "../../tool/index.js";
@@ -44,7 +43,6 @@ import {
 } from "./builtinSubagentTypes.js";
 import {
   applySystemPromptFilters,
-  cloneReadFileState,
   cloneWriteSnapshots,
 } from "./contextInheritance.js";
 import { SubagentContinuationError } from "./continuation.js";
@@ -61,8 +59,8 @@ export type SubAgentSessionOptions = {
   parentConfig: AgentRuntimeConfig;
   /** Parent agent's runtime dependencies (model, scheduler factory, ...). */
   parentDependencies: AgentRuntimeDependencies;
-  /** Parent agent's read-file deduplication cache (cloned into the child). */
-  parentReadFileState?: PilotDeckReadFileStateMap;
+  /** Explicit file-read grants for attachments, cloned into the child. */
+  parentAllowedReadFiles?: readonly string[];
   /** Parent agent's write snapshots (cloned into the child). */
   parentWriteSnapshots?: PilotDeckWriteSnapshotMap;
   /** Parent session/turn scope used for forwarding child activity to hosts. */
@@ -177,7 +175,9 @@ export class SubAgentSession {
     let usedModel = { provider: subConfig.provider, model: subConfig.model };
 
     const loop = new AgentLoop(subConfig, subDependencies, {
-      readFileState: cloneReadFileState(this.options.parentReadFileState),
+      // A resumed child has its own message history and file-read cache.
+      readFileState: new Map(),
+      allowedReadFiles: [...(this.options.parentAllowedReadFiles ?? [])],
       writeSnapshots: cloneWriteSnapshots(this.options.parentWriteSnapshots),
     });
 
@@ -210,6 +210,9 @@ export class SubAgentSession {
       modelOverride: this.options.continuationModel,
       ...(sidechain
         ? {
+            // Persist all durable child messages, including recovered partial output.
+            onDurableMessage: (message: CanonicalMessage) =>
+              sidechain.recordDurableMessage(sidechainSessionId, turnId, message),
             onCompactPersisted: async ({
               boundary,
               messages: compactMessages,
@@ -217,13 +220,13 @@ export class SubAgentSession {
               boundary: AgentControlBoundaryTranscriptEntry["boundary"];
               messages: CanonicalMessage[];
             }) => {
-              // Mirror the parent-side persistence contract: boundary first,
-              // then the compact replacement messages (replay slices the
-              // history after the boundary).
-              await sidechain.recordControlBoundary?.(sidechainSessionId, turnId, boundary);
-              for (const message of compactMessages) {
-                await sidechain.recordDurableMessage(sidechainSessionId, turnId, message);
-              }
+              // Match the parent writer's atomic snapshot contract. Replay
+              // only drops old context when the replacement is complete.
+              if (boundary.kind !== "compact" || boundary.subtype !== "compact_boundary") return;
+              await sidechain.recordControlBoundary?.(sidechainSessionId, turnId, {
+                ...boundary,
+                snapshot: { version: 1, messages: compactMessages },
+              });
             },
           }
         : {}),
@@ -239,16 +242,6 @@ export class SubAgentSession {
         usedModel = { provider: event.event.provider, model: event.event.model };
       }
       this.forwardActivity(event);
-      if (
-        sidechain &&
-        (event.type === "assistant_message" || event.type === "tool_results_projected")
-      ) {
-        await sidechain.recordDurableMessage(
-          sidechainSessionId,
-          turnId,
-          event.message,
-        );
-      }
     }
     if (!last) {
       throw new Error("SubAgentSession: AgentLoop returned no result");
@@ -275,7 +268,7 @@ export class SubAgentSession {
         `SubAgentSession: subagent turn aborted (${last.result.stopReason})`,
       );
     }
-    if (last.result.type === "error") {
+    if (last.result.type === "error" || last.result.type === "max_turns") {
       const details = last.result.errors?.map((error) => error.message).join("; ");
       throw new Error(
         `SubAgentSession: subagent turn failed (${last.result.stopReason})${details ? `: ${details}` : ""}`,
@@ -347,6 +340,9 @@ export class SubAgentSession {
         type: "subagent_model_event",
         ...base,
         event: event.event,
+        timeline: event.timeline,
+        blockId: event.blockId,
+        streamBoundary: event.streamBoundary,
       });
       return;
     }
@@ -358,11 +354,26 @@ export class SubAgentSession {
       });
       return;
     }
+    if (event.type === "compact_started" || event.type === "compact_completed") {
+      emit({ type: "agent_status", ...base, event: `subagent_${event.type}`, timeline: event.timeline,
+        detail: { ...event, subagentId: base.subagentId } });
+      return;
+    }
+    if (event.type === "assistant_message") {
+      for (const block of event.message.content) {
+        if ((block.type === "text" || block.type === "thinking") && block.timeline) emit({
+          type: "agent_status", ...base, event: "subagent_assistant_block", timeline: block.timeline,
+          detail: { subagentId: base.subagentId, kind: block.type, text: block.text, blockId: block.blockId },
+        });
+      }
+      return;
+    }
     if (event.type === "tool_result") {
       emit({
         type: "subagent_tool_result",
         ...base,
         result: event.result,
+        timeline: event.timeline,
       });
     }
   }
@@ -435,12 +446,18 @@ export class SubAgentSession {
         ? {
             provider: subagentModel.provider,
             model: subagentModel.model,
-            ...(savedModel ? { subagentModel, modelMultimodal: subagentModel.modelMultimodal } : {}),
             ...(subagentModel.modelMultimodal
               ? { modelMultimodal: subagentModel.modelMultimodal }
               : {}),
           }
         : {}),
+      ...(savedModel ? {
+        // Clear inherited limits/capabilities and apply the saved model's current configuration.
+        subagentModel: undefined,
+        maxContextTokens: subagentModel?.maxContextTokens,
+        maxOutputTokens: subagentModel?.maxOutputTokens,
+        modelMultimodal: subagentModel?.modelMultimodal,
+      } : {}),
       // Ask mode performs read-only checks against each tool call's real
       // input. Do not probe dynamic isReadOnly implementations with a dummy
       // object while constructing the registry.

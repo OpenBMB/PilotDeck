@@ -315,8 +315,6 @@ function toOpenAIResponsesTokenCountBody(
     tool_choice: toolChoice,
     text,
     reasoning,
-    enable_thinking: enableThinking,
-    thinking_budget: thinkingBudget,
   } = fullBody;
   return omitUndefined({
     model: responseModel,
@@ -326,8 +324,6 @@ function toOpenAIResponsesTokenCountBody(
     tool_choice: toolChoice,
     text,
     reasoning,
-    enable_thinking: enableThinking,
-    thinking_budget: thinkingBudget,
   });
 }
 

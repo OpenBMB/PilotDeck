@@ -103,8 +103,7 @@ home's `permissions.json`:
 - The primary-agent page stays out of navigation. When deleting a referenced default
   model/provider, its dialog saves the replacement default and deletion together.
   This allows recovery from an invalid provider without saving an invalid intermediate
-  config. Empty/null model definitions remain valid replacement choices. Other model
-  references still block deletion, and a failed save retains the existing config.
+  config. Empty/null model definitions remain valid replacement choices. The removal preview repairs other model references atomically, and a failed save retains the existing config.
 - Built-in provider URLs/protocols remain fixed in the form. Model listing honors
   saved custom endpoints; DeepSeek's special list URL applies only to its official
   endpoint. Masked-key origin checks remain enforced.
@@ -142,3 +141,40 @@ home's `permissions.json`:
 
 These checks do not perform a signed macOS or Windows cross-version installer
 upgrade. The integration preserves main's updater rather than changing packaging.
+
+
+## Current model-reference navigation and theme coverage
+
+- The retired primary-agent model form and its unused route editors are removed.
+  Old `agent-model` links redirect to Model Pool. Primary models are edited in the
+  modern Model Pool; individual capabilities remain in its model-settings dialog.
+  The saved primary-agent context override is visible and editable there too;
+  clearing it restores the model context window used by automatic compaction.
+- Removal-preview links carry an exact `reference` query parameter. Main model,
+  memory model, and router/subagent references open their current settings owner
+  with focus and a visible highlight. Router reference details also expose saved
+  scenarios, fallback slots and baseline references absent from the main route form,
+  including models with dots or slashes in their IDs. Navigation never applies a
+  removal plan or writes config.
+- Light-theme brand icons, gradients, selected states, focus rings and shadows use
+  opt-in palette tokens. White reading surfaces, neutral controls and semantic
+  red/amber/green statuses keep their roles. Dark variants and named palette
+  preview swatches retain their own colours.
+- `ui/e2e/settings-navigation-theme.smoke.mjs` exercises 14 current settings pages
+  in mint/blue, all ten kinds of reference link, the retired route redirect,
+  context-override save/reload/clear, window resizing, concurrent-removal recovery,
+  the last-model router block, and dark/reload
+  behaviour in Chromium and real Electron with isolated profiles. Its API fixture
+  uses the production removal planner; server route tests cover the HTTP write
+  and revision semantics separately.
+- The model-selection browser fixture uses current project/session coordinates
+  and the server's accepted-send event. Its regressions verify local unsent drafts,
+  session restoration, accepted preferences across tabs, and mint/blue model menus
+  and file glyphs.
+- This follow-up passed 1,268 UI regressions (excluding the previously failing
+  stream-smoothing file), 178 settings checks after the context migration including
+  two new override cases, 680 server checks, 115 desktop checks with one skip,
+  and 11 model-selection browser checks. Production UI build and desktop compile
+  passed. Full UI type checking remains blocked by existing dependency/type errors;
+  comparison with the pre-change checkout found no new error signatures. Four
+  stream-smoothing failures reproduce on that checkout too.

@@ -8,7 +8,7 @@ export default function MainContentStateView({ mode }: MainContentStateViewProps
   const isLoading = mode === 'loading';
 
   return (
-    <div className="flex h-full flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="pd-workspace-body flex h-full flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center">
           <div className="flex items-center gap-2 text-[13px] text-neutral-500 dark:text-neutral-400">

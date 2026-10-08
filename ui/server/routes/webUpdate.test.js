@@ -9,7 +9,7 @@ async function request(service, path, body) {
   await new Promise((resolve) => server.on('listening', resolve));
   try {
     const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
-      method: path === '/status' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' },
+      method: path === '/status' || path === '/info' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     return { status: response.status, text: await response.text() };
@@ -17,6 +17,13 @@ async function request(service, path, body) {
 }
 
 describe('web update API', () => {
+  it('returns local build information without checking GitHub or deployment eligibility', async () => {
+    const check = vi.fn();
+    const current = { tagName: 'v2026.09.23', sourceSha: 'a'.repeat(40) };
+    const result = await request({ info: () => ({ current }), check }, '/info');
+    expect(JSON.parse(result.text)).toEqual({ current });
+    expect(check).not.toHaveBeenCalled();
+  });
   it('returns authoritative eligibility and disabled reason', async () => {
     const status = { canUpdate: false, hasUpdate: false, reason: 'development' };
     const result = await request({ check: async () => status }, '/check');

@@ -5,7 +5,10 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { getPluginCommandName } from "../../../src/extension/plugins/loading/PluginCommandLoader.js";
-import { loadSkillFromPath } from "../../../src/extension/plugins/loading/PluginLoader.js";
+import {
+  loadPluginFromPath,
+  loadSkillFromPath,
+} from "../../../src/extension/plugins/loading/PluginLoader.js";
 import { PluginRuntime } from "../../../src/extension/plugins/runtime/PluginRuntime.js";
 
 async function writeSkill(
@@ -36,6 +39,33 @@ test("standalone skills expose only their slug without a parent-directory namesp
     assert.equal(loaded.skills?.[0]?.name, "docx");
     assert.equal(loaded.skills?.[0]?.isSkill, true);
     assert.match(loaded.skills?.[0]?.content ?? "", /# DOCX skill/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("plugin skills load only SKILL.md files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pilotdeck-plugin-skill-filter-"));
+  try {
+    const pluginDir = join(root, "office");
+    const skillDir = join(pluginDir, "skills", "docx");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(
+      join(pluginDir, "plugin.json"),
+      JSON.stringify({ name: "office", version: "1.0.0" }),
+      "utf8",
+    );
+    await writeSkill(skillDir, "docx", "Create and edit Word documents.", "# DOCX skill");
+    await writeFile(join(skillDir, "README.md"), "# Not a skill\n", "utf8");
+    await mkdir(join(skillDir, "references"), { recursive: true });
+    await writeFile(join(skillDir, "references", "workflows.md"), "# Workflows\n", "utf8");
+    await mkdir(join(pluginDir, "commands"), { recursive: true });
+    await writeFile(join(pluginDir, "commands", "help.md"), "# Help command\n", "utf8");
+
+    const loaded = await loadPluginFromPath(pluginDir, "global");
+
+    assert.deepEqual(loaded.skills?.map((skill) => skill.name), ["office:docx"]);
+    assert.deepEqual(loaded.commands?.map((command) => command.name), ["office:help"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

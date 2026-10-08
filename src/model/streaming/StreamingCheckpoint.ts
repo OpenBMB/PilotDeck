@@ -1,6 +1,5 @@
 import type { CanonicalModelEvent } from "../protocol/canonical.js";
 import type { StreamInterruption } from "../protocol/errors.js";
-import { hasTextToolCallSyntax } from "./parseTextToolCalls.js";
 
 export interface StreamingCheckpoint {
   partialText: string;
@@ -69,7 +68,6 @@ export class StreamingCheckpointManager {
 
   canContinueText(): boolean {
     return this.hasSubstantialContent()
-      && !hasTextToolCallSyntax(this.checkpoint.partialText)
       && !this.checkpoint.hasReasoning
       && !this.checkpoint.hasToolCalls;
   }

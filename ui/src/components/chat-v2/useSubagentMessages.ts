@@ -1,3 +1,5 @@
+import { isTimelineMessage } from '../../stores/sessionTimeline';
+import { computeMerged } from '../../stores/useSessionStore';
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import type { ChatMessage } from '../chat/types/types';
 import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
@@ -48,6 +50,9 @@ export function mergeSubagentDetailMessages(
   realtimeMessages: NormalizedMessage[],
   useSnapshotOnly: boolean,
 ): NormalizedMessage[] {
+  if ([...snapshotMessages, ...realtimeMessages].some(isTimelineMessage)) {
+    return computeMerged(snapshotMessages, realtimeMessages);
+  }
   if (useSnapshotOnly && snapshotMessages.length > 0) {
     return snapshotMessages;
   }
@@ -101,6 +106,7 @@ export function inheritSubagentRenderKeys(previous: NormalizedMessage[], next: N
   // Reserve strong identities before matching by content, regardless of order.
   const used = new Set(exactMatches.flatMap((match) => match ? [key(match)] : []));
   return next.map((message, index) => {
+    if (message.timeline) return message;
     const candidates = previous.filter((candidate) => compatible(candidate, message) && !used.has(key(candidate)));
     let match = exactMatches[index];
     if (!match && message.content) {

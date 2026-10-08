@@ -146,6 +146,7 @@ vite.config.ts.timestamp-*
 
 # Local recording / artifacts
 artifacts/
+outputs/desktop-chrome-review/
 !src/session/artifacts/
 !src/session/artifacts/**
 
@@ -176,6 +177,7 @@ apps/desktop/resources/git/*
 !apps/desktop/resources/git/.gitkeep
 apps/desktop/resources/.git-download/
 apps/desktop/resources/.node-download/
+apps/desktop/resources/.installer-tools/
 apps/desktop/.runtime*/
 apps/desktop/dist/
 apps/desktop/dist-electron/

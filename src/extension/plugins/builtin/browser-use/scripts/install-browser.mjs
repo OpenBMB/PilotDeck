@@ -89,7 +89,8 @@ function resolveBrowserSet(env = process.env) {
 }
 
 function resolveHostPlatform() {
-  if (process.platform === "win32" && process.arch === "x64") return "win64";
+  // Chrome for Testing uses the win64 distribution on Windows ARM64 as well.
+  if (process.platform === "win32" && (process.arch === "x64" || process.arch === "arm64")) return "win64";
   if (process.platform === "darwin" && (process.arch === "arm64" || process.arch === "x64")) {
     const suffix = process.arch === "arm64" ? "-arm64" : "";
     return `mac${readMacMajorVersion()}${suffix}`;
