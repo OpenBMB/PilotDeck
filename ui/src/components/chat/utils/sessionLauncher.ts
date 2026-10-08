@@ -24,7 +24,6 @@ type StartSessionOptions = {
     provider: string;
     model: string;
     reasoning?: number;
-    temperature?: number;
     speed?: number;
   };
   images?: unknown[];

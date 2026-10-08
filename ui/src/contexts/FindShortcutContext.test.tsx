@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   FindShortcutProvider,
+  hasFindShortcutTarget,
   useRegisterFindShortcutTarget,
   type FindShortcutScope,
 } from './FindShortcutContext';
@@ -40,6 +41,17 @@ afterEach(() => {
 });
 
 describe('FindShortcutProvider', () => {
+  it('leaves Control+Command+F to native fullscreen without opening search', () => {
+    const onOpen = vi.fn();
+    render(<FindShortcutProvider activeScope="chat"><Target scope="chat" label="Chat" onOpen={onOpen} /></FindShortcutProvider>);
+    const event = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, metaKey: true, bubbles: true, cancelable: true });
+    document.dispatchEvent(event);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+    fireEvent.keyDown(document, { key: 'f', metaKey: true });
+    expect(onOpen).toHaveBeenCalledOnce();
+  });
+
   it('routes a body-level shortcut to the active file scope', () => {
     const openFile = vi.fn();
     const openChat = vi.fn();
@@ -86,6 +98,7 @@ describe('FindShortcutProvider', () => {
     fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
 
     expect(openChat).not.toHaveBeenCalled();
+    expect(hasFindShortcutTarget()).toBe(false);
   });
 
   it('ignores focus left inside a hidden chat surface when Files is active', () => {
@@ -107,6 +120,7 @@ describe('FindShortcutProvider', () => {
 
     expect(openFile).toHaveBeenCalledTimes(1);
     expect(openChat).not.toHaveBeenCalled();
+    expect(hasFindShortcutTarget()).toBe(true);
   });
 
   it('gives a modal search target priority over the active page scope', () => {
@@ -131,4 +145,17 @@ describe('FindShortcutProvider', () => {
     expect(openModal).toHaveBeenCalledTimes(1);
     expect(openFile).not.toHaveBeenCalled();
   });
+});
+
+it('native menu Find follows focused file content rather than the active chat default', () => {
+  const openFile = vi.fn();
+  const openChat = vi.fn();
+  render(<FindShortcutProvider activeScope="chat">
+    <Target scope="file" label="File content" onOpen={openFile} />
+    <Target scope="chat" label="Chat content" onOpen={openChat} />
+  </FindShortcutProvider>);
+  screen.getByRole('button', { name: 'File content' }).focus();
+  window.dispatchEvent(new Event('pilotdeck:find'));
+  expect(openFile).toHaveBeenCalledOnce();
+  expect(openChat).not.toHaveBeenCalled();
 });

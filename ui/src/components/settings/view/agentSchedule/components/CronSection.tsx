@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { Clock3 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import SettingsToggle from "../../../shared/view/SettingsToggle";
+import { GeneralSettingsIcon } from "../../../shared/view/GeneralSettingsPrimitives";
 import { isCronConfigEnabled } from "../utils/cron";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
@@ -171,23 +174,19 @@ export default function CronSection({ config, onChange }: CronSectionProps) {
     );
 
   return (
+    <>
+    <section className="route-card route-enable-card scheduled-enable-card">
+      <div className="route-card-heading">
+        <span className="route-heading-icon"><GeneralSettingsIcon icon={Clock3} /></span>
+        <h2>{t("pilotDeckConfig.panels.cron.enableLabel")}</h2>
+      </div>
+      <SettingsToggle checked={isCronConfigEnabled(config)} ariaLabel={t("pilotDeckConfig.panels.cron.enableLabel")}
+        suppressNextSaveToast onChange={enabled => { onChange(patch(config, ["cron", "enabled"], enabled)); setEditingField(null); }} />
+    </section>
     <section
       className="scheduled-card"
       aria-label={t("pilotDeckConfig.panels.cron.configAria")}
     >
-      {!isCronConfigEnabled(config) && (
-        <div className="scheduled-setting-row" role="status">
-          <div className="scheduled-setting-copy">
-            <strong>{t("pilotDeckConfig.panels.cron.disabledStatus")}</strong>
-          </div>
-          <div className="scheduled-control-area">
-            <button className="button secondary compact" type="button"
-              onClick={() => onChange(patch(config, ["cron", "enabled"], true))}>
-              {t("pilotDeckConfig.panels.cron.enableAction")}
-            </button>
-          </div>
-        </div>
-      )}
       <div className="scheduled-setting-row">
         <div className="scheduled-setting-copy">
           <label htmlFor="scheduled-timezone">
@@ -257,5 +256,6 @@ export default function CronSection({ config, onChange }: CronSectionProps) {
         </div>
       </div>
     </section>
+    </>
   );
 }

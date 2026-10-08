@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
-import { normalizeModelSelection } from '../../chat-v2/modelCapabilityOptions';
+import { normalizeModelSelection, modelSelectionId, capabilityIncludesValue } from '../../chat-v2/modelCapabilityOptions';
 import { globalModelSelectionStore, modelSelectionError, readSessionModelSelection } from '../utils/globalModelSelection';
 import type { ChatModelSelection } from './useChatProviderState';
 
@@ -36,9 +36,16 @@ export function useChatModelSelection({ projectKey = '', sessionId = '' }: { pro
   const currentDraft = draft?.key === key ? draft.value : null;
   const currentHistory = history?.key === key && history.revision === revision ? history : null;
   const restoring = Boolean(projectKey && sessionId && !currentHistory && !currentDraft);
-  const selection = currentDraft || (currentHistory && !currentHistory.error
+  const savedSelection = currentDraft || (currentHistory && !currentHistory.error
     ? currentHistory.selection || state.selection
     : local || state.selection);
+  const item = state.catalog.find(candidate => candidate.id === modelSelectionId(savedSelection));
+  let selection = savedSelection;
+  if (selection?.mode === 'model' && selection.reasoning !== undefined && item &&
+      (!item.capabilities.reasoning || !capabilityIncludesValue(item.capabilities.reasoning, selection.reasoning))) {
+    const { reasoning: _stale, ...rest } = selection;
+    selection = rest;
+  }
   const error = modelSelectionError({ ...state, selection, error: state.error || (!currentDraft ? currentHistory?.error : null) || null });
   const empty = !state.loading && state.catalog.length === 0 && !state.error;
   const setModelSelection = useCallback((value: ChatModelSelection) => setDraft({ key, value: { ...value } }), [key]);

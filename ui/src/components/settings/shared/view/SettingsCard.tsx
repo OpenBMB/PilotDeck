@@ -14,6 +14,7 @@ export default function SettingsCard({
 }: SettingsCardProps) {
   return (
     <div
+      data-settings-surface="panel"
       className={cn(
         "rounded-xl border border-border bg-card/50",
         divided && "divide-y divide-border",

@@ -10,16 +10,21 @@ PilotDeck transcribes audio through an included Node stdio MCP that invokes the 
 | Linux | ARM64 | `funasr-llamacpp-linux-arm64.tar.gz` |
 | Linux | x64 | `funasr-llamacpp-linux-x64.tar.gz` |
 | Windows | x64 | `funasr-llamacpp-windows-x64.zip` |
+| Windows 11 | ARM64 | `funasr-llamacpp-windows-x64.zip` (Windows x64 emulation) |
 
-macOS x64 and Windows ARM64 are deliberately rejected until FunASR ships matching upstream assets.
+Windows ARM64 shares the `win32-x64` runtime cache with the x64 client, so existing installations remain available after switching clients. macOS x64 remains unsupported by this pinned upstream release.
+
+Windows runtimes require the [Microsoft Visual C++ v14 Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist/). Use Microsoft's x64 package, which includes x64 and ARM64 libraries for Windows ARM64 devices.
 
 ## Install or Verify
 
-Run this from the PilotDeck source checkout or installed app directory:
+Run this from the PilotDeck source checkout:
 
 ```bash
 npm run install:asr
 ```
+
+For an installed desktop app, run the exact command printed by its audio attachment or MCP diagnostic through PilotDeck's Bash tool. It invokes the app's bundled Node with `resources/runtime/scripts/install-asr.mjs`; a separate npm installation is not required.
 
 The command downloads the fixed `runtime-llamacpp-v0.2.0` archive and installs SenseVoiceSmall q8 plus FSMN-VAD. Model downloads try ModelScope first and Hugging Face second. Downloads use a temporary `.part` file and are renamed into place only after a complete response, so it is safe to rerun after a network interruption.
 
@@ -38,7 +43,7 @@ When `PILOT_HOME` is unset, PilotDeck uses `~/.pilotdeck` (or the platform-equiv
 
 The installer prints the failed stage and source URL. A runtime failure distinguishes download, unpacking, and missing executable errors. A model failure reports the independent ModelScope and Hugging Face causes, which usually identifies DNS, TLS, proxy, rate-limit, or blocked-source problems. Downloads honor `PILOTDECK_PROXY`/`HTTPS_PROXY` first, then `proxy.url` and `proxy.noProxy` in `$PILOT_HOME/pilotdeck.yaml`.
 
-No half-downloaded runtime or model is used. Re-run `npm run install:asr` after correcting network or proxy settings. Existing complete cache entries are reused.
+No half-downloaded runtime or model is used. Re-run the installation command after correcting network or proxy settings. Existing complete cache entries are reused.
 
 ## Runtime Use
 

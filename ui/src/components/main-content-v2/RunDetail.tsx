@@ -40,7 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
   failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   apply_failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   applying: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  applied: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  applied: 'bg-[var(--pd-accent-soft,#f3e8ff)] text-[var(--pd-accent-strong,#7e22ce)] dark:bg-purple-900/40 dark:text-purple-300',
   archived: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
 };
 

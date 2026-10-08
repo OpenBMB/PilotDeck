@@ -6,18 +6,15 @@ import type {
 
 export type ModelParameterValues = {
   reasoning?: number;
-  temperature?: number;
   speed?: number;
 };
 
 export const REASONING_LABELS = new Map<number, string>([
-  [0, "Off"],
-  [0.2, "Light"],
   [0.4, "Low"],
   [0.6, "Medium"],
   [0.8, "High"],
-  [0.9, "Extra high"],
-  [1, "Maximum"],
+  [0.9, "Xhigh"],
+  [1, "Max"],
 ]);
 
 export const SPEED_LABELS = new Map<number, string>([
@@ -109,11 +106,9 @@ export function paramsFromSelection(
   if (selection?.mode !== "model") return {};
   if (modelId && modelSelectionId(selection) !== modelId) return {};
   const reasoning = readFiniteNumber(selection.reasoning);
-  const temperature = readFiniteNumber(selection.temperature);
   const speed = readFiniteNumber(selection.speed);
   return {
     ...(reasoning !== undefined ? { reasoning } : {}),
-    ...(temperature !== undefined ? { temperature } : {}),
     ...(speed !== undefined ? { speed } : {}),
   };
 }
@@ -128,7 +123,6 @@ export function buildExplicitSelection(
     model: item.model,
   };
   if (params.reasoning !== undefined) selection.reasoning = params.reasoning;
-  if (params.temperature !== undefined) selection.temperature = params.temperature;
   if (params.speed !== undefined) selection.speed = params.speed;
   return selection;
 }
@@ -139,18 +133,12 @@ export function preserveParamsForModel(
 ): ModelParameterValues {
   if (selection?.mode !== "model") return {};
   const reasoning = readFiniteNumber(selection.reasoning);
-  const temperature = readFiniteNumber(selection.temperature);
   const speed = readFiniteNumber(selection.speed);
   return {
     ...(item.capabilities.reasoning &&
     reasoning !== undefined &&
     capabilityIncludesValue(item.capabilities.reasoning, reasoning)
       ? { reasoning }
-      : {}),
-    ...(item.capabilities.temperature &&
-    temperature !== undefined &&
-    capabilityIncludesValue(item.capabilities.temperature, temperature)
-      ? { temperature }
       : {}),
     ...(item.capabilities.speed &&
     speed !== undefined &&
@@ -192,7 +180,6 @@ export function normalizeModelSelection(value: unknown): ChatModelSelection | nu
       { provider: record.provider, model: record.model },
       {
         reasoning: readFiniteNumber(record.reasoning),
-        temperature: readFiniteNumber(record.temperature),
         speed: readFiniteNumber(record.speed),
       },
     );
@@ -215,7 +202,7 @@ export function parseNumericCapability(value: unknown): ModelNumericCapability |
   if (min !== undefined) parsed.min = min;
   if (max !== undefined) parsed.max = max;
   if (step !== undefined) parsed.step = step;
-  if (values && values.length > 0) parsed.values = values;
+  if (values) parsed.values = values;
   return parsed;
 }
 
@@ -234,7 +221,6 @@ export function parseCatalogItem(value: unknown): ChatModelCatalogItem | null {
       ? (record.capabilities as Record<string, unknown>)
       : {};
   const reasoning = parseNumericCapability(capabilitiesRecord.reasoning);
-  const temperature = parseNumericCapability(capabilitiesRecord.temperature);
   const speed = parseNumericCapability(capabilitiesRecord.speed);
   return {
     id: record.id,
@@ -245,7 +231,6 @@ export function parseCatalogItem(value: unknown): ChatModelCatalogItem | null {
     available: record.available !== false,
     capabilities: {
       ...(reasoning ? { reasoning } : {}),
-      ...(temperature ? { temperature } : {}),
       ...(speed ? { speed } : {}),
     },
   };

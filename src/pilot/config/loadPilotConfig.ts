@@ -383,7 +383,6 @@ function parseAgentThinking(value: unknown): PilotAgentConfig["thinking"] | unde
   if (value.enabled !== true) return undefined;
   return {
     enabled: true,
-    ...(typeof value.budgetTokens === "number" ? { budgetTokens: value.budgetTokens } : {}),
   };
 }
 

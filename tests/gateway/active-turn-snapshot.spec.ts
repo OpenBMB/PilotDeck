@@ -1,3 +1,4 @@
+import { ActiveTimeline } from "../../src/gateway/stream/ActiveTimeline.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -16,6 +17,7 @@ type ActiveTurnReplayStore = {
     sessionKey: string;
     runId: string;
     events: GatewayEvent[];
+    timelineEvents: ActiveTimeline;
     bytes: number;
     truncated: boolean;
   }>;
@@ -57,6 +59,7 @@ test("status-only active turn snapshots omit buffered events", async () => {
     get events(): GatewayEvent[] {
       throw new Error("status-only polling must not read buffered events");
     },
+    timelineEvents: new ActiveTimeline(),
     bytes: 1,
     truncated: false,
   });
@@ -69,6 +72,7 @@ test("status-only active turn snapshots omit buffered events", async () => {
     sessionKey: "cron:active",
     runId: "run-1",
     events: [event],
+    timelineEvents: new ActiveTimeline(),
     bytes: 1,
     truncated: false,
   });
@@ -158,4 +162,22 @@ test("gateway failure status keeps the attempted run id for live/history dedupli
   assert.deepEqual(recorded, [{ turnId: "run-failure" }]);
   assert.equal(events.find((event) => event.type === "agent_status")?.runId, "run-failure");
   assert.equal(events.find((event) => event.type === "error")?.runId, "run-failure");
+});
+
+test("history rereads when its active epoch settles during the disk read", async () => {
+  let reads = 0;
+  const gateway = new InProcessGateway({} as SessionRouter, {
+    readSessionMessages: async () => {
+      reads++;
+      if (reads === 1) (gateway as unknown as ActiveTurnReplayStore).activeTurnReplays.delete('s');
+      return { messages: [], total: reads, session: { sessionKey: 's', sessionId: 's', summary: 'test', lastModified: 0 } };
+    },
+  });
+  (gateway as unknown as ActiveTurnReplayStore).activeTurnReplays.set('s', {
+    sessionKey: 's', runId: 'r', events: [], bytes: 0, truncated: false, timelineEvents: new ActiveTimeline(),
+  });
+  const snapshot = await gateway.readSessionMessages({ sessionKey: 's' });
+  assert.equal(reads, 2);
+  assert.equal(snapshot.total, 2);
+  assert.equal(snapshot.stream?.active, false);
 });

@@ -23,6 +23,7 @@ type NavSection = {
 
 const PRIMARY_ITEMS: NavItem[] = [
   { key: "general", labelKey: "settingsPage.menu.general" },
+  { key: "appearance", labelKey: "lightAppearance.title" },
   { key: "modelPool", labelKey: "settingsPage.menu.modelPool" },
 ];
 

@@ -18,11 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.32.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.23.1
           cache: pnpm
@@ -38,12 +38,13 @@ jobs:
         # and streamSmoother's fake-timer spec is independently flaky. Keep the
         # rest of the Web suite as the merge gate until those baseline tests are
         # repaired in their own change.
-        # Desktop Smoke runs the updater network suite with desktop dependencies.
+        # Desktop Smoke runs both updater suites with desktop dependencies.
         run: >-
           pnpm --dir ui exec vitest run
           --exclude 'e2e/**'
           --exclude 'src/components/chat/hooks/streamSmoother.test.ts'
           --exclude 'server/services/desktopUpdateNetwork.test.ts'
+          --exclude 'server/services/desktopUpdates.spec.ts'
 
   docker:
     runs-on: ubuntu-latest

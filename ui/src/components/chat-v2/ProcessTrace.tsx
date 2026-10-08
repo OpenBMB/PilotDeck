@@ -137,7 +137,7 @@ export function ProcessLiveStatus({
 
   return (
     <div
-      className={`process-live-status ${compact ? 'py-0' : 'pb-1'} text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${className}`}
+      className={`process-live-status w-full min-w-0 ${compact ? 'py-0' : 'pb-1'} text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${className}`}
     >
       <div role="status" aria-live="polite">
         {hasDetails ? (
@@ -158,7 +158,7 @@ export function ProcessLiveStatus({
         )}
       </div>
       {expanded && hasDetails ? (
-        <div className={`mt-1.5 space-y-1.5 ${contentClassName ?? 'pl-5'}`}>
+        <div className={`mt-1.5 space-y-1.5 ${contentClassName ?? ''}`}>
           {children}
         </div>
       ) : null}
@@ -262,7 +262,8 @@ export function ProcessTrace({
   };
   const hasDetails = steps.length > 0 || Boolean(children);
   const visibleCollapsedDetail = !expanded && collapsedDetail;
-  const summaryIconStep = steps[0] || { title: label, state: status };
+  // Individual tool failures belong in the expanded details, not the group icon.
+  const summaryIconStep = { ...(steps[0] || { title: label }), state: status, severity: undefined };
   const SummaryIcon = getStepIcon(summaryIconStep);
   const isRunning = status === 'running';
 
@@ -270,7 +271,7 @@ export function ProcessTrace({
     <div
       role={live ? 'status' : undefined}
       aria-live={live ? 'polite' : undefined}
-      className={`process-trace py-0 ${className}`}
+      className={`process-trace w-full min-w-0 py-0 ${className}`}
     >
       <button
         type="button"
@@ -307,7 +308,7 @@ export function ProcessTrace({
       </button>
 
       {expanded ? (
-        <div className="mt-1.5 space-y-1.5 pl-5">
+        <div className="mt-1.5 space-y-1.5">
           {steps.length > 3 ? (
             <AgentTimeline steps={steps} />
           ) : (

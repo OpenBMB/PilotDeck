@@ -52,6 +52,7 @@ export default function CreateWorkspaceModal({
       <div
         className="onboarding-shell create-workspace-dialog"
         role="dialog"
+        data-dialog-surface
         aria-modal="true"
         aria-labelledby="create-workspace-dialog-title"
       >

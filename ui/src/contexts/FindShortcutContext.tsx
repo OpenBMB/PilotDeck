@@ -29,6 +29,16 @@ type FindShortcutProviderProps = {
 };
 
 const FindShortcutContext = createContext<FindShortcutContextValue | null>(null);
+const availabilityResolvers = new Set<() => FindShortcutTarget | undefined>();
+
+/** Native menu state uses exactly the same target resolver as Find dispatch. */
+export function hasFindShortcutTarget(): boolean {
+  return [...availabilityResolvers].some(resolve => Boolean(resolve()));
+}
+
+function refreshFindAvailability() {
+  window.dispatchEvent(new Event('pilotdeck:refresh-menu'));
+}
 
 function isTargetAvailable(target: FindShortcutTarget): boolean {
   const container = target.containerRef.current;
@@ -36,7 +46,7 @@ function isTargetAvailable(target: FindShortcutTarget): boolean {
   return !container.closest('[aria-hidden="true"], [hidden], [inert]');
 }
 
-function eventTargetElement(event: KeyboardEvent): Element | null {
+function eventTargetElement(event: Event): Element | null {
   if (event.target instanceof Element) return event.target;
   return document.activeElement instanceof Element ? document.activeElement : null;
 }
@@ -54,51 +64,66 @@ export function FindShortcutProvider({ activeScope, children }: FindShortcutProv
   const registerTarget = useCallback((target: FindShortcutTarget) => {
     const key = Symbol(target.scope);
     targetsRef.current.set(key, target);
+    refreshFindAvailability();
     return () => {
       targetsRef.current.delete(key);
+      refreshFindAvailability();
     };
   }, []);
 
+  const resolveTarget = useCallback((targetElement: Element | null) => {
+    const targets = Array.from(targetsRef.current.values())
+      .reverse()
+      .filter(isTargetAvailable);
+    const modalOverlay = document.querySelector<HTMLElement>('[data-modal-overlay]');
+
+    let eligibleTargets = targets;
+    if (modalOverlay) {
+      eligibleTargets = targets.filter((target) => {
+        const container = target.containerRef.current;
+        return Boolean(
+          target.captureInModal
+          || (container && modalOverlay.contains(container)),
+        );
+      });
+      if (eligibleTargets.length === 0) return;
+    }
+
+    const containingTarget = targetElement
+      ? eligibleTargets.find((target) => target.containerRef.current?.contains(targetElement))
+      : undefined;
+    const explicitScope = markedScope(targetElement);
+    let shortcutTarget = containingTarget;
+    if (!shortcutTarget && explicitScope) {
+      shortcutTarget = eligibleTargets.find((target) => target.scope === explicitScope);
+    } else if (!shortcutTarget && modalOverlay) {
+      shortcutTarget = eligibleTargets.find((target) => target.captureInModal)
+        ?? eligibleTargets[0];
+    } else if (!shortcutTarget) {
+      shortcutTarget = eligibleTargets.find((target) => target.scope === activeScope);
+    }
+
+    return shortcutTarget;
+  }, [activeScope]);
+
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const isFindShortcut = (event.ctrlKey || event.metaKey)
-        && event.key.toLowerCase() === 'f';
+    const resolve = () => resolveTarget(document.activeElement);
+    availabilityResolvers.add(resolve);
+    refreshFindAvailability();
+    return () => {
+      availabilityResolvers.delete(resolve);
+      refreshFindAvailability();
+    };
+  }, [resolveTarget]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: Event) => {
+      const isFindShortcut = !(event instanceof KeyboardEvent) || (
+        (event.ctrlKey !== event.metaKey) && !event.shiftKey && !event.altKey && !event.isComposing
+        && event.key.toLowerCase() === 'f');
       if (!isFindShortcut) return;
-
-      const targetElement = eventTargetElement(event);
-      const targets = Array.from(targetsRef.current.values())
-        .reverse()
-        .filter(isTargetAvailable);
-      const modalOverlay = document.querySelector<HTMLElement>('[data-modal-overlay]');
-
-      let eligibleTargets = targets;
-      if (modalOverlay) {
-        eligibleTargets = targets.filter((target) => {
-          const container = target.containerRef.current;
-          return Boolean(
-            target.captureInModal
-            || (container && modalOverlay.contains(container)),
-          );
-        });
-        if (eligibleTargets.length === 0) return;
-      }
-
-      const containingTarget = targetElement
-        ? eligibleTargets.find((target) => target.containerRef.current?.contains(targetElement))
-        : undefined;
-      const explicitScope = markedScope(targetElement);
-      let shortcutTarget = containingTarget;
-      if (!shortcutTarget && explicitScope) {
-        shortcutTarget = eligibleTargets.find((target) => target.scope === explicitScope);
-      } else if (!shortcutTarget && modalOverlay) {
-        shortcutTarget = eligibleTargets.find((target) => target.captureInModal)
-          ?? eligibleTargets[0];
-      } else if (!shortcutTarget) {
-        shortcutTarget = eligibleTargets.find((target) => target.scope === activeScope);
-      }
-
-      // Do not fall through to another application surface. If the active
-      // scope has no searchable target, retain the browser's native find.
+      const shortcutTarget = resolveTarget(eventTargetElement(event));
+      // No searchable target: retain the browser's native find.
       if (!shortcutTarget) return;
 
       event.preventDefault();
@@ -107,8 +132,12 @@ export function FindShortcutProvider({ activeScope, children }: FindShortcutProv
     };
 
     document.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [activeScope]);
+    window.addEventListener('pilotdeck:find', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('pilotdeck:find', handleKeyDown);
+    };
+  }, [resolveTarget]);
 
   const value = useMemo(() => ({ registerTarget }), [registerTarget]);
 

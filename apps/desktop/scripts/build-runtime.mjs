@@ -260,10 +260,9 @@ function prepareRuntimeTree(installEnv = process.env) {
   copyFiltered(resolve(repoRoot, "ui", "public"), resolve(runtimeRoot, "ui", "public"), () => true);
   copyFiltered(resolve(repoRoot, "ui", "dist"), resolve(runtimeRoot, "ui", "dist"), () => true);
   mkdirSync(resolve(runtimeRoot, "scripts"), { recursive: true });
-  cpSync(
-    resolve(repoRoot, "scripts", "check-node-runtime.mjs"),
-    resolve(runtimeRoot, "scripts", "check-node-runtime.mjs"),
-  );
+  for (const script of ["check-node-runtime.mjs", "install-asr.mjs"]) {
+    cpSync(resolve(repoRoot, "scripts", script), resolve(runtimeRoot, "scripts", script));
+  }
   rewriteUiServerSourceImports(resolve(runtimeRoot, "ui", "server"));
   writeFileSync(
     resolve(runtimeRoot, "ui", "package.json"),
@@ -538,6 +537,7 @@ function verifyRuntime(root, label = "runtime", runtimeArch = targetRuntimeArch)
     resolve(runtimeRoot, "ui", "dist", "index.html"),
     resolve(runtimeRoot, "ui", "server", "index.js"),
     resolve(runtimeRoot, "scripts", "check-node-runtime.mjs"),
+    resolve(runtimeRoot, "scripts", "install-asr.mjs"),
     resolve(runtimeRoot, "node_modules", "express"),
     resolve(runtimeRoot, "node_modules", "exceljs"),
     resolve(runtimeRoot, "node_modules", "react"),

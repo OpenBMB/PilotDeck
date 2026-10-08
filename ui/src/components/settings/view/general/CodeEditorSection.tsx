@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { SettingsToggle } from "../../shared/view";
+import { GeneralSelectControl } from "../../shared/view/GeneralSettingsPrimitives";
 import type { CodeEditorSettingsState } from "../../shared/types";
 import { showSettingsSuccess } from "../../shared/SettingsSuccessToast";
 import { GENERAL_CODE_EDITOR_ICON } from "./icons";
@@ -11,14 +12,6 @@ type CodeEditorSectionProps = {
   onLineNumbersChange: (value: boolean) => void;
   onFontSizeChange: (value: string) => void;
 };
-
-function ChevronIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true">
-      <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" />
-    </svg>
-  );
-}
 
 function ToggleRow({
   label,
@@ -89,23 +82,10 @@ export default function CodeEditorSection({
             </strong>
             <p>{t("appearanceSettings.codeEditor.fontSize.description")}</p>
           </div>
-          <div className="general-select-wrap compact">
-            <select
-              value={codeEditorSettings.fontSize}
-              onChange={(event) => {
-                const value = event.target.value;
-                onFontSizeChange(value);
-                showSettingsSuccess(`编辑器字号已设为 ${value}px`);
-              }}
-            >
-              {["10", "11", "12", "13", "14", "15", "16", "18", "20"].map((size) => (
-                <option key={size} value={size}>
-                  {size}px
-                </option>
-              ))}
-            </select>
-            <ChevronIcon />
-          </div>
+          <GeneralSelectControl compact ariaLabel={t("appearanceSettings.codeEditor.fontSize.label")}
+            value={codeEditorSettings.fontSize}
+            onChange={value => { onFontSizeChange(value); showSettingsSuccess(`编辑器字号已设为 ${value}px`); }}
+            options={["10", "11", "12", "13", "14", "15", "16", "18", "20"].map(size => ({ value: size, label: `${size}px` }))} />
         </div>
       </article>
     </section>

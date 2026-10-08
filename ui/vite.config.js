@@ -3,6 +3,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 import { getConnectableHost, normalizeLoopbackHost } from './shared/networkHosts.js'
+import { LIGHT_PRESETS } from '../apps/desktop/src/lightAppearance'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -54,7 +55,27 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.VITE_DISABLE_LOCAL_AUTH': JSON.stringify(disableLocalAuth ? 'true' : 'false'),
     },
-    plugins: [react()],
+    plugins: [react(), {
+      name: 'appearance-first-paint',
+      transformIndexHtml() {
+        // Inline and synchronous: even a slow app bundle must not flash the
+        // wrong canvas. Full validation and token application follow at boot.
+        return [{ tag: 'script', injectTo: 'head-prepend', children: `
+          try {
+            var desktop = window.pilotdeckDesktop?.getAppearance?.();
+            var mode = desktop?.themeMode || localStorage.getItem('themeMode') || localStorage.getItem('theme') || 'system';
+            if (!['light', 'dark', 'system'].includes(mode)) mode = 'system';
+            var dark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.classList.toggle('dark', dark);
+            document.documentElement.style.backgroundColor = dark ? '#0a0a0a' : '#ffffff';
+            var preference = desktop?.lightAppearance || JSON.parse(localStorage.getItem('pilotdeck-light-appearance-v1') || 'null');
+            var presets = ${JSON.stringify(LIGHT_PRESETS)};
+            var background = preference?.preset === 'custom' ? preference.custom?.background : presets[preference?.preset]?.background;
+            document.documentElement.style.backgroundColor = dark ? '#0a0a0a' : /^#[0-9a-f]{6}$/i.test(background) ? background : '#ffffff';
+          } catch (_) {}
+        ` }];
+      },
+    }],
     resolve: {
       // Extensions and the React wrapper must share the same CodeMirror state
       // instance, including after dependency updates or a Vite cache rebuild.

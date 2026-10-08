@@ -382,7 +382,6 @@ type ModelCatalogItem = {
   available: boolean;
   capabilities: {
     reasoning?: ModelCapability;
-    temperature?: ModelCapability;
     speed?: ModelCapability;
   };
 };
@@ -400,7 +399,6 @@ type ModelsResponse = {
 字段语义：
 
 - `reasoning`：推理强度，归一化范围 `0..1`。
-- `temperature`：采样温度，范围 `0..1`。
 - `speed`：Provider 请求速度参数，范围 `0..1`。官方 OpenAI / Anthropic 模型以及显式声明 `supportsSpeed: true` 且目标 Provider 有对应适配的模型会返回该能力；目录以枚举 `0`（标准）和 `1`（快速）暴露。Google Provider 当前不支持该字段。
 - 未显式声明 `supportsThinking` 的模型按协议默认支持 reasoning；显式 `supportsThinking: false` 时不返回 reasoning。
 - 自定义 OpenAI-compatible provider 只有在 provider 配置显式设置 `speedMapping: openai_service_tier` 后才会返回 speed；自定义 Anthropic-compatible provider 对应设置 `speedMapping: anthropic_speed`。
@@ -427,7 +425,6 @@ type SessionModelSelection =
       provider: string;
       model: string;
       reasoning?: number;
-      temperature?: number;
       speed?: number;
     };
 
@@ -440,7 +437,6 @@ type SessionModelResponse = {
     model: string;
     source: "session" | "router" | "default";
     reasoning?: number;
-    temperature?: number;
     speed?: number;
   };
 };
@@ -462,7 +458,7 @@ type SetSessionModelRequest = {
 };
 ```
 
-`mode=model` 时校验模型存在、可用，并校验 reasoning、temperature、speed。`mode=auto` 仅在 Router 开启时允许，否则返回 `ROUTER_AUTO_UNAVAILABLE`。
+`mode=model` 时校验模型存在、可用，并校验 reasoning、speed。`mode=auto` 仅在 Router 开启时允许，否则返回 `ROUTER_AUTO_UNAVAILABLE`。
 
 设置写入会话 metadata，对后续 turn 持续生效；会话恢复后继续生效。成功返回 `SessionModelResponse`。
 
@@ -509,7 +505,6 @@ type SessionModelOverride = {
   provider: string;
   model: string;
   reasoning?: number;
-  temperature?: number;
   speed?: number;
 };
 
@@ -538,7 +533,7 @@ Web Composer 始终提交 `modelSelection` 快照，可明确选择具体模型�
 服务端校验：
 
 - 显式选择的 `provider/model` 必须存在且可用；Auto 必须有可用 Router。
-- reasoning、temperature、speed 必须满足模型 capabilities；speed 使用 `0..1` 的统一数值语义。
+- reasoning、speed 必须满足模型 capabilities；speed 使用 `0..1` 的统一数值语义。
 - `uploadedAttachments` 必须属于同一 `projectKey`、状态为 completed 且未过期。
 - `mode` 和 `basePermissionMode` 必须属于声明枚举。
 - 校验失败时不得启动模型调用。
@@ -555,7 +550,6 @@ type ModelSelectionChangedEvent = {
   source: "session" | "router" | "default";
   parameters?: {
     reasoning?: number;
-    temperature?: number;
     speed?: number;
   };
   runId?: string;

@@ -5,8 +5,8 @@ import type { TextContentReference } from '../../types/contentReference';
 import { cn } from '../../lib/utils.js';
 
 const COMPOSER_CHIP_CLASS = [
-  'pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms]',
-  'hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8]',
+  'pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-accent-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms]',
+  'hover:border-[var(--pd-accent-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)]',
   'dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200',
 ].join(' ');
 

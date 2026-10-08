@@ -22,6 +22,7 @@ import { formatUsageLimitText } from '../../utils/chatFormatting';
 import { getPilotDeckPermissionSuggestion } from '../../utils/chatPermissions';
 import type { Project } from '../../../../types/app';
 import { ToolRenderer, shouldHideToolResult } from '../../tools';
+import { UnifiedToolCall, usesUnifiedToolCall } from '../../tools/UnifiedToolCall';
 import { CollapsibleDisplay } from '../../tools/components';
 import DocumentReferenceChip from '../../../chat-v2/DocumentReferenceChip';
 import { Markdown } from './Markdown';
@@ -42,13 +43,13 @@ type MessageComponentProps = {
   onShowSettings?: () => void;
   onGrantSessionToolPermission?: (suggestion: PilotDeckPermissionSuggestion) => SessionPermissionGrantResult | null | undefined;
   autoExpandTools?: boolean;
-  showRawParameters?: boolean;
   showThinking?: boolean;
   isToolSectionExpanded?: (sectionKey: string, defaultExpanded?: boolean) => boolean;
   onToolSectionExpandedChange?: (sectionKey: string, expanded: boolean) => void;
   selectedProject?: Project | null;
   provider: Provider | string;
   hideHeader?: boolean;
+  isSessionRunning?: boolean;
 };
 
 type InteractiveOption = {
@@ -149,7 +150,7 @@ function attachmentToDocumentReference(attachment: ChatAttachment): ContentRefer
   } satisfies DocumentSelectionReference);
 }
 
-const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, onShowSettings, onGrantSessionToolPermission, autoExpandTools, showRawParameters, showThinking, isToolSectionExpanded, onToolSectionExpandedChange, selectedProject, provider, hideHeader = false }: MessageComponentProps) => {
+const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, onShowSettings, onGrantSessionToolPermission, autoExpandTools, showThinking, isToolSectionExpanded, onToolSectionExpandedChange, selectedProject, provider, hideHeader = false, isSessionRunning = false }: MessageComponentProps) => {
   const { t } = useTranslation('chat');
   const isGrouped = prevMessage && prevMessage.type === message.type &&
     ((prevMessage.type === 'assistant') ||
@@ -159,6 +160,8 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
   const messageRef = useRef<HTMLDivElement | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const permissionSuggestion = getPilotDeckPermissionSuggestion(message, provider);
+  const unifiedTool = usesUnifiedToolCall(message);
+  const externalToolError = Boolean(permissionSuggestion || message.toolResult?.errorCode === 'setup_required');
   const [permissionGrantState, setPermissionGrantState] = useState<PermissionGrantState>('idle');
   const rawMessageContent = stringifyMessageContent(message.content);
   const messageContent = translateDescriptor(t, message.contentI18n, rawMessageContent);
@@ -276,7 +279,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
     <div
       ref={messageRef}
       data-message-timestamp={message.timestamp || undefined}
-      className={`chat-message ${message.type} ${isGrouped ? 'grouped' : ''} ${message.type === 'user' ? 'flex justify-end px-3 sm:px-0' : 'px-3 sm:px-0'}`}
+      className={`chat-message ${message.type} ${isGrouped ? 'grouped' : ''} ${message.isToolUse ? 'min-w-0' : message.type === 'user' ? 'flex justify-end px-3 sm:px-0' : 'px-3 sm:px-0'}`}
     >
       {message.type === 'user' ? (
         /* User message bubble on the right */
@@ -446,7 +449,18 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                   </div>
                 </div>
 
-                {message.toolInput && (
+                {unifiedTool && <UnifiedToolCall
+                  message={message}
+                  createDiff={createDiff}
+                  onFileOpen={onFileOpen}
+                  selectedProject={selectedProject}
+                  defaultOpen={autoExpandTools}
+                  open={isToolSectionExpanded?.(toolSectionKey('input'), autoExpandTools ?? false)}
+                  onOpenChange={onToolSectionExpandedChange ? (value) => onToolSectionExpandedChange(toolSectionKey('input'), value) : undefined}
+                  externalError={externalToolError}
+                  running={isSessionRunning || message.state === 'running' || message.isStreaming}
+                />}
+                {!unifiedTool && Boolean(message.toolInput) && (
                   <ToolRenderer
                     toolName={message.toolName || 'UnknownTool'}
                     toolInput={message.toolInput}
@@ -457,8 +471,6 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                     createDiff={createDiff}
                     selectedProject={selectedProject}
                     autoExpandTools={autoExpandTools}
-                    showRawParameters={showRawParameters}
-                    rawToolInput={typeof message.toolInput === 'string' ? message.toolInput : undefined}
                     expansionKey={toolSectionKey('input')}
                     isToolSectionExpanded={isToolSectionExpanded}
                     onToolSectionExpandedChange={onToolSectionExpandedChange}
@@ -493,7 +505,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                 )}
 
                 {/* Tool Result Section */}
-                {message.toolResult && !shouldHideToolResult(message.toolName || 'UnknownTool', message.toolResult) && (
+                {(!unifiedTool || externalToolError) && message.toolResult && !shouldHideToolResult(message.toolName || 'UnknownTool', message.toolResult) && (
                   message.toolResult.isError ? (
                     <div id={`tool-result-${message.toolId}`} className="scroll-mt-4">
                       {(() => {
@@ -866,13 +878,9 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                             </svg>
                             <span className="font-medium">{t('json.response')}</span>
                           </div>
-                          <div className="overflow-hidden rounded-lg border border-gray-600/30 bg-gray-800 dark:border-gray-700 dark:bg-gray-900">
-                            <pre className="overflow-x-auto p-4">
-                              <code className="block whitespace-pre font-mono text-sm text-gray-100 dark:text-gray-200">
-                                {formatted}
-                              </code>
-                            </pre>
-                          </div>
+                          <Markdown className="prose prose-sm max-w-none dark:prose-invert">
+                            {'```json\n' + formatted + '\n```'}
+                          </Markdown>
                         </div>
                       );
                     } catch {
@@ -904,7 +912,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
               </div>
             )}
 
-            {(shouldShowAssistantCopyControl || !isGrouped) && (
+            {!message.isToolUse && (shouldShowAssistantCopyControl || !isGrouped) && (
               <div className="mt-1 flex w-full items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500">
                 {shouldShowAssistantCopyControl && (
                   <MessageCopyControl content={assistantCopyContent} messageType="assistant" />

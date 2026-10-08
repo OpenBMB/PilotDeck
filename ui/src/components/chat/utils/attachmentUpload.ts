@@ -1,4 +1,4 @@
-import { IS_PLATFORM } from '../../../constants/config';
+import { postFormDataWithProgress } from '../../../utils/uploadFormData';
 import { authenticatedFetch } from '../../../utils/api';
 
 export type AttachmentUploadStatus =
@@ -68,74 +68,6 @@ function uploadError(record: Partial<AttachmentUploadRecord>, fallback: string):
 
 async function readJson(response: Response): Promise<Record<string, any>> {
   return response.json().catch(() => ({}));
-}
-
-function applyAuthHeaders(xhr: XMLHttpRequest): void {
-  const token = localStorage.getItem('auth-token');
-  if (!IS_PLATFORM && token) {
-    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-  }
-}
-
-function postFormDataWithProgress({
-  url,
-  formData,
-  signal,
-  knownTotalBytes = 0,
-  onProgress,
-}: {
-  url: string;
-  formData: FormData;
-  signal: AbortSignal;
-  knownTotalBytes?: number;
-  onProgress: (percent: number, uploadedBytes: number, totalBytes: number) => void;
-}): Promise<{ ok: boolean; body: Record<string, any> }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', url);
-    applyAuthHeaders(xhr);
-
-    xhr.upload.onprogress = (event) => {
-      const total = event.lengthComputable && event.total > 0 ? event.total : knownTotalBytes;
-      if (total <= 0) return;
-      const rawPercent = Math.round((event.loaded / total) * 10000) / 100;
-      const percent = event.loaded >= total || rawPercent >= 99.5
-        ? 100
-        : Math.min(99, rawPercent);
-      onProgress(percent, event.loaded, total);
-    };
-    // Bytes have left the browser. Do not wait for the server JSON response
-    // (hashing / metadata drain) before showing 100%.
-    xhr.upload.onload = () => {
-      onProgress(100, knownTotalBytes, knownTotalBytes);
-    };
-
-    xhr.onload = () => {
-      const refreshedToken = xhr.getResponseHeader('X-Refreshed-Token');
-      if (refreshedToken) {
-        localStorage.setItem('auth-token', refreshedToken);
-      }
-      let body: Record<string, any> = {};
-      try {
-        body = JSON.parse(xhr.responseText || '{}');
-      } catch {
-        body = {};
-      }
-      resolve({
-        ok: xhr.status >= 200 && xhr.status < 300,
-        body,
-      });
-    };
-    xhr.onerror = () => reject(new Error('Failed to upload attachments'));
-    xhr.onabort = () => reject(new DOMException('Upload aborted', 'AbortError'));
-
-    if (signal.aborted) {
-      xhr.abort();
-      return;
-    }
-    signal.addEventListener('abort', () => xhr.abort(), { once: true });
-    xhr.send(formData);
-  });
 }
 
 async function readSse(

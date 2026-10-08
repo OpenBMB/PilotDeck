@@ -7,8 +7,7 @@ import {
 } from 'edgeclaw-memory-core';
 import {
   readPilotDeckConfigFile,
-  withPilotDeckConfigWrite,
-  writePilotDeckConfig,
+  updatePilotDeckConfig,
 } from '../services/pilotdeckConfig.js';
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
@@ -77,27 +76,24 @@ function getGlobalMemorySettings() {
 }
 
 async function saveGlobalMemorySettings(partial = {}) {
-  const saved = await withPilotDeckConfigWrite(async () => {
-    const record = readPilotDeckConfigFile();
-    if (record.parseError) {
-      const error = new Error('Invalid config YAML; repair raw YAML before updating memory settings');
-      error.validation = {
-        valid: false,
-        errors: [`Invalid YAML: ${record.parseError}`],
-        warnings: [],
-      };
-      throw error;
-    }
-    const { config } = record;
+  const saved = await updatePilotDeckConfig((config) => {
     const current = getGlobalMemorySettingsFromConfig(config);
+    const configuredMemory = config?.memory && typeof config.memory === 'object'
+      && !Array.isArray(config.memory);
+    const enabled = configuredMemory
+      ? (Object.hasOwn(config.memory, 'enabled') ? config.memory.enabled : true)
+      : false;
     const reasoningMode = validateReasoningMode(partial.reasoningMode);
     const next = {
+      enabled,
       reasoningMode: reasoningMode ?? current.reasoningMode,
       autoIndexIntervalMinutes: normalizeMemoryInterval(partial.autoIndexIntervalMinutes, current.autoIndexIntervalMinutes),
       autoDreamIntervalMinutes: normalizeMemoryInterval(partial.autoDreamIntervalMinutes, current.autoDreamIntervalMinutes),
     };
-    suppressNextWatchEvent();
-    return writePilotDeckConfig({ ...config, memory: { ...(config.memory ?? {}), ...next } });
+    config.memory = { ...(config.memory ?? {}), ...next };
+  }, {
+    paths: [['memory']],
+    onWriteCommitted: suppressNextWatchEvent,
   });
   await reloadPilotDeckConfig(saved.config);
   return getGlobalMemorySettingsFromConfig(saved.config);
@@ -315,7 +311,10 @@ async function withMemoryService(req, res, fn) {
     return await fn({ projectPath, dataDir, service, repository: service.repository });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return res.status(400).json({ error: message });
+    return res.status(error?.statusCode || 400).json({
+      error: message,
+      ...(error?.code ? { code: error.code } : {}),
+    });
   }
 }
 

@@ -125,7 +125,7 @@ const COL = {
 
 const CRON_STATUS_STYLE: Record<'scheduled' | 'running', string> = {
   scheduled: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  running: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  running: 'bg-[var(--pd-accent-soft,#e0e7ff)] text-[var(--pd-accent-strong,#4338ca)] dark:bg-indigo-900/40 dark:text-indigo-300',
 };
 
 const CRON_STATUS_LABEL: Record<'scheduled' | 'running', { key: string; defaultValue: string }> = {
@@ -1540,7 +1540,7 @@ function DeleteCronJobDialog({
 
   return (
     <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-cron-job-title" onKeyDown={handleKeyDown}>
-      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl">
+      <div data-dialog-surface className="flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl">
         <div className="flex items-start gap-3 border-b border-border p-5">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
             <Trash2 className="h-5 w-5" strokeWidth={1.75} />

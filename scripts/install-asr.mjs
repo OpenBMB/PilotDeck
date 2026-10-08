@@ -125,8 +125,8 @@ export async function installRuntime({ platform = process.platform, arch = proce
     if (asset.format === "tar.gz") {
       unpack = await run("tar", ["-xzf", archive, "-C", staging]);
     } else {
-      const shell = process.env.ComSpec || "powershell.exe";
-      unpack = await run(shell, ["-NoProfile", "-NonInteractive", "-Command", `Expand-Archive -LiteralPath '${archive.replaceAll("'", "''")}' -DestinationPath '${staging.replaceAll("'", "''")}' -Force`]);
+      // ComSpec points to cmd.exe on Windows; Expand-Archive requires PowerShell.
+      unpack = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `Expand-Archive -LiteralPath '${archive.replaceAll("'", "''")}' -DestinationPath '${staging.replaceAll("'", "''")}' -Force`]);
     }
     if (unpack.code !== 0) throw new Error(`unpack failed: ${unpack.stderr.trim() || unpack.stdout.trim()}`);
     const binary = runtime.findSenseVoiceBinaryIn(staging, platform);

@@ -1,4 +1,5 @@
 const {
+  chmodSync,
   cpSync,
   existsSync,
   lstatSync,
@@ -53,6 +54,21 @@ function materializeSymlinks(root) {
 
   if (existsSync(root)) visit(root);
   return count;
+}
+
+function makePackagedLinuxFilesReadable(root) {
+  function visit(file) {
+    const stat = lstatSync(file);
+    if (stat.isSymbolicLink()) return;
+    const mode = stat.mode & 0o7777;
+    if (stat.isDirectory()) {
+      chmodSync(file, mode | 0o055);
+      for (const entry of readdirSync(file)) visit(join(file, entry));
+    } else if (stat.isFile()) {
+      chmodSync(file, mode | 0o044 | (mode & 0o111 ? 0o011 : 0));
+    }
+  }
+  visit(root);
 }
 
 function hasOwn(object, key) {
@@ -163,5 +179,14 @@ module.exports = async function afterPack(context) {
   );
 
   verifyPackagedRuntime(target, context, "runtime");
+  if (context.electronPlatformName === "linux") {
+    // electron-builder creates the Linux package launcher after this hook. Do not let a
+    // restrictive build-shell umask make it unreadable to desktop users.
+    process.umask(0o022);
+    makePackagedLinuxFilesReadable(context.appOutDir);
+  }
   ensureMacSigningFallback(context);
+  if (context.electronPlatformName === "win32") {
+    await require("./prepare-windows-installer.cjs").prepareWindowsInstaller(desktopRoot);
+  }
 };

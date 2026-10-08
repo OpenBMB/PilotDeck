@@ -1,3 +1,4 @@
+import { postFormDataWithProgress } from './uploadFormData';
 import { IS_PLATFORM } from "../constants/config";
 
 const normalizePathForUrl = (value) => String(value || '').replace(/\\/g, '/');
@@ -286,7 +287,7 @@ export const api = {
     return appendAuthToken(`/api/projects/${encodeURIComponent(projectName)}/files/content?${params.toString()}`);
   },
   readFileBlob: (projectName, filePath) =>
-    authenticatedFetch(api.fileContentUrl(projectName, filePath)),
+    authenticatedFetch(api.fileContentUrl(projectName, filePath), { suppressServerErrorToast: true }),
   fileContentSha256: (projectName, filePath) => {
     const params = new URLSearchParams({ path: filePath, sha256: '1' });
     return authenticatedFetch(
@@ -310,6 +311,7 @@ export const api = {
       cacheKey: options.force ? Date.now() : options.cacheKey,
     }), {
       cache: 'no-store',
+      suppressServerErrorToast: true,
     });
   },
   preflightOfficePdfPreview: (projectName, filePath, options = {}) =>
@@ -322,6 +324,7 @@ export const api = {
         Range: 'bytes=0-0',
       },
       signal: options.signal,
+      suppressServerErrorToast: true,
     }),
   spreadsheetPreviewManifest: (projectName, filePath, options = {}) => {
     const params = new URLSearchParams({ path: filePath });
@@ -331,7 +334,7 @@ export const api = {
     }
     return authenticatedFetch(
       `/api/projects/${encodeURIComponent(projectName)}/files/preview/spreadsheet/manifest?${params.toString()}`,
-      { cache: 'no-store', signal: options.signal },
+      { cache: 'no-store', signal: options.signal, suppressServerErrorToast: true },
     );
   },
   spreadsheetInteractivePreview: (projectName, filePath, options = {}) => {
@@ -342,7 +345,7 @@ export const api = {
     }
     return authenticatedFetch(
       `/api/projects/${encodeURIComponent(projectName)}/files/preview/spreadsheet/data?${params.toString()}`,
-      { cache: 'no-store', signal: options.signal },
+      { cache: 'no-store', signal: options.signal, suppressServerErrorToast: true },
     );
   },
   spreadsheetSheetPreviewUrl: (projectName, filePath, sheetIndex, options = {}) => {
@@ -368,6 +371,7 @@ export const api = {
         Range: 'bytes=0-0',
       },
       signal: options.signal,
+      suppressServerErrorToast: true,
     }),
   officePreviewStatus: (options = {}) => {
     const params = new URLSearchParams();
@@ -404,12 +408,18 @@ export const api = {
       body: JSON.stringify({ path, type }),
     }),
 
-  uploadFiles: (projectName, formData) =>
-    authenticatedFetch(`/api/projects/${projectName}/files/upload`, {
-      method: 'POST',
-      body: formData,
-      headers: {},
+  uploadLimits: (signal) => authenticatedFetch('/api/uploads/limits', { signal }),
+
+  checkWorkspaceUpload: (projectName, manifest, signal) =>
+    authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/files/upload/check`, {
+      method: 'POST', body: JSON.stringify(manifest), signal,
     }),
+
+  uploadFiles: (projectName, formData, options) => postFormDataWithProgress({
+    ...options,
+    url: `/api/projects/${encodeURIComponent(projectName)}/files/upload`,
+    formData,
+  }),
 
   projectPreviewUrl: (projectName, filePath, projectRoot) => {
     const relativePath = getProjectRelativePath(filePath, projectRoot);

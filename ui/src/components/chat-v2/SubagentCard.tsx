@@ -102,18 +102,18 @@ export default function SubagentCard({
       onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); } : undefined}
       className={`flex items-stretch gap-0 rounded-lg border border-neutral-200 dark:border-neutral-700 ${
         isClickable
-          ? 'cursor-pointer transition-shadow hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600'
+          ? 'cursor-pointer transition-shadow hover:shadow-md hover:border-[var(--pd-accent-border,#d8b4fe)] dark:hover:border-purple-600'
           : ''
       }`}
     >
       {/* Purple left accent bar */}
-      <div className="w-1 shrink-0 rounded-l-lg bg-purple-500 dark:bg-purple-400" />
+      <div className="w-1 shrink-0 rounded-l-lg bg-[var(--pd-accent,#a855f7)] dark:bg-purple-400" />
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2">
         {/* Line 1: type badge + description */}
         <div className="flex min-w-0 items-center gap-2">
-          <Bot className="h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" strokeWidth={1.8} />
-          <span className="shrink-0 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium uppercase leading-none text-purple-600 dark:bg-purple-900/40 dark:text-purple-300">
+          <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--pd-accent,#a855f7)] dark:text-purple-400" strokeWidth={1.8} />
+          <span className="shrink-0 rounded bg-[var(--pd-accent-soft,#f3e8ff)] px-1.5 py-0.5 text-[10px] font-medium uppercase leading-none text-[var(--pd-accent-strong,#9333ea)] dark:bg-purple-900/40 dark:text-purple-300">
             {subagentType}
           </span>
           <span className="truncate text-[13px] font-medium text-neutral-700 dark:text-neutral-200">
@@ -124,7 +124,7 @@ export default function SubagentCard({
         {/* Line 2: status */}
         <div className="flex min-w-0 items-center gap-1.5 pl-[22px] text-xs">
           {statusLine.icon === 'running' && (
-            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-purple-500 dark:text-purple-400" strokeWidth={2} />
+            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--pd-accent,#a855f7)] dark:text-purple-400" strokeWidth={2} />
           )}
           {statusLine.icon === 'completed' && (
             <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500 dark:text-green-400" strokeWidth={2} />

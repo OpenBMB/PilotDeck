@@ -333,6 +333,40 @@ test("pending title generation does not hold subsequent turns and cannot overwri
   }
 });
 
+for (const selection of ["override", "saved"] as const) {
+  test(`first-turn title generation follows the ${selection} conversation model`, async () => {
+    const sessionId = `selected-model-title-${selection}`;
+    const transcript = new InMemoryTranscriptWriter();
+    const metadataStore = new SessionMetadataStore({ transcript, sessionId });
+    let titleModel: { provider: string; model: string } | undefined;
+    const loop = {
+      async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+        const completed = result(sessionId);
+        yield { type: "turn_completed", sessionId, turnId: input.turnId, result: completed };
+        return { result: completed, messages: input.messages };
+      },
+    } as AgentLoop;
+    const runner = new TurnRunner(loop, transcript, undefined, () => new Date(), undefined,
+      { cwd: process.cwd(), transcriptPath: "", collectFileArtifacts: false },
+      { metadataStore, autoGenerateSessionTitle: true, sessionTitleGenerator: async input => {
+        titleModel = input.model;
+        return "比较配置文档";
+      } });
+    const session = new AgentSession({ sessionId, turnRunner: runner });
+
+    for await (const _ of session.submit(
+      { type: "text", text: "这两个配置页面有什么区别？" },
+      selection === "override"
+        ? { modelOverride: { provider: "working", model: "selected-model" } }
+        : { modelSelection: { mode: "model", provider: "working", model: "selected-model" } },
+    )) { /* drain */ }
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.deepEqual(titleModel, { provider: "working", model: "selected-model" });
+    assert.equal(metadataStore.getSnapshot().aiTitle, "比较配置文档");
+  });
+}
+
 test("title request failure does not fail a completed conversation", async () => {
   const sessionId = "failed-background-title";
   const transcript = new InMemoryTranscriptWriter();

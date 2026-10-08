@@ -73,10 +73,12 @@ async function loadConfiguredMarkdown(
     dirs.map((dir) => loadPluginCommands({ pluginName: "", baseDir: join(pluginPath, dir) }).catch(() => [])),
   );
   const pluginName = pluginPath.split(/[\\/]/u).at(-1) ?? "";
-  return loaded.flat().map((command) => ({
-    ...command,
-    name: command.name.startsWith(":")
-      ? `${pluginName}${command.name}`
-      : command.name.replace(/^:/u, `${pluginName}:`),
-  }));
+  return loaded.flat()
+    .filter((command) => fallbackDir !== "skills" || command.isSkill)
+    .map((command) => ({
+      ...command,
+      name: command.name.startsWith(":")
+        ? `${pluginName}${command.name}`
+        : command.name.replace(/^:/u, `${pluginName}:`),
+    }));
 }

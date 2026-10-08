@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
 
       - name: Retry failed build jobs once
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const { retryReleaseBuild } = require('./apps/desktop/scripts/retry-release-build.cjs');

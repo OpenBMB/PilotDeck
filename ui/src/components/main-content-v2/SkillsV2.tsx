@@ -739,7 +739,7 @@ function ListSection({
                     </span>
                   ) : null}
                   {s.overridesBuiltin ? (
-                    <span className="shrink-0 rounded bg-violet-100 px-1 py-px text-[10px] text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+                    <span className="shrink-0 rounded bg-[var(--pd-accent-soft,#ede9fe)] px-1 py-px text-[10px] text-[var(--pd-accent-strong,#6d28d9)] dark:bg-violet-950/50 dark:text-violet-300">
                       {t('skillsTab.override', { defaultValue: 'override' })}
                     </span>
                   ) : null}

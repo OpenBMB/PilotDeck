@@ -335,10 +335,12 @@ function loadQueueState(state) {
     try {
         const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         state.lastAcceptedModelSelection = parsed.lastAcceptedModelSelection;
+        state.acceptedInputIds = new Set((Array.isArray(parsed.acceptedInputIds) ? parsed.acceptedInputIds : []).filter(id => typeof id === 'string'));
         if (Array.isArray(parsed.items)) {
             state.inputQueue = parsed.items
                 .filter((item) => item && typeof item.id === 'string' && typeof item.command === 'string')
                 .map(restoreQueuedInputFromStorage);
+            for (const item of state.inputQueue) state.acceptedInputIds.add(item.id);
         }
         if (parsed.version !== 2 && !state.lastAcceptedModelSelection) {
             const last = [...state.inputQueue].reverse().find(item => item.options?.modelSelection);
@@ -491,7 +493,7 @@ function persistQueueState(state, strict = false) {
     if (!filePath) return;
     let tempPath;
     try {
-        if (state.inputQueue.length === 0 && !state.lastAcceptedModelSelection) {
+        if (state.inputQueue.length === 0 && !state.lastAcceptedModelSelection && !state.acceptedInputIds?.size) {
             fs.rmSync(filePath, { force: true });
             return;
         }
@@ -500,6 +502,7 @@ function persistQueueState(state, strict = false) {
         fs.writeFileSync(tempPath, JSON.stringify({
             version: 2,
             lastAcceptedModelSelection: state.lastAcceptedModelSelection,
+            acceptedInputIds: [...(state.acceptedInputIds || [])],
             revision: state.queueRevision,
             paused: state.queuePaused,
             pauseReason: state.queuePauseReason,
@@ -638,6 +641,7 @@ function ensureSessionState(sessionKey, projectKey, channelKey) {
             tokenBudget: null,
             hasVisibleFailureStatus: false,
             inputQueue: [],
+            acceptedInputIds: new Set(),
             queuePaused: false,
             queuePauseReason: undefined,
             queueRevision: 0,
@@ -652,6 +656,7 @@ function ensureSessionState(sessionKey, projectKey, channelKey) {
     } else {
         if (projectKey && state.projectKey !== projectKey && state.inputQueue.length === 0) {
             state.queueLoaded = false;
+            state.acceptedInputIds = new Set();
             state.lastAcceptedModelSelection = undefined;
             state.projectKey = projectKey;
         }
@@ -889,7 +894,7 @@ export function resolvePermissionMode(options, readPersisted = readPermissionSet
  * @returns {object[]} NormalizedMessage frames.
  */
 export function gatewayEventToFrames(event, sessionId, provider) {
-    const base = { sessionId, provider, ...(event.runId ? { runId: event.runId } : {}) };
+    const base = { sessionId, provider, ...(event.runId ? { runId: event.runId } : {}), ...(event.timeline ? { timeline: event.timeline, streamState: event.streamState } : {}), ...(event.streamBoundary ? { streamBoundary: event.streamBoundary } : {}) };
     switch (event.type) {
         case 'input_accepted':
             return event.modelSelection ? [{ type: 'model-selection-saved', ...base, selection: { ...event.modelSelection } }] : [];
@@ -947,12 +952,20 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     provider: event.provider,
                 }),
             ];
+        case 'assistant_stream_end':
+            return [createNormalizedMessage({ ...base, kind: 'stream_end' })];
+        case 'assistant_block':
+            return [createNormalizedMessage({ ...base, kind: event.kind === 'text' ? 'text' : 'thinking',
+                role: 'assistant', blockId: event.blockId, content: event.text, isFinal: true,
+                ...(event.model ? { model: event.model } : {}),
+            })];
         case 'assistant_text_delta':
             return [
                 createNormalizedMessage({
                     ...base,
                     kind: 'stream_delta',
                     content: event.text,
+                    ...(event.blockId ? { blockId: event.blockId } : {}),
                     ...(event.model ? { model: event.model } : {}),
                 }),
             ];
@@ -962,6 +975,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...base,
                     kind: 'thinking',
                     content: event.text,
+                    ...(event.blockId ? { blockId: event.blockId } : {}),
                 }),
             ];
         case 'file_artifacts':
@@ -1403,9 +1417,23 @@ function createSubagentDetailFrames(event, base, detail) {
         sessionId: base.sessionId,
         subagentId,
         isSubagentDetail: true,
+        ...(detail.blockId ? { blockId: detail.blockId } : {}),
     };
 
     switch (event?.event) {
+        case 'subagent_compact_started':
+        case 'subagent_compact_completed':
+            return [createNormalizedMessage({ ...detailBase, kind: 'compact_boundary',
+                compactionId: detail.compactionId,
+                compactState: event.event === 'subagent_compact_started' ? 'running' : detail.status === 'failed' ? 'failed' : 'completed',
+                trigger: detail.trigger, preTokens: detail.preTokens, postTokens: detail.postTokens,
+                messagesSummarized: detail.messagesSummarized,
+            })];
+        case 'subagent_stream_end':
+            return [createNormalizedMessage({ ...detailBase, kind: 'stream_end' })];
+        case 'subagent_assistant_block':
+            return [createNormalizedMessage({ ...detailBase, kind: detail.kind, content: detail.text,
+                role: 'assistant', isFinal: true, streamState: 'closed' })];
         case 'subagent_text_delta':
             return [createNormalizedMessage({
                 ...detailBase,
@@ -1446,7 +1474,7 @@ function createSubagentDetailFrames(event, base, detail) {
         case 'subagent_model_error':
             return [createNormalizedMessage({
                 ...detailBase,
-                id: `subagent_detail_error_${sanitizeMessageId(detailSessionId)}_${Date.now()}`,
+                id: `subagent_detail_error_${sanitizeMessageId(detailSessionId)}_${detail.errorId || randomUUID()}`,
                 kind: 'error',
                 content: detail.message || detail.error || 'Subagent model error',
             })];
@@ -1655,6 +1683,7 @@ export async function runChatViaGateway(
         for await (const event of stream) {
             if (event && event.type === 'input_accepted') {
                 inputAccepted = true;
+                writer.send({ type: 'session-input-accepted', sessionId: sessionKey, runId });
                 // Queue acceptance already recorded this choice; execution must
                 // never replace a newer accepted message's model preference.
                 if (!hooks.fromQueue && options.modelSelection && !state.deleted && !state.deleting) {
@@ -1722,7 +1751,7 @@ export async function runChatViaGateway(
                         ...eventForFrames,
                         displayText: queuedItem.displayText,
                         images: hydratedOptions.images,
-                        attachments: hydratedOptions.attachments,
+                        attachments: hydratedOptions.displayAttachments ?? hydratedOptions.attachments,
                     };
                     state.inputQueue = state.inputQueue.filter((item) => item.id !== event.itemId);
                     mutateInputQueue(state);
@@ -1853,7 +1882,7 @@ export function queuedInputDispositionAfterTurn(finishReason, queuePaused) {
     return 'keep';
 }
 
-function queuedUserFrame(item, sessionKey, runId, provider) {
+export function queuedUserFrame(item, sessionKey, runId, provider) {
     return createNormalizedMessage({
         provider,
         sessionId: sessionKey,
@@ -1863,7 +1892,7 @@ function queuedUserFrame(item, sessionKey, runId, provider) {
         content: item.displayText,
         queueItemId: item.id,
         images: (item.options?.images || []).map((image) => image?.data).filter(Boolean),
-        attachments: item.options?.attachments || [],
+        attachments: item.options?.displayAttachments ?? item.options?.attachments ?? [],
     });
 }
 
@@ -2066,7 +2095,7 @@ export async function enqueueInputViaGateway(sessionId, item, writer, provider =
     if (!item || typeof item.id !== 'string' || typeof item.command !== 'string') {
         return { ok: false, error: 'Invalid queued input.' };
     }
-    if (state.inputQueue.some((entry) => entry.id === item.id)) {
+    if (state.acceptedInputIds.has(item.id) || state.inputQueue.some((entry) => entry.id === item.id)) {
         return { ok: true, state: inputQueueSnapshot(state) };
     }
     if (state.inputQueue.length >= 20) {
@@ -2075,6 +2104,7 @@ export async function enqueueInputViaGateway(sessionId, item, writer, provider =
     const submitting = !state.active && !state.queuePaused && !state.queueDispatching && state.inputQueue.length === 0;
     const previousSelection = state.lastAcceptedModelSelection;
     const previousRevision = state.queueRevision;
+    state.acceptedInputIds.add(item.id);
     state.inputQueue.push({
         id: item.id,
         runId: item.runId,
@@ -2088,6 +2118,7 @@ export async function enqueueInputViaGateway(sessionId, item, writer, provider =
     state.queueRevision += 1;
     try { persistQueueState(state, true); }
     catch (error) {
+        state.acceptedInputIds.delete(item.id);
         state.inputQueue = state.inputQueue.filter(entry => entry.id !== item.id);
         state.lastAcceptedModelSelection = previousSelection;
         state.queueRevision = previousRevision;

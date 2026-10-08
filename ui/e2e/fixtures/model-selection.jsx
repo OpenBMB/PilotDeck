@@ -2,9 +2,11 @@ import React, { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import MessageRow from '../../src/components/chat-v2/MessageRowV2';
 import Composer from '../../src/components/chat-v2/ComposerV2';
+import { FileTypeIcon } from '../../src/components/file-tree/components/FileTypeIcon';
 import { useChatModelSelection } from '../../src/components/chat/hooks/useChatModelSelection';
 import { useChatComposerState } from '../../src/components/chat/hooks/useChatComposerState';
 import { startSessionCommand, createUserTurnRunId } from '../../src/components/chat/utils/sessionLauncher';
+import { globalModelSelectionStore } from '../../src/components/chat/utils/globalModelSelection';
 import i18n from '../../src/i18n/config';
 import '../../src/index.css';
 i18n.changeLanguage('en');
@@ -24,7 +26,7 @@ function App() {
   const [input, setInput] = useState('hello');
   const [loading, setLoading] = useState(false);
   const [frame, setFrame] = useState(null);
-  const model = useChatModelSelection();
+  const model = useChatModelSelection({ projectKey, sessionId });
   const textareaRef = useRef(null), highlightRef = useRef(null);
   const send = (event) => {
     event.preventDefault();
@@ -34,8 +36,10 @@ function App() {
       selectedProject: { name: 'fixture', path: projectKey }, sessionId,
       command: input, modelSelection: model.modelSelection, runId,
       sendMessage: (message) => {
+        globalModelSelectionStore.trackMessage(message);
         setFrame(message); setLoading(true); setInput('');
         void fetch('/api/test-submit', { method: 'POST', body: JSON.stringify(message) }).then((r) => r.json()).then((accepted) => {
+          globalModelSelectionStore.receiveMessage({ type: 'model-selection-saved', runId, sessionId: accepted.sessionId });
           setSession(accepted.sessionId);
         });
         return true;
@@ -48,6 +52,10 @@ function App() {
     <button onClick={() => { setLoading(false); }}>Finish</button>
     <output data-testid="selection">{JSON.stringify(model.modelSelection)}</output>
     <output data-testid="submitted">{JSON.stringify(frame)}</output>
+    <div data-testid="palette-file-icons" className="flex gap-2 py-2">
+      <FileTypeIcon filename="example.ts" className="h-6 w-6" />
+      <FileTypeIcon filename="example.png" className="h-6 w-6" />
+    </div>
     {frame ? <div data-testid="response-fixture"><MessageRow message={{ id: 'fixture-answer', type: 'assistant', content: 'Response fixture', timestamp: '2026-09-05T12:58:00Z', model: frame.options.modelSelection.mode === 'auto' ? 'configured' : frame.options.modelSelection.model }} prevMessage={null} provider="pilotdeck" selectedProject={null} createDiff={() => []} /></div> : null}
     <Composer {...props} {...model} input={input} isLoading={loading} canAbortSession
       projectKey={projectKey} textareaRef={textareaRef} inputHighlightRef={highlightRef}

@@ -17,12 +17,11 @@ interface ToolRendererProps {
   toolResult?: any;
   toolId?: string;
   mode: 'input' | 'result';
+  contentOnly?: boolean;
   onFileOpen?: (filePath: string, diffInfo?: any) => void;
   createDiff?: (oldStr: string, newStr: string) => DiffLine[];
   selectedProject?: Project | null;
   autoExpandTools?: boolean;
-  showRawParameters?: boolean;
-  rawToolInput?: string;
   expansionKey?: string;
   isToolSectionExpanded?: (sectionKey: string, defaultExpanded?: boolean) => boolean;
   onToolSectionExpandedChange?: (sectionKey: string, expanded: boolean) => void;
@@ -133,12 +132,11 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
   toolResult,
   toolId,
   mode,
+  contentOnly = false,
   onFileOpen,
   createDiff,
   selectedProject,
   autoExpandTools = false,
-  showRawParameters = false,
-  rawToolInput,
   expansionKey,
   isToolSectionExpanded,
   onToolSectionExpandedChange,
@@ -337,6 +335,8 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
       }
     }
 
+    if (contentOnly) return contentComponent;
+
     // For edit tools, make the title (filename) clickable to open the file
     const handleTitleClick = (canonicalToolName === 'Edit' || canonicalToolName === 'Write' || canonicalToolName === 'ApplyPatch') && contentProps.filePath && onFileOpen
       ? () => onFileOpen(contentProps.filePath, {
@@ -356,8 +356,6 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
           ? (nextExpanded) => onToolSectionExpandedChange(expansionKey, nextExpanded)
           : undefined}
         onTitleClick={handleTitleClick}
-        showRawParameters={mode === 'input' && showRawParameters}
-        rawContent={rawToolInput}
         toolCategory={getToolCategory(canonicalToolName)}
       >
         {contentComponent}

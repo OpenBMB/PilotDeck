@@ -93,12 +93,10 @@ describe('MessageComponent tool errors', () => {
     expect(screen.queryByText('Parameters')).toBeNull();
     expect(container.querySelector('.border-l-red-500')).toBeNull();
 
-    const summary = screen.getByText('Tool error').closest('summary');
+    const summary = container.querySelector('.tool-call button[aria-expanded]') as HTMLElement;
     expect(summary).not.toBeNull();
-    expect(summary?.className).not.toContain('text-red');
-    const details = summary?.closest('details') as HTMLDetailsElement | null;
-    expect(details?.open).toBe(false);
-    expect(details?.getAttribute('data-auto-expand')).toBe('false');
+    expect(summary.className).not.toContain('text-red');
+    expect(summary.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(summary as HTMLElement);
 
@@ -166,10 +164,9 @@ describe('MessageComponent tool errors', () => {
     expect(screen.queryByRole('button', { name: /permissions\.grant|Grant Bash for this chat/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /permissions\.openSettings|Open settings/ })).toBeNull();
 
-    const summary = screen.getByText('Tool error').closest('summary');
+    const summary = container.querySelector('.tool-call button[aria-expanded]') as HTMLElement;
     expect(summary).not.toBeNull();
-    const details = summary?.closest('details') as HTMLDetailsElement | null;
-    expect(details?.open).toBe(false);
+    expect(summary.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(summary as HTMLElement);
     expect(screen.getByText(/Plan mode denies side-effecting tool bash/)).toBeTruthy();
@@ -196,10 +193,9 @@ describe('MessageComponent tool errors', () => {
     expect(screen.queryByRole('button', { name: /permissions\.grant|Grant edit_notebook for this chat/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /permissions\.openSettings|Open settings/ })).toBeNull();
 
-    const summary = screen.getByText('Tool error').closest('summary');
+    const summary = container.querySelector('.tool-call button[aria-expanded]') as HTMLElement;
     expect(summary).not.toBeNull();
-    const details = summary?.closest('details') as HTMLDetailsElement | null;
-    expect(details?.open).toBe(false);
+    expect(summary.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(summary as HTMLElement);
     expect(screen.getByText(/\[PLAN_MODE_VIOLATION\]/)).toBeTruthy();

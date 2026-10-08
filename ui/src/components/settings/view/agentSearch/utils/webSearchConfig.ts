@@ -1,6 +1,7 @@
+import { WEB_SEARCH_ENDPOINTS, type WebSearchProvider } from "../../../../../../../src/pilot/config/webSearchProviders.js";
 import type { PilotDeckConfig } from "../../modelPool/types";
 
-export type WebSearchProvider = "glm" | "tavily" | "custom" | "serper" | "brave";
+export type { WebSearchProvider };
 
 type WebSearchConfig = NonNullable<
   NonNullable<PilotDeckConfig["tools"]>["webSearch"]
@@ -11,18 +12,11 @@ export function webSearchConfigForProvider(
   provider: WebSearchProvider,
   glmDefaultEndpoint: string,
 ): WebSearchConfig {
-  const endpoint = provider === "glm"
-    ? glmDefaultEndpoint
-    : provider === "tavily"
-      ? "https://api.tavily.com/search"
-      : provider === "serper"
-        ? "https://google.serper.dev/search"
-        : provider === "brave"
-          ? "https://api.search.brave.com/res/v1/web/search"
-          : undefined;
+  const endpoint = provider === "custom" ? undefined : provider === "glm" ? glmDefaultEndpoint : WEB_SEARCH_ENDPOINTS[provider];
   return {
     ...(current.enabled === undefined ? {} : { enabled: current.enabled }),
     provider,
+    ...(provider === "serpapi" ? { searchEngine: "google" as const } : {}),
     ...(endpoint ? { endpoint } : {}),
     ...(provider === "custom"
       ? { customProvider: { auth: "bearer" as const, method: "POST" as const } }
@@ -33,15 +27,8 @@ export function webSearchConfigForProvider(
 export function isWebSearchApiKeyRequired(
   config: WebSearchConfig,
 ): boolean {
-  const provider =
-    config.provider === "tavily"
-    || config.provider === "custom"
-    || config.provider === "serper"
-    || config.provider === "brave"
-      ? config.provider
-      : "glm";
   return (
-    provider !== "custom"
+    config.provider !== "custom"
     || (config.customProvider?.auth ?? "bearer") !== "none"
   );
 }
