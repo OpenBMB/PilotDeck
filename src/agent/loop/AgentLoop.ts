@@ -1,10 +1,13 @@
+import { TurnTimeline } from "../stream/TurnTimeline.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   applyModelEventToAssembler,
   assembleAssistantMessage,
   cloneMessages,
   createModelMessageAssemblerState,
+  getModelStreamBlockId,
   messageContent,
   type CanonicalToolCall,
   PROMPT_TOO_LONG_ANTHROPIC_PATTERN,
@@ -16,11 +19,7 @@ import {
   type CanonicalModelRequest,
   type CanonicalToolSchema,
   type CanonicalUsage,
-  type CanonicalToolCallBlock,
   materializeMediaReferences,
-  type PartialTextToolCallInfo,
-  getSelfCorrectPrompt,
-  detectFormatByText,
 } from "../../model/index.js";
 import type {
   PilotDeckToolDefinition,
@@ -74,7 +73,6 @@ import {
   isAskModeAllowedTool,
 } from "../../tool/askModeConstraints.js";
 import { buildAskModeAgentToolSchema } from "../../tool/builtin/agent.js";
-import { repairToolName } from "../../model/streaming/repairToolName.js";
 import { requestFingerprint } from "../../model/streaming/requestFingerprint.js";
 import {
   createAgentStatusDetail,
@@ -198,6 +196,36 @@ export class AgentLoop {
   }
 
   async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+    const timeline = new TurnTimeline(input.turnId);
+    const generator = this.runOrdered({
+      ...input,
+      onCompactPersisted: async (compact) => {
+        if (compact.boundary.kind === "compact" && "compactMetadata" in compact.boundary) {
+          const metadata = compact.boundary.compactMetadata;
+          if (metadata.compactionId) metadata.timeline = timeline.position(`compact:${metadata.compactionId}`);
+        }
+        await input.onCompactPersisted?.(compact);
+      },
+      onDurableMessage: async (message) => {
+        timeline.message(message);
+        await input.onDurableMessage?.(message);
+      },
+    });
+    let completed = false;
+    try {
+      while (true) {
+        const next = await generator.next();
+        if (next.done) { completed = true; return next.value; }
+        yield timeline.event(next.value);
+      }
+    } finally {
+      // Forward consumer cancellation to the underlying agent iterator. Its
+      // return value is intentionally unused when the consumer has stopped.
+      if (!completed) await generator.return(undefined as never);
+    }
+  }
+
+  private async *runOrdered(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
     this.clearTurnScopedTokenCaps();
     this.applyRunModeOverride(input.runMode);
     this.applyPermissionOverrides(input.permissionMode, input.permissionRules, input.basePermissionMode);
@@ -290,7 +318,6 @@ export class AgentLoop {
     let consecutiveEmptyCount = 0;
     const MAX_JSON_SELF_CORRECT_RETRIES = 3;
     let jsonSelfCorrectCount = 0;
-    let hasAttemptedToolCallRetry = false;
     let hasAttemptedReasoningContentRetry = false;
     /** Prevent a provider that keeps rejecting text-only retries from looping forever. */
     let hasAttemptedImageStrip = false;
@@ -451,7 +478,7 @@ export class AgentLoop {
       if (ctx?.tryAutoCompact) {
         try {
           const reservedOutputTokens = this.getReservedOutputTokens();
-          const compact = await ctx.tryAutoCompact({
+          const compact = yield* this.awaitCompactionWithEvents(ctx.tryAutoCompact({
             sessionId: input.sessionId,
             turnId: input.turnId,
             messages,
@@ -461,7 +488,7 @@ export class AgentLoop {
               maxContextTokens: preRoutingMaxContextTokens,
               reservedOutputTokens,
             }),
-          });
+          }));
           if (compact.type === "compacted") {
             messages = compact.messages;
             this.tokenCalibrationByRoute.clear();
@@ -555,7 +582,7 @@ export class AgentLoop {
         if (routedMaxCtx !== undefined && routedMaxCtx !== currentBudgetMaxCtx) {
           try {
             const reservedOutputTokens = this.getReservedOutputTokens(decision.provider, decision.model);
-            const recompact = await ctx.tryAutoCompact({
+            const recompact = yield* this.awaitCompactionWithEvents(ctx.tryAutoCompact({
               sessionId: input.sessionId,
               turnId: input.turnId,
               messages,
@@ -568,7 +595,7 @@ export class AgentLoop {
                 maxContextTokens: routedMaxCtx,
                 reservedOutputTokens,
               }),
-            });
+            }));
             if (recompact.type === "compacted") {
               messages = recompact.messages;
               this.tokenCalibrationByRoute.clear();
@@ -626,7 +653,7 @@ export class AgentLoop {
         : { ...request, provider: decision.provider, model: decision.model };
       const requestInputEstimate = this.dependencies.tokenAccounting?.estimateRequestInput?.(calibrationRequest);
       const calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
-      const assembler = createModelMessageAssemblerState();
+      const assembler = createModelMessageAssemblerState(randomUUID());
       let executedRequest: { provider: string; model: string; fingerprint?: string } | undefined;
       try {
         for await (const event of this.dependencies.router.execute(decision, request, {
@@ -642,7 +669,10 @@ export class AgentLoop {
               fingerprint: event.requestFingerprint,
             };
           }
-          yield { type: "model_event", sessionId: input.sessionId, turnId: input.turnId, event };
+          const blockId = event.type === 'text_delta' || event.type === 'thinking_delta'
+            ? getModelStreamBlockId(assembler, event.type === 'text_delta' ? 'text' : 'thinking') : undefined;
+          yield { type: "model_event", sessionId: input.sessionId, turnId: input.turnId, event,
+            ...(blockId ? { blockId } : {}) };
           applyModelEventToAssembler(assembler, event);
           if (event.type === "error") {
             break;
@@ -654,7 +684,6 @@ export class AgentLoop {
           const partialAssembled = assembleAssistantMessage(assembler);
           const safePartialMessage = safeFinalTextMessage(
             partialAssembled.message,
-            partialAssembled.hasPartialTextToolCall || partialAssembled.hasTextFallbackToolCalls,
             partialAssembled.toolCalls,
           );
           if (safePartialMessage) {
@@ -711,7 +740,6 @@ export class AgentLoop {
         const partialAssembled = assembleAssistantMessage(assembler);
         const safePartialMessage = safeFinalTextMessage(
           partialAssembled.message,
-          partialAssembled.hasPartialTextToolCall || partialAssembled.hasTextFallbackToolCalls,
           partialAssembled.toolCalls,
         );
         if (safePartialMessage) {
@@ -752,13 +780,8 @@ export class AgentLoop {
       ) {
         this.recordTokenCalibration(calibrationRequest, assembled.usage, requestInputEstimate);
       }
-      let assistantMessage = assembled.message;
-      let toolCalls = collectToolCalls(assistantMessage);
-      if (assembled.hasTextFallbackToolCalls) {
-        const repaired = this.repairTextExtractedToolNames(assistantMessage, toolCalls);
-        assistantMessage = repaired.message;
-        toolCalls = repaired.toolCalls;
-      }
+      const assistantMessage = assembled.message;
+      const toolCalls = collectToolCalls(assistantMessage);
       finalMessage = assistantMessage;
       expireConsumedTransientPrompts();
 
@@ -766,15 +789,12 @@ export class AgentLoop {
       if (streamInterruption) {
         if (streamInterruptionRecoveryCount < MAX_STREAM_INTERRUPTION_RECOVERIES) {
           streamInterruptionRecoveryCount++;
-          const hasTextToolCall = assembled.hasPartialTextToolCall
-            || assembled.hasTextFallbackToolCalls
-            || toolCalls.length > 0;
-          if (hasTextToolCall) {
-            // Do not expose a text-encoded tool-call fragment if recovery is
-            // cancelled before the replacement response arrives.
+          const hasStructuredToolCall = toolCalls.length > 0 || streamInterruption.phase === "tool_call";
+          if (hasStructuredToolCall) {
+            // Never persist unexecuted structured calls when recovery is cancelled.
             finalMessage = undefined;
           }
-          if (streamInterruption.phase === "text" && !hasTextToolCall) {
+          if (streamInterruption.phase === "text" && !hasStructuredToolCall) {
             const partialTextMessage = withoutThinkingBlocks(assistantMessage);
             if (textFromMessage(partialTextMessage).trim().length > 0) {
               finalMessage = partialTextMessage;
@@ -783,12 +803,11 @@ export class AgentLoop {
               await input.onDurableMessage?.(partialTextMessage);
             }
           }
-          const recoveryPrompt = hasTextToolCall
-            ? buildPartialTextToolCallRecoveryPrompt(assembled.partialTextToolCall)
-            : buildStreamInterruptionRecoveryPrompt(streamInterruption);
           pushTransientSyntheticPrompt(
-            recoveryPrompt,
-            hasTextToolCall ? "max_output_recovery" : "stream_interruption_recovery",
+            buildStreamInterruptionRecoveryPrompt(
+              hasStructuredToolCall ? { ...streamInterruption, phase: "tool_call" } : streamInterruption,
+            ),
+            "stream_interruption_recovery",
           );
           yield {
             type: "turn_continued",
@@ -805,7 +824,7 @@ export class AgentLoop {
           assembled.error,
           "The model stream repeatedly disconnected. Retry the turn or switch providers.",
         );
-        const exhaustedMessage = safeFinalTextMessage(assistantMessage, assembled.hasPartialTextToolCall || assembled.hasTextFallbackToolCalls, toolCalls);
+        const exhaustedMessage = safeFinalTextMessage(assistantMessage, toolCalls);
         finalMessage = exhaustedMessage;
         if (exhaustedMessage) {
           messages.push(exhaustedMessage);
@@ -833,7 +852,7 @@ export class AgentLoop {
       }
       streamInterruptionRecoveryCount = 0;
 
-      if (!assembled.error && assembled.hasMessageEnd && !assembled.hasPartialTextToolCall && assembled.finishReason === "unknown") {
+      if (!assembled.error && assembled.hasMessageEnd && assembled.finishReason === "unknown") {
         if (unknownFinishRecoveryCount < MAX_UNKNOWN_FINISH_RECOVERIES) {
           unknownFinishRecoveryCount++;
           const partialTextMessage = withoutThinkingBlocks(assistantMessage);
@@ -862,7 +881,7 @@ export class AgentLoop {
           undefined,
           "The provider repeatedly ended the stream without a recognized finish reason. Retry the turn or switch providers.",
         );
-        const exhaustedMessage = safeFinalTextMessage(assistantMessage, assembled.hasPartialTextToolCall || assembled.hasTextFallbackToolCalls, toolCalls);
+        const exhaustedMessage = safeFinalTextMessage(assistantMessage, toolCalls);
         finalMessage = exhaustedMessage;
         if (exhaustedMessage) {
           messages.push(exhaustedMessage);
@@ -889,54 +908,6 @@ export class AgentLoop {
         return { result, messages };
       }
       unknownFinishRecoveryCount = 0;
-
-      if (assembled.hasPartialTextToolCall) {
-        if (maxOutputRecoveryCount < MAX_OUTPUT_RECOVERY_LIMIT) {
-          maxOutputRecoveryCount++;
-          // The current assistant message contains an unsafe tool fragment;
-          // clear it before yielding so cancellation cannot return it.
-          finalMessage = undefined;
-          pushTransientSyntheticPrompt(
-            buildPartialTextToolCallRecoveryPrompt(assembled.partialTextToolCall),
-            "max_output_recovery",
-          );
-          yield {
-            type: "turn_continued",
-            sessionId: input.sessionId,
-            turnId: input.turnId,
-            reason: "model_error",
-          };
-          continue;
-        }
-
-        const detail = assembled.partialTextToolCall
-          ? `${assembled.partialTextToolCall.format}/${assembled.partialTextToolCall.reason}`
-          : "unknown partial text tool-call";
-        finalMessage = safeFinalTextMessage(assistantMessage, true, toolCalls);
-        const result = this.createTurnResult(input, {
-          type: "error",
-          stopReason: "model_error",
-          usage,
-          permissionDenials,
-          turns: turnCount,
-          startedAt,
-          finalMessage,
-          structuredOutput,
-          errors: [agentError(
-            "agent_model_error",
-            `Partial text tool-call recovery exhausted after ${MAX_OUTPUT_RECOVERY_LIMIT} attempts (${detail}).`,
-          )],
-        });
-        yield await emitStatus(createToolCallRecoveryExhaustedStatus({
-          error: result.errors![0]!,
-          attempts: maxOutputRecoveryCount,
-          reason: detail,
-        }));
-        yield { type: "turn_failed", sessionId: input.sessionId, turnId: input.turnId, error: result.errors![0]! };
-        await captureTurn(result.type === "error");
-        yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
-        return { result, messages };
-      }
 
       // When jsonrepair silently "fixed" truncated JSON and the response
       // was cut by max_tokens, the tool call arguments are likely incomplete
@@ -1298,7 +1269,7 @@ export class AgentLoop {
                 provider: target.provider,
                 model: target.model,
               };
-              const compact = await ctx.tryAutoCompact({
+              const compact = yield* this.awaitCompactionWithEvents(ctx.tryAutoCompact({
                 sessionId: input.sessionId,
                 turnId: input.turnId,
                 messages,
@@ -1312,7 +1283,7 @@ export class AgentLoop {
                   reservedOutputTokens,
                 }),
                 allowFallbackOnFailure: true,
-              });
+              }));
               if (compact.type === "compacted") {
                 messages = compact.messages;
                 this.tokenCalibrationByRoute.clear();
@@ -1629,34 +1600,6 @@ export class AgentLoop {
           continue;
         }
 
-        if (!assembled.hasPartialTextToolCall && assembled.hasUnparsedTextToolCall) {
-          if (!hasAttemptedToolCallRetry) {
-            hasAttemptedToolCallRetry = true;
-            pushTransientSyntheticPrompt(
-              getSelfCorrectPrompt(this.config.toolCallFormat ?? assembled.textToolCallFormat, assistantText),
-              "unparsed_tool_call_retry",
-            );
-            yield {
-              type: "turn_continued",
-              sessionId: input.sessionId,
-              turnId: input.turnId,
-              reason: "model_error",
-            };
-            continue;
-          }
-
-          yield {
-            type: "warning",
-            sessionId: input.sessionId,
-            turnId: input.turnId,
-            code: "unparsed_tool_call",
-            message: "Model attempted to call a tool but the output could not be parsed. The response may be incomplete.",
-            metadata: {
-              detectedFormat: assembled.textToolCallFormat ?? detectFormatByText(assistantText)?.id,
-            },
-          };
-        }
-
         // A steer starts another model iteration, so it must obey the same
         // turn budget as tool-driven continuation. Leave guidance in the
         // mailbox when the budget is exhausted; TurnRunner will report it as
@@ -1971,7 +1914,6 @@ export class AgentLoop {
         consecutiveEmptyCount = 0;
         hasAttemptedOutputRetry = false;
         hasAttemptedEmptyRetry = false;
-        hasAttemptedToolCallRetry = false;
         hasAttemptedImageStrip = false;
       }
 
@@ -2051,7 +1993,7 @@ export class AgentLoop {
   private async createModelRequest(
     messages: CanonicalMessage[],
     input: AgentLoopInput,
-    options: { emitInstructionEvents?: boolean } = {},
+    options: { emitInstructionEvents?: boolean; previewOnly?: boolean } = {},
   ): Promise<CanonicalModelRequest> {
     const contextRuntime = this.dependencies.context ?? new NullContextRuntime();
     const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
@@ -2106,6 +2048,7 @@ export class AgentLoop {
     const requestProvider = input.modelOverride?.provider ?? this.config.provider;
     const requestModel = input.modelOverride?.model ?? this.config.model;
     const prepared = await contextRuntime.prepareForModel({
+      previewOnly: options.previewOnly,
       sessionId: input.sessionId,
       turnId: input.turnId,
       cwd: this.config.cwd,
@@ -2169,7 +2112,6 @@ export class AgentLoop {
       tools: prepared.tools,
       toolChoice: this.config.toolChoice,
       maxOutputTokens: this.config.maxOutputTokens,
-      temperature: input.modelOverride?.temperature ?? this.config.temperature,
       speed: input.modelOverride?.speed,
       thinking: input.modelOverride?.thinking ?? this.config.thinking,
       stream: true,
@@ -2196,6 +2138,7 @@ export class AgentLoop {
     return async (candidateMessages) => {
       let candidateRequest = await this.createModelRequest(candidateMessages, input, {
         emitInstructionEvents: false,
+        previewOnly: true,
       });
       if (options.decision && options.baseRequest) {
         const patchedBase = { ...options.baseRequest, messages: candidateRequest.messages };
@@ -2405,34 +2348,6 @@ export class AgentLoop {
       provider,
       model,
       maxOutputTokens: this.currentMaxOutputTokens(provider, model),
-    };
-  }
-
-  private repairTextExtractedToolNames(
-    message: CanonicalMessage,
-    toolCalls: CanonicalToolCall[],
-  ): { message: CanonicalMessage; toolCalls: CanonicalToolCall[] } {
-    if (toolCalls.length === 0) return { message, toolCalls };
-    const validNames = new Set(this.dependencies.tools.registry.list().map((tool) => tool.name));
-    const repairedById = new Map<string, string>();
-    const repairedToolCalls = toolCalls.map((call) => {
-      const repaired = repairToolName(call.name, validNames, this.config.toolAliases);
-      if (!repaired) return call;
-      repairedById.set(call.id, repaired.name);
-      return { ...call, name: repaired.name };
-    });
-    if (repairedById.size === 0) return { message, toolCalls };
-
-    return {
-      message: {
-        ...message,
-        content: message.content.map((block) => {
-          if (block.type !== "tool_call") return block;
-          const repairedName = repairedById.get(block.id);
-          return repairedName ? ({ ...block, name: repairedName } satisfies CanonicalToolCallBlock) : block;
-        }),
-      },
-      toolCalls: repairedToolCalls,
     };
   }
 
@@ -2755,6 +2670,23 @@ export class AgentLoop {
     };
   }
 
+  /** Keep compaction progress live while its summary model request is pending. */
+  private async *awaitCompactionWithEvents<T>(operation: Promise<T>): AsyncGenerator<AgentEvent, T, unknown> {
+    let settled = false;
+    const completion = operation.then(
+      value => ({ ok: true as const, value }),
+      error => ({ ok: false as const, error }),
+    ).finally(() => { settled = true; });
+    while (!settled) {
+      yield* this.drainEventBuffer();
+      await Promise.race([completion, sleep(TOOL_EVENT_PUMP_INTERVAL_MS)]);
+    }
+    yield* this.drainEventBuffer();
+    const result = await completion;
+    if (!result.ok) throw result.error;
+    return result.value;
+  }
+
   private *drainEventBuffer(): Generator<AgentEvent> {
     const events = this.dependencies.drainEvents?.() ?? [];
     for (const event of events) {
@@ -3031,10 +2963,9 @@ function withoutThinkingBlocks(message: CanonicalMessage): CanonicalMessage {
 
 function safeFinalTextMessage(
   message: CanonicalMessage,
-  hasPartialTextToolCall: boolean | undefined,
   toolCalls: CanonicalToolCall[],
 ): CanonicalMessage | undefined {
-  if (hasPartialTextToolCall || toolCalls.length > 0) {
+  if (toolCalls.length > 0) {
     return undefined;
   }
   const textMessage = withoutThinkingBlocks(message);
@@ -3147,20 +3078,6 @@ function subagentIdFromSessionId(sessionId: string): string | undefined {
   if (index < 0) return undefined;
   const subagentId = sessionId.slice(index + marker.length).trim();
   return subagentId.length > 0 ? subagentId : undefined;
-}
-
-function buildPartialTextToolCallRecoveryPrompt(
-  partial: PartialTextToolCallInfo | undefined,
-): string {
-  const evidence = partial
-    ? `Detected partial text tool-call syntax (${partial.format}/${partial.reason}).`
-    : "Detected partial text tool-call syntax.";
-  return [
-    "The previous response contained partial tool-call XML/text and could not be safely executed.",
-    evidence,
-    "Resend the complete intended tool call with all required parameters, or continue in visible text if no tool is needed.",
-    "Do not repeat dangling XML/tool-call fragments.",
-  ].join("\n");
 }
 
 /** Keep a bounded tail without dropping the user request that initiated it. */

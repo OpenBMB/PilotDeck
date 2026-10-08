@@ -11,7 +11,7 @@ import {
 } from "../../../../../../../src/agent/sub/subagentProfiles.js";
 import { configToYamlString } from "../../modelPool/utils/configYaml";
 import type { PilotDeckConfig } from "../../modelPool/types";
-import { buildModelRefOptions, ensureModelRefConfigured } from "../../agentModel/utils/modelRefs";
+import { buildModelRefOptions, ensureModelRefConfigured } from "../../modelPool/utils/modelRefs";
 import { FieldSaveModeProvider, FormRow, Select } from "../../../shared/components/Inputs";
 import { ConfigSaveError, PageSectionHeader, SettingsCard } from "../../../shared/view";
 import {
@@ -36,6 +36,7 @@ const DEFAULT_DEPTH = 1;
 
 type ProfilesSectionProps = {
   config: PilotDeckConfig;
+  reference?: string | null;
   saving: boolean;
   onSave: (
     next: PilotDeckConfig,
@@ -54,7 +55,7 @@ function toRows(resolved: readonly ResolvedSubagentProfile[]): ProfileRow[] {
   }));
 }
 
-export default function ProfilesSection({ config, saving, onSave }: ProfilesSectionProps) {
+export default function ProfilesSection({ config, reference = null, saving, onSave }: ProfilesSectionProps) {
   const { t } = useTranslation("settings");
   const [draft, setDraftState] = useState<PilotDeckConfig>(config);
   const locallyEdited = useRef(false);
@@ -65,6 +66,7 @@ export default function ProfilesSection({ config, saving, onSave }: ProfilesSect
     locallyEdited.current = true;
     setDraftState(next);
   };
+  const handledReference = useRef<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(new Set());
   const [pendingIds, setPendingIds] = useState<Record<string, string>>({});
@@ -137,9 +139,17 @@ export default function ProfilesSection({ config, saving, onSave }: ProfilesSect
   }, [draft, draftProfiles, previewInvalid, pendingIds]);
 
   useEffect(() => {
+    if (reference !== handledReference.current) {
+      handledReference.current = reference;
+      const referencedId = /^agent\.subagents\.profiles\.([^.]+)\.model$/.exec(reference ?? "")?.[1];
+      if (referencedId && rows.some((row) => row.id === referencedId)) {
+        setSelectedId(referencedId);
+        return;
+      }
+    }
     if (selectedId && rows.some((row) => row.id === selectedId)) return;
     setSelectedId(rows.length > 0 ? rows[0].id : null);
-  }, [rows, selectedId]);
+  }, [reference, rows, selectedId]);
 
   const selectedRow = rows.find((row) => row.id === selectedId) ?? null;
   const selectedOverride = selectedId ? draftProfiles[selectedId] : undefined;

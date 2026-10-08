@@ -1,31 +1,36 @@
+import { lazy, Suspense } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useTranslation } from "react-i18next";
 import { ChevronLeft } from "lucide-react";
+import { useModelReferenceFocus } from '../shared/hooks/useModelReferenceFocus';
 import { cn } from "../../../lib/utils";
 import type { DesktopVersionCheckResult } from "../version";
 import type { SettingsMenuKey } from "../types";
 import type { SettingsProject } from "../shared/types";
 import { SETTINGS_CONFIG_ICON } from "./navIcons";
-import AgentModelSections from "./agentModel";
-import AgentMemorySections from "./agentMemory";
-import AgentResidentSections from "./agentResident";
-import AgentRouteSections from "./agentRoute";
-import AgentSubagentsSections from "./agentSubagents";
-import AgentScheduleSections from "./agentSchedule";
-import AgentSearchSections from "./agentSearch";
-import AdvancedSections from "./advanced";
-import McpServersSection from "./extensions";
-import GeneralSections from "./general";
-import IntegrationsSections from "./integrations";
-import ModelPoolSections from "./modelPool";
-import PrivacySections from "./privacy";
-import AboutSections from "./about";
-import OfficePreviewSections from "./officePreview";
+const AgentMemorySections = lazy(() => import("./agentMemory"));
+const AgentResidentSections = lazy(() => import("./agentResident"));
+const AgentRouteSections = lazy(() => import("./agentRoute"));
+const AgentSubagentsSections = lazy(() => import("./agentSubagents"));
+const AgentScheduleSections = lazy(() => import("./agentSchedule"));
+const AgentSearchSections = lazy(() => import("./agentSearch"));
+const AdvancedSections = lazy(() => import("./advanced"));
+const McpServersSection = lazy(() => import("./extensions"));
+const GeneralSections = lazy(() => import("./general"));
+const IntegrationsSections = lazy(() => import("./integrations"));
+const ModelPoolSections = lazy(() => import("./modelPool"));
+const PrivacySections = lazy(() => import("./privacy"));
+const AboutSections = lazy(() => import("./about"));
+const OfficePreviewSections = lazy(() => import("./officePreview"));
+
+const AppearanceSettings = lazy(() => import('./appearance'));
 
 type SettingsContentProps = {
   selectedKey: SettingsMenuKey;
   projects: SettingsProject[];
   versionInfo: DesktopVersionCheckResult;
   checkingVersion: boolean;
+  onCheckUpdates: () => Promise<void>;
   onCloseSettings?: () => void;
   mobileVisible?: boolean;
   onOpenMobileNavigation?: () => void;
@@ -33,9 +38,9 @@ type SettingsContentProps = {
 
 const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   general: "settingsPage.titles.general",
+  appearance: "lightAppearance.title",
   modelPool: "settingsPage.titles.modelPool",
   agent: "settingsPage.titles.agent",
-  agentModel: "settingsPage.titles.agentModel",
   agentRoute: "settingsPage.titles.agentRoute",
   agentSubagents: "settingsPage.titles.agentSubagents",
   agentMemory: "settingsPage.titles.agentMemory",
@@ -53,9 +58,9 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
 
 const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
   general: "settingsPage.menu.general",
+  appearance: "lightAppearance.title",
   modelPool: "settingsPage.menu.modelPool",
   agent: "settingsPage.menu.agent",
-  agentModel: "settingsPage.menu.agentModel",
   agentRoute: "settingsPage.menu.agentRoute",
   agentSubagents: "settingsPage.menu.agentSubagents",
   agentMemory: "settingsPage.menu.agentMemory",
@@ -73,8 +78,8 @@ const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
 
 const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
   general: "settingsPage.descriptions.general",
+  appearance: "lightAppearance.description",
   modelPool: "settingsPage.descriptions.modelPool",
-  agentModel: "settingsPage.descriptions.agentModel",
   agentRoute: "settingsPage.descriptions.agentRoute",
   agentSubagents: "settingsPage.descriptions.agentSubagents",
   agentMemory: "settingsPage.descriptions.agentMemory",
@@ -91,8 +96,8 @@ const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
 
 const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
   general: "general-settings-page",
+  appearance: "appearance-settings-page",
   modelPool: "model-pool-page",
-  agentModel: "agent-model-page",
   agentRoute: "agent-route-page",
   agentSubagents: "agent-subagents-page",
   agentMemory: "agent-memory-page",
@@ -112,14 +117,20 @@ export default function SettingsContent({
   projects,
   versionInfo,
   checkingVersion,
+  onCheckUpdates,
   onCloseSettings,
   mobileVisible = true,
   onOpenMobileNavigation,
 }: SettingsContentProps) {
   const { t } = useTranslation("settings");
+  const { search } = useLocation();
+  const reference = new URLSearchParams(search).get('reference');
+  useModelReferenceFocus(reference, selectedKey);
   const title = t(MENU_TITLE_KEYS[selectedKey]);
   const heading = t(PAGE_HEADING_KEYS[selectedKey]);
-  const descriptionKey = PAGE_DESCRIPTION_KEYS[selectedKey];
+  const descriptionKey = selectedKey === "about" && versionInfo.mode === "web"
+    ? "settingsPage.descriptions.aboutWeb"
+    : PAGE_DESCRIPTION_KEYS[selectedKey];
   const pageClass = PAGE_CLASS[selectedKey];
   const isAgentSubpage = selectedKey.startsWith("agent") && selectedKey !== "agent";
   const isExternalIntegrationPage =
@@ -154,7 +165,7 @@ export default function SettingsContent({
         </div>
       </header>
 
-      <section className={cn("settings-page settings-content", pageClass)}>
+      <section key={selectedKey} className={cn("settings-page settings-content", pageClass)}>
         <button
           type="button"
           onClick={onOpenMobileNavigation}
@@ -171,14 +182,15 @@ export default function SettingsContent({
           </div>
         </header>
 
+        <Suspense fallback={<div role="status" aria-busy="true">{t('lightAppearance.loading')}</div>}>
         {selectedKey === "general" ? (
           <GeneralSections title={title} />
-        ) : selectedKey === "agentModel" ? (
-          <AgentModelSections title={title} />
+        ) : selectedKey === "appearance" ? (
+          <AppearanceSettings />
         ) : selectedKey === "agentRoute" ? (
-          <AgentRouteSections title={title} />
+          <AgentRouteSections title={title} reference={reference} />
         ) : selectedKey === "agentSubagents" ? (
-          <AgentSubagentsSections title={title} />
+          <AgentSubagentsSections title={title} reference={reference} />
         ) : selectedKey === "agentMemory" ? (
           <AgentMemorySections title={title} projects={projects} />
         ) : selectedKey === "agentResident" ? (
@@ -204,6 +216,7 @@ export default function SettingsContent({
             title={title}
             versionInfo={versionInfo}
             checkingVersion={checkingVersion}
+            onCheckUpdates={onCheckUpdates}
             onRestartConfirmed={onCloseSettings}
           />
         ) : (
@@ -218,6 +231,7 @@ export default function SettingsContent({
             </div>
           </div>
         )}
+        </Suspense>
       </section>
     </div>
   );

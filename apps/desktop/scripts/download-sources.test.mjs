@@ -63,7 +63,7 @@ test("resolveDownloadSource prefers archive over explicit URL and base URL", () 
   });
 
   assert.equal(source.type, "archive");
-  assert.equal(source.path, "/cache/pkg.zip");
+  assert.equal(source.path, resolve("/cache/pkg.zip"));
   assert.equal(source.source, "ARCHIVE");
 });
 
@@ -200,6 +200,23 @@ test("buildPlaywrightBrowserPlan maps preinstall Windows x64 browser-only archiv
     "https://cdn.npmmirror.com/binaries/chrome-for-testing/149.0.7827.3/win64/chrome-win64.zip",
   );
   assert.deepEqual(plan.map((item) => item.archiveName), ["chrome-win64.zip"]);
+});
+
+test("buildPlaywrightBrowserPlan uses win64 archives for Windows ARM64 preinstall", () => {
+  for (const browserSet of ["browser-only", "full"]) {
+    const options = {
+      browsersJson: fakeBrowsersJson,
+      platform: "win32",
+      env: {
+        PILOTDECK_DESKTOP_PLAYWRIGHT_INSTALL_MODE: "preinstall",
+        PILOTDECK_DESKTOP_PLAYWRIGHT_BROWSER_SET: browserSet,
+      },
+    };
+    assert.deepEqual(
+      buildPlaywrightBrowserPlan({ ...options, arch: "arm64" }),
+      buildPlaywrightBrowserPlan({ ...options, arch: "x64" }),
+    );
+  }
 });
 
 test("installMirroredPlaywrightBrowsers installs from local archive dir", async () => {

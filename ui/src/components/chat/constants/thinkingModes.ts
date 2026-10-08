@@ -1,7 +1,7 @@
-import { Atom, Brain, Gauge, MinusCircle, Sparkles, Zap } from 'lucide-react';
+import { Atom, Brain, Sparkles, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-export type ThinkingModeId = 'default' | 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ThinkingModeId = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export type ThinkingModeOption = {
   id: ThinkingModeId;
@@ -20,20 +20,6 @@ export const thinkingModes: ThinkingModeOption[] = [
     color: 'text-neutral-600',
   },
   {
-    id: 'off',
-    name: 'Off',
-    description: 'Disable reasoning when the model supports it',
-    icon: MinusCircle,
-    color: 'text-neutral-500',
-  },
-  {
-    id: 'minimal',
-    name: 'Minimal',
-    description: 'Smallest supported reasoning effort',
-    icon: Gauge,
-    color: 'text-sky-600',
-  },
-  {
     id: 'low',
     name: 'Low',
     description: 'Light reasoning effort',
@@ -45,18 +31,18 @@ export const thinkingModes: ThinkingModeOption[] = [
     name: 'Medium',
     description: 'Balanced reasoning effort',
     icon: Zap,
-    color: 'text-purple-600',
+    color: 'text-[var(--pd-accent-strong,#9333ea)]',
   },
   {
     id: 'high',
     name: 'High',
     description: 'Deeper reasoning for harder tasks',
     icon: Sparkles,
-    color: 'text-indigo-600',
+    color: 'text-[var(--pd-accent-strong,#4f46e5)]',
   },
   {
     id: 'xhigh',
-    name: 'Extra High',
+    name: 'Xhigh',
     description: 'Maximum effort for supported models',
     icon: Atom,
     color: 'text-red-600',
@@ -77,7 +63,6 @@ export function isThinkingModeId(value: unknown): value is ThinkingModeId {
 export function thinkingModeToConfig(mode: ThinkingModeId) {
   return {
     mode,
-    enabled: mode !== 'default' && mode !== 'off',
-    ...(mode === 'off' ? { enabled: false } : {}),
+    enabled: mode !== 'default',
   };
 }

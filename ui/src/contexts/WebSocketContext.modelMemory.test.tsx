@@ -15,7 +15,7 @@ class Socket extends EventTarget {
   send = vi.fn();
   close() { this.dispatchEvent(new Event('close')); this.onclose?.(); }
 }
-const selection = { mode: 'model', provider: 'HXAPI', model: 'example', reasoning: .8, temperature: .3 };
+const selection = { mode: 'model', provider: 'HXAPI', model: 'example', reasoning: .8 };
 function Composer() {
   const { sendMessage } = useWebSocket();
   return <button onClick={() => sendMessage({ type: 'pilotdeck-command', options: { projectPath: '/project', runId: 'run-browser', modelSelection: selection } })}>Send</button>;

@@ -1,3 +1,5 @@
+import { sanitizeProviderBody } from "../request/sanitizeProviderBody.js";
+import { parseThinkingSettings } from "../thinking/settings.js";
 import { ANTHROPIC_DEFAULT_CAPABILITIES } from "../providers/anthropic/defaults.js";
 import { OPENAI_DEFAULT_CAPABILITIES } from "../providers/openai/defaults.js";
 import { GOOGLE_DEFAULT_CAPABILITIES } from "../providers/google/defaults.js";
@@ -114,7 +116,7 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     ),
     timeoutMs: readOptionalPositiveNumber(provider.timeoutMs, "timeoutMs"),
     headers: readStringRecord(provider.headers, "headers"),
-    extraBody: isRecord(provider.extraBody) ? (provider.extraBody as Record<string, unknown>) : undefined,
+    extraBody: isRecord(provider.extraBody) ? sanitizeProviderBody(provider.extraBody as Record<string, unknown>) : undefined,
     speedMapping: parseSpeedMapping(provider.speedMapping, providerId, protocol, catalogProvider !== undefined),
     retry: parseRetryConfig(provider.retry),
     models,
@@ -211,7 +213,12 @@ function parseModelDefinition(
     : undefined;
   const multimodal = parseMultimodal(model.multimodal, catalogMultimodal);
 
+  let thinking;
+  try { thinking = parseThinkingSettings(model.thinking, protocol); }
+  catch (error) { throw new ModelConfigError("invalid_config_value", error instanceof Error ? error.message : String(error), { providerId, modelId }); }
+
   return {
+    thinking,
     id: modelId,
     displayName: typeof model.displayName === "string"
       ? model.displayName

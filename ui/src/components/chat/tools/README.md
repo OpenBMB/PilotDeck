@@ -78,8 +78,6 @@ Wraps `CollapsibleSection` (`<details>`/`<summary>`) with a `border-l-2` accent 
   title="filename.ts"           // Section title (can be clickable)
   defaultOpen={false}
   onTitleClick={() => ...}      // Makes title a clickable link (for edit tools)
-  showRawParameters={true}      // Show raw JSON toggle
-  rawContent="..."              // Raw JSON string
   toolCategory="edit"           // Drives border color
 >
   <ToolDiffViewer {...} />          // Content as children

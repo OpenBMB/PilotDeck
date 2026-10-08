@@ -86,6 +86,7 @@ test("BackgroundTaskRuntime marks non-zero exit as failed and filters list", asy
 test("BackgroundTaskRuntime handles spawn errors without throwing or losing completion", async () => {
   const completions: unknown[] = [];
   const runtime = new BackgroundTaskRuntime({
+    maxTasks: 1,
     spawn: (() => { throw new Error("spawn unavailable"); }) as never,
     onCompletion: (event) => completions.push(event),
   });
@@ -94,6 +95,11 @@ test("BackgroundTaskRuntime handles spawn errors without throwing or losing comp
   assert.equal(task.status, "failed");
   assert.equal(runtime.getOutput(task.taskId, 0).content, "spawn error: spawn unavailable\n");
   assert.equal(completions.length, 1);
+
+  const next = await runtime.start({ command: "missing again", cwd: "/tmp" });
+  assert.equal(next.status, "failed");
+  assert.equal(runtime.list().length, 2);
+  assert.equal(completions.length, 2);
 });
 
 test("BackgroundTaskRuntime supports abort waits and idempotent stop", async () => {
@@ -121,9 +127,63 @@ test("BackgroundTaskRuntime enforces the task limit and stops by agent", async (
 
   const stopPromise = runtime.killForAgent("a1");
   assert.deepEqual(children[0].kills, ["SIGTERM"]);
+  await assert.rejects(() => runtime.start({ command: "two", cwd: "/tmp" }), /max tasks/);
   children[0].finish(null, "SIGTERM");
   await stopPromise;
   assert.equal(first.status, "cancelled");
+
+  const second = await runtime.start({ command: "two", cwd: "/tmp" });
+  assert.equal(second.status, "running");
+  assert.equal(runtime.get(first.taskId)?.status, "cancelled");
+  children[1].finish();
+});
+
+for (const exitCode of [0, 1]) {
+  test(`BackgroundTaskRuntime reuses a slot after exit ${exitCode} while preserving history`, async () => {
+    const children: FakeChild[] = [];
+    const runtime = new BackgroundTaskRuntime({
+      maxTasks: 2,
+      spawn: (() => {
+        const child = new FakeChild();
+        children.push(child);
+        return child;
+      }) as never,
+    });
+    const spec = { command: "echo output", cwd: process.cwd() };
+    const starts = await Promise.allSettled([
+      runtime.start(spec), runtime.start(spec), runtime.start(spec),
+    ]);
+    assert.deepEqual(starts.map((result) => result.status), ["fulfilled", "fulfilled", "rejected"]);
+    assert.equal(children.length, 2);
+    const first = runtime.list()[0];
+    children[0].stdout.write("output\n");
+    children[0].finish(exitCode);
+    await runtime.waitFor(first.taskId);
+
+    const replacement = await runtime.start(spec);
+    assert.equal(replacement.status, "running");
+    assert.equal(runtime.list({ status: "running" }).length, 2);
+    assert.equal(runtime.list().length, 3);
+    assert.equal(runtime.get(first.taskId)?.status, exitCode === 0 ? "completed" : "failed");
+    assert.equal(runtime.getOutput(first.taskId, 0).content, "output\n");
+    await assert.rejects(() => runtime.start(spec), /max tasks \(2\) exceeded/);
+    assert.equal(children.length, 3);
+    children[1].finish();
+    children[2].finish();
+  });
+}
+
+test("BackgroundTaskRuntime runs more than 32 real tasks sequentially", { timeout: 30_000 }, async (t) => {
+  const runtime = new BackgroundTaskRuntime();
+  t.after(() => runtime.killAll());
+  for (let index = 0; index < 33; index++) {
+    const task = await runtime.start({ command: "echo done", cwd: process.cwd() });
+    const result = await runtime.wait(task.taskId, { timeoutMs: 5_000 });
+    assert.equal(result?.outcome, "completed");
+    assert.equal(result?.task.status, "completed");
+    assert.equal(runtime.list({ status: "running" }).length, 0);
+  }
+  assert.equal(runtime.list({ status: "completed" }).length, 33);
 });
 
 test("BackgroundTaskRuntime covers timeout, abort, unknown task and kill-all cleanup", async (t) => {

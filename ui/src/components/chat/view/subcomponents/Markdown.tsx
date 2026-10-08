@@ -88,7 +88,7 @@ export const Markdown = React.memo(function Markdown({
   const showFadeIn = isStreaming && wasStreamingRef.current;
 
   return (
-    <div className={`${className || ''} ${showFadeIn ? 'streaming-fade-in' : ''}`.trim()}>
+    <div className={`chat-markdown ${className || ''} ${showFadeIn ? 'streaming-fade-in' : ''}`.trim()}>
       <MarkdownSourceContext.Provider value={content}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}

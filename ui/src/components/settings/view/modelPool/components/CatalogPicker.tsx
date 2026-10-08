@@ -34,7 +34,7 @@ export default function CatalogPicker({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="provider-picker" role="dialog" aria-modal="true" aria-labelledby="provider-picker-title">
+      <section className="provider-picker" role="dialog" data-dialog-surface aria-modal="true" aria-labelledby="provider-picker-title">
         <header className="provider-picker-header">
           <div>
             <h2 id="provider-picker-title">{t("pilotDeckConfig.panels.models.addProviderTitle")}</h2>

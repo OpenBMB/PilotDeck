@@ -58,7 +58,7 @@ export function ConfirmDialog({ title, children, confirmLabel, destructive = fal
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onMouseDown={event => {
       if (event.target === event.currentTarget && !busy) onCancel();
     }}>
-      <section ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={bodyId} aria-busy={busy}
+      <section ref={panel} role="dialog" data-dialog-surface aria-modal="true" aria-labelledby={titleId} aria-describedby={bodyId} aria-busy={busy}
         className="flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl">
         <header className="flex items-start gap-3 px-5 pb-3 pt-5">
           <h2 id={titleId} className="min-w-0 flex-1 break-words text-base font-semibold">{title || t('confirmDialog.title')}</h2>
@@ -70,7 +70,7 @@ export function ConfirmDialog({ title, children, confirmLabel, destructive = fal
         </div>
         <footer className="flex justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
           <button ref={cancel} type="button" disabled={busy} onClick={onCancel} className="h-9 shrink-0 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">{t('confirmDialog.cancel')}</button>
-          <button type="button" disabled={busy || disabled} onClick={onConfirm} className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium disabled:opacity-50 ${destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
+          <button type="button" disabled={busy || disabled} onClick={onConfirm} className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-[var(--pd-accent,#5b5ce2)] text-white enabled:hover:bg-[var(--pd-accent-strong,#4948cf)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-accent,#5b5ce2)] focus-visible:ring-offset-2 focus-visible:ring-offset-background'}`}>
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? t('confirmDialog.working') : confirmLabel || t('confirmDialog.confirm')}
           </button>
         </footer>

@@ -1,0 +1,51 @@
+.desktop-update-card { --update-muted: color-mix(in srgb, var(--ink, hsl(var(--foreground))) 70%, var(--surface, hsl(var(--card)))); }
+.desktop-update-card .desktop-update-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line, hsl(var(--border)));
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: var(--update-muted);
+  font-size: 12px;
+}
+.desktop-update-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.desktop-update-status:is([data-state=downloading], [data-state=updateAvailable], [data-state=paused]) { color: var(--brand, #5b5ce2); background: var(--brand-tint, hsl(var(--accent))); border-color: transparent; }
+.desktop-update-transfer {
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--brand, #5b5ce2) 18%, var(--line, hsl(var(--border))));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--brand, #5b5ce2) 4%, var(--surface, hsl(var(--card))));
+}
+.desktop-update-transfer-heading { display: flex; align-items: center; gap: 12px; }
+.desktop-update-transfer-icon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px; background: var(--brand-tint, hsl(var(--accent))); color: var(--brand, #5b5ce2); }
+.desktop-update-transfer-copy { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.desktop-update-transfer-copy strong { color: var(--ink, hsl(var(--foreground))); font-size: 14px; font-weight: 600; }
+.desktop-update-transfer-copy > span { color: var(--update-muted); font-size: 12px; line-height: 1.5; }
+.desktop-update-percent { font-size: 24px; line-height: 1; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--brand, #5b5ce2); }
+.desktop-update-progress { height: 8px; overflow: hidden; margin-top: 20px; border-radius: 999px; background: color-mix(in srgb, var(--brand, #5b5ce2) 12%, var(--surface, hsl(var(--card)))); }
+.desktop-update-progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--brand, #5b5ce2) 72%, white), var(--brand, #5b5ce2)); transition: width .3s ease; }
+.desktop-update-transfer[data-state=paused] .desktop-update-progress-fill { opacity: .55; }
+.dark :is(.desktop-update-status[data-state=downloading], .desktop-update-status[data-state=updateAvailable], .desktop-update-status[data-state=paused], .desktop-update-transfer-icon, .desktop-update-percent) { color: #b9b7ff; }
+.desktop-update-transfer-details { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; margin-top: 10px; color: var(--update-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.desktop-update-speed { white-space: nowrap; }
+.desktop-update-transfer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.desktop-update-transfer-actions:empty { display: none; }
+.desktop-update-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 7px 13px; border-radius: 8px; border: 1px solid transparent; font-size: 13px; line-height: 1.4; font-weight: 500; transition: background .15s, border-color .15s; }
+.desktop-update-button.primary { color: white; background: var(--brand, #5b5ce2); }
+.desktop-update-button.primary:hover:not(:disabled) { background: var(--brand-strong, #4948cf); }
+.desktop-update-button.secondary { color: var(--ink, hsl(var(--foreground))); background: var(--surface, hsl(var(--card))); border-color: var(--line, hsl(var(--border))); }
+.desktop-update-button.secondary:hover:not(:disabled) { color: var(--ink, hsl(var(--foreground))); border-color: var(--brand, #5b5ce2); }
+.desktop-update-button:focus-visible { outline: 2px solid var(--brand, #5b5ce2); outline-offset: 3px; }
+.desktop-update-button:disabled { opacity: .45; cursor: not-allowed; }
+.desktop-update-settling { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }
+@media (max-width: 480px) {
+  .desktop-update-transfer { padding: 16px; }
+  .desktop-update-transfer-heading { flex-wrap: wrap; }
+  .desktop-update-transfer-copy { flex-basis: calc(100% - 52px); }
+  .desktop-update-percent { margin-left: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-update-progress-fill, .desktop-update-button { transition: none; }
+}
+html[data-reduced-motion] :is(.desktop-update-progress-fill, .desktop-update-button) { transition: none; }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from './services/workspaceFileUpload.js';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
 import '../../scripts/check-node-runtime.mjs';
 // Load environment variables before other imports execute
@@ -64,8 +65,9 @@ import { getDefaultPtyShell } from './utils/defaultShell.js';
 import { pickNativeFolder } from './utils/nativeFolderPicker.js';
 import { browseDirectories } from './utils/browseDirectories.js';
 import { getOpenUrlSpawnCommand } from './utils/processSpawn.js';
+import { createProjectUpdateScheduler } from './projectUpdateScheduler.js';
 
-import { getProjects, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
+import { getProjectsSnapshot, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
 import {
     runChatViaGateway,
     replaceLastTurnViaGateway,
@@ -196,7 +198,7 @@ const WATCHER_IGNORED_PATTERNS = [
 ];
 const WATCHER_DEBOUNCE_MS = 300;
 let projectsWatchers = [];
-let projectsWatcherDebounceTimer = null;
+let projectUpdateScheduler = null;
 const connectedClients = new Set();
 const sessionActivityRegistry = createSessionActivityRegistry();
 function broadcastSessionActivity(frame, userId) {
@@ -215,7 +217,6 @@ registerAlwaysOnNotificationForwarding(connectedClients, createBackgroundSession
     broadcastActivity: broadcastSessionActivity,
     forwardToWatchers: broadcastToSessionWatchers,
 }));
-let isGetProjectsRunning = false; // Flag to prevent reentrant calls
 
 function normalizeSessionId(value) {
     if (typeof value !== 'string') return null;
@@ -304,10 +305,7 @@ process.on('pilotdeck:config-broadcast', broadcastConfigReloaded);
 async function setupProjectsWatcher() {
     const chokidar = (await import('chokidar')).default;
 
-    if (projectsWatcherDebounceTimer) {
-        clearTimeout(projectsWatcherDebounceTimer);
-        projectsWatcherDebounceTimer = null;
-    }
+    projectUpdateScheduler?.dispose();
 
     await Promise.all(
         projectsWatchers.map(async (watcher) => {
@@ -320,48 +318,31 @@ async function setupProjectsWatcher() {
     );
     projectsWatchers = [];
 
+    const scheduler = createProjectUpdateScheduler({
+        debounceMs: WATCHER_DEBOUNCE_MS,
+        scan: () => {
+            clearProjectDirectoryCache();
+            return getProjectsSnapshot(broadcastProgress);
+        },
+        publish: (snapshot, { eventType, filePath, provider, rootPath }) => {
+            const updateMessage = JSON.stringify({
+                type: 'projects_updated',
+                projects: snapshot.projects,
+                projectListRevision: snapshot.revision,
+                timestamp: new Date().toISOString(),
+                changeType: eventType,
+                changedFile: path.relative(rootPath, filePath),
+                watchProvider: provider,
+            });
+            connectedClients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) client.send(updateMessage);
+            });
+        },
+        onError: (error) => console.error('[ERROR] Error handling project changes:', error),
+    });
+    projectUpdateScheduler = scheduler;
     const debouncedUpdate = (eventType, filePath, provider, rootPath) => {
-        if (projectsWatcherDebounceTimer) {
-            clearTimeout(projectsWatcherDebounceTimer);
-        }
-
-        projectsWatcherDebounceTimer = setTimeout(async () => {
-            // Prevent reentrant calls
-            if (isGetProjectsRunning) {
-                return;
-            }
-
-            try {
-                isGetProjectsRunning = true;
-
-                // Clear project directory cache when files change
-                clearProjectDirectoryCache();
-
-                // Get updated projects list
-                const updatedProjects = await getProjects(broadcastProgress);
-
-                // Notify all connected clients about the project changes
-                const updateMessage = JSON.stringify({
-                    type: 'projects_updated',
-                    projects: updatedProjects,
-                    timestamp: new Date().toISOString(),
-                    changeType: eventType,
-                    changedFile: path.relative(rootPath, filePath),
-                    watchProvider: provider
-                });
-
-                connectedClients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(updateMessage);
-                    }
-                });
-
-            } catch (error) {
-                console.error('[ERROR] Error handling project changes:', error);
-            } finally {
-                isGetProjectsRunning = false;
-            }
-        }, WATCHER_DEBOUNCE_MS);
+        scheduler.schedule({ eventType, filePath, provider, rootPath });
     };
 
     for (const { provider, rootPath } of PROVIDER_WATCH_PATHS) {
@@ -486,7 +467,8 @@ function shouldAutoOpenUrlFromOutput(value = '') {
 const wss = new WebSocketServer({
     server,
     verifyClient: (info) => {
-        console.log('WebSocket connection attempt to:', info.req.url);
+        // Log only the path: the query string carries the auth token.
+        console.log('WebSocket connection attempt to:', info.req.url?.split('?')[0]);
 
         // Platform / no-login mode: allow connection without token
         if (IS_PLATFORM || DISABLE_LOCAL_AUTH) {
@@ -916,8 +898,9 @@ app.use(express.static(path.join(__dirname, '../dist'), {
 
 app.get('/api/projects', authenticateToken, async (req, res) => {
     try {
-        const projects = await getProjects(broadcastProgress);
-        res.json(projects);
+        const snapshot = await getProjectsSnapshot(broadcastProgress);
+        res.setHeader('X-Projects-Revision', String(snapshot.revision));
+        res.json(snapshot.projects);
     } catch (error) {
         if (isGatewayUnavailableError(error)) {
             return res.status(503).json({
@@ -972,6 +955,11 @@ app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, 
             relativeTranscriptPath: req.query.relativeTranscriptPath || null,
         });
         sessionNamesDb.deleteName(sessionId, 'pilotdeck');
+        const userId = req.user?.id ?? req.user?.userId ?? null;
+        const payload = JSON.stringify({ type: 'session-deleted', projectName, sessionId });
+        connectedClients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) client.send(payload);
+        });
         console.log(`[API] Session ${sessionId} deleted successfully`);
         res.json({ success: true });
     } catch (error) {
@@ -1759,7 +1747,9 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/data', authenticat
     } catch (error) {
         console.error('Error generating interactive spreadsheet preview:', error);
         return res.status(error.statusCode || 500).json({
-            error: error.message || 'Failed to generate interactive spreadsheet preview',
+            error: error.statusCode
+                ? error.message
+                : 'Unable to generate spreadsheet preview. Please retry.',
             code: error.code || 'SPREADSHEET_INTERACTIVE_PREVIEW_FAILED',
         });
     }
@@ -2240,167 +2230,10 @@ app.delete('/api/projects/:projectName/files', authenticateToken, requireRealPro
     }
 });
 
-// POST /api/projects/:projectName/files/upload - Upload files
-// Dynamic import of multer for file uploads
-const uploadFilesHandler = async (req, res) => {
-    // Dynamic import of multer
-    const multer = (await import('multer')).default;
+const uploadFilesHandler = createWorkspaceFileUploadHandler({ resolveProject: extractProjectDirectory });
 
-    const uploadMiddleware = multer({
-        storage: multer.diskStorage({
-            destination: (req, file, cb) => {
-                cb(null, os.tmpdir());
-            },
-            filename: (req, file, cb) => {
-                // Use a unique temp name, but preserve original name in file.originalname
-                // Note: file.originalname may contain path separators for folder uploads
-                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-                // For temp file, just use a safe unique name without the path
-                cb(null, `upload-${uniqueSuffix}`);
-            }
-        }),
-        limits: {
-            fileSize: 50 * 1024 * 1024, // 50MB limit
-            files: 20 // Max 20 files at once
-        }
-    });
-
-    // Use multer middleware
-    uploadMiddleware.array('files', 20)(req, res, async (err) => {
-        if (err) {
-            console.error('Multer error:', err);
-            if (err.code === 'LIMIT_FILE_SIZE') {
-                return res.status(400).json({ error: 'File too large. Maximum size is 50MB.' });
-            }
-            if (err.code === 'LIMIT_FILE_COUNT') {
-                return res.status(400).json({ error: 'Too many files. Maximum is 20 files.' });
-            }
-            return res.status(500).json({ error: err.message });
-        }
-
-        try {
-            const { projectName } = req.params;
-            const { targetPath, relativePaths } = req.body;
-
-            // Parse relative paths if provided (for folder uploads)
-            let filePaths = [];
-            if (relativePaths) {
-                try {
-                    filePaths = JSON.parse(relativePaths);
-                } catch (e) {
-                    console.log('[DEBUG] Failed to parse relativePaths:', relativePaths);
-                }
-            }
-
-            console.log('[DEBUG] File upload request:', {
-                projectName,
-                targetPath: JSON.stringify(targetPath),
-                targetPathType: typeof targetPath,
-                filesCount: req.files?.length,
-                relativePaths: filePaths
-            });
-
-            if (!req.files || req.files.length === 0) {
-                return res.status(400).json({ error: 'No files provided' });
-            }
-
-            // Get project root
-            const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
-            if (!projectRoot) {
-                return res.status(404).json({ error: 'Project not found' });
-            }
-
-            console.log('[DEBUG] Project root:', projectRoot);
-
-            // Validate and resolve target path
-            // If targetPath is empty or '.', use project root directly
-            const targetDir = targetPath || '';
-            let resolvedTargetDir;
-
-            console.log('[DEBUG] Target dir:', JSON.stringify(targetDir));
-
-            if (!targetDir || targetDir === '.' || targetDir === './') {
-                // Empty path means upload to project root
-                resolvedTargetDir = path.resolve(projectRoot);
-                console.log('[DEBUG] Using project root as target:', resolvedTargetDir);
-            } else {
-                const validation = validatePathInProject(projectRoot, targetDir);
-                if (!validation.valid) {
-                    console.log('[DEBUG] Path validation failed:', validation.error);
-                    return res.status(403).json({ error: validation.error });
-                }
-                resolvedTargetDir = validation.resolved;
-                console.log('[DEBUG] Resolved target dir:', resolvedTargetDir);
-            }
-
-            // Ensure target directory exists
-            try {
-                await fsPromises.access(resolvedTargetDir);
-            } catch {
-                await fsPromises.mkdir(resolvedTargetDir, { recursive: true });
-            }
-
-            // Move uploaded files from temp to target directory
-            const uploadedFiles = [];
-            console.log('[DEBUG] Processing files:', req.files.map(f => ({ originalname: f.originalname, path: f.path })));
-            for (let i = 0; i < req.files.length; i++) {
-                const file = req.files[i];
-                // Use relative path if provided (for folder uploads), otherwise use originalname
-                const fileName = (filePaths && filePaths[i]) ? filePaths[i] : file.originalname;
-                console.log('[DEBUG] Processing file:', fileName, '(originalname:', file.originalname + ')');
-                const destPath = path.join(resolvedTargetDir, fileName);
-
-                // Validate destination path
-                const destValidation = validatePathInProject(projectRoot, destPath);
-                if (!destValidation.valid) {
-                    console.log('[DEBUG] Destination validation failed for:', destPath);
-                    // Clean up temp file
-                    await fsPromises.unlink(file.path).catch(() => {});
-                    continue;
-                }
-
-                // Ensure parent directory exists (for nested files from folder upload)
-                const parentDir = path.dirname(destPath);
-                try {
-                    await fsPromises.access(parentDir);
-                } catch {
-                    await fsPromises.mkdir(parentDir, { recursive: true });
-                }
-
-                // Move file (copy + unlink to handle cross-device scenarios)
-                await fsPromises.copyFile(file.path, destPath);
-                await fsPromises.unlink(file.path);
-
-                uploadedFiles.push({
-                    name: fileName,
-                    path: destPath,
-                    size: file.size,
-                    mimeType: file.mimetype
-                });
-            }
-
-            res.json({
-                success: true,
-                files: uploadedFiles,
-                targetPath: resolvedTargetDir,
-                message: `Uploaded ${uploadedFiles.length} file(s) successfully`
-            });
-        } catch (error) {
-            console.error('Error uploading files:', error);
-            // Clean up any remaining temp files
-            if (req.files) {
-                for (const file of req.files) {
-                    await fsPromises.unlink(file.path).catch(() => {});
-                }
-            }
-            if (error.code === 'EACCES') {
-                res.status(403).json({ error: 'Permission denied' });
-            } else {
-                res.status(500).json({ error: error.message });
-            }
-        }
-    });
-};
+app.post('/api/projects/:projectName/files/upload/check', authenticateToken, requireRealProjectFilesystem,
+    createWorkspaceUploadCheckHandler({ resolveProject: extractProjectDirectory }));
 
 app.post('/api/projects/:projectName/files/upload', authenticateToken, requireRealProjectFilesystem, uploadFilesHandler);
 
@@ -2451,7 +2284,7 @@ function handlePluginWsProxy(clientWs, pathname) {
 // WebSocket connection handler that routes based on URL path
 wss.on('connection', (ws, request) => {
     const url = request.url;
-    console.log('[INFO] Client connected to:', url);
+    console.log('[INFO] Client connected to:', url?.split('?')[0]);
 
     // Parse URL to get pathname without query parameters
     const urlObj = new URL(url, 'http://localhost');
@@ -2614,6 +2447,18 @@ function handleChatConnection(ws, request) {
                 });
             } else if (data.type === 'delete-queued-input') {
                 const result = await deleteQueuedInputViaGateway(requestSessionId, data.itemId, streamWriter);
+                if (result.ok) {
+                    // A submitting tab can retain sidebar activity after navigating
+                    // away (and unwatching). Notify every socket for this user.
+                    const payload = JSON.stringify({
+                        type: 'session-input-removed', sessionId: requestSessionId, itemId: data.itemId,
+                    });
+                    connectedClients.forEach((client) => {
+                        if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) {
+                            client.send(payload);
+                        }
+                    });
+                }
                 writer.send({
                     type: 'input-queue-operation-result',
                     operation: 'delete',

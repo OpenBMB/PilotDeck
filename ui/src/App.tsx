@@ -1,3 +1,4 @@
+import './components/desktop/desktop.css';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import { useEffect } from 'react';
@@ -16,8 +17,12 @@ function DesktopAppearanceSync() {
   const { i18n } = useTranslation();
   const { themeMode } = useTheme();
   useEffect(() => {
+    const language = i18n.resolvedLanguage?.startsWith('zh') ? 'zh-CN' : 'en';
+    // The preload-owned caption observes this attribute; use the same resolved
+    // i18n language as the UI and the native application menu.
+    document.documentElement.lang = language;
     void window.pilotdeckDesktop?.setAppearance?.({
-      language: i18n.resolvedLanguage?.startsWith('zh') ? 'zh-CN' : 'en',
+      language,
       themeMode,
     }).catch(error => console.warn('Could not sync desktop appearance', error));
   }, [i18n.resolvedLanguage, themeMode]);

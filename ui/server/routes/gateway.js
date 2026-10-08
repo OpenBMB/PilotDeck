@@ -1,21 +1,19 @@
 import express from 'express';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { dirname, join } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { homedir } from 'os';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import {
   readPilotDeckConfigFile,
   serializePilotDeckConfigResponse,
-  withPilotDeckConfigWrite,
+  updatePilotDeckConfig,
 } from '../services/pilotdeckConfig.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 
 const router = express.Router();
 
 const PILOT_HOME = process.env.PILOT_HOME || join(homedir(), '.pilotdeck');
-const PILOTDECK_YAML = process.env.PILOTDECK_CONFIG_PATH || join(PILOT_HOME, 'pilotdeck.yaml');
 const WEIXIN_CREDS = join(PILOT_HOME, 'weixin-credentials.json');
 const CHANNEL_RUNTIME_STATUS = join(PILOT_HOME, 'channels', 'runtime-status.json');
 
@@ -37,18 +35,19 @@ const FEISHU_OPEN_URLS = {
 };
 const REGISTRATION_PATH = '/oauth/v1/app/registration';
 
+function configWriteErrorBody(error) {
+  return {
+    ok: false,
+    error: error?.message || 'Failed to update config',
+    ...(error?.code ? { code: error.code } : {}),
+  };
+}
+
 async function notifyGatewayReload() {
   try {
     const gw = await getPilotDeckGateway();
     if (gw?.reloadConfig) await gw.reloadConfig();
   } catch { /* gateway unreachable */ }
-}
-
-function loadYaml() {
-  try {
-    if (!existsSync(PILOTDECK_YAML)) return {};
-    return parseYaml(readFileSync(PILOTDECK_YAML, 'utf-8')) ?? {};
-  } catch { return {}; }
 }
 
 function loadChannelRuntimeStatus() {
@@ -69,12 +68,6 @@ function loadWeixinCredentials() {
   } catch {
     return null;
   }
-}
-
-function saveYaml(config) {
-  mkdirSync(dirname(PILOTDECK_YAML), { recursive: true });
-  suppressNextWatchEvent();
-  writeFileSync(PILOTDECK_YAML, stringifyYaml(config, { lineWidth: 0 }), 'utf-8');
 }
 
 function maskValue(value) {
@@ -116,28 +109,24 @@ function writeWeComConfig(config, input) {
   return config;
 }
 
-async function mutateConfigAndReload(mutate) {
-  return withPilotDeckConfigWrite(async () => {
-    // The read belongs inside the shared critical section. Otherwise a channel
-    // save can overwrite a config edit that completed while the request was in
-    // flight (QR polling is the common real-world example).
-    const config = loadYaml();
-    if (mutate(config) === false) return false;
-
-    saveYaml(config);
-    const record = readPilotDeckConfigFile();
-    const reloadResult = await reloadPilotDeckConfig(record.config);
-    void notifyGatewayReload();
-
-    const freshRecord = readPilotDeckConfigFile();
-    const response = serializePilotDeckConfigResponse(freshRecord, reloadResult);
-    process.emit('pilotdeck:config-broadcast', {
-      source: 'gateway-save',
-      ...response,
-      timestamp: new Date().toISOString(),
-    });
-    return true;
+async function mutateConfigAndReload(adapterId, mutate) {
+  const saved = await updatePilotDeckConfig(mutate, {
+    paths: [['adapters', adapterId]],
+    onWriteCommitted: suppressNextWatchEvent,
   });
+  if (!saved.changed) return false;
+
+  const reloadResult = await reloadPilotDeckConfig(saved.config);
+  void notifyGatewayReload();
+
+  const freshRecord = readPilotDeckConfigFile();
+  const response = serializePilotDeckConfigResponse(freshRecord, reloadResult);
+  process.emit('pilotdeck:config-broadcast', {
+    source: 'gateway-save',
+    ...response,
+    timestamp: new Date().toISOString(),
+  });
+  return true;
 }
 
 async function fetchJson(url) {
@@ -157,7 +146,7 @@ async function fetchJson(url) {
 
 router.get('/status', (_req, res) => {
   try {
-    const config = loadYaml();
+    const config = readPilotDeckConfigFile().config;
     const feishu = config.adapters?.feishu ?? {};
     const wecom = config.adapters?.wecom ?? {};
     const wecomExtra = wecom.extra ?? {};
@@ -319,14 +308,12 @@ router.get('/feishu/qr-poll', async (req, res) => {
 
     // Success — got credentials
     if (pollRes.client_id && pollRes.client_secret) {
-      req.app.locals._feishuQr = null;
-
       const appId = pollRes.client_id;
       const appSecret = pollRes.client_secret;
       const domain = state.domain;
 
       // Auto-save to config
-      await mutateConfigAndReload((config) => {
+      await mutateConfigAndReload('feishu', (config) => {
         if (!config.adapters) config.adapters = {};
         const previous = config.adapters.feishu ?? {};
         config.adapters.feishu = {
@@ -338,6 +325,7 @@ router.get('/feishu/qr-poll', async (req, res) => {
           domainName: domain,
         };
       });
+      req.app.locals._feishuQr = null;
 
       return res.json({
         ok: true,
@@ -357,6 +345,12 @@ router.get('/feishu/qr-poll', async (req, res) => {
     // Still pending
     res.json({ pending: true });
   } catch (err) {
+    if (err?.code === 'CONFIG_BUSY') {
+      return res.json({ pending: true, retryable: true, code: err.code });
+    }
+    if (err?.code === 'INVALID_CONFIG_YAML' || err?.code === 'CONFIG_CONFLICT') {
+      return res.status(err.statusCode || 409).json(configWriteErrorBody(err));
+    }
     res.json({ pending: true });
   }
 });
@@ -373,7 +367,7 @@ router.post('/feishu/save', async (req, res) => {
   }
 
   try {
-    await mutateConfigAndReload((config) => {
+    await mutateConfigAndReload('feishu', (config) => {
       if (!config.adapters) config.adapters = {};
       const previous = config.adapters.feishu ?? {};
       config.adapters.feishu = {
@@ -388,13 +382,13 @@ router.post('/feishu/save', async (req, res) => {
 
     res.json({ ok: true, message: '飞书配置已保存，重启后生效' });
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
   }
 });
 
 router.post('/feishu/disable', async (_req, res) => {
   try {
-    await mutateConfigAndReload((config) => {
+    await mutateConfigAndReload('feishu', (config) => {
       if (config.adapters?.feishu) {
         config.adapters.feishu.enabled = false;
       }
@@ -402,7 +396,7 @@ router.post('/feishu/disable', async (_req, res) => {
 
     res.json({ ok: true });
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
   }
 });
 
@@ -411,7 +405,7 @@ router.post('/feishu/disable', async (_req, res) => {
 router.post('/weixin/qr-begin', async (_req, res) => {
   const requestedAt = new Date().toISOString();
   try {
-    await mutateConfigAndReload((config) => {
+    await mutateConfigAndReload('weixin', (config) => {
       if (!config.adapters) config.adapters = {};
       const previous = config.adapters.weixin ?? {};
       if (previous.enabled === true) return false;
@@ -439,7 +433,10 @@ router.post('/weixin/qr-begin', async (_req, res) => {
 
     res.json({ ok: true, requestedAt: result.requestedAt || requestedAt });
   } catch (error) {
-    res.json({ ok: false, requestedAt, error: error.message || '请求微信后台通道准备二维码失败' });
+    res.status(error.statusCode || 200).json({
+      ...configWriteErrorBody(error),
+      requestedAt,
+    });
   }
 });
 
@@ -480,7 +477,7 @@ router.get('/weixin/qr-poll', (_req, res) => {
 
 router.post('/weixin/disable', async (_req, res) => {
   try {
-    await mutateConfigAndReload((config) => {
+    await mutateConfigAndReload('weixin', (config) => {
       if (config.adapters?.weixin) {
         config.adapters.weixin.enabled = false;
       }
@@ -488,7 +485,7 @@ router.post('/weixin/disable', async (_req, res) => {
 
     res.json({ ok: true });
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
   }
 });
 
@@ -548,8 +545,7 @@ router.get('/wecom/qr-poll', async (req, res) => {
       return res.json({ ok: false, error: 'WeCom QR scan did not return complete bot credentials' });
     }
 
-    req.app.locals._wecomQr = null;
-    await mutateConfigAndReload((config) => {
+    await mutateConfigAndReload('wecom', (config) => {
       writeWeComConfig(config, {
         botId,
         secret,
@@ -558,9 +554,16 @@ router.get('/wecom/qr-poll', async (req, res) => {
         groupPolicy: 'disabled',
       });
     });
+    req.app.locals._wecomQr = null;
 
     res.json({ ok: true, botId: maskValue(botId) });
-  } catch {
+  } catch (error) {
+    if (error?.code === 'CONFIG_BUSY') {
+      return res.json({ pending: true, retryable: true, code: error.code });
+    }
+    if (error?.code === 'INVALID_CONFIG_YAML' || error?.code === 'CONFIG_CONFLICT') {
+      return res.status(error.statusCode || 409).json(configWriteErrorBody(error));
+    }
     res.json({ pending: true });
   }
 });
@@ -584,7 +587,7 @@ router.post('/wecom/save', async (req, res) => {
   const normalizedSecret = String(secret || '').trim();
 
   try {
-    await mutateConfigAndReload((config) => {
+    await mutateConfigAndReload('wecom', (config) => {
       const existingWeCom = config.adapters?.wecom ?? {};
       const existingExtra = existingWeCom.extra ?? {};
       const resolvedBotId = normalizedBotId || String(existingWeCom.token || '').trim();
@@ -606,20 +609,20 @@ router.post('/wecom/save', async (req, res) => {
     });
     res.json({ ok: true, message: 'WeCom config saved' });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
   }
 });
 
 router.post('/wecom/disable', async (_req, res) => {
   try {
-    await mutateConfigAndReload((config) => {
+    await mutateConfigAndReload('wecom', (config) => {
       if (config.adapters?.wecom) {
         config.adapters.wecom.enabled = false;
       }
     });
     res.json({ ok: true });
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
   }
 });
 

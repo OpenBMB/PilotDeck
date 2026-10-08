@@ -242,6 +242,7 @@ export class SubAgentSession {
   }
 
   private forwardActivity(event: AgentEvent): void {
+    if (this.forwardDescendantActivity(event)) return;
     const emit = this.options.parentDependencies.eventEmitter;
     if (!emit) return;
     const base = {
@@ -255,6 +256,9 @@ export class SubAgentSession {
         type: "subagent_model_event",
         ...base,
         event: event.event,
+        timeline: event.timeline,
+        blockId: event.blockId,
+        streamBoundary: event.streamBoundary,
       });
       return;
     }
@@ -266,13 +270,44 @@ export class SubAgentSession {
       });
       return;
     }
+    if (event.type === "compact_started" || event.type === "compact_completed") {
+      emit({ type: "agent_status", ...base, event: `subagent_${event.type}`, timeline: event.timeline,
+        detail: { ...event, subagentId: base.subagentId } });
+      return;
+    }
+    if (event.type === "assistant_message") {
+      for (const block of event.message.content) {
+        if ((block.type === "text" || block.type === "thinking") && block.timeline) emit({
+          type: "agent_status", ...base, event: "subagent_assistant_block", timeline: block.timeline,
+          detail: { subagentId: base.subagentId, kind: block.type, text: block.text, blockId: block.blockId },
+        });
+      }
+      return;
+    }
     if (event.type === "tool_result") {
       emit({
         type: "subagent_tool_result",
         ...base,
         result: event.result,
+        timeline: event.timeline,
       });
     }
+  }
+
+  private forwardDescendantActivity(event: AgentEvent): boolean {
+    const isDescendant = event.type === "subagent_started" || event.type === "subagent_completed"
+      || event.type === "subagent_status" || event.type === "subagent_model_event"
+      || event.type === "subagent_tool_calls_detected" || event.type === "subagent_tool_result"
+      || (event.type === "agent_status" && ["subagent_assistant_block", "subagent_compact_started", "subagent_compact_completed"].includes(event.event));
+    if (!isDescendant) return false;
+    // Keep descendant identity and timeline coordinates, changing only the
+    // enclosing host scope. Other child setup events remain local.
+    this.options.parentDependencies.eventEmitter?.({
+      ...event,
+      sessionId: this.options.parentSessionId,
+      turnId: this.options.parentTurnId,
+    });
+    return true;
   }
 
   private cloneDependencies(registry: ToolRegistry): AgentRuntimeDependencies {
@@ -300,21 +335,7 @@ export class SubAgentSession {
       getModelSupportsPromptCache: this.options.parentDependencies.getModelSupportsPromptCache,
       getSubagentModels: this.options.parentDependencies.getSubagentModels,
       subagentTranscript: this.options.parentDependencies.subagentTranscript,
-      eventEmitter: (event) => {
-        // Hosts watch the root turn. Keep each descendant's identity while
-        // forwarding its activity through the enclosing session.
-        if (event.type === "subagent_started" || event.type === "subagent_completed"
-          || event.type === "subagent_status" || event.type === "subagent_model_event"
-          || event.type === "subagent_tool_calls_detected" || event.type === "subagent_tool_result") {
-          this.options.parentDependencies.eventEmitter?.({
-            ...event,
-            sessionId: this.options.parentSessionId,
-            turnId: this.options.parentTurnId,
-          });
-        }
-        // Other child setup events are local to its synthetic session. The
-        // host receives child activity through the subagent events above.
-      },
+      eventEmitter: (event) => { this.forwardDescendantActivity(event); },
     };
   }
 

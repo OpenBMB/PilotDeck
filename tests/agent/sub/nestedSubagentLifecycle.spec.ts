@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { SubAgentSession } from "../../../src/agent/sub/SubAgentSession.js";
 import { AgentLoop } from "../../../src/agent/loop/AgentLoop.js";
 import type { AgentRuntimeDependencies } from "../../../src/agent/runtime/AgentRuntimeDependencies.js";
 import type { AgentEvent } from "../../../src/agent/protocol/events.js";
@@ -87,6 +88,12 @@ test("nested lifecycle reaches the root while transcripts retain their parent se
   const leafStart = lifecycle.find(event => event.type === "subagent_started" && event.subagentType === "leaf");
   assert.ok(leafStart && "subagentId" in leafStart);
   assert.ok(events.some(event => event.type === "subagent_model_event" && event.subagentId === leafStart.subagentId));
+  const finalBlocks = events.filter((event): event is Extract<AgentEvent, { type: "agent_status" }> => event.type === "agent_status"
+    && event.event === "subagent_assistant_block" && event.detail?.subagentId === leafStart.subagentId);
+  assert.equal(finalBlocks.length, 1);
+  assert.equal(finalBlocks[0]?.sessionId, "root-session");
+  assert.equal(finalBlocks[0]?.turnId, "root-turn");
+  assert.equal(finalBlocks[0]?.timeline?.turnId, `${leafStart.subagentId}-t0`);
   // Child-only setup events must not create unknown sessions in the host stream.
   const instructionEvents = events.filter(event => event.type === "instructions_loaded");
   assert.ok(instructionEvents.length > 0);
@@ -103,4 +110,46 @@ test("cancelling nested work stops both child levels and records failure", async
   const stopped = events.filter(event => event.type === "subagent_completed");
   assert.equal(stopped.length, 2);
   assert.ok(stopped.every(event => !event.success && event.aborted));
+});
+
+
+test("nested final and compaction frames retain descendant timeline coordinates", () => {
+  const registry = new ToolRegistry();
+  const events: AgentEvent[] = [];
+  const session = new SubAgentSession({
+    definition: resolveSubagentProfiles().find(profile => profile.id === "general-purpose")!,
+    directive: "Delegate inspection",
+    parentConfig: {} as never,
+    parentDependencies: {
+      router: {} as never,
+      tools: { registry, scheduler: {} as never },
+      eventEmitter: event => { events.push(event); },
+    },
+    parentSessionId: "root-session",
+    parentTurnId: "root-turn",
+    subagentSessionId: "dispatcher-session",
+    subagentId: "dispatcher",
+  }) as unknown as {
+    cloneDependencies(registry: ToolRegistry): AgentRuntimeDependencies;
+    forwardActivity(event: AgentEvent): void;
+  };
+  const childEmitter = session.cloneDependencies(registry).eventEmitter!;
+  for (const name of ["subagent_assistant_block", "subagent_compact_started", "subagent_compact_completed"]) {
+    const event: AgentEvent = {
+      type: "agent_status",
+      sessionId: "dispatcher-session",
+      turnId: "dispatcher-t0",
+      event: name,
+      detail: { subagentId: "leaf", blockId: "leaf-text", text: "evidence" },
+      timeline: { turnId: "leaf-t0", id: "leaf-text", order: 3, revision: 4, version: 1 },
+    };
+    childEmitter(event);
+    session.forwardActivity(event);
+    assert.deepEqual(events.splice(0), [
+      { ...event, sessionId: "root-session", turnId: "root-turn" },
+      { ...event, sessionId: "root-session", turnId: "root-turn" },
+    ]);
+  }
+  childEmitter({ type: "agent_status", sessionId: "dispatcher-session", turnId: "dispatcher-t0", event: "local_setup" });
+  assert.deepEqual(events, []);
 });

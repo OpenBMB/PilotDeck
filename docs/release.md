@@ -4,6 +4,14 @@ PilotDeck keeps Web and desktop sources on `main`. The desktop application is a
 thin Electron shell around the same gateway and Web UI; desktop-specific runtime
 behavior is enabled only when Electron sets `PILOTDECK_DESKTOP=1`.
 
+## Cron upgrade compatibility
+
+The schedule computation version 3 upgrade changes existing recurring tasks
+with two restricted day fields from AND to Unix cron OR matching. These tasks
+may run more often. Review affected schedules before upgrading; see
+[Cron scheduling and the version 3 upgrade](cron-scheduling.md) for examples
+and pending-run migration behavior.
+
 ## Web compatibility
 
 - The existing root and `ui` build commands remain the source of the Web build.
@@ -30,8 +38,9 @@ known baseline failures; all other UI/server tests remain in the merge gate.
 the latest unified release tag:
 
 - no production change: skip the release;
-- production change: build signed and notarized macOS arm64 and x64 installers
-  plus an unsigned Windows installer, then publish one dated GitHub Release;
+- production change: build signed and notarized macOS arm64 and x64 installers,
+  an unsigned Windows installer, and Ubuntu x64 and arm64 DEBs and RHEL-family x64 and arm64 RPMs, then publish one
+  dated GitHub Release;
 - repeated manual release on the same date: use `-r2`, `-r3`, and so on.
 
 If the first Daily Release attempt fails only during builds,
@@ -59,7 +68,8 @@ Each release shares one exact `main` commit across the tag, desktop installers,
 and Web source code:
 
 - Assets: macOS arm64 and x64 DMGs and update ZIPs, the Windows installer,
-  architecture-specific update feeds, `release.json`, and `SHA256SUMS.txt`.
+  Ubuntu x64 and arm64 DEBs and RHEL-family x64 and arm64 RPMs, architecture-specific update feeds, `release.json`,
+  and `SHA256SUMS.txt`.
 - Web source: GitHub's automatically provided **Source code (zip)** and
   **Source code (tar.gz)** archives for the release tag. No separate Web archive
   or prebuilt deployment package is uploaded; source deployments still install
@@ -84,15 +94,17 @@ Publishing and packaged repository metadata use the repository running the
 workflow. Upstream builds publish to `OpenBMB/PilotDeck`; fork builds publish to
 their own repository.
 
-Web and desktop updates both read these unified releases. See
-[Web updates](web-update.md) for supported Git deployments.
+Desktop updates read the Latest release manifest directly. The Web About page
+shows the local build version and links to GitHub Releases; command-line and IM
+updates retain their supported Git deployment policy in [Web updates](web-update.md).
 
 ## Desktop updates
 
-The client checks stable, non-draft `vYYYY.MM.DD[-rN]` releases in its packaged
-repository (or `PILOTDECK_UPDATE_REPOSITORY` override). It validates `release.json`
-against the release tag, numeric version, repository, source commit format, and
-published installer names and sizes. The newest release is compared numerically
+The client reads `release.json` from the GitHub Release explicitly marked
+**Latest** in its packaged repository (or `PILOTDECK_UPDATE_REPOSITORY` override).
+The release workflow marks each completed release Latest. The client validates
+the manifest's tag, numeric version, repository, source commit format, asset
+names, sizes and checksums. That version is compared numerically
 with Electron's `app.getVersion()`: only a higher version offers an update.
 Equal or older releases never trigger a downgrade. Release allocation uses the
 largest existing revision for the date plus one, including manually skipped
@@ -106,11 +118,15 @@ Automatic update selection requires an exact platform and running-client archite
 | macOS arm64 | arm64 ZIP | `latest-arm64-mac.yml` |
 | macOS x64 (including Rosetta) | x64 ZIP | `latest-x64-mac.yml` |
 | Windows x64 | x64 setup EXE | `latest-x64.yml` |
+| Ubuntu x64 | x64 DEB | `latest-linux.yml` |
+| Ubuntu arm64 | arm64 DEB | `latest-linux-arm64.yml` |
+| RHEL-family x64 | x64 RPM | `latest-rpm-linux.yml` |
+| RHEL-family arm64 | arm64 RPM | `latest-rpm-linux-arm64.yml` |
 
 DMGs remain available for initial Mac installation. Each Mac build produces its
 own feed, renamed before artifact upload so the matrix jobs cannot overwrite one
 another's metadata. Each feed contains only its own architecture. CI verifies all
-three feeds and both ZIPs before publishing. Full downloads are used initially;
+five feeds, both ZIPs and both DEBs before publishing. Full downloads are used initially;
 blockmaps and differential updates are not required.
 
 **Update and restart** is one explicit user action. The Electron main process
@@ -123,6 +139,9 @@ updater to install and relaunch the application. macOS performs native signature
 verification; Windows may show an administrator approval prompt because our
 NSIS installer is per-machine. Both the interactive installer and silent
 `--force-run` updates launch via the existing `explorer.exe` workaround.
+On Ubuntu, the DEB updater asks for PolicyKit authorization to install the
+verified package with `dpkg`, then relaunches. The client does not install
+updates automatically on quit.
 Before installation, runtime shutdown confirms that managed descendants exited;
 a failed stop aborts installation and retains process records for recovery.
 
@@ -149,12 +168,14 @@ Closing the client normally does not automatically install a cached update.
 Unpackaged development clients cannot install updates.
 
 This capability starts with a client built from this implementation. Clients
-that only open DMG/EXE installers need to install this version once before later
+that only open DMG/EXE installers, and the earlier Ubuntu `0.1.0` test packages,
+need to install this version once before later
 releases can update automatically. A release without the required update feed
 or matching payload disables the action with an explanation.
 
 Changes to this flow require a real old-version-to-new-version install test on
-macOS arm64, macOS x64 (including Rosetta), and Windows x64. Unit and packaging
+macOS arm64, macOS x64 (including Rosetta), Windows x64, Ubuntu x64, and Ubuntu
+arm64. Unit and packaging
 tests alone do not establish that signing, elevation, replacement and relaunch
 work on those systems.
 
@@ -192,6 +213,9 @@ pnpm --filter pilotdeck-desktop dist:mac:arm64
 pnpm --filter pilotdeck-desktop dist:mac:x64
 # Run the following on Windows:
 pnpm --filter pilotdeck-desktop dist:win
+# On native Ubuntu 22.04 hosts with matching architectures:
+pnpm --filter pilotdeck-desktop dist:linux:x64
+pnpm --filter pilotdeck-desktop dist:linux:arm64
 ```
 
 Local macOS builds can use ad-hoc signing. Set
@@ -210,9 +234,9 @@ UI manifests, or if its committed lockfile is stale.
 ## Recovery
 
 If one architecture or platform fails, fix the credential or build issue and
-rerun the failed workflow. A release is created only after both macOS DMGs and
-the Windows installer are downloaded and verified. For a deliberate additional
-release on the same Shanghai date, leave revision empty to select the next
+rerun the failed workflow. A release is created only after both macOS DMGs, the
+Windows installer, and both Ubuntu DEBs are downloaded and verified. For a
+deliberate additional release on the same Shanghai date, leave revision empty to select the next
 available `-rN` tag automatically.
 
 ## Update regression smoke checks
@@ -228,18 +252,41 @@ node apps/desktop/scripts/verify-installer.cjs
 
 The network check requires OpenSSL and uses a temporary local HTTPS origin and
 proxy, without contacting GitHub or installing anything. It covers both config
-and environment proxy discovery/download paths, proxy authentication, and loopback bypass. The installer
+and environment proxy discovery/download paths, the GitHub asset redirect,
+proxy authentication, and loopback bypass. The installer
 check downloads the builder's NSIS toolchain if uncached, compiles the launch
 paths using the installed templates, and checks that both use `explorer.exe`.
 It uses the builder's template working directory, stdin input, and include
 search paths, including a project path with spaces. Custom sibling includes
 must resolve from `${PROJECT_DIR}` rather than relying on the current directory.
-Desktop Smoke and Daily Release share the Windows Installer workflow: both
+Desktop and Daily Release share the Windows workflow: both
 build the actual NSIS installer, validate the packaged updater and elevation
 helper, and require the update feed. PR builds only upload Actions artifacts;
 they do not publish a Release.
-It does not run the generated EXE. Windows elevation/relaunch and signed macOS
+The installer fixture executes isolated install, upgrade, cancellation and
+uninstall flows. Production Windows elevation/relaunch and signed macOS
 cross-version replacement still require real platform upgrade tests.
+
+Desktop and Daily Release also share the Linux workflow. Native
+Ubuntu 22.04 x64 and arm64 runners each build and install their DEB, validate
+the launcher icon and bundled native modules, then start the installed app under
+Xvfb/X11 and headless Weston/Wayland. The smoke waits for a responsive Web UI;
+the X11 check also verifies that an application window exists. A failed matrix
+job blocks its PR check or the daily release. These headless checks do not
+exercise a full GNOME session, top-panel indicator interaction, PolicyKit
+authorization, or a published-release update and relaunch.
+
+The same Linux workflow builds RPMs on Rocky Linux 9 and verifies installation,
+native modules, the updater, and X11/Wayland startup within each RPM job. Linux
+checks are grouped by DEB and RPM, each with x64 and ARM64 variants.
+
+The shared macOS workflow builds an ad-hoc signed application directory for PRs
+and checks its architecture, signature and packaged updater. PRs do not import
+Developer ID certificates, notarize, create DMGs/ZIPs or upload macOS release
+assets. Daily Release enables production signing and notarization and requires
+the DMG, ZIP and update feed. Only Daily Release's final publish job has release
+write permission and creates a GitHub Release. All shared builds check out the
+calling event's fixed SHA; callers cannot choose arbitrary source revisions.
 
 ## Managed process shutdown
 
@@ -270,3 +317,8 @@ of CIM enumeration, allowing 15 seconds per query and a bounded 60-second
 bootstrap window. Shutdown retains identity checks and native Job termination;
 startup failure reports its cause before waiting for application IPC. These
 checks do not replace an actual Windows installation/upgrade test.
+
+RPM builds and validation are documented in [RPM desktop support](redhat-desktop-support.md).
+The reusable Desktop Smoke / RPM workflow builds both architectures in Rocky Linux 9,
+checks installation and native modules on that baseline, and starts the installed
+RPM under X11 and Wayland in the same job. Both installers and feeds are release gates.

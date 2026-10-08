@@ -7,9 +7,10 @@ import ProfilesSection from "./components/ProfilesSection";
 
 type AgentSubagentsSectionsProps = {
   title: string;
+  reference?: string | null;
 };
 
-export default function AgentSubagentsSections({ title: _title }: AgentSubagentsSectionsProps) {
+export default function AgentSubagentsSections({ title: _title, reference }: AgentSubagentsSectionsProps) {
   const { t } = useTranslation("settings");
   const { raw, commitRaw, loading, saving } = usePilotDeckConfig();
   const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
@@ -47,5 +48,5 @@ export default function AgentSubagentsSections({ title: _title }: AgentSubagents
     );
   }
 
-  return <ProfilesSection config={parsedConfig} saving={saving} onSave={onSave} />;
+  return <ProfilesSection reference={reference} config={parsedConfig} saving={saving} onSave={onSave} />;
 }

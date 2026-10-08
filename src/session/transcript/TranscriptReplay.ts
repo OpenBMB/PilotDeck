@@ -2,6 +2,7 @@ import { cloneMessage, cloneMessages, type CanonicalMessage, type CanonicalUsage
 import type { AgentEvent } from "../../agent/protocol/events.js";
 import type { AgentPermissionDenial, AgentTurnResult } from "../../agent/protocol/result.js";
 import type { AgentTranscriptDiagnostic, AgentTranscriptEntry, SessionMetadataValue } from "./TranscriptEntry.js";
+import { readCompactSnapshot } from "./CompactSnapshot.js";
 
 export type AgentTranscriptReplayResult = {
   messages: CanonicalMessage[];
@@ -12,26 +13,21 @@ export type AgentTranscriptReplayResult = {
   diagnostics: AgentTranscriptDiagnostic[];
   /**
    * Index of the last compact_boundary entry consumed during replay. When
-   * present, only messages after this entry are kept in `messages`.
+   * present, its snapshot and messages after it are kept in `messages`.
    */
   lastCompactBoundaryIndex?: number;
-  /** Last compact boundary entry encountered (for resume relink). */
+  /** Last valid compact snapshot boundary (for resume relink). */
   lastCompactBoundary?: AgentTranscriptEntry & { type: "control_boundary" };
 };
 
 /**
- * Find the index of the last compact boundary entry. Used by resume / replay
- * to slice messages after the boundary.
+ * Only a self-contained, valid snapshot authorizes dropping prior context.
+ * Legacy boundaries cannot prove that all replacement messages were written.
  */
 export function findLastCompactBoundaryIndex(entries: AgentTranscriptEntry[]): number {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (
-      entry.type === "control_boundary" &&
-      entry.boundary.kind === "compact" &&
-      "subtype" in entry.boundary &&
-      entry.boundary.subtype === "compact_boundary"
-    ) {
+    if (readCompactSnapshot(entry) !== undefined) {
       return index;
     }
   }
@@ -79,6 +75,9 @@ export function replayTranscriptEntries(entries: AgentTranscriptEntry[]): AgentT
       case "assistant_message":
       case "tool_result_message":
       case "durable_message":
+        // Legacy replacement records have no completeness guarantee. Their
+        // original history is retained instead; do not duplicate a partial copy.
+        if (entry.message.metadata?.compactReplacement === true) break;
         if (!completedTurnIds.has(entry.turnId)) {
           diagnostics.push({
             code: "transcript_entry_invalid",
@@ -106,12 +105,18 @@ export function replayTranscriptEntries(entries: AgentTranscriptEntry[]): AgentT
         }
         break;
       case "control_boundary":
-        if (
-          entry.boundary.kind === "compact" &&
-          "subtype" in entry.boundary &&
-          entry.boundary.subtype === "compact_boundary"
-        ) {
+        if (index === lastBoundaryIndex) {
           lastCompactBoundary = entry;
+          const snapshot = readCompactSnapshot(entry)!;
+          messages.push(...cloneMessages(snapshot));
+          events.push(...snapshot.map((message) => projectMessageEvent(entry.sessionId, entry.turnId, message)));
+        } else if (entry.boundary?.kind === "compact" && entry.boundary.subtype === "compact_boundary" &&
+                   readCompactSnapshot(entry) === undefined) {
+          diagnostics.push({
+            code: "transcript_entry_invalid",
+            severity: "warning",
+            message: "Ignoring compact boundary without a valid complete snapshot; retaining prior context.",
+          });
         }
         break;
       case "session_metadata":

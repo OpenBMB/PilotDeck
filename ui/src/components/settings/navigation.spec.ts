@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getModelReferenceTab,
   getSettingsPath,
   getSettingsPathFromTab,
   mapInitialTabToMenuKey,
@@ -15,7 +16,7 @@ describe("mapInitialTabToMenuKey", () => {
 
   it("routes legacy config sections to their dedicated pages", () => {
     expect(mapInitialTabToMenuKey("config:models")).toBe("modelPool");
-    expect(mapInitialTabToMenuKey("config:agents")).toBe("agentModel");
+    expect(mapInitialTabToMenuKey("config:agents")).toBe("modelPool");
     expect(mapInitialTabToMenuKey("config:memory")).toBe("agentMemory");
     expect(mapInitialTabToMenuKey("config:tools")).toBe("agentSearch");
     expect(mapInitialTabToMenuKey("config:webSearch")).toBe("agentSearch");
@@ -33,8 +34,8 @@ describe("mapInitialTabToMenuKey", () => {
     expect(mapInitialTabToMenuKey("config")).toBe("modelPool");
   });
 
-  it("defaults appearance and unknown tabs to General", () => {
-    expect(mapInitialTabToMenuKey("appearance")).toBe("general");
+  it("routes appearance to its page and defaults unknown tabs to General", () => {
+    expect(mapInitialTabToMenuKey("appearance")).toBe("appearance");
     expect(mapInitialTabToMenuKey("unknown")).toBe("general");
     expect(mapInitialTabToMenuKey(undefined)).toBe("general");
   });
@@ -63,7 +64,7 @@ describe("mapInitialTabToMenuKey", () => {
 describe("settings route paths", () => {
   it("uses /settings for the general page", () => {
     expect(getSettingsPath("general")).toBe("/settings");
-    expect(getSettingsPathFromTab("appearance")).toBe("/settings");
+    expect(getSettingsPathFromTab("appearance")).toBe("/settings/appearance");
   });
 
   it("maps menu keys and legacy tabs onto dedicated settings URLs", () => {
@@ -79,4 +80,30 @@ describe("settings route paths", () => {
     expect(mapSettingsSectionToMenuKey("mcp")).toBe("mcpServers");
     expect(mapSettingsSectionToMenuKey("office")).toBe("officePreview");
   });
+});
+
+
+describe("model reference navigation", () => {
+  it("retired model links open the model pool", () => {
+    expect(getSettingsPathFromTab("agent-model")).toBe("/settings/models");
+    expect(mapSettingsSectionToMenuKey("agent-model")).toBe("modelPool");
+  });
+});
+
+it.each([
+  ['agent.model', '/settings/models'],
+  ['agent.subagents.default', '/settings/agent-route'],
+  ['agent.subagents.profiles.vision.model', '/settings/agent-subagents'],
+  ['memory.model', '/settings/agent-memory'],
+  ['router.scenarios.default', '/settings/agent-route'],
+  ['router.fallback.default.0', '/settings/agent-route'],
+  ['router.tokenSaver.judge', '/settings/agent-route'],
+  ['router.tokenSaver.tiers.medium.model', '/settings/agent-route'],
+  ['router.stats.baselineModel', '/settings/agent-route'],
+  ['router.stats.modelPricing.HX API/qwen3.6/27b', '/settings/agent-route'],
+])('opens the current owner of %s and retains its exact location', (reference, page) => {
+  const tab = getModelReferenceTab(reference)!;
+  const url = new URL(getSettingsPathFromTab(tab), 'http://fixture');
+  expect(url.pathname).toBe(page);
+  expect(url.searchParams.get('reference')).toBe(reference);
 });

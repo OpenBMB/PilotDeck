@@ -426,8 +426,14 @@ export default function SidebarV2({
     const startX = event.clientX;
     const startWidth = sidebarWidth;
     let latestWidth = startWidth;
-    setIsResizing(true);
+    let dragStarted = false;
     const moveBatch = createFrameBatcher((e: globalThis.MouseEvent) => {
+      // A click must reach the handle on mouseup so double-click can reset it.
+      if (!dragStarted) {
+        if (Math.abs(e.clientX - startX) < 3) return;
+        dragStarted = true;
+        setIsResizing(true);
+      }
       latestWidth = Math.min(SIDEBAR_MAX_WIDTH,
         Math.max(SIDEBAR_MIN_WIDTH, startWidth + (e.clientX - startX)));
       setSidebarWidth(latestWidth);

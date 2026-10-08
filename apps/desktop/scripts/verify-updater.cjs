@@ -11,6 +11,8 @@ assert.ok(entry.startsWith(archive + path.sep), 'electron-updater resolved outsi
 const updater = packagedRequire('electron-updater');
 assert.equal(typeof updater.MacUpdater, 'function');
 assert.equal(typeof updater.NsisUpdater, 'function');
+assert.equal(typeof updater.DebUpdater, 'function');
+assert.equal(typeof updater.RpmUpdater, 'function');
 assert.equal(typeof packagedRequire('./dist/updates.js').createUpdateController, 'function');
 const visited = new Set();
 function inspect(module) {
@@ -22,5 +24,11 @@ function inspect(module) {
   for (const child of module.children) inspect(child);
 }
 inspect(require.cache[entry]);
-assert.ok(fs.existsSync(path.join(path.dirname(archive), 'app-update.yml')), 'Missing updater cache/publisher configuration');
+if (process.argv.includes('--directory-only')) {
+  // electron-builder intentionally omits publisher metadata for macOS --dir.
+  // Release DMG/ZIP builds must still verify it, as must every other platform.
+  assert.equal(process.platform, 'darwin', 'Directory-only updater validation is macOS-specific');
+} else {
+  assert.ok(fs.existsSync(path.join(path.dirname(archive), 'app-update.yml')), 'Missing updater cache/publisher configuration');
+}
 console.log(`Verified packaged updater and ${visited.size} loaded modules.`);

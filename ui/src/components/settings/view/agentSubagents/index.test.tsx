@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import ProfilesSection from "./components/ProfilesSection";
 import SettingsSidebar from "../SettingsSidebar";
+import ProfilesSection from "./components/ProfilesSection";
 
 const prefix = "pilotDeckConfig.panels.agentSubagents";
 
@@ -47,6 +47,22 @@ afterEach(() => {
 });
 
 describe("agent subagents settings", () => {
+  it("opens the referenced role and allows selecting another role afterwards", () => {
+    const config = baseConfig();
+    config.agent.subagents.profiles = {
+      vision: { description: "Read images.", model: "prov/model-b" },
+    };
+    const view = render(<ProfilesSection config={config} reference="agent.subagents.profiles.vision.model" saving={false} onSave={vi.fn()} />);
+    expect((screen.getByLabelText(`${prefix}.editor.model.label`) as HTMLSelectElement).value).toBe("prov/model-b");
+    expect(view.container.querySelector('[data-model-reference="agent.subagents.profiles.vision.model"]')).toBeTruthy();
+    fireEvent.click(listRegion().getByRole("button", { name: /explore/ }));
+    expect(view.container.querySelector('[data-model-reference="agent.subagents.profiles.explore.model"]')).toBeTruthy();
+    view.rerender(<ProfilesSection config={config} reference="agent.subagents.profiles.vision.model" saving={false} onSave={vi.fn()} />);
+    expect(view.container.querySelector('[data-model-reference="agent.subagents.profiles.explore.model"]')).toBeTruthy();
+    view.rerender(<ProfilesSection config={config} reference="agent.subagents.profiles.general-purpose.model" saving={false} onSave={vi.fn()} />);
+    expect(view.container.querySelector('[data-model-reference="agent.subagents.profiles.general-purpose.model"]')).toBeTruthy();
+  });
+
   it("shows the subagents entry next to agent routing in the sidebar", () => {
     render(<SettingsSidebar selectedKey="general" onSelect={vi.fn()} onClose={vi.fn()} />);
     const route = screen.getByRole("button", { name: "settingsPage.menu.agentRoute" });

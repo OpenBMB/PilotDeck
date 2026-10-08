@@ -1,11 +1,11 @@
 import { createPortal } from "react-dom";
+import { useFloatingPanel } from "../ui/useFloatingPanel";
 import { useModelMenuLayout } from "./useModelMenuLayout";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   ChangeEvent,
   ClipboardEvent,
-  CSSProperties,
   FormEvent,
   KeyboardEvent,
   MouseEvent,
@@ -113,6 +113,7 @@ export type ComposerV2Props = {
   onRemoveDocumentReference: (id: string) => void;
   onOpenDocumentReference?: (filePath: string) => void;
   uploadingImages: Map<File, number>;
+  hasPendingAttachments?: boolean;
   imageErrors: Map<File | string, string>;
 
   showFileDropdown: boolean;
@@ -268,7 +269,6 @@ const PERMISSION_MODE_OPTIONS: PermissionModeOption[] = [
   },
 ];
 
-const ADD_MENU_PREFERRED_MAX_HEIGHT = 400;
 
 const COMPOSER_RUN_MODE_OPTIONS: Array<{
   mode: Extract<ChatRunMode, "plan" | "ask">;
@@ -321,7 +321,7 @@ function renderMatchHighlights(text: string, query: string): ReactNode {
     parts.push(
       <mark
         key={`${matchIndex}-${matchEnd}`}
-        className="rounded-[3px] bg-[#e6e1ff] px-0.5 py-px font-[750] text-[#4e46b7]"
+        className="rounded-[3px] bg-[var(--pd-accent-soft,#e6e1ff)] px-0.5 py-px font-[750] text-[var(--pd-accent-strong,#4e46b7)]"
       >
         {text.slice(matchIndex, matchEnd)}
       </mark>,
@@ -434,14 +434,12 @@ function CapabilityOptionList({
             key={value}
             type="button"
             aria-pressed={selected}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              onSelect(value);
-            }}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onSelect(value)}
             className={cn(
-              "grid h-[22px] grid-cols-[1fr_14px] items-center rounded-md border border-transparent px-[7px] text-left text-[11px] text-[#595b67] transition-colors hover:border-[#e4e0fb] hover:bg-[#f7f6ff] hover:text-[#4742a9] dark:text-neutral-300 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+              "grid h-[22px] grid-cols-[1fr_14px] items-center rounded-md border border-transparent px-[7px] text-left text-[11px] text-[#595b67] transition-colors hover:border-[var(--pd-accent-border,#e4e0fb)] hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#4742a9)] dark:text-neutral-300 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
               selected
-                ? "border-[#d6d1ff] bg-[#eeecff] font-[650] text-[#393393] hover:border-[#d6d1ff] hover:bg-[#eeecff] dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-200"
+                ? "border-[var(--pd-accent-border,#d6d1ff)] bg-[var(--pd-accent-soft,#eeecff)] font-[650] text-[var(--pd-accent-strong,#393393)] hover:border-[var(--pd-accent-border,#d6d1ff)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-200"
                 : "",
             )}
           >
@@ -480,6 +478,7 @@ export default function ComposerV2({
   onRemoveDocumentReference,
   onOpenDocumentReference,
   uploadingImages,
+  hasPendingAttachments = false,
   imageErrors,
   showFileDropdown,
   fileMentionQuery,
@@ -546,13 +545,18 @@ export default function ComposerV2({
 }: ComposerV2Props) {
   const { t } = useTranslation("chat");
   const reasoningLabels = useMemo(() => new Map<number, string>([
-    [0, t("input.models.reasoningLevels.off", { defaultValue: "Off" }) as string],
-    [0.2, t("input.models.reasoningLevels.light", { defaultValue: "Light" }) as string],
     [0.4, t("input.models.reasoningLevels.low", { defaultValue: "Low" }) as string],
     [0.6, t("input.models.reasoningLevels.medium", { defaultValue: "Medium" }) as string],
     [0.8, t("input.models.reasoningLevels.high", { defaultValue: "High" }) as string],
-    [0.9, t("input.models.reasoningLevels.xhigh", { defaultValue: "Extra high" }) as string],
-    [1, t("input.models.reasoningLevels.max", { defaultValue: "Maximum" }) as string],
+    [0.9, t("input.models.reasoningLevels.xhigh", { defaultValue: "Xhigh" }) as string],
+    [1, t("input.models.reasoningLevels.max", { defaultValue: "Max" }) as string],
+  ]), [t]);
+  const reasoningMenuLabels = useMemo(() => new Map<number, string>([
+    [0.4, t("input.models.reasoningMenuLevels.low", { defaultValue: "Low" }) as string],
+    [0.6, t("input.models.reasoningMenuLevels.medium", { defaultValue: "Medium" }) as string],
+    [0.8, t("input.models.reasoningMenuLevels.high", { defaultValue: "High" }) as string],
+    [0.9, t("input.models.reasoningMenuLevels.xhigh", { defaultValue: "Xhigh" }) as string],
+    [1, t("input.models.reasoningMenuLevels.max", { defaultValue: "Max" }) as string],
   ]), [t]);
   const speedLabels = useMemo(() => new Map<number, string>([
     [0, t("input.models.speedLevels.standard", { defaultValue: "Standard" }) as string],
@@ -568,8 +572,13 @@ export default function ComposerV2({
   const [skills, setSkills] = useState<ComposerSkill[]>([]);
   const [isSkillsLoading, setIsSkillsLoading] = useState(false);
   const directoryInputRef = useRef<HTMLInputElement>(null);
-  const addMenuRef = useRef<HTMLDivElement>(null);
-  const [addMenuMaxHeight, setAddMenuMaxHeight] = useState<number | null>(null);
+  const addTriggerRef = useRef<HTMLButtonElement>(null);
+  const permissionTriggerRef = useRef<HTMLButtonElement>(null);
+  const contextTriggerRef = useRef<HTMLButtonElement>(null);
+  const addMenu = useFloatingPanel(isAddMenuOpen, addTriggerRef, () => setIsAddMenuOpen(false), { matchComposer: true });
+  const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 220 });
+  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 256 });
+  const fileMenu = useFloatingPanel(showFileDropdown, textareaRef, undefined, { matchComposer: true, maxHeight: 320 });
   const permissionSelectorDisabled = runMode === "plan";
   const [workspaceMenuForceOpen, setWorkspaceMenuForceOpen] = useState(false);
 
@@ -578,27 +587,6 @@ export default function ComposerV2({
       setIsPermissionMenuOpen(false);
     }
   }, [permissionSelectorDisabled]);
-
-  useLayoutEffect(() => {
-    if (!isAddMenuOpen) {
-      setAddMenuMaxHeight(null);
-      return undefined;
-    }
-
-    const updateAddMenuMaxHeight = () => {
-      const menu = addMenuRef.current;
-      if (!menu) return;
-      const header = document.querySelector(".workspace-header");
-      const headerBottom =
-        header instanceof HTMLElement ? header.getBoundingClientRect().bottom : 0;
-      const available = Math.floor(menu.getBoundingClientRect().bottom - headerBottom);
-      setAddMenuMaxHeight(Math.min(ADD_MENU_PREFERRED_MAX_HEIGHT, Math.max(1, available)));
-    };
-
-    updateAddMenuMaxHeight();
-    window.addEventListener("resize", updateAddMenuMaxHeight);
-    return () => window.removeEventListener("resize", updateAddMenuMaxHeight);
-  }, [isAddMenuOpen]);
 
   useEffect(() => {
     if (!isAddMenuOpen || !projectKey) return;
@@ -660,7 +648,7 @@ export default function ComposerV2({
   const hasUploadingImages = [...uploadingImages.values()].some((percent) => percent < 100);
   const attachmentLimitError = imageErrors.get(MAX_ATTACHMENTS_ERROR_KEY);
   const modelBlocksSubmission = !isModelSelectionReady && !canSubmitWithoutModel;
-  const disabled = !hasDraftContent || isSubmitPending || hasUploadingImages || modelBlocksSubmission || !isPermissionModeReady;
+  const disabled = !hasDraftContent || isSubmitPending || hasPendingAttachments || hasUploadingImages || modelBlocksSubmission || !isPermissionModeReady;
   const primaryAction = getComposerPrimaryAction({
     isLoading,
     isInputQueuePaused,
@@ -705,6 +693,12 @@ export default function ComposerV2({
   const selectedModel = modelCatalog.find(
     (item) => item.id === selectedModelId,
   );
+  const selectedReasoning = modelSelection?.mode === "model" ? modelSelection.reasoning : undefined;
+  const selectedReasoningLabel = selectedModel?.capabilities.reasoning
+    ? capabilityValues(selectedModel.capabilities.reasoning).some(value => sameCapabilityValue(selectedReasoning, value))
+      ? reasoningLabels.get(selectedReasoning!)
+      : null
+    : null;
   const selectedModelLabel =
     modelSelection?.mode === "auto"
       ? (t("input.models.auto", { defaultValue: "Auto" }) as string)
@@ -725,6 +719,23 @@ export default function ComposerV2({
       ),
     [modelCatalog, normalizedModelQuery],
   );
+  const modelGroups = useMemo(() => {
+    const groups = new Map<string, ChatModelCatalogItem[]>();
+    const autoModels: ChatModelCatalogItem[] = [];
+    for (const item of filteredModels) {
+      if (item.id === "router/auto") {
+        autoModels.push(item);
+        continue;
+      }
+      const models = groups.get(item.provider) ?? [];
+      models.push(item);
+      groups.set(item.provider, models);
+    }
+    return [
+      ...(autoModels.length ? [{ provider: null, models: autoModels }] : []),
+      ...Array.from(groups, ([provider, models]) => ({ provider, models })),
+    ];
+  }, [filteredModels]);
   const advancedModel =
     modelCatalog.find((item) => item.id === advancedModelId) || null;
   const modelMenuVisible = isModelMenuOpen && Boolean(isModelCatalogLoading || modelCatalog.length > 0 || modelCatalogError);
@@ -750,7 +761,6 @@ export default function ComposerV2({
     item: ChatModelCatalogItem,
     patch: {
       reasoning?: number;
-      temperature?: number;
       speed?: number;
     },
   ) => {
@@ -762,11 +772,18 @@ export default function ComposerV2({
     );
   };
 
+  const selectReasoning = (item: ChatModelCatalogItem, reasoning?: number) => {
+    updateModelParams(item, { reasoning });
+    setIsModelMenuOpen(false);
+    setAdvancedModelId(null);
+    modelMenu.triggerRef.current?.focus();
+  };
+
   return (
     <div
       className={cn(
-        "min-w-0 shrink-0",
-        chromeless ? "" : "bg-white px-6 pb-6 pt-3 dark:bg-neutral-950",
+        "pd-composer-surround min-w-0 shrink-0",
+        chromeless ? "" : compact ? "bg-white px-3 pb-3 pt-2 dark:bg-neutral-950" : "bg-white px-6 pb-6 pt-3 dark:bg-neutral-950",
       )}
     >
       <div className={cn("min-w-0", chromeless ? "" : "mx-auto max-w-[860px]")}>
@@ -855,8 +872,8 @@ export default function ComposerV2({
               </div>
             ) : null}
 
-            {showFileDropdown ? (
-              <div className="absolute bottom-full left-0 right-0 z-50 mb-2 overflow-hidden rounded-xl border border-violet-200 bg-white p-2 shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900">
+            {showFileDropdown ? createPortal(
+              <div ref={fileMenu.panelRef} style={fileMenu.style} className="flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 dark:border-violet-900/70 dark:bg-neutral-900">
                 <div className="flex items-center justify-between px-2 pb-2 pt-1">
                   <span className="text-[12px] font-bold text-neutral-900 dark:text-neutral-100">
                     {t("input.projectFiles", { defaultValue: "Reference project content" })}
@@ -872,7 +889,7 @@ export default function ComposerV2({
                       defaultValue: "Project content available to reference",
                     }) as string
                   }
-                  className="grid max-h-[238px] gap-px overflow-y-auto [scrollbar-color:#c8c5d5_transparent] [scrollbar-width:thin]"
+                  className="grid min-h-0 max-h-[238px] gap-px overflow-y-auto [scrollbar-color:#c8c5d5_transparent] [scrollbar-width:thin]"
                   onScroll={(event) => {
                     const target = event.currentTarget;
                     if (
@@ -921,9 +938,9 @@ export default function ComposerV2({
                             role="option"
                             aria-selected={isSelectedMention}
                             className={cn(
-                              "grid min-h-12 w-full cursor-pointer grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 py-[5px] text-left text-neutral-700 transition-colors hover:bg-[#f7f6ff] hover:text-[#393393] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                              "grid min-h-12 w-full cursor-pointer grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 py-[5px] text-left text-neutral-700 transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#393393)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
                               isActive
-                                ? "bg-[#eeecff] text-[#393393] hover:bg-[#eeecff] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
                                 : "",
                             )}
                             onMouseDown={(event) => event.preventDefault()}
@@ -953,13 +970,13 @@ export default function ComposerV2({
                     </>
                   )}
                 </div>
-              </div>
+              </div>, document.body
             ) : null}
 
             <div
               {...getRootProps()}
               className={cn(
-                "group relative z-10 rounded-xl border bg-white p-2 shadow-sm transition-colors",
+                "pd-composer-input-surface group relative z-10 rounded-xl border bg-white p-2 shadow-sm transition-colors",
                 "border-neutral-200 focus-within:border-neutral-300",
                 "dark:border-neutral-800 dark:bg-neutral-900 dark:focus-within:border-neutral-700",
                 isDragActive &&
@@ -1007,7 +1024,7 @@ export default function ComposerV2({
                   {selectedFileMentions.map((mention) => (
                     <span
                       key={mention.id || mention.path}
-                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
                     >
                       <span className="min-w-0 truncate">{mention.name}</span>
                       <button
@@ -1031,7 +1048,7 @@ export default function ComposerV2({
                   {selectedSkills.map((skill) => (
                     <span
                       key={`${skill.slug}-${skill.command || ""}`}
-                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
                     >
                       <span className="min-w-0 truncate">
                         {skill.name || skill.slug}
@@ -1057,7 +1074,7 @@ export default function ComposerV2({
                   {selectedCommands.map((command) => (
                     <span
                       key={command.name}
-                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
                     >
                       <span className="min-w-0 truncate">{command.name}</span>
                       <button
@@ -1090,17 +1107,7 @@ export default function ComposerV2({
                 frequentCommands={frequentCommands}
                 query={commandQuery}
                 selectedCommands={selectedCommands}
-                position={(() => {
-                  const ta = textareaRef?.current;
-                  if (!ta) return { top: 0, left: 0, bottom: 90 };
-                  const rect = ta.getBoundingClientRect();
-                  return {
-                    top: rect.top - 8,
-                    left: rect.left,
-                    bottom: window.innerHeight - rect.top + 8,
-                    width: rect.width,
-                  };
-                })()}
+                anchorRef={textareaRef}
               />
 
               <div className="relative">
@@ -1134,18 +1141,9 @@ export default function ComposerV2({
 
               <div className="pd-composer-control-row flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1">
                 <div className="pd-composer-toolbar-left flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                  <div
-                    onBlur={(event) => {
-                      const nextTarget = event.relatedTarget as Node | null;
-                      if (
-                        !nextTarget ||
-                        !event.currentTarget.contains(nextTarget)
-                      ) {
-                        setIsAddMenuOpen(false);
-                      }
-                    }}
-                  >
+                  <div>
                     <button
+                      ref={addTriggerRef}
                       type="button"
                       onClick={() => setIsAddMenuOpen((open) => !open)}
                       className={cn(
@@ -1168,24 +1166,15 @@ export default function ComposerV2({
                     >
                       <Plus className="h-4 w-4" strokeWidth={2.25} strokeLinecap="square" strokeLinejoin="miter" />
                     </button>
-                    {isAddMenuOpen ? (
+                    {isAddMenuOpen ? createPortal(
                       <div
-                        ref={addMenuRef}
+                        ref={addMenu.panelRef}
                         role="menu"
-                        style={
-                          addMenuMaxHeight
-                            ? { maxHeight: `${addMenuMaxHeight}px` }
-                            : undefined
-                        }
-                        className="absolute bottom-full left-0 right-0 z-50 mb-2 flex flex-col overflow-hidden rounded-xl border border-violet-200 bg-white p-2 text-left shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900"
+                        style={addMenu.style}
+                        className="flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 dark:border-violet-900/70 dark:bg-neutral-900"
                       >
                         <div
                           className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:#cbc9d5_transparent] [scrollbar-width:thin]"
-                          style={
-                            addMenuMaxHeight
-                              ? { maxHeight: `${Math.max(80, addMenuMaxHeight - 56)}px` }
-                              : undefined
-                          }
                         >
                         <button
                           type="button"
@@ -1194,7 +1183,7 @@ export default function ComposerV2({
                             setIsAddMenuOpen(false);
                             openImagePicker();
                           }}
-                          className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[#343640] transition-colors hover:bg-[#f2f1f6] hover:text-[#302b8f] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+                          className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[#f2f1f6] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
                         >
                           <span className="truncate text-[13px] font-medium text-inherit">
                             {t("input.files", { defaultValue: "Files" })}
@@ -1212,7 +1201,7 @@ export default function ComposerV2({
                             setIsAddMenuOpen(false);
                             directoryInputRef.current?.click();
                           }}
-                          className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[#343640] transition-colors hover:bg-[#f2f1f6] hover:text-[#302b8f] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+                          className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[#f2f1f6] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
                         >
                           <span className="truncate text-[13px] font-medium text-inherit">
                             {t("input.folders", { defaultValue: "Folders" })}
@@ -1243,9 +1232,9 @@ export default function ComposerV2({
                                 setIsAddMenuOpen(false);
                               }}
                               className={cn(
-                                "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[#343640] transition-colors hover:bg-[#f2f1f6] hover:text-[#302b8f] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                                "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[#f2f1f6] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
                                 isSelected
-                                  ? "bg-[#eeecff] text-[#393393] hover:bg-[#eeecff] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                  ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
                                   : "",
                               )}
                             >
@@ -1286,9 +1275,9 @@ export default function ComposerV2({
                                     setIsAddMenuOpen(false);
                                   }}
                                   className={cn(
-                                    "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-[#343640] transition-colors hover:bg-[#f2f1f6] hover:text-[#302b8f] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                                    "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-[var(--pd-ink,#343640)] transition-colors hover:bg-[#f2f1f6] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
                                     isSelected
-                                      ? "bg-[#eeecff] text-[#393393] hover:bg-[#eeecff] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                      ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
                                       : "",
                                   )}
                                 >
@@ -1329,25 +1318,15 @@ export default function ComposerV2({
                                 defaultValue: "Search skills",
                               }) as string
                             }
-                            className="h-8 w-full rounded-lg border border-neutral-200 bg-[#f8f7fa] pl-8 pr-2 text-[12px] outline-none focus:border-violet-300 dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-violet-700"
+                            className="h-8 w-full rounded-lg border border-neutral-200 bg-[#f8f7fa] pl-8 pr-2 text-[12px] outline-none focus:border-[var(--pd-accent-border,#c4b5fd)] dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-violet-700"
                           />
                         </div>
-                      </div>
+                      </div>, document.body
                     ) : null}
                   </div>
-                  <div
-                    className="relative"
-                    onBlur={(event) => {
-                      const nextTarget = event.relatedTarget as Node | null;
-                      if (
-                        !nextTarget ||
-                        !event.currentTarget.contains(nextTarget)
-                      ) {
-                        setIsPermissionMenuOpen(false);
-                      }
-                    }}
-                  >
+                  <div className="relative">
                     <button
+                      ref={permissionTriggerRef}
                       type="button"
                       disabled={permissionSelectorDisabled}
                       onClick={() => {
@@ -1355,7 +1334,7 @@ export default function ComposerV2({
                         setIsPermissionMenuOpen((open) => !open);
                       }}
                       className={cn(
-                        "pd-composer-icon-button inline-flex h-8 min-w-28 max-w-[132px] items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-colors sm:max-w-[190px]",
+                        "pd-composer-permission-button pd-composer-icon-button inline-flex h-8 min-w-28 max-w-[132px] items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-colors sm:max-w-[190px]",
                         permissionSelectorDisabled
                           ? "cursor-not-allowed border-transparent text-neutral-400 opacity-45 dark:text-neutral-500"
                           : permissionMode === "bypassPermissions"
@@ -1364,13 +1343,10 @@ export default function ComposerV2({
                                 isPermissionMenuOpen &&
                                   "border-[#e5b968] bg-[#fff2d3]",
                               )
-                            : "border-[#ddd9f3] bg-[#f8f7ff] text-[#5d58b6] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
+                            : "border-[var(--pd-border,#ddd9f3)] bg-[var(--pd-accent-soft,#f8f7ff)] text-[var(--pd-accent-strong,#5d58b6)] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
                       )}
-                      title={
-                        t("input.permissions.change", {
-                          defaultValue: "Select permission mode",
-                        }) as string
-                      }
+                      title={selectedPermissionLabel}
+                      aria-label={selectedPermissionLabel}
                       aria-haspopup="menu"
                       aria-expanded={
                         permissionSelectorDisabled
@@ -1393,10 +1369,10 @@ export default function ComposerV2({
                         strokeWidth={2}
                       />
                     </button>
-                    {isPermissionMenuOpen ? (
-                      <div
+                    {isPermissionMenuOpen ? createPortal(
+                      <div ref={permissionMenu.panelRef} style={permissionMenu.style}
                         role="menu"
-                        className="absolute bottom-[44px] left-12 z-[80] w-[184px] rounded-[10px] border border-violet-200 bg-[rgba(255,255,255,.995)] p-[5px] text-left font-sans tracking-normal shadow-xl shadow-violet-950/10 [font-synthesis:none] dark:border-violet-900/70 dark:bg-neutral-900"
+                        className="overflow-y-auto overscroll-contain rounded-[10px] border border-[var(--pd-accent-border,#ddd6fe)] bg-[rgba(255,255,255,.995)] p-[5px] text-left font-sans tracking-normal shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 [font-synthesis:none] dark:border-violet-900/70 dark:bg-neutral-900"
                       >
                         {PERMISSION_MODE_OPTIONS.map((option) => {
                           const Icon = option.Icon;
@@ -1420,12 +1396,12 @@ export default function ComposerV2({
                                 setIsPermissionMenuOpen(false);
                               }}
                               className={cn(
-                                "relative grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-[5px] rounded-[7px] border-0 bg-transparent px-2 py-1 text-left text-[#343640] transition-colors hover:bg-[#f7f6ff] dark:text-neutral-200 dark:hover:bg-violet-950/40",
+                                "relative grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-[5px] rounded-[7px] border-0 bg-transparent px-2 py-1 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] dark:text-neutral-200 dark:hover:bg-violet-950/40",
                                 isSelected &&
                                   option.mode === "bypassPermissions"
                                   ? "bg-[#fff2d8] text-[#b96708] hover:bg-[#fff2d8] dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-950/50"
                                   : isSelected
-                                    ? "bg-[#eeecff] text-[#393393] hover:bg-[#eeecff] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                    ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
                                     : "",
                               )}
                             >
@@ -1437,7 +1413,7 @@ export default function ComposerV2({
                                 <span className="block truncate text-[12px] font-semibold text-inherit">
                                   {label}
                                 </span>
-                                <span className="mt-0.5 block truncate text-[10px] text-[#9294a0] dark:text-neutral-400">
+                                <span className="mt-0.5 block truncate text-[10px] text-[var(--pd-muted,#9294a0)] dark:text-neutral-400">
                                   {description}
                                 </span>
                               </span>
@@ -1450,7 +1426,7 @@ export default function ComposerV2({
                             </button>
                           );
                         })}
-                      </div>
+                      </div>, document.body
                     ) : null}
                   </div>
                   {COMPOSER_RUN_MODE_OPTIONS.filter(
@@ -1463,7 +1439,7 @@ export default function ComposerV2({
                     return (
                       <span
                         key={option.mode}
-                        className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-1 rounded-lg border border-[#d7d2fb] bg-[#f0edff] px-2.5 text-[12px] font-[650] leading-none text-[#544dbd] transition-colors duration-[120ms] hover:border-[#bdb5f2] hover:bg-[#e9e5ff] hover:text-[#433ba8] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                        className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-1 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
                       >
                         <Icon
                           className="h-3.5 w-3.5 shrink-0"
@@ -1499,7 +1475,7 @@ export default function ComposerV2({
                     compact && "relative",
                   )}
                 >
-                  <div>
+                  <div className="pd-composer-model-control min-w-0">
                     <button
                       type="button"
                       disabled={!isModelCatalogLoading && modelCatalog.length === 0 && !modelCatalogError}
@@ -1507,9 +1483,9 @@ export default function ComposerV2({
                       onClick={() => { setIsModelMenuOpen((open) => !open); setAdvancedModelId(null); }}
                       className={cn(
                         "disabled:cursor-not-allowed disabled:opacity-40",
-                        "pd-composer-icon-button inline-flex h-8 max-w-[220px] items-center justify-center gap-1.5 rounded-lg border border-transparent px-2 text-[13px] font-medium text-neutral-700 transition-colors hover:border-[#ddd9f2] hover:bg-[#f7f6ff] hover:text-[#4440a8] dark:text-neutral-200 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                        "pd-composer-icon-button inline-flex h-8 max-w-[220px] items-center justify-center gap-1.5 rounded-lg border border-transparent px-2 text-[13px] font-medium text-neutral-700 transition-colors hover:border-[var(--pd-border,#ddd9f2)] hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#4440a8)] dark:text-neutral-200 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
                         isModelMenuOpen &&
-                          "border-[#ddd9f2] bg-[#f7f6ff] text-[#4440a8] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
+                          "border-[var(--pd-border,#ddd9f2)] bg-[var(--pd-accent-soft,#f7f6ff)] text-[var(--pd-accent-strong,#4440a8)] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
                       )}
                       title={
                         t("input.models.change", {
@@ -1519,7 +1495,12 @@ export default function ComposerV2({
                       aria-haspopup="dialog"
                       aria-expanded={isModelMenuOpen}
                     >
-                      <span className="truncate">{selectedModelLabel}</span>
+                      <span className="min-w-0 truncate">{selectedModelLabel}</span>
+                      {selectedReasoningLabel && (
+                        <span className="pd-composer-thinking-label shrink-0 font-normal text-neutral-400 dark:text-neutral-500">
+                          {selectedReasoningLabel}
+                        </span>
+                      )}
                       <ChevronDown
                         className={cn(
                           "pd-composer-control-chevron h-3.5 w-3.5 shrink-0 transition-transform",
@@ -1531,6 +1512,7 @@ export default function ComposerV2({
                     {modelMenuVisible ? createPortal(
                       <div
                         role="dialog"
+                        data-dialog-surface
                         aria-label={
                           t("input.models.change", {
                             defaultValue: "Select model",
@@ -1538,7 +1520,7 @@ export default function ComposerV2({
                         }
                         ref={modelMenu.menuRef}
                         style={modelMenu.menuStyle}
-                        className="pd-composer-model-menu z-50 flex flex-col rounded-xl border border-violet-200 bg-white text-left shadow-xl shadow-violet-950/10 dark:border-violet-900/70 dark:bg-neutral-900"
+                        className="pd-composer-model-menu z-50 flex flex-col rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white text-left shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 dark:border-violet-900/70 dark:bg-neutral-900"
                       >
                         <div className={cn("min-h-0 min-w-0 flex-col p-2", modelMenu.inline && advancedModel ? "hidden" : "flex")}>
                           <div className="relative mb-1.5 shrink-0">
@@ -1554,7 +1536,7 @@ export default function ComposerV2({
                                   defaultValue: "Search models",
                                 }) as string
                               }
-                              className="h-8 w-full rounded-lg border border-neutral-200 bg-neutral-50 pl-8 pr-2 text-[12px] outline-none focus:border-violet-300 focus:bg-white dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-violet-700"
+                              className="h-8 w-full rounded-lg border border-neutral-200 bg-neutral-50 pl-8 pr-2 text-[12px] outline-none focus:border-[var(--pd-accent-border,#c4b5fd)] focus:bg-white dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-violet-700"
                               autoFocus
                             />
                           </div>
@@ -1573,86 +1555,103 @@ export default function ComposerV2({
                                 })}
                               </div>
                             ) : (
-                              filteredModels.map((item) => {
-                                const isAuto = item.id === "router/auto";
-                                const isSelected = item.id === selectedModelId;
-                                const hasAdvanced = Boolean(
-                                  item.capabilities.reasoning ||
-                                  item.capabilities.temperature ||
-                                  item.capabilities.speed,
-                                );
-                                return (
-                                  <div
-                                    key={item.id}
-                                    className={cn(
-                                      "group flex items-center rounded-lg text-[#343640] transition-colors hover:bg-[#f7f6ff] hover:text-[#373390] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
-                                      isSelected
-                                        ? "bg-[#eeecff] font-[650] text-[#393393] hover:bg-[#eeecff] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
-                                        : "",
-                                      !item.available &&
-                                        !isAuto &&
-                                        "opacity-45",
-                                    )}
-                                  >
-                                    <button
-                                      type="button"
-                                      disabled={!item.available}
-                                      onClick={() => {
-                                        onModelSelectionChange(
-                                          isAuto
-                                            ? { mode: "auto" }
-                                            : buildExplicitSelection(
-                                                item,
-                                                preserveParamsForModel(
-                                                  item,
-                                                  modelSelection,
-                                                ),
-                                              ),
-                                        );
-                                        setIsModelMenuOpen(false);
-                                        setAdvancedModelId(null);
-                                      }}
-                                      className="flex h-[27px] min-w-0 flex-1 items-center truncate border-0 bg-transparent pl-[9px] pr-0 text-left text-[12px] text-inherit"
-                                      title={`${item.displayName} · ${item.provider}`}
-                                    >
-                                      {item.displayName}
-                                    </button>
-                                    {hasAdvanced ? (
-                                      <button
-                                        type="button"
-                                        onMouseDown={(event) =>
-                                          event.preventDefault()
-                                        }
-                                        onClick={() =>
-                                          setAdvancedModelId((current) =>
-                                            current === item.id
-                                              ? null
-                                              : item.id,
-                                          )
-                                        }
+                              modelGroups.map(({ provider, models }) => (
+                                <div
+                                  key={provider === null ? "auto" : `provider:${provider}`}
+                                  role="group"
+                                  aria-label={provider ?? (t("input.models.auto", { defaultValue: "Auto" }) as string)}
+                                  className={cn(
+                                    "mb-1 last:mb-0",
+                                    provider === null && modelGroups.length > 1 &&
+                                      "border-b border-neutral-200 pb-2 dark:border-neutral-700",
+                                  )}
+                                >
+                                  {provider !== null ? (
+                                    <div className="sticky top-0 z-10 truncate bg-white px-[9px] pb-1 pt-2 text-[10px] font-medium text-neutral-400 dark:bg-neutral-900 dark:text-neutral-500" title={provider}>
+                                      {provider}
+                                    </div>
+                                  ) : null}
+                                  {models.map((item) => {
+                                    const isAuto = item.id === "router/auto";
+                                    const isSelected = item.id === selectedModelId;
+                                    const hasAdvanced = Boolean(
+                                      item.capabilities.reasoning ||
+                                      item.capabilities.speed,
+                                    );
+                                    return (
+                                      <div
+                                        key={item.id}
                                         className={cn(
-                                          "mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition hover:bg-violet-100 hover:text-violet-700 dark:hover:bg-violet-950/60 dark:hover:text-violet-200",
-                                          advancedModelId === item.id &&
-                                            "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-200",
+                                          "group flex items-center rounded-lg text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#373390)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                                          isSelected
+                                            ? "bg-[var(--pd-accent-soft,#eeecff)] font-[650] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                            : "",
+                                          !item.available &&
+                                            !isAuto &&
+                                            "opacity-45",
                                         )}
-                                        title={
-                                          t("input.models.advanced", {
-                                            defaultValue: "Advanced settings",
-                                          }) as string
-                                        }
-                                        aria-expanded={
-                                          advancedModelId === item.id
-                                        }
                                       >
-                                        <ChevronRight
-                                          className="h-3.5 w-3.5"
-                                          strokeWidth={2}
-                                        />
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                );
-                              })
+                                        <button
+                                          type="button"
+                                          disabled={!item.available}
+                                          onClick={() => {
+                                            onModelSelectionChange(
+                                              isAuto
+                                                ? { mode: "auto" }
+                                                : buildExplicitSelection(
+                                                    item,
+                                                    preserveParamsForModel(
+                                                      item,
+                                                      modelSelection,
+                                                    ),
+                                                  ),
+                                            );
+                                            setIsModelMenuOpen(false);
+                                            setAdvancedModelId(null);
+                                          }}
+                                          className="flex h-[27px] min-w-0 flex-1 items-center truncate border-0 bg-transparent pl-[9px] pr-0 text-left text-[12px] text-inherit"
+                                          title={`${item.displayName} · ${item.provider}`}
+                                        >
+                                          {item.displayName}
+                                        </button>
+                                        {hasAdvanced ? (
+                                          <button
+                                            type="button"
+                                            onMouseDown={(event) =>
+                                              event.preventDefault()
+                                            }
+                                            onClick={() =>
+                                              setAdvancedModelId((current) =>
+                                                current === item.id
+                                                  ? null
+                                                  : item.id,
+                                              )
+                                            }
+                                            className={cn(
+                                              "mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition hover:bg-[var(--pd-accent-soft,#ede9fe)] hover:text-[var(--pd-accent-strong,#6d28d9)] dark:hover:bg-violet-950/60 dark:hover:text-violet-200",
+                                              advancedModelId === item.id &&
+                                                "bg-[var(--pd-accent-soft,#ede9fe)] text-[var(--pd-accent-strong,#6d28d9)] dark:bg-violet-950/60 dark:text-violet-200",
+                                            )}
+                                            title={
+                                              t("input.models.advanced", {
+                                                defaultValue: "Advanced settings",
+                                              }) as string
+                                            }
+                                            aria-expanded={
+                                              advancedModelId === item.id
+                                            }
+                                          >
+                                            <ChevronRight
+                                              className="h-3.5 w-3.5"
+                                              strokeWidth={2}
+                                            />
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))
                             )}
                           </div>
                         </div>
@@ -1677,32 +1676,34 @@ export default function ComposerV2({
                             style={modelMenu.advancedStyle}
                             data-side={modelMenu.side}
                             className={cn(
-                              "min-h-0 overflow-y-auto overscroll-contain rounded-[10px] bg-white p-[9px] text-[#505260] dark:bg-neutral-900 dark:text-neutral-300",
-                              !modelMenu.inline && "border border-violet-300 shadow-xl shadow-violet-950/10 dark:border-violet-800",
+                              "min-h-0 overflow-y-auto overscroll-contain rounded-[10px] bg-white p-[9px] text-[var(--pd-muted,#505260)] dark:bg-neutral-900 dark:text-neutral-300",
+                              !modelMenu.inline && "border border-[var(--pd-accent-border,#c4b5fd)] shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 dark:border-violet-800",
                             )}
                           >
-                            {modelMenu.inline && <button type="button" className="mb-2 flex w-full items-center gap-1 rounded-md px-1 py-1.5 text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-950/40"
+                            {modelMenu.inline && <button type="button" className="mb-2 flex w-full items-center gap-1 rounded-md px-1 py-1.5 text-left text-xs hover:bg-[var(--pd-accent-soft,#f5f3ff)] dark:hover:bg-violet-950/40"
                               onClick={() => setAdvancedModelId(null)}>
                               <ChevronLeft className="h-3.5 w-3.5" />{t("input.models.backToModels")}
                             </button>}
                             {advancedModel.capabilities.reasoning ? (
                               <div>
-                                <h2 className="mb-1 text-[12px] font-bold text-[#454650] dark:text-neutral-100">
+                                <h2 className="mb-1 text-[12px] font-bold text-[var(--pd-ink,#454650)] dark:text-neutral-100">
                                   {t("input.models.reasoning", {
                                     defaultValue: "Reasoning",
                                   })}
                                 </h2>
+                                <button type="button" aria-pressed={advancedParams.reasoning === undefined}
+                                  className="mb-1 w-full rounded-md px-[7px] py-1 text-left text-[11px] hover:bg-[var(--pd-accent-soft,#f5f3ff)] dark:hover:bg-violet-950/40"
+                                  onClick={() => selectReasoning(advancedModel)}>
+                                  {t('input.models.reasoningMenuLevels.default', { defaultValue: 'Default' })}
+                                  {advancedParams.reasoning === undefined && <Check className="float-right h-3 w-3" />}
+                                </button>
                                 <CapabilityOptionList
                                   values={capabilityValues(
                                     advancedModel.capabilities.reasoning,
                                   )}
-                                  labels={reasoningLabels}
+                                  labels={reasoningMenuLabels}
                                   currentValue={advancedParams.reasoning}
-                                  onSelect={(reasoning) =>
-                                    updateModelParams(advancedModel, {
-                                      reasoning,
-                                    })
-                                  }
+                                  onSelect={(reasoning) => selectReasoning(advancedModel, reasoning)}
                                 />
                               </div>
                             ) : null}
@@ -1710,11 +1711,11 @@ export default function ComposerV2({
                               <div
                                 className={cn(
                                   advancedModel.capabilities.reasoning
-                                    ? "mt-2 border-t border-[#e7e4f1] pt-2 dark:border-neutral-800"
+                                    ? "mt-2 border-t border-[var(--pd-border,#e7e4f1)] pt-2 dark:border-neutral-800"
                                     : "",
                                 )}
                               >
-                                <h2 className="mb-1 text-[12px] font-bold text-[#454650] dark:text-neutral-100">
+                                <h2 className="mb-1 text-[12px] font-bold text-[var(--pd-ink,#454650)] dark:text-neutral-100">
                                   {t("input.models.speed", {
                                     defaultValue: "Speed",
                                   })}
@@ -1731,112 +1732,15 @@ export default function ComposerV2({
                                 />
                               </div>
                             ) : null}
-                            {advancedModel.capabilities.temperature
-                              ? (() => {
-                                  const capability =
-                                    advancedModel.capabilities.temperature;
-                                  const values = capabilityValues(capability);
-                                  const currentValue =
-                                    advancedParams.temperature ?? values[0];
-                                  const rangeMin = capability.min ?? 0;
-                                  const rangeMax = capability.max ?? 1;
-                                  const temperaturePercent =
-                                    currentValue !== undefined &&
-                                    rangeMax > rangeMin
-                                      ? Math.min(
-                                          100,
-                                          Math.max(
-                                            0,
-                                            ((currentValue - rangeMin) /
-                                              (rangeMax - rangeMin)) *
-                                              100,
-                                          ),
-                                        )
-                                      : 0;
-                                  const hasPreviousSection = Boolean(
-                                    advancedModel.capabilities.reasoning ||
-                                      advancedModel.capabilities.speed,
-                                  );
-
-                                  return (
-                                    <div
-                                      className={cn(
-                                        hasPreviousSection
-                                          ? "mt-2 border-t border-[#e7e4f1] pt-2 dark:border-neutral-800"
-                                          : "",
-                                      )}
-                                    >
-                                      <h2 className="mb-2 text-[12px] font-bold text-[#454650] dark:text-neutral-100">
-                                        {t("input.models.temperature", {
-                                          defaultValue: "Temperature",
-                                        })}
-                                      </h2>
-                                      {capability.type === "enum" ? (
-                                        <CapabilityOptionList
-                                          values={values}
-                                          labels={new Map()}
-                                          currentValue={currentValue}
-                                          onSelect={(temperature) =>
-                                            updateModelParams(advancedModel, {
-                                              temperature,
-                                            })
-                                          }
-                                        />
-                                      ) : currentValue !== undefined ? (
-                                        <div className="grid grid-cols-[minmax(0,1fr)_28px] items-center gap-[7px] px-[7px] pb-[3px] pt-0.5">
-                                          <input
-                                            type="range"
-                                            min={capability.min}
-                                            max={capability.max}
-                                            step={capability.step}
-                                            value={currentValue}
-                                            aria-label={
-                                              t("input.models.temperature", {
-                                                defaultValue: "Temperature",
-                                              }) as string
-                                            }
-                                            onMouseDown={(event) =>
-                                              event.stopPropagation()
-                                            }
-                                            onChange={(event) =>
-                                              updateModelParams(advancedModel, {
-                                                temperature: Number(
-                                                  event.target.value,
-                                                ),
-                                              })
-                                            }
-                                            style={
-                                              {
-                                                "--temperature": `${temperaturePercent}%`,
-                                              } as CSSProperties
-                                            }
-                                            className="temperature-range m-0 h-4 w-full min-w-0 appearance-none bg-transparent [--temperature:30%] [&::-moz-range-progress]:h-1 [&::-moz-range-progress]:rounded-full [&::-moz-range-progress]:bg-[#665ee8] [&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-[#dedbea] [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[linear-gradient(to_right,#665ee8_0%,#665ee8_var(--temperature),#dedbea_var(--temperature),#dedbea_100%)]"
-                                          />
-                                          <output className="text-right text-[9.5px] font-semibold tabular-nums text-[#686b7b]">
-                                            {currentValue.toFixed(1)}
-                                          </output>
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })()
-                              : null}
                           </aside>
                         ) : null}
                       </div>, document.body
                     ) : null}
                   </div>
 
-                  <div
-                    className="relative"
-                    onBlur={(event) => {
-                      const nextTarget = event.relatedTarget as Node | null;
-                      if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
-                        setIsContextPopoverOpen(false);
-                      }
-                    }}
-                  >
+                  <div className="pd-composer-context-control relative">
                     <button
+                      ref={contextTriggerRef}
                       type="button"
                       onClick={() => setIsContextPopoverOpen((open) => !open)}
                       className={cn(
@@ -1856,10 +1760,10 @@ export default function ComposerV2({
                       <CircleGauge className="h-4 w-4" strokeWidth={1.75} />
                       <span>{contextStatus.known ? contextStatus.percentLabel : "--"}</span>
                     </button>
-                    {isContextPopoverOpen ? (
-                      <div
+                    {isContextPopoverOpen ? createPortal(
+                      <div ref={contextMenu.panelRef} style={contextMenu.style}
                         role="status"
-                        className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
+                        className="overflow-y-auto overscroll-contain rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
                       >
                         <div className="mb-1 flex items-center justify-between gap-2">
                           <span className="font-medium text-neutral-900 dark:text-neutral-100">
@@ -1898,7 +1802,7 @@ export default function ComposerV2({
                             })}
                           </div>
                         )}
-                      </div>
+                      </div>, document.body
                     ) : null}
                   </div>
 

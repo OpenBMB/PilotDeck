@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { findModelReferences, rewriteModelReferences } from './modelReferences.js';
+import { findModelReferences, planModelRemoval, rewriteModelReferences } from './modelReferences.js';
 import { validatePilotDeckConfig, writePilotDeckConfig } from './pilotdeckConfig.js';
 
 const dirs = [];
@@ -44,6 +44,41 @@ describe('subagent profile settings integration', () => {
     expect(input.agent.subagents.profiles.vision).toEqual({
       description: 'Read images', model: 'renamed/org/vision/v2', tools: ['read_file'],
     });
+  });
+
+  it('repairs removed profile models by inheriting without changing role policies or the input', () => {
+    const input = config({
+      vision: { description: 'Read images', model: 'proxy/org/vision/v1', enabled: false, tools: ['read_file'] },
+      explore: { model: 'proxy/org/vision/v1' },
+      other: { description: 'Other work', model: 'proxy/text' },
+    });
+    const snapshot = structuredClone(input);
+    const plan = planModelRemoval(input, { providerId: 'proxy', modelId: 'org/vision/v1' });
+    expect(plan.blocked).toBeNull();
+    expect(plan.requiresReplacement).toBe(false);
+    expect(plan.changes).toEqual([
+      { path: 'agent.subagents.profiles.vision.model', value: 'proxy/org/vision/v1', kind: 'agent', action: 'inherit' },
+      { path: 'agent.subagents.profiles.explore.model', value: 'proxy/org/vision/v1', kind: 'agent', action: 'inherit' },
+    ]);
+    expect(plan.config.agent.subagents).toEqual({ maxDepth: 2, profiles: {
+      vision: { description: 'Read images', enabled: false, tools: ['read_file'] },
+      explore: {},
+      other: { description: 'Other work', model: 'proxy/text' },
+    } });
+    expect(findModelReferences(plan.config, { providerId: 'proxy', modelId: 'org/vision/v1' })).toEqual([]);
+    expect(validatePilotDeckConfig(plan.config).valid).toBe(true);
+    expect(input).toEqual(snapshot);
+  });
+
+  it('repairs profile bindings alongside main model replacement when a provider is removed', () => {
+    const input = config();
+    input.model.providers.backup = { ...input.model.providers.proxy, models: { text: {} } };
+    const plan = planModelRemoval(input, { providerId: 'proxy' }, { replacement: 'backup/text' });
+    expect(plan.blocked).toBeNull();
+    expect(plan.config.agent.model).toBe('backup/text');
+    expect(plan.config.agent.subagents.profiles.vision).toEqual({ description: 'Read images', tools: ['read_file'] });
+    expect(findModelReferences(plan.config, { providerId: 'proxy' })).toEqual([]);
+    expect(validatePilotDeckConfig(plan.config).valid).toBe(true);
   });
 
   it.each([

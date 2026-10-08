@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { downloadToFile, resolveDownloadSource } from "./download-sources.mjs";
+import architecture from "./windows-architecture.cjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, "..");
@@ -74,6 +75,7 @@ function bundledNodeMatchesRequest() {
   if (!existsSync(nodeBinary)) return false;
   const versionCheck = spawnSync(nodeBinary, ["--version"], { encoding: "utf8" });
   if (versionCheck.stdout.trim() !== `v${version}`) return false;
+  if (process.platform === "win32") return architecture.executableArchitecture(nodeBinary) === nodeArch;
   if (process.platform !== "darwin") return true;
 
   const archCheck = spawnSync("lipo", ["-archs", nodeBinary], { encoding: "utf8" });

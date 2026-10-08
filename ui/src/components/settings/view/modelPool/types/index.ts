@@ -73,7 +73,8 @@ export type PilotDeckConfig = {
   tools?: {
     webSearch?: {
       enabled?: boolean;
-      provider?: "glm" | "tavily" | "custom" | "serper" | "brave";
+      provider?: import("../../../../../../../src/pilot/config/webSearchProviders.js").WebSearchProvider;
+      searchEngine?: import("../../../../../../../src/pilot/config/webSearchProviders.js").SerpApiEngine;
       apiKey?: string;
       endpoint?: string;
       customProvider?: {

@@ -20,6 +20,7 @@ const productionPaths = [
   "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json",
   "Dockerfile", "docker-entrypoint.sh", ".dockerignore",
   ".github/workflows/desktop-build.yml", ".github/workflows/desktop-windows.yml",
+  ".github/workflows/desktop-linux.yml", ".github/workflows/desktop-macos.yml",
   ".github/workflows/release.yml", ".github/workflows/release-retry.yml",
 ];
 

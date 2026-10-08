@@ -73,7 +73,8 @@ export type PilotAgentConfig = {
   maxContextTokens?: number;
   /** Override the selected model catalog's output-token cap. */
   maxOutputTokens?: number;
-  thinking?: { enabled: boolean; budgetTokens?: number };
+  /** @deprecated Model thinking settings now control reasoning. */
+  thinking?: { enabled: boolean };
   subagents?: {
     default?: PilotAgentModelSelection;
     timeoutMs?: number;
@@ -138,7 +139,7 @@ export type PilotGatewayConfig = {
   maxPerSessionMcpInstances?: number;
 };
 
-export type PilotWebSearchProvider = "glm" | "tavily" | "custom" | "serper" | "brave";
+export type PilotWebSearchProvider = import("./webSearchProviders.js").WebSearchProvider;
 export type PilotWebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "none";
 export type PilotWebSearchCustomMethod = "GET" | "POST";
 
@@ -161,9 +162,10 @@ export type PilotWebSearchCustomProviderConfig = {
  * runtime; `apiKey` and `endpoint` apply to the selected provider.
  */
 export type PilotWebSearchConfig = {
-  /** Defaults to true when omitted. False removes web_search from the tool registry. */
+  /** Missing webSearch section is off; legacy sections without this flag remain enabled. */
   enabled?: boolean;
   provider?: PilotWebSearchProvider;
+  searchEngine?: import("./webSearchProviders.js").SerpApiEngine;
   apiKey?: string;
   endpoint?: string;
   customProvider?: PilotWebSearchCustomProviderConfig;

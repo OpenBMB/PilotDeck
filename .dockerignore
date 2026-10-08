@@ -4,7 +4,15 @@ test-results/
 node_modules/
 .git/
 Auto-Research-Skills/
-apps/
+# Keep Electron packages and build outputs out of the Web image. The UI uses
+# these two environment-independent appearance contracts during its build.
+apps/*
+!apps/desktop/
+apps/desktop/*
+!apps/desktop/src/
+apps/desktop/src/*
+!apps/desktop/src/lightAppearance.ts
+!apps/desktop/src/interfacePreferences.ts
 packages/
 *.log
 .env*

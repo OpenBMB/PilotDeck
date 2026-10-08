@@ -11,13 +11,10 @@ export type AgentRuntimeConfig = {
   cwd: string;
   systemPrompt?: string;
   maxOutputTokens?: number;
-  temperature?: number;
   thinking?: CanonicalThinkingConfig;
   toolChoice?: CanonicalToolChoice;
   /** Optional model/provider-specific aliases for emitted tool names. */
   toolAliases?: Record<string, string>;
-  /** Optional text tool-call format hint for self-correction prompts. */
-  toolCallFormat?: string;
   maxContextMessages?: number;
   stopOnStructuredOutput?: boolean;
   runMode?: AgentRunMode;

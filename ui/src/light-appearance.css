@@ -1,0 +1,182 @@
+/* All custom surfaces are opt-in and light-only. No rule targets dark mode. */
+html[data-light-appearance]:not(.dark) { background: var(--pd-canvas); }
+html[data-light-appearance]:not(.dark) body { background: transparent; }
+html[data-light-appearance]:not(.dark) .app-root {
+  isolation: isolate;
+  background: var(--pd-backdrop);
+  color: var(--pd-ink);
+}
+html[data-light-appearance]:not(.dark) :is(.app-shell, .pilotdeck-settings-app) { border-color: var(--pd-border); }
+/* A palette tints the window chrome only. The chat, settings pages, cards and
+   inputs keep the default white reading surface unless a wallpaper is shown. */
+html[data-light-appearance]:not(.dark) :is(.project-sidebar, .settings-sidebar) {
+  background: var(--pd-sidebar-fill);
+  background-attachment: fixed;
+  border-color: var(--pd-border);
+  color: var(--pd-sidebar-ink);
+}
+html[data-light-appearance]:not(.dark) :is(.primary-action:not(.active), .tree-row:not(.active), .project-conversation:not(.active), .tree-heading, .compact-project-entry:not(.active), .settings-sidebar .nav-item:not(.active), .settings-sidebar .back-to-app, .settings-sidebar h2) { color: var(--pd-sidebar-ink); }
+html[data-light-appearance]:not(.dark) :is(.sidebar-brand-row, .pilotdeck-settings-app .sidebar-brand) { background: transparent; }
+/* Wallpaper mode: the image shows through translucent sidebar/content panels. */
+html[data-light-background=image]:not(.dark) .app-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--pd-wallpaper);
+  background-repeat: no-repeat;
+  background-position: var(--pd-image-position);
+  background-size: var(--pd-image-fit);
+  filter: blur(var(--pd-image-blur)) brightness(var(--pd-image-brightness)) saturate(var(--pd-image-saturation));
+}
+html[data-light-background=image]:not(.dark) :is(.app-shell, .pilotdeck-settings-app) { background: transparent; }
+html[data-light-background=image]:not(.dark) :is(.app-main, .settings-main) {
+  background: var(--pd-content-fill);
+  background-attachment: fixed;
+  color: var(--pd-ink);
+}
+/* Docked project files belong to the same reading panel. Let their parent
+   provide the fill instead of stacking another opaque white surface. */
+html[data-light-background=image]:not(.dark) .dock-panel.file-panel {
+  background: transparent;
+  color: var(--pd-ink);
+}
+html[data-light-background=image]:not(.dark) :is(.pd-workspace-content, .pd-workspace-body, .pd-composer-surround, .pd-composer-container, .pd-chat-canvas, .chat-panel-scrollbar, .settings-content, .workspace-header, .pilotdeck-settings-app .topbar) {
+  background: transparent;
+}
+html[data-light-appearance]:not(.dark) .pilotdeck-settings-app {
+  --surface: var(--pd-surface);
+  --ink: var(--pd-ink);
+  /* The settings stylesheet uses --muted as a literal, unlike the HSL UI token. */
+  --muted: var(--pd-muted);
+  --soft: var(--pd-muted);
+  --line: var(--pd-border);
+  --line-strong: var(--pd-border);
+  --brand: var(--pd-accent);
+  --brand-strong: var(--pd-accent-strong);
+  --brand-soft: var(--pd-accent-soft);
+  --brand-tint: var(--pd-accent-soft);
+}
+html[data-light-appearance]:not(.dark) .pilotdeck-settings-app :is(.page-header h1, .general-card-header h2, .general-setting-title, .appearance-details > summary) { color: var(--pd-ink); }
+html[data-light-appearance]:not(.dark) .pilotdeck-settings-app :is(.page-header p, .general-setting-copy p, .appearance-help, .general-card-header-extra, .appearance-footer > span, .appearance-slider > span) { color: var(--pd-muted); }
+html[data-light-appearance]:not(.dark) .pilotdeck-settings-app .general-setting-icon { color: var(--pd-accent); }
+html[data-light-appearance]:not(.dark) .pilotdeck-settings-app :is(.general-select-wrap select, .appearance-color-control, .appearance-slider input[type=number]) {
+  background: var(--pd-surface);
+  border-color: var(--pd-border);
+  color: var(--pd-ink);
+}
+html[data-light-appearance]:not(.dark) .pilotdeck-settings-app .general-select-wrap select:hover { border-color: var(--pd-accent); }
+html[data-light-appearance]:not(.dark) .pilotdeck-settings-app .general-select-wrap select:focus {
+  border-color: var(--pd-accent);
+  box-shadow: 0 0 0 3px var(--pd-accent-soft);
+}
+html[data-light-appearance]:not(.dark) :is(.pilotdeck-settings-app .nav-item.active, .file-entry[aria-pressed=true], .user-message-bubble, .primary-action.active, .primary-action:hover, .project-conversation.active, .tree-row.chat-row.active, .compact-project-entry.active) {
+  background: var(--pd-accent-soft);
+  color: var(--pd-accent-strong);
+  border-color: var(--pd-border);
+}
+html[data-light-appearance]:not(.dark) :is(.icon-button, .file-entry, .hover-brand-surface):hover {
+  background: var(--pd-accent-soft);
+  border-color: var(--pd-border);
+  color: var(--pd-accent-strong);
+}
+html[data-light-appearance]:not(.dark) :is(.sidebar-resizer, .files-panel-resizer, .panel-splitter) { background: var(--pd-border); }
+html[data-light-appearance]:not(.dark) :is(.tree-row.project-row.active, .project-chat-icon button:hover, .primary-action-icon, .project-chat-icon) { color: var(--pd-sidebar-accent); }
+html[data-light-appearance]:not(.dark) .session-indicator[data-status=unread] .conversation-dot { background: var(--pd-accent); }
+html[data-light-appearance]:not(.dark) :is(.dock-panel-header, .dock-panel-header.chat) { background: var(--pd-sidebar); }
+html[data-light-appearance]:not(.dark) .dock-panel-header .header-icon { background: var(--pd-accent-soft); }
+/* Paint dialog content panels only: role=dialog can also identify a backdrop,
+   including the image lightbox, whose dark scrim must remain intact. */
+html[data-light-appearance]:not(.dark) :is(.pd-composer-input-surface, .pd-composer-model-menu, .pd-composer-permission-menu, .general-card, .settings-card, [role=menu], [data-dialog-surface]) {
+  background-color: var(--pd-surface);
+  border-color: var(--pd-border);
+}
+html[data-light-appearance]:not(.dark) :is(.pd-composer-selection-chip, .pd-composer-icon-button[aria-expanded=true]) {
+  background: var(--pd-accent-soft);
+  border-color: var(--pd-border);
+  color: var(--pd-accent-strong);
+}
+html[data-light-appearance]:not(.dark) .appearance-settings-page { max-width: none; }
+/* With a wallpaper, the reading panel supplies the only large-area fill.
+   Nested cards, headers and rails must not multiply its opacity. Explicit
+   surfaces leave status badges, QR codes, previews and overlays intact. */
+html[data-light-background=image]:not(.dark) .pilotdeck-settings-app {
+  --settings-panel-ink: var(--pd-ink);
+  --settings-panel-muted: var(--pd-muted);
+}
+html[data-light-background=image]:not(.dark) .pilotdeck-settings-app :is(
+  [data-settings-surface=panel], .general-card, .memory-card,
+  .resident-project-panel, .resident-card, .search-card, .scheduled-card,
+  .route-card, .route-model-row.is-default-tier,
+  .integration-gateway-card, .integration-gateway-directory-row,
+  .integration-channel.expanded, .integration-setup-panel,
+  .mcp-config-card, .mcp-raw-config-card, .mcp-config-card-header,
+  .mcp-raw-config-header, .mcp-server-rail, .mcp-project-rail,
+  .mcp-project-server-rail, .mcp-project-workbench, .mcp-detail-panel,
+  .mcp-server-editor, .mcp-session-row, .mcp-http-note, .mcp-raw-editor,
+  .office-card, .office-status-panel, .office-status-detail, .office-builtin-note,
+  .security-card, .security-tool-empty, .agent-retry-section,
+  .advanced-settings-card, .detail-test-section, .search-test-footer,
+  .model-pool-workspace, .provider-rail, .provider-detail,
+  .memory-action-status:not(.success):not(.error)
+) {
+  background: transparent;
+  border-color: var(--pd-border);
+  box-shadow: none;
+}
+/* Every form control uses the same surface, regardless of its settings page.
+   Compound controls paint once on their wrapper, not on each inner input. */
+html[data-light-background=image]:not(.dark) .pilotdeck-settings-app .settings-content :is(
+  select, textarea,
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+  .appearance-color-control, .secret-input, .provider-search,
+  .candidate-model-search, .mcp-server-search, .mcp-project-search,
+  .mcp-repeatable-row, .appearance-button, .appearance-notice button,
+  .integration-setup-choice, .integration-scan-launcher,
+  .button.secondary, .test-button:not(.success),
+  .memory-edit-button:not(.editing), .search-edit-button, .scheduled-edit-button,
+  .advanced-add-button, .security-add-button, .security-quick-add button,
+  .office-path-input button, .office-path-actions .button.secondary,
+  .mcp-server-rail > footer button, .mcp-add-row-button
+) {
+  background: var(--pd-surface);
+  border-color: var(--pd-border);
+}
+html[data-light-background=image]:not(.dark) .pilotdeck-settings-app .settings-content :is(
+  select, textarea,
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+  .appearance-color-control, .secret-input, .provider-search,
+  .candidate-model-search, .mcp-server-search, .mcp-project-search,
+  .mcp-repeatable-row
+) {
+  color: var(--pd-ink);
+}
+html[data-light-background=image]:not(.dark) .pilotdeck-settings-app .button.destructive-outline {
+  background: var(--pd-surface);
+}
+html[data-light-background=image]:not(.dark) .pilotdeck-settings-app .settings-content :is(
+  .appearance-color-control, .secret-input, .provider-search,
+  .candidate-model-search, .mcp-server-search, .mcp-project-search,
+  .mcp-repeatable-row
+) input {
+  background: transparent;
+}
+html[data-light-background=image]:not(.dark) .pilotdeck-settings-app .settings-content :is(input, select, textarea)[aria-invalid=true] {
+  border-color: var(--danger);
+}
+html[data-light-background=image]:not(.dark) .pilotdeck-settings-app :is(
+  .settings-sidebar .nav-item:not(.active):hover, .settings-sidebar .back-to-app:hover,
+  .provider-row:hover, .integration-channel-summary:hover,
+  .mcp-server-options > button:hover, .mcp-server-options > button.selected,
+  .mcp-project-options button:hover, .mcp-project-options button.selected
+) {
+  background: var(--pd-accent-soft);
+}
+/* Reduce decorative motion without changing document/terminal content. */
+html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-reduced-motion] *::after {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+  scroll-behavior: auto !important;
+}

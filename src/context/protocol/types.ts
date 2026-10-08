@@ -43,6 +43,8 @@ export type ModelContext = {
 };
 
 export type ContextPrepareInput = {
+  /** Budget-only assembly; do not commit prompt time or cache state. */
+  previewOnly?: boolean;
   sessionId: string;
   turnId: string;
   cwd: string;

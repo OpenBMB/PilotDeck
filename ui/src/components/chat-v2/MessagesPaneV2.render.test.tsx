@@ -4,14 +4,17 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage, ChatRunMode, SessionRuntimeState } from '../chat/types/types';
+import type { QueuedInputSummary } from '../chat/types/queuedInput';
+import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import MessagesPaneV2 from './MessagesPaneV2';
 import { ThinkingBlock } from './ThinkingBlock';
-import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import {
   getChatResponseReserveTarget,
   shouldKeepChatResponseReservedSpace,
 } from './chatResponseReservedSpace';
 import { getContextStatus } from './ComposerV2';
+import * as api from '../../utils/api';
+import { attachmentDisplayMetadata, rememberUploadedPreview } from '../chat/utils/uploadedAttachmentPreview';
 
 vi.mock('./SubagentDetailModal', () => ({
   default: ({ isRunning }: { isRunning?: boolean }) => (
@@ -800,14 +803,11 @@ describe('MessagesPaneV2 render behavior', () => {
 
     renderPane({ messages, activityMessages, isAssistantWorking: true });
 
-    expect(screen.queryByText('HiddenTool.tsx')).toBeNull();
-
-    const liveStatus = screen.getByText('Reading file').closest('[role="status"]');
-    expect(liveStatus).not.toBeNull();
-    if (!liveStatus) throw new Error('Expected live status container');
-    const expandButton = liveStatus.querySelector('button');
-    expect(expandButton).not.toBeNull();
+    expect(screen.getByText('HiddenTool.tsx')).toBeTruthy();
+    expect(screen.queryByText('Reading file')).toBeNull();
+    const expandButton = screen.getByText('HiddenTool.tsx').closest('button');
     expect(expandButton?.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('src/HiddenTool.tsx')).toBeNull();
 
     fireEvent.click(expandButton as HTMLButtonElement);
 
@@ -855,20 +855,17 @@ describe('MessagesPaneV2 render behavior', () => {
 
     const { container } = renderPane({ messages, isAssistantWorking: true, runMode: 'plan' });
 
-    const summary = screen.getByText(/Ran 1 command.*1 error/);
-    const button = summary.closest('button');
-    expect(button).not.toBeNull();
-    fireEvent.click(button as HTMLButtonElement);
-
+    expect(screen.queryByText(/Ran 1 command/)).toBeNull();
+    const toolButton = container.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement;
+    expect(toolButton.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toolButton);
     expect(screen.getByText(/find \. -maxdepth 1 -type f/)).toBeTruthy();
     expect(screen.queryByText('common:uiText.parameters')).toBeNull();
     expect(container.querySelector('.border-l-red-500')).toBeNull();
     expect(screen.queryByRole('button', { name: /permissions\.grant|Grant Bash for this chat/ })).toBeNull();
 
-    const errorSummary = screen.getByText('Tool error').closest('summary');
-    expect(errorSummary).not.toBeNull();
-    const details = errorSummary?.closest('details') as HTMLDetailsElement | null;
-    expect(details?.open).toBe(false);
+    expect(screen.getByText(/Plan mode denies side-effecting tool bash/)).toBeTruthy();
+    expect(toolButton.textContent).not.toMatch(/error/i);
   });
 
   it('preserves an expanded live process row while streamed tool groups grow', () => {
@@ -899,10 +896,7 @@ describe('MessagesPaneV2 render behavior', () => {
     ];
     const { rerender } = renderPane({ messages: baseMessages, isAssistantWorking: true });
 
-    const liveStatus = screen.getByText('Reading ReadHidden.tsx').closest('[role="status"]');
-    expect(liveStatus).not.toBeNull();
-    if (!liveStatus) throw new Error('Expected live status container');
-    const expandButton = liveStatus.querySelector('button');
+    const expandButton = screen.getByText('ReadHidden.tsx').closest('button');
     expect(expandButton).not.toBeNull();
     fireEvent.click(expandButton as HTMLButtonElement);
     expect(expandButton?.getAttribute('aria-expanded')).toBe('true');
@@ -957,10 +951,7 @@ describe('MessagesPaneV2 render behavior', () => {
     ];
     const { rerender } = renderPane({ messages: baseMessages, isAssistantWorking: true });
 
-    const liveStatus = screen.getByText('Reading ReadHidden.tsx').closest('[role="status"]');
-    expect(liveStatus).not.toBeNull();
-    if (!liveStatus) throw new Error('Expected live status container');
-    const expandButton = liveStatus.querySelector('button');
+    const expandButton = screen.getByText('ReadHidden.tsx').closest('button');
     expect(expandButton).not.toBeNull();
     fireEvent.click(expandButton as HTMLButtonElement);
     expect(expandButton?.getAttribute('aria-expanded')).toBe('true');
@@ -988,8 +979,8 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(turnToggle);
 
-    const summary = screen.getByText('Explored 1 file');
-    const completedButton = summary.closest('button');
+    expect(screen.queryByText('Explored 1 file')).toBeNull();
+    const completedButton = screen.getByText('ReadHidden.tsx').closest('button');
     expect(completedButton?.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('ReadHidden.tsx')).toBeTruthy();
   });
@@ -1028,15 +1019,10 @@ describe('MessagesPaneV2 render behavior', () => {
     ];
     const { container, rerender } = renderPane({ messages: liveMessages, isAssistantWorking: true });
 
-    const processButton = container.querySelector<HTMLButtonElement>('.process-live-status button');
-    expect(processButton).not.toBeNull();
-    fireEvent.click(processButton as HTMLButtonElement);
-
-    const parametersSummary = screen.getByText('common:uiText.parameters').closest('summary');
-    const parametersDetails = parametersSummary?.closest('details') as HTMLDetailsElement | null;
-    expect(parametersDetails?.open).toBe(false);
-    fireEvent.click(parametersSummary as HTMLElement);
-    await waitFor(() => expect(parametersDetails?.open).toBe(true));
+    const parametersSummary = container.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement;
+    expect(parametersSummary.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(parametersSummary);
+    await waitFor(() => expect(parametersSummary.getAttribute('aria-expanded')).toBe('true'));
 
     const persistedMessages: ChatMessage[] = [
       {
@@ -1066,10 +1052,10 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(turnToggle);
 
-    const completedProcessButton = screen.getByText('Ran 1 command').closest('button');
-    expect(completedProcessButton?.getAttribute('aria-expanded')).toBe('true');
-    const persistedParameters = screen.getByText('common:uiText.parameters').closest('details') as HTMLDetailsElement | null;
-    expect(persistedParameters?.open).toBe(true);
+    expect(screen.queryByText('Ran 1 command')).toBeNull();
+    const persistedParameters = container.querySelector('.tool-call button[aria-expanded]');
+    expect(persistedParameters?.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText(/print\(1\)/)).toBeTruthy();
   });
 
   it('does not search hidden completed process detail content', async () => {
@@ -1090,7 +1076,7 @@ describe('MessagesPaneV2 render behavior', () => {
         toolName: 'Read',
         toolId: 'tool-read-1',
         toolInput: '{"file_path":"src/SearchHiddenNeedle.tsx"}',
-        toolResult: { content: 'ok', isError: false },
+        toolResult: { content: 'HiddenResultNeedle', isError: false },
       },
       {
         id: 'a-1',
@@ -1105,16 +1091,15 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(turnToggle);
 
-    const summary = screen.getByText('Explored 1 file');
-    const processButton = summary.closest('button');
+    const processButton = screen.getByText('SearchHiddenNeedle.tsx').closest('button');
     expect(processButton?.getAttribute('aria-expanded')).toBe('false');
-    expect(screen.queryByText('SearchHiddenNeedle.tsx')).toBeNull();
+    expect(screen.queryByText('HiddenResultNeedle')).toBeNull();
 
     fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
     const search = screen.getByRole('search');
     const input = search.querySelector('input[type="search"]') as HTMLInputElement | null;
     if (!input) throw new Error('Expected chat search input');
-    fireEvent.change(input, { target: { value: 'SearchHiddenNeedle.tsx' } });
+    fireEvent.change(input, { target: { value: 'HiddenResultNeedle' } });
 
     await waitFor(() => {
       expect((screen.getByRole('button', { name: 'Previous match' }) as HTMLButtonElement).disabled).toBe(true);
@@ -1253,24 +1238,16 @@ describe('MessagesPaneV2 render behavior', () => {
     renderPane({ messages, isAssistantWorking: true });
 
     const firstAssistant = screen.getByText('I will inspect files first.');
-    const firstStatus = screen.getByText('Explored 1 file');
+    const firstStatus = screen.getByText('FirstHidden.tsx');
     const secondAssistant = screen.getByText('Now I will verify the build.');
-    const runningStatus = screen.getByText('Running npm run build');
+    const runningStatus = screen.getByText('npm run build');
 
     expect(Boolean(firstAssistant.compareDocumentPosition(firstStatus) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean(firstStatus.compareDocumentPosition(secondAssistant) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean(secondAssistant.compareDocumentPosition(runningStatus) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
 
-    expect(screen.queryByText('FirstHidden.tsx')).toBeNull();
-    const firstStatusContainer = firstStatus.closest('[role="status"]');
-    expect(firstStatusContainer).not.toBeNull();
-    if (!firstStatusContainer) throw new Error('Expected first inline status container');
-    const firstProcessRow = firstStatusContainer.closest('.process-live-status');
-    expect(firstProcessRow?.parentElement?.className).toContain('mt-2');
-    expect(firstProcessRow?.parentElement?.className).toContain('gap-2');
-    const expandButton = firstStatusContainer.querySelector('button');
-    expect(expandButton).not.toBeNull();
-
+    const expandButton = firstStatus.closest('button');
+    expect(expandButton?.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(expandButton as HTMLButtonElement);
 
     expect(screen.getByText('FirstHidden.tsx')).toBeTruthy();
@@ -1334,9 +1311,9 @@ describe('MessagesPaneV2 render behavior', () => {
     fireEvent.click(turnToggle);
 
     const firstAssistant = screen.getByText('I will inspect first.');
-    const readSummary = screen.getByText('Explored 1 file');
+    const readSummary = screen.getByText('FirstHidden.tsx');
     const secondAssistant = screen.getByText('Now I will run checks.');
-    const commandSummary = screen.getByText('Ran 1 command');
+    const commandSummary = screen.getByText('npm test');
     const finalAssistant = screen.getByText('All done.');
 
     expect(Boolean(firstAssistant.compareDocumentPosition(readSummary) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -1394,12 +1371,12 @@ describe('MessagesPaneV2 render behavior', () => {
 
     renderPane({ messages, activityMessages, isAssistantWorking: true });
 
-    expect(screen.getByText('Explored 1 file')).toBeTruthy();
+    expect(screen.getByText('ClosedTool.tsx')).toBeTruthy();
     expect(screen.getByText('Generating response')).toBeTruthy();
     expect(screen.queryByText('Reading file')).toBeNull();
   });
 
-  it('folds ordinary failed tools into a compact process row with error count', () => {
+  it('folds ordinary failed tools into a neutral process row without error counts', () => {
     const now = new Date().toISOString();
     const failedResult = {
       content: '<tool_use_error>InputValidationError: missing file_path</tool_use_error>',
@@ -1451,7 +1428,7 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(screen.queryByText('Tool error')).toBeNull();
     expect(screen.queryByText('FailedTool.tsx')).toBeNull();
 
-    const summary = screen.getByText(/Edited 1 file.*Searched 1 time.*2 errors/);
+    const summary = screen.getByText(/Edited 1 file.*Searched 1 time/);
     const button = summary.closest('button');
     expect(button).not.toBeNull();
     expect(button?.className).toContain('inline-flex');
@@ -1463,7 +1440,10 @@ describe('MessagesPaneV2 render behavior', () => {
     fireEvent.click(button as HTMLButtonElement);
 
     expect(screen.getByText('FailedTool.tsx')).toBeTruthy();
-    expect(screen.getAllByText('Tool error').length).toBeGreaterThan(0);
+    expect(summary.textContent).not.toMatch(/error/i);
+    const failedTool = container.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement;
+    fireEvent.click(failedTool);
+    expect(container.querySelector('.tool-details')).not.toBeNull();
     expect(container.querySelector('.border-l-red-500')).toBeNull();
   });
 
@@ -1496,8 +1476,9 @@ describe('MessagesPaneV2 render behavior', () => {
 
     renderPane({ messages, isAssistantWorking: true, runMode: 'plan', planModeActive: true });
 
-    expect(screen.getAllByText('Fetching web content...')).toHaveLength(1);
-    expect(document.querySelectorAll('.process-live-status')).toHaveLength(1);
+    expect(screen.getAllByText('https://example.com')).toHaveLength(1);
+    expect(document.querySelectorAll('.tool-call')).toHaveLength(1);
+    expect(document.querySelectorAll('.process-live-status')).toHaveLength(0);
   });
 
   it('shows a single web_fetch status in agent mode', () => {
@@ -1529,8 +1510,38 @@ describe('MessagesPaneV2 render behavior', () => {
 
     renderPane({ messages, isAssistantWorking: true, runMode: 'agent' });
 
-    expect(screen.getAllByText('Fetching web content...')).toHaveLength(1);
-    expect(document.querySelectorAll('.process-live-status')).toHaveLength(1);
+    expect(screen.getAllByText('https://example.com')).toHaveLength(1);
+    expect(document.querySelectorAll('.tool-call')).toHaveLength(1);
+    expect(document.querySelectorAll('.process-live-status')).toHaveLength(0);
+  });
+
+  it('updates the same live compression row from running to completed without a second status', () => {
+    const timestamp = new Date().toISOString();
+    const user: ChatMessage = { id: 'user', type: 'user', content: 'Continue', timestamp };
+    const compact: ChatMessage = { id: 'compact-start', type: 'system', content: '', timestamp,
+      isCompactBoundary: true, compactionId: 'c1', compactState: 'running' };
+    const view = renderPane({ messages: [user, compact], isAssistantWorking: true });
+    const row = screen.getByText('Compacting context...');
+    expect(screen.queryByText('Compacted context')).toBeNull();
+    view.rerender(createPaneElement({ messages: [user, { ...compact, id: 'compact-history', compactState: 'completed' }], isAssistantWorking: true }));
+    expect(screen.queryByText('Compacting context...')).toBeNull();
+    expect(screen.getByText('Compacted context')).toBe(row);
+  });
+
+  it('keeps thinking before mid-turn compaction inside the completed trace', () => {
+    const now = new Date().toISOString();
+    renderPane({ messages: [
+      { id: 'user', type: 'user', content: 'Inspect the image', timestamp: now },
+      { id: 'thought', type: 'assistant', content: 'Reasoning before compaction', timestamp: now, isThinking: true },
+      { id: 'compact', type: 'system', content: 'Context compacted', timestamp: now, isCompactBoundary: true },
+      { id: 'answer', type: 'assistant', content: 'Answer after compaction', timestamp: now },
+    ] });
+    fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
+    const thought = screen.getByRole('button', { name: 'Thought process' });
+    const compact = screen.getByText('Compacted context');
+    const answer = screen.getByText('Answer after compaction');
+    expect(thought.compareDocumentPosition(compact) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(compact.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('does not render a completed compact boundary as a plan-mode process row', () => {
@@ -1673,4 +1684,142 @@ it('shows a provisional send without writing a duplicate transcript message on a
   view.rerender(createPaneElement({ messages: [{ type: 'user', runId: 'send-1', content: 'My next message', timestamp: pending.createdAt }], sendingInputs: [] }));
   expect(screen.getAllByText('My next message')).toHaveLength(1);
   expect(view.container.querySelector('[data-sending-input]')).toBeNull();
+});
+
+
+describe('uploaded image preview lifecycle', () => {
+  it.each([false, true])('renders metadata-only uploads during generation and once after history (cold cache=%s)', async cold => {
+    const preview = 'data:image/png;base64,cHJldmlldy1ieXRlcw==';
+    const attachment = { name: 'upload.png', uploadId: `render-${cold}`, attachmentId: 'image', mimeType: 'image/png', previewData: preview };
+    if (!cold) rememberUploadedPreview(attachment);
+    const fetch = vi.spyOn(api, 'authenticatedFetch').mockResolvedValue({ ok: true, json: async () => ({ data: preview }) } as Response);
+    try {
+      const user: ChatMessage = { id: 'user', type: 'user', content: 'describe', timestamp: new Date(), attachments: [attachmentDisplayMetadata(attachment)] };
+      const view = renderPane({ messages: [user], isAssistantWorking: true });
+      if (!cold) expect(screen.getByRole('img').getAttribute('src')).toBe(preview);
+      await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe(preview));
+      expect(fetch).toHaveBeenCalledTimes(cold ? 1 : 0);
+      if (cold) expect(fetch).toHaveBeenCalledWith('/api/uploads/render-true/attachments/image/preview', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+      view.rerender(createPaneElement({ messages: [{ ...user, images: [{ name: '', data: preview }] }] }));
+      expect(screen.getAllByRole('img')).toHaveLength(1);
+      expect(screen.queryByText('upload.png')).toBeNull();
+    } finally { fetch.mockRestore(); }
+  });
+
+  it('shows images immediately during generation and only once when history arrives, keeping ordinary files', () => {
+    const preview = 'data:image/png;base64,aW1hZ2U=';
+    const user: ChatMessage = { id: 'local-image', type: 'user', content: 'Describe these', timestamp: new Date(),
+      attachments: [
+        { name: 'photo.png', uploadId: 'u1', attachmentId: 'a1', mimeType: 'image/png', previewData: preview },
+        { name: 'notes.txt', mimeType: 'text/plain', size: 42 },
+      ],
+    };
+    const view = renderPane({ messages: [user], isAssistantWorking: true });
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+    expect(screen.getByRole('img').getAttribute('src')).toBe(preview);
+    expect(screen.queryByText('photo.png')).toBeNull();
+    expect(screen.getByText('notes.txt')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview photo.png' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    view.rerender(createPaneElement({ messages: [{ ...user, id: 'confirmed-image', images: [{ name: 'photo.png', data: preview }] }] }));
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+    expect(screen.queryByText('photo.png')).toBeNull();
+    expect(screen.getByText('notes.txt')).toBeTruthy();
+  });
+});
+
+it('uploaded image stays visible when sent with a document region reference', () => {
+  const uploadedPreview = 'data:image/png;base64,dXBsb2Fk';
+  const regionData = 'data:image/png;base64,cmVnaW9u';
+  const reference = { schemaVersion: 1 as const, kind: 'content-reference' as const,
+    id: 'region-1', selectionMode: 'region' as const, createdAt: '2026-09-11T00:00:00Z',
+    source: { fileName: 'reference.pdf', relativePath: 'reference.pdf', mimeType: 'application/pdf' },
+    renderer: { id: 'pdf' as const, backend: 'builtin' as const, locatorQuality: 'visual' as const },
+    locator: { surface: 'page' as const, pageNumber: 1, rect: { x: 0, y: 0, width: 1, height: 1 } },
+    image: { name: 'region.png', mimeType: 'image/png' as const, width: 100, height: 100, dataUrl: regionData },
+  };
+  const messages = normalizedToChatMessages([{
+    id: 'local-mixed', sessionId: 'web:test', provider: 'pilotdeck', kind: 'text', role: 'user',
+    content: 'compare the uploaded image with this document region', timestamp: '2026-09-11T00:00:00Z',
+    images: [regionData],
+    attachments: [ { name: 'uploaded.png', uploadId: 'u', attachmentId: 'a', previewData: uploadedPreview },
+      { kind: 'content-reference', name: reference.source.fileName, path: reference.source.relativePath, contentReference: { ...reference, image: { ...reference.image, dataUrl: undefined } } } ],
+  }]);
+  const view = renderPane({ messages, isAssistantWorking: true });
+  expect(screen.getAllByRole('img').some(img => img.getAttribute('src') === uploadedPreview)).toBe(true);
+  view.rerender(createPaneElement({ messages: [{ ...messages[0], images: [
+    { name: '', data: regionData }, { name: '', data: uploadedPreview },
+  ] }] }));
+  expect(screen.getAllByRole('img').filter(img => img.getAttribute('src') === uploadedPreview)).toHaveLength(1);
+});
+
+it('shows a single read directly and renders its image only once', () => {
+  const now = new Date().toISOString();
+  const messages: ChatMessage[] = [
+    { id: 'user', type: 'user', content: 'Read the image', timestamp: now },
+    { id: 'image-call', type: 'assistant', isToolUse: true, toolId: 'image-call', toolName: 'read_file', toolInput: { file_path: 'preview.png' }, timestamp: now,
+      toolResult: { content: '', images: [{ data: 'data:image/png;base64,aGVsbG8=', name: 'preview.png' }] } },
+    { id: 'answer', type: 'assistant', content: 'Image inspected.', timestamp: now },
+  ];
+  renderPane({ messages });
+  fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
+  expect(screen.queryByText('Explored 1 file')).toBeNull();
+  expect(screen.getAllByRole('img', { name: 'preview.png' })).toHaveLength(1);
+  const toolButton = document.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement;
+  expect(toolButton.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(toolButton);
+  expect(toolButton.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getAllByRole('img', { name: 'preview.png' })).toHaveLength(1);
+});
+
+function toolRegressionMessages(): ChatMessage[] {
+  const timestamp = '2026-09-15T09:00:00.000Z';
+  return [
+    { id: 'reg-user', type: 'user', content: 'Inspect files', timestamp },
+    { id: 'reg-read', type: 'assistant', content: '', timestamp, isToolUse: true,
+      toolName: 'Read', toolId: 'reg-read', toolInput: { file_path: 'first.ts' },
+      toolResult: { content: 'first file content' } },
+  ];
+}
+
+it.each([true, false])('retains compaction next to a single tool (live=%s)', (live) => {
+  const messages: ChatMessage[] = [
+    ...toolRegressionMessages(),
+    { id: 'reg-compact', type: 'system', content: '', timestamp: '2026-09-15T09:00:01.000Z',
+      isCompactBoundary: true, compactionId: 'reg-compact', compactState: live ? 'running' : 'completed' },
+  ];
+  if (!live) messages.push({ id: 'compact-answer', type: 'assistant', content: 'Continuing after compaction', timestamp: '2026-09-15T09:00:02.000Z' });
+  renderPane({ messages, isAssistantWorking: live });
+  if (!live) fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
+  expect(screen.getByText(live ? 'Compacting context...' : /Compacted context/)).toBeTruthy();
+});
+
+it.each([false, true])('preserves an inherited group toggle independently through completion (close parent=%s)', (closeParent) => {
+  const base = toolRegressionMessages();
+  const view = renderPane({ messages: base, isAssistantWorking: true });
+  fireEvent.click(screen.getByRole('button', { name: /first\.ts$/ }));
+  const grouped: ChatMessage[] = [...base, {
+    ...base[1], id: 'reg-read-2', toolId: 'reg-read-2', toolInput: { file_path: 'second.ts' },
+    toolResult: { content: 'second file content' },
+  }];
+  view.rerender(createPaneElement({ messages: grouped, isAssistantWorking: true }));
+  const groupToggle = screen.getByRole('button', { name: /Explored 2 files/ });
+  expect(groupToggle.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: /first\.ts$/, expanded: true }));
+  expect(groupToggle.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByRole('button', { name: /second\.ts$/ })).toBeTruthy();
+  // A later child update must not reopen a manually closed parent.
+  if (closeParent) fireEvent.click(groupToggle);
+  view.rerender(createPaneElement({ messages: [...grouped], isAssistantWorking: true }));
+  expect(screen.getByRole('button', { name: /Explored 2 files/ }).getAttribute('aria-expanded')).toBe(String(!closeParent));
+  view.rerender(createPaneElement({ messages: [...grouped, {
+    id: 'reg-answer', type: 'assistant', content: 'Inspection complete', timestamp: '2026-09-15T09:00:02.000Z',
+  }] }));
+  fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
+  expect(screen.getByRole('button', { name: /Explored 2 files/ }).getAttribute('aria-expanded')).toBe(String(!closeParent));
+  if (!closeParent) {
+    expect(screen.getByRole('button', { name: /first\.ts$/ }).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByRole('button', { name: /second\.ts$/ })).toBeTruthy();
+  }
 });

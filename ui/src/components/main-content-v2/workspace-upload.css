@@ -1,0 +1,25 @@
+.workspace-upload { flex: 0 0 auto; min-width: 0; padding: 9px 14px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 12px; }
+.workspace-upload-heading { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.workspace-upload-title { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
+.workspace-upload-title svg { flex-shrink: 0; }
+.workspace-upload-heading button { flex-shrink: 0; border: 0; background: transparent; padding: 3px 0; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.workspace-upload-heading button:hover { color: hsl(var(--foreground)); text-decoration: underline; }
+.workspace-upload-number { flex-shrink: 0; font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground)); font-size: 11px; }
+.workspace-upload-track { margin: 5px 0 7px; height: 3px; border-radius: 2px; overflow: hidden; background: #ede9fe; }
+.workspace-upload-track > div { height: 100%; background: #8b5cf6; transition: width 150ms linear; }
+.workspace-upload-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: hsl(var(--muted-foreground)); }
+.workspace-upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-upload-error { margin-top: 5px; overflow-wrap: anywhere; color: #b42335; }
+.workspace-upload[data-stage='failed'] .workspace-upload-title { color: #b42335; }
+.workspace-upload[data-stage='completed'] .workspace-upload-title { color: #23734c; }
+.workspace-upload-details { margin-top: 5px; color: hsl(var(--muted-foreground)); font-size: 11px; }
+.workspace-upload-details summary { cursor: pointer; }
+.workspace-upload-details ul { max-height: 128px; overflow-y: auto; margin: 4px 0 0; padding: 0; list-style: none; }
+.workspace-upload-details li { display: flex; gap: 8px; padding: 3px 0; }
+.workspace-upload-details li > span:last-child { max-width: 55%; overflow-wrap: anywhere; }
+.dark .workspace-upload-track { background: #392e50; }
+.dark .workspace-upload-track > div { background: #b69afc; }
+.dark .workspace-upload-error, .dark .workspace-upload[data-stage='failed'] .workspace-upload-title { color: #f59da8; }
+.dark .workspace-upload[data-stage='completed'] .workspace-upload-title { color: #85d3a5; }
+@media (prefers-reduced-motion: reduce) { .workspace-upload-track > div { transition: none; } }
+@media (pointer: coarse) { .workspace-upload-heading button { min-height: 44px; min-width: 44px; } }

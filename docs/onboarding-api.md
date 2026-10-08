@@ -300,6 +300,8 @@ type ModelConfigurationRequest = {
 - 新配置必须提交 `apiKey`，Ollama 除外。
 - 更新已有服务商时 `apiKey=null` 表示保留原密钥；空字符串非法。
 - `models[0]` 成为 `agent.model` 默认模型。
+- 全新用户的路由、记忆和搜索均初始化为 `enabled: false`；常驻不启用任何项目，飞书、微信、企微消息渠道初始化为关闭。Onboarding 只配置基础模型，不会自动开启这些进阶功能。
+- 已有配置中的开关、常驻项目和消息渠道不会被重新引导覆盖。旧版路由、记忆、搜索配置块若省略 `enabled`，保留其原有启用含义；完全缺失的配置块默认为关闭，设置页与运行时保持一致。
 - API Key 写入本机 `~/.pilotdeck/pilotdeck.yaml`，不会出现在响应或服务端日志中。
 
 示例：

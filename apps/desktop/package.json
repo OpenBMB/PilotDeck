@@ -4,6 +4,9 @@
   "private": true,
   "description": "Cross-platform Electron shell for PilotDeck.",
   "author": "PilotDeck",
+  "homepage": "https://pilotdeck.openbmb.cn",
+  "license": "AGPL-3.0-only",
+  "desktopName": "pilotdeck-desktop",
   "main": "dist/main.js",
   "scripts": {
     "build:runtime": "node scripts/build-runtime.mjs",
@@ -13,12 +16,18 @@
     "dist:mac": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --mac --publish never",
     "dist:mac:arm64": "PILOTDECK_DESKTOP_NODE_ARCH=arm64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --mac --arm64 --publish never",
     "dist:mac:x64": "PILOTDECK_DESKTOP_NODE_ARCH=x64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --mac --x64 --publish never",
-    "dist:win": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --win --publish never",
+    "dist:win": "node scripts/check-windows-build-host.mjs && node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --win --publish never",
+    "dist:win:x64": "node scripts/check-windows-build-host.mjs x64 && node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --win --x64 --publish never",
+    "dist:win:arm64": "node scripts/check-windows-build-host.mjs arm64 && node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --win --arm64 --publish never",
     "dist:win:portable": "node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --win portable --publish never",
+    "dist:linux:arm64": "node scripts/check-linux-build-host.mjs arm64 && umask 022 && PILOTDECK_DESKTOP_NODE_ARCH=arm64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --linux deb --arm64 --publish never",
+    "dist:linux:x64": "node scripts/check-linux-build-host.mjs x64 && umask 022 && PILOTDECK_DESKTOP_NODE_ARCH=x64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --linux deb --x64 --publish never && node scripts/normalize-linux-x64-artifact.mjs",
     "download-git-bash": "node scripts/download-git-bash.mjs",
     "download-node": "node scripts/download-node.mjs",
     "download-playwright-browsers": "node scripts/download-playwright-browsers.mjs",
-    "test": "node --test scripts/*.test.mjs"
+    "test": "node --test scripts/*.test.mjs",
+    "dist:linux:rpm:arm64": "node scripts/check-linux-build-host.mjs arm64 rpm && umask 022 && PILOTDECK_DESKTOP_NODE_ARCH=arm64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --linux rpm --arm64 --publish never && node scripts/normalize-linux-rpm-artifact.mjs arm64",
+    "dist:linux:rpm:x64": "node scripts/check-linux-build-host.mjs x64 rpm && umask 022 && PILOTDECK_DESKTOP_NODE_ARCH=x64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --linux rpm --x64 --publish never && node scripts/normalize-linux-rpm-artifact.mjs x64"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
@@ -96,14 +105,35 @@
     },
     "win": {
       "icon": "resources/icons/icon.ico",
-      "legalTrademarks": "Copyright © OpenBMB",
+      "legalTrademarks": "Copyright \u00a9 OpenBMB",
       "target": [
         {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "target": "nsis"
         }
+      ]
+    },
+    "linux": {
+      "category": "Development",
+      "icon": "resources/icons/icon.png",
+      "maintainer": "OpenBMB <contact@openbmb.cn>",
+      "syncDesktopName": true,
+      "target": ["deb"]
+    },
+    "deb": {
+      "depends": [
+        "git",
+        "procps",
+        "libgtk-3-0",
+        "libasound2",
+        "libgbm1",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
       ]
     },
     "nsis": {
@@ -121,6 +151,34 @@
     "publish": {
       "provider": "generic",
       "url": "https://github.com/OpenBMB/PilotDeck/releases/latest/download"
+    },
+    "rpm": {
+      "afterRemove": "resources/rpm-after-remove.sh",
+      "fpm": [
+        "--rpm-posttrans",
+        "resources/rpm-posttrans.sh"
+      ],
+      "depends": [
+        "git",
+        "procps-ng",
+        "gtk3",
+        "alsa-lib",
+        "mesa-libgbm",
+        "libnotify",
+        "nss",
+        "libXScrnSaver",
+        "libXtst",
+        "xdg-utils",
+        "at-spi2-core",
+        "libuuid",
+        "libsecret"
+      ],
+      "publish": {
+        "provider": "generic",
+        "url": "https://github.com/OpenBMB/PilotDeck/releases/latest/download",
+        "channel": "latest-rpm"
+      },
+      "compression": "gzip"
     }
   }
 }

@@ -53,11 +53,6 @@ export default function ChatInputSection() {
           onChange={(value) => updatePreference("autoExpandTools", value)}
         />
         <ToggleRow
-          label={t("quickSettings.showRawParameters")}
-          checked={preferences.showRawParameters}
-          onChange={(value) => updatePreference("showRawParameters", value)}
-        />
-        <ToggleRow
           label={t("quickSettings.showThinking")}
           checked={preferences.showThinking}
           onChange={(value) => updatePreference("showThinking", value)}

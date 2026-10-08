@@ -1,4 +1,5 @@
 {
+  "filePickerFailed": "无法打开或读取文件选择，请重试。",
   "buttons": {
     "save": "保存",
     "cancel": "取消",
@@ -368,6 +369,35 @@
     }
   },
   "fileTree": {
+    "uploadStatus": {
+      "fileExists": "存在同名文件或文件夹",
+      "failedTitle": "上传失败",
+      "notUploaded": "未上传",
+      "label": "文件上传状态",
+      "preparing": "正在检查文件…",
+      "uploading": "正在上传 {{count}} 个文件",
+      "saving": "正在保存到工作区…",
+      "completed": "已上传 {{count}} 个文件",
+      "failed": "{{count}} 个文件上传失败",
+      "cancelled": "已取消上传",
+      "cancel": "取消",
+      "retry": "重试",
+      "dismiss": "关闭",
+      "progress": "文件上传进度",
+      "details": "查看详情",
+      "fileCount": "共 {{count}} 个文件",
+      "saved": "已保存",
+      "inBatch": "随本批次上传",
+      "httpError": "上传请求失败（{{status}}）",
+      "invalidResponse": "未能确认文件保存成功，请重试。",
+      "tooMany": "每批最多上传 {{count}} 个文件，请分批上传。",
+      "tooLarge": "{{name}} 超过单文件限制 {{limit}}。",
+      "batchTooLarge": "本批文件超过总大小限制 {{limit}}，请分批上传。",
+      "duplicateNames": "存在重复的目标文件名，请分开上传或先重命名。",
+      "partial": "{{saved}} 个已保存，{{failed}} 个失败。重试只上传失败的文件。",
+      "networkError": "网络连接中断，请检查网络后重试。",
+      "timeout": "上传请求超时，请重试。"
+    },
     "loading": "正在加载文件...",
     "files": "文件",
     "simpleView": "简单视图",
@@ -640,7 +670,6 @@
     "subagentTitle": "子智能体 / {{type}}：{{description}}",
     "toolHistory": "查看工具历史（{{count}}）",
     "copyClipboard": "复制到剪贴板",
-    "rawParams": "原始参数",
     "toolRenderFailed": "无法显示工具输出。",
     "todoCount": "待办事项（{{count}}）",
     "taskStatus": {
@@ -730,6 +759,7 @@
     "defaultRoute": "默认路由",
     "primaryModel": "智能体 - 主智能体模型",
     "subagentModel": "智能体 - 子智能体模型",
+    "subagentProfileModel": "Agent — {{profile}} — 模型",
     "memoryModel": "记忆 - 记忆模型",
     "judgeModel": "路由 - Token 节省器 - 判断模型",
     "baselineModel": "路由 - 统计 - 基准模型",

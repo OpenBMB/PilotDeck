@@ -123,17 +123,19 @@ export default function ProfileEditor({
         </div>
       </FormRow>
 
-      <FormRow announceChanges={false} label={t(`${prefix}.editor.model.label`)} description={t(`${prefix}.editor.model.description`)}>
-        <div>
-          <Select
-            value={row.model ?? ""}
-            onChange={onModelChange}
-            options={[{ value: "", label: t(`${prefix}.editor.model.inherit`) }, ...modelOptions]}
-            ariaLabel={t(`${prefix}.editor.model.label`)}
-          />
-          {errorLine(errors.model)}
-        </div>
-      </FormRow>
+      <div data-model-reference={`agent.subagents.profiles.${row.id}.model`} tabIndex={-1}>
+        <FormRow announceChanges={false} label={t(`${prefix}.editor.model.label`)} description={t(`${prefix}.editor.model.description`)}>
+          <div>
+            <Select
+              value={row.model ?? ""}
+              onChange={onModelChange}
+              options={[{ value: "", label: t(`${prefix}.editor.model.inherit`) }, ...modelOptions]}
+              ariaLabel={t(`${prefix}.editor.model.label`)}
+            />
+            {errorLine(errors.model)}
+          </div>
+        </FormRow>
+      </div>
 
       <FormRow announceChanges={false} label={t(`${prefix}.editor.tools.label`)} description={t(`${prefix}.editor.tools.description`)}>
         <div className="space-y-2">

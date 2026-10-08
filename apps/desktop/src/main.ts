@@ -1,8 +1,18 @@
 import { installRendererRecovery } from "./rendererRecovery";
+import { commandEnabled, emptyMenuState, normalizeMenuState, type DesktopCommand } from "./desktopCommands";
+import { isRendererEditingShortcut, windowChromeOptions, windowPalette, WINDOWS_CAPTION_HEIGHT } from "./windowChrome";
+import { desktopAboutInfo, desktopAboutInformation, presentDesktopAbout } from "./desktopAbout";
+import { WindowsCaptionMenu, type CaptionMenuRequest } from "./windowsCaptionMenu";
+import { linuxCaptionAction, linuxCaptionEntries } from "./linuxCaptionMenu";
 import { buildApplicationMenu } from "./applicationMenu";
+import { createDesktopTray } from "./desktopTray";
+import { createDesktopLifecycle } from "./desktopLifecycle";
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
-import { MacUpdater, NsisUpdater } from "electron-updater";
+import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
+import { createFilePicker } from './filePicker';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen } from "electron";
+import { DebUpdater, MacUpdater, NsisUpdater, RpmUpdater } from "electron-updater";
+import { installUpdateDownloadControl } from "./updateDownload";
 import { createUpdateController } from "./updates";
 import { createUpdateNetwork } from "./updateNetwork";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -48,17 +58,23 @@ type RuntimeStatus = {
 };
 
 let mainWindow: BrowserWindow | null = null;
+let desktopMenuState = { ...emptyMenuState };
 let runtime: RuntimeManager | null = null;
 let isQuitting = false;
 let runtimeStartPromise: Promise<RuntimeInfo> | null = null;
 let lastRuntimeStatus: RuntimeStatus | null = null;
 let updateOrigin: string | null = null;
+let desktopTray: ReturnType<typeof createDesktopTray> | null = null;
 
 const APP_ID = "cn.pilotdeck.desktop";
 const EXTERNAL_NAVIGATION_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
 const PLAYWRIGHT_BROWSER_DIR = "playwright-browsers";
 const DEFAULT_UPDATE_REPOSITORY = "OpenBMB/PilotDeck";
 const PROCESS_LAUNCH_CWD = process.cwd();
+// Electron requires this before ready; saving the preference takes effect on
+// the next launch, never by changing a live window's renderer settings.
+const startupHardwareAcceleration = readAppearance().interfacePreferences?.hardwareAcceleration !== false;
+if (!startupHardwareAcceleration) app.disableHardwareAcceleration();
 
 type BuildMetadata = {
   version?: string;
@@ -491,7 +507,10 @@ async function ensureRuntime(): Promise<RuntimeInfo> {
 }
 
 async function createOrShowWindow(): Promise<void> {
+  if (isQuitting) return;
   if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (process.platform === "darwin") app.show();
     mainWindow.show();
     mainWindow.focus();
     return;
@@ -499,16 +518,21 @@ async function createOrShowWindow(): Promise<void> {
 
   const icon = resolveAppIcon();
 
+  nativeTheme.themeSource = readAppearance().themeMode;
+  desktopMenuState = { ...emptyMenuState };
   updateApplicationMenu();
 
   mainWindow = new BrowserWindow({
+    ...windowChromeOptions(process.platform, nativeTheme.shouldUseDarkColors, readAppearance().lightAppearance),
+    show: false,
     width: 1320,
     height: 900,
     minWidth: 960,
     minHeight: 640,
     title: "PilotDeck",
     ...(icon ? { icon } : {}),
-    autoHideMenuBar: true,
+    // Windows and Linux show their application menus in the title-bar overlay.
+    autoHideMenuBar: process.platform === "win32" || process.platform === "linux",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -518,6 +542,42 @@ async function createOrShowWindow(): Promise<void> {
   });
 
   const recoveryWindow = mainWindow;
+  let allowInitialShow = true;
+  const cancelInitialShow = () => { allowInitialShow = false; };
+  recoveryWindow.once("close", cancelInitialShow);
+  recoveryWindow.once("hide", cancelInitialShow);
+  recoveryWindow.once("minimize", cancelInitialShow);
+  recoveryWindow.once("ready-to-show", () => {
+    recoveryWindow.off("close", cancelInitialShow);
+    recoveryWindow.off("hide", cancelInitialShow);
+    recoveryWindow.off("minimize", cancelInitialShow);
+    if (!isQuitting && allowInitialShow) recoveryWindow.show();
+  });
+  // On Windows these events fire before isFullScreen() reflects the new state.
+  recoveryWindow.on("enter-full-screen", () => setImmediate(publishWindowState));
+  recoveryWindow.on("leave-full-screen", () => setImmediate(publishWindowState));
+  recoveryWindow.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
+    if (!isMainFrame || inPlace) return;
+    desktopMenuState = { ...emptyMenuState };
+    updateApplicationMenu();
+  });
+  recoveryWindow.webContents.on("render-process-gone", () => {
+    desktopMenuState = { ...emptyMenuState };
+    updateApplicationMenu();
+  });
+  recoveryWindow.webContents.on("before-input-event", (_event, input) => {
+    // Native menu accelerators must not bypass focused editors' Find/Bold keys.
+    recoveryWindow.webContents.setIgnoreMenuShortcuts(
+      isRendererEditingShortcut(process.platform, input),
+    );
+  });
+  lifecycle.attachWindow(recoveryWindow);
+  // Windows logoff/shutdown does not go through app's normal quit events.
+  // Respect the OS session end without displaying a quit confirmation.
+  recoveryWindow.on("session-end", () => {
+    isQuitting = true;
+    desktopTray?.dispose();
+  });
   installRendererRecovery(recoveryWindow, {
     isQuitting: () => isQuitting,
     isChinese: () => readAppearance().language === "zh-CN",
@@ -541,6 +601,8 @@ async function createOrShowWindow(): Promise<void> {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+    desktopMenuState = { ...emptyMenuState };
+    updateApplicationMenu();
   });
 
   await mainWindow.webContents.session.clearCache();
@@ -551,6 +613,7 @@ async function createOrShowWindow(): Promise<void> {
 }
 
 async function loadRuntimeUrl(info: RuntimeInfo): Promise<void> {
+  if (isQuitting) return;
   updateOrigin = `http://127.0.0.1:${info.serverPort}`;
   if (!mainWindow || mainWindow.isDestroyed()) {
     await createOrShowWindow();
@@ -603,6 +666,7 @@ function openExternalNavigation(rawUrl: string): boolean {
 }
 
 async function startRuntimeAndLoad(): Promise<void> {
+  if (isQuitting) return;
   try {
     const info = await ensureRuntime();
     await loadRuntimeUrl(info);
@@ -617,10 +681,19 @@ async function startRuntimeAndLoad(): Promise<void> {
   }
 }
 
+async function restoreMainWindow(): Promise<void> {
+  const needsWindow = !mainWindow || mainWindow.isDestroyed();
+  await createOrShowWindow();
+  // Restoring a hidden/minimized window must not reload the UI or restart tasks.
+  if (needsWindow && !isQuitting) await startRuntimeAndLoad();
+}
+
 async function retryRuntime(): Promise<void> {
+  if (isQuitting) return;
   const currentRuntime = runtime;
   await runtimeStartPromise?.catch(() => undefined);
   if (currentRuntime) await currentRuntime.stop();
+  if (isQuitting) return;
   runtime = null;
   runtimeStartPromise = null;
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -856,7 +929,14 @@ function getUpdateController() {
   // discovery module as Web, from the packaged runtime outside app.asar.
   const releases = require(path.join(resolveRuntimeRoot(), "ui/server/services/releaseService.js"));
   const repository = releases.normalizeRepository(process.env.PILOTDECK_UPDATE_REPOSITORY || readBuildMetadata().repository || DEFAULT_UPDATE_REPOSITORY);
-  const updater = process.platform === "darwin" ? new MacUpdater() : new NsisUpdater();
+  const linuxPackageType = process.platform === "linux" && app.isPackaged
+    ? fs.readFileSync(path.join(process.resourcesPath, "package-type"), "utf8").trim() : "deb";
+  const updater = process.platform === "darwin" ? new MacUpdater()
+    : process.platform === "win32" ? new NsisUpdater()
+      : linuxPackageType === "rpm" ? new RpmUpdater() : new DebUpdater();
+  // The updater launches NSIS without a directory-page choice. Pass the
+  // executable's actual installed directory so custom paths survive upgrades.
+  if (updater instanceof NsisUpdater && app.isPackaged) updater.installDirectory = path.dirname(app.getPath("exe"));
   const network = createUpdateNetwork(updater.netSession, () => {
     const configService = require(path.join(resolveRuntimeRoot(), "ui/server/services/pilotdeckConfig.js"));
     const record = configService.readPilotDeckConfigFile();
@@ -864,9 +944,10 @@ function getUpdateController() {
     return record.config.proxy;
   });
   updater.on("login", network.login);
+  const downloadControl = installUpdateDownloadControl(updater);
   updateController = createUpdateController({
-    updater, repository, platform: process.platform, arch: process.arch,
-    version: app.getVersion(), packaged: app.isPackaged,
+    updater, downloadControl, repository, platform: process.platform, arch: process.arch,
+    version: app.getVersion(), packaged: app.isPackaged, linuxPackageType,
     prepareNetwork: network.prepare,
     latestRelease: () => releases.getLatestRelease({ repository, fetchImpl: network.fetch }),
     compareVersions: releases.compareVersions,
@@ -886,7 +967,7 @@ function getUpdateController() {
   return updateController;
 }
 
-function requireUpdateSender(event: Electron.IpcMainInvokeEvent) {
+function requireUpdateSender(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) {
   const frame = event.senderFrame;
   // Only our loaded application can start or cancel an update; never a child
   // frame or external page. Status remains available while runtime is stopping.
@@ -895,36 +976,201 @@ function requireUpdateSender(event: Electron.IpcMainInvokeEvent) {
   if (!updateOrigin || url.origin !== updateOrigin) throw new Error("Invalid update origin");
 }
 for (const [channel, action] of Object.entries({
+  "pilotdeck:about-info": () => desktopAboutInfo(desktopAboutContext()),
   "pilotdeck:update-check": () => getUpdateController().check(),
   "pilotdeck:update-status": () => getUpdateController().status(),
   "pilotdeck:update-start": () => getUpdateController().start(),
   "pilotdeck:update-cancel": () => getUpdateController().cancel(),
+  "pilotdeck:update-pause": () => getUpdateController().pause(),
+  "pilotdeck:update-resume": () => getUpdateController().resume(),
 })) {
   ipcMain.handle(channel, (event) => { requireUpdateSender(event); return action(); });
 }
 
 function readAppearance(): DesktopAppearance {
+  const locale = app.isReady() ? app.getLocale() : 'en';
   try {
-    return normalizeAppearance(JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "appearance.json"), "utf8")), app.getLocale());
-  } catch { return normalizeAppearance(null, app.getLocale()); }
+    return normalizeAppearance(JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "appearance.json"), "utf8")), locale);
+  } catch { return normalizeAppearance(null, locale); }
+}
+
+ipcMain.on("pilotdeck:get-appearance", (event) => {
+  try {
+    requireUpdateSender(event);
+    event.returnValue = readAppearance();
+  } catch {
+    event.returnValue = null;
+  }
+});
+
+function dispatchDesktopCommand(command: DesktopCommand): void {
+  if (isQuitting || !commandEnabled(command, desktopMenuState) || !mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow.isVisible()) {
+    if (process.platform === "darwin") app.show();
+    mainWindow.show();
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+  mainWindow.webContents.send("pilotdeck:command", command);
+}
+
+function desktopAboutContext() {
+  return { language: readAppearance().language, appVersion: app.getVersion(), metadata: readBuildMetadata(),
+    platform: process.platform, arch: process.arch, osRelease: os.release(), versions: process.versions };
+}
+
+async function showDesktopAbout(owner: BrowserWindow): Promise<void> {
+  await presentDesktopAbout(desktopAboutContext(), {
+    showDialog: options => dialog.showMessageBox(owner, { ...options, icon: resolveAppIcon() }),
+    copy: text => clipboard.writeText(text), openWebsite: url => shell.openExternal(url),
+  });
+}
+
+function desktopMenuTemplate() {
+  return buildApplicationMenu(process.platform, readAppearance().language,
+    () => { void lifecycle.requestQuit(); }, {
+      state: desktopMenuState, dispatch: dispatchDesktopCommand,
+      help: action => {
+        if (action === "version") {
+          clipboard.writeText(desktopAboutInformation(desktopAboutContext()).versionInformation);
+        } else if (action === "about") {
+          if (mainWindow && !mainWindow.isDestroyed()) void showDesktopAbout(mainWindow).catch(error => console.error("Desktop about dialog failed", error));
+        } else {
+          const operation = action === "docs"
+            ? shell.openExternal("https://pilotdeck.openbmb.cn/pilotdeck.github.io/docs/introduction")
+            : action === "issues" ? shell.openExternal("https://github.com/OpenBMB/PilotDeck/issues")
+              : shell.openPath(runtime?.getLogPath() || app.getPath("logs"));
+          void operation.catch(error => console.error("Desktop help action failed", error));
+        }
+      },
+    });
 }
 
 function updateApplicationMenu(): void {
-  Menu.setApplicationMenu(Menu.buildFromTemplate(
-    buildApplicationMenu(process.platform, readAppearance().language),
-  ));
+  Menu.setApplicationMenu(Menu.buildFromTemplate(desktopMenuTemplate()));
+  if ((process.platform === "win32" || process.platform === "linux") && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setMenuBarVisibility(false);
+    if (process.platform === "linux") mainWindow.webContents.send("pilotdeck:application-menu-updated");
+  }
 }
+
+function activateLinuxMenuRole(role: string, owner: BrowserWindow): void {
+  const contents = owner.webContents;
+  switch (role) {
+    case "undo": contents.undo(); break;
+    case "redo": contents.redo(); break;
+    case "cut": contents.cut(); break;
+    case "copy": contents.copy(); break;
+    case "paste": contents.paste(); break;
+    case "selectAll": contents.selectAll(); break;
+    case "resetZoom": contents.setZoomLevel(0); break;
+    case "zoomIn": contents.setZoomLevel(contents.getZoomLevel() + 1); break;
+    case "zoomOut": contents.setZoomLevel(contents.getZoomLevel() - 1); break;
+    case "togglefullscreen": owner.setFullScreen(!owner.isFullScreen()); break;
+    case "reload": contents.reload(); break;
+    case "close": owner.close(); break;
+    case "quit": void lifecycle.requestQuit(); break;
+    case "about": void showDesktopAbout(owner).catch(error => console.error("Desktop about dialog failed", error)); break;
+  }
+}
+
+ipcMain.handle("pilotdeck:linux-menu-items", (event, id: unknown) => {
+  requireCaptionSender(event);
+  return process.platform === "linux" ? linuxCaptionEntries(desktopMenuTemplate(), id) : [];
+});
+
+ipcMain.handle("pilotdeck:linux-menu-activate", (event, request?: { id?: unknown; index?: unknown }) => {
+  requireCaptionSender(event);
+  if (process.platform !== "linux" || !mainWindow || mainWindow.isDestroyed()) return false;
+  const item = linuxCaptionAction(desktopMenuTemplate(), request?.id, request?.index);
+  if (!item) return false;
+  if (item.role) activateLinuxMenuRole(item.role, mainWindow);
+  else (item.click as (() => void) | undefined)?.();
+  return true;
+});
+
+function publishWindowState(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const dark = nativeTheme.shouldUseDarkColors;
+  const fullscreen = mainWindow.isFullScreen();
+  const palette = windowPalette(dark, process.platform, readAppearance().lightAppearance);
+  mainWindow.setBackgroundColor(palette.background);
+  // Updating the native overlay while fullscreen can restore the window frame.
+  if ((process.platform === "win32" || process.platform === "linux") && !fullscreen) mainWindow.setTitleBarOverlay({
+    color: palette.caption, symbolColor: palette.symbol, height: WINDOWS_CAPTION_HEIGHT,
+  });
+  mainWindow.webContents.send("pilotdeck:window-state", { dark, fullscreen, palette });
+}
+
+// Caption controls are also available in our startup data document, before the
+// runtime origin exists. Application actions still require the runtime origin.
+function requireCaptionSender(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): void {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame) {
+    throw new Error("Invalid caption sender");
+  }
+  const url = new URL(event.senderFrame.url);
+  if (url.protocol !== "data:" && (!updateOrigin || url.origin !== updateOrigin)) throw new Error("Invalid caption origin");
+}
+
+ipcMain.on("pilotdeck:get-window-state", event => {
+  try {
+    requireCaptionSender(event);
+    const dark = nativeTheme.shouldUseDarkColors;
+    event.returnValue = { dark, fullscreen: mainWindow!.isFullScreen(), palette: windowPalette(dark, process.platform, readAppearance().lightAppearance) };
+  } catch { event.returnValue = { dark: false, fullscreen: false }; }
+});
+ipcMain.handle("pilotdeck:menu-state", (event, state: unknown) => {
+  requireUpdateSender(event);
+  const next = normalizeMenuState(state);
+  if (JSON.stringify(next) === JSON.stringify(desktopMenuState)) return;
+  desktopMenuState = next;
+  updateApplicationMenu();
+});
+const captionMenus = new WeakMap<BrowserWindow, WindowsCaptionMenu>();
+ipcMain.handle("pilotdeck:show-menu", (event, request?: CaptionMenuRequest) => {
+  requireCaptionSender(event);
+  if (process.platform !== "win32") return;
+  const owner = mainWindow!;
+  let menus = captionMenus.get(owner);
+  if (!menus) {
+    menus = new WindowsCaptionMenu(owner, desktopMenuTemplate, items => Menu.buildFromTemplate(items), () => screen.getCursorScreenPoint());
+    captionMenus.set(owner, menus);
+  }
+  return menus.show(request);
+});
+nativeTheme.on("updated", publishWindowState);
 
 ipcMain.handle("pilotdeck:set-appearance", (event, value: unknown) => {
   requireUpdateSender(event);
-  const appearance = normalizeAppearance(value, app.getLocale());
-  const file = path.join(app.getPath("userData"), "appearance.json");
   const current = readAppearance();
-  if (current.language !== appearance.language || current.themeMode !== appearance.themeMode) {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(appearance), "utf8");
-    if (current.language !== appearance.language) updateApplicationMenu();
+  const appearance = saveAppearancePatch(app.getPath('userData'), current, value, app.getLocale());
+  if (current.themeMode !== appearance.themeMode) nativeTheme.themeSource = appearance.themeMode;
+  const paletteChanged = JSON.stringify(windowPalette(nativeTheme.shouldUseDarkColors, process.platform, current.lightAppearance)) !== JSON.stringify(windowPalette(nativeTheme.shouldUseDarkColors, process.platform, appearance.lightAppearance));
+  if (paletteChanged || current.themeMode !== appearance.themeMode) publishWindowState();
+  if (current.language !== appearance.language) {
+    updateApplicationMenu();
+    desktopTray?.refreshMenu();
   }
+});
+ipcMain.handle('pilotdeck:appearance-capabilities', event => {
+  requireUpdateSender(event);
+  return { hardwareAcceleration: startupHardwareAcceleration };
+});
+ipcMain.handle('pilotdeck:save-appearance-image', (event, bytes: unknown) => {
+  requireUpdateSender(event);
+  return writeAppearanceImage(app.getPath('userData'), bytes, buffer => nativeImage.createFromBuffer(buffer).getSize());
+});
+ipcMain.handle('pilotdeck:read-appearance-image', async (event, id: unknown) => {
+  requireUpdateSender(event);
+  const file = appearanceImagePath(app.getPath('userData'), id);
+  if ((await fs.promises.stat(file)).size > 10 * 1024 * 1024) throw new Error('Invalid background image');
+  return new Uint8Array(await fs.promises.readFile(file));
+});
+ipcMain.handle('pilotdeck:delete-appearance-image', (event, id: unknown) => {
+  requireUpdateSender(event);
+  // Never remove an image referenced by the last successfully saved configuration.
+  if (readAppearance().lightAppearance?.background.imageId === id) return;
+  fs.rmSync(appearanceImagePath(app.getPath('userData'), id), { force: true });
 });
 
 ipcMain.handle("pilotdeck:get-runtime-info", () => runtime?.getInfo());
@@ -943,58 +1189,119 @@ ipcMain.handle("pilotdeck:pick-folder", async () => {
   return result.canceled ? null : result.filePaths[0] ?? null;
 });
 
+const pickFiles = createFilePicker({
+  defaults: { images: app.getPath('pictures'), files: app.getPath('downloads'), directory: app.getPath('home') },
+  chinese: () => readAppearance().language === 'zh-CN',
+  showDialog: (owner, options) => dialog.showOpenDialog(owner, options),
+});
+ipcMain.handle('pilotdeck:pick-files', (event, request: unknown) => {
+  requireUpdateSender(event);
+  return pickFiles(mainWindow!, request);
+});
+
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
 }
 
-app.whenReady()
-  .then(createOrShowWindow)
-  .then(startRuntimeAndLoad)
-  .catch(async (error) => {
-    const detail = error instanceof Error ? error.stack ?? error.message : String(error);
-    await runtime?.stop().catch(() => undefined);
-    publishRuntimeStatus({
-      phase: "error",
-      message: "PilotDeck failed to start.",
-      logPath: runtime?.getLogPath(),
-      error: detail,
-    });
-    app.quit();
+const lifecycle = createDesktopLifecycle({
+  platform: process.platform,
+  shouldConfirm: () => app.isReady() && (process.platform === "darwin" || process.platform === "win32"
+    || (process.platform === "linux" && Boolean(mainWindow && !mainWindow.isDestroyed()))),
+  canHide: () => process.platform === "darwin" || Boolean(desktopTray?.available()),
+  isQuitting: () => isQuitting,
+  setQuitting: value => { isQuitting = value; desktopTray?.setQuitting(value); },
+  getWindow: () => mainWindow,
+  restoreWindow: restoreMainWindow,
+  hideWindow: () => {
+    // Hide the window explicitly: app.hide() on macOS leaves its isVisible()
+    // state unchanged. Also hide the app to cover a native full-screen Space.
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+    if (process.platform === "darwin") app.hide();
+  },
+  isChinese: () => readAppearance().language === "zh-CN",
+  showDialog: (owner, options) => dialog.showMessageBox(owner, options),
+  stopRuntime: async () => {
+    await runtimeStartPromise?.catch(() => undefined);
+    await runtime?.stop();
+    runtime = null;
+    runtimeStartPromise = null;
+  },
+  quit: () => app.quit(),
+  reportError: error => console.error("PilotDeck lifecycle operation failed", error),
+  reportStopError: error => dialog.showErrorBox(startupText("PilotDeck could not stop", readAppearance().language), String(error)),
+});
+
+const ownsInstance = process.platform === "darwin" || app.requestSingleInstanceLock();
+if (!ownsInstance) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    void restoreMainWindow().catch(error => console.error("Could not restore PilotDeck", error));
   });
+  app.whenReady()
+    .then(async () => {
+      if (process.platform === "win32" || process.platform === "darwin" || process.platform === "linux") {
+        desktopTray = createDesktopTray({
+          platform: process.platform,
+          createTray: () => {
+            if (process.platform === "darwin") {
+              const iconPath = app.isPackaged
+                ? path.join(process.resourcesPath, "icons", "trayTemplate.png")
+                : path.resolve(__dirname, "..", "resources", "icons", "trayTemplate.png");
+              const image = nativeImage.createFromPath(iconPath);
+              if (image.isEmpty()) throw new Error("PilotDeck menu bar icon is missing");
+              image.setTemplateImage(true);
+              return new Tray(image);
+            }
+            const iconPath = resolveAppIcon();
+            if (!iconPath) throw new Error("PilotDeck tray icon is missing");
+            if (process.platform === "linux") {
+              const image = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
+              if (image.isEmpty()) throw new Error("PilotDeck tray icon is invalid");
+              return new Tray(image);
+            }
+            return new Tray(iconPath);
+          },
+          buildMenu: items => Menu.buildFromTemplate(items),
+          isChinese: () => readAppearance().language === "zh-CN",
+          open: lifecycle.open,
+          requestQuit: lifecycle.requestQuit,
+          reportError: error => console.error("PilotDeck tray operation failed", error),
+        });
+      }
+      if (process.platform === "darwin") {
+        // Shutdown is distinct from sleep: let the OS terminate without a prompt.
+        powerMonitor.on("shutdown", (event?: Electron.Event) => {
+          event?.preventDefault();
+          void lifecycle.requestQuit(true);
+        });
+      }
+      await createOrShowWindow();
+    })
+    .then(startRuntimeAndLoad)
+    .catch(async (error) => {
+      const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+      await runtime?.stop().catch(() => undefined);
+      publishRuntimeStatus({
+        phase: "error",
+        message: "PilotDeck failed to start.",
+        logPath: runtime?.getLogPath(),
+        error: detail,
+      });
+      void lifecycle.requestQuit(true);
+    });
+}
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin" && !isQuitting) app.quit();
+  if (process.platform !== "darwin" && !desktopTray?.available() && !isQuitting) app.quit();
 });
 
 app.on("activate", () => {
-  if (!isQuitting && (mainWindow === null || mainWindow.isDestroyed())) {
-    createOrShowWindow()
-      .then(startRuntimeAndLoad)
-      .catch((error) => {
-        const detail = error instanceof Error ? error.stack ?? error.message : String(error);
-        publishRuntimeStatus({
-          phase: "error",
-          message: "PilotDeck failed to restore window.",
-          logPath: runtime?.getLogPath(),
-          error: detail,
-        });
-      });
-  }
+  void lifecycle.open();
 });
 
-let stoppingForQuit = false;
-app.on("before-quit", (event) => {
-  isQuitting = true;
-  if (!runtime) return;
-  event.preventDefault();
-  if (stoppingForQuit) return;
-  stoppingForQuit = true;
-  const currentRuntime = runtime;
-  // Continue the normal quit lifecycle, including updater listeners.
-  currentRuntime.stop().then(() => { runtime = null; stoppingForQuit = false; app.quit(); }).catch((error) => {
-    stoppingForQuit = false;
-    runtime = currentRuntime;
-    isQuitting = false;
-    dialog.showErrorBox(startupText("PilotDeck could not stop", readAppearance().language), String(error));
-  });
+app.on("before-quit", event => lifecycle.beforeQuit(event));
+app.on("will-quit", () => {
+  lifecycle.dispose();
+  desktopTray?.dispose();
 });

@@ -1,4 +1,5 @@
 import type { AlwaysOnSubTab, AppTab, Project, ProjectSession } from '../../../types/app';
+import type { WorkspaceUploadController } from '../../main-content-v2/useWorkspaceUpload';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
 
@@ -36,6 +37,7 @@ export type PrdFile = {
 };
 
 export type MainContentProps = {
+  workspaceUpload: WorkspaceUploadController;
   projects: Project[];
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
@@ -59,7 +61,8 @@ export type MainContentProps = {
     projectName: string,
     sessionId: string,
     optimisticTitle?: string,
-  ) => void;
+    inputId?: string,
+  ) => void | (() => void);
   processingSessions: Set<string>;
   unreadSessionIds: Set<string>;
   onReplaceTemporarySession: SessionLifecycleHandler;

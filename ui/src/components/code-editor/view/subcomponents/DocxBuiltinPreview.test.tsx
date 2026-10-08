@@ -28,6 +28,36 @@ afterEach(() => {
 });
 
 describe('DocxBuiltinPreview', () => {
+  it('opens with the outline collapsed and still lets the user toggle it', async () => {
+    renderAsyncMock.mockImplementationOnce(async (_blob: Blob, bodyContainer: HTMLElement) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'pilotdeck-docx-wrapper';
+      const heading = document.createElement('h1');
+      heading.textContent = 'Overview';
+      wrapper.append(heading);
+      bodyContainer.append(wrapper);
+    });
+
+    render(
+      <DocxBuiltinPreview
+        blob={new Blob(['docx-data'])}
+        fileName="report.docx"
+        filePath="report.docx"
+        onError={vi.fn()}
+      />,
+    );
+
+    const showOutline = await screen.findByRole('button', { name: 'pdfToolbar.showNavigation' });
+    expect(screen.queryByText('pdfToolbar.outline')).toBeNull();
+
+    fireEvent.click(showOutline);
+    expect(screen.getByText('pdfToolbar.outline')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Overview' })).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'pdfToolbar.hideNavigation' }));
+    expect(screen.queryByText('pdfToolbar.outline')).toBeNull();
+  });
+
   it('opens file search as a floating overlay inside the preview surface', async () => {
     render(
       <DocxBuiltinPreview

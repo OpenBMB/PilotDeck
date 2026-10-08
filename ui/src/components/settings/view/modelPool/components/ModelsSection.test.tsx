@@ -34,6 +34,25 @@ describe("model provider drafts", () => {
     expect(screen.queryByText("My API")).toBeNull();
   });
 
+  it("renames a provider with save metadata so the server rewrites every reference", async () => {
+    const onChange = vi.fn(async () => ({ ok: true as const }));
+    const provider = { protocol: "openai" as const, url: "https://example.test/v1", apiKey: "********", models: { model: {} } };
+    const config = {
+      agent: { model: "old/model" },
+      model: { providers: { old: provider } },
+    } as PilotDeckConfig;
+    render(<ModelsSection config={config} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "settingsPage.actions.edit" }));
+    fireEvent.change(screen.getByDisplayValue("old"), { target: { value: "renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "actions.saveChanges" }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+    const [next, options] = onChange.mock.calls[0] as unknown as [PilotDeckConfig, { providerRenames: unknown }];
+    expect(Object.keys(next.model?.providers ?? {})).toEqual(["renamed"]);
+    expect(options).toEqual({ providerRenames: [{ from: "old", to: "renamed" }] });
+    // The server owns reference rewriting (including routing statistics).
+    expect(next.agent?.model).toBe("old/model");
+  });
+
   it("keeps a new custom provider local until it is explicitly saved", () => {
     const onChange = vi.fn();
     const config = { model: { providers: {} } } as PilotDeckConfig;

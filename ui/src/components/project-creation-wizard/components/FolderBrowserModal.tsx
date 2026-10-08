@@ -156,7 +156,7 @@ function FolderPicker({ initialPath, autoAdvanceOnSelect, onClose, onFolderSelec
   const toolbarButton = (key: string, icon: React.ReactNode, action: () => void, disabled = false, pressed?: boolean) => <button type="button" title={label(key)} aria-label={label(key)} aria-pressed={pressed} onClick={action} disabled={disabled || creating}>{icon}</button>;
 
   return createPortal(<div data-modal-overlay className="folder-picker-overlay">
-    <div ref={panel} className="folder-picker" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={event => {
+    <div ref={panel} className="folder-picker" role="dialog" data-dialog-surface aria-modal="true" aria-labelledby={titleId} onKeyDown={event => {
       if (event.altKey && event.key === 'ArrowUp' && currentPath && !creating) { event.preventDefault(); const parent = getParentPath(currentPath); if (parent) void navigate(parent); }
     }}>
       <header className="folder-picker-header"><Folder size={19} /><h2 id={titleId}>{label('title')}</h2>{toolbarButton('close', <X />, onClose)}</header>

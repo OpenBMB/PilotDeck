@@ -8,7 +8,7 @@ import {
   validateExplicitModelSelection,
 } from "../../src/gateway/dialog/modelCatalog.js";
 
-test("model catalog exposes default reasoning and opt-in speed capabilities", async (t) => {
+test("model catalog exposes explicitly configured reasoning and opt-in speed capabilities", async (t) => {
   const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-model-catalog-"));
   t.after(() => rm(pilotHome, { recursive: true, force: true }));
   await writeFile(join(pilotHome, "pilotdeck.yaml"), `
@@ -24,6 +24,12 @@ model:
       speedMapping: openai_service_tier
       models:
         default-model: {}
+        enabled-default:
+          thinking: { state: enabled }
+        configured:
+          thinking: { state: enabled, efforts: [low, medium, xhigh] }
+        disabled:
+          thinking: { state: disabled, efforts: [high] }
         no-thinking:
           capabilities:
             supportsThinking: false
@@ -45,7 +51,14 @@ model:
   const speedModel = result.items.find((item) => item.model === "speed-model");
   const googleSpeedModel = result.items.find((item) => item.provider === "google");
 
-  assert.deepEqual(defaultModel?.capabilities.reasoning?.values, [0, 0.2, 0.4, 0.6, 0.8, 0.9, 1]);
+  assert.equal(defaultModel?.capabilities.reasoning, undefined);
+  assert.ok(result.items.every(item => !("temperature" in item.capabilities)));
+  assert.deepEqual(result.items.find(item => item.model === 'enabled-default')?.capabilities.reasoning?.values, []);
+  assert.deepEqual(result.items.find(item => item.model === 'configured')?.capabilities.reasoning?.values, [.4, .6, .9]);
+  assert.equal(result.items.find(item => item.model === 'disabled')?.capabilities.reasoning, undefined);
+  for (const reasoning of [0, .2, .8, 1]) assert.throws(() => validateExplicitModelSelection('/project', {
+    mode: 'model', provider: 'custom', model: 'configured', reasoning,
+  }, env));
   assert.equal(defaultModel?.capabilities.speed, undefined);
   assert.equal(noThinking?.capabilities.reasoning, undefined);
   assert.deepEqual(speedModel?.capabilities.speed, { type: "enum", values: [0, 1] });
