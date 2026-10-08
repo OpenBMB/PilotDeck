@@ -59,6 +59,32 @@ test("session title generator includes the system language for undetectable inpu
   assert.match(request?.systemPrompt ?? "", /System language: zh-CN/);
 });
 
+test("session title generator uses the active conversation model", async () => {
+  let request: CanonicalModelRequest | undefined;
+  const generator = createSessionTitleGenerator({
+    agentModel: { id: "default", provider: "unavailable", model: "old-default" },
+    modelRuntime: {
+      async complete(input) {
+        request = input;
+        if (input.provider !== "working") throw new Error("Default model is unavailable");
+        return textResponse(JSON.stringify({ title: "比较配置文档" }));
+      },
+    },
+  });
+
+  const title = await generator({
+    text: "这两个配置页面有什么区别？",
+    sessionId: "s1",
+    turnId: "t1",
+    signal: new AbortController().signal,
+    model: { provider: "working", model: "selected-model" },
+  });
+
+  assert.equal(title, "比较配置文档");
+  assert.equal(request?.provider, "working");
+  assert.equal(request?.model, "selected-model");
+});
+
 test("session title input truncation preserves the latest request", () => {
   const latestRequest = "请修复最后出现的登录错误";
   const input = `${"Earlier English logs ".repeat(100)} ${latestRequest}`;

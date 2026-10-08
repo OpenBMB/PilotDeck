@@ -195,9 +195,10 @@ export function createEditFileTool(): PilotDeckToolDefinition<EditFileInput> {
             `Found ${occurrences} matches of old_string. Set replace_all to true to replace all occurrences, or provide a more specific old_string.`,
           );
         }
+        // Function replacer: a string replacement would expand $$, $&, $` and $' in new_string.
         nextContent = input.replace_all
           ? content.split(actualOldString).join(normalizedNew)
-          : content.replace(actualOldString, normalizedNew);
+          : content.replace(actualOldString, () => normalizedNew);
       }
 
       const action = await writeTextFile(resolved.absolutePath, nextContent, { allowOverwrite: true });

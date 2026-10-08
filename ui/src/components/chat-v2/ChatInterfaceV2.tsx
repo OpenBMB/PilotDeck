@@ -846,8 +846,8 @@ function ChatInterfaceV2({
       : '';
     if (compact) {
       return (
-        <div className="flex h-full min-w-0 flex-col bg-white dark:bg-neutral-950">
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
+        <div className="pd-chat-canvas flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 text-center">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
               <MessageSquare className="h-4 w-4" strokeWidth={1.8} />
             </div>
@@ -865,7 +865,7 @@ function ChatInterfaceV2({
       );
     }
     return (
-      <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
+      <div className="pd-chat-canvas flex h-full flex-col bg-white dark:bg-neutral-950">
         <div className="flex flex-1 flex-col items-center justify-center px-6">
           <div className="w-full max-w-[860px]">
             <h1 className="mb-8 text-center text-[26px] font-medium tracking-tight text-neutral-900 dark:text-neutral-100">
@@ -886,7 +886,7 @@ function ChatInterfaceV2({
   }
 
   return (
-    <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-white dark:bg-neutral-950">
+    <div className="pd-chat-canvas grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-white dark:bg-neutral-950">
       <ErrorBoundary showDetails resetKeys={[selectedSession?.id, selectedProject?.name]}>
         <MessagesPaneV2
           scrollContainerRef={scrollContainerRef}

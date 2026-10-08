@@ -1,4 +1,6 @@
-const isBuild = job => job.name === 'build' || job.name.startsWith('build / ');
+// Retain the old wrapper name so a run started before the workflow migration
+// can still receive its one allowed retry after this change reaches main.
+const isBuild = job => /^(?:build|Linux|macOS|Windows)(?: \/ |$)/.test(job.name);
 const isFailure = job => ['failure', 'timed_out'].includes(job.conclusion);
 
 function eligibleRun(run, repository) {

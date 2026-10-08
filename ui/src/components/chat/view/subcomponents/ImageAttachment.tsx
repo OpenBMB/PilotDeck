@@ -91,7 +91,7 @@ const ImageAttachment = ({
           </div>
           <div className="h-1 overflow-hidden rounded-full bg-white/30">
             <div
-              className="h-full rounded-full bg-violet-300 transition-[width] duration-150"
+              className="h-full rounded-full bg-[var(--pd-accent,#c4b5fd)] transition-[width] duration-150"
               style={{ width: `${Math.max(0, Math.min(100, uploadProgress))}%` }}
             />
           </div>

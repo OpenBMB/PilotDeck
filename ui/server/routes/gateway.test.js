@@ -198,7 +198,7 @@ describe('gateway WeCom routes', () => {
     const onBroadcast = (payload) => broadcasts.push(payload);
     process.on('pilotdeck:config-broadcast', onBroadcast);
     try {
-      const { request } = await createGatewayApp({});
+      const { request, configPath } = await createGatewayApp({});
 
       const result = await request('/api/gateway/wecom/save', {
         method: 'POST',
@@ -213,12 +213,58 @@ describe('gateway WeCom routes', () => {
         validation: { valid: true },
       });
       expect(broadcasts[0].revision).toBe(
-        createHash('sha256').update(broadcasts[0].raw).digest('hex'),
+        createHash('sha256').update(readFileSync(configPath, 'utf8')).digest('hex'),
       );
       expect(broadcasts[0].raw).toContain('wecom:');
     } finally {
       process.off('pilotdeck:config-broadcast', onBroadcast);
     }
+  });
+
+  it('preserves hand-written model indentation when saving a channel', async () => {
+    const raw = [
+      '# hand-maintained config',
+      'model:',
+      '    providers:',
+      '        custom:',
+      '            protocol: openai',
+      '            url: https://example.test/v1',
+      '            apiKey: REDACTED',
+      '            models:',
+      '                demo: {}',
+      'adapters:',
+      '    # keep this channel untouched',
+      '    weixin:',
+      '        enabled: false',
+      '',
+    ].join('\n');
+    const { request, configPath } = await createGatewayApp(raw);
+
+    const result = await request('/api/gateway/wecom/save', {
+      method: 'POST',
+      body: JSON.stringify({ botId: 'bot-manual', secret: 'secret-manual' }),
+    });
+
+    expect(result.ok).toBe(true);
+    const saved = readFileSync(configPath, 'utf8');
+    expect(saved).toContain('# hand-maintained config');
+    expect(saved).toContain('            apiKey: REDACTED');
+    expect(saved).toContain('                demo: {}');
+    expect(saved).toContain('    # keep this channel untouched\n    weixin:\n        enabled: false');
+    expect(() => parseYaml(saved)).not.toThrow();
+  });
+
+  it('rejects channel saves without changing invalid YAML', async () => {
+    const raw = 'schemaVersion: 1\nmodel:\n    providers: [\n';
+    const { request, configPath } = await createGatewayApp(raw);
+
+    const result = await request('/api/gateway/wecom/save', {
+      method: 'POST',
+      body: JSON.stringify({ botId: 'bot-manual', secret: 'secret-manual' }),
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'INVALID_CONFIG_YAML' });
+    expect(readFileSync(configPath, 'utf8')).toBe(raw);
   });
 });
 
@@ -226,7 +272,11 @@ async function createGatewayApp(initialConfig) {
   const pilotHome = mkdtempSync(join(tmpdir(), 'pilotdeck-wecom-gateway-'));
   tempDirs.push(pilotHome);
   const configPath = join(pilotHome, 'pilotdeck.yaml');
-  writeFileSync(configPath, stringifyYaml(initialConfig), 'utf-8');
+  writeFileSync(
+    configPath,
+    typeof initialConfig === 'string' ? initialConfig : stringifyYaml(initialConfig),
+    'utf-8',
+  );
 
   process.env.PILOT_HOME = pilotHome;
   process.env.PILOTDECK_CONFIG_PATH = configPath;

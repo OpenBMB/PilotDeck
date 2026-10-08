@@ -292,8 +292,6 @@ export function useProjectsState({
   const [projectsLoadError, setProjectsLoadError] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState('appearance');
   const [externalMessageUpdate, setExternalMessageUpdate] = useState(0);
 
   const loadingProgressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -444,8 +442,7 @@ export function useProjectsState({
   }, []);
 
   const openSettings = useCallback((tab = 'appearance') => {
-    setSettingsInitialTab(tab);
-    setShowSettings(true);
+    window.openSettings?.(tab);
   }, []);
 
   useEffect(() => {
@@ -995,10 +992,7 @@ export function useProjectsState({
       },
       loadingProgress,
       onRefresh: handleSidebarRefresh,
-      onShowSettings: () => setShowSettings(true),
-      showSettings,
-      settingsInitialTab,
-      onCloseSettings: () => setShowSettings(false),
+      onShowSettings: openSettings,
       isMobile,
     }),
     [
@@ -1014,10 +1008,9 @@ export function useProjectsState({
       loadingProgress,
       projects,
       projectsLoadError,
-      settingsInitialTab,
       selectedProject,
       selectedSession,
-      showSettings,
+      openSettings,
     ],
   );
 
@@ -1031,14 +1024,11 @@ export function useProjectsState({
     projectsLoadError,
     loadingProgress,
     isInputFocused,
-    showSettings,
-    settingsInitialTab,
     externalMessageUpdate,
     setActiveTab,
     setSelectedSession,
     setSidebarOpen,
     setIsInputFocused,
-    setShowSettings,
     openSettings,
     fetchProjects,
     refreshProjectsSilently,

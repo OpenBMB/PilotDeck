@@ -28,6 +28,7 @@ export default function ImageCapabilityModal({ modelIds, onCancel, onConfirm }: 
       <div
         className="image-capability-modal"
         role="dialog"
+        data-dialog-surface
         aria-modal="true"
         aria-labelledby="image-capability-title"
         onClick={(event) => event.stopPropagation()}

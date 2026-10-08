@@ -78,6 +78,7 @@ type HarnessOptions = {
   ) => AsyncIterable<CanonicalModelEvent>;
   extraTools?: PilotDeckToolDefinition[];
   backgroundTasks?: BackgroundTaskRuntime;
+  subagentTimeoutMs?: number;
 };
 
 function createHarness(options: HarnessOptions) {
@@ -128,6 +129,7 @@ function createHarness(options: HarnessOptions) {
   );
 
   const config: AgentRuntimeConfig = {
+    subagentTimeoutMs: options.subagentTimeoutMs,
     provider: "openai",
     model: "test-model",
     cwd: "/workspace/project",
@@ -578,4 +580,35 @@ test("late events from a non-cooperative cancelled child cannot enter a later pa
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(harness.pendingEvents.length, 0, "late completion must be suppressed after this parent run closes");
   } finally { release.open(); }
+});
+
+test("configured background timeout reaches the child abort signal and failed result", { timeout: 3_000 }, async () => {
+  const backgroundTasks = new BackgroundTaskRuntime();
+  let childAborted = false;
+  const harness = createHarness({
+    backgroundTasks,
+    subagentTimeoutMs: 25,
+    parentResponses: [
+      toolCallResponse("bg-timeout", "agent", {
+        description: "short deadline", prompt: "wait until stopped", run_in_background: true,
+      }),
+      textResponse("parent independent result"),
+      textResponse("parent handled child timeout"),
+    ],
+    childBehavior: async function* (_request, signal) {
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) resolve();
+        else signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      childAborted = true;
+      throw signal?.reason ?? new Error("child aborted");
+    },
+  });
+  const result = await harness.runLoop();
+  assert.equal(result.result.type, "success");
+  assert.equal(childAborted, true);
+  const delivered = resultMessages(result.messages);
+  assert.equal(delivered.length, 1);
+  assert.match(JSON.stringify(delivered), /timed out after 25ms/);
+  assert.equal(backgroundTasks.list({ status: "running" }).length, 0);
 });

@@ -4,8 +4,8 @@ export const SETTINGS_BASE_PATH = "/settings";
 
 const PAGE_SLUG_BY_KEY: Partial<Record<SettingsMenuKey, string>> = {
   general: "general",
+  appearance: "appearance",
   modelPool: "models",
-  agentModel: "agent-model",
   agentRoute: "agent-route",
   agentMemory: "agent-memory",
   agentResident: "agent-resident",
@@ -31,7 +31,7 @@ export function mapInitialTabToMenuKey(
   const normalized = String(tab || "");
   const configSections: Record<string, SettingsMenuKey> = {
     models: "modelPool",
-    agents: "agentModel",
+    agents: "modelPool",
     memory: "agentMemory",
     tools: "agentSearch",
     webSearch: "agentSearch",
@@ -44,6 +44,8 @@ export function mapInitialTabToMenuKey(
     advanced: "advanced",
   };
 
+  // Older links remain valid, but the retired agent form is never rendered.
+  if (normalized === "agent-model") return "modelPool";
   if (normalized in KEY_BY_PAGE_SLUG) {
     return KEY_BY_PAGE_SLUG[normalized];
   }
@@ -79,5 +81,15 @@ export function mapSettingsSectionToMenuKey(
 }
 
 export function getSettingsPathFromTab(tab?: string): string {
-  return getSettingsPath(mapInitialTabToMenuKey(tab));
+  const [page, query] = (tab ?? "").split("?", 2);
+  const reference = new URLSearchParams(query).get("reference");
+  const path = getSettingsPath(mapInitialTabToMenuKey(page));
+  return reference ? `${path}?${new URLSearchParams({ reference })}` : path;
+}
+
+export function getModelReferenceTab(path: string): string | null {
+  const page = path === "agent.model" ? "models"
+    : path === "agent.subagents.default" || path.startsWith("router.") ? "agent-route"
+    : path === "memory.model" ? "agent-memory" : null;
+  return page ? `${page}?${new URLSearchParams({ reference: path })}` : null;
 }

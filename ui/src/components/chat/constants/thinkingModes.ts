@@ -31,14 +31,14 @@ export const thinkingModes: ThinkingModeOption[] = [
     name: 'Medium',
     description: 'Balanced reasoning effort',
     icon: Zap,
-    color: 'text-purple-600',
+    color: 'text-[var(--pd-accent-strong,#9333ea)]',
   },
   {
     id: 'high',
     name: 'High',
     description: 'Deeper reasoning for harder tasks',
     icon: Sparkles,
-    color: 'text-indigo-600',
+    color: 'text-[var(--pd-accent-strong,#4f46e5)]',
   },
   {
     id: 'xhigh',

@@ -101,6 +101,8 @@ export type AgentControlBoundaryTranscriptEntry = AgentTranscriptEntryBase & {
         kind: "compact";
         subtype: "compact_boundary";
         compactMetadata: CompactBoundaryMetadata;
+        /** Complete replacement context committed in the same JSONL record. */
+        snapshot?: { version: 1; messages: CanonicalMessage[] };
       }
     | {
         kind: "compact";

@@ -11,7 +11,7 @@ import type { PilotDeckConfig } from "../modelPool/types";
 import {
   buildModelRefOptions,
   ensureModelRefConfigured,
-} from "../agentModel/utils/modelRefs";
+} from "../modelPool/utils/modelRefs";
 import type { SettingsProject } from "../../shared/types";
 import MemoryDataSection from "./MemoryDataSection";
 import {
@@ -395,6 +395,7 @@ function MemorySection({
             <div className="memory-select-wrap memory-model-select">
               <select
                 id="memory-model"
+                data-model-reference="memory.model"
                 disabled={!enabled}
                 value={selected}
                 onChange={(event) => {

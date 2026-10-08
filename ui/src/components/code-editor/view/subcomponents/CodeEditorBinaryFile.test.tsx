@@ -269,6 +269,34 @@ describe('CodeEditorBinaryFile', () => {
     expect(screen.queryByTitle('pdfToolbar.zoomOut')).toBeNull();
   });
 
+  it('shows a spreadsheet-specific explanation instead of a raw parser error', async () => {
+    vi.spyOn(api, 'spreadsheetInteractivePreview').mockResolvedValue(new Response(
+      JSON.stringify({
+        error: "Cannot read properties of undefined (reading 'anchors')",
+        code: 'SPREADSHEET_INTERACTIVE_PARSE_FAILED',
+      }),
+      { status: 422, headers: { 'Content-Type': 'application/json' } },
+    ));
+
+    render(
+      <CodeEditorBinaryFile
+        {...baseProps}
+        file={{
+          name: 'report.xlsx',
+          path: '/workspace/hundouluo/report.xlsx',
+          diffInfo: null,
+        }}
+      />,
+    );
+
+    expect(await screen.findByText('spreadsheetPreview.errors.cannotParse')).not.toBeNull();
+    expect(screen.getByText('spreadsheetPreview.cannotPreviewTitle')).not.toBeNull();
+    expect(screen.queryByText("Cannot read properties of undefined (reading 'anchors')")).toBeNull();
+    expect(screen.queryByText('officePreview.configureService')).toBeNull();
+    expect(screen.getByText('officePreview.refresh')).not.toBeNull();
+    expect(screen.getByText('actions.download')).not.toBeNull();
+  });
+
   it('switches an open spreadsheet when the configured preview renderer changes', async () => {
     readOfficePreviewStatusMock
       .mockResolvedValueOnce({

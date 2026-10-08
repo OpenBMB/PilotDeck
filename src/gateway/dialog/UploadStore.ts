@@ -54,7 +54,7 @@ export type UploadStoreOptions = {
   retentionMs?: number;
 };
 
-const DEFAULTS = {
+export const DEFAULT_UPLOAD_LIMITS = {
   maxFileBytes: 1024 ** 3,
   maxTaskBytes: 2 * 1024 ** 3,
   maxFiles: 500,
@@ -88,7 +88,7 @@ export class UploadStore {
       if (prior) return prior;
     }
     const active = (await this.listInProject(canonicalRoot)).filter((item) => item.status === "created" || item.status === "uploading");
-    if (active.length >= (this.options.maxConcurrentPerProject ?? DEFAULTS.maxConcurrentPerProject)) {
+    if (active.length >= (this.options.maxConcurrentPerProject ?? DEFAULT_UPLOAD_LIMITS.maxConcurrentPerProject)) {
       throw new DialogGatewayError("UPLOAD_CONCURRENCY_LIMIT", "Project upload concurrency limit reached.");
     }
     const now = this.now();
@@ -101,7 +101,7 @@ export class UploadStore {
       uploadedBytes: 0,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + (this.options.retentionMs ?? DEFAULTS.retentionMs)).toISOString(),
+      expiresAt: new Date(now.getTime() + (this.options.retentionMs ?? DEFAULT_UPLOAD_LIMITS.retentionMs)).toISOString(),
       ...(keyHash ? { idempotencyKeyHash: keyHash } : {}),
       receivedClientFileIds: [],
     };
@@ -164,7 +164,7 @@ export class UploadStore {
     const meter = new Transform({
       transform: (chunk: Buffer, _encoding, callback) => {
         bytes += chunk.length;
-        if (bytes > expected.size || bytes > (this.options.maxFileBytes ?? DEFAULTS.maxFileBytes)) {
+        if (bytes > expected.size || bytes > (this.options.maxFileBytes ?? DEFAULT_UPLOAD_LIMITS.maxFileBytes)) {
           callback(new DialogGatewayError("UPLOAD_INTEGRITY_MISMATCH", `Uploaded bytes exceed the declared size for ${clientFileId}.`));
           return;
         }
@@ -359,17 +359,17 @@ export class UploadStore {
 }
 
 function validateManifest(files: UploadManifestEntry[], options: UploadStoreOptions): UploadManifestEntry[] {
-  if (!Array.isArray(files) || files.length < 1 || files.length > (options.maxFiles ?? DEFAULTS.maxFiles)) {
-    throw new DialogGatewayError("UPLOAD_MANIFEST_INVALID", `files must contain 1..${options.maxFiles ?? DEFAULTS.maxFiles} entries.`);
+  if (!Array.isArray(files) || files.length < 1 || files.length > (options.maxFiles ?? DEFAULT_UPLOAD_LIMITS.maxFiles)) {
+    throw new DialogGatewayError("UPLOAD_MANIFEST_INVALID", `files must contain 1..${options.maxFiles ?? DEFAULT_UPLOAD_LIMITS.maxFiles} entries.`);
   }
   const ids = new Set<string>(); let total = 0;
   return files.map((raw) => {
     if (!raw || typeof raw.clientFileId !== "string" || !isSafeUploadId(raw.clientFileId) || ids.has(raw.clientFileId)) throw new DialogGatewayError("UPLOAD_MANIFEST_INVALID", "clientFileId must be unique and filesystem-safe.");
     if (typeof raw.name !== "string" || !raw.name.trim() || !isSafeRelativePath(raw.relativePath)) throw new DialogGatewayError("UPLOAD_MANIFEST_INVALID", "name and a safe relativePath are required.");
-    if (!Number.isSafeInteger(raw.size) || raw.size < 0 || raw.size > (options.maxFileBytes ?? DEFAULTS.maxFileBytes)) throw new DialogGatewayError("UPLOAD_FILE_TOO_LARGE", `Invalid file size for ${raw.clientFileId}.`);
+    if (!Number.isSafeInteger(raw.size) || raw.size < 0 || raw.size > (options.maxFileBytes ?? DEFAULT_UPLOAD_LIMITS.maxFileBytes)) throw new DialogGatewayError("UPLOAD_FILE_TOO_LARGE", `Invalid file size for ${raw.clientFileId}.`);
     if (raw.sha256 !== undefined && !/^[a-fA-F0-9]{64}$/.test(raw.sha256)) throw new DialogGatewayError("UPLOAD_MANIFEST_INVALID", "sha256 must contain 64 hexadecimal characters.");
     ids.add(raw.clientFileId); total += raw.size;
-    if (total > (options.maxTaskBytes ?? DEFAULTS.maxTaskBytes)) throw new DialogGatewayError("UPLOAD_TASK_TOO_LARGE", "Upload task exceeds its byte limit.");
+    if (total > (options.maxTaskBytes ?? DEFAULT_UPLOAD_LIMITS.maxTaskBytes)) throw new DialogGatewayError("UPLOAD_TASK_TOO_LARGE", "Upload task exceeds its byte limit.");
     return { ...raw, name: raw.name.trim(), relativePath: raw.relativePath };
   });
 }

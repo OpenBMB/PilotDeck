@@ -229,20 +229,23 @@ export class BackgroundTaskRuntime {
       waitedMs: Date.now() - startedAt,
       outputSlice,
     };
-  }  /**
+  }
+
+  /**
    * Spawn the command in the background. Resolves once the child has been
    * forked (typically <10 ms). `task.status` flips to `running` on spawn
    * and `completed` / `failed` / `cancelled` later via the `exit` listener.
    */
   async start(spec: StartTaskSpec): Promise<PilotDeckBackgroundBashTask> {
-    // Capacity counts bash tasks only — managed agent tasks live in the same
-    // registry but are bounded separately (see `startManaged`) so a pile of
-    // terminal agent records can never exhaust the bash budget.
-    let bashTaskCount = 0;
-    for (const entry of this.entries.values()) {
-      if (entry.task.type === "local_bash") bashTaskCount++;
+    // Only active bash tasks consume bash capacity. Retained history and
+    // managed agents use no bash slots; agents have a separate running cap.
+    let activeBashTasks = 0;
+    for (const { task } of this.entries.values()) {
+      if (task.type === "local_bash" && (task.status === "pending" || task.status === "running")) {
+        activeBashTasks++;
+      }
     }
-    if (bashTaskCount >= this.options.maxTasks) {
+    if (activeBashTasks >= this.options.maxTasks) {
       throw new Error(
         `BackgroundTaskRuntime: max tasks (${this.options.maxTasks}) exceeded.`,
       );
@@ -346,7 +349,7 @@ export class BackgroundTaskRuntime {
    *
    * Capacity: bounded by `maxRunningAgentTasks` simultaneous running tasks
    * and `maxRetainedAgentTasks` retained terminal records (oldest pruned) —
-   * deliberately independent of the lifetime bash `maxTasks` cap.
+   * deliberately independent of the bash `maxTasks` concurrency cap.
    */
   async startManaged(spec: StartManagedTaskSpec): Promise<PilotDeckBackgroundAgentTask> {
     let runningAgentTasks = 0;

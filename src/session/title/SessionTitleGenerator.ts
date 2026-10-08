@@ -30,6 +30,8 @@ export type SessionTitleGeneratorInput = {
   sessionId: string;
   turnId: string;
   signal: AbortSignal;
+  /** Use the model selected for this turn when it differs from the agent default. */
+  model?: Pick<PilotAgentModelSelection, "provider" | "model">;
 };
 
 export type SessionTitleGenerator = (input: SessionTitleGeneratorInput) => Promise<string | null>;
@@ -47,7 +49,7 @@ export function createSessionTitleGenerator(
 ): SessionTitleGenerator {
   const timeoutMs = options.timeoutMs ?? SESSION_TITLE_TIMEOUT_MS;
   const systemLanguage = options.systemLanguage ?? resolveSystemLanguage();
-  return async ({ text, sessionId, turnId, signal }) => {
+  return async ({ text, sessionId, turnId, signal, model }) => {
     const prompt = normalizeSessionTitleInput(text);
     if (!prompt) {
       return null;
@@ -55,12 +57,13 @@ export function createSessionTitleGenerator(
 
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const combinedSignal = AbortSignal.any([signal, timeoutSignal]);
+    const selectedModel = model ?? options.agentModel;
 
     try {
       const response = await options.modelRuntime.complete(
         {
-          provider: options.agentModel.provider,
-          model: options.agentModel.model,
+          provider: selectedModel.provider,
+          model: selectedModel.model,
           systemPrompt: `${SESSION_TITLE_SYSTEM_PROMPT}\n\nSystem language: ${systemLanguage}`,
           messages: [
             {

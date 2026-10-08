@@ -44,7 +44,8 @@ The existing `agent.subagents.timeoutMs` setting applies to each child (default
 one hour). Depth and tool permissions follow the existing synchronous fork
 rules. This change adds no new settings screen. The shared runtime defaults to
 at most eight running agent tasks, with old terminal records pruned when new
-work is registered (retention target: 32), independently of the bash task cap.
+work is registered (retention target: 32), independently of the bash task cap. Only pending or running bash tasks consume
+bash capacity; retained output/history does not prevent new work.
 
 Hosts that do not provide `startBackground` receive an explicit unsupported-tool
 error rather than silently running the child synchronously. This feature does

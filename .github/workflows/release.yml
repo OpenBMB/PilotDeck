@@ -17,7 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 concurrency:
@@ -49,7 +49,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.23.1
 
@@ -61,31 +61,52 @@ jobs:
           REQUESTED_REVISION: ${{ inputs.revision }}
         run: node apps/desktop/scripts/detect-release.mjs
 
-  build:
+  linux:
+    name: Linux
     needs: detect
     if: ${{ needs.detect.outputs.should_build == 'true' }}
-    uses: ./.github/workflows/desktop-build.yml
+    uses: ./.github/workflows/desktop-linux.yml
     with:
-      source_sha: ${{ needs.detect.outputs.source_sha }}
+      release_date: ${{ needs.detect.outputs.release_date }}
+      revision: ${{ needs.detect.outputs.revision }}
+
+  macos:
+    name: macOS
+    needs: detect
+    if: ${{ needs.detect.outputs.should_build == 'true' }}
+    uses: ./.github/workflows/desktop-macos.yml
+    with:
       release_date: ${{ needs.detect.outputs.release_date }}
       revision: ${{ needs.detect.outputs.revision }}
       require_macos_signing: true
     secrets: inherit
 
+  windows:
+    name: Windows
+    needs: detect
+    if: ${{ needs.detect.outputs.should_build == 'true' }}
+    uses: ./.github/workflows/desktop-windows.yml
+    with:
+      release_date: ${{ needs.detect.outputs.release_date }}
+      revision: ${{ needs.detect.outputs.revision }}
+
   release:
-    needs: [detect, build]
-    if: ${{ needs.detect.outputs.should_build == 'true' && needs.build.result == 'success' }}
+    permissions:
+      contents: write
+    needs: [detect, linux, macos, windows]
+    if: ${{ needs.detect.outputs.should_build == 'true' && needs.linux.result == 'success' && needs.macos.result == 'success' && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.detect.outputs.source_sha }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.23.1
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: pilotdeck-desktop-*
           path: release-assets
@@ -107,19 +128,8 @@ jobs:
           PILOTDECK_COMMIT_SHA: ${{ needs.detect.outputs.source_sha }}
         run: node apps/desktop/scripts/create-release-manifest.mjs release-assets
 
-      - name: Verify complete cross-platform release
-        shell: bash
-        run: |
-          find release-assets -maxdepth 1 -name '*-mac-arm64.dmg' -print -quit | grep -q .
-          find release-assets -maxdepth 1 -name '*-mac-x64.dmg' -print -quit | grep -q .
-          find release-assets -maxdepth 1 -name '*-setup.exe' -print -quit | grep -q .
-          find release-assets -maxdepth 1 -name '*-mac-arm64.zip' -print -quit | grep -q .
-          find release-assets -maxdepth 1 -name '*-mac-x64.zip' -print -quit | grep -q .
-          test -s release-assets/latest-arm64-mac.yml
-          test -s release-assets/latest-x64-mac.yml
-          test -s release-assets/latest-x64.yml
-          test -s release-assets/release.json
-          test -s release-assets/SHA256SUMS.txt
+      - name: Verify complete cross-platform release and updater feeds
+        run: node apps/desktop/scripts/verify-release-assets.mjs release-assets
 
       - name: Publish GitHub Release
         env:
@@ -131,6 +141,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$SOURCE_SHA" \
             --title "$RELEASE_TAG" \
+            --latest \
             --generate-notes
 
   skipped:

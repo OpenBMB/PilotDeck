@@ -48,6 +48,8 @@ function Tooltip({
 
     const rect = container.getBoundingClientRect();
     const spacing = 8;
+    const width = tooltipRef.current?.getBoundingClientRect().width ?? 0;
+    const centerX = Math.max(spacing + width / 2, Math.min(rect.left + rect.width / 2, window.innerWidth - spacing - width / 2));
     const style: React.CSSProperties = {
       position: 'fixed',
       zIndex: 9999,
@@ -56,7 +58,7 @@ function Tooltip({
     // Calculate tooltip position based on the specified position prop.
     switch (position) {
       case 'bottom':
-        style.left = rect.left + rect.width / 2;
+        style.left = centerX;
         style.top = rect.bottom + spacing;
         style.transform = 'translateX(-50%)';
         break;
@@ -72,7 +74,7 @@ function Tooltip({
         break;
       case 'top':
       default:
-        style.left = rect.left + rect.width / 2;
+        style.left = centerX;
         style.top = rect.top - spacing;
         style.transform = 'translate(-50%, -100%)';
         break;
@@ -174,14 +176,18 @@ function Tooltip({
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
+      onFocus={() => { clearTooltipTimer(); setIsVisible(true); }}
+      onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) handleMouseLeave(); }}
+      onKeyDown={event => { if (event.key === 'Escape') handleMouseLeave(); }}
     >
       {children}
       {isVisible && typeof document !== 'undefined' && createPortal(
         <div
+          role="tooltip"
           ref={tooltipRef}
           style={tooltipStyle || { position: 'fixed', top: '-9999px', left: '-9999px', opacity: 0 }}
           className={cn(
-            'px-2 py-1 text-xs font-medium text-white bg-gray-900 dark:bg-gray-100 dark:text-gray-900 rounded shadow-lg whitespace-nowrap pointer-events-none',
+            'px-2 py-1 text-xs font-medium text-white bg-gray-900 dark:bg-gray-100 dark:text-gray-900 rounded shadow-lg w-max max-w-[calc(100vw-16px)] whitespace-normal pointer-events-none',
             'animate-in fade-in-0 zoom-in-95 duration-200',
             className
           )}

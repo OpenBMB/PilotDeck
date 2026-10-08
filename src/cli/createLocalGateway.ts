@@ -909,6 +909,7 @@ class ProjectRuntimeRegistry {
           ? {
               webSearch: {
                 ...(webSearchConfig.provider ? { provider: webSearchConfig.provider } : {}),
+                ...(webSearchConfig.searchEngine ? { searchEngine: webSearchConfig.searchEngine } : {}),
                 ...(webSearchConfig.apiKey ? { apiKey: webSearchConfig.apiKey } : {}),
                 ...(webSearchConfig.endpoint ? { endpoint: webSearchConfig.endpoint } : {}),
                 ...(webSearchConfig.customProvider ? { customProvider: webSearchConfig.customProvider } : {}),

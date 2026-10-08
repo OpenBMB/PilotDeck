@@ -52,6 +52,63 @@ describe("ProviderCard custom model add", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it.each(['HX API', 'my.provider', '自定义模型', `provider-${'a'.repeat(64)}`])('saves edits while retaining legacy provider ID %s', async (providerId) => {
+    const onSave = vi.fn(async () => ({ ok: true }));
+    const provider = { protocol: 'openai' as const, url: 'https://example.test/v1', apiKey: '********', models: { model: {} } };
+    render(<ProviderCard providerId={providerId} initialEditing provider={provider} onSave={onSave} onRemove={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.apiKey'), { target: { value: 'replacement-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'actions.saveChanges' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(providerId, { ...provider, apiKey: 'replacement-key' }));
+    expect(screen.queryByText('pilotDeckConfig.panels.models.providerIdInvalid')).toBeNull();
+  });
+
+  it.each([true, false])('rejects an invalid provider name when creating or renaming (new=%s)', (isNew) => {
+    const onSave = vi.fn(async () => ({ ok: true }));
+    render(<ProviderCard providerId={isNew ? 'HX API' : 'old-provider'} isNew={isNew} initialEditing
+      provider={{ protocol: 'openai', url: 'https://example.test/v1', apiKey: 'key', models: { model: {} } }} onSave={onSave} onRemove={vi.fn()} />);
+    if (!isNew) fireEvent.change(screen.getByDisplayValue('old-provider'), { target: { value: 'HX API' } });
+    fireEvent.click(screen.getByRole('button', { name: 'actions.saveChanges' }));
+    expect(screen.getByText('pilotDeckConfig.panels.models.providerIdInvalid')).toBeTruthy();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('removes a saved legacy provider through the server (in use=%s)', async (inUse) => {
+    const changes = inUse ? [{ path: 'memory.model', value: 'HX API/model', kind: 'memory', action: 'inherit' }] : [];
+    const plan = { target: { providerId: 'HX API' }, replacement: '', replacementOptions: [], requiresReplacement: false, changes, blocked: null, revision: 'rev-1' };
+    const written = { exists: true, path: '/tmp/pilotdeck.yaml', raw: 'model: {}\n', revision: 'rev-2', validation: { valid: true, errors: [], warnings: [] } };
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: { body?: string }) => ({
+      ok: true,
+      json: async () => (url !== '/api/config/model-removal' ? {} : JSON.parse(init?.body ?? '{}').dryRun ? plan : written),
+    }));
+    const onRemove = vi.fn();
+    const onRemoved = vi.fn();
+    render(<ProviderCard providerId="HX API" provider={{ protocol: 'openai', url: 'https://example.test/v1', apiKey: '********', models: { model: {} } }}
+      onSave={vi.fn()} onRemove={onRemove} onRemoved={onRemoved} />);
+    fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.actions.remove' }));
+    const confirm = await screen.findByRole('button', { name: 'pilotDeckConfig.panels.models.deleteDialog.delete' });
+    await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByText('pilotDeckConfig.panels.models.deleteDialog.groupInherit') !== null).toBe(inUse);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(onRemoved).toHaveBeenCalledWith(written));
+    const removalCalls = mocks.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/config/model-removal');
+    const bodies = removalCalls.map(([, init]) => JSON.parse(init.body));
+    expect(bodies).toEqual([
+      { providerId: 'HX API', replacement: '', dryRun: true },
+      { providerId: 'HX API', replacement: '', baseRevision: 'rev-1' },
+    ]);
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it('discards an unsaved provider locally without asking the server', async () => {
+    const onRemove = vi.fn();
+    render(<ProviderCard providerId="draft" isNew provider={{ protocol: 'openai', url: '', apiKey: '', models: {} }}
+      onSave={vi.fn()} onRemove={onRemove} />);
+    fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.actions.remove' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'pilotDeckConfig.panels.models.deleteDialog.delete' }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(mocks.authenticatedFetch.mock.calls.some(([url]) => url === '/api/config/model-removal')).toBe(false);
+  });
+
   it("does not expose provider retry settings", () => {
     render(
       <ProviderCard

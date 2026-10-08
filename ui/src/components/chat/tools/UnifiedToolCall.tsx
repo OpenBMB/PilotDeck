@@ -70,7 +70,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
   return (
     <div className="tool-call min-w-0 py-1" data-tool-id={message.toolId}>
       <div className="flex min-w-0 items-center gap-2 text-[13px] leading-6 text-neutral-500 dark:text-neutral-400">
-        <button type="button" aria-expanded={expanded} aria-label={`${label} ${target}`} onClick={() => { setLocalOpen(!expanded); onOpenChange?.(!expanded); }} className="group flex min-w-0 flex-1 items-center gap-2 rounded text-left hover:text-violet-600 focus-visible:outline-violet-500 dark:hover:text-violet-400">
+        <button type="button" aria-expanded={expanded} aria-label={`${label} ${target}`} onClick={() => { setLocalOpen(!expanded); onOpenChange?.(!expanded); }} className="group flex min-w-0 flex-1 items-center gap-2 rounded text-left hover:text-[var(--pd-accent-strong,#7c3aed)] focus-visible:outline-[var(--pd-accent,#8b5cf6)] dark:hover:text-violet-400">
           <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'animate-spin' : ''}`} strokeWidth={1.8} />
           <span className="shrink-0">{label}</span>
           <span className="min-w-0 truncate" title={target}>{target}</span>
@@ -83,7 +83,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
           <ToolDiffViewer oldContent={oldContent} newContent={newContent} filePath={file} createDiff={createDiff} onFileClick={onFileOpen ? () => onFileOpen(file, name === 'Write' ? undefined : { old_string: oldContent, new_string: newContent }) : undefined} badge={name === 'Write' ? 'Write' : 'Diff'} />
           <div className="flex justify-end gap-2 text-xs text-neutral-500 dark:text-neutral-400">{footer}</div>
           {result?.isError && !externalError && <ToolDetails title={t('toolDisplay.output')} copyContent={rawResult}><pre className="whitespace-pre-wrap break-words font-mono">{displayError}</pre></ToolDetails>}
-        </> : <ToolDetails title={isShell ? 'Shell' : isSkill ? `${label} ${target}` : isRead && file ? <button type="button" className="hover:text-violet-600 hover:underline" title={file} onClick={() => onFileOpen?.(file)}>{file}</button> : message.toolName || 'Tool'} copyLabel={isShell ? t('toolDisplay.copyCommand') : undefined} copyContent={isShell ? displayText(input.command) : output || displayText(message.toolInput)} footer={footer}>
+        </> : <ToolDetails title={isShell ? 'Shell' : isSkill ? `${label} ${target}` : isRead && file ? <button type="button" className="hover:text-[var(--pd-accent-strong,#7c3aed)] hover:underline" title={file} onClick={() => onFileOpen?.(file)}>{file}</button> : message.toolName || 'Tool'} copyLabel={isShell ? t('toolDisplay.copyCommand') : undefined} copyContent={isShell ? displayText(input.command) : output || displayText(message.toolInput)} footer={footer}>
           {isShell ? <pre className="mb-3 whitespace-pre-wrap break-words font-mono"><span className="select-none text-neutral-400">$ </span>{displayText(input.command)}</pre>
             : inputDetails ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="input" contentOnly createDiff={createDiff} onFileOpen={onFileOpen} selectedProject={selectedProject} />
             : <pre className="mb-3 whitespace-pre-wrap break-words font-mono">{isRead ? file : isSkill ? target : displayText(Object.keys(input).length ? input : message.toolInput)}</pre>}

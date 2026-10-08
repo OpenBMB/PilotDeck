@@ -25,7 +25,7 @@ export const ToolDiffViewer = ({ oldContent, newContent, filePath, createDiff, o
   const removed = lines.filter(line => line.type === 'removed').length;
   return (
     <ToolDetails title={<span className="inline-flex max-w-full items-center gap-3">
-      {onFileClick ? <button type="button" title={path} onClick={onFileClick} className="truncate hover:text-violet-600 hover:underline dark:hover:text-violet-400">{path}</button> : <span className="truncate">{path}</span>}
+      {onFileClick ? <button type="button" title={path} onClick={onFileClick} className="truncate hover:text-[var(--pd-accent-strong,#7c3aed)] hover:underline dark:hover:text-violet-400">{path}</button> : <span className="truncate">{path}</span>}
       <span className="shrink-0">{contentPreview ? t('toolDisplay.fileContent') : t('toolDisplay.changes')}</span>
       {!contentPreview && <span className="shrink-0 tabular-nums"><span className="text-green-600 dark:text-green-400">+{added}</span>{' '}<span className="text-red-500 dark:text-red-400">−{removed}</span></span>}
     </span>} copyContent={contentPreview ? newText : lines.map(line => `${line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}${line.content}`).join('\n')}>

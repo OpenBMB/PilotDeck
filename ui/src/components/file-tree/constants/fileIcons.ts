@@ -107,11 +107,11 @@ const CATEGORY_CONTAINER_CLASSES: Record<FileVisualCategory, string> = {
   document: 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300',
   spreadsheet: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300',
   presentation: 'bg-orange-50 text-orange-700 dark:bg-orange-950/70 dark:text-orange-300',
-  code: 'bg-violet-50 text-violet-700 dark:bg-violet-950/70 dark:text-violet-300',
+  code: 'bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#6d28d9)] dark:bg-violet-950/70 dark:text-violet-300',
   data: 'bg-teal-50 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300',
   archive: 'bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300',
   audio: 'bg-pink-50 text-pink-700 dark:bg-pink-950/70 dark:text-pink-300',
-  image: 'bg-violet-50 text-violet-700 dark:bg-violet-950/70 dark:text-violet-300',
+  image: 'bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#6d28d9)] dark:bg-violet-950/70 dark:text-violet-300',
   video: 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300',
 };
 
@@ -197,7 +197,7 @@ export function getFileIconData(filename: string, mimeType?: string): FileIconDa
     return {
       category,
       icon: Image,
-      color: 'text-purple-500 dark:text-purple-400',
+      color: 'text-[var(--pd-accent,#a855f7)] dark:text-purple-400',
       containerClass: CATEGORY_CONTAINER_CLASSES[category],
     };
   }

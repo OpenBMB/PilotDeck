@@ -1,4 +1,5 @@
 import express from 'express';
+import { readUploadLimits } from '../services/uploadLimits.js';
 import multer from 'multer';
 import path from 'node:path';
 import { createReadStream } from 'node:fs';
@@ -65,11 +66,7 @@ const store = new UploadStore({
     return match;
   },
   listProjects: listProjectRoots,
-  maxFileBytes: envNumber('PILOTDECK_UPLOAD_MAX_FILE_BYTES'),
-  maxTaskBytes: envNumber('PILOTDECK_UPLOAD_MAX_TASK_BYTES'),
-  maxFiles: envNumber('PILOTDECK_UPLOAD_MAX_FILES'),
-  maxConcurrentPerProject: envNumber('PILOTDECK_UPLOAD_MAX_CONCURRENT'),
-  retentionMs: envNumber('PILOTDECK_UPLOAD_RETENTION_MS'),
+  ...readUploadLimits(),
 });
 
 const cleanupTimer = setInterval(() => void store.cleanupExpired().catch((error) => {
@@ -93,6 +90,8 @@ const storage = {
   _removeFile(_req, _file, callback) { callback(null); },
 };
 const uploadContent = multer({ storage, limits: { files: 500, fields: 20 } }).any();
+
+router.get('/limits', (_req, res) => res.json(readUploadLimits()));
 
 router.post('/', async (req, res) => {
   try {
@@ -209,7 +208,6 @@ function eventName(record) {
   return 'upload_progress';
 }
 function isTerminal(status) { return ['completed', 'failed', 'cancelled', 'expired'].includes(status); }
-function envNumber(name) { const value = Number(process.env[name]); return Number.isFinite(value) && value > 0 ? value : undefined; }
 function sendError(res, error, requestId) {
   const code = typeof error?.code === 'string' ? error.code : 'gateway_request_failed';
   const statuses = {

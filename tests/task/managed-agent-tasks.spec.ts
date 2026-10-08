@@ -143,7 +143,7 @@ test("retained terminal agent records are pruned oldest-first", async () => {
   assert.notEqual(runtime.get("pushes-out"), undefined);
 });
 
-test("agent tasks are independent of the inherited bash maxTasks lifetime cap", async () => {
+test("agent tasks are independent of the bash concurrency cap", async () => {
   const runtime = new BackgroundTaskRuntime({ maxTasks: 1, spawn: (() => createFakeBashChild()) as never });
   const bashTask = await runtime.start({ command: "sleep", cwd: "/tmp" });
   assert.equal(bashTask.status, "running");
@@ -180,3 +180,32 @@ function createDeferred(): { promise: Promise<void>; open: () => void } {
   });
   return { promise, open: () => open() };
 }
+
+test("only active bash tasks consume bash capacity, independently of active managed agents", async () => {
+  const children: ReturnType<typeof createFakeBashChild>[] = [];
+  const runtime = new BackgroundTaskRuntime({
+    maxTasks: 1,
+    maxRunningAgentTasks: 1,
+    spawn: (() => {
+      const child = createFakeBashChild();
+      children.push(child);
+      return child;
+    }) as never,
+  });
+  const release = createDeferred();
+  const agent = await runtime.startManaged({
+    subagentId: "active-agent-independent", label: "agent", run: () => release.promise.then(() => "done"),
+  });
+  const first = await runtime.start({ command: "first", cwd: "/tmp" });
+  await assert.rejects(runtime.start({ command: "over-capacity", cwd: "/tmp" }), /max tasks/);
+  children[0]!.emit("exit", 0, null);
+  await runtime.waitFor(first.taskId);
+  assert.equal(first.status, "completed");
+  assert.equal(agent.status, "running");
+  const second = await runtime.start({ command: "second", cwd: "/tmp" });
+  assert.equal(second.status, "running");
+  assert.ok(runtime.get(first.taskId), "completed bash history is retained");
+  children[1]!.emit("exit", 0, null);
+  release.open();
+  await Promise.all([runtime.waitFor(second.taskId), runtime.waitFor(agent.taskId)]);
+});

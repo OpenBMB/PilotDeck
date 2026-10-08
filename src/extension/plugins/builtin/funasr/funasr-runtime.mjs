@@ -38,19 +38,25 @@ const ASSETS = {
   },
 };
 
+function runtimeKey(platform, arch) {
+  // The pinned release has Windows x64 binaries, which Windows ARM64 can run.
+  // Share the existing x64 cache between installation and MCP execution.
+  return `${platform}-${platform === "win32" && arch === "arm64" ? "x64" : arch}`;
+}
+
 export function resolveRuntimeAsset(platform = process.platform, arch = process.arch) {
-  const key = `${platform}-${arch}`;
+  const key = runtimeKey(platform, arch);
   const asset = ASSETS[key];
   if (!asset) {
     throw new Error(
-      `unsupported-platform: FunASR local runtime supports macOS ARM64, Linux ARM64/x64, and Windows x64; received ${platform}/${arch}`,
+      `unsupported-platform: FunASR local runtime supports macOS ARM64, Linux ARM64/x64, and Windows x64/ARM64 (x64 runtime); received ${platform}/${arch}`,
     );
   }
   return { key, ...asset, url: `${FUNASR_RELEASE_BASE}/${asset.file}` };
 }
 
 export function runtimeDirectory(runtimeRoot, platform = process.platform, arch = process.arch) {
-  return join(runtimeRoot, "runtime", FUNASR_RUNTIME_VERSION, `${platform}-${arch}`);
+  return join(runtimeRoot, "runtime", FUNASR_RUNTIME_VERSION, runtimeKey(platform, arch));
 }
 
 export function modelDirectory(runtimeRoot) {

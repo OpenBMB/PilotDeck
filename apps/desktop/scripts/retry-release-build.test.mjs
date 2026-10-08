@@ -49,6 +49,20 @@ test('multiple failed platforms are retried with one request', async () => {
   assert.equal(f.calls.filter(c => c.route.startsWith('POST ')).length, 1);
 });
 
+test('retries the concise platform job names without retrying publication failures', async () => {
+  const results = [job('detect', 'success'), job('Linux / DEB x64', 'success'),
+    job('Linux / RPM arm64', 'success'), job('Linux / Fedora arm64', 'success'),
+    job('macOS / arm64', 'failure'), job('macOS / x64', 'timed_out'),
+    job('Windows / x64', 'success'), job('Windows / arm64', 'failure'),
+    job('release', 'skipped'), job('skipped', 'skipped')];
+  const f = fixture({ results });
+  assert.equal((await f.execute()).retried, true);
+  const failedPublication = fixture({ results: results.map(j => j.name === 'release' ? job('release', 'failure') : j) });
+  assert.equal((await failedPublication.execute()).retried, false);
+  const cancelled = fixture({ results: results.map(j => j.name === 'Windows / arm64' ? job(j.name, 'cancelled') : j) });
+  assert.equal((await cancelled.execute()).retried, false);
+});
+
 for (const [name, patch] of [
   ['second attempt', { run_attempt: 2 }], ['later manual attempt', { run_attempt: 3 }],
   ['missing attempt', { run_attempt: undefined }], ['successful run', { conclusion: 'success' }],

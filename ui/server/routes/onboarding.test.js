@@ -162,7 +162,7 @@ describe('onboarding routes', () => {
     expect(writePilotDeckConfig).toHaveBeenCalledWith(expect.objectContaining({
       agent: expect.objectContaining({ model: 'openai/gpt-test' }),
       model: expect.objectContaining({ providers: expect.objectContaining({ openai: expect.objectContaining({ retry: expect.objectContaining({ requestMaxRetries: 2, jitter: true, repeatedChunkLimit: 4 }), models: expect.objectContaining({ 'keep-me': { multimodal: { input: ['text'] } }, 'gpt-test': { multimodal: { input: ['text', 'image'] } } }) }) }) }),
-    }));
+    }), expect.objectContaining({ expectedRevision: 'test-revision' }));
   });
 
   it('requires the exact tested model set and retry policy when saving', async () => {
@@ -246,6 +246,43 @@ describe('onboarding routes', () => {
     finishFirstProbe({ ok: true });
     expect((await first).status).toBe(200);
     expect(signal.aborted).toBe(false);
+  });
+
+  it('allows ten individual model tests per minute while retaining the aggregate probe budget', async () => {
+    const { request } = await createOnboardingApp({ probe: vi.fn().mockResolvedValue({ ok: true }) });
+    for (let index = 0; index < 10; index += 1) {
+      const response = await request('/api/v1/model-connection-tests', {
+        method: 'POST',
+        headers: { 'x-user': 'individual-model-tests' },
+        body: JSON.stringify({ providerId: 'openai', apiKey: 'key', models: [`model-${index}`], retryPolicy: retryPolicy() }),
+      });
+      expect(response.status).toBe(200);
+    }
+    const limited = await request('/api/v1/model-connection-tests', {
+      method: 'POST',
+      headers: { 'x-user': 'individual-model-tests' },
+      body: JSON.stringify({ providerId: 'openai', apiKey: 'key', models: ['model-11'], retryPolicy: retryPolicy() }),
+    });
+    expect(limited).toMatchObject({ status: 429, body: { code: 'RATE_LIMITED' } });
+
+    for (let index = 0; index < 5; index += 1) {
+      const response = await request('/api/v1/model-connection-tests', {
+        method: 'POST',
+        headers: { 'x-user': 'batch-model-tests' },
+        body: JSON.stringify({
+          providerId: 'openai', apiKey: 'key',
+          models: Array.from({ length: 10 }, (_, model) => `model-${index}-${model}`),
+          retryPolicy: retryPolicy(),
+        }),
+      });
+      expect(response.status).toBe(200);
+    }
+    const batchLimited = await request('/api/v1/model-connection-tests', {
+      method: 'POST',
+      headers: { 'x-user': 'batch-model-tests' },
+      body: JSON.stringify({ providerId: 'openai', apiKey: 'key', models: ['extra-model'], retryPolicy: retryPolicy() }),
+    });
+    expect(batchLimited).toMatchObject({ status: 429, body: { code: 'RATE_LIMITED' } });
   });
 
   it('cancels model probes and releases their slot when the client disconnects', async () => {
@@ -409,7 +446,8 @@ async function createOnboardingApp(overrides = {}) {
   const config = overrides.config ?? { schemaVersion: 1, agent: {}, model: { providers: {} }, webui: {} };
   vi.doMock('../services/modelConnectionProbe.js', () => ({ probeModelConnection: probe }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
-    readPilotDeckConfigFile: vi.fn(() => ({ config })),
+    configRevision: vi.fn(() => 'test-revision'),
+    readPilotDeckConfigFile: vi.fn(() => ({ config, raw: 'test-config' })),
     withPilotDeckConfigWrite: vi.fn(async (operation) => operation()),
     writePilotDeckConfig,
   }));

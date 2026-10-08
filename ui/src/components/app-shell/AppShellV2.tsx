@@ -1,3 +1,4 @@
+import { useDesktopCommands } from '../desktop/useDesktopCommands';
 import { useAuth } from '../auth/context/AuthContext';
 import { SessionViewReadyContext, useSessionIndicators } from './useSessionIndicators';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -32,6 +33,7 @@ import { getSettingsPathFromTab } from '../settings/navigation';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
+import { useWorkspaceUpload } from '../main-content-v2/useWorkspaceUpload';
 import {
   chooseDefaultProject,
   resolveHomeNewConversationProject,
@@ -136,6 +138,8 @@ export default function AppShellV2() {
     isMobile,
     activeSessions,
   });
+  // The wildcard route keeps this owner mounted across dedicated pages too.
+  const workspaceUpload = useWorkspaceUpload(selectedProject?.name);
   const workspaceTab = activeTab === 'cron' || activeTab === 'skills' ? 'chat' : activeTab;
   const shellActiveTab = dedicatedTab ?? workspaceTab;
   const { processingSessions: remoteProcessingSessions, unreadSessionIds, markRead, acknowledge, selectSession: acknowledgeNavigation } = useSessionIndicators({
@@ -592,6 +596,36 @@ export default function AppShellV2() {
     sidebarSharedProps.projects,
   ]);
 
+  useDesktopCommands({
+    canNewConversation: !isLoadingProjects && Boolean(resolveHomeNewConversationProject({
+      selectedProject, selectedSession, projectNameParam, projects: sidebarSharedProps.projects,
+    })),
+    hasProject: Boolean(selectedProject && selectedProject.capabilities?.files !== false && selectedProject.kind !== 'general' && selectedProject.name !== 'general'),
+    canFind: !isSettingsRoute,
+    sidebarVisible: desktopSidebarOpen && !isSettingsRoute,
+    integrateMacCaption: desktopSidebarOpen && !isMobile && !isSettingsRoute && isConnected,
+    execute: command => {
+      switch (command) {
+        case 'new-conversation': handleHomeNewConversation(); break;
+        case 'new-project': handleOpenNewProject(); break;
+        case 'settings': onShowSettings(); break;
+        case 'check-updates':
+          if (isSettingsRoute) window.dispatchEvent(new Event('pilotdeck:check-updates'));
+          navigate(`${SETTINGS_PATH}/about`);
+          break;
+        case 'find': window.dispatchEvent(new Event('pilotdeck:find')); break;
+        case 'toggle-sidebar':
+          if (isSettingsRoute) onCloseSettings();
+          setDesktopSidebarOpen(value => isSettingsRoute ? true : !value);
+          break;
+        case 'chat': handleSelectTab('chat'); break;
+        case 'files': handleSelectTab('files'); break;
+        case 'skills': handleSelectTab('skills'); break;
+        case 'scheduled-tasks': handleSelectTab('cron'); break;
+      }
+    },
+  });
+
   const handleSessionActivityBump = useCallback(
     (projectName: string, sessionId: string, optimisticTitle?: string, inputId?: string) => {
       return bumpSessionActivity(projectName, sessionId, optimisticTitle, inputId);
@@ -702,11 +736,15 @@ export default function AppShellV2() {
         className="app-main flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950"
       >
         <MainAreaV2
+          workspaceUpload={workspaceUpload}
           projects={sidebarSharedProps.projects}
           selectedProject={selectedProject}
           selectedSession={selectedSession}
           activeTab={shellActiveTab}
-          setActiveTab={handleSelectTab}
+          // The workspace stays mounted behind settings. Its availability
+          // effects may reset a restored tab while projects load; they must
+          // not navigate away from the visible settings page.
+          setActiveTab={isSettingsRoute ? setActiveTab : handleSelectTab}
           ws={ws}
           sendMessage={sendMessage}
           latestMessage={latestMessage}

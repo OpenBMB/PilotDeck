@@ -58,7 +58,7 @@ function mapPlanStatus(status: DiscoveryPlanStatus): PlanDisplayStatus {
 const PLAN_STATUS_STYLE: Record<PlanDisplayStatus, string> = {
   created: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   preparingWorkspace: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  executing: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  executing: 'bg-[var(--pd-accent-soft,#e0e7ff)] text-[var(--pd-accent-strong,#4338ca)] dark:bg-indigo-900/40 dark:text-indigo-300',
   completedWaiting: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   completedNoReport: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',

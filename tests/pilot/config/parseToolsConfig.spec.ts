@@ -53,7 +53,7 @@ test("web search enabled remains optional for backwards compatibility", () => {
 });
 
 test("web search accepts all configured providers", () => {
-  for (const provider of ["glm", "tavily", "custom", "serper", "brave"] as const) {
+  for (const provider of ["glm", "tavily", "custom", "serper", "brave", "baidu", "bocha", "exa", "serpapi"] as const) {
     const diagnostics: PilotConfigDiagnostic[] = [];
     const config = parseToolsConfig({ webSearch: { provider, apiKey: "test-key" } }, diagnostics);
     assert.deepEqual(config, { webSearch: { provider, apiKey: "test-key" } });
@@ -71,4 +71,15 @@ test("web search enabled must be a boolean", () => {
   assert.equal(diagnostics.length, 1);
   assert.equal(diagnostics[0]?.code, "TOOLS_WEB_SEARCH_ENABLED_INVALID");
   assert.equal(diagnostics[0]?.severity, "fatal");
+});
+
+test("SerpAPI engine selection survives config parsing and invalid values are fatal", () => {
+  for (const searchEngine of ["google", "bing", "baidu", "duckduckgo", "yahoo", "yandex"] as const) {
+    const diagnostics: PilotConfigDiagnostic[] = [];
+    assert.deepEqual(parseToolsConfig({ webSearch: { provider: "serpapi", searchEngine } }, diagnostics), { webSearch: { provider: "serpapi", searchEngine } });
+    assert.deepEqual(diagnostics, []);
+  }
+  const diagnostics: PilotConfigDiagnostic[] = [];
+  parseToolsConfig({ webSearch: { provider: "serpapi", searchEngine: "unsupported" } }, diagnostics);
+  assert.ok(diagnostics.some(item => item.code === "TOOLS_WEB_SEARCH_ENGINE_INVALID" && item.severity === "fatal"));
 });
