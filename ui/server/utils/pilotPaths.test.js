@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -6,15 +6,38 @@ import {
     createCollisionResistantProjectId as createCoreCollisionId,
     createProjectId as createCoreProjectId,
     resolveProjectStorageId as resolveCoreProjectStorageId,
+    ensurePilotProjectGitIgnore as ensureCoreGitIgnore,
 } from '../../../src/pilot/paths.js';
 import {
     createCollisionResistantProjectId,
     createProjectId,
     resolveProjectStorageId,
+    ensurePilotProjectGitIgnore,
 } from './pilotPaths.js';
 import { getAlwaysOnRoot } from '../services/always-on-paths.js';
 
 describe('UI project storage ID resolution', () => {
+    it('repairs internal ignore rules identically to the core without creating metadata during Git browse', () => {
+        const root = mkdtempSync(join(tmpdir(), 'pilotdeck-ui-ignore-'));
+        try {
+            const uiRoot = join(root, 'ui'), coreRoot = join(root, 'core');
+            mkdirSync(uiRoot); mkdirSync(coreRoot);
+            ensurePilotProjectGitIgnore(uiRoot, false);
+            expect(existsSync(join(uiRoot, '.pilotdeck'))).toBe(false);
+            for (const project of [uiRoot, coreRoot]) {
+                mkdirSync(join(project, '.pilotdeck'));
+                writeFileSync(join(project, '.pilotdeck', '.gitignore'), '# existing\n*.tmp\n!keep.txt');
+            }
+            ensurePilotProjectGitIgnore(uiRoot, false);
+            ensureCoreGitIgnore(coreRoot, false);
+            const expected = readFileSync(join(coreRoot, '.pilotdeck', '.gitignore'), 'utf8');
+            expect(readFileSync(join(uiRoot, '.pilotdeck', '.gitignore'), 'utf8')).toBe(expected);
+            ensurePilotProjectGitIgnore(uiRoot, false);
+            expect(readFileSync(join(uiRoot, '.pilotdeck', '.gitignore'), 'utf8')).toBe(expected);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
     it('matches the core resolver for colliding non-ASCII workspaces', () => {
         const root = mkdtempSync(join(tmpdir(), 'pilotdeck-ui-project-id-'));
         try {

@@ -62,6 +62,7 @@ export type TurnRunnerRuntimeReloadSnapshot = {
 };
 
 export type TurnRunnerDependencies = {
+  fileHistory?: import("../../tool/protocol/types.js").PilotDeckToolFileHistorySink;
   metadataStore?: SessionMetadataStore;
   sessionTitleGenerator?: SessionTitleGenerator;
   autoGenerateSessionTitle?: boolean;
@@ -98,6 +99,21 @@ export class TurnRunner {
   async *run(options: TurnRunnerOptions): AsyncGenerator<AgentEvent, TurnRunnerResult, unknown> {
     yield { type: "turn_started", sessionId: options.sessionId, turnId: options.turnId };
     let artifactCollector: FileArtifactCollector | undefined;
+    let checkpointsFinished = false;
+    const finishCheckpoints = async (status: "complete" | "incomplete") => {
+      if (checkpointsFinished) return;
+      checkpointsFinished = true;
+      try {
+        const checkpoint = await this.turnDependencies.fileHistory?.finishTurn?.(status);
+        if (checkpoint) await this.transcript.recordAgentStatusMessage?.(options.sessionId, options.turnId, {
+          event: "checkpoint_recorded", kind: "status", text: "文件检查点已保存", detail: { checkpointId: checkpoint.id, files: checkpoint.changes.length, unprotected: checkpoint.unprotected },
+        });
+      } catch (error) {
+        await this.transcript.recordAgentStatusMessage?.(options.sessionId, options.turnId, {
+          event: "checkpoint_failed", kind: "error", text: "文件检查点保存失败", detail: { message: error instanceof Error ? error.message : String(error) },
+        });
+      }
+    };
     try {
       const unacknowledgedSteers = new Map<string, AgentSteerMessage>();
       const trackDrainedSteers = (steers: AgentSteerMessage[]): AgentSteerMessage[] => {
@@ -120,6 +136,7 @@ export class TurnRunner {
       };
       let artifactsFinished = false;
       const finishArtifacts = async (result: AgentTurnResult): Promise<FileArtifact[]> => {
+        await finishCheckpoints(result.type === "success" ? "complete" : "incomplete");
         if (!artifactCollector || artifactsFinished) return [];
         artifactsFinished = true;
         const artifacts = await artifactCollector.finish(
@@ -159,6 +176,19 @@ export class TurnRunner {
 
       await this.persistListingPromptMetadata(options, accepted.messages);
       yield { type: "input_accepted", sessionId: options.sessionId, turnId: options.turnId, messages: accepted.messages };
+
+      try {
+        await this.turnDependencies.fileHistory?.beginTurn?.(options.sessionId, options.turnId, options.messages, options.abortSignal);
+      } catch (cause) {
+        const error = agentError("agent_transcript_error", "Cannot save the file checkpoint before this turn.", cause);
+        const result = this.createErrorResult(options, error);
+        await this.recordErrorResult(options, result);
+        const status = await this.recordTurnFailureStatus(options, error);
+        yield this.toAgentStatusEvent(options, status);
+        yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
+        yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
+        return { result, messages: options.messages };
+      }
 
       // Acknowledge durable input before scanning the workspace. The baseline
       // still completes before hooks/model/tools can mutate any files.
@@ -325,6 +355,7 @@ export class TurnRunner {
         return { result, messages };
       }
     } finally {
+      await finishCheckpoints("incomplete");
       options.closeSteerMailbox?.();
       artifactCollector?.dispose();
     }

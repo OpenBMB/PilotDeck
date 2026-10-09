@@ -35,6 +35,7 @@
     "explore": "探索",
     "open": "打开看板菜单",
     "menuLabel": "看板",
+    "changes": "变更",
     "closeActive": "关闭{{tool}}看板",
     "closePanel": "关闭{{tool}}看板",
     "resizePanel": "调整{{tool}}看板宽度"

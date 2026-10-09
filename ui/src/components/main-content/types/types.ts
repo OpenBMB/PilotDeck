@@ -1,5 +1,6 @@
 import type { AlwaysOnSubTab, AppTab, Project, ProjectSession } from '../../../types/app';
 import type { WorkspaceUploadController } from '../../main-content-v2/useWorkspaceUpload';
+import type { ReviewOpenRequest } from '../../chat-review/ChatReviewContext';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
 
@@ -42,6 +43,7 @@ export type MainContentProps = {
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   activeTab: AppTab;
+  reviewOpenRequest?: ReviewOpenRequest;
   setActiveTab: (tab: AppTab) => void;
   alwaysOnSubTab?: AlwaysOnSubTab;
   onAlwaysOnSubTabChange?: (tab: AlwaysOnSubTab) => void;

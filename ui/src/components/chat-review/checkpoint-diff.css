@@ -1,0 +1,28 @@
+.checkpoint-diff .tok-keyword,
+.checkpoint-diff .tok-operator { color: #7c3aed; }
+.checkpoint-diff .tok-string,
+.checkpoint-diff .tok-string2 { color: #047857; }
+.checkpoint-diff .tok-number,
+.checkpoint-diff .tok-bool,
+.checkpoint-diff .tok-atom { color: #b45309; }
+.checkpoint-diff .tok-comment,
+.checkpoint-diff .tok-meta { color: #737373; }
+.checkpoint-diff .tok-propertyName,
+.checkpoint-diff .tok-typeName,
+.checkpoint-diff .tok-className,
+.checkpoint-diff .tok-function { color: #0369a1; }
+.checkpoint-diff .tok-heading,
+.checkpoint-diff .tok-strong { font-weight: 600; }
+.dark .checkpoint-diff .tok-keyword,
+.dark .checkpoint-diff .tok-operator { color: #c4b5fd; }
+.dark .checkpoint-diff .tok-string,
+.dark .checkpoint-diff .tok-string2 { color: #6ee7b7; }
+.dark .checkpoint-diff .tok-number,
+.dark .checkpoint-diff .tok-bool,
+.dark .checkpoint-diff .tok-atom { color: #fcd34d; }
+.dark .checkpoint-diff .tok-comment,
+.dark .checkpoint-diff .tok-meta { color: #a3a3a3; }
+.dark .checkpoint-diff .tok-propertyName,
+.dark .checkpoint-diff .tok-typeName,
+.dark .checkpoint-diff .tok-className,
+.dark .checkpoint-diff .tok-function { color: #7dd3fc; }

@@ -3,8 +3,10 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { extractProjectDirectory } from '../projects.js';
-import { runChatViaGateway } from '../pilotdeck-bridge.js';
+import { runChatViaGateway, getPilotDeckGateway } from '../pilotdeck-bridge.js';
+import { parseGitStatus, gitStatusError } from '../utils/gitStatus.js';
 import { isPathInsideOrEqual } from '../utils/pathSafety.js';
+import { ensurePilotProjectGitIgnore } from '../utils/pilotPaths.js';
 
 const router = express.Router();
 const COMMIT_DIFF_CHARACTER_LIMIT = 500_000;
@@ -298,6 +300,7 @@ router.get('/status', async (req, res) => {
   try {
     const projectPath = await getActualProjectPath(project);
 
+    ensurePilotProjectGitIgnore(projectPath, false);
     // Validate git repository
     await validateGitRepository(projectPath);
 
@@ -305,49 +308,75 @@ router.get('/status', async (req, res) => {
     const hasCommits = await repositoryHasCommits(projectPath);
 
     // Get git status
-    const { stdout: statusOutput } = await spawnAsync('git', ['status', '--porcelain'], { cwd: projectPath });
+    const repositoryRoot = await getRepositoryRootPath(projectPath);
+    const { stdout: statusOutput } = await spawnAsync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: repositoryRoot });
+    const entries = parseGitStatus(statusOutput);
+    const indexTree = await spawnAsync('git', ['write-tree'], { cwd: repositoryRoot }).then(result => result.stdout.trim(), () => null);
 
     const modified = [];
     const added = [];
     const deleted = [];
     const untracked = [];
 
-    statusOutput.split('\n').forEach(line => {
-      if (!line.trim()) return;
-
-      const status = line.substring(0, 2);
-      const file = line.substring(3);
-
-      if (status === 'M ' || status === ' M' || status === 'MM') {
-        modified.push(file);
-      } else if (status === 'A ' || status === 'AM') {
-        added.push(file);
-      } else if (status === 'D ' || status === ' D') {
-        deleted.push(file);
-      } else if (status === '??') {
-        untracked.push(file);
-      }
+    entries.forEach(entry => {
+      if (entry.untracked) untracked.push(entry.path);
+      else if (entry.indexStatus === 'A') added.push(entry.path);
+      else if (entry.indexStatus === 'D' || entry.worktreeStatus === 'D') deleted.push(entry.path);
+      else modified.push(entry.path);
     });
 
     res.json({
+      isRepository: true,
       branch,
       hasCommits,
+      repositoryRoot,
+      entries,
+      indexTree,
       modified,
       added,
       deleted,
       untracked
     });
   } catch (error) {
-    console.error('Git status error:', error);
-    res.json({
-      error: error.message.includes('not a git repository') || error.message.includes('Project directory is not a git repository')
-        ? error.message
-        : 'Git operation failed',
-      details: error.message.includes('not a git repository') || error.message.includes('Project directory is not a git repository')
-        ? error.message
-        : `Failed to get git status: ${error.message}`
-    });
+    const result = gitStatusError(error);
+    if (result.isRepository !== false) console.error('Git status error:', error);
+    res.json(result);
   }
+});
+
+// Mutations use the Gateway's workspace lease so they cannot race an Agent turn or restore.
+router.post('/operation', async (req, res) => {
+  try {
+    const { project, sessionId, ...repositoryOperation } = req.body ?? {};
+    if (typeof project !== 'string') return res.status(400).json({ error: 'Project is required.' });
+    const gateway = await getPilotDeckGateway();
+    if (!gateway.manageCheckpoints) return res.status(503).json({ error: 'This Gateway cannot coordinate Git operations.' });
+    const result = await gateway.manageCheckpoints({ projectKey: await getActualProjectPath(project), sessionKey: sessionId || 'git:management', action: 'git', repositoryOperation });
+    return res.json(result);
+  } catch (error) {
+    return res.status(/being modified|busy|changed/i.test(error.message) ? 409 : 400).json({ error: error.message });
+  }
+});
+
+router.get('/review-diff', async (req, res) => {
+  try {
+    const { project, file, side } = req.query;
+    if (typeof project !== 'string' || typeof file !== 'string' || !['staged', 'unstaged'].includes(side)) return res.status(400).json({ error: 'Project, file and diff side are required.' });
+    const projectPath = await getActualProjectPath(project), root = await getRepositoryRootPath(projectPath);
+    if (path.isAbsolute(file) || !isPathInsideOrEqual(root, path.resolve(root, file)) || file.includes('\0')) return res.status(400).json({ error: 'Invalid repository file path.' });
+    const { stdout } = await spawnAsync('git', ['--literal-pathspecs', 'status', '--porcelain=v1', '-z', '--', file], { cwd: root });
+    let diff;
+    if (side === 'unstaged' && stdout.startsWith('??')) {
+      const target = path.resolve(root, file), info = await fs.lstat(target);
+      if (!isPathInsideOrEqual(root, await fs.realpath(path.dirname(target)))) return res.status(400).json({ error: 'File resolves outside the repository.' });
+      if (!info.isFile() || info.size > 500_000) diff = '大型文件或符号链接不展示文本差异。';
+      else { const content = await fs.readFile(target); diff = content.includes(0) ? '二进制文件。' : content.toString('utf8').split('\n').map(line => `+${line}`).join('\n'); }
+    } else {
+      const result = await spawnAsync('git', ['--literal-pathspecs', 'diff', ...(side === 'staged' ? ['--cached'] : []), '--', file], { cwd: root });
+      diff = result.stdout.slice(0, 500_000);
+    }
+    return res.json({ diff });
+  } catch (error) { return res.status(400).json({ error: error.message }); }
 });
 
 // Get diff for a specific file

@@ -25,6 +25,11 @@ import type { PilotDeckToolInputSchema, PilotDeckToolValidationResult } from "./
  */
 export type PilotDeckToolFileHistorySink = {
   trackEdit(filePath: string, messageId: string): Promise<void>;
+  recordEdit?(filePath: string, messageId: string, writtenContent?: string): Promise<void>;
+  /** Capture an execution through completion, including failed or background commands. */
+  trackCommand?(options?: { background?: boolean }): Promise<() => Promise<void>>;
+  beginTurn?(sessionId: string, turnId: string, messages: import("../../model/index.js").CanonicalMessage[], signal?: AbortSignal): Promise<void>;
+  finishTurn?(status: "complete" | "incomplete"): Promise<import("../../session/checkpoints/WorkspaceCheckpoints.js").CheckpointSummary | undefined>;
 };
 
 /**

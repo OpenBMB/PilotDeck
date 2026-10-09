@@ -5,6 +5,7 @@ on:
     paths:
       - apps/desktop/**
       - src/**
+      - tests/**
       - ui/**
       - skills/**
       - package.json
@@ -22,6 +23,44 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  checkpoint-regression:
+    name: Checkpoints (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install Web and Gateway dependencies
+        run: pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
+      - name: Build Gateway and regression tests
+        run: pnpm run build
+      - name: Test checkpoints, restore, Git operations and internal ignore rules
+        run: pnpm run test:checkpoints
+      - name: Test review UI and Windows path matching
+        run: >-
+          pnpm --dir ui exec vitest run
+          src/components/chat-review/ChatReview.spec.tsx
+          src/components/chat-review/ChangesReviewTab.spec.tsx
+          src/components/chat-review/GitReviewTab.spec.tsx
+          src/components/chat-review/TurnFileResults.spec.tsx
+          src/utils/workspaceFileMention.spec.ts
+          server/routes/checkpoints.test.js
+          server/utils/pilotPaths.test.js
+          server/utils/pathSafety.test.js
+
   static-checks:
     name: Checks
     runs-on: ubuntu-latest

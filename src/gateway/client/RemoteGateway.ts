@@ -213,6 +213,10 @@ export class RemoteGateway implements Gateway {
     return (await this.client.request("fork_session", input)) as WebForkSessionResult;
   }
 
+  async manageCheckpoints(input: import("../../session/checkpoints/WorkspaceCheckpoints.js").CheckpointRequest): Promise<unknown> {
+    return this.client.request("manage_checkpoints", input);
+  }
+
   async replaceLastTurn(input: WebReplaceLastTurnInput): Promise<WebReplaceLastTurnResult> {
     return (await this.client.request("replace_last_turn", input)) as WebReplaceLastTurnResult;
   }

@@ -2189,6 +2189,7 @@ export function useSessionStore() {
       sessionKind?: string;
       parentSessionId?: string;
       relativeTranscriptPath?: string;
+      afterRestore?: boolean;
     } = {},
   ) => {
     const slot = getSlot(sessionId);
@@ -2236,7 +2237,12 @@ export function useSessionStore() {
       if (Array.isArray(data.stream?.messages)) applyTimelineFrames(slot, data.stream.messages);
       // Don't overwrite existing server messages with empty response
       // (race condition: server hasn't committed yet after stop/complete).
-      if (incomingMessages.length > 0 || slot.serverMessages.length === 0) {
+      if (opts.afterRestore) {
+        slot.realtimeMessages = [];
+        slot.activityMessages = [];
+        slot.timeline = undefined;
+      }
+      if (opts.afterRestore || incomingMessages.length > 0 || slot.serverMessages.length === 0) {
         reconcileTimelineHistory(slot, incomingMessages, !data.hasMore);
         const previousById = new Map(slot.serverMessages.map(message => [message.id, message]));
         slot.serverMessages = enrichConfirmedUsers(incomingMessages, slot.realtimeMessages)

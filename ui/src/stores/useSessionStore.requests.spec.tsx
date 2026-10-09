@@ -65,6 +65,18 @@ function userMessage(
 describe('useSessionStore last-turn replacement', () => {
   afterEach(cleanup);
 
+  it('accepts an authoritative empty restore history and clears stale realtime/activity rows', async () => {
+    mocks.authenticatedFetch.mockResolvedValue(response({ messages: [], total: 0, hasMore: false }));
+    const { result } = renderHook(() => useSessionStore());
+    const slot = result.current.getSlot('session-1');
+    slot.serverMessages = [serverMessage('abandoned-answer', 'old answer')];
+    slot.realtimeMessages = [serverMessage('live-answer', 'old live answer')];
+    slot.activityMessages = [serverMessage('activity', 'old activity')];
+    await act(async () => { await result.current.refreshFromServer('session-1', { afterRestore: true }); });
+    expect(result.current.getMessages('session-1')).toEqual([]);
+    expect(result.current.getSessionSlot('session-1')?.activityMessages).toEqual([]);
+  });
+
   it('drops the discarded tail and inserts the edited user message', () => {
     const { result } = renderHook(() => useSessionStore());
     const slot = result.current.getSlot('session-1');

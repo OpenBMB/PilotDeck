@@ -1,5 +1,3 @@
-import { useConfirm } from '../ui/ConfirmDialog';
-import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Download,
@@ -7,12 +5,8 @@ import {
   MessageSquarePlus,
 } from 'lucide-react';
 import type { Project } from '../../types/app';
-import { api } from '../../utils/api';
-import {
-  ADD_WORKSPACE_FILE_MENTION_EVENT,
-  getWorkspaceRelativePath,
-} from '../../utils/workspaceFileMention';
-import type { ChatAttachment, ChatFileArtifact } from '../chat/types/types';
+import { useWorkspaceFileActions } from './useWorkspaceFileActions';
+import type { ChatAttachment } from '../chat/types/types';
 import { cn } from '../../lib/utils.js';
 import { FileTypeIcon } from '../file-tree/components/FileTypeIcon';
 import { getFileIconData } from '../file-tree/constants/fileIcons';
@@ -51,12 +45,6 @@ function formatBytes(bytes: number | undefined): string | null {
   return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
-function resolveRelativePath(filePath: string, project: Project | null): string | null {
-  const root = project?.fullPath || project?.path || '';
-  if (!root) return filePath.replace(/^\.\//, '') || null;
-  return getWorkspaceRelativePath(filePath, root);
-}
-
 function fullDisplayPath(filePath: string, project: Project | null): string {
   if (filePath.startsWith('/') || /^[A-Za-z]:[\\/]/.test(filePath)) return filePath;
   const root = project?.fullPath || project?.path || '';
@@ -71,51 +59,11 @@ export function MessageFileCard({
   compact = false,
 }: MessageFileCardProps) {
   const { t } = useTranslation('chat');
-  const confirm = useConfirm();
   const workspaceBacked = file.workspaceBacked !== false;
-  const relativePath = workspaceBacked ? resolveRelativePath(file.path, project) : null;
-  const canBrowse = Boolean(onBrowse && workspaceBacked);
-  const canUseWorkspaceActions = Boolean(workspaceBacked && project?.name && relativePath);
+  const { canBrowse, canUseWorkspaceActions, browse: handleBrowse, download: handleDownload, reference: handleReference } = useWorkspaceFileActions(file, project, onBrowse, source === 'agent');
   const { containerClass: visualClassName } = fileVisual(file);
   const sizeLabel = formatBytes(file.size);
   const typeLabel = extensionOf(file.name).toUpperCase() || 'FILE';
-  const handleReference = () => {
-    if (!project?.name || !relativePath) return;
-    window.dispatchEvent(new CustomEvent(ADD_WORKSPACE_FILE_MENTION_EVENT, {
-      detail: { projectName: project.name, relativePath },
-    }));
-  };
-  const handleBrowse = async () => {
-    if (!onBrowse || !workspaceBacked) return;
-    if (source === 'agent' && project?.name && relativePath && file.sha256) {
-      try {
-        const response = await api.fileContentSha256(project.name, relativePath);
-        const currentSha256 = response.headers.get('X-PilotDeck-Content-SHA256');
-        if (
-          response.ok
-          && currentSha256
-          && currentSha256 !== file.sha256
-          && !await confirm({ message: t('fileArtifacts.updatedSinceMessage', {
-            defaultValue: 'This file has changed since this message. Open the current version?',
-          }) as string, confirmLabel: t('common:confirmDialog.open') })
-        ) {
-          return;
-        }
-      } catch {
-        // The preview itself provides the actionable error if the file is no longer available.
-      }
-    }
-    onBrowse(relativePath || file.path);
-  };
-  const handleDownload = () => {
-    if (!project?.name || !relativePath) return;
-    const anchor = document.createElement('a');
-    anchor.href = api.fileDownloadUrl(project.name, relativePath);
-    anchor.download = file.name;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-  };
 
   const metaLabel = [typeLabel, sizeLabel].filter(Boolean).join(' · ');
 
@@ -210,66 +158,6 @@ export function MessageFileCard({
         </div>
       </div>
       {actionButtons}
-    </div>
-  );
-}
-
-export function AgentFileArtifactGroup({
-  artifacts,
-  project,
-  onBrowse,
-}: {
-  artifacts: ChatFileArtifact[];
-  project: Project | null;
-  onBrowse?: (filePath: string) => void;
-}) {
-  const { t } = useTranslation('chat');
-  const [expanded, setExpanded] = useState(false);
-  const groups = useMemo(() => {
-    const unique = new Map<string, ChatFileArtifact>();
-    for (const artifact of artifacts) unique.set(artifact.path, artifact);
-    const values = [...unique.values()];
-    return {
-      values,
-      visible: expanded ? values : values.slice(0, 3),
-    };
-  }, [artifacts, expanded]);
-
-  if (groups.values.length === 0) return null;
-  const created = groups.visible.filter((artifact) => artifact.operation === 'created');
-  const updated = groups.visible.filter((artifact) => artifact.operation === 'updated');
-  const renderSection = (label: string, values: ChatFileArtifact[]) => values.length > 0 ? (
-    <section className="space-y-2">
-      <div className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400">{label}</div>
-      <div className="grid grid-cols-1 gap-2">
-        {values.map((artifact) => (
-          <MessageFileCard
-            key={artifact.path}
-            file={artifact}
-            project={project}
-            source="agent"
-            onBrowse={onBrowse}
-          />
-        ))}
-      </div>
-    </section>
-  ) : null;
-
-  return (
-    <div className="mt-3 max-w-xl space-y-3">
-      {renderSection(t('fileArtifacts.generated', { defaultValue: 'Generated this turn' }) as string, created)}
-      {renderSection(t('fileArtifacts.updated', { defaultValue: 'Updated this turn' }) as string, updated)}
-      {groups.values.length > 3 ? (
-        <button
-          type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="text-[12px] font-medium text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
-        >
-          {expanded
-            ? t('fileArtifacts.collapse', { defaultValue: 'Collapse' })
-            : t('fileArtifacts.showAll', { defaultValue: 'View all {{count}} files', count: groups.values.length })}
-        </button>
-      ) : null}
     </div>
   );
 }

@@ -87,6 +87,7 @@ export class SessionMetadataStore {
 }
 
 export function mergeMetadata(first: SessionMetadataValue, second: SessionMetadataValue): SessionMetadataValue {
+  if (second.isSnapshot) return { ...second };
   return {
     ...first,
     ...second,

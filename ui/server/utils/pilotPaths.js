@@ -15,9 +15,27 @@
 import { homedir } from 'node:os';
 import { normalize, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 
 export const DEFAULT_PILOT_HOME = '~/.pilotdeck';
+
+/** Keep in sync with src/pilot/paths.ts; repair existing project metadata on browse. */
+export function ensurePilotProjectGitIgnore(projectRoot, createDirectory = true) {
+    const directory = resolve(projectRoot, '.pilotdeck');
+    if (!createDirectory && !existsSync(directory)) return;
+    try {
+        mkdirSync(directory, { recursive: true });
+        const ignorePath = resolve(directory, '.gitignore');
+        let content = '';
+        try { content = readFileSync(ignorePath, 'utf8'); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        const lastRule = content.split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('#')).at(-1);
+        if (lastRule === '*') return;
+        appendFileSync(ignorePath, `${content && !content.endsWith('\n') ? '\n' : ''}# PilotDeck internal files\n*\n`, 'utf8');
+    } catch (error) {
+        if (!['EACCES', 'EPERM', 'EROFS'].includes(error.code)) throw error;
+    }
+}
 
 function normalizeHomePath(p) {
     if (p === '~') return homedir();

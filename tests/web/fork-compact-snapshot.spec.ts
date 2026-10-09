@@ -10,8 +10,9 @@ import { JsonlTranscriptWriter } from "../../src/session/transcript/JsonlTranscr
 import { readTranscript } from "../../src/session/transcript/TranscriptReader.js";
 import { replayTranscriptEntries } from "../../src/session/transcript/TranscriptReplay.js";
 import { forkWebSession } from "../../src/web/server/forkSession.js";
+import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
 
-for (const storage of ["snapshot", "ordinary"] as const) {
+for (const storage of ["snapshot", "ordinary", "restore"] as const) {
   test(`fork retargets ${storage} references and marks inherited messages as fork carryover`, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "fork-compact-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -40,6 +41,10 @@ for (const storage of ["snapshot", "ordinary"] as const) {
         kind: "compact", subtype: "compact_boundary", compactMetadata: { trigger: "auto", preTokens: 100 },
         snapshot: { version: 1, messages },
       });
+    } else if (storage === "restore") {
+      await writer.recordControlBoundary(sourceId, "restoration", {
+        kind: "restore", operationId: "restoration", visibleSequences: [1], snapshot: { version: 1, messages },
+      });
     } else {
       for (const message of messages) await writer.recordDurableMessage(sourceId, "turn", message);
     }
@@ -55,7 +60,7 @@ for (const storage of ["snapshot", "ordinary"] as const) {
     const forkDir = join(chatDir, sanitizeSessionIdForPath(fork.newSessionKey));
     const replay = replayTranscriptEntries((await readTranscript(`${forkDir}.jsonl`)).entries);
     for (const message of replay.messages) {
-      assert.deepEqual(message.metadata?.forkCarryover, { sourceSessionId: sourceId, sourceTurnId: "turn" });
+      assert.deepEqual(message.metadata?.forkCarryover, { sourceSessionId: sourceId, sourceTurnId: storage === "restore" ? "restoration" : "turn" });
     }
     assert.equal(await readFile(sourcePath, "utf8"), sourceBefore);
     const references = replay.messages.flatMap((message) => message.content).filter(
@@ -67,5 +72,13 @@ for (const storage of ["snapshot", "ordinary"] as const) {
     // The fork must stay self-contained even after the source's auxiliary files are removed.
     await rm(sourceDir, { recursive: true });
     assert.deepEqual(await Promise.all(references.map((block) => readFile(block.path, "utf8"))), ["tool output", "image payload"]);
+    let captured: CanonicalMessage[] = [];
+    const runtime = new DefaultContextRuntime({ memoryResolver: {
+      async retrieve() { return { diagnostics: [] }; },
+      async captureTurn(input) { captured = input.messages; },
+    } });
+    const current: CanonicalMessage = { role: "user", content: [{ type: "text", text: "fork's own request" }] };
+    await runtime.captureTurn({ sessionId: fork.newSessionKey, turnId: "fork-turn", messages: [...replay.messages, current], errored: false });
+    assert.deepEqual(captured, [current]);
   });
 }

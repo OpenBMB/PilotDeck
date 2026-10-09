@@ -184,10 +184,14 @@ export function createExecuteCodeTool(
     validateInput: async (input) => validateExecuteCodeInput(input as ExecuteCodeInput),
     execute: async (input, context) => {
       const startedAt = Date.now();
-      const result = await runExecuteCode(input, context, startedAt, {
-        allowedTools,
-        webSearchEnabled,
-      });
+      // Python may write directly without calling any write-capable helper.
+      const finishCommand = await context.fileHistory?.trackCommand?.();
+      let result: ExecuteCodeOutput;
+      try {
+        result = await runExecuteCode(input, context, startedAt, { allowedTools, webSearchEnabled });
+      } finally {
+        await finishCommand?.();
+      }
       return {
         content: [{ type: "text", text: formatExecuteCodeResult(result) }],
         data: result,

@@ -174,6 +174,8 @@ for (const exitCode of [0, 1]) {
 }
 
 test("BackgroundTaskRuntime runs more than 32 real tasks sequentially", { timeout: 30_000 }, async (t) => {
+  const alive = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(alive));
   const runtime = new BackgroundTaskRuntime();
   t.after(() => runtime.killAll());
   for (let index = 0; index < 33; index++) {
@@ -217,4 +219,33 @@ test("BackgroundTaskRuntime covers timeout, abort, unknown task and kill-all cle
   await runtime.killAll();
   assert.equal(runtime.get(next.taskId)?.status, "cancelled");
   await assert.rejects(() => runtime.stop("missing"), /Unknown taskId/);
+});
+
+test("background waits, stop and notifications wait for asynchronous execution bookkeeping", async () => {
+  const child = new FakeChild();
+  let release!: () => void;
+  const bookkeeping = new Promise<void>(resolve => { release = resolve; });
+  let captured = false, notifications = 0, waited = false, stopped = false;
+  const runtime = new BackgroundTaskRuntime({ spawn: (() => child) as never, onCompletion: () => { notifications++; } });
+  const task = await runtime.start({ command: "write", cwd: "/tmp", onSettled: async () => {
+    await bookkeeping; captured = true;
+  } });
+  child.finish();
+  const waiting = runtime.waitFor(task.taskId).then(() => { assert.equal(captured, true); waited = true; });
+  const stopping = runtime.stop(task.taskId).then(() => { assert.equal(captured, true); stopped = true; });
+  await Promise.resolve();
+  assert.equal(waited, false); assert.equal(stopped, false); assert.equal(notifications, 0);
+  release(); await Promise.all([waiting, stopping]);
+  assert.equal(notifications, 1);
+});
+
+test("background bookkeeping runs once after spawn failure and propagates errors to waiters", async () => {
+  let captured = 0;
+  const failed = new BackgroundTaskRuntime({ spawn: (() => { throw new Error("spawn failed"); }) as never });
+  const task = await failed.start({ command: "write", cwd: "/tmp", onSettled: async () => { captured++; } });
+  await failed.waitFor(task.taskId); assert.equal(captured, 1); assert.equal(task.status, "failed");
+  const child = new FakeChild(), runtime = new BackgroundTaskRuntime({ spawn: (() => child) as never });
+  const writer = await runtime.start({ command: "write", cwd: "/tmp", onSettled: async () => { throw new Error("backup failed"); } });
+  child.finish();
+  await assert.rejects(runtime.waitFor(writer.taskId), /backup failed/);
 });

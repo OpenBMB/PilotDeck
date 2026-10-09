@@ -25,6 +25,7 @@ import {
 } from "../../model/index.js";
 import { listProjectSessions, readTranscript, type SessionInfo } from "../../session/index.js";
 import type { AgentTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
+import { activeTranscriptEntries } from "../../session/transcript/CompactSnapshot.js";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
 import { sanitizeSessionIdForPath } from "../../session/storage/ProjectSessionStorage.js";
@@ -57,7 +58,8 @@ export async function readWebSessionMessages(
     ...options,
     projectRoot: effectiveProjectRoot,
   });
-  const { entries } = await readTranscript(transcriptPath);
+  const { entries: allEntries } = await readTranscript(transcriptPath);
+  const entries = activeTranscriptEntries(allEntries);
   const webReplay = extractWebVisibleMessages(entries);
   const entryTimestamps = webReplay.timestamps;
   const entryIds = webReplay.entryIds;

@@ -336,6 +336,9 @@ export class SubAgentSession {
       getSubagentModels: this.options.parentDependencies.getSubagentModels,
       subagentTranscript: this.options.parentDependencies.subagentTranscript,
       eventEmitter: (event) => { this.forwardDescendantActivity(event); },
+      // Child tools contribute to the parent's active checkpoint and lease;
+      // only the parent TurnRunner opens and closes that turn boundary.
+      fileHistory: this.options.parentDependencies.fileHistory,
     };
   }
 

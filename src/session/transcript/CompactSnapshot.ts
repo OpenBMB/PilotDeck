@@ -16,6 +16,27 @@ export function readCompactSnapshot(entry: AgentTranscriptEntry): CanonicalMessa
   return snapshot.messages;
 }
 
+export function readRestoreSnapshot(entry: AgentTranscriptEntry): CanonicalMessage[] | undefined {
+  if (entry.type !== "control_boundary" || entry.boundary?.kind !== "restore") return undefined;
+  const snapshot = entry.boundary.snapshot;
+  if (snapshot?.version !== 1 || !Array.isArray(snapshot.messages) || !snapshot.messages.every(isMessage) ||
+      !Array.isArray(entry.boundary.visibleSequences) || !entry.boundary.visibleSequences.every(value => Number.isSafeInteger(value) && value >= 0)) return undefined;
+  return snapshot.messages;
+}
+
+/** Project the active history branch; old entries stay in the append-only transcript. */
+export function activeTranscriptEntries(entries: AgentTranscriptEntry[]): AgentTranscriptEntry[] {
+  let visible: AgentTranscriptEntry[] = [];
+  for (const entry of entries) {
+    if (readRestoreSnapshot(entry) !== undefined && entry.type === "control_boundary" && entry.boundary.kind === "restore") {
+      const sequences = new Set(entry.boundary.visibleSequences);
+      visible = entries.filter(candidate => candidate.sequence < entry.sequence && sequences.has(candidate.sequence));
+    }
+    visible.push(entry);
+  }
+  return visible;
+}
+
 function isMessage(value: unknown): value is CanonicalMessage {
   return isRecord(value) && (value.role === "user" || value.role === "assistant") &&
     (value.metadata === undefined || isRecord(value.metadata)) &&

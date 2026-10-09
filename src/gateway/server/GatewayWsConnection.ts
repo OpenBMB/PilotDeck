@@ -254,6 +254,9 @@ export class GatewayWsConnection {
         return this.options.gateway.readSubagentMessages(frame.params as never);
       case "fork_session":
         return this.options.gateway.forkSession(frame.params as never);
+      case "manage_checkpoints":
+        if (!this.options.gateway.manageCheckpoints) throw new Error("File checkpoints are unavailable on this Gateway.");
+        return this.options.gateway.manageCheckpoints(frame.params as never);
       case "replace_last_turn":
         return this.options.gateway.replaceLastTurn(frame.params as never);
       case "finalize_last_turn_replacement":

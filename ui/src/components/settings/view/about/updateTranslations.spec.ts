@@ -4,7 +4,7 @@ import { languages } from '../../../../i18n/languages';
 import en from '../../../../i18n/locales/en/settings.json';
 import zh from '../../../../i18n/locales/zh-CN/settings.json';
 
-const resources: Record<string, typeof en> = { en, 'zh-CN': zh };
+const resources: Record<string, { settingsPage: { about: { desktopUpdate: typeof en.settingsPage.about.desktopUpdate } } }> = { en, 'zh-CN': zh };
 function leaves(value: object, prefix = ''): string[] {
   return Object.entries(value).flatMap(([key, child]) => {
     const path = prefix ? `${prefix}.${key}` : key;

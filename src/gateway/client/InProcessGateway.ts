@@ -118,6 +118,7 @@ const DEFAULT_REPLACEMENT_TRANSACTION_TIMEOUT_MS = 60_000;
 const DEFAULT_ABORT_TURN_TIMEOUT_MS = 30_000;
 
 export type InProcessGatewayOptions = {
+  manageCheckpoints?: (input: import("../../session/checkpoints/WorkspaceCheckpoints.js").CheckpointRequest) => Promise<unknown>;
   /** Absolute command used by the model to install bundled FunASR assets. */
   funasrInstallCommand?: string;
   /** Maximum time to wait for an aborted turn to finish unwinding. */
@@ -235,6 +236,10 @@ type PendingTurnReplacement = {
 };
 
 export class InProcessGateway implements Gateway {
+  async manageCheckpoints(input: import("../../session/checkpoints/WorkspaceCheckpoints.js").CheckpointRequest): Promise<unknown> {
+    if (!this.options.manageCheckpoints) throw new Error("File checkpoints are unavailable on this Gateway.");
+    return this.options.manageCheckpoints(input);
+  }
   private readonly now: () => Date;
   private readonly uuid: () => string;
   private readonly replacementTransactionTimeoutMs: number;

@@ -138,14 +138,16 @@ export function createBashTool(options?: CreateBashToolOptions): PilotDeckToolDe
             }
           }
         : undefined;
-      const result = await runner.run(command, {
+      const finishCommand = !isReadOnlyShellCommand(command) ? await context.fileHistory?.trackCommand?.() : undefined;
+      let result: Awaited<ReturnType<PilotDeckCommandRunner["run"]>>;
+      try { result = await runner.run(command, {
         cwd: context.cwd,
         env: context.env,
         timeoutMs,
         signal: context.abortSignal,
         onStdout: emitProgress?.("stdout"),
         onStderr: emitProgress?.("stderr"),
-      });
+      }); } finally { await finishCommand?.(); }
 
       if (result.timedOut) {
         throw new PilotDeckToolRuntimeError("tool_timeout", `Command timed out after ${timeoutMs}ms.`);

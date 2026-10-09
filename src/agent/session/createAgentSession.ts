@@ -90,6 +90,7 @@ export function createAgentSessionWithStorage(options: CreateAgentSessionOptions
     dependencies.lifecycle,
     runtimeContext,
     {
+      fileHistory: dependencies.fileHistory,
       metadataStore,
       sessionTitleGenerator: options.sessionTitleGenerator,
       autoGenerateSessionTitle: options.config.isSubagent !== true,
