@@ -27,6 +27,22 @@ export class ChannelStatePersistence {
   }
 
   async load<T>(channelKey: string): Promise<T | undefined> {
+    // A freshly saved state sits in `dirty` until the debounce timer fires.
+    // Reading the disk snapshot here would return stale state right after
+    // save(new) + immediate load/replace, routing the next message to the
+    // previous session/project. Prefer the in-memory dirty value; if a write
+    // is already in flight (dirty drained, rename not finished yet), wait for
+    // it, then re-check dirty in case a newer save landed while we waited.
+    for (;;) {
+      if (this.dirty.has(channelKey)) {
+        return this.dirty.get(channelKey) as T;
+      }
+      const inFlight = this.inFlight.get(channelKey);
+      if (!inFlight) {
+        break;
+      }
+      await inFlight;
+    }
     const filePath = this.filePath(channelKey);
     try {
       const raw = await readFile(filePath, "utf8");
