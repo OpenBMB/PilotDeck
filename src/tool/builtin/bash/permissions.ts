@@ -1,4 +1,6 @@
+import type { Node } from "web-tree-sitter";
 import type { PermissionResult } from "../../../permission/index.js";
+import { bashCommandSource, parseBash } from "./parser.js";
 
 const COMMAND_POSITION = String.raw`(?:^|[;&|]\s*)`;
 const SHELL_SEGMENT = String.raw`[^;&|\n]*`;
@@ -98,7 +100,14 @@ const WINDOWS_READ_COMMANDS = new Set([
 const READ_ONLY_GIT_SUBCOMMANDS = new Set(["diff", "log", "show", "status"]);
 
 export function classifyBashPermission(command: string): PermissionResult {
-  if (HARD_DENY_PATTERNS.some((pattern) => pattern.test(command))) {
+  const analysis = analyzeShellCommand(command);
+  // Match the dangerous patterns against the whole string and against every
+  // simple command the parser found, so a newline, subshell, or command
+  // substitution cannot move a command out of a pattern's anchor position.
+  const candidates = [command, ...(analysis?.commandTexts ?? [])];
+  const matchesAny = (pattern: RegExp) => candidates.some((candidate) => pattern.test(candidate));
+
+  if (HARD_DENY_PATTERNS.some(matchesAny)) {
     return {
       type: "deny",
       reason: { type: "safety", message: "Dangerous shell command denied." },
@@ -106,11 +115,11 @@ export function classifyBashPermission(command: string): PermissionResult {
     };
   }
 
-  if (DANGEROUS_ASK_PATTERNS.some((pattern) => pattern.test(command))) {
+  if (DANGEROUS_ASK_PATTERNS.some(matchesAny)) {
     return askForShellPermission(command);
   }
 
-  if (isReadOnlyShellCommand(command)) {
+  if (analysis && isReadOnlyAnalysis(analysis)) {
     return { type: "passthrough" };
   }
 
@@ -140,35 +149,196 @@ function commandPattern(pattern: string, flags = "i"): RegExp {
 }
 
 export function isReadOnlyShellCommand(command: string): boolean {
-  const tokens = tokenizeSimpleShell(command);
-  if (!tokens || tokens.length === 0) {
+  const analysis = analyzeShellCommand(command);
+  return analysis !== undefined && isReadOnlyAnalysis(analysis);
+}
+
+/** A word's literal value, or undefined when it depends on an expansion. */
+type ShellWord = string | undefined;
+
+interface ShellAnalysis {
+  /** Source text of every simple command in the script, including nested ones. */
+  commandTexts: string[];
+  /** argv of every simple command, or undefined when the script uses syntax outside the read-only subset. */
+  readOnlyCandidates: ShellWord[][] | undefined;
+}
+
+// Syntax a read-only script may use. Anything else (assignments, control flow,
+// functions, command/process substitution, arithmetic, parse errors, ...) is
+// treated as possibly side-effecting.
+const READ_ONLY_SYNTAX_NODES = new Set([
+  "program",
+  "list",
+  "pipeline",
+  "subshell",
+  "compound_statement",
+  "negated_command",
+  "redirected_statement",
+  "comment",
+  "command",
+  "command_name",
+  "word",
+  "number",
+  "raw_string",
+  "string",
+  "string_content",
+  "ansi_c_string",
+  "concatenation",
+  "simple_expansion",
+  "expansion",
+  "variable_name",
+  "special_variable_name",
+  "file_redirect",
+  "file_descriptor",
+  "heredoc_redirect",
+  "heredoc_start",
+  "heredoc_body",
+  "heredoc_content",
+  "heredoc_end",
+  "herestring_redirect",
+]);
+
+const REDIRECT_NODES = new Set(["file_redirect", "heredoc_redirect", "herestring_redirect"]);
+
+function analyzeShellCommand(command: string): ShellAnalysis | undefined {
+  const tree = parseBash(command);
+  if (!tree) {
+    return undefined;
+  }
+  try {
+    const commandTexts: string[] = [];
+    const argvs: ShellWord[][] = [];
+    let readOnlySyntax = !tree.rootNode.hasError;
+    const stack: Node[] = [tree.rootNode];
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      if (node.type === "command") {
+        commandTexts.push(bashCommandSource(node));
+        argvs.push(readCommandArgv(node));
+      }
+      // Named nodes must be in the subset; the only rejected anonymous token is a
+      // background `&`, which detaches a process the tool cannot track.
+      if (node.isNamed ? !READ_ONLY_SYNTAX_NODES.has(node.type) : node.type === "&") {
+        readOnlySyntax = false;
+      }
+      if (node.type === "file_redirect" && !isReadOnlyFileRedirect(node)) {
+        readOnlySyntax = false;
+      }
+      for (const child of node.children) {
+        if (child) {
+          stack.push(child);
+        }
+      }
+    }
+    return { commandTexts, readOnlyCandidates: readOnlySyntax ? argvs : undefined };
+  } finally {
+    tree.delete();
+  }
+}
+
+function readCommandArgv(command: Node): ShellWord[] {
+  const argv: ShellWord[] = [];
+  for (const child of command.namedChildren) {
+    if (!child || child.type === "variable_assignment" || REDIRECT_NODES.has(child.type)) {
+      continue;
+    }
+    argv.push(child.type === "command_name" ? readLiteralWord(child.namedChild(0)) : readLiteralWord(child));
+  }
+  return argv;
+}
+
+function readLiteralWord(node: Node | null): ShellWord {
+  if (!node) {
+    return undefined;
+  }
+  switch (node.type) {
+    case "word":
+      return node.text.replace(/\\(.)/gsu, "$1");
+    case "number":
+      return node.text;
+    case "raw_string":
+      return node.text.slice(1, -1);
+    case "string": {
+      let value = "";
+      for (const child of node.namedChildren) {
+        if (child?.type !== "string_content") {
+          return undefined;
+        }
+        value += child.text.replace(/\\([\\"$`])/gu, "$1");
+      }
+      return value;
+    }
+    case "concatenation": {
+      let value = "";
+      for (const child of node.namedChildren) {
+        const part = readLiteralWord(child);
+        if (part === undefined) {
+          return undefined;
+        }
+        value += part;
+      }
+      return value;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** Reading files and discarding or duplicating output are fine; writing to a file is not. */
+function isReadOnlyFileRedirect(redirect: Node): boolean {
+  const operator = redirect.children.find((child) => child && !child.isNamed)?.type;
+  const destination = redirect.namedChildren.filter((child) => child?.type !== "file_descriptor").at(-1);
+  const target = destination ? readLiteralWord(destination) : undefined;
+  if (operator === "<" || target === "/dev/null") {
+    return true;
+  }
+  return (operator === ">&" || operator === "<&") && target !== undefined && /^(?:\d+|-)$/u.test(target);
+}
+
+function isReadOnlyAnalysis(analysis: ShellAnalysis): boolean {
+  const candidates = analysis.readOnlyCandidates;
+  return candidates !== undefined && candidates.length > 0 && candidates.every(isReadOnlyArgv);
+}
+
+function isReadOnlyArgv(argv: ShellWord[]): boolean {
+  const [commandName, ...args] = argv;
+  if (commandName === undefined) {
     return false;
   }
-
-  const [commandName, ...args] = tokens;
   const normalizedCommandName = normalizeExecutableName(commandName);
+  // These commands cannot write regardless of their arguments, so expanded
+  // arguments are fine; every other command needs literal arguments to inspect.
   if (SIMPLE_READ_COMMANDS.has(normalizedCommandName) || WINDOWS_READ_COMMANDS.has(normalizedCommandName)) {
     return true;
   }
+  if (args.some((arg) => arg === undefined)) {
+    return false;
+  }
+  const literalArgs = args as string[];
 
   if (normalizedCommandName === "git") {
-    const subcommand = getGitSubcommand(args);
+    const subcommand = getGitSubcommand(literalArgs);
     return (
       subcommand !== undefined
       && READ_ONLY_GIT_SUBCOMMANDS.has(subcommand)
-      && !args.some((arg) => arg === "--output" || arg.startsWith("--output="))
+      && !literalArgs.some((arg) => arg === "--output" || arg.startsWith("--output="))
     );
   }
 
   if (isPowerShellCommand(normalizedCommandName)) {
-    return isReadOnlyPowerShellInvocation(args);
+    return isReadOnlyPowerShellInvocation(literalArgs);
   }
 
   if (normalizedCommandName === "find") {
-    return isReadOnlyFindTokens(args);
+    return isReadOnlyFindTokens(literalArgs);
   }
 
-  return normalizedCommandName === "sh" && args.length === 2 && args[0] === "-c" && /^exit\s+\d+$/.test(args[1]);
+  return (
+    normalizedCommandName === "sh"
+    && literalArgs.length === 2
+    && literalArgs[0] === "-c"
+    && /^exit\s+\d+$/.test(literalArgs[1]!)
+  );
 }
 
 const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set([
@@ -252,7 +422,9 @@ function isReadOnlyPowerShellCommand(commandTokens: string[]): boolean {
     return false;
   }
   const commandText = commandTokens.join(" ");
-  if (/[{}|;&<>`]/.test(commandText) || /\$\s*\(/.test(commandText)) {
+  // PowerShell, not bash, parses this text: reject statement separators,
+  // including newlines, rather than tokenizing it as one command.
+  if (/[{}|;&<>`\r\n]/.test(commandText) || /\$\s*\(/.test(commandText)) {
     return false;
   }
   const tokens = tokenizeSimpleShell(commandText);
