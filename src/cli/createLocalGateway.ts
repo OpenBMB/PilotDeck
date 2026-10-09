@@ -1,6 +1,6 @@
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
 import { isOptionalFeatureEnabled } from "../pilot/config/optionalFeature.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync as mkdirSyncFs, renameSync } from "node:fs";
 import { dirname, resolve, join as joinPath } from "node:path";
 import { tmpdir } from "node:os";
@@ -31,7 +31,9 @@ import {
   ToolResultBudget,
   createEdgeClawMemoryProviderFromConfig,
 } from "../context/index.js";
-import { FileHistoryStore } from "../session/filesystem/FileHistoryStore.js";
+import { WorkspaceCheckpoints, getCheckpointStore, CheckpointError } from "../session/checkpoints/WorkspaceCheckpoints.js";
+import { activeTranscriptEntries } from "../session/transcript/CompactSnapshot.js";
+import { runRepositoryOperation, repositoryRoot } from "../session/checkpoints/repositoryOperation.js";
 import type { AgentSubagentTranscriptHooks } from "../agent/runtime/AgentRuntimeDependencies.js";
 import { createPlanTodoStateManager } from "../agent/runtime/PlanTodoState.js";
 import { HookRuntime, PluginRuntime } from "../extension/index.js";
@@ -379,6 +381,84 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     toolResultsDir: resolve(tmpdir(), "pilotdeck-tool-output", process.pid.toString()),
     cron: options.cron,
     skillManager,
+    async manageCheckpoints(input) {
+      if (!input.sessionKey?.trim() || !["list", "diff", "preview", "restore", "undo", "git"].includes(input.action)) throw new CheckpointError("INVALID_ACTION", "A conversation and valid checkpoint action are required.");
+      const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
+      const store = await getCheckpointStore(projectKey, pilotHome);
+      if (input.action === "list" || input.action === "diff") {
+        if (!store.busy && !router.hasActiveTurn(input.sessionKey)) {
+          const release = await store.acquire();
+          try { await store.recoverInterrupted(input.sessionKey); } finally { release(); }
+        }
+        const storage = createAgentProjectSessionStorage({ projectRoot: projectKey, pilotHome, sessionId: input.sessionKey, now });
+        const { entries } = await readTranscript(storage.transcriptPath);
+        const activeTurns = new Set(activeTranscriptEntries(entries).filter(entry => entry.type === "accepted_input").map(entry => entry.turnId));
+        if (input.action === "diff") return store.diff(input.sessionKey, input.checkpointId ?? "", input.filePath ?? "", input.scope, activeTurns);
+        const checkpoints = await store.list(input.sessionKey);
+        const latest = checkpoints.filter(item => item.phase === "after").at(-1);
+        const sessionChanges = latest ? await store.selectChanges(latest, "session", activeTurns) : [];
+        return {
+          checkpoints: checkpoints.map(checkpoint => ({ ...store.summary(checkpoint), activeBranch: activeTurns.has(checkpoint.turnId) })),
+          sessionChanges: latest ? store.summary({ ...latest, changes: sessionChanges }).changes : [],
+          sessionRevision: createHash("sha256").update(JSON.stringify(sessionChanges)).digest("hex"),
+          operations: (await store.operations(input.sessionKey)).map(({ id, status, applied, skipped, createdAt, mode, checkpointId, undoOf }) => ({ id, status, applied, skipped, createdAt, mode, checkpointId, undoOf })),
+          busy: store.busy,
+        };
+      }
+      if (store.busy || router.hasActiveTurn(input.sessionKey)) throw new CheckpointError("WORKSPACE_BUSY", "The directory is being modified. Stop active turns and background tasks before restoring files or operating Git.");
+      if (input.action === "git") {
+        const root = input.repositoryOperation?.operation === "init" ? projectKey : await repositoryRoot(projectKey);
+        const repositoryStore = await getCheckpointStore(root, pilotHome);
+        if (repositoryStore.busy) throw new CheckpointError("WORKSPACE_BUSY", "The repository is being modified. Stop active turns and background tasks before operating Git.");
+        const release = await repositoryStore.acquire();
+        try { return await runRepositoryOperation(projectKey, input.repositoryOperation!); }
+        finally { release(); }
+      }
+      const runId = `checkpoint:${randomUUID()}`;
+      if (!router.beginTurn(input.sessionKey, runId)) throw new CheckpointError("WORKSPACE_BUSY", "The conversation is busy.");
+      const release = await store.acquire();
+      try {
+        await router.close(input.sessionKey);
+        const storage = createAgentProjectSessionStorage({ projectRoot: projectKey, pilotHome, sessionId: input.sessionKey, now });
+        const { entries, diagnostics } = await readTranscript(storage.transcriptPath);
+        if (diagnostics.some(item => item.severity === "error")) throw new CheckpointError("TRANSCRIPT_UNAVAILABLE", "Conversation history cannot be read safely.");
+        const activeEntries = activeTranscriptEntries(entries);
+        const activeTurns = new Set(activeEntries.filter(entry => entry.type === "accepted_input").map(entry => entry.turnId));
+        const messages = replayTranscriptEntries(entries).messages;
+        if (input.action === "preview") {
+          const checkpoint = await store.readCheckpoint(input.checkpointId ?? "", input.sessionKey);
+          if (input.scope === "since" && !activeTurns.has(checkpoint.turnId)) throw new CheckpointError("CONTEXT_UNAVAILABLE", "This turn is on a previous conversation branch. Review and restore this turn individually.");
+          const first = input.scope === "session" ? (await store.list(input.sessionKey)).find(item => item.phase === "before" && activeTurns.has(item.turnId)) : checkpoint;
+          const cutoff = activeEntries.findIndex(entry => entry.type === "accepted_input" && entry.turnId === first?.turnId);
+          if (input.mode !== "files" && input.mode !== undefined && cutoff < 0) throw new CheckpointError("CONTEXT_UNAVAILABLE", "This turn is not on the active conversation branch.");
+          return store.preview(input.sessionKey, checkpoint.id, input.scope, input.mode, {
+            contextBeforeHash: await store.putObject(Buffer.from(JSON.stringify(messages))),
+            visibleBeforeSequences: activeEntries.map(entry => entry.sequence),
+            visibleSequences: (cutoff < 0 ? activeEntries : activeEntries.slice(0, cutoff)).map(entry => entry.sequence),
+          }, activeTurns);
+        }
+        if (input.action === "undo") {
+          const boundaryIndex = activeEntries.findIndex(entry => entry.type === "control_boundary" && entry.boundary.kind === "restore" && entry.boundary.operationId === input.operationId);
+          const laterTurn = boundaryIndex < 0 || activeEntries.slice(boundaryIndex + 1).some(entry => entry.type === "accepted_input");
+          return store.undoPreview(input.sessionKey, input.operationId ?? "", {
+            contextBeforeHash: await store.putObject(Buffer.from(JSON.stringify(messages))), visibleBeforeSequences: activeEntries.map(entry => entry.sequence),
+            ...(laterTurn ? { mode: "files" } : {}),
+          });
+        }
+        const plan = await store.readPlan(input.sessionKey, input.planId ?? "");
+        if (plan.mode !== "files" && plan.contextBeforeHash !== await store.putObject(Buffer.from(JSON.stringify(messages)))) throw new CheckpointError("STALE_PLAN", "The conversation changed after the preview. Review the restore again.");
+        const operation = await store.restore(input.sessionKey, input.planId ?? "", input.paths);
+        if (!entries.some(entry => entry.type === "control_boundary" && entry.boundary.kind === "restore" && entry.boundary.operationId === operation.id)) {
+          const last = entries.at(-1);
+          storage.transcript.restoreState(last?.sequence ?? 0, last?.entryId ?? null);
+          const restored = operation.mode === "files" ? messages : JSON.parse((await store.readObject(operation.contextHash!)).toString("utf8")) as import("../model/index.js").CanonicalMessage[];
+          restored.push({ role: "user", content: [{ type: "text", text: `The user restored local files. Restored paths: ${operation.applied.join(", ") || "none"}. Preserved or conflicting paths: ${operation.skipped.join(", ") || "none"}. Re-read affected files before continuing; the current filesystem is authoritative.` }], metadata: { synthetic: true, purpose: "file-restoration" } });
+          await storage.transcript.recordControlBoundary(input.sessionKey, runId, { kind: "restore", operationId: operation.id, snapshot: { version: 1, messages: restored }, visibleSequences: operation.mode === "files" ? activeEntries.map(entry => entry.sequence) : operation.visibleSequences ?? [] });
+          await storage.transcript.recordAgentStatusMessage(input.sessionKey, runId, { event: "files_restored", kind: "status", text: operation.mode === "conversation" ? "对话已回退，文件保持不变" : `已恢复 ${operation.applied.length} 个文件，保留 ${operation.skipped.length} 个文件`, detail: { operationId: operation.id, files: operation.applied, skipped: operation.skipped } });
+        }
+        return operation;
+      } finally { release(); router.endTurn(input.sessionKey, runId); }
+    },
     async commandsList(input) {
       const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
       return listCommands({ ...input, projectKey }, pilotHome);
@@ -1367,10 +1447,9 @@ class ProjectRuntimeRegistry {
         maxContextTokens: runtime.snapshot.config.agent.maxContextTokens ?? caps.maxContextTokens,
         now,
       });
-      const fileHistory = new FileHistoryStore({
-        backupDir: storage.fileHistoryDir,
-        now: this.options.now,
-      });
+      const fileHistory = this.shouldCollectFileArtifacts(runtime)
+        ? new WorkspaceCheckpoints(this.createAgentConfig(runtime, context.sessionKey).cwd, this.options.pilotHome)
+        : undefined;
       const gw = this.gateway;
       const elicitation = this.options.autoElicitation
         ? createAutoElicitationChannel()

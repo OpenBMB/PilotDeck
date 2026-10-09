@@ -2,6 +2,7 @@ export {
   DEFAULT_PILOT_HOME,
   PILOT_CONFIG_FILE_NAME,
   PILOT_PROJECT_DIR_NAME,
+  ensurePilotProjectGitIgnore,
   createProjectId,
   createProjectIdAsync,
   createCollisionResistantProjectId,

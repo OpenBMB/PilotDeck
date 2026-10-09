@@ -110,6 +110,12 @@ export type AgentControlBoundaryTranscriptEntry = AgentTranscriptEntryBase & {
         microCompactMetadata: MicroCompactBoundaryMetadata;
       }
     | {
+        kind: "restore";
+        operationId: string;
+        snapshot: { version: 1; messages: CanonicalMessage[] };
+        visibleSequences: number[];
+      }
+    | {
         kind: "resume" | "manual";
         metadata?: Record<string, unknown>;
       };

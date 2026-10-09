@@ -569,6 +569,7 @@ export type AlwaysOnRerunPlanResult = {
 };
 
 export interface Gateway {
+  manageCheckpoints?(input: import("../../session/checkpoints/WorkspaceCheckpoints.js").CheckpointRequest): Promise<unknown>;
   submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent>;
   steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult>;
   cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult>;

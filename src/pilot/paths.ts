@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { findCanonicalProjectRoot } from "../session/worktree/findCanonicalProjectRoot.js";
 
 export type PilotPathEnv = Record<string, string | undefined>;
@@ -9,6 +9,27 @@ export type PilotPathEnv = Record<string, string | undefined>;
 export const DEFAULT_PILOT_HOME = "~/.pilotdeck";
 export const PILOT_CONFIG_FILE_NAME = "pilotdeck.yaml";
 export const PILOT_PROJECT_DIR_NAME = ".pilotdeck";
+
+/** Keep project-local runtime data untracked, including before Git is initialized. */
+export function ensurePilotProjectGitIgnore(projectRoot: string, createDirectory = true): void {
+  const directory = resolve(projectRoot, PILOT_PROJECT_DIR_NAME);
+  if (!createDirectory && !existsSync(directory)) return;
+  try {
+    mkdirSync(directory, { recursive: true });
+    const ignorePath = resolve(directory, ".gitignore");
+    let content = "";
+    try { content = readFileSync(ignorePath, "utf8"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    const lastRule = content.split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith("#")).at(-1);
+    if (lastRule === "*") return;
+    // Append so existing comments and rules remain intact; the final rule ignores
+    // this file too. Later session reads do not change its content or timestamps.
+    appendFileSync(ignorePath, `${content && !content.endsWith("\n") ? "\n" : ""}# PilotDeck internal files\n*\n`, "utf8");
+  } catch (error) {
+    // Session history and Git status remain readable in read-only workspaces.
+    if (!["EACCES", "EPERM", "EROFS"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+  }
+}
 
 export type PilotExtensionPaths = {
   globalPluginsDir: string;

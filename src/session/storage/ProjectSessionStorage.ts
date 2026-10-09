@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { getPilotProjectChatDir } from "../../pilot/index.js";
+import { ensurePilotProjectGitIgnore, getPilotProjectChatDir } from "../../pilot/index.js";
 import { JsonlTranscriptWriter } from "../transcript/JsonlTranscriptWriter.js";
 
 export type AgentProjectSessionStorageOptions = {
@@ -55,6 +55,7 @@ export function sanitizeSessionIdForPath(sessionId: string): string {
 export function createAgentProjectSessionStorage(
   options: AgentProjectSessionStorageOptions,
 ): AgentProjectSessionStorage {
+  ensurePilotProjectGitIgnore(options.projectRoot);
   const chatDir = getPilotProjectChatDir(options.projectRoot, options.pilotHome);
   const safeId = sanitizeSessionIdForPath(options.sessionId);
   const transcriptPath = resolve(chatDir, `${safeId}.jsonl`);

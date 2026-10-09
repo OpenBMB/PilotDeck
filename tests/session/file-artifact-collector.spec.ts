@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -41,6 +41,49 @@ function successfulFileResult(toolCallId: string, paths: string[]): PilotDeckToo
     completedAt: "2026-07-21T10:00:01.000Z",
   };
 }
+
+test("file artifacts use disk casing for tool paths and preserve distinct case-sensitive files", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-artifact-case-"));
+  try {
+    await mkdir(join(projectRoot, "Docs"));
+    await writeFile(join(projectRoot, "Docs", "Report.txt"), "before");
+    const insensitive = await stat(join(projectRoot, "docs", "report.txt")).then(() => true, () => false);
+    if (!insensitive) {
+      await mkdir(join(projectRoot, "docs"));
+      await writeFile(join(projectRoot, "docs", "report.txt"), "separate before");
+    }
+    const collector = await FileArtifactCollector.start({ cwd: projectRoot });
+    await writeFile(join(projectRoot, "docs", "report.txt"), "after");
+    collector.observeToolResult(successfulFileResult("case-call", ["docs/report.txt"]));
+    const artifacts = await collector.finish("complete");
+    assert.equal(artifacts.length, 1, "tool results and workspace scans must describe a changed file once");
+    assert.equal(artifacts[0]?.path, insensitive ? "Docs/Report.txt" : "docs/report.txt");
+    assert.equal(artifacts[0]?.operation, "updated");
+    assert.equal(artifacts[0]?.source, "tool");
+    if (!insensitive) assert.equal(await readFile(join(projectRoot, "Docs", "Report.txt"), "utf8"), "before");
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test("workspace aliases share concurrency tracking after native path normalization", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pilotdeck-artifact-alias-"));
+  const root = join(directory, "workspace"), alias = join(directory, "alias");
+  try {
+    await mkdir(root);
+    await symlink(root, alias, process.platform === "win32" ? "junction" : "dir");
+    const first = await FileArtifactCollector.start({ cwd: root });
+    const second = await FileArtifactCollector.start({ cwd: alias });
+    await writeFile(join(root, "owned.txt"), "first turn");
+    await writeFile(join(root, "unowned.txt"), "unknown owner");
+    first.observeToolResult(successfulFileResult("owned-call", ["owned.txt"]));
+    second.observeToolResult(toolResult("bash"));
+    assert.deepEqual((await first.finish("complete")).map(file => file.path), ["owned.txt"]);
+    assert.deepEqual(await second.finish("complete"), []);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("file artifacts include every meaningful workspace change without an extension allowlist", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-artifacts-"));

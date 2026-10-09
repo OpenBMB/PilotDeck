@@ -13,7 +13,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { platform } from "node:process";
 import type { CanonicalContentBlock, CanonicalMessage } from "../../model/index.js";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
-import { readCompactSnapshot } from "../../session/transcript/CompactSnapshot.js";
+import { readCompactSnapshot, readRestoreSnapshot } from "../../session/transcript/CompactSnapshot.js";
 import { readTranscript } from "../../session/transcript/TranscriptReader.js";
 import {
   sanitizeSessionIdForPath,
@@ -240,12 +240,9 @@ function mapTranscriptEntryMessages(
   ) {
     return { ...entry, message: transform(entry.message) };
   }
-  if (
-    entry.type === "control_boundary" &&
-    entry.boundary.kind === "compact" &&
-    entry.boundary.subtype === "compact_boundary"
-  ) {
-    const messages = readCompactSnapshot(entry);
+  if (entry.type === "control_boundary" && (entry.boundary.kind === "restore" ||
+      entry.boundary.kind === "compact" && entry.boundary.subtype === "compact_boundary")) {
+    const messages = readCompactSnapshot(entry) ?? readRestoreSnapshot(entry);
     if (messages) {
       return {
         ...entry,

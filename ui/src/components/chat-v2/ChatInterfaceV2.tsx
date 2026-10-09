@@ -41,6 +41,7 @@ import {
 import { useSessionWatch } from '../../hooks/useSessionWatch';
 import { useWebSocket } from '../../contexts/WebSocketContext';
 import MessagesPaneV2 from './MessagesPaneV2';
+import { REVIEW_RESTORED_EVENT, useChatReview } from '../chat-review/ChatReviewContext';
 import ComposerV2 from './ComposerV2';
 import QueuedMessagesTray from './QueuedMessagesTray';
 import { buildReconnectStatusMessage, refreshSessionAfterReconnect, shouldRefreshSessionOnReconnect } from './reconnectRecovery';
@@ -51,9 +52,9 @@ type PendingViewSession = {
 };
 
 const EDIT_RECONCILIATION_HINT = [
-  'The user replaced their immediately previous request with this edited request.',
+  'The user message immediately before this note is the complete edited request. Follow that request, including its limits on tools and file changes; this note is context only.',
   'The conversation transcript no longer contains the replaced turn, but its tool actions may already have changed the current workspace.',
-  'Treat the current workspace as the source of truth: inspect existing changes, do not assume earlier work is correct, and reconcile or revise it to satisfy the edited request.',
+  'If the edited request calls for workspace changes, inspect existing files as needed and reconcile them with that request rather than assuming earlier work is correct.',
 ].join(' ');
 
 // V2 chat wrapper. Reuses all business-logic hooks from legacy
@@ -115,6 +116,7 @@ function ChatInterfaceV2({
   );
 
   const sessionStore = useSessionStore();
+  const review = useChatReview();
   const streamBufferRef = useRef('');
   const streamTimerRef = useRef<number | null>(null);
   const accumulatedStreamRef = useRef('');
@@ -230,6 +232,22 @@ function ChatInterfaceV2({
     pendingViewSessionRef,
     sessionStore,
   });
+
+  const bindReview = review?.bind;
+  useEffect(() => {
+    bindReview?.(selectedProject && !isGeneralProject(selectedProject) ? selectedProject : null, selectedSession?.id ?? currentSessionId ?? null, isLoading, sessionIsReadOnly);
+  }, [bindReview, selectedProject, selectedSession?.id, currentSessionId, isLoading, sessionIsReadOnly]);
+  useEffect(() => {
+    const restored = (event: Event) => {
+      const id = (event as CustomEvent<{ sessionId: string }>).detail?.sessionId;
+      if (!id || id !== (selectedSession?.id ?? currentSessionId) || !selectedProject) return;
+      resetStreamingState();
+      sessionStore.clearRealtime(id);
+      void sessionStore.refreshFromServer(id, { provider: 'pilotdeck', projectName: selectedProject.name, projectPath: selectedProject.fullPath || selectedProject.path || '', ...sessionRequestParams, afterRestore: true });
+    };
+    window.addEventListener(REVIEW_RESTORED_EVENT, restored);
+    return () => window.removeEventListener(REVIEW_RESTORED_EVENT, restored);
+  }, [selectedSession?.id, currentSessionId, selectedProject, sessionRequestParams, sessionStore.clearRealtime, sessionStore.refreshFromServer, resetStreamingState]);
 
   useEffect(() => {
     const ready = !isLoadingSessionMessages && !sessionLoadError && currentSessionId && currentSessionId === selectedSession?.id && chatMessages.length > 0;

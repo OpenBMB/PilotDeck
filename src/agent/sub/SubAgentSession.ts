@@ -297,6 +297,9 @@ export class SubAgentSession {
       // already excludes the `agent` tool, so this does NOT enable nested
       // spawning — it only lets the child loop observe/cancel tasks it owns.
       backgroundTasks: this.options.parentDependencies.backgroundTasks,
+      // Child tools contribute to the parent's active checkpoint and lease;
+      // only the parent TurnRunner opens and closes that turn boundary.
+      fileHistory: this.options.parentDependencies.fileHistory,
     };
   }
 

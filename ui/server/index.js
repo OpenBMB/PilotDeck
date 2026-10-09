@@ -96,6 +96,7 @@ import {
 } from './pilotdeck-bridge.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
+import checkpointRoutes from './routes/checkpoints.js';
 import authRoutes from './routes/auth.js';
 import mcpRoutes from './routes/mcp.js';
 import taskmasterRoutes from './routes/taskmaster.js';
@@ -586,6 +587,7 @@ app.use('/api/projects', authenticateToken, projectsRoutes);
 
 // Git API Routes (protected)
 app.use('/api/git', authenticateToken, gitRoutes);
+app.use('/api/checkpoints', authenticateToken, checkpointRoutes);
 
 // MCP API Routes (protected)
 app.use('/api/mcp', authenticateToken, mcpRoutes);

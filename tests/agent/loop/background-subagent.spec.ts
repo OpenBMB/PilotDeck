@@ -11,6 +11,15 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { TurnRunner } from "../../../src/agent/turn/TurnRunner.js";
+import { WorkspaceCheckpoints, getCheckpointStore } from "../../../src/session/checkpoints/WorkspaceCheckpoints.js";
+import { InMemoryTranscriptWriter } from "../../../src/session/transcript/InMemoryTranscriptWriter.js";
+import { createTaskCreateTool, createTaskWaitTool } from "../../../src/tool/builtin/taskTools.js";
+import { resolveDefaultCommandShell } from "../../../src/runtime/commandShell.js";
 
 import { AgentLoop } from "../../../src/agent/loop/AgentLoop.js";
 import type {
@@ -79,6 +88,8 @@ type HarnessOptions = {
   extraTools?: PilotDeckToolDefinition[];
   backgroundTasks?: BackgroundTaskRuntime;
   subagentTimeoutMs?: number;
+  cwd?: string;
+  fileHistory?: AgentRuntimeDependencies["fileHistory"];
 };
 
 function createHarness(options: HarnessOptions) {
@@ -132,10 +143,10 @@ function createHarness(options: HarnessOptions) {
     subagentTimeoutMs: options.subagentTimeoutMs,
     provider: "openai",
     model: "test-model",
-    cwd: "/workspace/project",
+    cwd: options.cwd ?? "/workspace/project",
     permissionMode: "bypassPermissions",
     permissionContext: createDefaultPermissionContext({
-      cwd: "/workspace/project",
+      cwd: options.cwd ?? "/workspace/project",
       mode: "bypassPermissions",
       canPrompt: false,
       bypassAvailable: true,
@@ -146,6 +157,7 @@ function createHarness(options: HarnessOptions) {
     eventEmitter: (event) => { pendingEvents.push(event); },
     drainEvents: () => pendingEvents.splice(0),
     tools: { registry, scheduler },
+    fileHistory: options.fileHistory,
     ...(options.backgroundTasks ? { backgroundTasks: options.backgroundTasks } : {}),
   };
 
@@ -296,6 +308,102 @@ test("background child joins at the terminal boundary: parent progresses indepen
   const queuedData = queuedResult.result.data as { taskId?: string; subagentId?: string };
   assert.ok(queuedData?.taskId);
   assert.equal(queuedData.taskId, queuedData.subagentId);
+});
+
+test("background child checkpoints delayed command writes before task_wait and parent turn completion", { timeout: 15_000 }, async (t) => {
+  const base = await mkdtemp(join(tmpdir(), "background-agent-checkpoint-"));
+  const workspace = join(base, "workspace"), home = join(base, "home");
+  await mkdir(workspace); await mkdir(home);
+  const file = join(workspace, "result.txt");
+  await writeFile(file, "before");
+  const captured = createGate(), release = createGate();
+  const completions: string[] = [];
+  const runtime = new BackgroundTaskRuntime({ onCompletion: event => { completions.push(event.taskId); } });
+  // Runtime children and wait timers are unref'ed outside the gateway host.
+  const alive = setInterval(() => {}, 1000);
+  t.after(async () => {
+    release.open();
+    await runtime.killAll();
+    clearInterval(alive);
+    await rm(base, { recursive: true, force: true });
+  });
+  const history = new WorkspaceCheckpoints(workspace, home);
+  const store = await getCheckpointStore(workspace, home);
+  const fileHistory: NonNullable<AgentRuntimeDependencies["fileHistory"]> = {
+    trackEdit: (...args) => history.trackEdit(...args),
+    recordEdit: (...args) => history.recordEdit(...args),
+    beginTurn: (...args) => history.beginTurn(...args),
+    finishTurn: (...args) => history.finishTurn(...args),
+    trackCommand: async (options) => {
+      const finish = await history.trackCommand(options);
+      return async () => {
+        await finish();
+        captured.open();
+        await release.promise;
+      };
+    },
+  };
+  const shell = resolveDefaultCommandShell();
+  const command = `${shell.kind === "pwsh" ? "& " : ""}"${process.execPath.replaceAll("\\", "/")}" -e "setTimeout(()=>{require('node:fs').writeFileSync('result.txt','after');console.log('child output');},25);"`;
+  let childStep = 0, taskId = "", childWaitReturned = false;
+  const createTask = createTaskCreateTool(runtime), waitTask = createTaskWaitTool(runtime);
+  const harness = createHarness({
+    cwd: workspace,
+    fileHistory,
+    backgroundTasks: runtime,
+    parentResponses: [backgroundAgentCall("checkpoint-child"), textResponse("parent independent work"), textResponse("all writes captured")],
+    childBehavior: async function* (request) {
+      if (childStep++ === 0) yield* toolCallResponse("child-command", "task_create", { command })();
+      else if (childStep === 2) yield* toolCallResponse("child-wait", "task_wait", { taskId, timeoutMs: 10_000 })();
+      else yield* textResponse(CHILD_REPORT)(request);
+    },
+    extraTools: [
+      { ...createTask, execute: async (input, context) => {
+        const output = await createTask.execute(input, context);
+        taskId = output.data!.taskId;
+        return output;
+      } } satisfies typeof createTask as PilotDeckToolDefinition,
+      { ...waitTask, execute: async (input, context) => {
+        const output = await waitTask.execute(input, context);
+        assert.equal(await readFile(file, "utf8"), "after");
+        assert.match(output.data!.content, /child output/);
+        childWaitReturned = true;
+        return output;
+      } } satisfies typeof waitTask as PilotDeckToolDefinition,
+    ],
+  });
+  const events: AgentEvent[] = [];
+  const runner = new TurnRunner(harness.createLoop(), new InMemoryTranscriptWriter(), undefined, undefined, undefined,
+    { cwd: workspace, transcriptPath: "", collectFileArtifacts: false }, { fileHistory });
+  const running = (async () => {
+    for await (const event of runner.run({ sessionId: "session-1", turnId: "turn-1", messages: [], input: { type: "text", text: "Write the file in a background child." } })) {
+      events.push(event);
+    }
+  })();
+  await Promise.race([captured.promise, running.then(() => assert.fail("Turn ended before background checkpoint capture"))]);
+  assert.equal(await readFile(file, "utf8"), "after");
+  assert.equal(runtime.get(taskId)?.status, "completed");
+  assert.equal(runtime.list({ kind: "agent" })[0]?.status, "running");
+  assert.equal(childWaitReturned, false);
+  assert.equal(events.some(event => event.type === "turn_completed"), false);
+  assert.deepEqual(completions, []);
+  release.open();
+  await running;
+  assert.equal(childWaitReturned, true);
+  assert.equal(events.find(event => event.type === "turn_completed")?.result.type, "success");
+  assert.equal(completions.length, 2);
+  assert.equal(runtime.list({ status: "running" }).length, 0);
+  const checkpoint = (await store.list("session-1")).find(item => item.phase === "after")!;
+  assert.ok(checkpoint);
+  const diff = await store.diff("session-1", checkpoint.id, "result.txt");
+  assert.equal(diff.oldContent, "before");
+  assert.equal(diff.newContent, "after");
+  const plan = await store.preview("session-1", checkpoint.id);
+  assert.equal(plan.files[0]?.status, "ready");
+  const restored = await store.restore("session-1", plan.id);
+  assert.equal(await readFile(file, "utf8"), "before");
+  await store.restore("session-1", (await store.undoPreview("session-1", restored.id)).id);
+  assert.equal(await readFile(file, "utf8"), "after");
 });
 
 test("sync agent calls are unchanged: run_in_background omitted blocks and returns the report inline", async () => {

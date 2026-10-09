@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { opendir, realpath, stat } from "node:fs/promises";
+import { createReadStream, lstatSync, realpathSync } from "node:fs";
+import { opendir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { PilotDeckToolResult } from "../../tool/index.js";
 import type {
@@ -132,20 +132,19 @@ export class FileArtifactCollector {
   private hadConcurrentOverlap = false;
 
   private constructor(options: FileArtifactCollectorOptions) {
-    this.cwd = path.resolve(options.cwd);
+    this.cwd = nativePath(path.resolve(options.cwd), false);
     this.workspaceKey = this.cwd;
     this.now = options.now ?? (() => new Date());
     this.hashFile = options.hashFile ?? sha256File;
     this.allowedInputPaths = new Set(
       (options.allowedInputPaths ?? [])
-        .map((inputPath) => path.isAbsolute(inputPath) ? path.resolve(inputPath) : path.resolve(this.cwd, inputPath))
+        .map((inputPath) => nativePath(path.isAbsolute(inputPath) ? path.resolve(inputPath) : path.resolve(this.cwd, inputPath)))
         .filter((inputPath) => isWithin(this.cwd, inputPath) && !isHardInternalPath(this.cwd, inputPath)),
     );
   }
 
   static async start(options: FileArtifactCollectorOptions): Promise<FileArtifactCollector> {
     const collector = new FileArtifactCollector(options);
-    collector.workspaceKey = await realpath(collector.cwd).catch(() => collector.cwd);
     collector.baseline.clear();
     const cachedFingerprints = readCachedWorkspaceFingerprints(collector.cwd);
     for (const file of await collector.scanWorkspace(cachedFingerprints)) {
@@ -238,7 +237,9 @@ export class FileArtifactCollector {
   }
 
   private addExplicitPath(candidate: string): void {
-    const absolutePath = path.resolve(this.cwd, candidate);
+    // Tool paths can use a different spelling on case-insensitive volumes.
+    // Match the directory scan and baseline using the actual on-disk name.
+    const absolutePath = nativePath(path.resolve(this.cwd, candidate));
     if (!isWithin(this.cwd, absolutePath) || !this.isAllowedArtifactPath(absolutePath)) return;
     this.explicitCandidates.set(absolutePath, { absolutePath, source: "tool" });
   }
@@ -352,6 +353,16 @@ export class FileArtifactCollector {
 
 /** Active turn collectors, scoped by the canonical physical workspace root. */
 const activeWorkspaceCollectors = new Map<string, Set<FileArtifactCollector>>();
+
+function nativePath(filePath: string, preserveSymlinkName = true): string {
+  try {
+    // Keep a final symlink's name, while resolving its parent directory.
+    if (preserveSymlinkName && lstatSync(filePath).isSymbolicLink()) return path.join(realpathSync.native(path.dirname(filePath)), path.basename(filePath));
+    return realpathSync.native(filePath);
+  } catch {
+    return filePath;
+  }
+}
 
 async function fingerprintFile(
   filePath: string,

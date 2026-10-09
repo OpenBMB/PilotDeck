@@ -14,6 +14,7 @@ type ToolSidePanelProps = {
   onClose: () => void;
   onResizeStart: (event: MouseEvent<HTMLDivElement>) => void;
   onResizeBy: (delta: number) => void;
+  headerContent?: ReactNode;
   children: ReactNode;
 };
 
@@ -29,6 +30,7 @@ export default function ToolSidePanel({
   onClose,
   onResizeStart,
   onResizeBy,
+  headerContent,
   children,
 }: ToolSidePanelProps) {
   const handleResizeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -67,10 +69,10 @@ export default function ToolSidePanel({
         style={isMobile ? undefined : { width }}
       >
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-neutral-200 px-3.5 dark:border-neutral-800">
-          <Icon className="h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />
+          {headerContent ?? <><Icon className="h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />
           <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
             {title}
-          </h2>
+          </h2></>}
           <button
             type="button"
             onClick={onClose}

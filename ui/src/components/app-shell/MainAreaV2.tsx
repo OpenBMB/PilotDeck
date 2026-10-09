@@ -192,6 +192,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
     () => localStorage.getItem(ALWAYS_ON_LAST_VIEWED_MARKER_KEY),
   );
   const [dashboardMenuOpen, setDashboardMenuOpen] = useState(false);
+  const [reviewOpenRequest, setReviewOpenRequest] = useState<MainContentProps['reviewOpenRequest']>();
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [sessionTitleDraft, setSessionTitleDraft] = useState('');
   const dashboardMenuRef = useRef<HTMLDivElement | null>(null);
@@ -513,7 +514,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
                 <div
                   role="menu"
                   aria-label={t('dashboardSwitcher.menuLabel', { defaultValue: 'Dashboards' }) as string}
-                  className="absolute right-0 top-10 z-[90] w-32 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl shadow-black/10 dark:border-neutral-700 dark:bg-neutral-900"
+                  className="absolute right-0 top-10 z-[90] w-44 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl shadow-black/10 dark:border-neutral-700 dark:bg-neutral-900"
                 >
                   {DASHBOARD_TABS.map((tab) => {
                     const Icon = tab.icon;
@@ -537,6 +538,17 @@ function MainAreaV2Content(props: MainAreaV2Props) {
                       </button>
                     );
                   })}
+                  <button type="button" role="menuitem" onClick={() => {
+                      setDashboardMenuOpen(false);
+                      chatHistorySearch.closeSearch();
+                      setReviewOpenRequest(previous => ({ tab: 'changes', sequence: (previous?.sequence ?? 0) + 1 }));
+                    }} className="relative flex h-9 w-full items-center justify-center gap-2 rounded-lg px-2 text-[13px] text-neutral-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 focus:outline-none dark:text-neutral-300 dark:hover:bg-blue-950/60 dark:hover:text-blue-200 dark:focus:bg-blue-950/60 dark:focus:text-blue-200">
+                    <svg aria-hidden="true" className="h-4 w-4 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="18" height="18" rx="4" />
+                      <path d="M9 9h6m-3-3v6M9 16h6" />
+                    </svg>
+                    <span>{t('dashboardSwitcher.changes')}</span>
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -549,6 +561,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
         <MainContent
           {...props}
           activeTab={displayActiveTab}
+          reviewOpenRequest={reviewOpenRequest}
           alwaysOnSubTab={alwaysOnSubTab}
           onAlwaysOnSubTabChange={setAlwaysOnSubTab}
         />

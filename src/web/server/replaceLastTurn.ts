@@ -15,6 +15,8 @@ import { getPilotProjectChatDir } from "../../pilot/index.js";
 import { mergeMetadata } from "../../session/metadata/SessionMetadataStore.js";
 import { sanitizeSessionIdForPath } from "../../session/storage/ProjectSessionStorage.js";
 import { readTranscript } from "../../session/transcript/TranscriptReader.js";
+import { activeTranscriptEntries, readRestoreSnapshot } from "../../session/transcript/CompactSnapshot.js";
+import { replayTranscriptEntries } from "../../session/transcript/TranscriptReplay.js";
 import type {
   AgentAcceptedInputTranscriptEntry,
   AgentSessionMetadataTranscriptEntry,
@@ -122,6 +124,7 @@ function createPreservedMetadataEntry(
   entries: AgentTranscriptEntry[],
   preserved: AgentTranscriptEntry[],
   now: Date,
+  force = false,
 ): AgentSessionMetadataTranscriptEntry | undefined {
   const metadata = latestMetadataSnapshot(entries);
   delete metadata.lastPrompt;
@@ -136,7 +139,7 @@ function createPreservedMetadataEntry(
   const hasMetadata = Object.entries(metadata).some(([key, value]) => (
     key !== "isSnapshot" && key !== "updatedAt" && value !== undefined
   ));
-  if (!hasMetadata) return undefined;
+  if (!hasMetadata && !force) return undefined;
 
   const sequence = preserved.reduce((highest, entry) => Math.max(highest, entry.sequence), 0) + 1;
   const parentEntryId = [...preserved]
@@ -452,7 +455,8 @@ export async function replaceLastWebSessionTurn(
     );
   }
 
-  const latest = findLatestAcceptedInput(entries);
+  const active = activeTranscriptEntries(entries);
+  const latest = findLatestAcceptedInput(active);
   if (!latest) {
     throw new ReplaceLastTurnError("replace_empty_transcript", "No user turn is available to replace.");
   }
@@ -464,20 +468,35 @@ export async function replaceLastWebSessionTurn(
     );
   }
 
-  const originalPrefix = entries.slice(0, latestInputIndex);
+  const originalPrefix = active.slice(0, latestInputIndex);
   const replacingFirstInput = !originalPrefix.some((entry) => entry.type === "accepted_input");
   const preserved = replacingFirstInput
     ? removeGeneratedTitleFromPrefix(originalPrefix)
     : originalPrefix;
+  const branchReplacement = entries.some(entry => readRestoreSnapshot(entry) !== undefined);
+  const replacementTime = options.now?.() ?? new Date();
   const metadataEntry = createPreservedMetadataEntry(
     entries,
     preserved,
-    options.now?.() ?? new Date(),
+    replacementTime,
+    branchReplacement,
   );
-  const rewrittenEntries = metadataEntry ? [...preserved, metadataEntry] : preserved;
+  const transactionId = randomUUID();
+  let rewrittenEntries = metadataEntry ? [...preserved, metadataEntry] : preserved;
+  if (branchReplacement) {
+    // Keep archived turns and restore references at their original sequences.
+    // The replacement transaction appends a branch boundary instead of truncating
+    // the raw transcript; rollback still restores the original file atomically.
+    const last = entries.at(-1), entryId = randomUUID(), sequence = (last?.sequence ?? 0) + 1;
+    const boundary: AgentTranscriptEntry = {
+      type: "control_boundary", sessionId: input.sessionKey, turnId: input.replacementTurnId,
+      sequence, entryId, parentEntryId: last?.entryId ?? null, createdAt: replacementTime.toISOString(),
+      boundary: { kind: "restore", operationId: transactionId, snapshot: { version: 1, messages: replayTranscriptEntries(preserved).messages }, visibleSequences: preserved.map(entry => entry.sequence) },
+    };
+    rewrittenEntries = [...entries, boundary, ...(metadataEntry ? [{ ...metadataEntry, sequence: sequence + 1, parentEntryId: entryId }] : [])];
+  }
   const body = rewrittenEntries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
   const originalBody = await readFile(transcriptPath, "utf8");
-  const transactionId = randomUUID();
   const { backupPath, journalPath } = replacementPaths(
     input.sessionKey,
     effectiveProjectRoot,
@@ -516,7 +535,7 @@ export async function replaceLastWebSessionTurn(
   return {
     sessionKey: input.sessionKey,
     replacedTurnId: latestInput.turnId,
-    removedEntryCount: entries.length - latestInputIndex,
+    removedEntryCount: active.length - latestInputIndex,
     transactionId,
   };
 }

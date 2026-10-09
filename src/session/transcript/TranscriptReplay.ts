@@ -2,7 +2,7 @@ import { cloneMessage, cloneMessages, type CanonicalMessage, type CanonicalUsage
 import type { AgentEvent } from "../../agent/protocol/events.js";
 import type { AgentPermissionDenial, AgentTurnResult } from "../../agent/protocol/result.js";
 import type { AgentTranscriptDiagnostic, AgentTranscriptEntry, SessionMetadataValue } from "./TranscriptEntry.js";
-import { readCompactSnapshot } from "./CompactSnapshot.js";
+import { readCompactSnapshot, readRestoreSnapshot } from "./CompactSnapshot.js";
 
 export type AgentTranscriptReplayResult = {
   messages: CanonicalMessage[];
@@ -105,6 +105,12 @@ export function replayTranscriptEntries(entries: AgentTranscriptEntry[]): AgentT
         }
         break;
       case "control_boundary":
+        if (readRestoreSnapshot(entry) !== undefined && !beforeBoundary) {
+          const restored = readRestoreSnapshot(entry)!;
+          messages.splice(0, messages.length, ...cloneMessages(restored));
+          events.splice(0, events.length, ...restored.map(message => projectMessageEvent(entry.sessionId, entry.turnId, message)));
+          break;
+        }
         if (index === lastBoundaryIndex) {
           lastCompactBoundary = entry;
           const snapshot = readCompactSnapshot(entry)!;
@@ -180,6 +186,7 @@ function add(first: number | undefined, second: number | undefined): number | un
 }
 
 function mergeMetadata(first: SessionMetadataValue, second: SessionMetadataValue): SessionMetadataValue {
+  if (second.isSnapshot) return { ...second };
   return {
     ...first,
     ...second,

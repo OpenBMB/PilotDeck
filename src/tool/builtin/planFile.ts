@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   ensureWritableDirectory,
+  ensurePilotProjectGitIgnore,
   isVirtualProjectRoot,
   PILOT_PROJECT_DIR_NAME,
   resolvePilotHomeProjectArtifactDir,
@@ -38,6 +39,7 @@ export function createPlanFileManager(options: {
   let resolvedPlanDir: string | undefined;
 
   function getPlanDirectoryPath(): string {
+    if (!virtualProject) ensurePilotProjectGitIgnore(options.projectRoot);
     resolvedPlanDir ??= virtualProject
       ? ensureWritableDirectory({
           preferredDir: preferredPlanDir,

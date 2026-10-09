@@ -76,6 +76,8 @@ export type StartTaskSpec = {
   sessionId?: string;
   agentId?: string;
   kind?: PilotDeckBackgroundTaskKind;
+  /** Finish bookkeeping before waits or completion notifications resolve. */
+  onSettled?: () => Promise<void>;
 };
 
 export type StartManagedTaskSpec = {
@@ -275,10 +277,23 @@ export class BackgroundTaskRuntime {
       diskSpillDir: this.options.diskSpillDir,
     });
 
-    let resolveDone!: () => void;
-    const done = new Promise<void>((resolve) => {
+    let resolveDone!: () => void, rejectDone!: (error: unknown) => void;
+    const done = new Promise<void>((resolve, reject) => {
       resolveDone = resolve;
+      rejectDone = reject;
     });
+    // Preserve errors for waiters even when a detached task is never waited on.
+    void done.catch(() => {});
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      void (async () => {
+        await spec.onSettled?.();
+        task.completionStatusSentInAttachment = true;
+        this.notifyCompletion(task, output);
+      })().then(resolveDone, rejectDone);
+    };
 
     let child: ChildProcess;
     try {
@@ -299,9 +314,9 @@ export class BackgroundTaskRuntime {
       const message = err instanceof Error ? err.message : String(err);
       output.append(Buffer.from(`spawn error: ${message}\n`));
       task.outputBytes = output.totalBytes();
-      this.entries.set(taskId, { task, output, done: Promise.resolve() });
-      this.notifyCompletion(task, output);
-      resolveDone();
+      this.entries.set(taskId, { task, output, done });
+      settle();
+      await done;
       return task;
     }
 
@@ -319,8 +334,14 @@ export class BackgroundTaskRuntime {
     child.on("error", (err: Error) => {
       output.append(Buffer.from(`error: ${err.message}\n`));
       task.outputBytes = output.totalBytes();
+      if (!child.pid && !settled) {
+        task.status = "failed";
+        task.endedAt = this.options.now();
+        settle();
+      }
     });
     child.on("exit", (code, signal) => {
+      if (settled) return;
       task.endedAt = this.options.now();
       task.exitCode = code ?? null;
       task.outputBytes = output.totalBytes();
@@ -331,9 +352,7 @@ export class BackgroundTaskRuntime {
       } else {
         task.status = "failed";
       }
-      task.completionStatusSentInAttachment = true;
-      this.notifyCompletion(task, output);
-      resolveDone();
+      settle();
     });
 
     this.entries.set(taskId, { task, child, output, done });
@@ -473,17 +492,18 @@ export class BackgroundTaskRuntime {
   async stop(taskId: string, options: StopTaskOptions = {}): Promise<void> {
     const entry = this.entries.get(taskId);
     if (!entry) throw new Error(`Unknown taskId: ${taskId}`);
-    const { task } = entry;
-    if (task.status !== "running" && task.status !== "pending") return;
+    const { task, child, done } = entry;
+    // A process can be terminal while its checkpoint postimage is still
+    // being captured. Stopping it must await that same completion boundary.
+    if (task.status !== "running" && task.status !== "pending") { await done; return; }
     if (task.type === "local_agent") {
       task.interrupted = true;
       entry.controller?.abort(new Error("Background agent task stopped."));
-      await waitForDoneOrTimeout(entry.done, options.graceMs ?? DEFAULT_GRACE_MS);
+      await waitForDoneOrTimeout(done, options.graceMs ?? DEFAULT_GRACE_MS);
       entry.requestCancel?.();
-      await entry.done;
+      await done;
       return;
     }
-    const { child, done } = entry;
     if (!child) return;
     task.interrupted = true;
     if (process.platform === "win32") {

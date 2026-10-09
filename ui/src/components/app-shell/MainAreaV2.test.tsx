@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
 import MainAreaV2 from './MainAreaV2';
+import type { ReviewOpenRequest } from '../chat-review/ChatReviewContext';
 
 vi.mock('../main-content/view/MainContent', async () => {
   const React = await import('react');
@@ -12,7 +13,7 @@ vi.mock('../main-content/view/MainContent', async () => {
     '../chat-v2/ChatHistorySearchController'
   );
 
-  function RegisteredSearchMock({ activeTab }: { activeTab: AppTab }) {
+  function RegisteredSearchMock({ activeTab, reviewOpenRequest }: { activeTab: AppTab; reviewOpenRequest?: ReviewOpenRequest }) {
     const [isOpen, setIsOpen] = React.useState(false);
     const [query, setQuery] = React.useState('');
     const [activeMatchIndex, setActiveMatchIndex] = React.useState(0);
@@ -40,6 +41,8 @@ vi.mock('../main-content/view/MainContent', async () => {
       <div
         data-testid="main-content"
         data-active-tab={activeTab}
+        data-review-tab={reviewOpenRequest?.tab}
+        data-review-request={reviewOpenRequest?.sequence}
         data-search-open={isOpen ? 'true' : 'false'}
         data-search-query={query}
         data-search-index={activeMatchIndex}
@@ -53,11 +56,13 @@ vi.mock('../main-content/view/MainContent', async () => {
     default: ({
       activeTab,
       selectedSession,
+      reviewOpenRequest,
     }: {
       activeTab: AppTab;
       selectedSession: ProjectSession | null;
+      reviewOpenRequest?: ReviewOpenRequest;
     }) => selectedSession
-      ? <RegisteredSearchMock activeTab={activeTab} />
+      ? <RegisteredSearchMock activeTab={activeTab} reviewOpenRequest={reviewOpenRequest} />
       : <div data-testid="main-content" data-active-tab={activeTab} />,
   };
 });
@@ -267,7 +272,7 @@ describe('MainAreaV2 dashboard switcher', () => {
     fireEvent.click(overflowButton);
     const menu = screen.getByRole('menu', { name: 'Dashboards' });
     expect(menu.className).toContain('z-[90]');
-    expect(menu.className).toContain('w-32');
+    expect(menu.className).toContain('w-44');
     expect(screen.getByRole('menuitem', { name: 'tabs.memory' }).className).toContain('justify-center');
 
     expect(screen.queryByRole('menuitem', { name: 'tabs.cron' })).toBeNull();
@@ -283,6 +288,23 @@ describe('MainAreaV2 dashboard switcher', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Open dashboards menu' })).toBeTruthy();
     });
+  });
+
+  it('opens changes from the single Explore entry and emits a fresh request for each opening', () => {
+    render(<Harness withSession />);
+    expect(screen.queryByRole('button', { name: 'dashboardSwitcher.git' })).toBeNull();
+    const menuButton = screen.getByRole('button', { name: 'Open dashboards menu' });
+    fireEvent.click(menuButton);
+    expect(screen.queryByRole('menuitem', { name: 'dashboardSwitcher.git' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'dashboardSwitcher.checkpoints' })).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'dashboardSwitcher.changes' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByTestId('main-content').getAttribute('data-review-tab')).toBe('changes');
+    expect(screen.getByTestId('main-content').getAttribute('data-review-request')).toBe('1');
+    fireEvent.click(menuButton);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'dashboardSwitcher.changes' }));
+    expect(screen.getByTestId('main-content').getAttribute('data-review-tab')).toBe('changes');
+    expect(screen.getByTestId('main-content').getAttribute('data-review-request')).toBe('2');
   });
 
   it('replaces the workspace header with only the scheduled tasks title', async () => {

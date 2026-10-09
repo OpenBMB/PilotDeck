@@ -155,7 +155,7 @@ export class JsonlTranscriptWriter implements AgentTranscriptWriter {
     // replacement snapshot while an earlier append is still pending.
     const line = `${JSON.stringify(entry)}\n`;
     const flush = entry.type === "control_boundary" &&
-      entry.boundary.kind === "compact" && entry.boundary.subtype === "compact_boundary";
+      (entry.boundary.kind === "restore" || (entry.boundary.kind === "compact" && entry.boundary.subtype === "compact_boundary"));
     this.sequence = Math.max(this.sequence, entry.sequence);
     this.lastEntryId = entry.entryId ?? this.lastEntryId;
     this.writeChain = this.writeChain.then(async () => {
