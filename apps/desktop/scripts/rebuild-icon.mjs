@@ -1,5 +1,5 @@
 /**
- * Rebuild icon.ico / icon.png / installer-icon.ico from icon-source.png.
+ * Rebuild icon.icns / icon.ico / icon.png / installer-icon.ico from icon-source.png.
  *
  * icon.ico        – full multi-res ICO (256..16) for app exe (rcedit)
  * installer-icon.ico – compact ICO (48/32/16 BMP only) for NSIS installer
@@ -16,6 +16,7 @@ import sharp from "sharp";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeIcns } from "../../../scripts/lib/app-icons.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ICONS_DIR = join(__dirname, "..", "resources", "icons");
@@ -169,6 +170,10 @@ async function main() {
   const pngPath = join(ICONS_DIR, "icon.png");
   writeFileSync(pngPath, png256);
   console.log(`Wrote ${pngPath} (${png256.length} bytes)`);
+
+  const icnsPath = join(ICONS_DIR, 'icon.icns');
+  await writeIcns(SOURCE, icnsPath);
+  console.log(`Wrote ${icnsPath}`);
 
   console.log("Done!");
 }

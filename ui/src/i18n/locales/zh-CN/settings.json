@@ -76,6 +76,7 @@
       "extensions": "扩展",
       "mcpServers": "MCP 服务器",
       "officePreview": "Office 预览",
+      "computerUse": "电脑操控",
       "privacy": "安全隐私",
       "advanced": "高级",
       "system": "高级",
@@ -93,6 +94,7 @@
       "integrations": "连接常用通讯工具，让智能体可以从飞书、微信与企业微信接收消息并回复。",
       "mcpServers": "连接本地工具与远程服务，让智能体可以安全使用外部能力和上下文。",
       "officePreview": "选择 Office 文档的只读预览方式。PDF 始终使用 PilotDeck 内置浏览器，不受此设置影响。",
+      "computerUse": "开启后，PilotDeck 可以查看屏幕并操作本机应用。",
       "privacy": "管理工具规则和匿名使用数据。全局访问权限由聊天输入框统一设置。",
       "advanced": "管理应用级的重试、服务与环境变量配置。",
       "about": "查看当前版本并检查更新。",
@@ -112,6 +114,7 @@
       "extensions": "扩展",
       "mcpServers": "扩展 / MCP 服务器",
       "officePreview": "扩展 / Office 预览",
+      "computerUse": "电脑操控",
       "privacy": "安全隐私",
       "advanced": "高级",
       "about": "关于"
@@ -1869,5 +1872,48 @@
     "hardwareHint": "使用 GPU 渲染界面。遇到显示异常时可关闭，修改后需完全退出并重新打开客户端。",
     "browserHardwareHint": "网页端的硬件加速由浏览器管理，请在浏览器设置中调整。",
     "restartRequired": "设置已保存。完全退出并重新打开客户端后生效。"
+  },
+  "computerUse": {
+    "controlTitle": "操作控制",
+    "enable": "启用电脑操控",
+    "enableDescription": "允许 PilotDeck 在你授权的任务中查看屏幕、读取应用控件并操作鼠标键盘。可能切换窗口，操作审批沿用当前任务的权限设置。",
+    "permissionsTitle": "系统权限",
+    "permissions": {
+      "accessibility": "辅助功能",
+      "screenRecording": "屏幕录制"
+    },
+    "granted": "已授权",
+    "notGranted": "待授权",
+    "openPermissions": "前往授权",
+    "windowsPermissions": "普通桌面应用通常无需额外系统授权。管理员窗口和系统安全界面的操作会受到权限限制。",
+    "linuxPermissions": "组件将使用当前登录用户的桌面会话。截图、控件读取和输入能力取决于桌面环境及系统服务。",
+    "permissionHint": "请在系统设置中为 {{owner}} 授权，再回到本页点击“重新检测”。若系统仍要求重新打开应用，请按提示重启。",
+    "permissionFallbackTitle": "授权列表里没有应用？",
+    "permissionFallbackIntro": "如果列表中没有 {{owner}}，可以手动添加随 PilotDeck 提供的应用，无需另行下载。",
+    "permissionFallbackAdd": "点击对应权限的“前往授权”，打开系统设置中的权限页面。",
+    "permissionFallbackSelect": "点击“显示授权应用”，将 Finder 中选中的应用拖入授权列表；也可以在列表下方点击“＋”，在选择窗口中按 ⌘⇧G，粘贴下方路径并打开。",
+    "permissionFallbackFinish": "开启该应用的权限，按系统提示完成验证，再回到本页点击“重新检测”。",
+    "revealPermissionApp": "显示授权应用",
+    "copyPermissionPath": "复制应用路径",
+    "permissionPathCopied": "已复制",
+    "copyPathFailed": "未能复制，请选中下方路径后手动复制。",
+    "permissionFallbackPath": "在系统选择窗口中使用此路径：",
+    "permissionAppPath": "授权应用路径",
+    "statusTitle": "连接状态",
+    "phases": {
+      "disabled": "已关闭",
+      "starting": "正在连接",
+      "needs-permissions": "等待系统授权",
+      "ready": "已连接，可使用",
+      "partial": "已连接，部分能力受限",
+      "error": "连接失败"
+    },
+    "checking": "正在检查",
+    "version": "Driver 版本 {{version}}",
+    "unknownSession": "未检测到桌面会话",
+    "refresh": "重新检测",
+    "stop": "停止并关闭",
+    "waylandHint": "当前为 Wayland 桌面。系统可能在首次截图时请求授权；部分操作需要桌面辅助组件。任务遇到不支持的操作时会返回具体原因。",
+    "missingDriver": "部署环境中的电脑操控组件缺失。请重新部署 PilotDeck；组件随环境提供，无需另行安装。"
   }
 }

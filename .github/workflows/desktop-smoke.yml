@@ -6,6 +6,7 @@ on:
       - apps/desktop/**
       - src/**
       - tests/**
+      - scripts/**
       - ui/**
       - skills/**
       - package.json
@@ -47,6 +48,8 @@ jobs:
         run: pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
       - name: Build Gateway and regression tests
         run: pnpm run build
+      - name: Test MCP transport, observations and managed computer use
+        run: pnpm run test:mcp
       - name: Test checkpoints, restore, Git operations and internal ignore rules
         run: pnpm run test:checkpoints
       - name: Test review UI and Windows path matching

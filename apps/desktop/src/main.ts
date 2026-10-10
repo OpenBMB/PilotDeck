@@ -10,7 +10,8 @@ import { createDesktopLifecycle } from "./desktopLifecycle";
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
 import { createFilePicker } from './filePicker';
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen } from "electron";
+import { ComputerUseController } from './computerUse';
+import { app, BrowserWindow, desktopCapturer, systemPreferences, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen } from "electron";
 import { DebUpdater, MacUpdater, NsisUpdater, RpmUpdater } from "electron-updater";
 import { installUpdateDownloadControl } from "./updateDownload";
 import { createUpdateController } from "./updates";
@@ -100,6 +101,7 @@ class RuntimeManager {
   private configurationState: ModelConfigurationState | null = null;
   private gatewayState: GatewayRuntimeState = { state: "stopped" };
   private stopping = false;
+  computerUse: ComputerUseController | null = null;
 
   constructor(
     private readonly runtimeRoot: string,
@@ -133,6 +135,34 @@ class RuntimeManager {
       logPath: this.logPath,
     });
     const config = ensurePilotHome((message) => this.log(message));
+    // The outer GUI host owns desktop TCC grants, not the nested Driver app.
+    const permissionAppPath = process.platform === 'darwin'
+      ? path.resolve(path.dirname(app.getPath('exe')), '..', '..') : undefined;
+    this.computerUse = new ComputerUseController({
+      directory: path.join(app.getPath('userData'), 'computer-use'),
+      resources: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'resources', 'cua-driver') : path.join(__dirname, '..', '..', '..', 'resources', 'cua-driver'),
+      // The unpackaged macOS development shell owns Electron's bundle identity.
+      bundleId: app.isPackaged || process.platform !== 'darwin' ? APP_ID : 'com.github.Electron',
+      permissionAppPath,
+      revealPermissionApp: () => { if (permissionAppPath) shell.showItemInFolder(permissionAppPath); },
+      permissions: () => process.platform === 'darwin' ? {
+        accessibility: systemPreferences.isTrustedAccessibilityClient(false),
+        screenRecording: systemPreferences.getMediaAccessStatus('screen') === 'granted',
+      } : undefined,
+      requestPermission: async permission => {
+        if (process.platform !== 'darwin') return;
+        if (permission === 'accessibility') {
+          systemPreferences.isTrustedAccessibilityClient(true);
+          await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
+        } else {
+          // Capture consent is requested by the Electron host, never by a second app.
+          await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => undefined);
+          await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+        }
+      },
+      log: message => this.log(message),
+    });
+    await this.computerUse.initialize();
 
     const serverPort = await findFreePort(3001);
     const gatewayPort = await findFreePort(18789);
@@ -162,6 +192,7 @@ class RuntimeManager {
       PILOTDECK_GATEWAY_PORT: String(gatewayPort),
       PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${gatewayPort}/ws`,
       PILOTDECK_DESKTOP: "1",
+      PILOTDECK_COMPUTER_USE_MCP_CONFIG: this.computerUse.mcpConfigPath,
       PILOTDECK_DESKTOP_VERSION: app.getVersion(),
       PILOTDECK_VERSION: app.getVersion(),
       PILOTDECK_DESKTOP_BUILD_TIME: buildMetadata.buildTime,
@@ -215,6 +246,8 @@ class RuntimeManager {
   async stop(): Promise<void> {
     const failures: unknown[] = [];
     this.stopping = true;
+    try { await this.computerUse?.stop(); this.computerUse = null; }
+    catch (error) { failures.push(error); this.log(`Failed to stop computer use: ${String(error)}`); }
     await this.gatewayStopPromise?.catch(() => undefined);
     for (const proc of [...this.processes].reverse()) {
       this.expectedExits.add(proc.child);
@@ -324,7 +357,27 @@ class RuntimeManager {
     const runtimeMessage = message as {
       type?: string;
       configuration?: ModelConfigurationState;
+      id?: string;
+      action?: string;
+      value?: unknown;
     };
+    if (runtimeMessage.type === 'pilotdeck:computer-use-request' && typeof runtimeMessage.id === 'string') {
+      const reply = (status?: unknown, error?: string) => {
+        if (this.serverProcess?.connected) this.serverProcess.send({ type: 'pilotdeck:computer-use-response', id: runtimeMessage.id, status, error }, () => {});
+      };
+      void (async () => {
+        if (this.stopping || !this.computerUse) throw new Error('Computer use host is not ready');
+        switch (runtimeMessage.action) {
+          case 'status': return this.computerUse.status();
+          case 'setEnabled': return this.computerUse.setEnabled(runtimeMessage.value);
+          case 'refresh': return this.computerUse.refresh();
+          case 'requestPermission': return this.computerUse.requestPermission(runtimeMessage.value);
+          case 'revealPermissionApp': return this.computerUse.revealPermissionApp();
+          default: throw new Error('Invalid computer use action');
+        }
+      })().then(status => reply(status), error => reply(undefined, String(error.message || error)));
+      return;
+    }
     if (runtimeMessage.type === "pilotdeck:configuration-state" && runtimeMessage.configuration) {
       this.configurationState = runtimeMessage.configuration;
       if (runtimeMessage.configuration.state === "ready") {

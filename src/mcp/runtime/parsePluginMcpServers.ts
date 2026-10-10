@@ -50,6 +50,7 @@ export function parsePluginMcpServers(
         env: isStringRecord(v.env) ? expandStringRecord(v.env as Record<string, string>) : undefined,
         cwd: typeof v.cwd === "string" ? expandMcpString(v.cwd) : undefined,
         callTimeoutMs: positiveFiniteNumber(v.callTimeoutMs),
+        concurrencySafe: typeof v.concurrencySafe === "boolean" ? v.concurrencySafe : undefined,
         perSession: v.perSession === true ? true : undefined,
       });
       continue;
@@ -65,6 +66,8 @@ export function parsePluginMcpServers(
         transport: "streamable_http",
         url: expandMcpString(url),
         headers: isStringRecord(v.headers) ? expandStringRecord(v.headers as Record<string, string>) : undefined,
+        callTimeoutMs: positiveFiniteNumber(v.callTimeoutMs),
+        concurrencySafe: typeof v.concurrencySafe === "boolean" ? v.concurrencySafe : undefined,
       });
       continue;
     }

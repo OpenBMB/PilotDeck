@@ -76,6 +76,7 @@
       "extensions": "Extensions",
       "mcpServers": "MCP Servers",
       "officePreview": "Office Preview",
+      "computerUse": "Computer Use",
       "privacy": "Security & Privacy",
       "advanced": "Advanced",
       "system": "System",
@@ -93,6 +94,7 @@
       "integrations": "Connect Feishu, WeChat, and WeCom message channels.",
       "mcpServers": "Connect local tools and remote services so agents can safely use external capabilities and context.",
       "officePreview": "Configure Office file preview.",
+      "computerUse": "Let PilotDeck view your screen and operate local applications.",
       "privacy": "Manage tool rules and anonymous usage data. The chat composer controls global access permissions.",
       "advanced": "Manage application retry, service, and environment variable settings.",
       "about": "View the current version and check for updates.",
@@ -112,6 +114,7 @@
       "extensions": "Extensions",
       "mcpServers": "Extensions / MCP Servers",
       "officePreview": "Extensions / Office Preview",
+      "computerUse": "Computer Use",
       "privacy": "Security & Privacy",
       "advanced": "Advanced",
       "about": "About"
@@ -1875,5 +1878,48 @@
     "hardwareHint": "Use the GPU to render the interface. Disable if you experience rendering issues. Fully quit and reopen the desktop app to apply changes.",
     "browserHardwareHint": "Hardware acceleration is managed by your browser. Change it in browser settings.",
     "restartRequired": "Saved. Fully quit and reopen the desktop app to apply this change."
+  },
+  "computerUse": {
+    "controlTitle": "Control",
+    "enable": "Enable computer use",
+    "enableDescription": "Allow PilotDeck to view your screen, read application controls, and use the mouse and keyboard for tasks you authorize. Windows may switch. Actions follow the current task’s approval settings.",
+    "permissionsTitle": "System permissions",
+    "permissions": {
+      "accessibility": "Accessibility",
+      "screenRecording": "Screen Recording"
+    },
+    "granted": "Granted",
+    "notGranted": "Permission required",
+    "openPermissions": "Grant permission",
+    "windowsPermissions": "Normal desktop applications usually need no additional system permission. Elevated windows and system security interfaces have additional restrictions.",
+    "linuxPermissions": "The component uses your current desktop login session. Capture, accessibility, and input capabilities depend on the desktop environment and system services.",
+    "permissionHint": "Grant permissions to {{owner}} in System Settings, then return here and recheck. If macOS still asks you to reopen the application, restart it as instructed.",
+    "permissionFallbackTitle": "Application missing from the permission list?",
+    "permissionFallbackIntro": "If {{owner}} is missing from the list, add the application included with PilotDeck manually. No separate download is needed.",
+    "permissionFallbackAdd": "Click Grant permission to open the relevant permission page in System Settings.",
+    "permissionFallbackSelect": "Click Show permission application and drag the selected application from Finder into the permission list. Or click + below the list, press ⌘⇧G in the file picker, paste the path below, and open it.",
+    "permissionFallbackFinish": "Enable the application's permission, complete any system verification, then return here and click Recheck.",
+    "revealPermissionApp": "Show permission application",
+    "copyPermissionPath": "Copy application path",
+    "permissionPathCopied": "Copied",
+    "copyPathFailed": "Could not copy. Select the path below and copy it manually.",
+    "permissionFallbackPath": "Use this path in the system file picker:",
+    "permissionAppPath": "Permission application path",
+    "statusTitle": "Connection",
+    "phases": {
+      "disabled": "Disabled",
+      "starting": "Connecting",
+      "needs-permissions": "Waiting for system permissions",
+      "ready": "Connected and available",
+      "partial": "Connected with limited capabilities",
+      "error": "Connection failed"
+    },
+    "checking": "Checking",
+    "version": "Driver version {{version}}",
+    "unknownSession": "No desktop session detected",
+    "refresh": "Recheck",
+    "stop": "Stop and disable",
+    "waylandHint": "This is a Wayland desktop. The system may request permission on the first capture; some operations require a desktop helper. Unsupported operations report a specific reason.",
+    "missingDriver": "The deployed computer use component is missing. Redeploy PilotDeck; the component is included with the runtime and needs no separate installation."
   }
 }

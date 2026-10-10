@@ -66,6 +66,8 @@ export type ContextPrepareInput = {
   tools: CanonicalToolSchema[];
   /** Optional full system-prompt override. */
   customSystemPrompt?: string;
+  /** Preserve operating instructions for the MCP tools available to a subagent. */
+  includeMcpInstructionsWithCustomPrompt?: boolean;
   /** Optional system-prompt addendum appended after the base prompt. */
   appendSystemPrompt?: string;
   /** Maximum messages retained when no compact boundary is in play. */

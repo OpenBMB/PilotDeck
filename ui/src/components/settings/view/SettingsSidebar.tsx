@@ -40,6 +40,7 @@ const EXTERNAL_ITEMS: NavItem[] = [
   { key: "integrations", labelKey: "settingsPage.menu.messageChannels" },
   { key: "mcpServers", labelKey: "settingsPage.menu.mcpServers" },
   { key: "officePreview", labelKey: "settingsPage.menu.officePreview" },
+  { key: "computerUse", labelKey: "settingsPage.menu.computerUse" },
 ];
 
 const FOOTER_ITEMS: NavItem[] = [

@@ -65,6 +65,9 @@ jobs:
       - name: Verify managed process ownership and crash cleanup
         run: node --test apps/desktop/scripts/process-identity.test.mjs apps/desktop/scripts/process-scope.test.mjs
 
+      - name: Verify computer use lifecycle and pinned assets
+        run: node --test apps/desktop/scripts/computer-use.test.mjs
+
       - name: Verify Windows tray and quit confirmation
         run: node --test apps/desktop/scripts/desktop-lifecycle.test.mjs
 

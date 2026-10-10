@@ -22,12 +22,18 @@ export function loadMcpServerConfig(projectRoot: string, pilotHome: string): Loa
   const diagnostics: LoadMcpServerConfigResult["diagnostics"] = [];
   const global = readMcpConfig(getGlobalMcpConfigFilePath(pilotHome), diagnostics);
   const project = readMcpConfig(getProjectMcpConfigFilePath(projectRoot), diagnostics);
+  const managedPath = process.env.PILOTDECK_COMPUTER_USE_MCP_CONFIG;
+  const managed = managedPath ? readMcpConfig(managedPath, diagnostics) : undefined;
+  const servers = { ...(global?.mcpServers ?? {}), ...(project?.mcpServers ?? {}) };
+  if (managedPath) {
+    delete servers['pilotdeck-computer-use'];
+    const driver = managed?.mcpServers?.['pilotdeck-computer-use'];
+    if (isRecord(driver)) servers['pilotdeck-computer-use'] = driver;
+  }
 
   return {
-    servers: {
-      ...(global?.mcpServers ?? {}),
-      ...(project?.mcpServers ?? {}),
-    },
+    // Only the desktop host controls this reserved server's executable and enable switch.
+    servers,
     diagnostics,
   };
 }

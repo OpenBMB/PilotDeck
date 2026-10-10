@@ -15,6 +15,7 @@ const PAGE_SLUG_BY_KEY: Partial<Record<SettingsMenuKey, string>> = {
   integrations: "integrations",
   mcpServers: "mcp",
   officePreview: "office",
+  computerUse: "computer-use",
   privacy: "privacy",
   advanced: "advanced",
   about: "about",

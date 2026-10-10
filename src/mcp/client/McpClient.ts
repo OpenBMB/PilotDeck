@@ -9,8 +9,8 @@
  *   intentionally unsupported in this PR; D-tier).
  * - M3 wraps `callTool` / `listTools` with a configurable timeout
  *   (default 60s; cf. legacy 27.8h — see `intentional_difference`).
- * - M5 / M15 detects `mcp_session_expired` and triggers exactly one
- *   reconnect attempt for the next call.
+ * - M5 / M15 clears closed transports and reconnects expired sessions once.
+ *   Only read-only or idempotent calls can be replayed after dispatch.
  * - M5b on `-32001 Request timed out` we recycle the underlying transport
  *   (close + drop refs) before re-throwing, so the *next* `callTool` /
  *   `listTools` spawns a fresh subprocess. Stdio MCP servers like
@@ -121,6 +121,12 @@ export class McpClient {
       { name: "pilotdeck", version: "0.1.0" },
       { capabilities: { elicitation: {} } },
     );
+    client.onclose = () => {
+      // A stopped external server must not leave a memoized, dead connection.
+      // Ignore late close events from clients already replaced by reconnect.
+      if (this.client !== client) return;
+      this.recycleTransport();
+    };
     const handshakeMs = this.options.handshakeTimeoutMs ?? 10_000;
     try {
       await withTimeout(
@@ -135,6 +141,7 @@ export class McpClient {
       );
     } catch (err) {
       this.status = "error";
+      try { await client.close(); } catch { /* best effort cleanup of a failed handshake */ }
       throw err instanceof McpClientError
         ? err
         : new McpClientError(
@@ -146,18 +153,7 @@ export class McpClient {
     this.client = client;
     this.transport = transport;
     this.status = "ready";
-    const instructions = (client.getServerCapabilities() as { instructions?: string } | undefined)
-      ?.instructions;
-    this.serverInstructions =
-      typeof instructions === "string"
-        ? instructions
-        : (this.peekInstructions(client) ?? "");
-  }
-
-  private peekInstructions(client: Client): string | undefined {
-    const raw = (client as unknown as { _serverInstructions?: string })
-      ._serverInstructions;
-    return typeof raw === "string" ? raw : undefined;
+    this.serverInstructions = client.getInstructions() ?? "";
   }
 
   private buildTransport(): Transport {
@@ -229,17 +225,24 @@ export class McpClient {
     return tools;
   }
 
-  /** M3 + M5 + M14 + M15 — call a tool with timeout + auto-reconnect once. */
+  /** Reconnect once; only replay tools advertised as read-only or idempotent. */
   async callTool(
     toolName: string,
     args: unknown,
     options: { signal?: AbortSignal; timeoutMs?: number } = {},
-  ): Promise<{ content: unknown; isError?: boolean }> {
-    await this.start();
+  ): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }> {
+    options.signal?.throwIfAborted();
+    const tools = await this.listTools();
+    options.signal?.throwIfAborted();
     if (!this.client) {
       throw new McpClientError("Client not connected", "mcp_handshake_failed", this.spec.id);
     }
     const timeoutMs = options.timeoutMs ?? this.options.callTimeoutMs ?? this.spec.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+    const advertisedReplay = (tools: PilotDeckMcpToolSpec[]) => {
+      const annotations = tools.find(tool => tool.toolName === toolName)?.annotations;
+      return annotations?.readOnlyHint === true || annotations?.idempotentHint === true;
+    };
+    const mayReplay = advertisedReplay(tools);
     const result = await this.callWithReconnect(() =>
       this.client!.callTool(
         { name: toolName, arguments: (args ?? {}) as Record<string, unknown> },
@@ -248,23 +251,41 @@ export class McpClient {
           timeout: timeoutMs,
           signal: options.signal,
         },
-      ),
+      ), async () => mayReplay && advertisedReplay(await this.listTools()), options.signal,
     );
     return {
       content: recursivelySanitizeUnicode(result.content),
+      ...(result.structuredContent === undefined ? {} : {
+        structuredContent: recursivelySanitizeUnicode(result.structuredContent),
+      }),
       isError: typeof result.isError === "boolean" ? result.isError : undefined,
     };
   }
 
-  /** M5 + M15 wrapper. Triggers exactly one reconnect on session-expired errors. */
-  private async callWithReconnect<T>(fn: () => Promise<T>): Promise<T> {
+  /** Recover an expired session without blindly replaying a dispatched mutation. */
+  private async callWithReconnect<T>(fn: () => Promise<T>, mayReplay: boolean | (() => Promise<boolean>) = true, signal?: AbortSignal): Promise<T> {
     try {
       return await fn();
     } catch (err) {
-      if (this.isSessionExpired(err) && !this.reconnectInFlight) {
+      // The SDK can use its timeout error code for cancellation too. Preserve
+      // the caller's abort rather than recycling a healthy transport or replaying.
+      if (signal?.aborted) throw signal.reason ?? err;
+      if (this.isReconnectableError(err) && !this.reconnectInFlight) {
         this.reconnectInFlight = true;
         try {
           await this.reconnect();
+          signal?.throwIfAborted();
+          // Retry only if both generations advertise a safe replay. The new
+          // server may have removed the annotation while we were disconnected.
+          const canReplay = typeof mayReplay === "function" ? await mayReplay() : mayReplay;
+          if (!canReplay) {
+            throw new McpClientError(
+              "MCP connection lost or session expired after dispatch; the action may have executed. Observe current state before retrying.",
+              "mcp_session_expired",
+              this.spec.id,
+            );
+          }
+          signal?.throwIfAborted();
           return await fn();
         } finally {
           this.reconnectInFlight = false;
@@ -273,7 +294,7 @@ export class McpClient {
       if (err instanceof McpClientError) throw err;
       const e = err as Error & { code?: number };
       if (e.code === -32001 || /timed out|timeout/i.test(e.message ?? "")) {
-        this.recycleTransportAfterTimeout();
+        this.recycleTransport();
         throw new McpClientError(
           `MCP call timed out (server=${this.spec.id}): ${e.message}`,
           "mcp_call_timeout",
@@ -288,15 +309,17 @@ export class McpClient {
     }
   }
 
-  private isSessionExpired(err: unknown): boolean {
+  private isReconnectableError(err: unknown): boolean {
     const e = err as { code?: number; message?: string; statusCode?: number } | null;
     if (!e) return false;
     if (e.statusCode === 404) return true;
-    return /session.*expired/i.test(e.message ?? "");
+    return /session.*expired/i.test(e.message ?? "")
+      || e.message === "Not connected"
+      || (e.code === -32000 && /connection closed/i.test(e.message ?? ""));
   }
 
   /**
-   * M5b — drop the wedged transport so the next call spawns a fresh
+   * M5b — drop a closed or wedged transport so the next call spawns a fresh
    * subprocess.
    *
    * `-32001` only cancels the client's wait; the server-side request often
@@ -307,7 +330,7 @@ export class McpClient {
    * into `start()` opens a brand-new connection — and close + clean up
    * the old transport asynchronously in the background.
    */
-  private recycleTransportAfterTimeout(): void {
+  private recycleTransport(): void {
     const oldClient = this.client;
     const oldDir = this.perSessionDir;
     this.client = null;

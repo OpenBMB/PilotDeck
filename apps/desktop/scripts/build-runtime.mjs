@@ -259,8 +259,13 @@ function prepareRuntimeTree(installEnv = process.env) {
   copyFiltered(resolve(repoRoot, "ui", "shared"), resolve(runtimeRoot, "ui", "shared"), skipBuildArtifact);
   copyFiltered(resolve(repoRoot, "ui", "public"), resolve(runtimeRoot, "ui", "public"), () => true);
   copyFiltered(resolve(repoRoot, "ui", "dist"), resolve(runtimeRoot, "ui", "dist"), () => true);
+  cpSync(resolve(repoRoot, "resources", "cua-driver"), resolve(runtimeRoot, "resources", "cua-driver"), {
+    recursive: true, verbatimSymlinks: true,
+  });
+  cpSync(resolve(repoRoot, "scripts", "computer-use"), resolve(runtimeRoot, "scripts", "computer-use"), { recursive: true });
+  cpSync(resolve(repoRoot, "scripts", "lib"), resolve(runtimeRoot, "scripts", "lib"), { recursive: true });
   mkdirSync(resolve(runtimeRoot, "scripts"), { recursive: true });
-  for (const script of ["check-node-runtime.mjs", "install-asr.mjs"]) {
+  for (const script of ["check-node-runtime.mjs", "install-asr.mjs", "prepare-computer-use.mjs"]) {
     cpSync(resolve(repoRoot, "scripts", script), resolve(runtimeRoot, "scripts", script));
   }
   rewriteUiServerSourceImports(resolve(runtimeRoot, "ui", "server"));
@@ -489,6 +494,7 @@ function rewriteUiServerSourceImports(serverRoot) {
 }
 
 run(process.execPath, [resolve(desktopRoot, "scripts", "download-node.mjs")], desktopRoot);
+run(process.execPath, [resolve(desktopRoot, "scripts", "download-cua-driver.mjs")], desktopRoot);
 assertBundledNodeRuntime();
 if (process.platform === "win32") {
   run(process.execPath, [resolve(desktopRoot, "scripts", "download-git-bash.mjs")], desktopRoot);
@@ -537,6 +543,9 @@ function verifyRuntime(root, label = "runtime", runtimeArch = targetRuntimeArch)
     resolve(runtimeRoot, "ui", "dist", "index.html"),
     resolve(runtimeRoot, "ui", "server", "index.js"),
     resolve(runtimeRoot, "scripts", "check-node-runtime.mjs"),
+    resolve(runtimeRoot, "scripts", "computer-use", "cua-driver.json"),
+    resolve(runtimeRoot, "scripts", "lib", "app-icons.mjs"),
+    resolve(runtimeRoot, "resources", "cua-driver", "manifest.json"),
     resolve(runtimeRoot, "scripts", "install-asr.mjs"),
     resolve(runtimeRoot, "node_modules", "express"),
     resolve(runtimeRoot, "node_modules", "exceljs"),
@@ -569,6 +578,7 @@ function verifyRuntime(root, label = "runtime", runtimeArch = targetRuntimeArch)
   verifyRuntimeNativeModule("better-sqlite3", label, runtimeArch);
   verifyRuntimeModuleImport(resolve(runtimeRoot, "dist", "src", "cli", "pilotdeck.js"), label, runtimeArch);
   verifyRuntimeModuleImport(resolve(runtimeRoot, "ui", "server", "services", "spreadsheetPreview.js"), label, runtimeArch);
+  verifyRuntimeModuleImport(resolve(runtimeRoot, "ui", "server", "services", "standaloneComputerUse.js"), label, runtimeArch);
 
   console.log(`[desktop] staged ${label} ready: ${runtimeRoot}`);
   console.log(`[desktop] staged ${label} size: ${formatBytes(directorySize(runtimeRoot))}`);

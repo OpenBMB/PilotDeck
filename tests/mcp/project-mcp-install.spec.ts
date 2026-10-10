@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { existsSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import ts from "typescript";
@@ -27,7 +28,21 @@ test("packaged FunASR installation command runs the bundled Node without npm", a
     assert.equal(getPilotDeckInstallCommand(), `npm --prefix "${root}" run install:asr`);
     process.env.PILOTDECK_RUNTIME_ROOT = alias;
     const command = getPilotDeckInstallCommand();
-    assert.equal(command, `'${process.execPath}' '${join(root, "scripts", "install-asr.mjs")}'`);
+    const desktopRoot = process.env.PILOTDECK_RUNTIME_ROOT;
+    assert.equal(command, `'${process.execPath}' '${join(root, "scripts", "install-asr.mjs")}'`, JSON.stringify({
+      alias, root, desktopRoot, desktopExists: desktopRoot && existsSync(desktopRoot),
+      desktopCanonical: desktopRoot && existsSync(desktopRoot) ? realpathSync.native(desktopRoot) : null,
+      packageCanonical: realpathSync.native(root),
+      relative: desktopRoot && existsSync(desktopRoot) ? relative(realpathSync.native(desktopRoot), realpathSync.native(root)) : null,
+    }));
+    if (process.platform === "win32") {
+      process.env.PILOTDECK_RUNTIME_ROOT = alias.toLowerCase();
+      assert.equal(getPilotDeckInstallCommand(), command);
+    }
+    // An existing but different directory must not be treated as the bundle.
+    process.env.PILOTDECK_RUNTIME_ROOT = moduleDir;
+    assert.equal(getPilotDeckInstallCommand(), `npm --prefix "${root}" run install:asr`);
+    process.env.PILOTDECK_RUNTIME_ROOT = alias;
     const shell = resolveDefaultCommandShell();
     const installed = spawnSync(shell.shell, shell.args(command), {
       encoding: "utf8", windowsVerbatimArguments: shell.windowsVerbatimArguments,

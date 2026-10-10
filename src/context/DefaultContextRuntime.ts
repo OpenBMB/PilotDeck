@@ -232,6 +232,7 @@ export class DefaultContextRuntime implements ContextRuntime {
       additionalWorkingDirectories: input.additionalWorkingDirectories,
       tools: input.tools,
       customSystemPrompt: input.customSystemPrompt,
+      includeMcpInstructionsWithCustomPrompt: input.includeMcpInstructionsWithCustomPrompt,
       appendSystemPrompt: input.appendSystemPrompt,
       now: () => new Date(promptTimestamp),
     });
