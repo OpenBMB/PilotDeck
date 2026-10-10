@@ -1369,6 +1369,7 @@ class ProjectRuntimeRegistry {
       eventEmitter: eventBuf.emitter,
       drainEvents: eventBuf.drain,
       tokenAccounting: runtime.tokenAccounting,
+      backgroundTasks: runtime.backgroundTasks,
       getModelMaxContextTokens: (provider, model) => resolveRoutedModelMaxContextTokens({
         modelRuntime: runtime.model,
         agentModel: runtime.snapshot.config.agent.model,

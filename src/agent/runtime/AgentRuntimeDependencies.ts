@@ -15,6 +15,7 @@ import type { TokenAccountingRuntime } from "../../context/index.js";
 import type { RouterRuntime } from "../../router/index.js";
 import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
 import type { ModelProtocol } from "../../model/index.js";
+import type { BackgroundTaskRuntime } from "../../task/runtime/BackgroundTaskRuntime.js";
 
 /**
  * Narrow view of the router that the agent loop actually consumes. Tests can
@@ -141,6 +142,14 @@ export type AgentRuntimeDependencies = {
   planFileManager?: PlanFileManager;
   /** Session-scoped state tracking required `todo_write` calls after plan approval. */
   planTodoManager?: PlanTodoStateManager;
+  /**
+   * C5 background task runtime. When present, the loop attaches
+   * `startBackground` to the subagent fork API so the `agent` tool can queue
+   * non-blocking subagents (`run_in_background: true`), and joins their
+   * reports at the terminal boundary of the active request. Owned children
+   * are cancelled when the run aborts, fails, or is abandoned.
+   */
+  backgroundTasks?: BackgroundTaskRuntime;
   eventEmitter?: AgentEventEmitter;
   drainEvents?: () => AgentEvent[];
 };

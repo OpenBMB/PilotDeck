@@ -25,7 +25,9 @@ import { randomUUID } from "node:crypto";
 import { TaskOutputStore } from "../storage/TaskOutputStore.js";
 import { resolveDefaultCommandShell } from "../../runtime/commandShell.js";
 import type {
+  PilotDeckBackgroundAgentTask,
   PilotDeckBackgroundBashTask,
+  PilotDeckBackgroundTask,
   PilotDeckBackgroundTaskStatus,
   PilotDeckBackgroundTaskKind,
   PilotDeckBackgroundTaskListFilter,
@@ -35,12 +37,15 @@ import type {
 export type BackgroundTaskCompletionEvent = {
   sessionId?: string;
   taskId: string;
+  kind?: PilotDeckBackgroundTaskKind;
   status: Extract<PilotDeckBackgroundTaskStatus, "completed" | "failed" | "cancelled">;
   exitCode?: number | null;
   outputPreview: string;
   totalBytes: number;
   startedAt: string;
   endedAt: string;
+  subagentId?: string;
+  originTurnId?: string;
 };
 
 export type BackgroundTaskCompletionHandler = (event: BackgroundTaskCompletionEvent) => void;
@@ -52,8 +57,12 @@ export type BackgroundTaskRuntimeOptions = {
   now?: () => Date;
   /** Override the spawn function (used by tests). */
   spawn?: typeof spawn;
-  /** Hard cap on simultaneous tasks (default: 32). */
+  /** Hard cap on simultaneous bash tasks (default: 32). Bash tasks only — managed agent tasks are bounded by `maxRunningAgentTasks`. */
   maxTasks?: number;
+  /** Hard cap on simultaneous managed (`local_agent`) tasks (default: 8). */
+  maxRunningAgentTasks?: number;
+  /** Max retained terminal managed task records; the oldest are pruned first (default: 32). */
+  maxRetainedAgentTasks?: number;
   /** Optional completion sink for hosts that want one-shot background task notifications. */
   onCompletion?: BackgroundTaskCompletionHandler;
   /** Maximum bytes included in completion output previews (default: 4000). */
@@ -71,6 +80,28 @@ export type StartTaskSpec = {
   onSettled?: () => Promise<void>;
 };
 
+export type StartManagedTaskSpec = {
+  /**
+   * Stable task id — the caller's subagentId. The same id is used by the
+   * `agent` tool result, the `task_*` tools, and result delivery. Must be
+   * unique among live tasks.
+   */
+  subagentId: string;
+  /** Human-readable label (the `agent` tool `description`). */
+  label: string;
+  sessionId?: string;
+  agentId?: string;
+  originTurnId?: string;
+  subagentType?: string;
+  /**
+   * The managed work. Resolves with the final report (appended to the task's
+   * output store); rejects to fail the task. Cancellation is cooperative:
+   * the signal aborts on `stop`, but a callback that ignores it is
+   * force-cancelled after the stop grace window — no hard guarantee.
+   */
+  run: (signal: AbortSignal) => Promise<string>;
+};
+
 export type StopTaskOptions = {
   graceMs?: number;
 };
@@ -78,31 +109,48 @@ export type StopTaskOptions = {
 export type WaitTaskOptions = {
   timeoutMs?: number;
   abortSignal?: AbortSignal;
+  /** Captured from the entry the wait holds, so retention pruning cannot lose it. */
+  outputOffset?: number;
+  outputMaxBytes?: number;
 };
 
 export type WaitTaskResult = {
-  task: PilotDeckBackgroundBashTask;
+  task: PilotDeckBackgroundTask;
   timedOut: boolean;
   outcome: "completed" | "timeout" | "aborted";
   waitedMs: number;
+  outputSlice?: PilotDeckTaskOutputSlice;
 };
 
 type RuntimeEntry = {
-  task: PilotDeckBackgroundBashTask;
+  task: PilotDeckBackgroundTask;
   child?: ChildProcess;
   output: TaskOutputStore;
+  /** Managed (`local_agent`) tasks: cooperative cancellation handle. */
+  controller?: AbortController;
+  /** Managed tasks: idempotent forced-cancel used after the stop grace window. */
+  requestCancel?: () => void;
   /** Resolved when the child has fully exited (success, failure, or kill). */
   done: Promise<void>;
 };
 
 const DEFAULT_GRACE_MS = 5_000;
 const DEFAULT_MAX_TASKS = 32;
+const DEFAULT_MAX_RUNNING_AGENT_TASKS = 8;
+const DEFAULT_MAX_RETAINED_AGENT_TASKS = 32;
 const DEFAULT_COMPLETION_PREVIEW_BYTES = 4_000;
+
+function isTerminalTaskStatus(status: PilotDeckBackgroundTaskStatus): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
 
 export class BackgroundTaskRuntime {
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly options: Required<
-    Pick<BackgroundTaskRuntimeOptions, "now" | "spawn" | "maxTasks">
+    Pick<
+      BackgroundTaskRuntimeOptions,
+      "now" | "spawn" | "maxTasks" | "maxRunningAgentTasks" | "maxRetainedAgentTasks"
+    >
   > &
     Pick<BackgroundTaskRuntimeOptions, "diskSpillDir" | "onCompletion" | "completionPreviewBytes">;
 
@@ -111,14 +159,16 @@ export class BackgroundTaskRuntime {
       now: options.now ?? (() => new Date()),
       spawn: options.spawn ?? spawn,
       maxTasks: options.maxTasks ?? DEFAULT_MAX_TASKS,
+      maxRunningAgentTasks: options.maxRunningAgentTasks ?? DEFAULT_MAX_RUNNING_AGENT_TASKS,
+      maxRetainedAgentTasks: options.maxRetainedAgentTasks ?? DEFAULT_MAX_RETAINED_AGENT_TASKS,
       diskSpillDir: options.diskSpillDir,
       onCompletion: options.onCompletion,
       completionPreviewBytes: options.completionPreviewBytes ?? DEFAULT_COMPLETION_PREVIEW_BYTES,
     };
   }
 
-  list(filter: PilotDeckBackgroundTaskListFilter = {}): PilotDeckBackgroundBashTask[] {
-    const result: PilotDeckBackgroundBashTask[] = [];
+  list(filter: PilotDeckBackgroundTaskListFilter = {}): PilotDeckBackgroundTask[] {
+    const result: PilotDeckBackgroundTask[] = [];
     for (const entry of this.entries.values()) {
       if (filter.agentId && entry.task.agentId !== filter.agentId) continue;
       if (filter.kind && entry.task.kind !== filter.kind) continue;
@@ -131,7 +181,7 @@ export class BackgroundTaskRuntime {
     return result;
   }
 
-  get(taskId: string): PilotDeckBackgroundBashTask | undefined {
+  get(taskId: string): PilotDeckBackgroundTask | undefined {
     return this.entries.get(taskId)?.task;
   }
 
@@ -171,11 +221,15 @@ export class BackgroundTaskRuntime {
       : result === "aborted"
         ? "aborted"
         : "completed";
+    const outputSlice = options.outputOffset !== undefined
+      ? entry.output.readSlice(Math.max(0, options.outputOffset), options.outputMaxBytes)
+      : undefined;
     return {
       task: entry.task,
       timedOut: outcome === "timeout" || outcome === "aborted",
       outcome,
       waitedMs: Date.now() - startedAt,
+      outputSlice,
     };
   }
 
@@ -185,12 +239,15 @@ export class BackgroundTaskRuntime {
    * and `completed` / `failed` / `cancelled` later via the `exit` listener.
    */
   async start(spec: StartTaskSpec): Promise<PilotDeckBackgroundBashTask> {
-    // Retain finished tasks for history/output without consuming concurrency slots.
-    let activeTasks = 0;
+    // Only active bash tasks consume bash capacity. Retained history and
+    // managed agents use no bash slots; agents have a separate running cap.
+    let activeBashTasks = 0;
     for (const { task } of this.entries.values()) {
-      if (task.status === "pending" || task.status === "running") activeTasks++;
+      if (task.type === "local_bash" && (task.status === "pending" || task.status === "running")) {
+        activeBashTasks++;
+      }
     }
-    if (activeTasks >= this.options.maxTasks) {
+    if (activeBashTasks >= this.options.maxTasks) {
       throw new Error(
         `BackgroundTaskRuntime: max tasks (${this.options.maxTasks}) exceeded.`,
       );
@@ -303,14 +360,150 @@ export class BackgroundTaskRuntime {
   }
 
   /**
-   * Stop a task: SIGTERM, wait `graceMs`, then SIGKILL if still alive.
+   * Run a managed (`local_agent`) task — an asynchronous callback (e.g. a
+   * forked subagent) registered in the same registry as bash tasks so the
+   * existing `task_list` / `task_output` / `task_wait` / `task_stop` surface
+   * works unchanged. Resolves once the task has been registered and started
+   * (never awaits completion).
+   *
+   * Capacity: bounded by `maxRunningAgentTasks` simultaneous running tasks
+   * and `maxRetainedAgentTasks` retained terminal records (oldest pruned) —
+   * deliberately independent of the bash `maxTasks` concurrency cap.
+   */
+  async startManaged(spec: StartManagedTaskSpec): Promise<PilotDeckBackgroundAgentTask> {
+    let runningAgentTasks = 0;
+    for (const entry of this.entries.values()) {
+      if (entry.task.type === "local_agent" && !isTerminalTaskStatus(entry.task.status)) {
+        runningAgentTasks++;
+      }
+    }
+    if (runningAgentTasks >= this.options.maxRunningAgentTasks) {
+      throw new Error(
+        `BackgroundTaskRuntime: running agent task capacity (${this.options.maxRunningAgentTasks}) exceeded; ${runningAgentTasks} agent tasks are still running.`,
+      );
+    }
+    if (this.entries.has(spec.subagentId)) {
+      throw new Error(`BackgroundTaskRuntime: duplicate task id: ${spec.subagentId}`);
+    }
+    this.pruneRetainedAgentRecords(1);
+
+    const taskId = spec.subagentId;
+    const startedAt = this.options.now();
+    const task: PilotDeckBackgroundAgentTask = {
+      taskId,
+      type: "local_agent",
+      agentId: spec.agentId,
+      sessionId: spec.sessionId,
+      kind: "agent",
+      command: spec.label,
+      subagentId: spec.subagentId,
+      ...(spec.subagentType ? { subagentType: spec.subagentType } : {}),
+      ...(spec.originTurnId ? { originTurnId: spec.originTurnId } : {}),
+      status: "running",
+      completionStatusSentInAttachment: false,
+      lastReportedTotalLines: 0,
+      isBackgrounded: true,
+      interrupted: false,
+      startedAt,
+      outputBytes: 0,
+    };
+
+    const output = new TaskOutputStore({
+      taskId,
+      diskSpillDir: this.options.diskSpillDir,
+    });
+
+    let resolveDone!: () => void;
+    const done = new Promise<void>((resolve) => {
+      resolveDone = resolve;
+    });
+    const controller = new AbortController();
+
+    // Settle-once guard: `stop` may force-cancel before the callback settles
+    // (or the callback may settle after the grace window). Whichever path
+    // arrives first wins; late completions are guarded no-ops so a cancelled
+    // task can never resurrect as completed and no completion event fires twice.
+    let settled = false;
+    const finish = (ok: boolean, report?: string, errorMessage?: string): void => {
+      if (settled) return;
+      settled = true;
+      if (report !== undefined && report.length > 0) {
+        output.append(Buffer.from(report));
+      }
+      if (errorMessage !== undefined) {
+        output.append(Buffer.from(`error: ${errorMessage}\n`));
+      }
+      task.endedAt = this.options.now();
+      task.status = task.interrupted
+        ? "cancelled"
+        : ok
+          ? "completed"
+          : "failed";
+      task.completionStatusSentInAttachment = true;
+      task.outputBytes = output.totalBytes();
+      this.notifyCompletion(task, output);
+      resolveDone();
+    };
+
+    const entry: RuntimeEntry = {
+      task,
+      output,
+      controller,
+      requestCancel: () => finish(false),
+      done,
+    };
+    this.entries.set(taskId, entry);
+
+    void (async () => {
+      try {
+        const report = await spec.run(controller.signal);
+        finish(true, report);
+      } catch (err) {
+        finish(false, undefined, err instanceof Error ? err.message : String(err));
+      }
+    })();
+
+    return task;
+  }
+
+  /** Prune the oldest terminal managed records so `reserveSlots` fit under the retention cap. */
+  private pruneRetainedAgentRecords(reserveSlots: number): void {
+    const max = this.options.maxRetainedAgentTasks;
+    if (max <= 0) return;
+    const terminalAgentEntries = [...this.entries.values()]
+      .filter((e) => e.task.type === "local_agent" && isTerminalTaskStatus(e.task.status))
+      .sort((a, b) => {
+        const aEnded = a.task.type === "local_agent" ? a.task.endedAt?.getTime() ?? 0 : 0;
+        const bEnded = b.task.type === "local_agent" ? b.task.endedAt?.getTime() ?? 0 : 0;
+        return aEnded - bEnded;
+      });
+    const excess = terminalAgentEntries.length + reserveSlots - max;
+    for (let i = 0; i < excess; i++) {
+      this.entries.delete(terminalAgentEntries[i]!.task.taskId);
+    }
+  }
+
+  /**
+   * Stop a task. Bash tasks: SIGTERM → grace → SIGKILL. Managed tasks:
+   * cooperative abort → grace → forced cancel (a non-cooperative callback
+   * cannot be killed; it is detached and its late settle is a guarded no-op).
    * Idempotent: stopping an already-finished task is a no-op.
    */
   async stop(taskId: string, options: StopTaskOptions = {}): Promise<void> {
     const entry = this.entries.get(taskId);
     if (!entry) throw new Error(`Unknown taskId: ${taskId}`);
     const { task, child, done } = entry;
-    if (task.status !== "running") { await done; return; }
+    // A process can be terminal while its checkpoint postimage is still
+    // being captured. Stopping it must await that same completion boundary.
+    if (task.status !== "running" && task.status !== "pending") { await done; return; }
+    if (task.type === "local_agent") {
+      task.interrupted = true;
+      entry.controller?.abort(new Error("Background agent task stopped."));
+      await waitForDoneOrTimeout(done, options.graceMs ?? DEFAULT_GRACE_MS);
+      entry.requestCancel?.();
+      await done;
+      return;
+    }
     if (!child) return;
     task.interrupted = true;
     if (process.platform === "win32") {
@@ -373,14 +566,14 @@ export class BackgroundTaskRuntime {
   }
 
   /** Convenience used in tests: `await runtime.waitFor(taskId)`. */
-  async waitFor(taskId: string): Promise<PilotDeckBackgroundBashTask> {
+  async waitFor(taskId: string): Promise<PilotDeckBackgroundTask> {
     const entry = this.entries.get(taskId);
     if (!entry) throw new Error(`Unknown taskId: ${taskId}`);
     await entry.done;
     return entry.task;
   }
 
-  private notifyCompletion(task: PilotDeckBackgroundBashTask, output: TaskOutputStore): void {
+  private notifyCompletion(task: PilotDeckBackgroundTask, output: TaskOutputStore): void {
     if (!this.options.onCompletion || !task.endedAt) {
       return;
     }
@@ -391,12 +584,16 @@ export class BackgroundTaskRuntime {
       this.options.onCompletion({
         taskId: task.taskId,
         sessionId: task.sessionId,
+        kind: task.kind,
         status: task.status as BackgroundTaskCompletionEvent["status"],
-        exitCode: task.exitCode,
+        exitCode: task.type === "local_bash" ? task.exitCode : undefined,
         outputPreview: slice.content,
         totalBytes,
         startedAt: task.startedAt.toISOString(),
         endedAt: task.endedAt.toISOString(),
+        ...(task.type === "local_agent"
+          ? { subagentId: task.subagentId, originTurnId: task.originTurnId }
+          : {}),
       });
     } catch {
       // Completion notifications are best-effort and must never break task cleanup.
