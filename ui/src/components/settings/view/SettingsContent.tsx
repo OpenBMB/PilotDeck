@@ -21,6 +21,7 @@ const ModelPoolSections = lazy(() => import("./modelPool"));
 const PrivacySections = lazy(() => import("./privacy"));
 const AboutSections = lazy(() => import("./about"));
 const OfficePreviewSections = lazy(() => import("./officePreview"));
+const ComputerUseSections = lazy(() => import('./computerUse'));
 
 const AppearanceSettings = lazy(() => import('./appearance'));
 
@@ -49,6 +50,7 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   extensions: "settingsPage.titles.extensions",
   mcpServers: "settingsPage.titles.mcpServers",
   officePreview: "settingsPage.titles.officePreview",
+  computerUse: "settingsPage.titles.computerUse",
   privacy: "settingsPage.titles.privacy",
   advanced: "settingsPage.titles.advanced",
   about: "settingsPage.titles.about",
@@ -68,6 +70,7 @@ const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
   extensions: "settingsPage.menu.extensions",
   mcpServers: "settingsPage.menu.mcpServers",
   officePreview: "settingsPage.menu.officePreview",
+  computerUse: "settingsPage.menu.computerUse",
   privacy: "settingsPage.menu.privacy",
   advanced: "settingsPage.menu.system",
   about: "settingsPage.menu.about",
@@ -85,6 +88,7 @@ const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
   integrations: "settingsPage.descriptions.integrations",
   mcpServers: "settingsPage.descriptions.mcpServers",
   officePreview: "settingsPage.descriptions.officePreview",
+  computerUse: "settingsPage.descriptions.computerUse",
   privacy: "settingsPage.descriptions.privacy",
   advanced: "settingsPage.descriptions.advanced",
   about: "settingsPage.descriptions.about",
@@ -131,7 +135,7 @@ export default function SettingsContent({
   const isExternalIntegrationPage =
     selectedKey === "integrations" ||
     selectedKey === "mcpServers" ||
-    selectedKey === "officePreview";
+    selectedKey === "officePreview" || selectedKey === 'computerUse';
 
   return (
     <div className={cn("settings-main", !mobileVisible && "mobile-hidden")}>
@@ -198,6 +202,8 @@ export default function SettingsContent({
           <McpServersSection title={title} projects={projects} />
         ) : selectedKey === "officePreview" ? (
           <OfficePreviewSections title={title} />
+        ) : selectedKey === 'computerUse' ? (
+          <ComputerUseSections />
         ) : selectedKey === "modelPool" ? (
           <ModelPoolSections title={title} />
         ) : selectedKey === "privacy" ? (

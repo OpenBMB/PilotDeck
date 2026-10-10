@@ -95,6 +95,8 @@ import {
     steerQueuedInputViaGateway,
 } from './pilotdeck-bridge.js';
 import sessionManager from './sessionManager.js';
+import { createComputerUseService } from './services/computerUse.js';
+import { createComputerUseRouter } from './routes/computer-use.js';
 import gitRoutes from './routes/git.js';
 import checkpointRoutes from './routes/checkpoints.js';
 import authRoutes from './routes/auth.js';
@@ -599,6 +601,8 @@ app.use('/api/taskmaster', authenticateToken, taskmasterRoutes);
 app.use('/api/memory', authenticateToken, memoryRoutes);
 
 // MCP utilities
+const computerUse = createComputerUseService();
+app.use('/api/computer-use', authenticateToken, createComputerUseRouter({ service: computerUse }));
 app.use('/api/mcp-utils', authenticateToken, mcpUtilsRoutes);
 
 // Commands API Routes (protected)
@@ -3639,6 +3643,7 @@ async function startServer() {
     try {
         await startServerAfterStartup({
             startupFn: async () => {
+                await computerUse.initialize();
                 await runServerStartupBeforeListen({
                     initializeDatabaseFn: initializeDatabase,
                     ensureLocalUserWhenAuthDisabledFn: ensureLocalUserWhenAuthDisabled,
@@ -3730,6 +3735,7 @@ async function startServer() {
 
             shutdownPromise = (async () => {
                 try {
+                    await computerUse.stop().catch(error => console.error('[computer-use] Shutdown:', error.message));
                     stopMemoryScheduler();
                     closeMemoryServices();
                     stopPilotDeckConfigWatcher();

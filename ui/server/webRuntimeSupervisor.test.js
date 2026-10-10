@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { resolveLaunchConfigPath } from '../../scripts/dev-launcher.mjs';
@@ -62,6 +64,16 @@ function createHarness({
 }
 
 describe('web runtime supervisor', () => {
+  it('starts the shared packaged runtime with built JavaScript and no source or tsx dependency', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-runtime-commands-'));
+    try {
+      fs.mkdirSync(path.join(root, 'dist/src/cli'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'dist/src/cli/pilotdeck.js'), '');
+      const commands = getRuntimeCommands('start-built', path.join(root, 'ui'));
+      expect(commands[0].args).toEqual([path.join(root, 'ui/server/index.js')]);
+      expect(commands[1].args).toEqual([path.join(root, 'dist/src/cli/pilotdeck.js'), 'server']);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
   it('starts the UI server first and Vite only in development', () => {
     expect(normalizeSupervisorMode('anything')).toBe('start-built');
     expect(getRuntimeCommands('start-built').map(({ name }) => name)).toEqual(['server', 'gateway']);

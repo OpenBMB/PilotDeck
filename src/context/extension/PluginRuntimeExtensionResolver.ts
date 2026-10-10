@@ -33,7 +33,10 @@ export type PluginRuntimeLike = {
  * to consume it (deferred `context-extension-snapshot`).
  */
 export class PluginRuntimeExtensionResolver implements ExtensionResolver {
-  constructor(private readonly runtime: PluginRuntimeLike) {}
+  constructor(
+    private readonly runtime: PluginRuntimeLike,
+    private readonly runtimeMcpInstructions: () => McpServerInstruction[] = () => [],
+  ) {}
 
   listCommands(): ContributedCommand[] {
     if (this.runtime.getAllCommands) {
@@ -71,10 +74,9 @@ export class PluginRuntimeExtensionResolver implements ExtensionResolver {
   }
 
   listMcpInstructions(): McpServerInstruction[] {
-    if (this.runtime.getAllMcpInstructions) {
-      return this.runtime.getAllMcpInstructions();
-    }
-    // MCP runtime not yet integrated — see deferred `context-mcp-instructions`.
-    return [];
+    return [
+      ...(this.runtime.getAllMcpInstructions?.() ?? []),
+      ...this.runtimeMcpInstructions(),
+    ];
   }
 }

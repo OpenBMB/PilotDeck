@@ -19,3 +19,5 @@ packages/
 dist/
 ui/dist/
 ui/node_modules/
+resources/cua-driver/
+resources/.cua-driver-download-*/
