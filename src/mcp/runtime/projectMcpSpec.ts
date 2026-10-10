@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, resolve, join } from "node:path";
+import { dirname, resolve, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PilotDeckMcpServerSpec } from "../protocol/types.js";
 
@@ -28,7 +28,9 @@ export function getPilotDeckInstallCommand(): string {
   const packageRoot = findPackageRoot(MODULE_DIR);
   // Desktop packages ship Node and this installer, but deliberately omit npm.
   const desktopRoot = process.env.PILOTDECK_RUNTIME_ROOT;
-  if (desktopRoot && existsSync(desktopRoot) && realpathSync(desktopRoot) === realpathSync(packageRoot)) {
+  // Windows canonical paths can retain different casing for the same directory.
+  // relative() applies the platform's path comparison after resolving aliases.
+  if (desktopRoot && existsSync(desktopRoot) && relative(realpathSync(desktopRoot), realpathSync(packageRoot)) === "") {
     // The desktop Bash tool uses POSIX quoting, including its bundled Git Bash.
     const quote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
     return `${quote(process.execPath)} ${quote(join(packageRoot, "scripts", "install-asr.mjs"))}`;

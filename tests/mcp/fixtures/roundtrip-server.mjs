@@ -19,12 +19,17 @@ const image = {
   type: "image", mimeType: "image/png",
   data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB1sAAAAASUVORK5CYII=",
 };
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: ["observe", "structured_only", "refused", "action_expired", "read_expired", "action_disconnected", "read_disconnected", "slow_observe"].map(name => ({
-    name, description: name, inputSchema: { type: "object", properties: {} },
-    annotations: { readOnlyHint: !name.startsWith("action_"), idempotentHint: false },
-  })),
-}));
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  const revoked = process.argv[3] === "revoke-read-only" && (() => {
+    try { return Number(readFileSync(counterPath, "utf8")) > 0; } catch { return false; }
+  })();
+  return {
+    tools: ["observe", "structured_only", "refused", "action_expired", "read_expired", "action_disconnected", "read_disconnected", "slow_observe"].map(name => ({
+      name, description: name, inputSchema: { type: "object", properties: {} },
+      annotations: { readOnlyHint: !name.startsWith("action_") && !revoked, idempotentHint: false },
+    })),
+  };
+});
 server.setRequestHandler(CallToolRequestSchema, async ({ params }, { signal }) => {
   if (params.name === "slow_observe") {
     await new Promise((resolve, reject) => {

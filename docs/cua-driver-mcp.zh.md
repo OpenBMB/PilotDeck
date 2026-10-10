@@ -19,6 +19,8 @@
 
 独立网页后端会自动接管全局配置中与本机 Driver 路径一致、参数恰为 `["mcp"]` 且无自定义环境或会话策略的旧 `cua-driver` POC 条目，先保存完整备份 `PILOT_HOME/computer-use/legacy-mcp.backup.json`，再移除该条目，避免开关关闭后仍通过重复配置暴露工具。其他手动配置保持独立，开关只控制保留服务 `pilotdeck-computer-use`。
 
+HTTPS 反向代理部署需开启登录（`PILOTDECK_DISABLE_LOCAL_AUTH=0`），代理保留浏览器访问的 `Host`（包含非标准端口），并覆盖 `X-Forwarded-Proto` 为实际公开访问协议。后端默认仅信任 loopback 代理；代理位于另一台机器或容器网络时，以 `PILOTDECK_TRUST_PROXY` 配置其 IP/CIDR，多个地址用逗号分隔。设为 `0` 或 `false` 可禁用转发头信任。未受信任的直接连接不能通过伪造转发头改变请求协议；来源检查不采用 `X-Forwarded-Host`。本地免登录模式仍限制本地 Host，不因代理配置而开放公共域名的电脑操控入口。
+
 ```text
 PilotDeck Electron 主进程
   ├─ Cua Driver serve --embedded（直接子进程、私有 socket / named pipe）
@@ -142,7 +144,7 @@ PILOTDECK_GATEWAY_URL=ws://127.0.0.1:18790/ws npm run dev
 
 通过 PilotDeck 原有的工具审批界面批准测试操作。工具名为 `mcp__cua-driver__launch_app`、`mcp__cua-driver__get_window_state`、`mcp__cua-driver__click` 等。
 
-动作应以新观察结果中的 token 为依据，完成后再次观察。连接在动作派发后丢失时，PilotDeck 不会自动重放未声明可重试的动作；它会提示先观察当前状态。只读或声明幂等的工具允许一次重连重试。调用取消保留正常连接，超时或关闭的连接会被清理，供后续调用重新建立。
+动作应以新观察结果中的 token 为依据，完成后再次观察。连接在动作派发后丢失时，PilotDeck 不会自动重放未声明可重试的动作；它会提示先观察当前状态。只读或声明幂等的工具允许一次重连重试，但新连接必须重新获取标注并仍声明可重试。后续调用无需由调用者再次发现工具；缓存回收后会自动重新获取标注。调用取消保留正常连接，超时或关闭的连接会被清理，供后续调用重新建立。
 
 ## 已完成验证
 

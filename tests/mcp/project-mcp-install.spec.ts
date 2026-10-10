@@ -25,7 +25,10 @@ test("packaged FunASR installation command runs the bundled Node without npm", a
     const {getPilotDeckInstallCommand} = await import(pathToFileURL(moduleFile).href);
     delete process.env.PILOTDECK_RUNTIME_ROOT;
     assert.equal(getPilotDeckInstallCommand(), `npm --prefix "${root}" run install:asr`);
-    process.env.PILOTDECK_RUNTIME_ROOT = alias;
+    // ESM URL resolution and Windows realpath may preserve different casing.
+    // They still identify the same runtime directory on Windows.
+    process.env.PILOTDECK_RUNTIME_ROOT = process.platform === "win32"
+      ? alias.toLowerCase() : alias;
     const command = getPilotDeckInstallCommand();
     assert.equal(command, `'${process.execPath}' '${join(root, "scripts", "install-asr.mjs")}'`);
     const shell = resolveDefaultCommandShell();

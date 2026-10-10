@@ -97,6 +97,7 @@ import {
 import sessionManager from './sessionManager.js';
 import { createComputerUseService } from './services/computerUse.js';
 import { createComputerUseRouter } from './routes/computer-use.js';
+import { configureTrustedProxy } from './utils/trustedProxy.js';
 import gitRoutes from './routes/git.js';
 import checkpointRoutes from './routes/checkpoints.js';
 import authRoutes from './routes/auth.js';
@@ -393,6 +394,7 @@ async function setupProjectsWatcher() {
 
 
 const app = express();
+configureTrustedProxy(app);
 app.locals.restartInstanceInfo = {
     instanceId: serverInstanceId,
     startedAt: serverStartedAt,

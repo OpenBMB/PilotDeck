@@ -232,13 +232,17 @@ export class McpClient {
     options: { signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }> {
     options.signal?.throwIfAborted();
-    await this.start();
+    const tools = await this.listTools();
+    options.signal?.throwIfAborted();
     if (!this.client) {
       throw new McpClientError("Client not connected", "mcp_handshake_failed", this.spec.id);
     }
     const timeoutMs = options.timeoutMs ?? this.options.callTimeoutMs ?? this.spec.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
-    const annotations = this.listToolsCache?.tools.find(tool => tool.toolName === toolName)?.annotations;
-    const mayReplay = annotations?.readOnlyHint === true || annotations?.idempotentHint === true;
+    const advertisedReplay = (tools: PilotDeckMcpToolSpec[]) => {
+      const annotations = tools.find(tool => tool.toolName === toolName)?.annotations;
+      return annotations?.readOnlyHint === true || annotations?.idempotentHint === true;
+    };
+    const mayReplay = advertisedReplay(tools);
     const result = await this.callWithReconnect(() =>
       this.client!.callTool(
         { name: toolName, arguments: (args ?? {}) as Record<string, unknown> },
@@ -247,7 +251,7 @@ export class McpClient {
           timeout: timeoutMs,
           signal: options.signal,
         },
-      ), mayReplay, options.signal,
+      ), async () => mayReplay && advertisedReplay(await this.listTools()), options.signal,
     );
     return {
       content: recursivelySanitizeUnicode(result.content),
@@ -259,7 +263,7 @@ export class McpClient {
   }
 
   /** Recover an expired session without blindly replaying a dispatched mutation. */
-  private async callWithReconnect<T>(fn: () => Promise<T>, mayReplay = true, signal?: AbortSignal): Promise<T> {
+  private async callWithReconnect<T>(fn: () => Promise<T>, mayReplay: boolean | (() => Promise<boolean>) = true, signal?: AbortSignal): Promise<T> {
     try {
       return await fn();
     } catch (err) {
@@ -270,13 +274,18 @@ export class McpClient {
         this.reconnectInFlight = true;
         try {
           await this.reconnect();
-          if (!mayReplay) {
+          signal?.throwIfAborted();
+          // Retry only if both generations advertise a safe replay. The new
+          // server may have removed the annotation while we were disconnected.
+          const canReplay = typeof mayReplay === "function" ? await mayReplay() : mayReplay;
+          if (!canReplay) {
             throw new McpClientError(
               "MCP connection lost or session expired after dispatch; the action may have executed. Observe current state before retrying.",
               "mcp_session_expired",
               this.spec.id,
             );
           }
+          signal?.throwIfAborted();
           return await fn();
         } finally {
           this.reconnectInFlight = false;

@@ -9,8 +9,8 @@ export function createComputerUseRouter({ service, env = process.env }) {
     try {
       const target = new URL(`${req.protocol}://${req.get('host')}`);
       const loopback = name => ['localhost', '127.0.0.1', '[::1]'].includes(name);
-      if (loopback(env.HOST || '') && !loopback(target.hostname)) throw new Error('Invalid host');
       const localMode = !['0', 'false'].includes(env.PILOTDECK_DISABLE_LOCAL_AUTH) || env.VITE_IS_PLATFORM === 'true';
+      if (localMode && loopback(env.HOST || '') && !loopback(target.hostname)) throw new Error('Invalid host');
       const localAddress = req.socket.localAddress?.replace(/^::ffff:/, '');
       if (localMode && !loopback(target.hostname) && target.hostname !== env.HOST
         && target.hostname.replace(/^\[|\]$/g, '') !== localAddress) throw new Error('Invalid local host');

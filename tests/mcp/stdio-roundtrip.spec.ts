@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import test from "node:test";
@@ -73,6 +73,50 @@ for (const failure of ["expired", "disconnected"]) {
       });
   }
 }
+
+test("stdio MCP refreshes replay annotations across repeated reconnects without caller discovery", { timeout: 15_000 }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "pilotdeck-mcp-repeated-"));
+  const counter = join(directory, "calls");
+  const client = new McpClient({ id: "desktop", transport: "stdio", command: process.execPath,
+    args: [fixture, counter] });
+  try {
+    // Neither the first call nor calls after reconnect require listTools().
+    for (const failure of ["expired", "disconnected", "expired"]) {
+      writeFileSync(counter, "0");
+      assert.deepEqual((await client.callTool(`read_${failure}`, {})).content, [{ type: "text", text: "2" }]);
+      assert.equal(readFileSync(counter, "utf8"), "2");
+    }
+    for (const failure of ["disconnected", "expired"]) {
+      writeFileSync(counter, "0");
+      await assert.rejects(client.callTool(`action_${failure}`, {}), { code: "mcp_session_expired" });
+      assert.equal(readFileSync(counter, "utf8"), "1");
+    }
+  } finally { await client.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("stdio MCP reloads replay annotations after recycling a timed-out connection", { timeout: 15_000 }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "pilotdeck-mcp-recycled-"));
+  const counter = join(directory, "calls");
+  const client = new McpClient({ id: "desktop", transport: "stdio", command: process.execPath,
+    args: [fixture, counter] });
+  try {
+    await client.listTools();
+    await assert.rejects(client.callTool("slow_observe", {}, { timeoutMs: 30 }), { code: "mcp_call_timeout" });
+    assert.deepEqual((await client.callTool("read_expired", {})).content, [{ type: "text", text: "2" }]);
+  } finally { await client.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("stdio MCP refuses replay when the new connection revokes a read-only annotation", { timeout: 15_000 }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "pilotdeck-mcp-revoked-"));
+  const counter = join(directory, "calls");
+  const client = new McpClient({ id: "desktop", transport: "stdio", command: process.execPath,
+    args: [fixture, counter, "revoke-read-only"] });
+  try {
+    await client.listTools();
+    await assert.rejects(client.callTool("read_expired", {}), { code: "mcp_session_expired" });
+    assert.equal(readFileSync(counter, "utf8"), "1");
+  } finally { await client.close(); rmSync(directory, { recursive: true, force: true }); }
+});
 
 test("stdio MCP cancellation and timeout leave the next observation usable", { timeout: 15_000 }, async () => {
   const client = new McpClient({ id: "desktop", transport: "stdio", command: process.execPath, args: [fixture] });
