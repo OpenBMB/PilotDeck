@@ -2216,7 +2216,8 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
       return [{
         type: "agent_status",
         event: "subagent_started",
-        detail: { subagentId: event.subagentId, subagentType: event.subagentType, toolCallId: event.toolCallId },
+        detail: { subagentId: event.subagentId, subagentType: event.subagentType, toolCallId: event.toolCallId,
+          ...(event.subagentTurnId ? { subagentTurnId: event.subagentTurnId } : {}) },
       }];
     case "subagent_completed":
       return [{
@@ -2224,6 +2225,7 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
         event: "subagent_completed",
         detail: {
           subagentId: event.subagentId,
+          ...(event.subagentTurnId ? { subagentTurnId: event.subagentTurnId } : {}),
           subagentType: event.subagentType,
           success: event.success,
           ...(event.aborted ? { aborted: true } : {}),

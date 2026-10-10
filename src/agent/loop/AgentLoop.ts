@@ -34,6 +34,8 @@ import {
   SUBAGENT_DEFINITIONS,
   getSubagentDefinition,
 } from "../sub/builtinSubagentTypes.js";
+import { SubagentContinuationError } from "../sub/continuation.js";
+import { PilotDeckToolRuntimeError } from "../../tool/protocol/errors.js";
 import { agentError } from "../protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
 import type { AgentPermissionDenial, AgentTurnResult } from "../protocol/result.js";
@@ -74,6 +76,9 @@ import {
   createVisibleErrorStatusDetail,
   type AgentStatusI18nDescriptor,
 } from "../../status/agentStatus.js";
+
+// Protect direct fork callers as well as calls through the agent tool.
+const activeSubagentContinuations = new Set<string>();
 
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
 const SUBAGENT_STATUS_HEARTBEAT_MS = 2_000;
@@ -2409,147 +2414,242 @@ export class AgentLoop {
           description: d.description,
         })),
       isAllowedDefinition: (id: string) => getSubagentDefinition(id) !== undefined,
-      fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs }) => {
-        // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
-        const { SubAgentSession } = await import("../sub/SubAgentSession.js");
-        const def = getSubagentDefinition(definitionId);
-        if (!def) throw new Error(`Unknown subagent type: ${definitionId}`);
-        const composedAbort = composeAbortSignal({
-          parent: abortSignal,
-          timeoutMs,
-        });
-
-        const subagentSessionId = `${this.config.cwd}::sub::${subagentId}`;
-        const transcriptHooks = this.dependencies.subagentTranscript;
-        const sidechain = transcriptHooks?.subagentTranscriptResolver?.(subagentId);
-        const transcriptRelativePath = sidechain?.transcriptRelativePath ?? "";
-
-        await transcriptHooks?.recordSubagentStarted?.({
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          subagentId,
-          subagentType: def.id,
-          prompt: directive,
-          transcriptRelativePath,
-          subagentSessionId,
-        });
-        await this.dispatchLifecycle(input, "SubagentStart", {
-          subagentId,
-          subagentType: def.id,
-        });
-        this.dependencies.eventEmitter?.({
-          type: "subagent_started",
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          subagentId,
-          subagentType: def.id,
-          toolCallId,
-        });
-
-        const subSession = new SubAgentSession({
-          definition: def,
+      supportsContinuation: Boolean(
+        this.dependencies.subagentTranscript?.loadSubagentContinuation
+        && this.dependencies.subagentTranscript?.subagentTranscriptResolver,
+      ),
+      fork: async (args) => {
+        const {
+          definitionId: requestedDefinitionId,
           directive,
-          parentConfig: {
-            ...this.config,
-            subagentDepth: depth + 1,
-            isSubagent: true,
-          },
-          parentDependencies: this.dependencies,
-          parentReadFileState: this.readFileState,
-          parentWriteSnapshots: this.writeSnapshots,
-          parentSessionId: input.sessionId,
-          parentTurnId: input.turnId,
-          subagentSessionId,
           subagentId,
-          abortSignal: composedAbort.signal,
-          sidechainTranscript: sidechain
-            ? {
-                recordAcceptedInput: sidechain.recordAcceptedInput.bind(sidechain),
-                recordDurableMessage: sidechain.recordDurableMessage.bind(sidechain),
-              }
-            : undefined,
-        });
-
-        let report;
-        let errored = false;
+          taskId,
+          toolCallId,
+          abortSignal,
+          timeoutMs,
+        } = args;
+        // Runtime callers must obey the same depth bound as model-facing tools.
+        if (depth >= maxDepth) {
+          throw new PilotDeckToolRuntimeError(
+            "tool_execution_failed",
+            `subagent_depth_exceeded (depth=${depth}, max=${maxDepth}); nested fork rejected.`,
+            { errorCode: "subagent_depth_exceeded" },
+          );
+        }
+        const guardKey = taskId ? JSON.stringify([this.config.cwd, input.sessionId, taskId]) : undefined;
+        if (guardKey) {
+          if (activeSubagentContinuations.has(guardKey)) {
+            throw new SubagentContinuationError("subagent_task_busy", `Subagent task ${taskId} is already being continued.`);
+          }
+          activeSubagentContinuations.add(guardKey);
+        }
+        let cleanupAbort: (() => void) | undefined;
         try {
-          report = await subSession.run();
-          if (composedAbort.timedOut()) {
-            throw new Error(`Subagent timed out after ${timeoutMs}ms.`);
+          // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
+          const { SubAgentSession, subagentTurnId } = await import("../sub/SubAgentSession.js");
+          const transcriptHooks = this.dependencies.subagentTranscript;
+
+          // task_id continuation — validate ownership/history BEFORE opening
+          // anything else. Storage logic lives behind the persistence hook.
+          let continuation: import("../sub/continuation.js").SubagentContinuationState | undefined;
+          let definitionId = requestedDefinitionId;
+          if (taskId) {
+            const loader = transcriptHooks?.loadSubagentContinuation;
+            if (!loader) {
+              throw new SubagentContinuationError(
+                "subagent_task_unsupported",
+                "task_id continuation requires subagent transcript persistence, which is not configured in this runtime.",
+              );
+            }
+            continuation = await loader({
+              sessionId: input.sessionId,
+              subagentId: taskId,
+              requestedDefinitionId,
+            });
+            definitionId = continuation.definitionId;
           }
-          if (abortSignal?.aborted) {
-            throw new Error("Subagent aborted before completion.");
+          if (!definitionId) {
+            throw new Error("Subagent fork requires a subagent definition id.");
           }
-        } catch (err) {
-          const timedOut = composedAbort.timedOut();
-          const aborted = Boolean(abortSignal?.aborted && !timedOut);
-          const failure = timedOut
-            ? new Error(`Subagent timed out after ${timeoutMs}ms.`)
-            : err;
+          const def = getSubagentDefinition(definitionId);
+          if (!def) {
+            if (continuation) {
+              throw new SubagentContinuationError(
+                "subagent_task_history_unsupported",
+                `saved task definition "${definitionId}" is unknown in this runtime.`,
+              );
+            }
+            throw new Error(`Unknown subagent type: ${definitionId}`);
+          }
+          // A continuation reuses the task's UUID as the child identity.
+          const effectiveSubagentId = taskId ?? subagentId;
+          const childTurnId = subagentTurnId(effectiveSubagentId, continuation?.nextTurnIndex ?? 0);
+          const composedAbort = composeAbortSignal({
+            parent: abortSignal,
+            timeoutMs,
+          });
+          cleanupAbort = composedAbort.cleanup;
+
+          const subagentSessionId =
+            continuation?.subagentSessionId ?? `${this.config.cwd}::sub::${effectiveSubagentId}`;
+          const sidechain = transcriptHooks?.subagentTranscriptResolver?.(effectiveSubagentId);
+          const transcriptRelativePath = sidechain?.transcriptRelativePath ?? "";
+
+          await transcriptHooks?.recordSubagentStarted?.({
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            subagentId: effectiveSubagentId,
+            subagentType: def.id,
+            prompt: directive,
+            transcriptRelativePath,
+            subagentSessionId,
+          });
+          await this.dispatchLifecycle(input, "SubagentStart", {
+            subagentId: effectiveSubagentId,
+            subagentType: def.id,
+          });
+          this.dependencies.eventEmitter?.({
+            type: "subagent_started",
+            sessionId: input.sessionId,
+            turnId: input.turnId,
+            subagentId: effectiveSubagentId,
+            subagentTurnId: childTurnId,
+            subagentType: def.id,
+            toolCallId,
+          });
+
+          const subSession = new SubAgentSession({
+            definition: def,
+            directive,
+            ...(continuation
+              ? {
+                  priorMessages: continuation.messages,
+                  turnIndex: continuation.nextTurnIndex,
+                  continuationModel: {
+                    provider: continuation.provider,
+                    model: continuation.model,
+                  },
+                }
+              : {}),
+            parentConfig: {
+              ...this.config,
+              subagentDepth: depth + 1,
+              isSubagent: true,
+              maxSubagentDepth: maxDepth,
+            },
+            parentDependencies: this.dependencies,
+            parentAllowedReadFiles: [...this.allowedReadFiles],
+            parentWriteSnapshots: this.writeSnapshots,
+            parentSessionId: input.sessionId,
+            parentTurnId: input.turnId,
+            subagentSessionId,
+            subagentId: effectiveSubagentId,
+            abortSignal: composedAbort.signal,
+            sidechainTranscript: sidechain
+              ? {
+                  recordAcceptedInput: sidechain.recordAcceptedInput.bind(sidechain),
+                  recordDurableMessage: sidechain.recordDurableMessage.bind(sidechain),
+                  ...(sidechain.recordTurnResult
+                    ? { recordTurnResult: sidechain.recordTurnResult.bind(sidechain) }
+                    : {}),
+                  ...(sidechain.recordControlBoundary
+                    ? { recordControlBoundary: sidechain.recordControlBoundary.bind(sidechain) }
+                    : {}),
+                  ...(sidechain.recordSessionMetadata
+                    ? { recordSessionMetadata: sidechain.recordSessionMetadata.bind(sidechain) }
+                    : {}),
+                }
+              : undefined,
+          });
+
+          let report;
+          let errored = false;
+          try {
+            report = await subSession.run();
+            if (composedAbort.timedOut()) {
+              throw new Error(`Subagent timed out after ${timeoutMs}ms.`);
+            }
+            if (abortSignal?.aborted) {
+              throw new Error("Subagent aborted before completion.");
+            }
+          } catch (err) {
+            const timedOut = composedAbort.timedOut();
+            const aborted = Boolean(abortSignal?.aborted && !timedOut);
+            const failure = timedOut
+              ? new Error(`Subagent timed out after ${timeoutMs}ms.`)
+              : err;
+            composedAbort.cleanup();
+            errored = true;
+            await transcriptHooks?.recordSubagentCompleted?.({
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              subagentId: effectiveSubagentId,
+              subagentType: def.id,
+              summary: failure instanceof Error ? failure.message : String(failure),
+              turns: 0,
+              durationMs: 0,
+              errored: true,
+            });
+            await this.dispatchLifecycle(input, "SubagentStop", {
+              subagentId: effectiveSubagentId,
+              subagentType: def.id,
+              success: false,
+            });
+            this.dependencies.eventEmitter?.({
+              type: "subagent_completed",
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              subagentId: effectiveSubagentId,
+              subagentTurnId: childTurnId,
+              subagentType: def.id,
+              success: false,
+              aborted,
+              durationMs: 0,
+            });
+            throw failure;
+          }
           composedAbort.cleanup();
-          errored = true;
+
           await transcriptHooks?.recordSubagentCompleted?.({
             sessionId: input.sessionId,
             turnId: input.turnId,
-            subagentId,
+            subagentId: effectiveSubagentId,
             subagentType: def.id,
-            summary: failure instanceof Error ? failure.message : String(failure),
-            turns: 0,
-            durationMs: 0,
-            errored: true,
+            summary: report.markdown,
+            usage: report.usage,
+            turns: report.turns,
+            durationMs: report.durationMs,
+            errored,
           });
           await this.dispatchLifecycle(input, "SubagentStop", {
-            subagentId,
+            subagentId: effectiveSubagentId,
             subagentType: def.id,
-            success: false,
+            success: !errored,
           });
           this.dependencies.eventEmitter?.({
             type: "subagent_completed",
             sessionId: input.sessionId,
             turnId: input.turnId,
-            subagentId,
+            subagentId: effectiveSubagentId,
+            subagentTurnId: childTurnId,
             subagentType: def.id,
-            success: false,
-            aborted,
-            durationMs: 0,
+            success: !errored,
+            durationMs: report.durationMs,
           });
-          throw failure;
+
+          return {
+            markdown: report.markdown,
+            usage: report.usage,
+            turns: report.turns,
+            durationMs: report.durationMs,
+            parsed: report.parsed as unknown as Record<string, string> | undefined,
+            subagentId: effectiveSubagentId,
+            definitionId: def.id,
+          };
+        } finally {
+          cleanupAbort?.();
+          if (guardKey) activeSubagentContinuations.delete(guardKey);
         }
-        composedAbort.cleanup();
-
-        await transcriptHooks?.recordSubagentCompleted?.({
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          subagentId,
-          subagentType: def.id,
-          summary: report.markdown,
-          usage: report.usage,
-          turns: report.turns,
-          durationMs: report.durationMs,
-          errored,
-        });
-        await this.dispatchLifecycle(input, "SubagentStop", {
-          subagentId,
-          subagentType: def.id,
-          success: !errored,
-        });
-        this.dependencies.eventEmitter?.({
-          type: "subagent_completed",
-          sessionId: input.sessionId,
-          turnId: input.turnId,
-          subagentId,
-          subagentType: def.id,
-          success: !errored,
-          durationMs: report.durationMs,
-        });
-
-        return {
-          markdown: report.markdown,
-          usage: report.usage,
-          turns: report.turns,
-          durationMs: report.durationMs,
-          parsed: report.parsed as unknown as Record<string, string> | undefined,
-        };
       },
     };
   }

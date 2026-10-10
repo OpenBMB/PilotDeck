@@ -79,12 +79,14 @@ export type AgentEvent = { timeline?: TimelinePosition; streamBoundary?: StreamB
       nextMaxOutputTokens?: number;
     }
   | { type: "model_recovery_failed"; sessionId: string; turnId: string; provider: string; model: string; error: CanonicalModelError }
-  | { type: "subagent_started"; sessionId: string; turnId: string; subagentId: string; subagentType: string; toolCallId?: string }
+  | { type: "subagent_started"; sessionId: string; turnId: string; subagentId: string; subagentTurnId?: string; subagentType: string; toolCallId?: string }
   | {
       type: "subagent_completed";
       sessionId: string;
       turnId: string;
       subagentId: string;
+      /** Sidechain round identity; stable task ids can be resumed in the same parent turn. */
+      subagentTurnId?: string;
       subagentType: string;
       success: boolean;
       aborted?: boolean;

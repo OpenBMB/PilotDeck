@@ -7,6 +7,34 @@ const thought = (revision: number, content: string, offset?: number): Normalized
   id: 'wire', sessionId: 's', runId: 'run', kind: 'thinking', provider: 'pilotdeck', timestamp: '2026-01-01', content,
   timeline: { version: 1, turnId: 'run', id: 'thought', order: 0, revision, offset },
 });
+
+it.each(['fetchFromServer', 'refreshFromServer'] as const)('%s restores a resumed child round and keeps it live through stale HTTP snapshots', async method => {
+  const activity = (index: number | undefined, state: string): NormalizedMessage => ({
+    ...thought(1, ''), id: 'activity', timeline: undefined, kind: 'agent_activity', phase: 'subagent',
+    subagentId: 'child', subagentTurnId: index === undefined ? undefined : `child-t${index}`,
+    runId: 'subagent:child', parentRunId: 'run', state,
+  });
+  const detail = (index: number, content: string, offset?: number): NormalizedMessage => ({
+    ...thought(offset === undefined ? 1 : offset + 1, content, offset), subagentId: 'child', isSubagentDetail: true,
+    timeline: { ...thought(offset === undefined ? 1 : offset + 1, content, offset).timeline!, turnId: `child-t${index}` },
+  });
+  const response = (messages: NormalizedMessage[]) => new Response(JSON.stringify({ messages: [],
+    stream: { active: true, runId: 'run', messages } }));
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(response([activity(0, 'completed'), detail(0, 'first'), activity(1, 'running'), detail(1, 'next', 0)]))
+    .mockResolvedValueOnce(response([activity(undefined, 'completed'), activity(0, 'completed'), detail(0, 'first')])));
+  const { result } = renderHook(useSessionStore);
+  await act(async () => { await result.current[method]('s'); });
+  expect(result.current.getSubagentDetailMessages('s', 'child').map(m => [m.timeline?.turnId, m.content, m.streamState]))
+    .toEqual([['child-t0', 'first', 'closed'], ['child-t1', 'next', 'open']]);
+  await act(async () => { await result.current.refreshFromServer('s'); });
+  act(() => {
+    result.current.applyTimelineMessage('s', detail(0, ' stale', 5));
+    result.current.applyTimelineMessage('s', detail(1, ' live', 4));
+  });
+  expect(result.current.getSubagentDetailMessages('s', 'child').map(m => [m.timeline?.turnId, m.content, m.streamState]))
+    .toEqual([['child-t0', 'first', 'closed'], ['child-t1', 'next live', 'open']]);
+});
 it('history racing live updates does not change identity, regress content or lose the user anchor', async () => {
   let resolveHistory!: (response: Response) => void;
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { resolveHistory = resolve; })));
