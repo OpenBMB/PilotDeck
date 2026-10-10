@@ -2156,6 +2156,7 @@ export class AgentLoop {
       tools,
       maxMessages: this.config.maxContextMessages,
       customSystemPrompt: this.config.systemPrompt,
+      includeMcpInstructionsWithCustomPrompt: this.config.isSubagent === true,
       appendSystemPrompt: planTodo?.buildPromptAddendum(),
       abortSignal: input.abortSignal,
     });

@@ -9,6 +9,7 @@ const installRoot = '/opt/PilotDeck';
 const resources = path.join(installRoot, 'resources');
 const runtime = path.join(resources, 'runtime');
 const expectedArch = process.argv[2];
+require('./verify-cua-driver.cjs').verifyCuaDriver(resources, expectedArch);
 const packageType = process.argv[3] || "deb";
 assert.ok(["deb", "rpm"].includes(packageType));
 assert.equal(process.platform, 'linux');

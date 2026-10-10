@@ -11,11 +11,11 @@
   "scripts": {
     "check:runtime": "node ../scripts/check-node-runtime.mjs",
     "predev": "npm run check:runtime",
-    "dev": "node ../scripts/dev-launcher.mjs",
+    "dev": "node ../scripts/prepare-computer-use.mjs && node ../scripts/dev-launcher.mjs",
     "dev:gateway": "npm --prefix .. run server",
-    "dev:server": "npm run check:runtime && node --import tsx server/index.js",
+    "dev:server": "npm run check:runtime && node ../scripts/prepare-computer-use.mjs && node --import tsx server/index.js",
     "dev:client": "vite",
-    "server": "npm run check:runtime && node --import tsx server/index.js",
+    "server": "npm run check:runtime && node ../scripts/prepare-computer-use.mjs && node --import tsx server/index.js",
     "gateway": "npm --prefix .. run server",
     "client": "vite",
     "build": "vite build",
@@ -26,7 +26,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "npm run build && npm run start:built",
-    "start:built": "node server/webRuntimeSupervisor.js start-built",
+    "start:built": "node ../scripts/prepare-computer-use.mjs && node server/webRuntimeSupervisor.js start-built",
     "postinstall": "node scripts/fix-node-pty.js",
     "postbuild": "node ../scripts/write-web-build-metadata.mjs dist"
   },

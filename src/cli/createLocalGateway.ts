@@ -1,7 +1,7 @@
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
 import { isOptionalFeatureEnabled } from "../pilot/config/optionalFeature.js";
 import { createHash, randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync as mkdirSyncFs, renameSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync as mkdirSyncFs, renameSync, readFileSync, watchFile, unwatchFile } from "node:fs";
 import { dirname, resolve, join as joinPath } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -280,6 +280,21 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const stopExtensionWatching = extensionWatchManager.start();
 
   let boundServer: { broadcastNotification(name: string, payload?: unknown): void } | undefined;
+  const managedMcpPath = process.env.PILOTDECK_COMPUTER_USE_MCP_CONFIG;
+  const readManagedRevision = () => {
+    if (!managedMcpPath) return '';
+    try { return createHash('sha256').update(readFileSync(managedMcpPath)).digest('hex'); } catch { return ''; }
+  };
+  let managedMcpRevision = readManagedRevision();
+  const refreshManagedMcp = () => {
+    const revision = readManagedRevision();
+    if (revision === managedMcpRevision) return;
+    managedMcpRevision = revision;
+    registry.invalidate();
+    router?.markAllDirty('extension_changed');
+    boundServer?.broadcastNotification('config_changed', { changedPaths: ['computerUse'], changeClasses: ['extension-changed'] });
+  };
+  if (managedMcpPath) watchFile(managedMcpPath, { interval: 250, persistent: false }, refreshManagedMcp);
   const configChangeLifecycle = new LifecycleRuntime(new HookRuntime({}));
 
   configStore.subscribe((event) => {
@@ -628,6 +643,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     // no-op (no invalidation, no session recreation).
     async refreshConfigBeforeTurn() {
       await configStore.reload("turn-start");
+      refreshManagedMcp();
     },
     afterTurnCompleted: ({ sessionKey, projectKey, runId }) => {
       if (memoryDiagnosticsEnabled) {
@@ -659,6 +675,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       router?.shutdown();
       stopConfigWatching();
       stopExtensionWatching();
+      if (managedMcpPath) unwatchFile(managedMcpPath, refreshManagedMcp);
       if (ownsTelemetry) {
         void telemetry.shutdown();
       }
@@ -1095,6 +1112,11 @@ class ProjectRuntimeRegistry {
           ...runtime.pluginRuntime.mcpServers(),
           ...configServers.servers,
         };
+        if (process.env.PILOTDECK_COMPUTER_USE_MCP_CONFIG) {
+          delete rawServers['pilotdeck-computer-use'];
+          const managed = configServers.servers['pilotdeck-computer-use'];
+          if (managed) rawServers['pilotdeck-computer-use'] = managed;
+        }
         const { servers: parsedServers } = parsePluginMcpServers(rawServers);
         const servers = parsedServers.map((server) => patchProjectScopedMcpSpec(
           server,
@@ -1123,6 +1145,9 @@ class ProjectRuntimeRegistry {
           }
           const defs = await createMcpToolDefinitionsFromRuntime(mcp);
           for (const def of defs) {
+            // Bundled component updates and global Driver configuration belong
+            // to the application release, never to model-selected MCP tools.
+            if (/^mcp__pilotdeck-computer-use__(check_for_update|install_extension|install_ffmpeg|set_config|get_config|replay_trajectory)$/.test(def.name)) continue;
             if (!runtime.tools.has(def.name)) runtime.tools.register(def);
           }
         }
@@ -1327,7 +1352,10 @@ class ProjectRuntimeRegistry {
       );
     }
     const lifecycle = new LifecycleRuntime(hookRuntime);
-    const extension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime);
+    const extension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime, () => [
+      ...(runtime.mcpRuntime?.getInstructions() ?? []),
+      ...(this.sessionMcpRuntimes.get(context.sessionKey)?.getInstructions() ?? []),
+    ].map(({ serverId, instructions }) => ({ serverName: serverId, instructions })));
     const projectRoot = runtime.projectRoot;
     const memoryResolver = runtime.memory;
     const now = this.options.now;

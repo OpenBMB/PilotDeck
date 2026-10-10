@@ -12,6 +12,7 @@ export type SettingsMenuKey =
   | 'extensions'
   | 'mcpServers'
   | 'officePreview'
+  | 'computerUse'
   | 'privacy'
   | 'advanced'
   | 'about';

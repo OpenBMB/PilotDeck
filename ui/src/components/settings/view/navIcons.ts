@@ -8,6 +8,7 @@ import agentScheduleIcon from "../assets/nav/agent-schedule.svg?raw";
 import agentSearchIcon from "../assets/nav/agent-search.svg?raw";
 import backIcon from "../assets/nav/back.svg?raw";
 import configIcon from "../assets/nav/config.svg?raw";
+import computerControlIcon from "../assets/nav/computer-control.svg?raw";
 import generalIcon from "../assets/nav/general.svg?raw";
 import integrationsIcon from "../assets/nav/integrations.svg?raw";
 import mcpIcon from "../assets/nav/mcp.svg?raw";
@@ -30,6 +31,7 @@ export const SETTINGS_NAV_ICONS: Partial<Record<SettingsMenuKey, string>> = {
   integrations: integrationsIcon,
   mcpServers: mcpIcon,
   officePreview: officeIcon,
+  computerUse: computerControlIcon,
   privacy: privacyIcon,
   advanced: advancedIcon,
   about: aboutIcon,
