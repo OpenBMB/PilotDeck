@@ -760,6 +760,7 @@
     "defaultRoute": "默认路由",
     "primaryModel": "智能体 - 主智能体模型",
     "subagentModel": "智能体 - 子智能体模型",
+    "subagentProfileModel": "Agent — {{profile}} — 模型",
     "memoryModel": "记忆 - 记忆模型",
     "judgeModel": "路由 - Token 节省器 - 判断模型",
     "baselineModel": "路由 - 统计 - 基准模型",

@@ -29,6 +29,7 @@ const PRIMARY_ITEMS: NavItem[] = [
 
 const AGENT_ITEMS: NavItem[] = [
   { key: "agentRoute", labelKey: "settingsPage.menu.agentRoute" },
+  { key: "agentSubagents", labelKey: "settingsPage.menu.agentSubagents" },
   { key: "agentMemory", labelKey: "settingsPage.menu.agentMemory" },
   { key: "agentResident", labelKey: "settingsPage.menu.agentResident" },
   { key: "agentSearch", labelKey: "settingsPage.menu.agentSearch" },

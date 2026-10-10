@@ -4,6 +4,7 @@ export type SettingsMenuKey =
   | 'modelPool'
   | 'agent'
   | 'agentRoute'
+  | 'agentSubagents'
   | 'agentMemory'
   | 'agentResident'
   | 'agentSearch'

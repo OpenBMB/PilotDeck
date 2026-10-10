@@ -7,6 +7,7 @@ const PAGE_SLUG_BY_KEY: Partial<Record<SettingsMenuKey, string>> = {
   appearance: "appearance",
   modelPool: "models",
   agentRoute: "agent-route",
+  agentSubagents: "agent-subagents",
   agentMemory: "agent-memory",
   agentResident: "agent-resident",
   agentSearch: "agent-search",
@@ -37,6 +38,7 @@ export function mapInitialTabToMenuKey(
     tools: "agentSearch",
     webSearch: "agentSearch",
     router: "agentRoute",
+    subagents: "agentSubagents",
     gateway: "integrations",
     officePreview: "officePreview",
     customEnv: "advanced",
@@ -91,6 +93,7 @@ export function getSettingsPathFromTab(tab?: string): string {
 export function getModelReferenceTab(path: string): string | null {
   const page = path === "agent.model" ? "models"
     : path === "agent.subagents.default" || path.startsWith("router.") ? "agent-route"
+    : /^agent\.subagents\.profiles\.[^.]+\.model$/.test(path) ? "agent-subagents"
     : path === "memory.model" ? "agent-memory" : null;
   return page ? `${page}?${new URLSearchParams({ reference: path })}` : null;
 }

@@ -779,6 +779,7 @@
     "defaultRoute": "Default route",
     "primaryModel": "Agent — primary model",
     "subagentModel": "Agent — subagent model",
+    "subagentProfileModel": "Agent — {{profile}} — model",
     "memoryModel": "Memory — model",
     "judgeModel": "Router — token saver — judge model",
     "baselineModel": "Router — statistics — baseline model",
