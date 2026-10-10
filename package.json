@@ -62,8 +62,10 @@
     "slice-ansi": "^9.0.0",
     "string-width": "^8.2.1",
     "strip-ansi": "^7.2.0",
+    "tree-sitter-bash": "0.25.0",
     "turndown": "^7.2.4",
     "undici": "^8.2.0",
+    "web-tree-sitter": "0.25.10",
     "weixin-ilink": "^0.1.0",
     "ws": "^8.21.0",
     "yaml": "^2.8.4"
