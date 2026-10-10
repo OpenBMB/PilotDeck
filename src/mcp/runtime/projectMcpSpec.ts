@@ -28,9 +28,9 @@ export function getPilotDeckInstallCommand(): string {
   const packageRoot = findPackageRoot(MODULE_DIR);
   // Desktop packages ship Node and this installer, but deliberately omit npm.
   const desktopRoot = process.env.PILOTDECK_RUNTIME_ROOT;
-  // Windows canonical paths can retain different casing for the same directory.
-  // relative() applies the platform's path comparison after resolving aliases.
-  if (desktopRoot && existsSync(desktopRoot) && relative(realpathSync(desktopRoot), realpathSync(packageRoot)) === "") {
+  // Native realpath expands Windows 8.3 names (e.g. RUNNER~1), unlike the
+  // JS sync fallback. relative() also handles Windows casing differences.
+  if (desktopRoot && existsSync(desktopRoot) && relative(realpathSync.native(desktopRoot), realpathSync.native(packageRoot)) === "") {
     // The desktop Bash tool uses POSIX quoting, including its bundled Git Bash.
     const quote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
     return `${quote(process.execPath)} ${quote(join(packageRoot, "scripts", "install-asr.mjs"))}`;
