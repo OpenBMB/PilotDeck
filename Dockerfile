@@ -49,7 +49,7 @@ WORKDIR /app
 
 # Runtime system dependencies + tsx for the UI server
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ripgrep git curl procps \
+    ripgrep git curl procps libx11-6 libxi6 libxtst6 libxext6 libwayland-client0 libxkbcommon0 libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g tsx
 
@@ -60,6 +60,7 @@ COPY --from=builder /build/node_modules/ node_modules/
 COPY --from=builder /build/dist/ dist/
 COPY --from=builder /build/src/ src/
 COPY --from=builder /build/scripts/ scripts/
+COPY --from=builder /build/resources/cua-driver/ resources/cua-driver/
 COPY --from=builder /build/skills/ skills/
 COPY --from=builder /build/ui/package.json ui/package.json
 COPY --from=builder /build/ui/node_modules/ ui/node_modules/

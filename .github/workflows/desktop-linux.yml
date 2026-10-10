@@ -68,6 +68,9 @@ jobs:
       - name: Verify Linux background and quit lifecycle
         run: node --test apps/desktop/scripts/desktop-lifecycle.test.mjs
 
+      - name: Verify computer use lifecycle and pinned assets
+        run: node --test apps/desktop/scripts/computer-use.test.mjs
+
       - name: Set desktop release metadata
         run: node apps/desktop/scripts/set-ci-version.mjs
 

@@ -66,7 +66,7 @@ function buildToolDefinition(
     inputSchema,
     maxResultBytes: 200_000,
     isReadOnly: () => isReadOnly,
-    isConcurrencySafe: () => isReadOnly,
+    isConcurrencySafe: () => isReadOnly && runtime.getClient(spec.serverId)?.spec.concurrencySafe !== false,
     isDestructive: () => isDestructive,
     isOpenWorld: () => isOpenWorld,
     execute: async (input, context): Promise<PilotDeckToolExecutionOutput> => {
@@ -78,7 +78,7 @@ function buildToolDefinition(
         );
       }
       try {
-        const { content, isError } = await client.callTool(spec.toolName, input, {
+        const { content, structuredContent, isError } = await client.callTool(spec.toolName, input, {
           signal: context.abortSignal,
           timeoutMs: options.callTimeoutMs,
         });
@@ -86,23 +86,34 @@ function buildToolDefinition(
           throw new PilotDeckToolRuntimeError(
             "tool_execution_failed",
             extractMcpErrorText(content, spec.serverId, spec.toolName),
-            { content },
+            { content, structuredContent },
           );
         }
+        const marshaled = marshalMcpContent(content, client.spec.transport === "stdio" ? client.spec.cwd : undefined);
+        if (structuredContent !== undefined) {
+          const serialized = JSON.stringify(structuredContent);
+          // MCP servers may already provide a JSON text fallback for this object.
+          if (!marshaled.some(block => block.type === "text" && block.text.trim() === serialized)) {
+            marshaled.push({ type: "json", value: structuredContent });
+          }
+        }
         return {
-          content: marshalMcpContent(content, client.spec.transport === "stdio" ? client.spec.cwd : undefined),
-          data: content,
+          content: marshaled,
+          data: structuredContent ?? content,
           metadata: {
             mcp: { serverId: spec.serverId, toolName: spec.toolName, wireName: spec.wireName },
           },
         };
       } catch (err) {
+        if (context.abortSignal?.aborted) {
+          throw new PilotDeckToolRuntimeError("tool_aborted", `MCP call cancelled (${spec.serverId}/${spec.toolName})`);
+        }
         if (err instanceof PilotDeckToolRuntimeError) throw err;
         const e = err as { code?: string; message?: string };
         if (e.code === "mcp_call_timeout") {
           throw new PilotDeckToolRuntimeError(
             "tool_execution_failed",
-            e.message ?? `MCP call timed out (${spec.serverId}/${spec.toolName})`,
+            `${e.message ?? `MCP call timed out (${spec.serverId}/${spec.toolName})`}. The operation may have executed; observe current state before retrying an action.`,
             { errorCode: "mcp_call_timeout" },
           );
         }

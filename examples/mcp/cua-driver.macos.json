@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cua-driver": {
+      "command": "${userHome}/.local/bin/cua-driver",
+      "args": ["mcp"],
+      "callTimeoutMs": 60000,
+      "concurrencySafe": false
+    }
+  }
+}

@@ -5,6 +5,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { computerUseMcpConfigPath } from './services/computerUsePaths.js';
 import { fileURLToPath } from 'node:url';
 import {
   getRestartRequestFile,
@@ -27,11 +28,14 @@ export function resolveSupervisorConfigPath(value, baseCwd = process.cwd()) {
 export function getRuntimeCommands(mode, uiRoot = UI_ROOT) {
   const normalizedMode = normalizeSupervisorMode(mode);
   const repoRoot = path.resolve(uiRoot, '..');
+  const sourceGateway = path.join(repoRoot, 'src', 'cli', 'pilotdeck.ts');
+  const builtGateway = path.join(repoRoot, 'dist', 'src', 'cli', 'pilotdeck.js');
+  const packagedRuntime = existsSync(builtGateway) && !existsSync(sourceGateway);
   const commands = [
     {
       name: 'server',
       command: process.execPath,
-      args: ['--import', 'tsx', path.join(uiRoot, 'server', 'index.js')],
+      args: [...(packagedRuntime ? [] : ['--import', 'tsx']), path.join(uiRoot, 'server', 'index.js')],
       cwd: uiRoot,
       ipc: true,
       critical: true,
@@ -50,7 +54,7 @@ export function getRuntimeCommands(mode, uiRoot = UI_ROOT) {
   commands.push({
     name: 'gateway',
     command: process.execPath,
-    args: ['--import', 'tsx', path.join(repoRoot, 'src', 'cli', 'pilotdeck.ts'), 'server'],
+    args: packagedRuntime ? [builtGateway, 'server'] : ['--import', 'tsx', sourceGateway, 'server'],
     cwd: repoRoot,
     ipc: false,
     critical: false,
@@ -102,6 +106,7 @@ export function createRuntimeSupervisor({
   const gatewayPort = Number.parseInt(env.PILOTDECK_GATEWAY_PORT || '18789', 10);
   const runtimeEnv = {
     ...env,
+    PILOTDECK_COMPUTER_USE_MCP_CONFIG: computerUseMcpConfigPath(env),
     PILOTDECK_RESTART_MODE: normalizedMode,
     PILOTDECK_RESTART_SUPERVISOR: '1',
     PILOTDECK_RESTART_REQUEST_FILE: requestFile,

@@ -94,6 +94,9 @@ jobs:
       - name: Verify managed process ownership and crash cleanup
         run: node --test apps/desktop/scripts/process-scope.test.mjs
 
+      - name: Verify computer use lifecycle and pinned assets
+        run: node --test apps/desktop/scripts/computer-use.test.mjs
+
       - name: Verify macOS background and quit lifecycle
         run: node apps/desktop/scripts/verify-desktop-lifecycle.cjs
 
@@ -156,6 +159,8 @@ jobs:
           if [ "$PILOTDECK_DESKTOP_REQUIRE_SIGNING" = 1 ]; then test -n "$dmg_path"; fi
           test "$(lipo -archs "$app_path/Contents/MacOS/PilotDeck")" = "$MACH_ARCH"
           test "$(lipo -archs "$app_path/Contents/Resources/node/bin/node")" = "$MACH_ARCH"
+          "$app_path/Contents/Resources/node/bin/node" apps/desktop/scripts/verify-cua-driver.cjs "$app_path/Contents/Resources" "$MACOS_ARCH"
+          codesign --verify --strict "$app_path/Contents/Resources/runtime/resources/cua-driver/PilotDeck Computer Use.app"
           native_path="$(find "$app_path/Contents/Resources/runtime/node_modules/better-sqlite3" -name '*.node' -print -quit)"
           test -n "$native_path"
           test "$(lipo -archs "$native_path")" = "$MACH_ARCH"
