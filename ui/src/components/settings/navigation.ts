@@ -6,6 +6,7 @@ const PAGE_SLUG_BY_KEY: Partial<Record<SettingsMenuKey, string>> = {
   general: "general",
   appearance: "appearance",
   modelPool: "models",
+  usage: "usage",
   agentRoute: "agent-route",
   agentSubagents: "agent-subagents",
   agentMemory: "agent-memory",

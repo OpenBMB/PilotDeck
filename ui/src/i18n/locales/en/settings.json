@@ -63,6 +63,7 @@
     "menu": {
       "general": "General",
       "modelPool": "Model Pool",
+      "usage": "Usage",
       "agent": "Agents",
       "agentRoute": "Route",
       "agentSubagents": "Subagents",
@@ -85,6 +86,7 @@
     "descriptions": {
       "general": "Set PilotDeck's interface appearance, chat input, and code editing experience.",
       "modelPool": "Centrally manage model providers, connection credentials, and available models. Enabled models are used by agents, routing, and memory.",
+      "usage": "See today’s token usage and daily activity.",
       "agentRoute": "Configure agent routing, model tiers, and fallbacks.",
       "agentSubagents": "Manage built-in and custom subagent roles, their model bindings and tools, and the allowed nesting depth.",
       "agentMemory": "Manage memory, summarization intervals, and project memory data.",
@@ -103,6 +105,7 @@
     "titles": {
       "general": "General",
       "modelPool": "Model Pool",
+      "usage": "Usage",
       "agent": "Agents",
       "agentRoute": "Agents / Route",
       "agentSubagents": "Agents / Subagents",
@@ -1921,5 +1924,39 @@
     "stop": "Stop and disable",
     "waylandHint": "This is a Wayland desktop. The system may request permission on the first capture; some operations require a desktop helper. Unsupported operations report a specific reason.",
     "missingDriver": "The deployed computer use component is missing. Redeploy PilotDeck; the component is included with the runtime and needs no separate installation."
+  },
+  "usage": {
+    "today": "Today’s Tokens",
+    "total": "Total Tokens",
+    "peak": "Daily Peak",
+    "longestStreak": "Longest Streak",
+    "currentStreak": "Current Streak",
+    "days": "days",
+    "activity": "Token Activity",
+    "lastYear": "Last 365 days",
+    "timeZone": "Daily totals · Beijing time (UTC+8)",
+    "refresh": "Refresh",
+    "error": "Could not refresh usage. Please try again.",
+    "loading": "Loading usage…",
+    "unavailable": "Usage is temporarily unavailable.",
+    "monday": "Mon",
+    "wednesday": "Wed",
+    "friday": "Fri",
+    "less": "Less",
+    "more": "More",
+    "legendZero": "0 tokens",
+    "legendBelow": "Below {{max}} tokens",
+    "legendRange": "{{min}}–{{max}} tokens (exclusive upper bound)",
+    "legendAtLeast": "{{min}} tokens or more",
+    "dayDetail": "{{date}} · {{tokens}} tokens · {{count}} calls",
+    "calls_one": "{{count}} call",
+    "calls_other": "{{count}} calls",
+    "timeZoneShort": "Beijing time",
+    "autoRefresh": "Updates every 30 seconds",
+    "updatedShort": "Updated {{time}}",
+    "scope": "Counts reported token usage from conversations, routing, subagents, and context compaction. Memory and title generation are excluded, as are calls without reported usage.",
+    "since": "Recorded since {{date}}. Earlier unrecorded usage is not included.",
+    "empty": "No usage yet. Usage will appear here after your first conversation.",
+    "updated": "Updated {{time}} · refreshes every 30 seconds"
   }
 }

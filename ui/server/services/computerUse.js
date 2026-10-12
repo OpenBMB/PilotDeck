@@ -4,11 +4,13 @@ import { StandaloneComputerUseController } from './standaloneComputerUse.js';
 const REQUEST = 'pilotdeck:computer-use-request';
 const RESPONSE = 'pilotdeck:computer-use-response';
 
-// The HTTP API is shared by Electron's renderer and ordinary browsers. Desktop
-// requests cross the existing private parent/child IPC channel, preserving the
-// GUI host's ownership of its native Driver and macOS permissions.
-export function createComputerUseService({ env = process.env, processLike = process, standaloneFactory = () => new StandaloneComputerUseController({ env }), timeoutMs = 45_000 } = {}) {
-  if (env.PILOTDECK_DESKTOP !== '1') return standaloneFactory();
+// The HTTP API is shared by Electron's renderer and ordinary browsers.
+// macOS always uses the bundled native GUI helper, so Web and desktop have the
+// same permission owner. Windows/Linux retain Electron's private IPC control.
+export function createComputerUseService({ env = process.env, platform = process.platform, processLike = process,
+  standaloneFactory = () => new StandaloneComputerUseController({ platform,
+    env: env.PILOTDECK_DESKTOP === '1' ? { ...env, PILOTDECK_CUA_DRIVER_PATH: undefined } : env }), timeoutMs = 45_000 } = {}) {
+  if (env.PILOTDECK_DESKTOP !== '1' || platform === 'darwin') return standaloneFactory();
   const pending = new Map();
   const receive = message => {
     if (message?.type !== RESPONSE || !pending.has(message.id)) return;

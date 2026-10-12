@@ -11,7 +11,7 @@ import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppear
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
 import { createFilePicker } from './filePicker';
 import { ComputerUseController } from './computerUse';
-import { app, BrowserWindow, desktopCapturer, systemPreferences, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen } from "electron";
 import { DebUpdater, MacUpdater, NsisUpdater, RpmUpdater } from "electron-updater";
 import { installUpdateDownloadControl } from "./updateDownload";
 import { createUpdateController } from "./updates";
@@ -135,34 +135,20 @@ class RuntimeManager {
       logPath: this.logPath,
     });
     const config = ensurePilotHome((message) => this.log(message));
-    // The outer GUI host owns desktop TCC grants, not the nested Driver app.
-    const permissionAppPath = process.platform === 'darwin'
-      ? path.resolve(path.dirname(app.getPath('exe')), '..', '..') : undefined;
-    this.computerUse = new ComputerUseController({
-      directory: path.join(app.getPath('userData'), 'computer-use'),
-      resources: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'resources', 'cua-driver') : path.join(__dirname, '..', '..', '..', 'resources', 'cua-driver'),
-      // The unpackaged macOS development shell owns Electron's bundle identity.
-      bundleId: app.isPackaged || process.platform !== 'darwin' ? APP_ID : 'com.github.Electron',
-      permissionAppPath,
-      revealPermissionApp: () => { if (permissionAppPath) shell.showItemInFolder(permissionAppPath); },
-      permissions: () => process.platform === 'darwin' ? {
-        accessibility: systemPreferences.isTrustedAccessibilityClient(false),
-        screenRecording: systemPreferences.getMediaAccessStatus('screen') === 'granted',
-      } : undefined,
-      requestPermission: async permission => {
-        if (process.platform !== 'darwin') return;
-        if (permission === 'accessibility') {
-          systemPreferences.isTrustedAccessibilityClient(true);
-          await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
-        } else {
-          // Capture consent is requested by the Electron host, never by a second app.
-          await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => undefined);
-          await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
-        }
-      },
-      log: message => this.log(message),
-    });
-    await this.computerUse.initialize();
+    const computerUseDirectory = path.join(app.getPath('userData'), 'computer-use');
+    // macOS uses the same LaunchServices helper as standalone Web deployments.
+    // Electron's own grants must not gate or request this helper's permissions.
+    if (process.platform !== 'darwin') {
+      this.computerUse = new ComputerUseController({
+        directory: computerUseDirectory,
+        resources: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'resources', 'cua-driver') : path.join(__dirname, '..', '..', '..', 'resources', 'cua-driver'),
+        bundleId: APP_ID,
+        permissions: () => undefined,
+        requestPermission: async () => {},
+        log: message => this.log(message),
+      });
+      await this.computerUse.initialize();
+    }
 
     const serverPort = await findFreePort(3001);
     const gatewayPort = await findFreePort(18789);
@@ -192,7 +178,8 @@ class RuntimeManager {
       PILOTDECK_GATEWAY_PORT: String(gatewayPort),
       PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${gatewayPort}/ws`,
       PILOTDECK_DESKTOP: "1",
-      PILOTDECK_COMPUTER_USE_MCP_CONFIG: this.computerUse.mcpConfigPath,
+      PILOTDECK_COMPUTER_USE_DIRECTORY: computerUseDirectory,
+      PILOTDECK_COMPUTER_USE_MCP_CONFIG: path.join(computerUseDirectory, 'mcp.json'),
       PILOTDECK_DESKTOP_VERSION: app.getVersion(),
       PILOTDECK_VERSION: app.getVersion(),
       PILOTDECK_DESKTOP_BUILD_TIME: buildMetadata.buildTime,

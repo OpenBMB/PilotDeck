@@ -5,30 +5,36 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StandaloneComputerUseController, findDriver } from './standaloneComputerUse.js';
+import { createComputerUseService } from './computerUse.js';
 const directories = [];
 afterEach(() => { for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true }); });
-function setup({ platform = 'darwin', running = true, grants = true, owner = 'com.trycua.driver', version = '0.34.1', binaryMissing = false, managed = false } = {}) {
+function setup({ platform = 'darwin', running = true, grants = true, owner, version = '0.34.1', binaryMissing = false, managed = false, desktop = false } = {}) {
+  owner ??= managed ? 'cn.pilotdeck.computer-use' : 'com.trycua.driver';
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-cua-web-test-')); directories.push(home);
   const binary = path.join(home, managed && platform === 'darwin' ? 'PilotDeck Computer Use.app/Contents/MacOS/cua-driver' : 'cua-driver');
   fs.mkdirSync(path.dirname(binary), { recursive: true }); fs.writeFileSync(binary, 'fixture');
   const env = { PILOT_HOME: home, HOME: os.homedir(), DISPLAY: ':0', OPENAI_API_KEY: 'never-inherit', CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS: '1' };
+  let started = false;
+  if (desktop) Object.assign(env, { PILOTDECK_DESKTOP: '1',
+    PILOTDECK_COMPUTER_USE_DIRECTORY: path.join(home, 'Application Support/PilotDeck/computer-use'),
+    PILOTDECK_COMPUTER_USE_MCP_CONFIG: path.join(home, 'Application Support/PilotDeck/computer-use/mcp.json') });
   const execute = vi.fn(async (_binary, args, options) => {
     expect(options.env?.OPENAI_API_KEY).toBeUndefined(); expect(options.env?.CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS).toBeUndefined();
     let value;
     if (args[0] === '--version') value = `cua-driver ${version}`;
     else if (args[0] === 'status') {
-      if (managed && platform === 'darwin' && controller.ownedPid && controller.livenessFd === null) running = false;
+      if (managed && platform === 'darwin' && (started || controller.ownedPid) && controller.livenessFd === null) running = false;
       value = running ? 'Cua Driver daemon is running' : 'Cua Driver daemon is not running';
       if (!running) throw Object.assign(new Error('Driver status exit 1'), { code: 1, stderr: value });
     }
-    else if (args[0] === 'permissions' || args[1] === 'check_permissions') value = JSON.stringify({ accessibility: grants, screen_recording: grants, source: { attribution: managed ? 'host' : 'driver-daemon', bundle_id: owner, host_bundle_id: managed ? 'cn.pilotdeck.computer-use' : undefined, pid: 2147483647, executable: fs.realpathSync(binary) } });
+    else if (args[0] === 'permissions' || args[1] === 'check_permissions') value = JSON.stringify({ accessibility: grants, screen_recording: grants, source: { attribution: managed ? 'host' : 'driver-daemon', bundle_id: owner, host_bundle_id: managed ? owner : undefined, pid: 2147483647, executable: fs.realpathSync(binary) } });
     else if (_binary === '/usr/bin/mkfifo') { fs.writeFileSync(args.at(-1), ''); value = ''; }
     else if (_binary === 'open') {
       if (args.includes('permissions')) {
         fs.writeFileSync(args[args.indexOf('--result-file') + 1], JSON.stringify({ accessibility: grants, screen_recording: grants, host_bundle_id: 'cn.pilotdeck.computer-use' }));
-      } else running = true;
+      } else { running = true; started = true; }
       value = '';
-    } else value = JSON.stringify({ checks: [{ name: 'bundle_identity', status: 'pass', data: { bundle_identifier: managed ? 'cn.pilotdeck.computer-use' : owner, identity_source: 'parent_application', executable_path: fs.realpathSync(binary) } }] });
+    } else value = JSON.stringify({ checks: [{ name: 'bundle_identity', status: 'pass', data: { bundle_identifier: owner, identity_source: 'parent_application', executable_path: fs.realpathSync(binary) } }] });
     return { stdout: value };
   });
   const child = new EventEmitter(); child.exitCode = null; child.signalCode = null;
@@ -37,9 +43,32 @@ function setup({ platform = 'darwin', running = true, grants = true, owner = 'co
   const spawn = vi.fn(() => { running = true; return child; });
   const controller = new StandaloneComputerUseController({ env, platform, execute, spawnImpl: spawn, managed, binary: binaryMissing ? null : binary, version: '0.34.1', log: vi.fn() });
   const descriptor = () => JSON.parse(fs.readFileSync(controller.mcpConfigPath, 'utf8')).mcpServers;
-  return { home, binary, execute, child, spawn, controller, descriptor, loseDaemon: () => { running = false; controller.checkedAt = 0; } };
+  return { home, env, binary, execute, child, spawn, controller, descriptor, loseDaemon: () => { running = false; controller.checkedAt = 0; } };
 }
-describe('standalone web computer use', () => {
+describe('native computer use for Web and macOS desktop', () => {
+  it.each([false, true])('recognizes existing helper grants on fresh startup (desktop=%s) without asking again', async desktop => {
+    const { controller, env, execute, spawn, binary, descriptor } = setup({ managed: true, running: false, grants: true, desktop });
+    const service = createComputerUseService({ env, platform: 'darwin', standaloneFactory: () => controller });
+    try {
+      await service.initialize();
+      const status = await service.setEnabled(true);
+      expect(status).toMatchObject({ phase: 'ready', permissionOwner: 'PilotDeck Computer Use',
+        permissionAppPath: fs.realpathSync(binary).split('/Contents/')[0], permissions: { accessibility: true, screenRecording: true } });
+      expect(execute.mock.calls.some(([command, args]) => command === 'open' && args.includes('permissions'))).toBe(false);
+      expect(spawn).not.toHaveBeenCalled();
+      expect(descriptor()['pilotdeck-computer-use'].args).toContain(controller.endpoint);
+      const application = execute.mock.calls.find(([command, args]) => command === 'open' && args.includes('serve'));
+      expect(application[1]).toContain(status.permissionAppPath);
+    } finally { await service.stop(); }
+  });
+  it.each([false, true])('never accepts Electron/main-app grants as helper grants (desktop=%s)', async desktop => {
+    const { controller, env, descriptor } = setup({ managed: true, running: false, grants: true, owner: 'cn.pilotdeck.desktop', desktop });
+    const service = createComputerUseService({ env, platform: 'darwin', standaloneFactory: () => controller });
+    try {
+      expect((await service.setEnabled(true)).phase).toBe('error');
+      expect(descriptor()).toEqual({});
+    } finally { await service.stop(); }
+  });
   it('exposes and reveals its actual permission app without starting a Driver or requesting grants', async () => {
     const { controller, execute, binary, descriptor } = setup({ managed: true, running: false, grants: false });
     const app = fs.realpathSync(binary).split('/Contents/')[0];

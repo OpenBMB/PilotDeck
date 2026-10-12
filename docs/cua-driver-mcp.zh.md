@@ -7,36 +7,40 @@
 桌面安装包和网页部署环境均携带固定版本 `0.34.1` 的 Cua Driver，用户无需另行安装或配置 MCP。源码构建及标准网页启动脚本会自动准备这一依赖，校验归档 SHA-256 后放入 `resources/cua-driver`；桌面安装包将同一目录放入 `Resources/runtime/resources/cua-driver`。后端默认只查找随包资源，不依赖 PATH、用户的安装记录或 `/Applications/CuaDriver.app`。只有部署者明确配置 `PILOTDECK_CUA_DRIVER_PATH` 时才借用指定的外置服务。
 
 1. 打开「启用电脑操控」。macOS 权限不足时显示「等待系统授权」，此时不向 Agent 提供内置工具。
-2. macOS 使用「前往授权」，在系统设置中给页面提示的应用开启「辅助功能」和「屏幕录制」：桌面正式包为 **PilotDeck**，开发宿主为 **Electron**，独立网页后端为 **PilotDeck Computer Use**（环境包内的原生组件，所有系统语言均使用此英文名称）。这些应用的授权彼此独立。
-   独立网页的授权请求异步启动原生宿主，网页不会等待系统确认而超时。授权宿主最多保留五分钟，供用户处理系统提示、登录密码或 Touch ID；授权完成、重新检测、关闭功能或后端退出时结束。屏幕捕获探测返回未授权不会提前关闭首次授权弹窗。
-   若系统列表没有显示应用，展开「授权列表里没有应用？」。点击「显示授权应用」在 Finder 中定位正确应用并拖入权限列表，或复制应用路径，在系统设置的 `+` 选择窗口中按 `⌘⇧G` 粘贴。权限不足时这段引导默认展开。路径由后端提供：桌面端指向拥有权限的外层 PilotDeck/Electron 应用，独立网页指向包内原生组件。显示应用的接口只使用宿主选定的路径，不接受网页传入的路径，也不启动 Driver 或发起授权。
-3. 授权后点击「重新检测」。独立网页会重新启动所属组件，使新进程读取授权；若系统仍要求重开桌面客户端，则按系统提示退出并重新启动。状态为「已连接，可使用」后可在任务中请求电脑操控。
+2. macOS 使用「前往授权」，在系统设置中给 **PilotDeck Computer Use** 开启「辅助功能」和「屏幕录制」。桌面客户端、开发客户端与独立网页后端均使用环境包内的同一原生宿主，bundle ID 为 `cn.pilotdeck.computer-use`，所有系统语言均使用此英文名称。Electron/PilotDeck 主应用的权限不再参与电脑操控检查。
+   授权请求异步启动原生宿主，页面不会等待系统确认而超时。授权宿主最多保留五分钟，供用户处理系统提示、登录密码或 Touch ID；授权完成、重新检测、关闭功能或后端退出时结束。屏幕捕获探测返回未授权不会提前关闭首次授权弹窗。
+   若系统列表没有显示应用，展开「授权列表里没有应用？」。点击「显示授权应用」在 Finder 中定位正确应用并拖入权限列表，或复制应用路径，在系统设置的 `+` 选择窗口中按 `⌘⇧G` 粘贴。权限不足时这段引导默认展开。路径由后端提供，两种入口均指向实际启动的原生组件。显示应用的接口只使用宿主选定的路径，不接受网页传入的路径，也不启动 Driver 或发起授权。
+3. 授权后点击「重新检测」。macOS 会重新启动所属组件，使新进程读取授权；若系统仍要求重开应用，则按系统提示退出并重新启动。状态为「已连接，可使用」后可在任务中请求电脑操控。
 4. 「停止并关闭」会撤销此实例的 MCP 连接并保存关闭偏好。实例拥有的 Driver 子进程会停止；默认内置的网页 Driver 也会停止；仅明确配置的外置共享服务会保留。正常退出也会撤销连接并清理实例拥有的进程，但保留开关偏好供下次启动。
 
 操作审批沿用当前任务的权限设置，模型须支持图片输入。此版本使用本机登录用户的真实桌面，多个任务仍可能争用同一桌面，按单任务使用。Driver 崩溃后显示错误，由用户重新检测；不会自动重放完成情况不明的动作。
 
-页面访问方式不决定权限归属。桌面后端通过已有的私有父子进程 IPC 将 HTTP 请求交给 Electron 主进程，保持直接 GUI 宿主关系；独立网页后端通过 LaunchServices 启动包内 `PilotDeck Computer Use.app`，使用私有 socket 和 FIFO 生命周期管道；Node 退出或开关关闭时，FIFO 关闭使 Driver 结束，不会连接或停止系统上另装的 CuaDriver。这个轻量原生宿主使用 PilotDeck 自己的 bundle ID `cn.pilotdeck.computer-use`，直接启动 embedded Driver 子进程；权限请求也由宿主处理，不调用上游公共 CLI 硬编码的 Applications 路径。权限不足时不向 Agent 发布工具。读取状态不会启动服务或弹出授权，仅启用、重新检测或点击授权会执行相应操作。接口检查请求来源与本机 Host，避免免登录本地部署被其他网页调用。
+页面访问方式不决定权限归属。macOS 的桌面与独立网页后端复用同一个原生组件控制器，通过 LaunchServices 启动包内 `PilotDeck Computer Use.app`，使用私有 socket 和 FIFO 生命周期管道；Node 退出或开关关闭时，FIFO 关闭使 Driver 结束，不会连接或停止系统上另装的 CuaDriver。这个轻量原生宿主使用 PilotDeck 自己的 bundle ID `cn.pilotdeck.computer-use`，直接启动 embedded Driver 子进程；权限请求也由宿主处理，不调用上游公共 CLI 硬编码的 Applications 路径。Windows/Linux 桌面继续通过私有父子进程 IPC 交给 Electron 管理 Driver。权限不足时不向 Agent 发布工具。读取状态不会启动服务或弹出授权，仅启用、重新检测或点击授权会执行相应操作。接口检查请求来源与本机 Host，避免免登录本地部署被其他网页调用。
+
+macOS 复用授权还要求组件的代码签名身份兼容。同一正式发行签名下的网页组件与客户端组件可以复用原生宿主授权；源码准备脚本的临时签名不能自动继承正式签名的授权，重新编译临时宿主也可能使旧授权失效。升级前只授权过 PilotDeck/Electron 主应用的用户，需要为新的统一宿主授权一次，系统不提供将主应用授权直接转移给另一个 bundle 的接口。界面始终检测实际 Driver 的权限，不能用保存的「已授权」配置替代系统结果。
 
 独立网页后端会自动接管全局配置中与本机 Driver 路径一致、参数恰为 `["mcp"]` 且无自定义环境或会话策略的旧 `cua-driver` POC 条目，先保存完整备份 `PILOT_HOME/computer-use/legacy-mcp.backup.json`，再移除该条目，避免开关关闭后仍通过重复配置暴露工具。其他手动配置保持独立，开关只控制保留服务 `pilotdeck-computer-use`。
 
 HTTPS 反向代理部署需开启登录（`PILOTDECK_DISABLE_LOCAL_AUTH=0`），代理保留浏览器访问的 `Host`（包含非标准端口），并覆盖 `X-Forwarded-Proto` 为实际公开访问协议。后端默认仅信任 loopback 代理；代理位于另一台机器或容器网络时，以 `PILOTDECK_TRUST_PROXY` 配置其 IP/CIDR，多个地址用逗号分隔。设为 `0` 或 `false` 可禁用转发头信任。未受信任的直接连接不能通过伪造转发头改变请求协议；来源检查不采用 `X-Forwarded-Host`。本地免登录模式仍限制本地 Host，不因代理配置而开放公共域名的电脑操控入口。
 
 ```text
-PilotDeck Electron 主进程
-  ├─ Cua Driver serve --embedded（直接子进程、私有 socket / named pipe）
-  └─ Gateway / Agent
-       └─ 内部 MCP 客户端 → cua-driver mcp --embedded → 上述 Driver
+macOS Electron / 浏览器
+  └─ HTTP API → 后端原生组件控制器
+       └─ LaunchServices → PilotDeck Computer Use.app
+            └─ Cua Driver serve --embedded（直接子进程、私有 socket）
+Gateway / Agent
+  └─ 内部 MCP 客户端 → cua-driver mcp --embedded → 所属实例的 Driver
 ```
 
-Driver 放在 ASAR 外，由 macOS 打包流程签署嵌套可执行文件。主进程负责权限请求和生命周期；Gateway 只连接代理，不启动自动化守护进程。macOS 同时检查 `health_report` 的实际父进程身份与 `check_permissions` 的权限归属。进程关闭时通过 stdin 生命周期管道结束 Driver，异常退出也会撤销本代连接。
+Driver 放在 ASAR 外，由 macOS 打包流程签署嵌套原生宿主和可执行文件。原生宿主负责权限请求和 Driver 生命周期；Gateway 只连接代理，不启动自动化守护进程。macOS 同时检查 `health_report` 的实际父进程身份与 `check_permissions` 的权限归属。进程关闭时通过 stdin 生命周期管道结束 Driver，异常退出也会撤销本代连接。
 
-桌面开关存放在 Electron `userData/computer-use/settings.json`；独立网页后端存放在 `PILOT_HOME/computer-use/settings.json`。同目录 `mcp.json` 是当前进程生成的连接描述，Gateway 通过 `PILOTDECK_COMPUTER_USE_MCP_CONFIG` 读取并监听；不要手动编辑。项目配置和插件不能覆盖这个保留服务。Agent 不会获得内置 Driver 的更新、全局配置、扩展安装和轨迹重放工具。
+桌面开关存放在 Electron `userData/computer-use/settings.json`，通过 `PILOTDECK_COMPUTER_USE_DIRECTORY` 告知原生组件控制器，升级保留已有偏好；独立网页后端默认存放在 `PILOT_HOME/computer-use/settings.json`。同目录 `mcp.json` 是当前进程生成的连接描述，Gateway 通过 `PILOTDECK_COMPUTER_USE_MCP_CONFIG` 读取并监听；不要手动编辑。权限主体统一，实例的开关、连接和生命周期仍各自管理，两种部署不会覆盖彼此的 MCP 连接。项目配置和插件不能覆盖这个保留服务。Agent 不会获得内置 Driver 的更新、全局配置、扩展安装和轨迹重放工具。
 
 ## 支持范围
 
 | 客户端 | Driver 资源 | 当前边界 |
 | --- | --- | --- |
-| macOS x64 / arm64，DMG / ZIP | 通用二进制 | PilotDeck 拥有辅助功能、屏幕录制授权 |
+| macOS x64 / arm64，DMG / ZIP | 通用二进制 | PilotDeck Computer Use 拥有辅助功能、屏幕录制授权 |
 | Windows x64 / arm64，Setup EXE | 对应原生 EXE | 当前交互桌面；管理员窗口和安全界面受系统限制 |
 | Linux x64 / arm64，DEB / RPM | 对应 GNU 二进制 | 当前用户桌面；X11 为主要路径，Wayland 显示部分能力受限 |
 

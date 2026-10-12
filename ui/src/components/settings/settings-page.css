@@ -332,6 +332,7 @@
 :where(.pilotdeck-settings-app) .settings-page.security-settings-page,
 :where(.pilotdeck-settings-app) .settings-page.integration-settings-page,
 :where(.pilotdeck-settings-app) .settings-page.office-settings-page,
+:where(.pilotdeck-settings-app) .settings-page.computer-use-page,
 :where(.pilotdeck-settings-app) .settings-page.mcp-settings-page {
   overflow-y: auto;
   scrollbar-width: thin;

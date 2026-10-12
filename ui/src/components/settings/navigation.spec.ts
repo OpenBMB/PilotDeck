@@ -69,6 +69,8 @@ describe("settings route paths", () => {
 
   it("maps menu keys and legacy tabs onto dedicated settings URLs", () => {
     expect(getSettingsPath("modelPool")).toBe("/settings/models");
+    expect(getSettingsPath("usage")).toBe("/settings/usage");
+    expect(mapSettingsSectionToMenuKey("usage")).toBe("usage");
     expect(getSettingsPath("agentSearch")).toBe("/settings/agent-search");
     expect(getSettingsPathFromTab("config:tools")).toBe("/settings/agent-search");
     expect(getSettingsPathFromTab("permissions")).toBe("/settings/privacy");

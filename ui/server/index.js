@@ -110,6 +110,7 @@ import skillsRoutes from './routes/skills.js';
 import uploadsRoutes from './routes/uploads.js';
 import modelsRoutes, { createSessionModelHandlers } from './routes/models.js';
 import settingsRoutes from './routes/settings.js';
+import { createUsageRouter } from './routes/usage.js';
 import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
@@ -619,6 +620,7 @@ app.use('/api/models', authenticateToken, modelsRoutes);
 
 // Settings API Routes (protected)
 app.use('/api/settings', authenticateToken, settingsRoutes);
+app.use('/api/usage', authenticateToken, createUsageRouter());
 
 // PilotDeck unified YAML config routes (protected)
 app.use('/api/config', authenticateToken, configRoutes);

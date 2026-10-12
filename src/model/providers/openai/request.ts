@@ -26,6 +26,7 @@ export type OpenAIRequestBody = {
   tool_choice?: unknown;
   service_tier?: "priority";
   stream?: boolean;
+  stream_options?: { include_usage: boolean };
   metadata?: Record<string, unknown>;
   reasoning?: { effort?: string };
   thinking?: Record<string, unknown>;
@@ -89,6 +90,7 @@ export function buildOpenAIRequest(
       ? mapSpeedToOpenAIServiceTier(request.speed)
       : undefined,
     stream: request.stream,
+    stream_options: request.stream ? { include_usage: true } : undefined,
     metadata: toOpenAIMetadata(request.metadata),
   };
 

@@ -66,6 +66,7 @@ import {
   parsePluginMcpServers,
 } from "../mcp/index.js";
 import { createModelRuntime, type ModelRuntime } from "../model/index.js";
+import { UsageCounter, withUsageCounter } from "../model/usage/UsageCounter.js";
 import { createDefaultPermissionContext, type PermissionRule } from "../permission/index.js";
 import {
   ensureWritableDirectory,
@@ -770,6 +771,7 @@ const DEFAULT_BROWSER_NAVIGATION_TIMEOUT_MS = 90_000;
 
 class ProjectRuntimeRegistry {
   private readonly runtimes = new Map<string, ProjectRuntime>();
+  private usageCounter?: UsageCounter;
   private gateway?: InProcessGateway;
   /**
    * Per-session live permission rules used when no `sessionOverrides`
@@ -966,9 +968,11 @@ class ProjectRuntimeRegistry {
     }
 
     const snapshot = loadPilotConfig({ projectRoot, env: this.options.env });
-    const model = this.options.modelFactory
+    const baseModel = this.options.modelFactory
       ? this.options.modelFactory(snapshot)
       : createModelRuntime(snapshot.config.model);
+    this.usageCounter ??= new UsageCounter(this.options.pilotHome, this.options.now);
+    const model = withUsageCounter(baseModel, this.usageCounter);
     const tokenAccounting = new TokenAccountingRuntime({
       modelConfig: snapshot.config.model,
     });

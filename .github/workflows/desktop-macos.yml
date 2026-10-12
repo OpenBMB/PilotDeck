@@ -97,6 +97,13 @@ jobs:
       - name: Verify computer use lifecycle and pinned assets
         run: node --test apps/desktop/scripts/computer-use.test.mjs
 
+      - name: Verify shared desktop and Web permission ownership
+        run: >-
+          pnpm --dir ui exec vitest run
+          server/services/computerUse.test.js
+          server/services/standaloneComputerUse.test.js
+          server/routes/computer-use.test.js
+
       - name: Verify macOS background and quit lifecycle
         run: node apps/desktop/scripts/verify-desktop-lifecycle.cjs
 

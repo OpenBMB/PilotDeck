@@ -701,7 +701,13 @@ async function sendProviderRequest(
       body: JSON.stringify(finalBody),
       signal: controller.signal,
     };
-    return await sendWithEndpointFallback(provider, stream, transport, fetchOptions, effectiveTimeoutMs);
+    let usageFallbackBody: string | undefined;
+    if (provider.protocol === "openai" && stream && finalBody.stream_options !== undefined
+      && provider.extraBody?.stream_options === undefined) {
+      const { stream_options: _usageOptions, ...fallbackBody } = finalBody;
+      usageFallbackBody = JSON.stringify(fallbackBody);
+    }
+    return await sendWithEndpointFallback(provider, stream, transport, fetchOptions, effectiveTimeoutMs, usageFallbackBody);
   } catch (error) {
     if (signal?.aborted) {
       throw createAbortError(signal.reason);
@@ -713,6 +719,14 @@ async function sendProviderRequest(
     }
     detachAbort?.();
   }
+}
+
+async function rejectsStreamUsageOption(response: Response): Promise<boolean> {
+  if (response.status !== 400 && response.status !== 422) return false;
+  const raw = await safeReadJson(response.clone());
+  const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+  return /\b(stream_options|include_usage)\b/i.test(text)
+    && /\b(unknown|unrecognized|unexpected|unsupported)\b|not\s+(supported|allowed|permitted)|extra_forbidden/i.test(text);
 }
 
 function forwardAbort(source: AbortSignal, target: AbortController): () => void {
@@ -732,16 +746,23 @@ async function sendWithEndpointFallback(
   transport: ModelTransport,
   fetchOptions: RequestInit,
   timeoutMs: number,
+  usageFallbackBody?: string,
 ): Promise<Response> {
   const endpoints = buildProviderChatEndpointCandidates({ protocol: provider.protocol, baseUrl: provider.url });
+  const networkOptions = {
+    signal: fetchOptions.signal instanceof AbortSignal ? fetchOptions.signal : undefined,
+    fetchImpl: transport === fetch ? undefined : transport,
+    timeoutMs,
+    retry: { maxRetries: 0, retryOnPost: true },
+  };
   let lastResponse: Response | undefined;
   for (const endpoint of endpoints) {
-    const response = await networkFetch(endpoint, fetchOptions, {
-      signal: fetchOptions.signal instanceof AbortSignal ? fetchOptions.signal : undefined,
-      fetchImpl: transport === fetch ? undefined : transport,
-      timeoutMs,
-      retry: { maxRetries: 0, retryOnPost: true },
-    });
+    let response = await networkFetch(endpoint, fetchOptions, networkOptions);
+    if (usageFallbackBody !== undefined && await rejectsStreamUsageOption(response)) {
+      // Retry an explicit parameter rejection at this endpoint before trying
+      // another address, which could otherwise hide the rejection with a 404.
+      response = await networkFetch(endpoint, { ...fetchOptions, body: usageFallbackBody }, networkOptions);
+    }
     if (await shouldUseEndpointResponse(provider, response, stream, endpoints.length)) {
       return response;
     }

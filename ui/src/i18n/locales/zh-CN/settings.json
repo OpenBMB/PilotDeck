@@ -63,6 +63,7 @@
     "menu": {
       "general": "通用",
       "modelPool": "模型池",
+      "usage": "用量统计",
       "agent": "智能体",
       "agentRoute": "路由",
       "agentSubagents": "子智能体",
@@ -85,6 +86,7 @@
     "descriptions": {
       "general": "设置 PilotDeck 的界面外观、聊天输入和代码编辑体验。",
       "modelPool": "集中管理模型提供商、连接凭据和可用模型。已启用模型将供智能体、路由和记忆功能使用。",
+      "usage": "查看今日 Token 消耗与每日使用情况。",
       "agentRoute": "按任务复杂度选择模型，在保证效果的基础上节省token成本。",
       "agentSubagents": "管理内置与自定义子智能体角色、绑定的模型与工具，以及允许的嵌套深度。",
       "agentMemory": "持续整理并记住项目重要信息，在后续任务中自动使用。",
@@ -103,6 +105,7 @@
     "titles": {
       "general": "通用",
       "modelPool": "模型池",
+      "usage": "用量统计",
       "agent": "智能体",
       "agentRoute": "智能体 / 路由",
       "agentSubagents": "智能体 / 子智能体",
@@ -1915,5 +1918,38 @@
     "stop": "停止并关闭",
     "waylandHint": "当前为 Wayland 桌面。系统可能在首次截图时请求授权；部分操作需要桌面辅助组件。任务遇到不支持的操作时会返回具体原因。",
     "missingDriver": "部署环境中的电脑操控组件缺失。请重新部署 PilotDeck；组件随环境提供，无需另行安装。"
+  },
+  "usage": {
+    "today": "今日 Token",
+    "total": "累计 Token",
+    "peak": "单日峰值",
+    "longestStreak": "最长连续使用",
+    "currentStreak": "当前连续使用",
+    "days": "天",
+    "activity": "Token 活动",
+    "lastYear": "最近 365 天",
+    "timeZone": "按自然日统计 · 北京时间 (UTC+8)",
+    "refresh": "刷新",
+    "error": "用量刷新失败，请重试。",
+    "loading": "正在加载用量…",
+    "unavailable": "暂时无法获取用量。",
+    "monday": "一",
+    "wednesday": "三",
+    "friday": "五",
+    "less": "少",
+    "more": "多",
+    "legendZero": "0 Token",
+    "legendBelow": "低于 {{max}} Token",
+    "legendRange": "{{min}} 至 {{max}} Token（不含上限）",
+    "legendAtLeast": "{{min}} Token 及以上",
+    "dayDetail": "{{date}} · {{tokens}} Token · {{count}} 次调用",
+    "calls": "{{count}} 次调用",
+    "timeZoneShort": "北京时间",
+    "autoRefresh": "每 30 秒更新",
+    "updatedShort": "更新于 {{time}}",
+    "scope": "统计对话、路由、子代理及上下文压缩返回的 Token 用量，不包含记忆和标题生成。未返回用量的调用不计入。",
+    "since": "从 {{date}} 开始记录，此前未记录的用量不包含在内。",
+    "empty": "暂无用量记录，完成一次对话后，用量将显示在这里。",
+    "updated": "更新于 {{time}} · 每 30 秒自动刷新"
   }
 }

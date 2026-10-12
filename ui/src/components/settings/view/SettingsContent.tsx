@@ -19,6 +19,7 @@ const McpServersSection = lazy(() => import("./extensions"));
 const GeneralSections = lazy(() => import("./general"));
 const IntegrationsSections = lazy(() => import("./integrations"));
 const ModelPoolSections = lazy(() => import("./modelPool"));
+const UsageSections = lazy(() => import("./usage"));
 const PrivacySections = lazy(() => import("./privacy"));
 const AboutSections = lazy(() => import("./about"));
 const OfficePreviewSections = lazy(() => import("./officePreview"));
@@ -41,6 +42,7 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   general: "settingsPage.titles.general",
   appearance: "lightAppearance.title",
   modelPool: "settingsPage.titles.modelPool",
+  usage: "settingsPage.titles.usage",
   agent: "settingsPage.titles.agent",
   agentRoute: "settingsPage.titles.agentRoute",
   agentSubagents: "settingsPage.titles.agentSubagents",
@@ -62,6 +64,7 @@ const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
   general: "settingsPage.menu.general",
   appearance: "lightAppearance.title",
   modelPool: "settingsPage.menu.modelPool",
+  usage: "settingsPage.menu.usage",
   agent: "settingsPage.menu.agent",
   agentRoute: "settingsPage.menu.agentRoute",
   agentSubagents: "settingsPage.menu.agentSubagents",
@@ -83,6 +86,7 @@ const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
   general: "settingsPage.descriptions.general",
   appearance: "lightAppearance.description",
   modelPool: "settingsPage.descriptions.modelPool",
+  usage: "settingsPage.descriptions.usage",
   agentRoute: "settingsPage.descriptions.agentRoute",
   agentSubagents: "settingsPage.descriptions.agentSubagents",
   agentMemory: "settingsPage.descriptions.agentMemory",
@@ -102,6 +106,7 @@ const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
   general: "general-settings-page",
   appearance: "appearance-settings-page",
   modelPool: "model-pool-page",
+  usage: "usage-page",
   agentRoute: "agent-route-page",
   agentSubagents: "agent-subagents-page",
   agentMemory: "agent-memory-page",
@@ -111,6 +116,7 @@ const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
   integrations: "integration-settings-page",
   mcpServers: "mcp-settings-page",
   officePreview: "office-settings-page",
+  computerUse: "computer-use-page",
   privacy: "security-settings-page",
   advanced: "advanced-settings-page",
   about: "about-settings-page",
@@ -213,6 +219,8 @@ export default function SettingsContent({
           <ComputerUseSections />
         ) : selectedKey === "modelPool" ? (
           <ModelPoolSections title={title} />
+        ) : selectedKey === "usage" ? (
+          <UsageSections />
         ) : selectedKey === "privacy" ? (
           <PrivacySections title={title} />
         ) : selectedKey === "advanced" ? (

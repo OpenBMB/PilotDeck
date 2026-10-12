@@ -32,3 +32,14 @@ test("OpenAI provider metadata still preserves caller-supplied tags", () => {
   const wire = buildOpenAIRequest(request({ subagentId: "child-123", subagentType: "vision", project: "demo", batch: 3 }), model);
   assert.deepEqual(wire.metadata, { project: "demo", batch: "3" });
 });
+
+for (const stream of [true, false]) {
+  test(`OpenAI child requests preserve usage options and caller metadata with streaming ${stream}`, () => {
+    const input = { ...request({ subagentId: "child-123", subagentType: "vision", project: "demo", batch: 3 }), stream };
+    const wire = JSON.parse(JSON.stringify(buildOpenAIRequest(input, model)));
+    assert.deepEqual(wire.stream_options, stream ? { include_usage: true } : undefined);
+    assert.deepEqual(wire.metadata, { project: "demo", batch: "3" });
+    assert.equal(input.metadata?.subagentId, "child-123");
+    assert.equal(input.metadata?.subagentType, "vision");
+  });
+}

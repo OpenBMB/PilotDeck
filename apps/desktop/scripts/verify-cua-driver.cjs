@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 
 function verifyCuaDriver(resources, expectedArch) {
   const pinned = require('../../../scripts/computer-use/cua-driver.json');
@@ -25,6 +25,19 @@ function verifyCuaDriver(resources, expectedArch) {
     const icon = fs.readFileSync(path.join(app, 'Contents/Resources/computer-use.icns'));
     assert.equal(icon.toString('ascii', 0, 4), 'icns');
     assert.equal(icon.readUInt32BE(4), icon.length);
+    const signature = spawnSync('/usr/bin/codesign', ['--display', '--verbose=4', app], { encoding: 'utf8' });
+    assert.equal(signature.status, 0, 'The permission helper must be signed');
+    assert.match(signature.stderr, /^Identifier=cn\.pilotdeck\.computer-use$/m);
+    if (process.env.PILOTDECK_DESKTOP_REQUIRE_SIGNING === '1') {
+      assert.match(signature.stderr, /^Authority=Developer ID Application:/m);
+      const outerApp = path.resolve(resources, '..', '..');
+      const outerSignature = spawnSync('/usr/bin/codesign', ['--display', '--verbose=4', outerApp], { encoding: 'utf8' });
+      assert.equal(outerSignature.status, 0);
+      const helperTeam = signature.stderr.match(/^TeamIdentifier=(.+)$/m)?.[1];
+      const desktopTeam = outerSignature.stderr.match(/^TeamIdentifier=(.+)$/m)?.[1];
+      assert.ok(helperTeam && helperTeam !== 'not set', 'A production permission helper needs a signing team');
+      assert.equal(helperTeam, desktopTeam, 'The helper and desktop must use the same production signing team');
+    }
   }
   console.log(`PASS: bundled Cua Driver ${pinned.version} (${process.platform}/${expectedArch})`);
 }
