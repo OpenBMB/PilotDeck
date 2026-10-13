@@ -86,6 +86,25 @@ test("an explicit environment reference remains valid for a custom endpoint", ()
   }, { env: { PROXY_API_KEY: "proxy-secret" } });
 
   assert.equal(config.providers.openai.apiKey, "proxy-secret");
+
+test("Atlas Cloud catalog applies its endpoint, credentials, and model metadata", () => {
+  const config = parseModelConfig({
+    providers: {
+      atlas_cloud: {
+        models: { "qwen/qwen3.8-max": {} },
+      },
+    },
+  }, { env: { ATLASCLOUD_API_KEY: " atlas-env " } });
+
+  const provider = config.providers.atlas_cloud;
+  const model = provider.models["qwen/qwen3.8-max"];
+
+  assert.equal(provider.protocol, "openai");
+  assert.equal(provider.url, "https://api.atlascloud.ai/v1");
+  assert.equal(provider.apiKey, "atlas-env");
+  assert.equal(model.capabilities.maxContextTokens, 1_000_000);
+  assert.equal(model.capabilities.maxOutputTokens, 131_072);
+  assert.deepEqual(model.multimodal.input, ["text", "image"]);
 });
 
 test("unknown custom models default to text-only input", () => {
