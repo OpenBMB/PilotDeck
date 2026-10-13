@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "racetrack.schema.json",
+  "title": "Racetrack (Industry Sub-track)",
+  "description": "A coherent sub-track within the broader industry, with consistent customer/value chain logic.",
+  "type": "object",
+  "required": ["id", "name", "definition", "as_of_date"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Slug, e.g. 'image-generation', 'vertical-saas-medical'."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name."
+    },
+    "definition": {
+      "type": "string",
+      "description": "1-2 sentences defining what is in scope."
+    },
+    "out_of_scope": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Adjacent areas explicitly excluded."
+    },
+    "archetype": {
+      "type": "string",
+      "enum": ["platform", "saas-vertical", "deeptech-hardware", "marketplace", "consumer", "infrastructure", "content-media"]
+    },
+    "tam_usd_bn": {
+      "type": "object",
+      "properties": {
+        "value": {"type": "number"},
+        "methodology": {"type": "string", "enum": ["top-down", "bottom-up", "comparable", "consensus-of-three"]},
+        "as_of_date": {"type": "string", "format": "date"},
+        "source_url": {"type": "string"}
+      }
+    },
+    "sam_usd_bn": {"type": "number"},
+    "som_usd_bn": {"type": "number"},
+    "cagr_pct": {
+      "type": "object",
+      "properties": {
+        "value": {"type": "number"},
+        "horizon_years": {"type": "integer"},
+        "source_url": {"type": "string"}
+      }
+    },
+    "geographies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "region": {"type": "string", "enum": ["global", "us-canada", "europe", "china", "japan-korea", "southeast-asia", "middle-east", "latin-america", "africa", "india"]},
+          "market_share_pct": {"type": "number"},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "tier_thresholds": {
+      "type": "object",
+      "description": "Valuation thresholds used to classify companies into tiers.",
+      "properties": {
+        "tier_1_usd_bn_min": {"type": "number"},
+        "tier_2_usd_bn_min": {"type": "number"},
+        "tier_3_usd_bn_min": {"type": "number"}
+      }
+    },
+    "key_metrics": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Archetype-specific KPIs (e.g. NRR for SaaS, take rate for marketplace)."
+    },
+    "lifecycle_stage": {
+      "type": "string",
+      "enum": ["seeding", "growing", "scaling", "shaking-out", "consolidated", "declining"],
+      "description": "S-curve / Gartner hype cycle stage."
+    },
+    "concentration": {
+      "type": "object",
+      "properties": {
+        "cr3": {"type": "number", "description": "Top-3 market share %"},
+        "cr5": {"type": "number"},
+        "hhi": {"type": "number", "description": "Herfindahl-Hirschman Index"}
+      }
+    },
+    "structural_drivers": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Underlying forces driving the racetrack (regulation, tech leap, demographic, etc.)"
+    },
+    "color_code": {
+      "type": "string",
+      "description": "Hex color for visual identification across slides."
+    },
+    "as_of_date": {"type": "string", "format": "date"},
+    "sources": {
+      "type": "array",
+      "items": {"$ref": "source.schema.json"}
+    }
+  }
+}

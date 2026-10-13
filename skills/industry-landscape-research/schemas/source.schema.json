@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "source.schema.json",
+  "title": "Source Citation",
+  "description": "Citation record for any non-trivial data point. Every L1-L3 datum must have at least one source.",
+  "type": "object",
+  "required": ["url", "fetched_date", "grade"],
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Direct link to the primary source."
+    },
+    "title": {"type": "string"},
+    "publisher": {
+      "type": "string",
+      "description": "Publisher / site (e.g. 'NVIDIA 10-K', 'The Information', '36kr')."
+    },
+    "publisher_tier": {
+      "type": "string",
+      "enum": ["L1-exchange-or-audited", "L2-authoritative-media", "L3-pr-or-summary", "L4-rumor-or-anon"],
+      "description": "Publisher quality tier (separate from datum grade)."
+    },
+    "author": {"type": "string"},
+    "published_date": {"type": "string", "format": "date"},
+    "fetched_date": {"type": "string", "format": "date"},
+    "grade": {
+      "type": "string",
+      "enum": ["L1", "L2", "L3", "L4"]
+    },
+    "quote": {
+      "type": "string",
+      "description": "1-2 sentence verbatim quote supporting the data point."
+    },
+    "lang": {"type": "string"},
+    "cross_validated_by": {
+      "type": "array",
+      "items": {"type": "string", "format": "uri"},
+      "description": "URLs of independent secondary sources confirming the data."
+    },
+    "is_secondary": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if this is a secondary citation; primary source should be linked separately."
+    },
+    "access_notes": {
+      "type": "string",
+      "description": "e.g. 'paywall', 'requires login', 'cached snapshot only'."
+    }
+  }
+}
