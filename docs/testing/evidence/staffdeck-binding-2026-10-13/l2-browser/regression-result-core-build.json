@@ -1,0 +1,15 @@
+[
+  {
+    "name": "core-build",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck",
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 14930,
+    "summary": []
+  }
+]

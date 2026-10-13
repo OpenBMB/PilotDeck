@@ -1,0 +1,38 @@
+[
+  {
+    "name": "L3-SOP-PRIVATE",
+    "repetition": 0,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-private-1791879209563-0",
+      "sopId": "binding_private_1791879209563",
+      "knowledgeBaseId": "kb_5717bb1c59f04837",
+      "finalStatus": "completed"
+    },
+    "elapsedMs": 27544
+  },
+  {
+    "name": "L3-SOP-PRIVATE",
+    "repetition": 1,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-private-1791879209563-1",
+      "sopId": "binding_private_1791879209563",
+      "knowledgeBaseId": "kb_5717bb1c59f04837",
+      "finalStatus": "completed"
+    },
+    "elapsedMs": 32028
+  },
+  {
+    "name": "L3-SOP-PRIVATE",
+    "repetition": 2,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-private-1791879209563-2",
+      "sopId": "binding_private_1791879209563",
+      "knowledgeBaseId": "kb_5717bb1c59f04837",
+      "finalStatus": "completed"
+    },
+    "elapsedMs": 28355
+  }
+]

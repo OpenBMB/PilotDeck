@@ -1,0 +1,269 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10404,
+    "displayUsed": 10404,
+    "localEstimateTokens": 10404,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09321244266055045,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10404,
+      "system": 3038,
+      "tools": 7358,
+      "messages": 8,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "I",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "'m checking",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 1
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the workspace structure",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 12
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " to understand",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 36
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " what ProjectB is",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 50
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " about and",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 67
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " provide a meaningful greeting",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 77
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 107
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Hi! How",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:text:0",
+      "previousId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 1,
+      "revision": 11,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 13
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " can I help?",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:text:0",
+      "previousId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 1,
+      "revision": 12,
+      "offset": 7
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 14
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+    "text": "I'm checking the workspace structure to understand what ProjectB is about and provide a meaningful greeting.",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 0,
+      "revision": 14
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 15
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:text:0",
+    "text": "Hi! How can I help?",
+    "timeline": {
+      "version": 1,
+      "turnId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+      "id": "b268d463-46fb-4033-ab6f-7adcf6cbd164:text:0",
+      "previousId": "b268d463-46fb-4033-ab6f-7adcf6cbd164:thinking:0",
+      "order": 1,
+      "revision": 15
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 16
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12299,
+      "outputTokens": 31,
+      "totalTokens": 12330
+    },
+    "finishReason": "completed",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 17
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12299,
+      "outputTokens": 31,
+      "totalTokens": 12330
+    },
+    "finishReason": "completed",
+    "runId": "f6571bfd-9f23-444f-a16c-9429a3b3be86",
+    "sequence": 18
+  }
+]

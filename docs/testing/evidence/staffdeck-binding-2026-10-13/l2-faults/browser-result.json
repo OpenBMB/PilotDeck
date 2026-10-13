@@ -1,0 +1,18 @@
+[
+  {
+    "id": "U01/U02",
+    "status": "PASS",
+    "aVisible": true,
+    "bEmpty": true,
+    "tabsIsolated": true,
+    "desktop": [
+      1440,
+      960
+    ],
+    "mobile": [
+      390,
+      844
+    ],
+    "errors": []
+  }
+]

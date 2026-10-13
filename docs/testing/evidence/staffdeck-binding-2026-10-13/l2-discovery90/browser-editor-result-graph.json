@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/browser-editor.mjs"
+  ],
+  "results": [
+    {
+      "id": "U02-EDITOR-1440",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Show Source Code', exact: true })\u001b[22m\n\u001b[2m    - locator resolved to <button data-slot=\"button\" data-size=\"default\" data-variant=\"outline\" class=\"group/button inline-flex shrink-0 items-center justify-center bg-clip-padding whitespace-nowrap transition-all outline-none select-none active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 hover:bg-muted hover:text-foregroun…>…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"min-h-0 min-w-0 flex-1 overflow-auto bg-[#fbfcfd] px-[20px] py-[18px]\">…</div> from <section class=\"flex flex-col rounded-[20px_20px_0_0] bg-[#FFF] p-[18px] shadow-[0_-4px_16px_0_rgba(0,0,0,0.05)] min-w-0 overflow-hidden h-full min-h-0 fixed top-[77px] bottom-[19px] left-[19px] z-[96] h-auto! w-[min(380px,36vw)] gap-[12px] rounded-none! border-r border-[#e1e6ee] p-[14px]! shadow-none! sm:top-[83px] sm:bottom-[25px] sm:left-[25px]\">…</section> subtree intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"min-h-0 min-w-0 flex-1 overflow-auto bg-[#fbfcfd] px-[20px] py-[18px]\">…</div> from <section class=\"flex flex-col rounded-[20px_20px_0_0] bg-[#FFF] p-[18px] shadow-[0_-4px_16px_0_rgba(0,0,0,0.05)] min-w-0 overflow-hidden h-full min-h-0 fixed top-[77px] bottom-[19px] left-[19px] z-[96] h-auto! w-[min(380px,36vw)] gap-[12px] rounded-none! border-r border-[#e1e6ee] p-[14px]! shadow-none! sm:top-[83px] sm:bottom-[25px] sm:left-[25px]\">…</section> subtree intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    50 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div class=\"min-h-0 min-w-0 flex-1 overflow-auto bg-[#fbfcfd] px-[20px] py-[18px]\">…</div> from <section class=\"flex flex-col rounded-[20px_20px_0_0] bg-[#FFF] p-[18px] shadow-[0_-4px_16px_0_rgba(0,0,0,0.05)] min-w-0 overflow-hidden h-full min-h-0 fixed top-[77px] bottom-[19px] left-[19px] z-[96] h-auto! w-[min(380px,36vw)] gap-[12px] rounded-none! border-r border-[#e1e6ee] p-[14px]! shadow-none! sm:top-[83px] sm:bottom-[25px] sm:left-[25px]\">…</section> subtree intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n",
+      "elapsedMs": 57591
+    },
+    {
+      "id": "U02-EDITOR-390",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Workflow', exact: true })\u001b[22m\n",
+      "elapsedMs": 31467
+    }
+  ]
+}

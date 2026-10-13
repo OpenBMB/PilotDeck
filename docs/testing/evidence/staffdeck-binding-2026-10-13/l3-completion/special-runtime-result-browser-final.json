@@ -1,0 +1,94 @@
+[
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 0,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-approved-1791889194439-0",
+      "decision": "approved",
+      "sopId": "binding_approval_1791889194439",
+      "legacyFixedTarget": false,
+      "browserApproval": true,
+      "finalStatus": "completed",
+      "replay": false,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-approved-1791889194439-0",
+        "requestId": "a9a7feb9-713f-44a1-9db9-0bfb92aab22b",
+        "revision": 9,
+        "message": "Human decision: approved. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 41433
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 0,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-rejected-1791889194439-0",
+      "decision": "rejected",
+      "sopId": "binding_approval_1791889194439",
+      "legacyFixedTarget": false,
+      "browserApproval": true,
+      "finalStatus": "completed",
+      "replay": false,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-rejected-1791889194439-0",
+        "requestId": "c657cd2a-b4ec-4518-9d06-77f3d380d38c",
+        "revision": 6,
+        "message": "Human decision: rejected. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 33766
+  },
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 1,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-approved-1791889194439-1",
+      "decision": "approved",
+      "sopId": "binding_approval_1791889194439",
+      "legacyFixedTarget": false,
+      "browserApproval": true,
+      "finalStatus": "completed",
+      "replay": false,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-approved-1791889194439-1",
+        "requestId": "668c0b1e-0b51-4b5c-a679-efed7adc8084",
+        "revision": 9,
+        "message": "Human decision: approved. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 41320
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 1,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-rejected-1791889194439-1",
+      "decision": "rejected",
+      "sopId": "binding_approval_1791889194439",
+      "legacyFixedTarget": false,
+      "browserApproval": true,
+      "finalStatus": "completed",
+      "replay": false,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-rejected-1791889194439-1",
+        "requestId": "8c692b3e-fdf6-49a0-8048-675aefb5868e",
+        "revision": 9,
+        "message": "Human decision: rejected. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 28925
+  }
+]

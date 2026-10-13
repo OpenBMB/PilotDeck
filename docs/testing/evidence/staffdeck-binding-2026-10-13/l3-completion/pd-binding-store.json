@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "installationId": "405f9022-8171-4a58-8c4a-6511f291848d",
+  "projects": [
+    {
+      "projectRoot": "$QA_ROOT/workspace/ProjectA",
+      "bindingId": "5162da74-64c6-41e8-a463-568caf377882",
+      "agentName": "ProjectA-5162da74",
+      "origin": "http://127.0.0.1:26010",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T11:05:57.410Z",
+      "agentId": "agent_201e85d986634414"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ProjectB",
+      "bindingId": "c9c329e4-b926-4ceb-a575-82bb09635efc",
+      "agentName": "ProjectB-c9c329e4",
+      "origin": "http://127.0.0.1:26010",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T10:37:35.880Z",
+      "agentId": "agent_aab4905544aa47ba"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/clones/repo",
+      "bindingId": "92eb11d0-820c-4354-a8f9-5cab38a92924",
+      "agentName": "repo-92eb11d0",
+      "origin": "http://127.0.0.1:26010",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T10:34:59.838Z",
+      "agentId": "agent_c2aa9ff3053d4506"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ProjectFailure",
+      "bindingId": "c168ff8a-6eaf-476f-a6da-619369a72de6",
+      "agentName": "ProjectFailure-c168ff8a",
+      "origin": "http://127.0.0.1:26010",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T10:35:27.357Z",
+      "agentId": "agent_21a82318cfdc4288"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "id": "U01-LATE-A-STATUS",
+    "status": "PASS",
+    "delayedRealResponse": true,
+    "switchedBySidebar": true,
+    "bStatusPreserved": true,
+    "bResourcesIsolated": true,
+    "errors": []
+  }
+]

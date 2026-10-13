@@ -1,0 +1,379 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/resources-complete.mjs"
+  ],
+  "results": [
+    {
+      "id": "I01-MODULE-get_base",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 70
+    },
+    {
+      "id": "I01-MODULE-update_base",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4",
+          "description": "matrix update"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 63
+    },
+    {
+      "id": "I01-MODULE-list_versions",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 97
+    },
+    {
+      "id": "I01-MODULE-list_documents",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 43
+    },
+    {
+      "id": "I01-MODULE-get_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_78f6a07c9d24439fab0b70baf0084a4d"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 50
+    },
+    {
+      "id": "I01-MODULE-update_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_78f6a07c9d24439fab0b70baf0084a4d",
+          "title": "A_PRIVATE_MATRIX_9351 updated"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 105
+    },
+    {
+      "id": "I01-MODULE-list_document_buckets",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_78f6a07c9d24439fab0b70baf0084a4d"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 49
+    },
+    {
+      "id": "I01-MODULE-update_bucket",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_78f6a07c9d24439fab0b70baf0084a4d",
+          "summary": "A_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 50
+    },
+    {
+      "id": "I01-MODULE-list_bucket_chunks",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_78f6a07c9d24439fab0b70baf0084a4d"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 45
+    },
+    {
+      "id": "I01-MODULE-update_chunk",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "chunkId": "binding_chunk_78f6a07c9d24439fab0b70baf0084a4d",
+          "content": "A_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I01-MODULE-resolve_citation",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "chunkId": "binding_chunk_78f6a07c9d24439fab0b70baf0084a4d"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 47
+    },
+    {
+      "id": "I01-MODULE-get_job",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "jobId": "binding_job_78f6a07c9d24439fab0b70baf0084a4d"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 49
+    },
+    {
+      "id": "I01-MODULE-cancel_job",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "jobId": "binding_job_78f6a07c9d24439fab0b70baf0084a4d"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I01-MODULE-list_okf_concepts",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 37
+    },
+    {
+      "id": "I01-MODULE-upsert_okf_concept",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4",
+          "conceptId": "matrix.concept",
+          "contentMd": "# Matrix\n\nA_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 53
+    },
+    {
+      "id": "I01-MODULE-export_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 39
+    },
+    {
+      "id": "I01-MODULE-lint_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 36
+    },
+    {
+      "id": "I01-MODULE-reject_discovery",
+      "status": "FAIL",
+      "error": "{\"error\":{\"code\":\"RESOURCE_NOT_FOUND\",\"message\":\"Knowledge resource is unavailable.\"}}\n\n404 !== 200\n",
+      "elapsedMs": 30
+    },
+    {
+      "id": "I01-SDK-list_knowledge_versions",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 43
+    },
+    {
+      "id": "I01-SDK-list_knowledge_documents",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 36
+    },
+    {
+      "id": "I01-SDK-get_knowledge_document",
+      "status": "FAIL",
+      "error": "{\"type\":\"urn:staffdeck:error:document_not_found\",\"title\":\"DOCUMENT_NOT_FOUND\",\"status\":404,\"code\":\"DOCUMENT_NOT_FOUND\",\"detail\":\"Document not found in this knowledge base.\",\"request_id\":\"req_4cd97c3a00a04ccfa299c8cede2cfa62\"}\n\n404 !== 200\n",
+      "elapsedMs": 38
+    },
+    {
+      "id": "I01-SDK-update_knowledge_document",
+      "status": "FAIL",
+      "error": "{\"type\":\"urn:staffdeck:error:document_not_found\",\"title\":\"DOCUMENT_NOT_FOUND\",\"status\":404,\"code\":\"DOCUMENT_NOT_FOUND\",\"detail\":\"Document not found in this knowledge base.\",\"request_id\":\"req_aefdccffdb784bd284338514d98768f6\"}\n\n404 !== 200\n",
+      "elapsedMs": 42
+    },
+    {
+      "id": "I01-SDK-list_document_buckets",
+      "status": "FAIL",
+      "error": "{\"type\":\"urn:staffdeck:error:document_not_found\",\"title\":\"DOCUMENT_NOT_FOUND\",\"status\":404,\"code\":\"DOCUMENT_NOT_FOUND\",\"detail\":\"Document not found.\",\"request_id\":\"req_df2944b444f943388c29f0331002c94e\"}\n\n404 !== 200\n",
+      "elapsedMs": 26
+    },
+    {
+      "id": "I01-SDK-list_bucket_chunks",
+      "status": "FAIL",
+      "error": "{\"type\":\"urn:staffdeck:error:bucket_not_found\",\"title\":\"BUCKET_NOT_FOUND\",\"status\":404,\"code\":\"BUCKET_NOT_FOUND\",\"detail\":\"Knowledge bucket not found.\",\"request_id\":\"req_5e4fa27c6cdb46e5b3425ad288ca55fb\"}\n\n404 !== 200\n",
+      "elapsedMs": 18
+    },
+    {
+      "id": "I01-SDK-update_knowledge_bucket",
+      "status": "FAIL",
+      "error": "{\"type\":\"urn:staffdeck:error:bucket_not_found\",\"title\":\"BUCKET_NOT_FOUND\",\"status\":404,\"code\":\"BUCKET_NOT_FOUND\",\"detail\":\"Knowledge bucket not found.\",\"request_id\":\"req_9a846a9d0b454efdae56126de3a4b186\"}\n\n404 !== 200\n",
+      "elapsedMs": 18
+    },
+    {
+      "id": "I01-SDK-update_knowledge_chunk",
+      "status": "FAIL",
+      "error": "{\"type\":\"urn:staffdeck:error:chunk_not_found\",\"title\":\"CHUNK_NOT_FOUND\",\"status\":404,\"code\":\"CHUNK_NOT_FOUND\",\"detail\":\"Knowledge chunk not found.\",\"request_id\":\"req_e60b310be87444afb2954d531271ba0b\"}\n\n404 !== 200\n",
+      "elapsedMs": 16
+    },
+    {
+      "id": "I01-SDK-list_knowledge_concepts",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 31
+    },
+    {
+      "id": "I01-SDK-get_knowledge_concept",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4",
+          "conceptId": "matrix.concept"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 30
+    },
+    {
+      "id": "I01-SDK-export_knowledge_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_b4b2d33c5e6b40a4"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 32
+    },
+    {
+      "id": "I01-SDK-get_knowledge_job",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "jobId": "binding_job_78f6a07c9d24439fab0b70baf0084a4d"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 26
+    },
+    {
+      "id": "I01-SDK-cancel_knowledge_job",
+      "status": "FAIL",
+      "error": "{\"id\":\"binding_job_78f6a07c9d24439fab0b70baf0084a4d\",\"knowledge_base_id\":\"kb_b4b2d33c5e6b40a4\",\"document_id\":null,\"filename\":\"matrix.md\",\"status\":\"cancelled\",\"stage\":\"cancelled\",\"progress\":0.0,\"error\":null,\"metadata\":{\"stage_label\":\"已取消\",\"stage_detail\":\"入库任务已取消\",\"cancelled_at\":\"2026-10-13T10:13:46.108273\",\"cancelled_document_id\":\"binding_document_78f6a07c9d24439fab0b70baf0084a4d\",\"ingest_steps\":[{\"key\":\"queued\",\"label\":\"排队中\",\"progress\":0.0,\"status\":\"pending\"},{\"key\":\"parsing\",\"label\":\"解析原始资料\",\"progress\":0.08,\"status\":\"pending\"},{\"key\":\"normalizing\",\"label\":\"规范化 Source\",\"progress\":0.16,\"status\":\"pending\"},{\"key\":\"documenting\",\"label\":\"写入 Source Document\",\"progress\":0.24,\"status\":\"pending\"},{\"key\":\"bucketing\",\"label\":\"规划 Wiki 页面\",\"progress\":0.36,\"status\":\"pending\"},{\"key\":\"bucket_writing\",\"label\":\"写入 OKF Wiki\",\"progress\":0.48,\"status\":\"pending\"},{\"key\":\"chunking\",\"label\":\"生成引用来源\",\"progress\":0.62,\"status\":\"pending\"},{\"key\":\"summarizing\",\"label\":\"刷新 PageIndex\",\"progress\":0.74,\"status\":\"pending\"},{\"key\":\"discovering\",\"label\":\"发现 SOP/工具\",\"progress\":0.88,\"status\":\"pending\"},{\"key\":\"done\",\"label\":\"完成入库\",\"progress\":1.0,\"status\":\"pending\"}]},\"created_at\":\"2026-10-13T10:13:45.262482\",\"started_at\":null,\"finished_at\":\"2026-10-13T10:13:46.108311\",\"updated_at\":\"2026-10-13T10:13:46.108327\"}\n\n200 !== 404\n",
+      "elapsedMs": 11
+    },
+    {
+      "id": "I01-LIST-ISOLATION",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\n422 !== 200\n",
+      "elapsedMs": 132
+    },
+    {
+      "id": "I01-REAL-PREVIEW-JOB-EVENTS",
+      "status": "PASS",
+      "evidence": {
+        "jobId": "skilljob_703bc4b4d647452c",
+        "foreignReadCancelEvents": 404,
+        "ownerReadCancelEvents": 200,
+        "ownerJob": {
+          "job_id": "skilljob_703bc4b4d647452c",
+          "name": "skill.distill",
+          "status": "failed",
+          "error": "400: No enabled default model config",
+          "created_at": "2026-10-13T10:13:46.826508",
+          "updated_at": "2026-10-13T10:13:46.827671",
+          "last_seq": 2
+        },
+        "events": "event: job_attached\ndata: {\"job_id\": \"skilljob_703bc4b4d647452c\", \"after_seq\": 0}\n\nevent: job_started\ndata: {\"job_id\": \"skilljob_703bc4b4d647452c\", \"seq\": 1, \"name\": \"skill.distill\"}\n\nevent: error\ndata: {\"job_id\": \"skilljob_703bc4b4d647452c\", \"seq\": 2, \"message\": \"400: No enabled default model config\"}\n\nevent: job_complete\ndata: {\"job_id\": \"skilljob_703bc4b4d647452c\", \"status\": \"failed\", \"error\": \"400: No enabled default model config\"}\n\n"
+      },
+      "elapsedMs": 298
+    },
+    {
+      "id": "I01-MODULE-delete_document",
+      "status": "FAIL",
+      "error": "{\"error\":{\"code\":\"RESOURCE_NOT_FOUND\",\"message\":\"Knowledge resource is unavailable.\"}}\n\n404 !== 200\n",
+      "elapsedMs": 26
+    },
+    {
+      "id": "I01-MODULE-delete_base",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 36
+    }
+  ]
+}

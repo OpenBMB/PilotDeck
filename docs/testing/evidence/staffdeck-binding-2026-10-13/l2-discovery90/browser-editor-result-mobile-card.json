@@ -1,0 +1,185 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/browser-editor.mjs"
+  ],
+  "results": [
+    {
+      "id": "U02-EDITOR-1440",
+      "status": "PASS",
+      "evidence": {
+        "project": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-Editor14401791889513313",
+        "viewport": [
+          1440,
+          960
+        ],
+        "fromBlank": true,
+        "generationThroughFormalSD": true,
+        "saveStatus": 201,
+        "publishStatus": 200,
+        "archiveStatus": 200,
+        "errors": [],
+        "network": [
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/host-capabilities/call",
+            "status": 409
+          },
+          {
+            "path": "/api/modules/host-capabilities/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 202
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/events",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 201
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          }
+        ]
+      },
+      "elapsedMs": 29897
+    },
+    {
+      "id": "U02-EDITOR-390",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.md\\\\:hidden > div').filter({ hasText: 'Browser editor 390 mobile-card' }).getByRole('button', { name: 'SOP actions' })\u001b[22m\n",
+      "elapsedMs": 58026
+    }
+  ]
+}

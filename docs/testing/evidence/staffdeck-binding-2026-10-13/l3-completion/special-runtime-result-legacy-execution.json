@@ -1,0 +1,30 @@
+[
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 0,
+    "status": "FAIL",
+    "error": "create-wait: ENOENT: no such file or directory, open '$QA_ROOT/home/staffdeck/5162da74-64c6-41e8-a463-568caf377882/state/sessions/YmluZGluZy1hcHByb3ZhbC1hcHByb3ZlZC0xNzkxODg4OTIxOTAyLTA.json'",
+    "elapsedMs": 16123
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 0,
+    "status": "FAIL",
+    "error": "create-wait: ENOENT: no such file or directory, open '$QA_ROOT/home/staffdeck/5162da74-64c6-41e8-a463-568caf377882/state/sessions/YmluZGluZy1hcHByb3ZhbC1yZWplY3RlZC0xNzkxODg4OTIxOTAyLTA.json'",
+    "elapsedMs": 25827
+  },
+  {
+    "name": "C01-RESTORE",
+    "status": "PASS",
+    "restored": {
+      "projectRoot": "$QA_ROOT/workspace/ProjectA",
+      "bindingId": "5162da74-64c6-41e8-a463-568caf377882",
+      "agentName": "ProjectA-5162da74",
+      "origin": "http://127.0.0.1:26010",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T10:56:11.850Z",
+      "agentId": "agent_201e85d986634414"
+    }
+  }
+]

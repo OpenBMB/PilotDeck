@@ -1,0 +1,50 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+    "sequence": 1
+  },
+  {
+    "type": "agent_status",
+    "event": "turn_failed",
+    "detail": {
+      "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+      "code": "agent_invalid_state",
+      "severity": "error",
+      "visible": true,
+      "userHint": "Retry the turn; if it repeats, check the gateway logs or adjust the request.",
+      "scope": "turn",
+      "source": "agent"
+    },
+    "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+    "sequence": 2
+  },
+  {
+    "type": "error",
+    "code": "agent_invalid_state",
+    "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+    "recoverable": false,
+    "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+    "sequence": 3
+  },
+  {
+    "type": "turn_completed",
+    "usage": {},
+    "finishReason": "model_error",
+    "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+    "sequence": 4
+  },
+  {
+    "type": "error",
+    "code": "agent_invalid_state",
+    "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+    "recoverable": false,
+    "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+    "sequence": 5
+  }
+]

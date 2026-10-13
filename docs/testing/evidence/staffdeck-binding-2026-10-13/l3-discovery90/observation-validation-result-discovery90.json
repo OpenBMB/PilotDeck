@@ -1,0 +1,341 @@
+{
+  "status": "PASS",
+  "label": "discovery90",
+  "budget": {
+    "discoveryTimeoutMs": 90000,
+    "timeoutMs": 30000
+  },
+  "persistence": {
+    "completedSessions": 9,
+    "approvalReceipts": 6,
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48"
+  },
+  "scenarios": [
+    {
+      "id": "L3-CHAT",
+      "name": "general",
+      "repetition": 0,
+      "sessionKey": "binding-chat-general-1791895556006",
+      "status": "PASS",
+      "markerPresent": true,
+      "errors": [],
+      "elapsedMs": 11091
+    },
+    {
+      "id": "L3-CHAT",
+      "name": "sop-private",
+      "repetition": 0,
+      "sessionKey": "binding-chat-sop-private-1791895567097",
+      "status": "PASS",
+      "markerPresent": false,
+      "errors": [],
+      "elapsedMs": 26276
+    },
+    {
+      "id": "L3-CHAT",
+      "name": "other-project",
+      "repetition": 0,
+      "sessionKey": "binding-chat-other-project-1791895593373",
+      "status": "PASS",
+      "markerPresent": false,
+      "errors": [],
+      "elapsedMs": 3644
+    },
+    {
+      "id": "L3-CHAT",
+      "name": "general",
+      "repetition": 1,
+      "sessionKey": "binding-chat-general-1791895597017",
+      "status": "PASS",
+      "markerPresent": true,
+      "errors": [],
+      "elapsedMs": 9943
+    },
+    {
+      "id": "L3-CHAT",
+      "name": "sop-private",
+      "repetition": 1,
+      "sessionKey": "binding-chat-sop-private-1791895606960",
+      "status": "PASS",
+      "markerPresent": false,
+      "errors": [],
+      "elapsedMs": 16471
+    },
+    {
+      "id": "L3-CHAT",
+      "name": "other-project",
+      "repetition": 1,
+      "sessionKey": "binding-chat-other-project-1791895623431",
+      "status": "PASS",
+      "markerPresent": false,
+      "errors": [],
+      "elapsedMs": 3673
+    },
+    {
+      "id": "L3-CHAT",
+      "name": "general",
+      "repetition": 2,
+      "sessionKey": "binding-chat-general-1791895627104",
+      "status": "PASS",
+      "markerPresent": true,
+      "errors": [],
+      "elapsedMs": 29933
+    },
+    {
+      "id": "L3-CHAT",
+      "name": "sop-private",
+      "repetition": 2,
+      "sessionKey": "binding-chat-sop-private-1791895657037",
+      "status": "PASS",
+      "markerPresent": false,
+      "errors": [],
+      "elapsedMs": 15189
+    },
+    {
+      "id": "L3-CHAT",
+      "name": "other-project",
+      "repetition": 2,
+      "sessionKey": "binding-chat-other-project-1791895672226",
+      "status": "PASS",
+      "markerPresent": false,
+      "errors": [],
+      "elapsedMs": 3128
+    },
+    {
+      "name": "L3-SOP-PRIVATE",
+      "repetition": 0,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-private-1791895684882-0",
+        "sopId": "binding_private_1791895684882",
+        "knowledgeBaseId": "kb_b5e954e284fe44ce",
+        "finalStatus": "completed"
+      },
+      "elapsedMs": 34318
+    },
+    {
+      "name": "L3-APPROVAL-approved",
+      "repetition": 0,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-approval-approved-1791895684882-0",
+        "decision": "approved",
+        "sopId": "binding_approval_1791895684882",
+        "legacyFixedTarget": false,
+        "browserApproval": false,
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791895684882-0",
+          "requestId": "approval-approved-1791895684882-0",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "elapsedMs": 44717
+    },
+    {
+      "name": "L3-APPROVAL-rejected",
+      "repetition": 0,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-approval-rejected-1791895684882-0",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791895684882",
+        "legacyFixedTarget": false,
+        "browserApproval": false,
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791895684882-0",
+          "requestId": "approval-rejected-1791895684882-0",
+          "revision": 6,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "elapsedMs": 40309
+    },
+    {
+      "name": "L3-SOP-PRIVATE",
+      "repetition": 1,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-private-1791895684882-1",
+        "sopId": "binding_private_1791895684882",
+        "knowledgeBaseId": "kb_b5e954e284fe44ce",
+        "finalStatus": "completed"
+      },
+      "elapsedMs": 28839
+    },
+    {
+      "name": "L3-APPROVAL-approved",
+      "repetition": 1,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-approval-approved-1791895684882-1",
+        "decision": "approved",
+        "sopId": "binding_approval_1791895684882",
+        "legacyFixedTarget": false,
+        "browserApproval": false,
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791895684882-1",
+          "requestId": "approval-approved-1791895684882-1",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "elapsedMs": 19612
+    },
+    {
+      "name": "L3-APPROVAL-rejected",
+      "repetition": 1,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-approval-rejected-1791895684882-1",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791895684882",
+        "legacyFixedTarget": false,
+        "browserApproval": false,
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791895684882-1",
+          "requestId": "approval-rejected-1791895684882-1",
+          "revision": 6,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "elapsedMs": 20066
+    },
+    {
+      "name": "L3-SOP-PRIVATE",
+      "repetition": 2,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-private-1791895684882-2",
+        "sopId": "binding_private_1791895684882",
+        "knowledgeBaseId": "kb_b5e954e284fe44ce",
+        "finalStatus": "completed"
+      },
+      "elapsedMs": 25849
+    },
+    {
+      "name": "L3-APPROVAL-approved",
+      "repetition": 2,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-approval-approved-1791895684882-2",
+        "decision": "approved",
+        "sopId": "binding_approval_1791895684882",
+        "legacyFixedTarget": false,
+        "browserApproval": false,
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791895684882-2",
+          "requestId": "approval-approved-1791895684882-2",
+          "revision": 6,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "elapsedMs": 35068
+    },
+    {
+      "name": "L3-APPROVAL-rejected",
+      "repetition": 2,
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-approval-rejected-1791895684882-2",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791895684882",
+        "legacyFixedTarget": false,
+        "browserApproval": false,
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791895684882-2",
+          "requestId": "approval-rejected-1791895684882-2",
+          "revision": 9,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "elapsedMs": 33887
+    }
+  ],
+  "routes": {
+    "count": 15,
+    "totalMs": 260913.78881835938,
+    "maxMs": 27481.86376953125
+  },
+  "catalog": {
+    "count": 15,
+    "totalMs": 40.321533203125,
+    "maxMs": 7.62109375
+  },
+  "modelStages": {
+    "initial": {
+      "count": 15,
+      "totalMs": 260592.03344726562,
+      "maxMs": 27464.490966796875
+    },
+    "json_repair": {
+      "count": 0,
+      "totalMs": 0,
+      "maxMs": 0
+    },
+    "plan_repair": {
+      "count": 0,
+      "totalMs": 0,
+      "maxMs": 0
+    }
+  },
+  "wire": {
+    "count": 15,
+    "maxHeadersMs": 598,
+    "maxFirstByteMs": 599,
+    "maxStreamMs": 27454
+  },
+  "transportErrors": [
+    {
+      "kind": "model",
+      "errorCode": "ECONNRESET",
+      "elapsedMs": 8912
+    },
+    {
+      "kind": "model",
+      "errorCode": "ECONNRESET",
+      "elapsedMs": 4582
+    },
+    {
+      "kind": "model",
+      "errorCode": "ETIMEDOUT",
+      "elapsedMs": 7782
+    },
+    {
+      "kind": "model",
+      "errorCode": "ECONNRESET",
+      "elapsedMs": 4173
+    },
+    {
+      "kind": "model",
+      "errorCode": "ECONNRESET",
+      "elapsedMs": 9748
+    }
+  ],
+  "note": "Validates existing observations without issuing model requests; historical failures remain in their original exports."
+}

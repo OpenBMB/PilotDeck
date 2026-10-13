@@ -214,7 +214,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       const allowRemoteHost = env.PILOTDECK_GATEWAY_ALLOW_REMOTE === "1";
       const startupChannels = await channelAdapters.createStartupAdapters(snapshot.config);
       const nextServer = await startPilotDeckServer({
-        publicHostCapabilities: () => getPublicHostCapabilities(),
+        publicHostCapabilities: (principal) => getPublicHostCapabilities(principal),
         publicApprovals: getPublicApprovals(),
         gateway,
         port: readPort(argv) ?? (Number.isFinite(envPort) ? envPort : 18789),

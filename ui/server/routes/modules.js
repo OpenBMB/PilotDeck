@@ -13,6 +13,8 @@ import { createStaffDeckPublishRoute } from '../staffdeck-publish-route.js';
 import { createPublicCapabilityClient, decodePublicJobEvents, planPublicOperation, PUBLIC_APPROVED_OPERATIONS, PUBLIC_OPERATION_CONTRACTS } from '../staffdeck-public-capabilities.mjs';
 import { createPilotDeckHostCapabilityGateway, encodeHostCapabilityStream, isHostCapabilityStreamBody, PILOTDECK_HOST_UI_OPERATIONS } from '../pilotdeck-host-capability-gateway.mjs';
 import { createStaffDeckCopyRouter, verifyStaffDeckKnowledgeBinding } from './staffdeck-copy.js';
+import { applyProjectBinding, refreshProjectBinding } from '../../../src/pilot/staffdeck/projectBinding.js';
+import { registeredProjectDirectory } from '../projects.js';
 
 const router = express.Router();
 const SLOTS = ['agentLoop', 'skills', 'tools', 'context', 'modelProvider', 'sop', 'knowledge'];
@@ -53,14 +55,29 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
     try { return parseYaml(readFileSync(path, 'utf8')) ?? {}; } catch { return {}; }
   });
   const route = express.Router();
+  route.use(async (req, res, next) => {
+    try {
+      if (process.env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true') {
+        const projectName = req.headers['x-pilotdeck-project'];
+        const root = typeof projectName === 'string' ? await registeredProjectDirectory(projectName) : undefined;
+        if (root) await refreshProjectBinding(root, { activate: async () => {
+          await (await getGateway()).reloadExtensions({ projectKey: root });
+        } });
+        req.staffdeckConfig = applyProjectBinding(readConfig(), root);
+        if (!root && req.path !== '/runtime') return res.status(409).json({ error: { code: 'PROJECT_BINDING_PROJECT_REQUIRED', message: 'Select a bound project.' } });
+      }
+      next();
+    } catch { res.status(409).json({ error: { code: 'PROJECT_BINDING_UNAVAILABLE', message: 'Project binding is unavailable.' } }); }
+  });
+  const configFor = req => req.staffdeckConfig ?? readConfig();
   route.use((req, res, next) => {
     req.moduleRequestSignal = bindModuleRequestAbort(req, res);
     next();
   });
-  route.use('/staffdeck-copy', createStaffDeckCopyRouter({ loadConfig: readConfig }));
+  route.use('/staffdeck-copy', createStaffDeckCopyRouter({ loadConfig: configFor }));
   const hostCapabilityCall = async (req, res, callback = false) => {
     try {
-      const config = readConfig();
+      const config = configFor(req);
       const copy = config?.webui?.staffdeckCopy;
       if (copy?.enabled !== true || copy?.contract !== 'staffdeck.enterprise-copy/v1'
         || !['pilotDeckUserId', 'tenantId', 'actorUserId', 'targetAgentId'].every(name => configuredValue(copy, name))
@@ -108,9 +125,9 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
   // the affected workflow while the restart is pending.
   const unavailableSlots = new Set();
   const publishRuntime = createStaffDeckPublishRoute({ getGateway });
-  route.get('/runtime', async (_req, res) => {
+  route.get('/runtime', async (req, res) => {
     try {
-      const config = readConfig() ?? {};
+      const config = configFor(req) ?? {};
       const modules = Object.fromEntries(SLOTS.map((slot) => {
         const value = config.modules?.[slot];
         if (value === undefined) return [slot, { enabled: slot === 'sop' || slot === 'knowledge' ? false : true, provider: 'pilotdeck' }];
@@ -122,6 +139,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       const gateway = await readGatewayCapabilities(getGateway);
       return res.json({
         modules,
+        projectBindings: process.env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true',
         gatewayCapabilities: gateway.capabilities,
         runtime: {
           gatewayState: gateway.state,
@@ -136,7 +154,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
   });
   route.post('/knowledge/query', async (req, res) => {
     try {
-      const binding = readConfig()?.modules?.knowledge;
+      const binding = configFor(req)?.modules?.knowledge;
       if (binding?.enabled !== true || typeof binding.endpoint !== 'string') {
         return res.status(501).json({ error: { code: 'MODULE_DISABLED', message: 'Knowledge module is not configured for HTTP queries.' } });
       }
@@ -147,7 +165,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
         return res.status(501).json({ error: { code: 'MODULE_IDENTITY_UNAVAILABLE', message: 'Knowledge module requires a server-configured tenantId and actorUserId.' } });
       }
       const requestId = `knowledge-ui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      await verifyStaffDeckKnowledgeBinding(readConfig(), req.user, binding, req.body, req.moduleRequestSignal);
+      await verifyStaffDeckKnowledgeBinding(configFor(req), req.user, binding, req.body, req.moduleRequestSignal);
       const messageId = `module-http-${requestId}`;
       const input = withTrustedKnowledgeIdentity(binding, req.body);
       if (!input.baseId && typeof binding.defaultBaseId === 'string' && binding.defaultBaseId.trim()) {
@@ -161,7 +179,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       }
       const response = await fetch(new URL(binding.callPath || '/v2/module/call', binding.endpoint), {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: knowledgeHeaders(binding),
         signal: moduleUpstreamSignal(req.moduleRequestSignal, Number(binding.timeoutMs) || 10_000),
         body: JSON.stringify({
           kind: 'request', messageId, method: 'module_call', runId: 'knowledge-ui', operationId: 'knowledge-ui', requestId,
@@ -179,7 +197,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
   });
   route.post('/knowledge/citation', async (req, res) => {
     try {
-      const binding = readConfig()?.modules?.knowledge;
+      const binding = configFor(req)?.modules?.knowledge;
       if (binding?.enabled !== true || typeof binding.endpoint !== 'string') {
         return res.status(501).json({ error: { code: 'MODULE_DISABLED', message: 'Knowledge module is not configured for HTTP citations.' } });
       }
@@ -190,12 +208,12 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
         return res.status(501).json({ error: { code: 'MODULE_IDENTITY_UNAVAILABLE', message: 'Knowledge module requires a server-configured tenantId and actorUserId.' } });
       }
       const requestId = `knowledge-ui-citation-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      await verifyStaffDeckKnowledgeBinding(readConfig(), req.user, binding, req.body, req.moduleRequestSignal);
+      await verifyStaffDeckKnowledgeBinding(configFor(req), req.user, binding, req.body, req.moduleRequestSignal);
       const messageId = `module-http-${requestId}`;
       const input = withTrustedKnowledgeIdentity(binding, req.body);
       const response = await fetch(new URL(binding.callPath || '/v2/module/call', binding.endpoint), {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: knowledgeHeaders(binding),
         signal: moduleUpstreamSignal(req.moduleRequestSignal, Number(binding.timeoutMs) || 10_000),
         body: JSON.stringify({
           kind: 'request', messageId, method: 'module_call', runId: 'knowledge-ui', operationId: 'knowledge-ui-citation', requestId,
@@ -213,7 +231,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
   });
   route.post('/knowledge/call', async (req, res) => {
     try {
-      const binding = readConfig()?.modules?.knowledge;
+      const binding = configFor(req)?.modules?.knowledge;
       const operation = typeof req.body?.operation === 'string' ? req.body.operation : '';
       if (!KNOWLEDGE_OPERATIONS.has(operation)) {
         return res.status(400).json({ error: { code: 'MODULE_OPERATION_UNSUPPORTED', message: 'Knowledge operation is not part of staffdeck.knowledge/v1.' } });
@@ -231,7 +249,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
         return res.status(409).json({ error: { code: 'MODULE_CAPABILITY_UNAVAILABLE', message: `Knowledge module does not advertise ${operation}.` } });
       }
       const input = withKnowledgeDefaults(binding, req.body?.input);
-      await verifyStaffDeckKnowledgeBinding(readConfig(), req.user, binding, req.body?.input, req.moduleRequestSignal);
+      await verifyStaffDeckKnowledgeBinding(configFor(req), req.user, binding, req.body?.input, req.moduleRequestSignal);
       const response = await callKnowledgeModule(binding, operation, input, req.moduleRequestSignal);
       if (!response.response.ok || !response.body || response.body.kind !== 'response' || response.body.inReplyTo !== response.messageId || response.body.ok !== true) {
         return res.status(response.response.status === 200 ? 502 : response.response.status).json({ error: { code: response.body?.code || 'MODULE_CALL_FAILED', message: response.body?.error?.message || 'Knowledge module call failed.' } });
@@ -241,9 +259,9 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       return res.status(error?.status || 502).json({ error: { code: error?.code || 'MODULE_CALL_UNAVAILABLE', message: error instanceof Error ? error.message : String(error) } });
     }
   });
-  route.get('/sop/definitions', (_req, res) => {
+  route.get('/sop/definitions', (req, res) => {
     try {
-      const binding = readConfig()?.modules?.sop;
+      const binding = configFor(req)?.modules?.sop;
       const bundle = readSopDefinitions(binding);
       return res.json({ defaultSopId: binding.defaultSopId, definitions: bundle.sops });
     } catch (error) {
@@ -252,7 +270,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
   });
   route.put('/sop/definitions/:definitionId', (req, res) => {
     try {
-      const binding = readConfig()?.modules?.sop;
+      const binding = configFor(req)?.modules?.sop;
       const definitionId = typeof req.params.definitionId === 'string' ? req.params.definitionId.trim() : '';
       const definition = req.body?.definition;
       if (!definitionId || !isRecord(definition) || text(definition.id) !== definitionId) {
@@ -272,7 +290,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
   });
   route.get('/sop/management', async (req, res) => {
     try {
-      const config = readConfig();
+      const config = configFor(req);
       const management = readSopManagement(config);
       const owner = await verifySopManagementIdentity(config, management, req.user, req.moduleRequestSignal);
       const runtime = await publishRuntime.read({ binding: config.modules?.sop, management, owner });
@@ -288,7 +306,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       if (!SOP_MANAGEMENT_OPERATIONS.has(operation)) {
         return res.status(400).json({ error: { code: 'SOP_MANAGEMENT_OPERATION_UNSUPPORTED', message: 'SOP management operation is not supported.' } });
       }
-      const config = readConfig();
+      const config = configFor(req);
       const management = readSopManagement(config);
       if (!management.methods.includes(operation)) {
         return res.status(409).json({ error: { code: 'SOP_MANAGEMENT_CAPABILITY_UNAVAILABLE', message: `SOP management does not advertise ${operation}.` } });
@@ -297,6 +315,8 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       const publish = () => callSopManagement(management, operation, req.body?.input, req.moduleRequestSignal);
       const result = operation === 'publish'
         ? await publishRuntime.publish({ binding: config.modules?.sop, management, owner, sopId: text(req.body?.input?.sopId), publish })
+        : operation === 'archive'
+          ? await publishRuntime.archive({ binding: config.modules?.sop, management, owner, sopId: text(req.body?.input?.sopId), archive: publish })
         : await publish();
       return res.status(result.status).json({ result: result.body, ...(result.runtime ? { runtime: result.runtime } : {}) });
     } catch (error) {
@@ -340,10 +360,13 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       if (Object.hasOwn(input, 'agentId') || Object.hasOwn(input, 'scope')) {
         throw managementError(400, 'PUBLIC_SELECTED_SCOPE_INVALID', 'Selection belongs in the explicit scope field.');
       }
-      const config = readConfig();
+      const config = configFor(req);
       const management = readSopManagement(config);
       const owner = await verifySopManagementIdentity(config, management, req.user, req.moduleRequestSignal,
         PUBLIC_OPERATION_CONTRACTS[operation][2]);
+      if (process.env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true' && scope?.kind === 'agent' && scope.agentId !== owner.agentId) {
+        throw managementError(403, 'PROJECT_BINDING_SCOPE_MISMATCH', 'The selected agent belongs to another project.');
+      }
       const hostModelCatalog = async ({ signal }) => {
         const hostGateway = await getGateway();
         const principal = { pilotDeckUserId: String(req.user.id), tenantId: owner.tenantId,
@@ -364,13 +387,28 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       const gateway = createStaffDeckPublicCapabilityGateway({ management, owner, signal: req.moduleRequestSignal,
         hostModelCatalog,
         authorizedOperations: PUBLIC_APPROVED_OPERATIONS.filter(name => !PILOTDECK_HOST_UI_OPERATIONS.includes(name)) });
+      let checkedJob;
+      if (process.env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true' && PUBLIC_SDK_GLOBAL_OPERATIONS.has(operation)) {
+        checkedJob = await gateway.call('get_job', { jobId: input.jobId });
+        if (checkedJob.status < 200 || checkedJob.status >= 300) {
+          throw Object.assign(new Error('StaffDeck task lookup failed.'), { upstreamResponse: checkedJob });
+        }
+        if (checkedJob.body?.agent_id !== owner.agentId) {
+          throw managementError(403, 'PROJECT_BINDING_SCOPE_MISMATCH', 'The task belongs to another project.');
+        }
+      }
       const call = () => fileCall ? gateway.file(operation, input, { scope }) : gateway.call(operation, input, { scope });
       const result = operation === 'publish_sop'
         ? await publishRuntime.publish({ binding: config.modules?.sop,
           management: { ...management, agentId: scope.kind === 'agent' ? scope.agentId : management.agentId },
           owner: { ...owner, agentId: scope.kind === 'agent' ? scope.agentId : owner.agentId },
           sopId: text(input.sopId), publish: call })
-        : await call();
+        : operation === 'archive_sop'
+          ? await publishRuntime.archive({ binding: config.modules?.sop,
+            management: { ...management, agentId: scope.kind === 'agent' ? scope.agentId : management.agentId },
+            owner: { ...owner, agentId: scope.kind === 'agent' ? scope.agentId : owner.agentId },
+            sopId: text(input.sopId), archive: call })
+        : operation === 'get_job' && checkedJob ? checkedJob : await call();
       // Keep the SDK owner's body unchanged. This separate, sanitized status
       // is consumed by the browser runtime observer, never an effective ack.
       if (result.runtime) res.setHeader('X-StaffDeck-Runtime', JSON.stringify(result.runtime));
@@ -454,7 +492,7 @@ async function callKnowledgeModule(binding, operation, input, signal) {
   const messageId = `module-http-${requestId}`;
   const response = await fetch(new URL(binding.callPath || '/v2/module/call', binding.endpoint), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: knowledgeHeaders(binding),
     signal: moduleUpstreamSignal(signal, Number(binding.timeoutMs) || 10_000),
     body: JSON.stringify({
       kind: 'request', messageId, method: 'module_call', runId: 'knowledge-ui', operationId: `knowledge-ui-${operation}`, requestId,
@@ -462,6 +500,11 @@ async function callKnowledgeModule(binding, operation, input, signal) {
     }),
   });
   return { response, body: await response.json().catch(() => undefined), messageId };
+}
+
+function knowledgeHeaders(binding) {
+  const token = process.env[binding.credentialEnv];
+  return { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) };
 }
 
 function withKnowledgeDefaults(binding, value) {
@@ -510,7 +553,7 @@ function readSopDefinitions(binding) {
     : isRecord(parsed) && text(parsed.skill_id) && isRecord(parsed.content)
       ? { sops: [parsed] }
       : parsed;
-  validateSopBundle(bundle);
+  if (!(process.env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true' && Array.isArray(bundle?.sops) && bundle.sops.length === 0)) validateSopBundle(bundle);
   return bundle;
 }
 

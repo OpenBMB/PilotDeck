@@ -1,0 +1,3181 @@
+{
+  "records": [
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:45:56.309Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 18477,
+      "firstByteMs": 18477,
+      "elapsedMs": 18478,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:45:56.316Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-chat-general-1791895556006",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 7508,
+      "firstByteMs": 7508,
+      "elapsedMs": 7508
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:45:56.376Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 320,
+      "firstByteMs": 320,
+      "textChunks": 78,
+      "elapsedMs": 7435,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "f2823f6d36544f6797209de1288bfb03",
+      "sessionId": "binding-chat-general-1791895556006",
+      "requestId": "sop-route-a0b47e99d68745ce9aa9b15b6c54bd95"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:04.182Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 852,
+      "firstByteMs": 852,
+      "elapsedMs": 1434,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:05.737Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 807,
+      "firstByteMs": 807,
+      "textChunks": 14,
+      "elapsedMs": 1332,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:07.169Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 10946,
+      "firstByteMs": 10947,
+      "elapsedMs": 10947,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:46:07.169Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-chat-sop-private-1791895567097",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 21913,
+      "firstByteMs": 21913,
+      "elapsedMs": 21913
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:07.185Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 363,
+      "firstByteMs": 364,
+      "textChunks": 52,
+      "elapsedMs": 21879,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "68365958c06c49f3b5fe85c78611ad19",
+      "sessionId": "binding-chat-sop-private-1791895567097",
+      "requestId": "sop-route-b9e99c1cb39b40d5a1451451549a2aea"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:29.147Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1099,
+      "firstByteMs": 1100,
+      "elapsedMs": 1616,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:30.875Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 646,
+      "firstByteMs": 647,
+      "textChunks": 20,
+      "elapsedMs": 2455,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:33.448Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 14486,
+      "firstByteMs": 14487,
+      "elapsedMs": 14487,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:33.479Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 854,
+      "firstByteMs": 855,
+      "elapsedMs": 1562,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:35.127Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 437,
+      "firstByteMs": 437,
+      "textChunks": 22,
+      "elapsedMs": 1862,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:37.086Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 10815,
+      "firstByteMs": 10815,
+      "elapsedMs": 10815,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:46:37.087Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-chat-general-1791895597017",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 7322,
+      "firstByteMs": 7323,
+      "elapsedMs": 7323
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:37.108Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 281,
+      "firstByteMs": 282,
+      "textChunks": 73,
+      "elapsedMs": 7290,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "eb38d44a395b40139f60a7f3c35ca939",
+      "sessionId": "binding-chat-general-1791895597017",
+      "requestId": "sop-route-6f0d48e6655248ada8c133e8b1457c05"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:44.472Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 572,
+      "firstByteMs": 572,
+      "elapsedMs": 1142,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:45.718Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 620,
+      "firstByteMs": 621,
+      "textChunks": 16,
+      "elapsedMs": 1223,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:47.036Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 13849,
+      "firstByteMs": 13849,
+      "elapsedMs": 13849,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:46:47.037Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-chat-sop-private-1791895606960",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 11773,
+      "firstByteMs": 11773,
+      "elapsedMs": 11773
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:47.055Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 408,
+      "firstByteMs": 411,
+      "textChunks": 72,
+      "elapsedMs": 11742,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "b5ed74f8a39545fea53d37e8b58fffe8",
+      "sessionId": "binding-chat-sop-private-1791895606960",
+      "requestId": "sop-route-61721b06ae754511b15443dbf2ad3a94"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:46:58.876Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 635,
+      "firstByteMs": 636,
+      "elapsedMs": 1157,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:00.155Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 937,
+      "firstByteMs": 938,
+      "textChunks": 29,
+      "elapsedMs": 3232,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:03.492Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 13147,
+      "firstByteMs": 13147,
+      "elapsedMs": 13147,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:03.528Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1005,
+      "firstByteMs": 1005,
+      "elapsedMs": 1480,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:05.083Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 354,
+      "firstByteMs": 354,
+      "textChunks": 28,
+      "elapsedMs": 1994,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:07.156Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 14642,
+      "firstByteMs": 14643,
+      "elapsedMs": 14643,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:47:07.157Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-chat-general-1791895627104",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 26388,
+      "firstByteMs": 26388,
+      "elapsedMs": 26388
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:07.173Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 550,
+      "firstByteMs": 550,
+      "textChunks": 64,
+      "elapsedMs": 26350,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "287bfea7d1ad4f0c8a22e67172c49eaa",
+      "sessionId": "binding-chat-general-1791895627104",
+      "requestId": "sop-route-45551256a1b04b80b912ee7168dafed4"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:33.611Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1293,
+      "firstByteMs": 1293,
+      "elapsedMs": 1762,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:35.520Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 641,
+      "firstByteMs": 641,
+      "textChunks": 23,
+      "elapsedMs": 1502,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:37.094Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 14779,
+      "firstByteMs": 14780,
+      "elapsedMs": 14780,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:47:37.094Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-chat-sop-private-1791895657037",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 9969,
+      "firstByteMs": 9969,
+      "elapsedMs": 9969
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:37.113Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 392,
+      "firstByteMs": 392,
+      "textChunks": 61,
+      "elapsedMs": 9932,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "cc19b268f8664d4da27d77f569953a0f",
+      "sessionId": "binding-chat-sop-private-1791895657037",
+      "requestId": "sop-route-aa0b19f4663645f1bb724a9dd66d3740"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:47.145Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 916,
+      "firstByteMs": 917,
+      "elapsedMs": 1347,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:48.606Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1038,
+      "firstByteMs": 1039,
+      "textChunks": 30,
+      "elapsedMs": 3574,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:52.291Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "clientClosedMs": 8911,
+      "errorCode": "ECONNRESET",
+      "elapsedMs": 8912
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:52.326Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 448,
+      "firstByteMs": 448,
+      "elapsedMs": 962,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:47:53.389Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 625,
+      "firstByteMs": 625,
+      "textChunks": 26,
+      "elapsedMs": 1925,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:48:05.195Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 9772,
+      "firstByteMs": 9772,
+      "elapsedMs": 9772,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:48:05.209Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-private-1791895684882-0",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 25804,
+      "firstByteMs": 25804,
+      "elapsedMs": 25804
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:48:05.314Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 388,
+      "firstByteMs": 388,
+      "textChunks": 78,
+      "elapsedMs": 25676,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "2d84ea19fcba49d5b8eb1a48e5f242a0",
+      "sessionId": "binding-private-1791895684882-0",
+      "requestId": "sop-route-7d7053b9231c4552a59697b7cdf541cb"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:48:31.669Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": "required",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "submit_step_result",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1230,
+      "firstByteMs": 1231,
+      "textChunks": 8,
+      "elapsedMs": 3117,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:48:35.191Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": "required",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "submit_step_result",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1600,
+      "firstByteMs": 1600,
+      "textChunks": 41,
+      "elapsedMs": 4056,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:48:39.430Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 15036,
+      "firstByteMs": 15037,
+      "elapsedMs": 15037,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:48:39.431Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-approval-approved-1791895684882-0",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 18947,
+      "firstByteMs": 18947,
+      "elapsedMs": 18947
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:48:39.454Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 341,
+      "firstByteMs": 341,
+      "textChunks": 75,
+      "elapsedMs": 18902,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "f50acf831abb4a3e8275975125d5e365",
+      "sessionId": "binding-approval-approved-1791895684882-0",
+      "requestId": "sop-route-2871ee91a63b455b8deff41dd44531b9"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:48:58.512Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 569,
+      "firstByteMs": 569,
+      "textChunks": 12,
+      "elapsedMs": 1549,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:00.108Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds.",
+        "SOP_STEP_RESULT_REQUIRED: Your previous response did not submit the current SOP node result. Text cannot create an approval or missing-field wait. Follow the current node contract and call submit_step_result with your actual result before ending. Do not claim a persisted wait or completion without a successful tool receipt."
+      ],
+      "status": 200,
+      "headersMs": 414,
+      "firstByteMs": 414,
+      "textChunks": 4,
+      "elapsedMs": 2578,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:02.846Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "clientClosedMs": 4582,
+      "errorCode": "ECONNRESET",
+      "elapsedMs": 4582
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:02.878Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 870,
+      "firstByteMs": 870,
+      "textChunks": 4,
+      "elapsedMs": 1413,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:11.609Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "errorCode": "ETIMEDOUT",
+      "elapsedMs": 7782
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:20.028Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 541,
+      "firstByteMs": 541,
+      "textChunks": 11,
+      "elapsedMs": 3923,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:24.157Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 2642,
+      "firstByteMs": 2643,
+      "elapsedMs": 2643,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:49:24.158Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-approval-rejected-1791895684882-0",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 23734,
+      "firstByteMs": 23735,
+      "elapsedMs": 23735
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:24.183Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 393,
+      "firstByteMs": 393,
+      "textChunks": 68,
+      "elapsedMs": 23664,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "9675b1fedcd6425db3391cbc399d92fc",
+      "sessionId": "binding-approval-rejected-1791895684882-0",
+      "requestId": "sop-route-77be4f36aa2148ffb15b301ac08923e6"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:47.984Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 525,
+      "firstByteMs": 525,
+      "elapsedMs": 4293,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:52.456Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "clientClosedMs": 4172,
+      "errorCode": "ECONNRESET",
+      "elapsedMs": 4173
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:49:52.496Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 737,
+      "firstByteMs": 738,
+      "textChunks": 3,
+      "elapsedMs": 1016,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:00.413Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 661,
+      "firstByteMs": 661,
+      "elapsedMs": 3845,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:04.474Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 12669,
+      "firstByteMs": 12670,
+      "elapsedMs": 12670,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:50:04.474Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-private-1791895684882-1",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 21656,
+      "firstByteMs": 21657,
+      "elapsedMs": 21657
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:04.505Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 459,
+      "firstByteMs": 459,
+      "textChunks": 70,
+      "elapsedMs": 21600,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "cf913de4ce50466a84567b08756d3ac4",
+      "sessionId": "binding-private-1791895684882-1",
+      "requestId": "sop-route-f08e7339609f4376add44720b262f303"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:26.384Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": "required",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "submit_step_result",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 906,
+      "firstByteMs": 907,
+      "textChunks": 6,
+      "elapsedMs": 2578,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:29.351Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": "required",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "submit_step_result",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 627,
+      "firstByteMs": 628,
+      "textChunks": 9,
+      "elapsedMs": 3754,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:33.307Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 15909,
+      "firstByteMs": 15910,
+      "elapsedMs": 15910,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:50:33.307Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-approval-approved-1791895684882-1",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 8986,
+      "firstByteMs": 8986,
+      "elapsedMs": 8986
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:33.326Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 354,
+      "firstByteMs": 354,
+      "textChunks": 76,
+      "elapsedMs": 8948,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "d11612341848475b900c4be7a7e14edd",
+      "sessionId": "binding-approval-approved-1791895684882-1",
+      "requestId": "sop-route-3e4f390f2dc94de49602ce1c62cee8ab"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:42.384Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 473,
+      "firstByteMs": 473,
+      "textChunks": 23,
+      "elapsedMs": 2722,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:45.163Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds.",
+        "SOP_STEP_RESULT_REQUIRED: Your previous response did not submit the current SOP node result. Text cannot create an approval or missing-field wait. Follow the current node contract and call submit_step_result with your actual result before ending. Do not claim a persisted wait or completion without a successful tool receipt."
+      ],
+      "status": 200,
+      "headersMs": 862,
+      "firstByteMs": 862,
+      "elapsedMs": 2267,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:47.731Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 13520,
+      "firstByteMs": 13521,
+      "elapsedMs": 13521,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:47.784Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "mcp__funasr__transcribe_audio",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1031,
+      "firstByteMs": 1032,
+      "textChunks": 4,
+      "elapsedMs": 2417,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:50.615Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 440,
+      "firstByteMs": 440,
+      "elapsedMs": 2108,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:52.915Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 3092,
+      "firstByteMs": 3092,
+      "elapsedMs": 3092,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:50:52.916Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-approval-rejected-1791895684882-1",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 12645,
+      "firstByteMs": 12646,
+      "elapsedMs": 12646
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:50:52.940Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 598,
+      "firstByteMs": 599,
+      "textChunks": 40,
+      "elapsedMs": 12606,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "e5f32ba6e3624fe99d5ef81aee0e5965",
+      "sessionId": "binding-approval-rejected-1791895684882-1",
+      "requestId": "sop-route-4091592ab01f4a8e8eb85dcfebc4aa0c"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:05.634Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 309,
+      "firstByteMs": 309,
+      "elapsedMs": 2370,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:08.153Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 10097,
+      "firstByteMs": 10098,
+      "elapsedMs": 10098,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:08.200Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 867,
+      "firstByteMs": 867,
+      "textChunks": 4,
+      "elapsedMs": 1202,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:09.718Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 425,
+      "firstByteMs": 425,
+      "elapsedMs": 3080,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:12.949Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 10185,
+      "firstByteMs": 10185,
+      "elapsedMs": 10185,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:51:12.949Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-private-1791895684882-2",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 18128,
+      "firstByteMs": 18128,
+      "elapsedMs": 18128
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:12.968Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 304,
+      "firstByteMs": 304,
+      "textChunks": 52,
+      "elapsedMs": 18091,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "aec1c187a8294407a5eb19eee11ff4b4",
+      "sessionId": "binding-private-1791895684882-2",
+      "requestId": "sop-route-12419d38c3ad4b8fa735b14334bf435f"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:31.338Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": "required",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "submit_step_result",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1416,
+      "firstByteMs": 1416,
+      "textChunks": 8,
+      "elapsedMs": 3284,
+      "returnedTools": [
+        "knowledge_query"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:35.011Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": "required",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "submit_step_result",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1064,
+      "firstByteMs": 1064,
+      "textChunks": 6,
+      "elapsedMs": 3620,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "tool_calls"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:38.806Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 12851,
+      "firstByteMs": 12852,
+      "elapsedMs": 12852,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:51:38.806Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-approval-approved-1791895684882-2",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 27511,
+      "firstByteMs": 27512,
+      "elapsedMs": 27512
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:51:38.834Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 380,
+      "firstByteMs": 381,
+      "textChunks": 70,
+      "elapsedMs": 27454,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "b762be525cf94105910378f35a046691",
+      "sessionId": "binding-approval-approved-1791895684882-2",
+      "requestId": "sop-route-23152329000b4815be23f2379e4f6e53"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:06.394Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 547,
+      "firstByteMs": 547,
+      "elapsedMs": 3119,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:09.661Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 12070,
+      "firstByteMs": 12071,
+      "elapsedMs": 12071,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:09.704Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 887,
+      "firstByteMs": 887,
+      "textChunks": 4,
+      "elapsedMs": 990,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:11.061Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 517,
+      "firstByteMs": 517,
+      "elapsedMs": 2648,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:13.860Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 15014,
+      "firstByteMs": 15015,
+      "elapsedMs": 15015,
+      "returnedTools": [],
+      "finishReasons": []
+    },
+    {
+      "kind": "sd",
+      "startedAt": "2026-10-13T12:52:13.860Z",
+      "path": "/api/v1/agents/agent_676b4208248c4a48/sops:route",
+      "sessionId": "binding-approval-rejected-1791895684882-2",
+      "modelSource": "pilotdeck_host",
+      "status": 200,
+      "headersMs": 18933,
+      "firstByteMs": 18933,
+      "elapsedMs": 18933
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:13.886Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "plannerStage": "initial",
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 511,
+      "firstByteMs": 511,
+      "textChunks": 47,
+      "elapsedMs": 18888,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ],
+      "routeId": "21721602d28046aa98b3177fbe0a8e16",
+      "sessionId": "binding-approval-rejected-1791895684882-2",
+      "requestId": "sop-route-9235e3c2a5514b9a9f2297acad776005"
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:32.862Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 592,
+      "firstByteMs": 592,
+      "textChunks": 24,
+      "elapsedMs": 2886,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:35.816Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds.",
+        "SOP_STEP_RESULT_REQUIRED: Your previous response did not submit the current SOP node result. Text cannot create an approval or missing-field wait. Follow the current node contract and call submit_step_result with your actual result before ending. Do not claim a persisted wait or completion without a successful tool receipt."
+      ],
+      "status": 200,
+      "headersMs": 502,
+      "firstByteMs": 502,
+      "elapsedMs": 1964,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:37.945Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "sopPrompt": [],
+      "clientClosedMs": 9748,
+      "errorCode": "ECONNRESET",
+      "elapsedMs": 9748
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:37.981Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "tools": [
+        "agent",
+        "ask_user_question",
+        "bash",
+        "create_goal",
+        "edit_file",
+        "edit_notebook",
+        "execute_code",
+        "get_current_time",
+        "get_goal",
+        "glob",
+        "grep",
+        "knowledge_query",
+        "lsp",
+        "read_file",
+        "read_skill",
+        "send_attachment",
+        "send_message",
+        "structured_output",
+        "subagent",
+        "task_create",
+        "task_list",
+        "task_output",
+        "task_stop",
+        "task_wait",
+        "todo_write",
+        "update_goal",
+        "web_fetch",
+        "write_file"
+      ],
+      "sopPrompt": [],
+      "status": 200,
+      "headersMs": 1125,
+      "firstByteMs": 1125,
+      "textChunks": 44,
+      "elapsedMs": 4671,
+      "returnedTools": [],
+      "finishReasons": [
+        "stop"
+      ]
+    },
+    {
+      "kind": "model",
+      "startedAt": "2026-10-13T12:52:43.036Z",
+      "path": "/v1/chat/completions",
+      "model": "qwen3.6-flash-distill",
+      "toolChoice": {
+        "type": "function",
+        "function": {
+          "name": "submit_step_result"
+        }
+      },
+      "tools": [
+        "submit_step_result"
+      ],
+      "sopPrompt": [
+        "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary.",
+        "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+      ],
+      "status": 200,
+      "headersMs": 618,
+      "firstByteMs": 618,
+      "textChunks": 14,
+      "elapsedMs": 4532,
+      "returnedTools": [
+        "submit_step_result"
+      ],
+      "finishReasons": [
+        "stop"
+      ]
+    }
+  ],
+  "stages": [
+    {
+      "kind": "callback",
+      "routeId": "f2823f6d36544f6797209de1288bfb03",
+      "sessionId": "binding-chat-general-1791895556006",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895556362.4792,
+      "status": 200,
+      "endedMs": 1791895556366.1829,
+      "elapsedMs": 3.70361328125
+    },
+    {
+      "kind": "callback",
+      "routeId": "f2823f6d36544f6797209de1288bfb03",
+      "sessionId": "binding-chat-general-1791895556006",
+      "operation": "model_stream",
+      "requestId": "sop-route-a0b47e99d68745ce9aa9b15b6c54bd95",
+      "startedMs": 1791895556373.46,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895563817.28,
+      "elapsedMs": 7443.820068359375
+    },
+    {
+      "kind": "route",
+      "routeId": "f2823f6d36544f6797209de1288bfb03",
+      "sessionId": "binding-chat-general-1791895556006",
+      "startedMs": 1791895556338.8801,
+      "decision": "answer_only",
+      "endedMs": 1791895563821.857,
+      "elapsedMs": 7482.976806640625
+    },
+    {
+      "kind": "callback",
+      "routeId": "68365958c06c49f3b5fe85c78611ad19",
+      "sessionId": "binding-chat-sop-private-1791895567097",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895567180.345,
+      "status": 200,
+      "endedMs": 1791895567182.436,
+      "elapsedMs": 2.091064453125
+    },
+    {
+      "kind": "callback",
+      "routeId": "68365958c06c49f3b5fe85c78611ad19",
+      "sessionId": "binding-chat-sop-private-1791895567097",
+      "operation": "model_stream",
+      "requestId": "sop-route-b9e99c1cb39b40d5a1451451549a2aea",
+      "startedMs": 1791895567182.994,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895589068.8079,
+      "elapsedMs": 21885.81396484375
+    },
+    {
+      "kind": "route",
+      "routeId": "68365958c06c49f3b5fe85c78611ad19",
+      "sessionId": "binding-chat-sop-private-1791895567097",
+      "startedMs": 1791895567176.7612,
+      "decision": "answer_only",
+      "endedMs": 1791895589078.951,
+      "elapsedMs": 21902.189697265625
+    },
+    {
+      "kind": "callback",
+      "routeId": "eb38d44a395b40139f60a7f3c35ca939",
+      "sessionId": "binding-chat-general-1791895597017",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895597100.451,
+      "status": 200,
+      "endedMs": 1791895597102.824,
+      "elapsedMs": 2.373046875
+    },
+    {
+      "kind": "callback",
+      "routeId": "eb38d44a395b40139f60a7f3c35ca939",
+      "sessionId": "binding-chat-general-1791895597017",
+      "operation": "model_stream",
+      "requestId": "sop-route-6f0d48e6655248ada8c133e8b1457c05",
+      "startedMs": 1791895597104.689,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895604402.02,
+      "elapsedMs": 7297.3310546875
+    },
+    {
+      "kind": "route",
+      "routeId": "eb38d44a395b40139f60a7f3c35ca939",
+      "sessionId": "binding-chat-general-1791895597017",
+      "startedMs": 1791895597095.556,
+      "decision": "answer_only",
+      "endedMs": 1791895604407.692,
+      "elapsedMs": 7312.135986328125
+    },
+    {
+      "kind": "callback",
+      "routeId": "b5ed74f8a39545fea53d37e8b58fffe8",
+      "sessionId": "binding-chat-sop-private-1791895606960",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895607050.297,
+      "status": 200,
+      "endedMs": 1791895607052.33,
+      "elapsedMs": 2.032958984375
+    },
+    {
+      "kind": "callback",
+      "routeId": "b5ed74f8a39545fea53d37e8b58fffe8",
+      "sessionId": "binding-chat-sop-private-1791895606960",
+      "operation": "model_stream",
+      "requestId": "sop-route-61721b06ae754511b15443dbf2ad3a94",
+      "startedMs": 1791895607052.8389,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895618802.402,
+      "elapsedMs": 11749.563232421875
+    },
+    {
+      "kind": "route",
+      "routeId": "b5ed74f8a39545fea53d37e8b58fffe8",
+      "sessionId": "binding-chat-sop-private-1791895606960",
+      "startedMs": 1791895607044.676,
+      "decision": "answer_only",
+      "endedMs": 1791895618808.079,
+      "elapsedMs": 11763.403076171875
+    },
+    {
+      "kind": "callback",
+      "routeId": "287bfea7d1ad4f0c8a22e67172c49eaa",
+      "sessionId": "binding-chat-general-1791895627104",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895627168.1511,
+      "status": 200,
+      "endedMs": 1791895627170.479,
+      "elapsedMs": 2.327880859375
+    },
+    {
+      "kind": "callback",
+      "routeId": "287bfea7d1ad4f0c8a22e67172c49eaa",
+      "sessionId": "binding-chat-general-1791895627104",
+      "operation": "model_stream",
+      "requestId": "sop-route-45551256a1b04b80b912ee7168dafed4",
+      "startedMs": 1791895627171.0178,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895653530.8162,
+      "elapsedMs": 26359.79833984375
+    },
+    {
+      "kind": "route",
+      "routeId": "287bfea7d1ad4f0c8a22e67172c49eaa",
+      "sessionId": "binding-chat-general-1791895627104",
+      "startedMs": 1791895627164.551,
+      "decision": "answer_only",
+      "endedMs": 1791895653541.6401,
+      "elapsedMs": 26377.089111328125
+    },
+    {
+      "kind": "callback",
+      "routeId": "cc19b268f8664d4da27d77f569953a0f",
+      "sessionId": "binding-chat-sop-private-1791895657037",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895657108.4302,
+      "status": 200,
+      "endedMs": 1791895657110.487,
+      "elapsedMs": 2.056884765625
+    },
+    {
+      "kind": "callback",
+      "routeId": "cc19b268f8664d4da27d77f569953a0f",
+      "sessionId": "binding-chat-sop-private-1791895657037",
+      "operation": "model_stream",
+      "requestId": "sop-route-aa0b19f4663645f1bb724a9dd66d3740",
+      "startedMs": 1791895657111,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895667051.9968,
+      "elapsedMs": 9940.996826171875
+    },
+    {
+      "kind": "route",
+      "routeId": "cc19b268f8664d4da27d77f569953a0f",
+      "sessionId": "binding-chat-sop-private-1791895657037",
+      "startedMs": 1791895657103.38,
+      "decision": "answer_only",
+      "endedMs": 1791895667058.374,
+      "elapsedMs": 9954.994140625
+    },
+    {
+      "kind": "callback",
+      "routeId": "2d84ea19fcba49d5b8eb1a48e5f242a0",
+      "sessionId": "binding-private-1791895684882-0",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895685302.33,
+      "status": 200,
+      "endedMs": 1791895685309.9512,
+      "elapsedMs": 7.62109375
+    },
+    {
+      "kind": "callback",
+      "routeId": "2d84ea19fcba49d5b8eb1a48e5f242a0",
+      "sessionId": "binding-private-1791895684882-0",
+      "operation": "model_stream",
+      "requestId": "sop-route-7d7053b9231c4552a59697b7cdf541cb",
+      "startedMs": 1791895685310.6099,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895710999.9722,
+      "elapsedMs": 25689.3623046875
+    },
+    {
+      "kind": "route",
+      "routeId": "2d84ea19fcba49d5b8eb1a48e5f242a0",
+      "sessionId": "binding-private-1791895684882-0",
+      "startedMs": 1791895685252.262,
+      "decision": "start_new_task",
+      "endedMs": 1791895711009.981,
+      "elapsedMs": 25757.718994140625
+    },
+    {
+      "kind": "callback",
+      "routeId": "f50acf831abb4a3e8275975125d5e365",
+      "sessionId": "binding-approval-approved-1791895684882-0",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895719449.055,
+      "status": 200,
+      "endedMs": 1791895719451.2498,
+      "elapsedMs": 2.19482421875
+    },
+    {
+      "kind": "callback",
+      "routeId": "f50acf831abb4a3e8275975125d5e365",
+      "sessionId": "binding-approval-approved-1791895684882-0",
+      "operation": "model_stream",
+      "requestId": "sop-route-2871ee91a63b455b8deff41dd44531b9",
+      "startedMs": 1791895719451.9072,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895738361.697,
+      "elapsedMs": 18909.789794921875
+    },
+    {
+      "kind": "route",
+      "routeId": "f50acf831abb4a3e8275975125d5e365",
+      "sessionId": "binding-approval-approved-1791895684882-0",
+      "startedMs": 1791895719445.323,
+      "decision": "start_new_task",
+      "endedMs": 1791895738370.9053,
+      "elapsedMs": 18925.582275390625
+    },
+    {
+      "kind": "callback",
+      "routeId": "9675b1fedcd6425db3391cbc399d92fc",
+      "sessionId": "binding-approval-rejected-1791895684882-0",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895764177.4312,
+      "status": 200,
+      "endedMs": 1791895764180.147,
+      "elapsedMs": 2.7158203125
+    },
+    {
+      "kind": "callback",
+      "routeId": "9675b1fedcd6425db3391cbc399d92fc",
+      "sessionId": "binding-approval-rejected-1791895684882-0",
+      "operation": "model_stream",
+      "requestId": "sop-route-77be4f36aa2148ffb15b301ac08923e6",
+      "startedMs": 1791895764180.676,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895787854.031,
+      "elapsedMs": 23673.35498046875
+    },
+    {
+      "kind": "route",
+      "routeId": "9675b1fedcd6425db3391cbc399d92fc",
+      "sessionId": "binding-approval-rejected-1791895684882-0",
+      "startedMs": 1791895764173.737,
+      "decision": "start_new_task",
+      "endedMs": 1791895787878.638,
+      "elapsedMs": 23704.90087890625
+    },
+    {
+      "kind": "callback",
+      "routeId": "cf913de4ce50466a84567b08756d3ac4",
+      "sessionId": "binding-private-1791895684882-1",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895804496.611,
+      "status": 200,
+      "endedMs": 1791895804500.886,
+      "elapsedMs": 4.27490234375
+    },
+    {
+      "kind": "callback",
+      "routeId": "cf913de4ce50466a84567b08756d3ac4",
+      "sessionId": "binding-private-1791895684882-1",
+      "operation": "model_stream",
+      "requestId": "sop-route-f08e7339609f4376add44720b262f303",
+      "startedMs": 1791895804501.645,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895826115.196,
+      "elapsedMs": 21613.551025390625
+    },
+    {
+      "kind": "route",
+      "routeId": "cf913de4ce50466a84567b08756d3ac4",
+      "sessionId": "binding-private-1791895684882-1",
+      "startedMs": 1791895804492.838,
+      "decision": "start_new_task",
+      "endedMs": 1791895826125.5522,
+      "elapsedMs": 21632.71435546875
+    },
+    {
+      "kind": "callback",
+      "routeId": "d11612341848475b900c4be7a7e14edd",
+      "sessionId": "binding-approval-approved-1791895684882-1",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895833321.929,
+      "status": 200,
+      "endedMs": 1791895833323.894,
+      "elapsedMs": 1.965087890625
+    },
+    {
+      "kind": "callback",
+      "routeId": "d11612341848475b900c4be7a7e14edd",
+      "sessionId": "binding-approval-approved-1791895684882-1",
+      "operation": "model_stream",
+      "requestId": "sop-route-3e4f390f2dc94de49602ce1c62cee8ab",
+      "startedMs": 1791895833324.491,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895842282.239,
+      "elapsedMs": 8957.748046875
+    },
+    {
+      "kind": "route",
+      "routeId": "d11612341848475b900c4be7a7e14edd",
+      "sessionId": "binding-approval-approved-1791895684882-1",
+      "startedMs": 1791895833318.6892,
+      "decision": "start_new_task",
+      "endedMs": 1791895842289.169,
+      "elapsedMs": 8970.479736328125
+    },
+    {
+      "kind": "callback",
+      "routeId": "e5f32ba6e3624fe99d5ef81aee0e5965",
+      "sessionId": "binding-approval-rejected-1791895684882-1",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895852936.44,
+      "status": 200,
+      "endedMs": 1791895852938.097,
+      "elapsedMs": 1.656982421875
+    },
+    {
+      "kind": "callback",
+      "routeId": "e5f32ba6e3624fe99d5ef81aee0e5965",
+      "sessionId": "binding-approval-rejected-1791895684882-1",
+      "operation": "model_stream",
+      "requestId": "sop-route-4091592ab01f4a8e8eb85dcfebc4aa0c",
+      "startedMs": 1791895852938.6702,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895865551.193,
+      "elapsedMs": 12612.52294921875
+    },
+    {
+      "kind": "route",
+      "routeId": "e5f32ba6e3624fe99d5ef81aee0e5965",
+      "sessionId": "binding-approval-rejected-1791895684882-1",
+      "startedMs": 1791895852933.044,
+      "decision": "start_new_task",
+      "endedMs": 1791895865558.729,
+      "elapsedMs": 12625.68505859375
+    },
+    {
+      "kind": "callback",
+      "routeId": "aec1c187a8294407a5eb19eee11ff4b4",
+      "sessionId": "binding-private-1791895684882-2",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895872964.3782,
+      "status": 200,
+      "endedMs": 1791895872966.1008,
+      "elapsedMs": 1.72265625
+    },
+    {
+      "kind": "callback",
+      "routeId": "aec1c187a8294407a5eb19eee11ff4b4",
+      "sessionId": "binding-private-1791895684882-2",
+      "operation": "model_stream",
+      "requestId": "sop-route-12419d38c3ad4b8fa735b14334bf435f",
+      "startedMs": 1791895872966.6372,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895891066.396,
+      "elapsedMs": 18099.7587890625
+    },
+    {
+      "kind": "route",
+      "routeId": "aec1c187a8294407a5eb19eee11ff4b4",
+      "sessionId": "binding-private-1791895684882-2",
+      "startedMs": 1791895872960.881,
+      "decision": "start_new_task",
+      "endedMs": 1791895891073.882,
+      "elapsedMs": 18113.0009765625
+    },
+    {
+      "kind": "callback",
+      "routeId": "b762be525cf94105910378f35a046691",
+      "sessionId": "binding-approval-approved-1791895684882-2",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895898829.628,
+      "status": 200,
+      "endedMs": 1791895898831.459,
+      "elapsedMs": 1.8310546875
+    },
+    {
+      "kind": "callback",
+      "routeId": "b762be525cf94105910378f35a046691",
+      "sessionId": "binding-approval-approved-1791895684882-2",
+      "operation": "model_stream",
+      "requestId": "sop-route-23152329000b4815be23f2379e4f6e53",
+      "startedMs": 1791895898832.0278,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895926296.5188,
+      "elapsedMs": 27464.490966796875
+    },
+    {
+      "kind": "route",
+      "routeId": "b762be525cf94105910378f35a046691",
+      "sessionId": "binding-approval-approved-1791895684882-2",
+      "startedMs": 1791895898826.198,
+      "decision": "start_new_task",
+      "endedMs": 1791895926308.0618,
+      "elapsedMs": 27481.86376953125
+    },
+    {
+      "kind": "callback",
+      "routeId": "21721602d28046aa98b3177fbe0a8e16",
+      "sessionId": "binding-approval-rejected-1791895684882-2",
+      "operation": "list_model_catalog",
+      "requestId": null,
+      "startedMs": 1791895933882.54,
+      "status": 200,
+      "endedMs": 1791895933884.2937,
+      "elapsedMs": 1.753662109375
+    },
+    {
+      "kind": "callback",
+      "routeId": "21721602d28046aa98b3177fbe0a8e16",
+      "sessionId": "binding-approval-rejected-1791895684882-2",
+      "operation": "model_stream",
+      "requestId": "sop-route-9235e3c2a5514b9a9f2297acad776005",
+      "startedMs": 1791895933884.85,
+      "stage": "initial",
+      "status": 200,
+      "endedMs": 1791895952778.9812,
+      "elapsedMs": 18894.131103515625
+    },
+    {
+      "kind": "route",
+      "routeId": "21721602d28046aa98b3177fbe0a8e16",
+      "sessionId": "binding-approval-rejected-1791895684882-2",
+      "startedMs": 1791895933879.247,
+      "decision": "start_new_task",
+      "endedMs": 1791895952788.301,
+      "elapsedMs": 18909.053955078125
+    }
+  ],
+  "results": [
+    {
+      "script": "restart.mjs",
+      "args": [
+        "sd"
+      ],
+      "exitCode": 0,
+      "elapsedMs": 543
+    },
+    {
+      "script": "restart.mjs",
+      "args": [
+        "gateway",
+        "web"
+      ],
+      "exitCode": 0,
+      "elapsedMs": 3569
+    },
+    {
+      "script": "chat.mjs",
+      "args": [],
+      "exitCode": 0,
+      "elapsedMs": 119547
+    },
+    {
+      "script": "special-runtime.mjs",
+      "args": [],
+      "exitCode": 0,
+      "elapsedMs": 292325
+    },
+    {
+      "script": "restart.mjs",
+      "args": [
+        "sd",
+        "gateway",
+        "web"
+      ],
+      "exitCode": 0,
+      "elapsedMs": 4079
+    }
+  ]
+}

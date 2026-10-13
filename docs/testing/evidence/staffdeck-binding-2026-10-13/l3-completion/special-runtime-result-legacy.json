@@ -1,0 +1,25 @@
+[
+  {
+    "name": "L3-SPECIAL-SETUP",
+    "status": "FAIL",
+    "error": "The expression evaluated to a falsy value:\n\n  assert.ok(kb)\n"
+  },
+  {
+    "name": "C01-RESTORE",
+    "status": "PASS",
+    "restored": {
+      "projectRoot": "$QA_ROOT/workspace/ProjectA",
+      "bindingId": "5162da74-64c6-41e8-a463-568caf377882",
+      "agentName": "ProjectA-5162da74",
+      "origin": "http://127.0.0.1:26010",
+      "tenantId": "binding-tenant",
+      "status": "failed",
+      "updatedAt": "2026-10-13T10:53:04.980Z",
+      "agentId": "agent_201e85d986634414",
+      "error": {
+        "code": "PROJECT_BINDING_UNAVAILABLE",
+        "message": "StaffDeck connection is unavailable. Retry to recover the binding."
+      }
+    }
+  }
+]

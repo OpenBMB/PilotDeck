@@ -326,7 +326,9 @@ function parseSopModule(
     endpoint,
     definitionsPath: isAbsolute(definitionsPath) ? definitionsPath : resolve(pilotHome, definitionsPath),
     defaultSopId,
-    stateRoot: join(pilotHome, "sop"),
+    stateRoot: env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true'
+      ? resolve(isAbsolute(definitionsPath) ? definitionsPath : resolve(pilotHome, definitionsPath), '..', 'state')
+      : join(pilotHome, "sop"),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(contextMode === undefined ? {} : { contextMode }),
     ...(discoveryConfigured && discoveryEndpoint && discoveryAgentId && discoveryApiKey

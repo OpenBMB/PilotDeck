@@ -1,0 +1,78 @@
+[
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 0,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-approved-1791888549476-0",
+      "decision": "approved",
+      "sopId": "binding_approval_1791888549476",
+      "legacyFixedTarget": false,
+      "browserApproval": true,
+      "finalStatus": "completed",
+      "replay": false,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-approved-1791888549476-0",
+        "requestId": "0063e11f-7c4b-486b-91ee-c74182a34a50",
+        "revision": 6,
+        "message": "Human decision: approved. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 46571
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 0,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-rejected-1791888549476-0",
+      "decision": "rejected",
+      "sopId": "binding_approval_1791888549476",
+      "legacyFixedTarget": false,
+      "browserApproval": true,
+      "finalStatus": "completed",
+      "replay": false,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-rejected-1791888549476-0",
+        "requestId": "76c1dd91-4338-42a7-a7d7-970e25b7b851",
+        "revision": 6,
+        "message": "Human decision: rejected. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 39339
+  },
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 1,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-approved-1791888549476-1",
+      "decision": "approved",
+      "sopId": "binding_approval_1791888549476",
+      "legacyFixedTarget": false,
+      "browserApproval": true,
+      "finalStatus": "completed",
+      "replay": false,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-approved-1791888549476-1",
+        "requestId": "7b4f56e3-3661-4b81-8a02-57fa608aac5e",
+        "revision": 6,
+        "message": "Human decision: approved. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 43747
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 1,
+    "status": "FAIL",
+    "error": "switch-and-restart: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:26013/p/private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-XU5lt0-workspace-ProjectA/c/binding-approval-rejected-1791888549476-1\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:26013/p/private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-XU5lt0-workspace-ProjectA/c/binding-approval-rejected-1791888549476-1\", waiting until \"load\"\u001b[22m\n",
+    "elapsedMs": 15794
+  }
+]

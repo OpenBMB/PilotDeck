@@ -1,0 +1,111 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/faults-complete.mjs"
+  ],
+  "results": [
+    {
+      "id": "B05-CONTROLLED-SD-TIMEOUT",
+      "status": "PASS",
+      "evidence": {
+        "failure": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "1b02629a-8274-4e73-9a48-5f0424d84392",
+          "agentName": "ProjectB-1b02629a",
+          "origin": "http://127.0.0.1:25910",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T10:11:46.061Z",
+          "agentId": "agent_07843a3996844ddd",
+          "error": {
+            "code": 23,
+            "message": "The operation was aborted due to timeout"
+          }
+        },
+        "restored": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "1b02629a-8274-4e73-9a48-5f0424d84392",
+          "agentName": "ProjectB-1b02629a",
+          "origin": "http://127.0.0.1:25910",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T10:11:46.191Z",
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "before": {
+          "agents": 12,
+          "mappings": 9
+        },
+        "after": {
+          "agents": 12,
+          "mappings": 9
+        },
+        "ordinaryChatEvents": [
+          "turn_started",
+          "input_accepted",
+          "model_request_started",
+          "context_budget",
+          "model_selection_changed",
+          "assistant_text_delta",
+          "assistant_block",
+          "turn_completed",
+          "turn_completed"
+        ],
+        "injection": "SIGSTOP formal isolated SD; binding request expires at its configured 10000ms deadline"
+      },
+      "elapsedMs": 11392
+    },
+    {
+      "id": "B05-CREDENTIAL-ROTATION-EXISTING-SESSION",
+      "status": "PASS",
+      "evidence": {
+        "sessionKey": "binding-rotation-1791886295651",
+        "oldCredentialStatus": 401,
+        "credentialIdStable": true,
+        "failure": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "1b02629a-8274-4e73-9a48-5f0424d84392",
+          "agentName": "ProjectB-1b02629a",
+          "origin": "http://127.0.0.1:25910",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T10:11:47.251Z",
+          "agentId": "agent_07843a3996844ddd",
+          "error": {
+            "code": "PROJECT_BINDING_CREDENTIAL_INVALID",
+            "message": "StaffDeck account credential is inactive or lacks the required access."
+          }
+        },
+        "restored": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "1b02629a-8274-4e73-9a48-5f0424d84392",
+          "agentName": "ProjectB-1b02629a",
+          "origin": "http://127.0.0.1:25910",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T10:11:52.143Z",
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "events": [
+          "turn_started",
+          "input_accepted",
+          "model_request_started",
+          "context_budget",
+          "model_selection_changed",
+          "assistant_text_delta",
+          "assistant_block",
+          "turn_completed",
+          "turn_completed"
+        ],
+        "before": {
+          "agents": 12,
+          "mappings": 9
+        },
+        "after": {
+          "agents": 12,
+          "mappings": 9
+        }
+      },
+      "elapsedMs": 5907
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+[
+  {
+    "name": "L3-SOP-PRIVATE",
+    "repetition": 0,
+    "status": "FAIL",
+    "error": "The expression evaluated to a falsy value:\n\n  assert.ok(JSON.stringify(events).includes('COBALT_SOP_8624'))\n",
+    "elapsedMs": 142491
+  },
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 0,
+    "status": "FAIL",
+    "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'active'\n- 'completed'\n",
+    "elapsedMs": 30756
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 0,
+    "status": "FAIL",
+    "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'active'\n- 'completed'\n",
+    "elapsedMs": 23199
+  },
+  {
+    "name": "L3-SOP-PRIVATE",
+    "repetition": 1,
+    "status": "FAIL",
+    "error": "The expression evaluated to a falsy value:\n\n  assert.ok(JSON.stringify(events).includes('COBALT_SOP_8624'))\n",
+    "elapsedMs": 27379
+  },
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 1,
+    "status": "FAIL",
+    "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'active'\n- 'completed'\n",
+    "elapsedMs": 19528
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 1,
+    "status": "FAIL",
+    "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'active'\n- 'completed'\n",
+    "elapsedMs": 24669
+  },
+  {
+    "name": "L3-SOP-PRIVATE",
+    "repetition": 2,
+    "status": "FAIL",
+    "error": "The expression evaluated to a falsy value:\n\n  assert.ok(JSON.stringify(events).includes('COBALT_SOP_8624'))\n",
+    "elapsedMs": 26924
+  },
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 2,
+    "status": "FAIL",
+    "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'active'\n- 'completed'\n",
+    "elapsedMs": 35501
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 2,
+    "status": "FAIL",
+    "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'active'\n- 'completed'\n",
+    "elapsedMs": 22389
+  }
+]

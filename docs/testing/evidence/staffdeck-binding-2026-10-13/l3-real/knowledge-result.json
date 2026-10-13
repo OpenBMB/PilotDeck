@@ -1,0 +1,19 @@
+[
+  {
+    "scope": "general",
+    "existing": true,
+    "status": "PASS"
+  },
+  {
+    "scope": "sop_specific",
+    "existing": true,
+    "status": "PASS"
+  },
+  {
+    "id": "I01",
+    "status": "PASS",
+    "generalVisible": true,
+    "sopHiddenInChat": true,
+    "bPrivateHidden": true
+  }
+]

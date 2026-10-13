@@ -1,0 +1,16 @@
+[
+  {
+    "id": "I02",
+    "project": "a",
+    "status": "PASS",
+    "sessionKey": "binding-a-1791880891925",
+    "state": "completed"
+  },
+  {
+    "id": "I02",
+    "project": "b",
+    "status": "PASS",
+    "sessionKey": "binding-b-1791880892529",
+    "ordinaryChat": true
+  }
+]

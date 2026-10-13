@@ -1,0 +1,33 @@
+[
+  {
+    "name": "controlled-timeout",
+    "status": "PASS",
+    "elapsedMs": 23
+  },
+  {
+    "name": "caller-cancellation",
+    "status": "PASS",
+    "elapsedMs": 1
+  },
+  {
+    "name": "upstream-503",
+    "status": "PASS",
+    "elapsedMs": 88
+  },
+  {
+    "name": "real-route-recovery",
+    "status": "PASS",
+    "evidence": {
+      "decision": "start_new_task",
+      "agentId": "agent_12d908bea2584ac0",
+      "counts": {
+        "agents": 30,
+        "mappings": 27
+      },
+      "timeoutMs": 120000,
+      "discoveryTimeoutMs": 90000,
+      "injectedDelayMs": 31000
+    },
+    "elapsedMs": 31227
+  }
+]

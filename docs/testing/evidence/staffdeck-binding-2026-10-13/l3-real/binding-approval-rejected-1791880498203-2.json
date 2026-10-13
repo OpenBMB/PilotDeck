@@ -1,0 +1,415 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 4629,
+    "displayUsed": 4629,
+    "localEstimateTokens": 4069,
+    "estimateSource": "usage",
+    "usageTokens": 4629,
+    "calibrationActualInputTokens": 4398,
+    "calibrationEstimatedInputTokens": 3838,
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.04147254873853211,
+    "state": "ok",
+    "source": "calibrated",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 4069,
+      "system": 3372,
+      "tools": 153,
+      "messages": 544,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " human decision is \"",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "rejected\".",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 23
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I need to complete",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 33
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the SOP step with",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 52
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " status \"completed\"",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 70
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " and capture the rejected",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 89
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " decision in the slot",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 114
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Updates.",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 135
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Since this is the",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 11,
+      "offset": 143
+    },
+    "sequence": 14
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " final",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 12,
+      "offset": 161
+    },
+    "sequence": 15
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " SOP node, I",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 13,
+      "offset": 167
+    },
+    "sequence": 16
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " should submit with no",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 14,
+      "offset": 179
+    },
+    "sequence": 17
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " nextStep",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 15,
+      "offset": 201
+    },
+    "sequence": 18
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Id.",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 16,
+      "offset": 210
+    },
+    "sequence": 19
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+    "text": "The human decision is \"rejected\". I need to complete the SOP step with status \"completed\" and capture the rejected decision in the slotUpdates. Since this is the final SOP node, I should submit with no nextStepId.",
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 0,
+      "revision": 20
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 20
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "tool:call_4ec7270ade064821bed9cad2",
+      "previousId": "364aa2d4-f29f-4de9-80a9-06b43eecda6f:thinking:0",
+      "order": 1,
+      "revision": 21
+    },
+    "type": "tool_call_started",
+    "toolCallId": "call_4ec7270ade064821bed9cad2",
+    "name": "submit_step_result",
+    "argsPreview": "{\"status\":\"completed\",\"replyFragment\":\"**Binding Approval Procedure — Complete**\\n\\n**Binding ID:** binding_approval_1791880498203\\n\\n**Decision: REJECTED**\\n\\nThe binding has been rejected. No further actions are taken for this binding.\",\"slotUpdates\":{}}",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 21
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "call_4ec7270ade064821bed9cad2",
+    "ok": true,
+    "resultPreview": "{\"submittedStepId\":\"approval\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"approval\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "resultLineCount": 1,
+    "resultBytes": 146,
+    "toolName": "submit_step_result",
+    "data": {
+      "status": "completed",
+      "replyFragment": "**Binding Approval Procedure — Complete**\n\n**Binding ID:** binding_approval_1791880498203\n\n**Decision: REJECTED**\n\nThe binding has been rejected. No further actions are taken for this binding.",
+      "slotUpdates": {},
+      "taskSummary": null,
+      "structuredResult": null,
+      "nextStepId": null,
+      "events": []
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+      "id": "result:call_4ec7270ade064821bed9cad2",
+      "previousId": "tool:call_4ec7270ade064821bed9cad2",
+      "order": 2,
+      "revision": 22
+    },
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 22
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "call_4ec7270ade064821bed9cad2",
+    "fullText": "{\"submittedStepId\":\"approval\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"approval\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 23
+  },
+  {
+    "type": "agent_status",
+    "event": "structured_output_completed",
+    "detail": {
+      "message": "Structured output was returned, so this turn has completed.",
+      "messageI18n": {
+        "key": "[REDACTED]"
+      },
+      "code": "structured_output_completed",
+      "visible": true,
+      "scope": "turn",
+      "source": "agent"
+    },
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 24
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "**Binding Approval Procedure — Complete**\n\n**Binding ID:** binding_approval_1791880498203\n\n**Decision: REJECTED**\n\nThe binding has been rejected. No further actions are taken for this binding.",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "model": "qwen3.6-flash-distill",
+    "sequence": 25
+  },
+  {
+    "type": "structured_output",
+    "payload": {
+      "sop": {
+        "status": "completed",
+        "replyFragment": "**Binding Approval Procedure — Complete**\n\n**Binding ID:** binding_approval_1791880498203\n\n**Decision: REJECTED**\n\nThe binding has been rejected. No further actions are taken for this binding.",
+        "slotUpdates": {},
+        "taskSummary": null,
+        "structuredResult": null,
+        "nextStepId": null,
+        "events": []
+      }
+    },
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 26
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 4469,
+      "outputTokens": 153,
+      "totalTokens": 4622
+    },
+    "finishReason": "completed",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 27
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 4469,
+      "outputTokens": 153,
+      "totalTokens": 4622
+    },
+    "finishReason": "completed",
+    "runId": "79783856-0f2d-41a9-a3bf-fe27df177757",
+    "sequence": 28
+  }
+]

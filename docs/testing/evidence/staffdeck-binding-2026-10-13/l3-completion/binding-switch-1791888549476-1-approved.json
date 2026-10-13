@@ -1,0 +1,286 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10405,
+    "displayUsed": 10405,
+    "localEstimateTokens": 10405,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09322140194954129,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10405,
+      "system": 3039,
+      "tools": 7358,
+      "messages": 8,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "User",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " says",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 4
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " \"",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 9
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Hello,",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 11
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " reply briefly\". I",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 17
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " should",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 35
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " give a short greeting",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 42
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 64
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Hi!",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:text:0",
+      "previousId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 1,
+      "revision": 11,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 13
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " How can I help",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:text:0",
+      "previousId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 1,
+      "revision": 12,
+      "offset": 3
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 14
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " you today?",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:text:0",
+      "previousId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 1,
+      "revision": 13,
+      "offset": 18
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 15
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+    "text": "User says \"Hello, reply briefly\". I should give a short greeting.",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 0,
+      "revision": 15
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 16
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:text:0",
+    "text": "Hi! How can I help you today?",
+    "timeline": {
+      "version": 1,
+      "turnId": "d37183c1-04ac-4f84-a936-026175b749f8",
+      "id": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:text:0",
+      "previousId": "c56b9e58-257a-4bb2-b6c9-980cee7cc9bf:thinking:0",
+      "order": 1,
+      "revision": 16
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 17
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12300,
+      "outputTokens": 29,
+      "totalTokens": 12329
+    },
+    "finishReason": "completed",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 18
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12300,
+      "outputTokens": 29,
+      "totalTokens": 12329
+    },
+    "finishReason": "completed",
+    "runId": "d37183c1-04ac-4f84-a936-026175b749f8",
+    "sequence": 19
+  }
+]

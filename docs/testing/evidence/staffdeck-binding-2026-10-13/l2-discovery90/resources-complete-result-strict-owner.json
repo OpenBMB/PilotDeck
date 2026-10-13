@@ -1,0 +1,438 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/resources-complete.mjs"
+  ],
+  "results": [
+    {
+      "id": "I01-MODULE-get_base",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 56
+    },
+    {
+      "id": "I01-MODULE-update_base",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "description": "matrix update"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 46
+    },
+    {
+      "id": "I01-MODULE-list_versions",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 47
+    },
+    {
+      "id": "I01-MODULE-list_documents",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 40
+    },
+    {
+      "id": "I01-MODULE-get_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 43
+    },
+    {
+      "id": "I01-MODULE-update_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8",
+          "title": "A_PRIVATE_MATRIX_9351 updated"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 52
+    },
+    {
+      "id": "I01-MODULE-list_document_buckets",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 47
+    },
+    {
+      "id": "I01-MODULE-update_bucket",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_7e47c10f9828432ab773406fb1af3ee8",
+          "summary": "A_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I01-MODULE-list_bucket_chunks",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 43
+    },
+    {
+      "id": "I01-MODULE-update_chunk",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "chunkId": "binding_chunk_7e47c10f9828432ab773406fb1af3ee8",
+          "content": "A_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I01-MODULE-resolve_citation",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "chunkId": "binding_chunk_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 48
+    },
+    {
+      "id": "I01-MODULE-get_job",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "jobId": "binding_job_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 45
+    },
+    {
+      "id": "I01-MODULE-list_okf_concepts",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 48
+    },
+    {
+      "id": "I01-MODULE-upsert_okf_concept",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "conceptId": "matrix.concept",
+          "contentMd": "# Matrix\n\nA_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 43
+    },
+    {
+      "id": "I01-MODULE-export_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 37
+    },
+    {
+      "id": "I01-MODULE-lint_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 37
+    },
+    {
+      "id": "I01-MODULE-reject_discovery",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "suggestionId": "binding_suggestion_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I01-SDK-list_knowledge_versions",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 31
+    },
+    {
+      "id": "I01-SDK-list_knowledge_documents",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 32
+    },
+    {
+      "id": "I01-SDK-get_knowledge_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 29
+    },
+    {
+      "id": "I01-SDK-update_knowledge_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8",
+          "body": {
+            "title": "A_PRIVATE_MATRIX_9351"
+          }
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 54
+    },
+    {
+      "id": "I01-SDK-list_document_buckets",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 28
+    },
+    {
+      "id": "I01-SDK-list_bucket_chunks",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 30
+    },
+    {
+      "id": "I01-SDK-update_knowledge_bucket",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_7e47c10f9828432ab773406fb1af3ee8",
+          "body": {
+            "summary": "A_PRIVATE_MATRIX_9351"
+          }
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 30
+    },
+    {
+      "id": "I01-SDK-update_knowledge_chunk",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "chunkId": "binding_chunk_7e47c10f9828432ab773406fb1af3ee8",
+          "body": {
+            "content": "A_PRIVATE_MATRIX_9351"
+          }
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 32
+    },
+    {
+      "id": "I01-SDK-list_knowledge_concepts",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 30
+    },
+    {
+      "id": "I01-SDK-get_knowledge_concept",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "conceptId": "matrix.concept"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 29
+    },
+    {
+      "id": "I01-SDK-export_knowledge_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 30
+    },
+    {
+      "id": "I01-SDK-get_knowledge_job",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "jobId": "binding_job_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 29
+    },
+    {
+      "id": "I01-LIST-ISOLATION",
+      "status": "PASS",
+      "evidence": {
+        "ownerCollectionsReadable": true,
+        "foreignPrivateRowsAbsent": true
+      },
+      "elapsedMs": 157
+    },
+    {
+      "id": "I01-REAL-PREVIEW-JOB-EVENTS",
+      "status": "PASS",
+      "evidence": {
+        "jobId": "skilljob_adca907f3d6a4cf2",
+        "foreignReadCancelEvents": 404,
+        "ownerReadCancelEvents": 200,
+        "ownerJob": {
+          "job_id": "skilljob_adca907f3d6a4cf2",
+          "name": "skill.distill",
+          "status": "succeeded",
+          "error": null,
+          "created_at": "2026-10-13T10:51:55.744317",
+          "updated_at": "2026-10-13T10:52:21.396103",
+          "last_seq": 276
+        },
+        "events": "event: job_attached\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"after_seq\": 0}\n\nevent: job_started\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 1, \"name\": \"skill.distill\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 2, \"text\": \"正在调用模型生成新技能\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 3, \"text\": \"模型正在规划技能结构\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 4, \"content\": \"Binding acceptance ordinary chat\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 5, \"text\": \"正在校验模型输出结构\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 6, \"text\": \"模型输出需要修复，正在重试\"}\n\nevent: chunk_reset\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 7}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 8, \"content\": \"{\\n  \\\"draft_skill\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 9, \"content\": \" {\\n    \\\"skill_id\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 10, \"content\": \" \\\"binding_editor_s\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 11, \"content\": \"op\\\",\\n    \\\"name\\\": \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 12, \"content\": \"Binding editor pro\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 13, \"content\": \"cedure\\\",\\n    \\\"vers\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 14, \"content\": \"ion\\\": \\\"1.0.0\\\",\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 15, \"content\": \" \\\"business_domain\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 16, \"content\": \": \\\"general\\\",\\n    \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 17, \"content\": \"description\\\": \\\"Bro\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 18, \"content\": \"wser authoring acc\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 19, \"content\": \"eptance\\\",\\n    \\\"cap\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 20, \"content\": \"ability_scope\\\": \\\"g\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 21, \"content\": \"eneral\\\",\\n    \\\"step\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 22, \"content\": \"_timeout_seconds\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 23, \"content\": \" null,\\n    \\\"trigge\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 24, \"content\": \"r_intents\\\": [\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 25, \"content\": \"  \\\"BINDING_EDITOR\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 26, \"content\": \"\\n    ],\\n    \\\"user_\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 27, \"content\": \"utterance_examples\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 28, \"content\": \"\\\": [\\n      \\\"A_PRIV\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 29, \"content\": \"ATE_PREVIEW_8137\\\"\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 30, \"content\": \"    ],\\n    \\\"goal\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 31, \"content\": \" [\\n      \\\"Answer t\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 32, \"content\": \"he user then compl\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 33, \"content\": \"ete\\\"\\n    ],\\n    \\\"r\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 34, \"content\": \"equired_info\\\": [],\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 35, \"content\": \"\\n    \\\"slot_filling\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 36, \"content\": \"_policy\\\": {\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 37, \"content\": \"\\\"enabled\\\": true,\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 38, \"content\": \"     \\\"multi_slot_p\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 39, \"content\": \"er_turn\\\": true,\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 40, \"content\": \"    \\\"extract_scope\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 41, \"content\": \"\\\": \\\"all_skill_expe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 42, \"content\": \"cted_user_info\\\",\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 43, \"content\": \"     \\\"skip_satisfi\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 44, \"content\": \"ed_steps\\\": true,\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 45, \"content\": \"     \\\"description\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 46, \"content\": \": \\\"每轮用户消息都应同时抽取所有可\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 47, \"content\": \"识别的信息；如果用户一次提供多个字段\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 48, \"content\": \"，必须一次性写入 slot_upda\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 49, \"content\": \"tes，不要按步骤重复追问。\\\",\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 50, \"content\": \"     \\\"target_info\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 51, \"content\": \": []\\n    },\\n    \\\"r\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 52, \"content\": \"esponse_rules\\\": [\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 53, \"content\": \"      \\\"信息不足时先追问，不要\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 54, \"content\": \"编造事实。\\\",\\n      \\\"步骤是\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 55, \"content\": \"可自适应推进的目标，不是固定问答脚本\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 56, \"content\": \"；已由当前用户消息、历史信息或路由意\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 57, \"content\": \"图满足的内容不得重复追问，应直接推进\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 58, \"content\": \"到下一缺失信息、工具调用或最终回复。\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 59, \"content\": \"\\\",\\n      \\\"流程必须形成闭环\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 60, \"content\": \"：不得把“请稍候/正在处理/稍后反馈\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 61, \"content\": \"”作为最终回复；需要外部事实、外部状\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 62, \"content\": \"态或外部副作用时必须调用已配置工具或\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 63, \"content\": \"转人工，并向用户给出明确结果。\\\"\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 64, \"content\": \"   ],\\n    \\\"nodes\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 65, \"content\": \" [\\n      {\\n       \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 66, \"content\": \" \\\"node_id\\\": \\\"answe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 67, \"content\": \"r\\\",\\n        \\\"type\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 68, \"content\": \": \\\"response\\\",\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 69, \"content\": \"    \\\"name\\\": \\\"Answe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 70, \"content\": \"r\\\",\\n        \\\"instr\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 71, \"content\": \"uction\\\": \\\"Reply BR\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 72, \"content\": \"OWSER_EDITOR_COMPL\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 73, \"content\": \"ETE and finish将本步骤\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 74, \"content\": \"作为目标而不是固定话术；如果用户当前\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 75, \"content\": \"消息、历史 slots 或路由意图已\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 76, \"content\": \"满足本步骤，直接写入对应 slot \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 77, \"content\": \"并继续到下一缺失信息、工具调用或最终\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 78, \"content\": \"回复，不要重复确认。给用户明确最终回\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 79, \"content\": \"复；无法闭环时转人工，不要只说请稍候\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 80, \"content\": \"。\\\",\\n        \\\"optio\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 81, \"content\": \"nal\\\": false,\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 82, \"content\": \"   \\\"condition\\\": nu\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 83, \"content\": \"ll,\\n        \\\"expec\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 84, \"content\": \"ted_user_info\\\": []\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 85, \"content\": \",\\n        \\\"allowed\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 86, \"content\": \"_actions\\\": [\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 87, \"content\": \"     \\\"answer_user\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 88, \"content\": \"\\n        ],\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 89, \"content\": \"  \\\"knowledge_scope\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 90, \"content\": \"\\\": {},\\n        \\\"ca\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 91, \"content\": \"pability_refs\\\": {\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 92, \"content\": \"          \\\"general\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 93, \"content\": \"_skill_ids\\\": [],\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 94, \"content\": \"         \\\"tool_ids\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 95, \"content\": \"\\\": [],\\n          \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 96, \"content\": \"knowledge_base_ids\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 97, \"content\": \"\\\": [],\\n          \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 98, \"content\": \"required_general_s\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 99, \"content\": \"kill_ids\\\": [],\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 100, \"content\": \"       \\\"required_t\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 101, \"content\": \"ool_ids\\\": [],\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 102, \"content\": \"      \\\"required_kn\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 103, \"content\": \"owledge_base_ids\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 104, \"content\": \" []\\n        },\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 105, \"content\": \"     \\\"retry_policy\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 106, \"content\": \"\\\": {},\\n        \\\"me\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 107, \"content\": \"tadata\\\": {},\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 108, \"content\": \"   \\\"sub_sop_id\\\": n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 109, \"content\": \"ull,\\n        \\\"assi\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 110, \"content\": \"gnee_user_id\\\": nul\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 111, \"content\": \"l,\\n        \\\"assign\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 112, \"content\": \"ee_notify_channel\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 113, \"content\": \": null\\n      }\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 114, \"content\": \" ],\\n    \\\"edges\\\": [\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 115, \"content\": \"],\\n    \\\"start_node\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 116, \"content\": \"_id\\\": \\\"answer\\\",\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 117, \"content\": \"  \\\"terminal_node_i\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 118, \"content\": \"ds\\\": [\\n      \\\"answ\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 119, \"content\": \"er\\\"\\n    ],\\n    \\\"in\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 120, \"content\": \"terruption_policy\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 121, \"content\": \": {\\n      \\\"related\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 122, \"content\": \"_question\\\": \\\"回答相关问\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 123, \"content\": \"题后回到当前流程。\\\",\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 124, \"content\": \"\\\"unrelated_busines\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 125, \"content\": \"s\\\": \\\"可切换新流程并保留当前进度\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 126, \"content\": \"。\\\",\\n      \\\"chitcha\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 127, \"content\": \"t\\\": \\\"简短回应后引导用户继续当前\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 128, \"content\": \"流程。\\\",\\n      \\\"user_\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 129, \"content\": \"wants_human\\\": \\\"直接转\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 130, \"content\": \"人工。\\\"\\n    }\\n  },\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 131, \"content\": \"\\\"warnings\\\": [],\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 132, \"content\": \"\\\"tool_suggestions\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 133, \"content\": \": []\\n}\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 134, \"text\": \"正在校验步骤闭环与工具接入\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 135, \"text\": \"正在校验技能结果（1/3）\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 136, \"text\": \"校验范围：来源一致性、闭环能力、自适应推进、图结构、子 SOP、能力策略、工具依据、副作用确认、中断恢复\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 137, \"text\": \"校验未通过，正在应用第 1 轮修正\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 138, \"text\": \"正在校验技能结果（2/3）\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 139, \"text\": \"校验范围：来源一致性、闭环能力、自适应推进、图结构、子 SOP、能力策略、工具依据、副作用确认、中断恢复\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 140, \"text\": \"校验未通过，正在应用第 2 轮修正\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 141, \"text\": \"正在校验技能结果（3/3）\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 142, \"text\": \"校验范围：来源一致性、闭环能力、自适应推进、图结构、子 SOP、能力策略、工具依据、副作用确认、中断恢复\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 143, \"text\": \"校验未通过，正在应用第 3 轮修正\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 144, \"text\": \"校验达到上限，保留最后一版技能草稿\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 145, \"text\": \"正在整理校验后的技能草稿\"}\n\nevent: chunk_reset\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 146}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 147, \"content\": \"{\\n  \\\"draft_skill\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 148, \"content\": \" {\\n    \\\"skill_id\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 149, \"content\": \" \\\"binding_editor_s\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 150, \"content\": \"op\\\",\\n    \\\"name\\\": \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 151, \"content\": \"Binding editor pro\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 152, \"content\": \"cedure\\\",\\n    \\\"vers\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 153, \"content\": \"ion\\\": \\\"1.0.0\\\",\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 154, \"content\": \" \\\"business_domain\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 155, \"content\": \": \\\"general\\\",\\n    \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 156, \"content\": \"description\\\": \\\"Bro\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 157, \"content\": \"wser authoring acc\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 158, \"content\": \"eptance\\\",\\n    \\\"cap\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 159, \"content\": \"ability_scope\\\": \\\"g\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 160, \"content\": \"eneral\\\",\\n    \\\"step\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 161, \"content\": \"_timeout_seconds\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 162, \"content\": \" null,\\n    \\\"trigge\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 163, \"content\": \"r_intents\\\": [\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 164, \"content\": \"  \\\"BINDING_EDITOR\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 165, \"content\": \"\\n    ],\\n    \\\"user_\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 166, \"content\": \"utterance_examples\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 167, \"content\": \"\\\": [\\n      \\\"A_PRIV\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 168, \"content\": \"ATE_PREVIEW_8137\\\"\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 169, \"content\": \"    ],\\n    \\\"goal\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 170, \"content\": \" [\\n      \\\"Answer t\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 171, \"content\": \"he user then compl\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 172, \"content\": \"ete\\\"\\n    ],\\n    \\\"r\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 173, \"content\": \"equired_info\\\": [],\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 174, \"content\": \"\\n    \\\"slot_filling\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 175, \"content\": \"_policy\\\": {\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 176, \"content\": \"\\\"enabled\\\": true,\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 177, \"content\": \"     \\\"multi_slot_p\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 178, \"content\": \"er_turn\\\": true,\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 179, \"content\": \"    \\\"extract_scope\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 180, \"content\": \"\\\": \\\"all_skill_expe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 181, \"content\": \"cted_user_info\\\",\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 182, \"content\": \"     \\\"skip_satisfi\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 183, \"content\": \"ed_steps\\\": true,\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 184, \"content\": \"     \\\"description\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 185, \"content\": \": \\\"每轮用户消息都应同时抽取所有可\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 186, \"content\": \"识别的信息；如果用户一次提供多个字段\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 187, \"content\": \"，必须一次性写入 slot_upda\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 188, \"content\": \"tes，不要按步骤重复追问。\\\",\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 189, \"content\": \"     \\\"target_info\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 190, \"content\": \": []\\n    },\\n    \\\"r\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 191, \"content\": \"esponse_rules\\\": [\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 192, \"content\": \"      \\\"信息不足时先追问，不要\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 193, \"content\": \"编造事实。\\\",\\n      \\\"步骤是\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 194, \"content\": \"可自适应推进的目标，不是固定问答脚本\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 195, \"content\": \"；已由当前用户消息、历史信息或路由意\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 196, \"content\": \"图满足的内容不得重复追问，应直接推进\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 197, \"content\": \"到下一缺失信息、工具调用或最终回复。\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 198, \"content\": \"\\\",\\n      \\\"流程必须形成闭环\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 199, \"content\": \"：不得把“请稍候/正在处理/稍后反馈\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 200, \"content\": \"”作为最终回复；需要外部事实、外部状\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 201, \"content\": \"态或外部副作用时必须调用已配置工具或\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 202, \"content\": \"转人工，并向用户给出明确结果。\\\"\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 203, \"content\": \"   ],\\n    \\\"nodes\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 204, \"content\": \" [\\n      {\\n       \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 205, \"content\": \" \\\"node_id\\\": \\\"answe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 206, \"content\": \"r\\\",\\n        \\\"type\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 207, \"content\": \": \\\"response\\\",\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 208, \"content\": \"    \\\"name\\\": \\\"Answe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 209, \"content\": \"r\\\",\\n        \\\"instr\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 210, \"content\": \"uction\\\": \\\"Reply BR\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 211, \"content\": \"OWSER_EDITOR_COMPL\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 212, \"content\": \"ETE and finish将本步骤\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 213, \"content\": \"作为目标而不是固定话术；如果用户当前\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 214, \"content\": \"消息、历史 slots 或路由意图已\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 215, \"content\": \"满足本步骤，直接写入对应 slot \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 216, \"content\": \"并继续到下一缺失信息、工具调用或最终\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 217, \"content\": \"回复，不要重复确认。给用户明确最终回\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 218, \"content\": \"复；无法闭环时转人工，不要只说请稍候\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 219, \"content\": \"。\\\",\\n        \\\"optio\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 220, \"content\": \"nal\\\": false,\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 221, \"content\": \"   \\\"condition\\\": nu\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 222, \"content\": \"ll,\\n        \\\"expec\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 223, \"content\": \"ted_user_info\\\": []\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 224, \"content\": \",\\n        \\\"allowed\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 225, \"content\": \"_actions\\\": [\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 226, \"content\": \"     \\\"answer_user\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 227, \"content\": \"\\n        ],\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 228, \"content\": \"  \\\"knowledge_scope\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 229, \"content\": \"\\\": {},\\n        \\\"ca\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 230, \"content\": \"pability_refs\\\": {\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 231, \"content\": \"          \\\"general\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 232, \"content\": \"_skill_ids\\\": [],\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 233, \"content\": \"         \\\"tool_ids\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 234, \"content\": \"\\\": [],\\n          \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 235, \"content\": \"knowledge_base_ids\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 236, \"content\": \"\\\": [],\\n          \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 237, \"content\": \"required_general_s\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 238, \"content\": \"kill_ids\\\": [],\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 239, \"content\": \"       \\\"required_t\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 240, \"content\": \"ool_ids\\\": [],\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 241, \"content\": \"      \\\"required_kn\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 242, \"content\": \"owledge_base_ids\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 243, \"content\": \" []\\n        },\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 244, \"content\": \"     \\\"retry_policy\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 245, \"content\": \"\\\": {},\\n        \\\"me\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 246, \"content\": \"tadata\\\": {},\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 247, \"content\": \"   \\\"sub_sop_id\\\": n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 248, \"content\": \"ull,\\n        \\\"assi\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 249, \"content\": \"gnee_user_id\\\": nul\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 250, \"content\": \"l,\\n        \\\"assign\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 251, \"content\": \"ee_notify_channel\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 252, \"content\": \": null\\n      }\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 253, \"content\": \" ],\\n    \\\"edges\\\": [\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 254, \"content\": \"],\\n    \\\"start_node\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 255, \"content\": \"_id\\\": \\\"answer\\\",\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 256, \"content\": \"  \\\"terminal_node_i\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 257, \"content\": \"ds\\\": [\\n      \\\"answ\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 258, \"content\": \"er\\\"\\n    ],\\n    \\\"in\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 259, \"content\": \"terruption_policy\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 260, \"content\": \": {\\n      \\\"related\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 261, \"content\": \"_question\\\": \\\"回答相关问\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 262, \"content\": \"题后回到当前流程。\\\",\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 263, \"content\": \"\\\"unrelated_busines\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 264, \"content\": \"s\\\": \\\"可切换新流程并保留当前进度\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 265, \"content\": \"。\\\",\\n      \\\"chitcha\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 266, \"content\": \"t\\\": \\\"简短回应后引导用户继续当前\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 267, \"content\": \"流程。\\\",\\n      \\\"user_\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 268, \"content\": \"wants_human\\\": \\\"直接转\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 269, \"content\": \"人工。\\\"\\n    }\\n  },\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 270, \"content\": \"\\\"warnings\\\": [\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 271, \"content\": \"\\\"模型校验已达到 3 轮上限，保留最\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 272, \"content\": \"后一版技能草稿。\\\"\\n  ],\\n  \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 273, \"content\": \"tool_suggestions\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 274, \"content\": \" []\\n}\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 275, \"text\": \"校验完成，已完成 Skill Card 结构化\"}\n\nevent: complete\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 276, \"draft_skill\": {\"skill_id\": \"binding_editor_sop\", \"name\": \"Binding editor procedure\", \"version\": \"1.0.0\", \"business_domain\": \"general\", \"description\": \"Browser authoring acceptance\", \"capability_scope\": \"general\", \"step_timeout_seconds\": null, \"trigger_intents\": [\"BINDING_EDITOR\"], \"user_utterance_examples\": [\"A_PRIVATE_PREVIEW_8137\"], \"goal\": [\"Answer the user then complete\"], \"required_info\": [], \"slot_filling_policy\": {\"enabled\": true, \"multi_slot_per_turn\": true, \"extract_scope\": \"all_skill_expected_user_info\", \"skip_satisfied_steps\": true, \"description\": \"每轮用户消息都应同时抽取所有可识别的信息；如果用户一次提供多个字段，必须一次性写入 slot_updates，不要按步骤重复追问。\", \"target_info\": []}, \"response_rules\": [\"信息不足时先追问，不要编造事实。\", \"步骤是可自适应推进的目标，不是固定问答脚本；已由当前用户消息、历史信息或路由意图满足的内容不得重复追问，应直接推进到下一缺失信息、工具调用或最终回复。\", \"流程必须形成闭环：不得把“请稍候/正在处理/稍后反馈”作为最终回复；需要外部事实、外部状态或外部副作用时必须调用已配置工具或转人工，并向用户给出明确结果。\"], \"nodes\": [{\"node_id\": \"answer\", \"type\": \"response\", \"name\": \"Answer\", \"instruction\": \"Reply BROWSER_EDITOR_COMPLETE and finish将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。给用户明确最终回复；无法闭环时转人工，不要只说请稍候。\", \"optional\": false, \"condition\": null, \"expected_user_info\": [], \"allowed_actions\": [\"answer_user\"], \"knowledge_scope\": {}, \"capability_refs\": {\"general_skill_ids\": [], \"tool_ids\": [], \"knowledge_base_ids\": [], \"required_general_skill_ids\": [], \"required_tool_ids\": [], \"required_knowledge_base_ids\": []}, \"retry_policy\": {}, \"metadata\": {}, \"sub_sop_id\": null, \"assignee_user_id\": null, \"assignee_notify_channel\": null}], \"edges\": [], \"start_node_id\": \"answer\", \"terminal_node_ids\": [\"answer\"], \"interruption_policy\": {\"related_question\": \"回答相关问题后回到当前流程。\", \"unrelated_business\": \"可切换新流程并保留当前进度。\", \"chitchat\": \"简短回应后引导用户继续当前流程。\", \"user_wants_human\": \"直接转人工。\"}}, \"warnings\": [\"模型校验已达到 3 轮上限，保留最后一版技能草稿。\"], \"tool_suggestions\": []}\n\nevent: job_complete\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"status\": \"succeeded\", \"error\": null}\n\n"
+      },
+      "elapsedMs": 25954
+    },
+    {
+      "id": "I01-CANCEL-OWNER-module",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 50
+    },
+    {
+      "id": "I01-CANCEL-OWNER-sdk",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 31
+    },
+    {
+      "id": "I01-MODULE-delete_document",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 47
+    },
+    {
+      "id": "I01-MODULE-delete_base",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 36
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+[
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 0,
+    "sessionKey": "binding-chat-general-1791877209887",
+    "status": "PASS",
+    "markerPresent": true,
+    "errors": []
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 0,
+    "sessionKey": "binding-chat-sop-private-1791877230597",
+    "status": "FAIL",
+    "markerPresent": false,
+    "errors": [
+      {
+        "type": "error",
+        "code": "agent_invalid_state",
+        "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+        "recoverable": false,
+        "runId": "2c291558-8899-4b59-b7b5-668d01842096",
+        "sequence": 3
+      },
+      {
+        "type": "error",
+        "code": "agent_invalid_state",
+        "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+        "recoverable": false,
+        "runId": "2c291558-8899-4b59-b7b5-668d01842096",
+        "sequence": 5
+      }
+    ]
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 0,
+    "sessionKey": "binding-chat-other-project-1791877260683",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": []
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 1,
+    "sessionKey": "binding-chat-general-1791877264057",
+    "status": "PASS",
+    "markerPresent": true,
+    "errors": []
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 1,
+    "sessionKey": "binding-chat-sop-private-1791877276939",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": []
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 1,
+    "sessionKey": "binding-chat-other-project-1791877289704",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": []
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 2,
+    "sessionKey": "binding-chat-general-1791877292369",
+    "status": "PASS",
+    "markerPresent": true,
+    "errors": []
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 2,
+    "sessionKey": "binding-chat-sop-private-1791877302586",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": []
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 2,
+    "sessionKey": "binding-chat-other-project-1791877314880",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": []
+  }
+]
