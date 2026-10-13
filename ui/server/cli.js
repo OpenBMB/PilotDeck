@@ -188,7 +188,7 @@ function ensureFrontendBuild() {
 }
 
 async function startServer() {
-  const host = process.env.HOST || '0.0.0.0';
+  const host = process.env.HOST || '127.0.0.1';
   const port = process.env.SERVER_PORT || '3001';
   await assertPortAvailable(port, host);
   ensureFrontendBuild();

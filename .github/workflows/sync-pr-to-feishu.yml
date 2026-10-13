@@ -1,0 +1,227 @@
+name: Sync PR to Feishu Bitable
+
+on:
+  pull_request:
+    types: [opened, closed, reopened, edited, synchronize, converted_to_draft, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  sync-pr:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    concurrency:
+      group: feishu-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    env:
+      LARK_APP_ID: ${{ secrets.LARK_APP_ID }}
+      LARK_APP_SECRET: ${{ secrets.LARK_APP_SECRET }}
+      BITABLE_APP_TOKEN: ${{ secrets.BITABLE_APP_TOKEN }}
+      BITABLE_TABLE_ID: ${{ secrets.BITABLE_TABLE_ID }}
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "$LARK_APP_SECRET" ]; then
+            echo "::error::LARK_APP_SECRET is not set, skipping."
+            exit 1
+          fi
+
+      - name: Install lark-cli
+        run: npm install -g @larksuite/cli
+
+      - name: Configure lark-cli
+        run: |
+          echo "$LARK_APP_SECRET" | lark-cli config init --app-id "$LARK_APP_ID" --brand feishu --app-secret-stdin
+          lark-cli auth status
+
+      - name: Determine PR Status
+        id: status
+        run: |
+          if [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            echo "pr_status=Merged" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.action }}" = "closed" ]; then
+            echo "pr_status=Closed" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.pull_request.draft }}" = "true" ]; then
+            echo "pr_status=Draft" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr_status=Open" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Fields JSON
+        id: fields
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_REPO: ${{ github.event.repository.full_name }}
+          PR_STATUS: ${{ steps.status.outputs.pr_status }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
+          PR_UPDATED_AT: ${{ github.event.pull_request.updated_at }}
+          PR_CLOSED_AT: ${{ github.event.pull_request.closed_at }}
+          PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          PR_MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+          PR_COMMITS: ${{ github.event.pull_request.commits }}
+          PR_ADDITIONS: ${{ github.event.pull_request.additions }}
+          PR_DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ', ') }}
+          PR_MILESTONE: ${{ github.event.pull_request.milestone.title }}
+          PR_ASSIGNEES: ${{ join(github.event.pull_request.assignees.*.login, ', ') }}
+          PR_REVIEWERS: ${{ join(github.event.pull_request.requested_reviewers.*.login, ', ') }}
+          PR_REVIEW_TEAMS: ${{ join(github.event.pull_request.requested_teams.*.slug, ', ') }}
+          REVIEW_AUTHOR: ${{ github.event.review.user.login }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          ALL_REVIEWERS=""
+          [ -n "$PR_REVIEWERS" ] && ALL_REVIEWERS="$PR_REVIEWERS"
+          [ -n "$PR_REVIEW_TEAMS" ] && ALL_REVIEWERS="${ALL_REVIEWERS:+$ALL_REVIEWERS, }$PR_REVIEW_TEAMS"
+          [ -n "$REVIEW_AUTHOR" ] && ALL_REVIEWERS="${ALL_REVIEWERS:+$ALL_REVIEWERS, }$REVIEW_AUTHOR"
+          REVIEWERS=$(echo "$ALL_REVIEWERS" | tr ',' '\n' | sed 's/^ *//' | grep -v '^$' | sort -u | paste -sd ', ') || true
+
+          fmt_date() {
+            local raw="$1"
+            [ -z "$raw" ] || [ "$raw" = "null" ] && echo "" && return
+            date -d "$raw" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$raw"
+          }
+          CREATED_AT=$(fmt_date "$PR_CREATED_AT")
+          UPDATED_AT=$(fmt_date "$PR_UPDATED_AT")
+          CLOSED_AT=$(fmt_date "$PR_CLOSED_AT")
+          MERGED_AT=$(fmt_date "$PR_MERGED_AT")
+
+          BODY_TRUNCATED=$(printf '%s' "$PR_BODY" | head -c 5000)
+
+          STATS_ARGS=""
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            STATS_ARGS=$(jq -n \
+              --argjson commits "${PR_COMMITS:-0}" \
+              --argjson additions "${PR_ADDITIONS:-0}" \
+              --argjson deletions "${PR_DELETIONS:-0}" \
+              --argjson changed_files "${PR_CHANGED_FILES:-0}" \
+              '{"提交数": $commits, "新增行数": $additions, "删除行数": $deletions, "变更文件数": $changed_files}')
+          fi
+
+          BASE_FIELDS=$(jq -n \
+            --arg title "$PR_TITLE" \
+            --arg author "$PR_AUTHOR" \
+            --arg repo "$PR_REPO" \
+            --arg status "$PR_STATUS" \
+            --arg url "$PR_URL" \
+            --arg branch "$PR_BRANCH" \
+            --arg base_branch "$PR_BASE_BRANCH" \
+            --arg head_sha "$PR_HEAD_SHA" \
+            --arg body "$BODY_TRUNCATED" \
+            --arg created_at "$CREATED_AT" \
+            --arg updated_at "$UPDATED_AT" \
+            --arg closed_at "$CLOSED_AT" \
+            --arg merged_at "$MERGED_AT" \
+            --arg merged_by "${PR_MERGED_BY:-}" \
+            --arg labels "$PR_LABELS" \
+            --arg milestone "${PR_MILESTONE:-}" \
+            --arg assignees "$PR_ASSIGNEES" \
+            --arg reviewers "$REVIEWERS" \
+            --argjson pr_number "$PR_NUMBER" \
+            --arg pr_index "[$PR_NUMBER]" \
+            '{
+              "PR标题": $title,
+              "PR编号": $pr_number,
+              "PR索引": $pr_index,
+              "作者": $author,
+              "仓库": $repo,
+              "状态": $status,
+              "链接": $url,
+              "分支名称": $branch,
+              "目标分支": $base_branch,
+              "Head SHA": $head_sha,
+              "PR描述": $body,
+              "创建时间": $created_at,
+              "更新时间": $updated_at,
+              "标签": $labels,
+              "里程碑": $milestone,
+              "指派人": $assignees,
+              "审查人": $reviewers,
+              "合并人": $merged_by
+            }
+            | if $closed_at != "" then . + {"关闭时间": $closed_at} else . end
+            | if $merged_at != "" then . + {"合并时间": $merged_at} else . end')
+
+          if [ -n "$STATS_ARGS" ]; then
+            FIELDS=$(echo "$BASE_FIELDS" "$STATS_ARGS" | jq -s '.[0] * .[1]')
+          else
+            FIELDS="$BASE_FIELDS"
+          fi
+
+          echo "Fields: $FIELDS"
+          echo "$FIELDS" > /tmp/fields.json
+
+      - name: Find Existing Record
+        id: find
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          RECORD_ID=""
+
+          RESULT=$(lark-cli base +record-search \
+            --base-token "$BITABLE_APP_TOKEN" \
+            --table-id "$BITABLE_TABLE_ID" \
+            --as bot \
+            --format json \
+            --json "{\"keyword\":\"[$PR_NUMBER]\",\"search_fields\":[\"PR索引\"],\"select_fields\":[\"PR索引\"],\"limit\":200}" 2>&1) || true
+
+          echo "Search raw result: $RESULT"
+
+          if echo "$RESULT" | jq -e '.ok == true' > /dev/null 2>&1; then
+            RECORD_ID=$(echo "$RESULT" | jq -r --arg idx "[$PR_NUMBER]" '
+              .data as $d |
+              if ($d.record_id_list | length) == 0 then empty
+              elif ($d.fields | length) == 0 then $d.record_id_list[0]
+              else
+                ($d.fields | to_entries | map(select(.value == "PR索引")) | .[0].key // null) as $col |
+                if $col == null then $d.record_id_list[0]
+                else
+                  [ $d.data | to_entries[] | select(
+                    (.value[$col] | tostring) == $idx
+                  ) | .key ] | .[0] as $row |
+                  if $row == null then empty
+                  else $d.record_id_list[$row | tonumber]
+                  end
+                end
+              end // empty' 2>/dev/null) || true
+          fi
+
+          echo "Found record_id: ${RECORD_ID:-<none>}"
+          echo "record_id=$RECORD_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Sync to Feishu Bitable
+        env:
+          RECORD_ID: ${{ steps.find.outputs.record_id }}
+        run: |
+          FIELDS=$(cat /tmp/fields.json)
+          echo "Writing to Bitable: $FIELDS"
+          ARGS=(
+            --base-token "$BITABLE_APP_TOKEN"
+            --table-id "$BITABLE_TABLE_ID"
+            --as bot
+            --json "$FIELDS"
+          )
+          if [ -n "$RECORD_ID" ]; then
+            echo "Updating existing record: $RECORD_ID"
+            ARGS+=(--record-id "$RECORD_ID")
+          else
+            echo "Creating new record"
+          fi
+
+          for attempt in 1 2 3; do
+            if lark-cli base +record-upsert "${ARGS[@]}"; then
+              echo "Upsert succeeded"
+              exit 0
+            fi
+            echo "::warning::Upsert attempt $attempt failed, retrying..."
+            sleep 2
+          done
+          echo "::error::Upsert failed after 3 attempts"
+          exit 1
