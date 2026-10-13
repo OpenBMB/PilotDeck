@@ -1,0 +1,105 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "model",
+    "provider": "test",
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10400,
+    "displayUsed": 10400,
+    "localEstimateTokens": 10400,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 95232,
+    "effectiveTotal": 95232,
+    "effectiveContextTokens": 95232,
+    "maxOutputTokens": 32768,
+    "reservedOutputTokens": 32768,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.10920698924731183,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10400,
+      "system": 3031,
+      "tools": 7358,
+      "messages": 11,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "test",
+    "model": "model",
+    "source": "default",
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Binding acceptance ordinary chat",
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "blockId": "2580ee86-f656-4ceb-b8ff-ee835cfca18f:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+      "id": "2580ee86-f656-4ceb-b8ff-ee835cfca18f:text:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "model": "model",
+    "sequence": 5
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "2580ee86-f656-4ceb-b8ff-ee835cfca18f:text:0",
+    "text": "Binding acceptance ordinary chat",
+    "timeline": {
+      "version": 1,
+      "turnId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+      "id": "2580ee86-f656-4ceb-b8ff-ee835cfca18f:text:0",
+      "order": 0,
+      "revision": 4
+    },
+    "streamState": "closed",
+    "model": "model",
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "sequence": 6
+  },
+  {
+    "type": "turn_completed",
+    "usage": {},
+    "finishReason": "completed",
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "sequence": 7
+  },
+  {
+    "type": "turn_completed",
+    "usage": {},
+    "finishReason": "completed",
+    "runId": "5eb17c76-c5b7-44c8-a69d-3a33ceca5fd0",
+    "sequence": 8
+  }
+]

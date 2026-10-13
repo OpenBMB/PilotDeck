@@ -1,0 +1,161 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "model",
+    "provider": "test",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 3391,
+    "displayUsed": 3391,
+    "localEstimateTokens": 3391,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 95232,
+    "effectiveTotal": 95232,
+    "effectiveContextTokens": 95232,
+    "maxOutputTokens": 32768,
+    "reservedOutputTokens": 32768,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.03560777889784946,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 3391,
+      "system": 3228,
+      "tools": 153,
+      "messages": 10,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "test",
+    "model": "model",
+    "source": "default",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 4
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+      "id": "tool:binding-submit",
+      "order": 0,
+      "revision": 2
+    },
+    "type": "tool_call_started",
+    "toolCallId": "binding-submit",
+    "name": "submit_step_result",
+    "argsPreview": "{\"status\":\"completed\",\"replyFragment\":\"BINDING_A_COMPLETED\"}",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 5
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "binding-submit",
+    "ok": true,
+    "resultPreview": "{\"submittedStepId\":\"answer\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"answer\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "resultLineCount": 1,
+    "resultBytes": 142,
+    "toolName": "submit_step_result",
+    "data": {
+      "status": "completed",
+      "replyFragment": "BINDING_A_COMPLETED",
+      "slotUpdates": {},
+      "taskSummary": null,
+      "structuredResult": null,
+      "nextStepId": null,
+      "events": []
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+      "id": "result:binding-submit",
+      "previousId": "tool:binding-submit",
+      "order": 1,
+      "revision": 3
+    },
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 6
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "binding-submit",
+    "fullText": "{\"submittedStepId\":\"answer\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"answer\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 7
+  },
+  {
+    "type": "agent_status",
+    "event": "structured_output_completed",
+    "detail": {
+      "message": "Structured output was returned, so this turn has completed.",
+      "messageI18n": {
+        "key": "[REDACTED]"
+      },
+      "code": "structured_output_completed",
+      "visible": true,
+      "scope": "turn",
+      "source": "agent"
+    },
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 8
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "BINDING_A_COMPLETED",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "model": "model",
+    "sequence": 9
+  },
+  {
+    "type": "structured_output",
+    "payload": {
+      "sop": {
+        "status": "completed",
+        "replyFragment": "BINDING_A_COMPLETED",
+        "slotUpdates": {},
+        "taskSummary": null,
+        "structuredResult": null,
+        "nextStepId": null,
+        "events": []
+      }
+    },
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 10
+  },
+  {
+    "type": "turn_completed",
+    "usage": {},
+    "finishReason": "completed",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 11
+  },
+  {
+    "type": "turn_completed",
+    "usage": {},
+    "finishReason": "completed",
+    "runId": "f24e6b98-894c-4f5c-b147-acfdc72556db",
+    "sequence": 12
+  }
+]

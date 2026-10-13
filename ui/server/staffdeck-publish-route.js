@@ -20,6 +20,7 @@ function resolvedBinding(binding, management) {
   const home = process.env.PILOT_HOME || resolve(homedir(), '.pilotdeck');
   return {
     enabled: binding?.enabled,
+    allowEmpty: process.env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true',
     ...(typeof binding?.definitionsPath === 'string' && binding.definitionsPath.trim()
       ? { definitionsPath: resolve(home, binding.definitionsPath) } : {}),
     defaultSopId: binding?.defaultSopId,
@@ -49,10 +50,30 @@ export function createStaffDeckPublishRoute({ getGateway, bundleStore = createAt
       if (typeof gateway?.reloadExtensions !== 'function') {
         throw Object.assign(new Error('Runtime extension refresh is unavailable'), { code: 'SOP_RUNTIME_REFRESH_UNAVAILABLE' });
       }
+      if (process.env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true') {
+        await gateway.reloadConfig();
+      }
       return gateway.reloadExtensions({ changedPaths: [definitionsPath] });
     },
   });
   return {
+    async archive({ binding, management, owner, sopId, archive }) {
+      const runtimeBinding = resolvedBinding(binding, management);
+      const receiptPath = runtimeBinding.definitionsPath ? runtimeBinding.definitionsPath + '.publish-receipts.json' : undefined;
+      return serialize(receiptPath || 'unconfigured', async () => {
+        const result = await coordinator.archive({ binding: runtimeBinding, owner, sopId, archive });
+        if (!result?.runtime?.ownerArchived || !receiptPath) return result;
+        try {
+          const receipts = await readReceipts(receiptStore, receiptPath);
+          delete receipts.receipts[receiptKey(owner, sopId)];
+          await receiptStore.write(receiptPath, receipts);
+          return { ...result, runtime: { ...result.runtime, receiptPersisted: true } };
+        } catch {
+          return { ...result, runtime: { ...result.runtime, receiptPersisted: false,
+            receiptFailure: { code: 'SOP_RUNTIME_RECEIPT_FAILED' } } };
+        }
+      });
+    },
     async publish({ binding, management, owner, sopId, publish }) {
       const runtimeBinding = resolvedBinding(binding, management);
       const receiptPath = runtimeBinding.definitionsPath ? runtimeBinding.definitionsPath + '.publish-receipts.json' : undefined;

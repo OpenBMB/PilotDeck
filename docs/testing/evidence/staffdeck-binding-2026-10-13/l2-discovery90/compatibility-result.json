@@ -1,0 +1,18 @@
+[
+  {
+    "id": "B02",
+    "status": "PASS",
+    "existingReadPending": true,
+    "explicitReused": true,
+    "countsBefore": 5,
+    "countsAfter": 7
+  },
+  {
+    "id": "C01-TOGGLE",
+    "status": "PASS",
+    "fixedKnowledge": true,
+    "fixedSop": true,
+    "fixedCopy": true,
+    "bindingRestored": true
+  }
+]

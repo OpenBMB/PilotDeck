@@ -1,0 +1,1726 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10405,
+    "displayUsed": 10405,
+    "localEstimateTokens": 10405,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09322140194954129,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10405,
+      "system": 3039,
+      "tools": 7358,
+      "messages": 8,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Thinking",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Process",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 8
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ":\n\n1",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 16
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 20
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "  **Analyze",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 21
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the Request:**\n",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 32
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "   ",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 48
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " *   User said",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 51
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ": \"Hello,",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 65
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " reply briefly\"\n",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 11,
+      "offset": 74
+    },
+    "sequence": 14
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "    *   Goal",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 12,
+      "offset": 90
+    },
+    "sequence": 15
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ": Acknowledge greeting",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 13,
+      "offset": 102
+    },
+    "sequence": 16
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " and confirm readiness to",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 14,
+      "offset": 124
+    },
+    "sequence": 17
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " help, keeping the",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 15,
+      "offset": 149
+    },
+    "sequence": 18
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " response short.\n\n",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 16,
+      "offset": 167
+    },
+    "sequence": 19
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "2.  **",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 17,
+      "offset": 185
+    },
+    "sequence": 20
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Determine the Response",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 18,
+      "offset": 191
+    },
+    "sequence": 21
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ":**\n   ",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 19,
+      "offset": 213
+    },
+    "sequence": 22
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " *   Greeting",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 20,
+      "offset": 220
+    },
+    "sequence": 23
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " back: \"Hello",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 21,
+      "offset": 233
+    },
+    "sequence": 24
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "!\"",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 22,
+      "offset": 246
+    },
+    "sequence": 25
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n    *  ",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 23,
+      "offset": 248
+    },
+    "sequence": 26
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Offer assistance: \"",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 24,
+      "offset": 256
+    },
+    "sequence": 27
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "How can",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 25,
+      "offset": 276
+    },
+    "sequence": 28
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I help you today",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 26,
+      "offset": 283
+    },
+    "sequence": 29
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "?\" or \"What",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 27,
+      "offset": 300
+    },
+    "sequence": 30
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " can",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 28,
+      "offset": 311
+    },
+    "sequence": 31
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I do for you",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 29,
+      "offset": 315
+    },
+    "sequence": 32
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "?\"\n\n3.",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 30,
+      "offset": 328
+    },
+    "sequence": 33
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " ",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 31,
+      "offset": 334
+    },
+    "sequence": 34
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " **Drafting the",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 32,
+      "offset": 335
+    },
+    "sequence": 35
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Response:**\n   ",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 33,
+      "offset": 350
+    },
+    "sequence": 36
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " *   Option A",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 34,
+      "offset": 366
+    },
+    "sequence": 37
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ": Hello! How",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 35,
+      "offset": 379
+    },
+    "sequence": 38
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " can I help?",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 36,
+      "offset": 391
+    },
+    "sequence": 39
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 37,
+      "offset": 403
+    },
+    "sequence": 40
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "    *   Option",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 38,
+      "offset": 404
+    },
+    "sequence": 41
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " B: Hi",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 39,
+      "offset": 418
+    },
+    "sequence": 42
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " there! What's",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 40,
+      "offset": 424
+    },
+    "sequence": 43
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " on your mind?",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 41,
+      "offset": 438
+    },
+    "sequence": 44
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n\n4",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 42,
+      "offset": 452
+    },
+    "sequence": 45
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".  **Select",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 43,
+      "offset": 455
+    },
+    "sequence": 46
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "ing the Best Fit",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 44,
+      "offset": 466
+    },
+    "sequence": 47
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ":** Option A is",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 45,
+      "offset": 482
+    },
+    "sequence": 48
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " perfectly brief and polite",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 46,
+      "offset": 497
+    },
+    "sequence": 49
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".\n\n5.",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 47,
+      "offset": 524
+    },
+    "sequence": 50
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "  **Final Polish",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 48,
+      "offset": 529
+    },
+    "sequence": 51
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ":** Just output the",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 49,
+      "offset": 545
+    },
+    "sequence": 52
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " greeting. No tools",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 50,
+      "offset": 564
+    },
+    "sequence": 53
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " needed. Keep it",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 51,
+      "offset": 583
+    },
+    "sequence": 54
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " under",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 52,
+      "offset": 599
+    },
+    "sequence": 55
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " 1-2",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 53,
+      "offset": 605
+    },
+    "sequence": 56
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " sentences.\n\n6",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 54,
+      "offset": 609
+    },
+    "sequence": 57
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".  *Self",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 55,
+      "offset": 623
+    },
+    "sequence": 58
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "-Correction during",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 56,
+      "offset": 631
+    },
+    "sequence": 59
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " drafting:* Make sure",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 57,
+      "offset": 649
+    },
+    "sequence": 60
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " not",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 58,
+      "offset": 670
+    },
+    "sequence": 61
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " to sound like a",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 59,
+      "offset": 674
+    },
+    "sequence": 62
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " robot. Be friendly",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 60,
+      "offset": 690
+    },
+    "sequence": 63
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " but",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 61,
+      "offset": 709
+    },
+    "sequence": 64
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " concise. \"Hello",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 62,
+      "offset": 713
+    },
+    "sequence": 65
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "! How",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 63,
+      "offset": 729
+    },
+    "sequence": 66
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " can I assist you",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 64,
+      "offset": 734
+    },
+    "sequence": 67
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " today",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 65,
+      "offset": 751
+    },
+    "sequence": 68
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "?\" works well.",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 66,
+      "offset": 757
+    },
+    "sequence": 69
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 67,
+      "offset": 771
+    },
+    "sequence": 70
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "    *   Actually",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 68,
+      "offset": 772
+    },
+    "sequence": 71
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ", just \"Hello",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 69,
+      "offset": 788
+    },
+    "sequence": 72
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "! How",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 70,
+      "offset": 801
+    },
+    "sequence": 73
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " can I help you",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 71,
+      "offset": 806
+    },
+    "sequence": 74
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " today?\" is perfect",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 72,
+      "offset": 821
+    },
+    "sequence": 75
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". Keep it under",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 73,
+      "offset": 840
+    },
+    "sequence": 76
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " 10 words",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 74,
+      "offset": 855
+    },
+    "sequence": 77
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". \"Hi!",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 75,
+      "offset": 864
+    },
+    "sequence": 78
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " How can I",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 76,
+      "offset": 870
+    },
+    "sequence": 79
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " help?\" is even",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 77,
+      "offset": 880
+    },
+    "sequence": 80
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " better",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 78,
+      "offset": 895
+    },
+    "sequence": 81
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". Let's go",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 79,
+      "offset": 902
+    },
+    "sequence": 82
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " with something simple.",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 80,
+      "offset": 912
+    },
+    "sequence": 83
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " \"Hello!",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 81,
+      "offset": 935
+    },
+    "sequence": 84
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " How can I help",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 82,
+      "offset": 943
+    },
+    "sequence": 85
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " you?\" (6",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 83,
+      "offset": 958
+    },
+    "sequence": 86
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " words). Done.",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 84,
+      "offset": 967
+    },
+    "sequence": 87
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 85,
+      "offset": 981
+    },
+    "sequence": 88
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "    *   Wait",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 86,
+      "offset": 982
+    },
+    "sequence": 89
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ", let",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 87,
+      "offset": 994
+    },
+    "sequence": 90
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "'s keep it natural",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 88,
+      "offset": 999
+    },
+    "sequence": 91
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ": \"Hello!",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 89,
+      "offset": 1017
+    },
+    "sequence": 92
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " How",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 90,
+      "offset": 1026
+    },
+    "sequence": 93
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " can I help you",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 91,
+      "offset": 1030
+    },
+    "sequence": 94
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " today",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 92,
+      "offset": 1045
+    },
+    "sequence": 95
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "?\" It's standard",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 93,
+      "offset": 1051
+    },
+    "sequence": 96
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".\n\n7",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 94,
+      "offset": 1067
+    },
+    "sequence": 97
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".  **Output",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 95,
+      "offset": 1071
+    },
+    "sequence": 98
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Generation:** Send \"",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 96,
+      "offset": 1082
+    },
+    "sequence": 99
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Hello! How can",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 97,
+      "offset": 1103
+    },
+    "sequence": 100
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I help you today",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 98,
+      "offset": 1117
+    },
+    "sequence": 101
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "?\" as the final",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 99,
+      "offset": 1134
+    },
+    "sequence": 102
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " text. No complex",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 100,
+      "offset": 1149
+    },
+    "sequence": 103
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " reasoning required. No",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 101,
+      "offset": 1166
+    },
+    "sequence": 104
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " tool calls needed.",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 102,
+      "offset": 1189
+    },
+    "sequence": 105
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Simple",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 103,
+      "offset": 1208
+    },
+    "sequence": 106
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " chat interaction. End",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 104,
+      "offset": 1215
+    },
+    "sequence": 107
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " of thought.\n",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 105,
+      "offset": 1237
+    },
+    "sequence": 108
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Hello! How",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:text:0",
+      "previousId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 1,
+      "revision": 107,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 109
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " can I help you",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:text:0",
+      "previousId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 1,
+      "revision": 108,
+      "offset": 10
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 110
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " today?",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:text:0",
+      "previousId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 1,
+      "revision": 109,
+      "offset": 25
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 111
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+    "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   User said: \"Hello, reply briefly\"\n    *   Goal: Acknowledge greeting and confirm readiness to help, keeping the response short.\n\n2.  **Determine the Response:**\n    *   Greeting back: \"Hello!\"\n    *   Offer assistance: \"How can I help you today?\" or \"What can I do for you?\"\n\n3.  **Drafting the Response:**\n    *   Option A: Hello! How can I help?\n    *   Option B: Hi there! What's on your mind?\n\n4.  **Selecting the Best Fit:** Option A is perfectly brief and polite.\n\n5.  **Final Polish:** Just output the greeting. No tools needed. Keep it under 1-2 sentences.\n\n6.  *Self-Correction during drafting:* Make sure not to sound like a robot. Be friendly but concise. \"Hello! How can I assist you today?\" works well.\n    *   Actually, just \"Hello! How can I help you today?\" is perfect. Keep it under 10 words. \"Hi! How can I help?\" is even better. Let's go with something simple. \"Hello! How can I help you?\" (6 words). Done.\n    *   Wait, let's keep it natural: \"Hello! How can I help you today?\" It's standard.\n\n7.  **Output Generation:** Send \"Hello! How can I help you today?\" as the final text. No complex reasoning required. No tool calls needed. Simple chat interaction. End of thought.\n",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 0,
+      "revision": 111
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 112
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:text:0",
+    "text": "Hello! How can I help you today?",
+    "timeline": {
+      "version": 1,
+      "turnId": "704fedec-21a7-41de-9314-dd848fd349cf",
+      "id": "8c6aabde-d54f-41d5-9a19-0b80f897773a:text:0",
+      "previousId": "8c6aabde-d54f-41d5-9a19-0b80f897773a:thinking:0",
+      "order": 1,
+      "revision": 112
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 113
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12300,
+      "outputTokens": 359,
+      "totalTokens": 12659
+    },
+    "finishReason": "completed",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 114
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12300,
+      "outputTokens": 359,
+      "totalTokens": 12659
+    },
+    "finishReason": "completed",
+    "runId": "704fedec-21a7-41de-9314-dd848fd349cf",
+    "sequence": 115
+  }
+]

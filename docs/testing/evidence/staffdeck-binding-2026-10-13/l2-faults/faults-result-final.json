@@ -1,0 +1,32 @@
+[
+  {
+    "name": "B05 revoke",
+    "status": "FAIL",
+    "elapsedMs": 1427,
+    "error": "The expression evaluated to a falsy value:\n\n  assert.ok(failure.http >= 400)\n"
+  },
+  {
+    "name": "B05 downgrade",
+    "status": "FAIL",
+    "elapsedMs": 1165,
+    "error": "The expression evaluated to a falsy value:\n\n  assert.ok(failure.http >= 400)\n"
+  },
+  {
+    "name": "B05 archive",
+    "status": "FAIL",
+    "elapsedMs": 886,
+    "error": "The expression evaluated to a falsy value:\n\n  assert.ok(failure.http >= 400)\n"
+  },
+  {
+    "name": "B05 missing",
+    "status": "FAIL",
+    "elapsedMs": 920,
+    "error": "The expression evaluated to a falsy value:\n\n  assert.ok(failure.http >= 400)\n"
+  },
+  {
+    "name": "B05 Gateway unavailable preserves original target",
+    "status": "FAIL",
+    "elapsedMs": 3751,
+    "error": "Expected values to be strictly equal:\n\n'bound' !== 'failed'\n"
+  }
+]

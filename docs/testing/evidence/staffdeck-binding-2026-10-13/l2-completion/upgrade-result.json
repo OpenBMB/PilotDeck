@@ -1,0 +1,19 @@
+{
+  "id": "UPGRADE-FULL-APP",
+  "status": "PASS",
+  "oldRows": {
+    "users": 4,
+    "agent_profiles": 8,
+    "skills": 4,
+    "knowledge_bases": 5
+  },
+  "newRows": {
+    "users": 4,
+    "agent_profiles": 8,
+    "skills": 4,
+    "knowledge_bases": 5
+  },
+  "mappings": 0,
+  "fullApplicationHealthy": true,
+  "elapsedMs": 3651
+}

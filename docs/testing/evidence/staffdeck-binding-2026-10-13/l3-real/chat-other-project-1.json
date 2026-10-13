@@ -1,0 +1,810 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10317,
+    "displayUsed": 10317,
+    "localEstimateTokens": 10317,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09243298451834862,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10317,
+      "system": 3038,
+      "tools": 7254,
+      "messages": 25,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " user wants",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " me to",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 14
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " search",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 20
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " for \"amber project",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 27
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " verification code\"",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 46
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " using the knowledge_query",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 65
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " tool",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 91
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 96
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+    "text": "The user wants me to search for \"amber project verification code\" using the knowledge_query tool.",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 0,
+      "revision": 14
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 14
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "tool:call_e4d1e2d88e2845f490f95b38",
+      "previousId": "4e5c4c9a-5899-4be9-86c9-d9b73a85c8d1:thinking:0",
+      "order": 1,
+      "revision": 15
+    },
+    "type": "tool_call_started",
+    "toolCallId": "call_e4d1e2d88e2845f490f95b38",
+    "name": "knowledge_query",
+    "argsPreview": "{\"query\":\"amber project verification code\"}",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 15
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "call_e4d1e2d88e2845f490f95b38",
+    "ok": true,
+    "resultPreview": "{\"selected_buckets\":[],\"chunks\":[],\"trace\":[{\"phase\":\"no_visible_knowledge\",\"message\":\"当前范围没有可见知识\"}],\"route_trace\":[{\"phase\":\"no_visible_knowledge\",\"message\":\"当前范围没有可见知识\"}],\"selected_documents\":[],\"selected_concepts\":[],\"expanded_sections\":[],\"okf_citations\":[],\"evidence_pack\":[]}",
+    "resultLineCount": 1,
+    "resultBytes": 321,
+    "toolName": "knowledge_query",
+    "data": {
+      "selected_buckets": [],
+      "chunks": [],
+      "trace": [
+        {
+          "phase": "no_visible_knowledge",
+          "message": "当前范围没有可见知识"
+        }
+      ],
+      "route_trace": [
+        {
+          "phase": "no_visible_knowledge",
+          "message": "当前范围没有可见知识"
+        }
+      ],
+      "selected_documents": [],
+      "selected_concepts": [],
+      "expanded_sections": [],
+      "okf_citations": [],
+      "evidence_pack": []
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "result:call_e4d1e2d88e2845f490f95b38",
+      "previousId": "tool:call_e4d1e2d88e2845f490f95b38",
+      "order": 2,
+      "revision": 16
+    },
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 16
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "call_e4d1e2d88e2845f490f95b38",
+    "fullText": "{\"selected_buckets\":[],\"chunks\":[],\"trace\":[{\"phase\":\"no_visible_knowledge\",\"message\":\"当前范围没有可见知识\"}],\"route_trace\":[{\"phase\":\"no_visible_knowledge\",\"message\":\"当前范围没有可见知识\"}],\"selected_documents\":[],\"selected_concepts\":[],\"expanded_sections\":[],\"okf_citations\":[],\"evidence_pack\":[]}",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 17
+  },
+  {
+    "type": "agent_status",
+    "event": "turn_continued",
+    "detail": {
+      "reason": "next_turn"
+    },
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 18
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 19
+  },
+  {
+    "type": "context_budget",
+    "used": 12285,
+    "displayUsed": 12285,
+    "localEstimateTokens": 10428,
+    "estimateSource": "usage",
+    "usageTokens": 12285,
+    "calibrationActualInputTokens": 12174,
+    "calibrationEstimatedInputTokens": 10317,
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.11006486525229357,
+    "state": "ok",
+    "source": "calibrated",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10428,
+      "system": 3038,
+      "tools": 7254,
+      "messages": 136,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 20
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 19,
+      "offset": 0
+    },
+    "sequence": 21
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " knowledge query returned",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 20,
+      "offset": 3
+    },
+    "sequence": 22
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " no results",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 21,
+      "offset": 28
+    },
+    "sequence": 23
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " —",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 22,
+      "offset": 39
+    },
+    "sequence": 24
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " there's no visible",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 23,
+      "offset": 41
+    },
+    "sequence": 25
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " knowledge in",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 24,
+      "offset": 60
+    },
+    "sequence": 26
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the current scope about",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 25,
+      "offset": 73
+    },
+    "sequence": 27
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " an \"amber project",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 26,
+      "offset": 97
+    },
+    "sequence": 28
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " verification",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 27,
+      "offset": 115
+    },
+    "sequence": 29
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " code\". I should",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 28,
+      "offset": 128
+    },
+    "sequence": 30
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " report",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 29,
+      "offset": 144
+    },
+    "sequence": 31
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " this honestly without guessing",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 30,
+      "offset": 151
+    },
+    "sequence": 32
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 31,
+      "offset": 182
+    },
+    "sequence": 33
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "No evidence found",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 33,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 34
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": ". The knowledge module",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 34,
+      "offset": 17
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 35
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " returned no visible knowledge",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 35,
+      "offset": 39
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 36
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " for",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 36,
+      "offset": 69
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 37
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " \"amber project verification",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 37,
+      "offset": 73
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 38
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " code",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 38,
+      "offset": 101
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 39
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "\" in the current",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 39,
+      "offset": 106
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 40
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " scope.",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 40,
+      "offset": 122
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 41
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " There are no matching",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 41,
+      "offset": 129
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 42
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " documents",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 42,
+      "offset": 151
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 43
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": ", concepts, or",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 43,
+      "offset": 161
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 44
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " citations available",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 44,
+      "offset": 175
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 45
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " to reference.",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 45,
+      "offset": 195
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 46
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+    "text": "The knowledge query returned no results — there's no visible knowledge in the current scope about an \"amber project verification code\". I should report this honestly without guessing.",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "previousId": "result:call_e4d1e2d88e2845f490f95b38",
+      "order": 3,
+      "revision": 47
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 47
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+    "text": "No evidence found. The knowledge module returned no visible knowledge for \"amber project verification code\" in the current scope. There are no matching documents, concepts, or citations available to reference.",
+    "timeline": {
+      "version": 1,
+      "turnId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+      "id": "06a36079-09d7-4035-a446-82a9a812c376:text:0",
+      "previousId": "06a36079-09d7-4035-a446-82a9a812c376:thinking:0",
+      "order": 4,
+      "revision": 48
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 48
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 24483,
+      "outputTokens": 126,
+      "totalTokens": 24609
+    },
+    "finishReason": "completed",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 49
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 24483,
+      "outputTokens": 126,
+      "totalTokens": 24609
+    },
+    "finishReason": "completed",
+    "runId": "dbb509a2-cb41-42f6-a7a8-13b9a8dc3269",
+    "sequence": 50
+  }
+]

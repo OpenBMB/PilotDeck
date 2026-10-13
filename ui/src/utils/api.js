@@ -41,6 +41,10 @@ export const authenticatedFetch = (url, options = {}) => {
   } = options;
 
   const defaultHeaders = {};
+  if (String(url).startsWith('/api/modules/')) {
+    const project = sessionStorage.getItem('pilotdeck-active-project');
+    if (project) defaultHeaders['X-PilotDeck-Project'] = project;
+  }
 
   // Only set Content-Type for non-FormData requests
   if (!(fetchOptions.body instanceof FormData)) {

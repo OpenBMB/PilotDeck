@@ -1,0 +1,21 @@
+[
+  {
+    "name": "L3-SPECIAL-SETUP",
+    "status": "FAIL",
+    "error": "Cannot read properties of undefined (reading 'find')"
+  },
+  {
+    "name": "C01-RESTORE",
+    "status": "PASS",
+    "restored": {
+      "projectRoot": "$QA_ROOT/workspace/ProjectA",
+      "bindingId": "5162da74-64c6-41e8-a463-568caf377882",
+      "agentName": "ProjectA-5162da74",
+      "origin": "http://127.0.0.1:26010",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T10:54:05.217Z",
+      "agentId": "agent_201e85d986634414"
+    }
+  }
+]

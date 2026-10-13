@@ -1,0 +1,34 @@
+{
+  "exportedAt": "2026-10-13T08:56:40.744Z",
+  "files": [
+    "browser-failure.png",
+    "browser-result.json",
+    "browser-upload.png",
+    "browser-workflow-result.json",
+    "concurrency-result-complete-list.json",
+    "concurrency-result-database-final.json",
+    "concurrency-result-sixty-final.json",
+    "concurrency-result.json",
+    "desktop-a.png",
+    "faults-result-final.json",
+    "faults-result-process-fixed.json",
+    "faults-result-ready-fixed.json",
+    "faults-result-state-contract.json",
+    "mobile-b.png",
+    "results.json",
+    "runtime-result.json",
+    "sop-lifecycle-result.json",
+    "sync-result.json",
+    "upgrade-result.json",
+    "pd-binding-store.json"
+  ],
+  "excludes": [
+    "credentials",
+    "env",
+    "config",
+    "databases",
+    "raw logs",
+    "model capture"
+  ],
+  "screenshots": "Only isolated fixture screens; visually reviewed before delivery"
+}

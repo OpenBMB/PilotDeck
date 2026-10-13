@@ -1,0 +1,191 @@
+{
+  "results": [
+    {
+      "id": "U01/U02-CREATE-RETRY",
+      "status": "PASS",
+      "project": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-AVJp5e-workspace-BrowserQA1791880939246",
+      "originalBindingId": "d09e350c-ba1e-4591-b789-9bf775010acd",
+      "failedProjectRetained": true,
+      "refreshRestored": true
+    },
+    {
+      "id": "U02-KNOWLEDGE-UPLOAD",
+      "status": "PASS",
+      "marker": "BROWSER_UPLOAD_BINDING_4812",
+      "actualIngestionAndQuery": true
+    },
+    {
+      "id": "U02-SOP-PUBLISH",
+      "status": "PASS",
+      "sopId": "browser_sop_1791880945903",
+      "draftSeed": "real management API",
+      "publication": "browser action",
+      "viewports": [
+        [
+          1440,
+          960
+        ],
+        [
+          390,
+          844
+        ]
+      ]
+    },
+    {
+      "id": "U02-WORKFLOW",
+      "status": "FAIL",
+      "error": "locator.waitFor: Error: strict mode violation: getByRole('row').filter({ hasText: 'browser_sop_1791880945903' }).getByText('Disabled', { exact: true }) resolved to 2 elements:\n    1) <span class=\"inline-flex items-center rounded-full px-[12px] py-[4px] text-[10px] leading-none whitespace-nowrap capitalize bg-[#f2f3f7] text-[#858b9c]\">Disabled</span> aka getByText('Disabled').nth(2)\n    2) <span class=\"inline-flex items-center rounded-full px-[12px] py-[4px] text-[10px] leading-none whitespace-nowrap capitalize bg-[#f2f3f7] text-[#858b9c]\">Disabled</span> aka getByText('Disabled').nth(3)\n\nCall log:\n\u001b[2m  - waiting for getByRole('row').filter({ hasText: 'browser_sop_1791880945903' }).getByText('Disabled', { exact: true }) to be visible\u001b[22m\n",
+      "errors": []
+    }
+  ],
+  "network": [
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/create-workspace",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/file",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    }
+  ]
+}

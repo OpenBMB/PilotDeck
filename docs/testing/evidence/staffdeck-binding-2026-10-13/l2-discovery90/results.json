@@ -1,0 +1,84 @@
+{
+  "qa": "$QA_ROOT",
+  "pd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck",
+  "sd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/StaffDeck",
+  "basePort": 25910,
+  "results": [
+    {
+      "id": "B01",
+      "name": "new and existing registration, clone, no creation during reads",
+      "status": "PASS",
+      "elapsedMs": 6425,
+      "evidence": {
+        "counts": {
+          "agents": 5,
+          "mappings": 3
+        },
+        "cloneEntry": "create-workspace githubUrl using isolated local HTTP Git repository"
+      }
+    },
+    {
+      "id": "B03",
+      "name": "20 concurrent same-project ensure requests",
+      "status": "PASS",
+      "elapsedMs": 5247,
+      "evidence": {
+        "requests": 20,
+        "before": {
+          "agents": 5,
+          "mappings": 3
+        },
+        "after": {
+          "agents": 5,
+          "mappings": 3
+        }
+      }
+    },
+    {
+      "id": "I01/I02/I05",
+      "name": "project resources and first SOP publication",
+      "status": "PASS",
+      "elapsedMs": 171,
+      "evidence": {
+        "foreignResourceStatus": 404,
+        "overrideStatus": 403,
+        "publication": {
+          "status": "awaiting-runtime-observation",
+          "ownerPublished": true,
+          "snapshotWritten": true,
+          "refreshRequested": true,
+          "effective": false,
+          "sopId": "binding_a_sop",
+          "version": "1.0.0",
+          "receiptPersisted": true
+        }
+      }
+    },
+    {
+      "id": "C01",
+      "name": "delete/readd and independent process restarts preserve binding",
+      "status": "PASS",
+      "elapsedMs": 13742,
+      "evidence": {
+        "restarts": [
+          "web",
+          "gateway",
+          "sd"
+        ],
+        "counts": {
+          "agents": 5,
+          "mappings": 3
+        }
+      }
+    },
+    {
+      "id": "B05",
+      "name": "SD outage preserves project and retry identity",
+      "status": "PASS",
+      "elapsedMs": 2593,
+      "evidence": {
+        "stableBindingId": "66742bc8-806c-4ebb-a704-d47a0d2a2d02"
+      }
+    }
+  ]
+}

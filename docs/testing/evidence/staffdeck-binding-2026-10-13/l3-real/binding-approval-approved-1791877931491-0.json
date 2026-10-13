@@ -1,0 +1,382 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 3517,
+    "displayUsed": 3517,
+    "localEstimateTokens": 3517,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.031509819380733946,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 3517,
+      "system": 3338,
+      "tools": 153,
+      "messages": 26,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " SOP indicates",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " this",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 17
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " is",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 22
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " a handoff step",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 25
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " requiring",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 40
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " human approval. I",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 50
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " need",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 68
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " to submit_step_result",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 73
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " with status \"hand",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 11,
+      "offset": 95
+    },
+    "sequence": 14
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "off\"",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 12,
+      "offset": 113
+    },
+    "sequence": 15
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " and ask for approval",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 13,
+      "offset": 117
+    },
+    "sequence": 16
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 14,
+      "offset": 138
+    },
+    "sequence": 17
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+    "text": "The SOP indicates this is a handoff step requiring human approval. I need to submit_step_result with status \"handoff\" and ask for approval.",
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 0,
+      "revision": 18
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 18
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "tool:call_e4aef4a0b1754a39b76f34e4",
+      "previousId": "7553dcbe-b683-40c8-9051-524e6bbbabca:thinking:0",
+      "order": 1,
+      "revision": 19
+    },
+    "type": "tool_call_started",
+    "toolCallId": "call_e4aef4a0b1754a39b76f34e4",
+    "name": "submit_step_result",
+    "argsPreview": "{\"status\":\"handoff\",\"replyFragment\":\"⚠️ **Project A Binding Approval Required**\\n\\nThe binding approval procedure for Project A is ready for your decision. Please review and provide:\\n\\n- **Approve** or **Reject** the binding\\n- Any conditions or comments (optional)\\n\\nOnce you reply with your decision, I will persist it and finalize this step.\",\"slotUpdates\":{},\"taskSummary\":\"Awaiting human approval/rejection for Project A binding approval procedure (binding_approval_1791877931491).\",\"structuredResult\":\"{\\\"sopId\\\": \\\"binding_approval_1791877931491\\\", \\\"step\\\": \\\"approval\\\", \\\"status\\\": \\\"handoff\\\"}\",\"nextStepId\":\"\"}",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 19
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "call_e4aef4a0b1754a39b76f34e4",
+    "ok": true,
+    "resultPreview": "{\"submittedStepId\":\"approval\",\"status\":\"handoff\",\"resultStatus\":\"handoff\",\"activeStepId\":\"approval\",\"sopStatus\":\"handoff\",\"nextStepId\":null}",
+    "resultLineCount": 1,
+    "resultBytes": 140,
+    "toolName": "submit_step_result",
+    "data": {
+      "status": "handoff",
+      "replyFragment": "⚠️ **Project A Binding Approval Required**\n\nThe binding approval procedure for Project A is ready for your decision. Please review and provide:\n\n- **Approve** or **Reject** the binding\n- Any conditions or comments (optional)\n\nOnce you reply with your decision, I will persist it and finalize this step.",
+      "slotUpdates": {},
+      "taskSummary": "Awaiting human approval/rejection for Project A binding approval procedure (binding_approval_1791877931491).",
+      "structuredResult": "{\"sopId\": \"binding_approval_1791877931491\", \"step\": \"approval\", \"status\": \"handoff\"}",
+      "nextStepId": null,
+      "events": []
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+      "id": "result:call_e4aef4a0b1754a39b76f34e4",
+      "previousId": "tool:call_e4aef4a0b1754a39b76f34e4",
+      "order": 2,
+      "revision": 20
+    },
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 20
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "call_e4aef4a0b1754a39b76f34e4",
+    "fullText": "{\"submittedStepId\":\"approval\",\"status\":\"handoff\",\"resultStatus\":\"handoff\",\"activeStepId\":\"approval\",\"sopStatus\":\"handoff\",\"nextStepId\":null}",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 21
+  },
+  {
+    "type": "agent_status",
+    "event": "structured_output_completed",
+    "detail": {
+      "message": "Structured output was returned, so this turn has completed.",
+      "messageI18n": {
+        "key": "[REDACTED]"
+      },
+      "code": "structured_output_completed",
+      "visible": true,
+      "scope": "turn",
+      "source": "agent"
+    },
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 22
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "⚠️ **Project A Binding Approval Required**\n\nThe binding approval procedure for Project A is ready for your decision. Please review and provide:\n\n- **Approve** or **Reject** the binding\n- Any conditions or comments (optional)\n\nOnce you reply with your decision, I will persist it and finalize this step.",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "model": "qwen3.6-flash-distill",
+    "sequence": 23
+  },
+  {
+    "type": "structured_output",
+    "payload": {
+      "sop": {
+        "status": "handoff",
+        "replyFragment": "⚠️ **Project A Binding Approval Required**\n\nThe binding approval procedure for Project A is ready for your decision. Please review and provide:\n\n- **Approve** or **Reject** the binding\n- Any conditions or comments (optional)\n\nOnce you reply with your decision, I will persist it and finalize this step.",
+        "slotUpdates": {},
+        "taskSummary": "Awaiting human approval/rejection for Project A binding approval procedure (binding_approval_1791877931491).",
+        "structuredResult": "{\"sopId\": \"binding_approval_1791877931491\", \"step\": \"approval\", \"status\": \"handoff\"}",
+        "nextStepId": null,
+        "events": []
+      }
+    },
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 24
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 4012,
+      "outputTokens": 257,
+      "totalTokens": 4269
+    },
+    "finishReason": "completed",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 25
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 4012,
+      "outputTokens": 257,
+      "totalTokens": 4269
+    },
+    "finishReason": "completed",
+    "runId": "4f51f38f-37d2-4c41-9276-ad9334816a7e",
+    "sequence": 26
+  }
+]

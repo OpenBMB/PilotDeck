@@ -1,0 +1,169 @@
+{
+  "results": [
+    {
+      "id": "U01/U02-CREATE-RETRY",
+      "status": "PASS",
+      "project": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-AVJp5e-workspace-BrowserQA1791879739797",
+      "originalBindingId": "25550fd4-76d9-4c56-ac98-f2f247b49a7f",
+      "failedProjectRetained": true,
+      "refreshRestored": true
+    },
+    {
+      "id": "U02-KNOWLEDGE-UPLOAD",
+      "status": "PASS",
+      "marker": "BROWSER_UPLOAD_BINDING_4812",
+      "actualIngestionAndQuery": true
+    },
+    {
+      "id": "U02-SOP-PUBLISH",
+      "status": "PASS",
+      "sopId": "browser_sop_1791879745301",
+      "draftSeed": "real management API",
+      "publication": "browser action",
+      "viewports": [
+        [
+          1440,
+          960
+        ],
+        [
+          390,
+          844
+        ]
+      ]
+    }
+  ],
+  "network": [
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/create-workspace",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/file",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    }
+  ]
+}

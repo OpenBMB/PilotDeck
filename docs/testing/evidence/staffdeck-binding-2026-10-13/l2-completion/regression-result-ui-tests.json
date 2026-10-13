@@ -1,0 +1,27 @@
+[
+  {
+    "name": "ui-tests",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/ui",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "server/routes/projects.binding.test.js",
+      "server/routes/modules.test.js",
+      "server/routes/modules-sdk.test.js",
+      "server/routes/modules-public-bridge.test.js",
+      "server/routes/staffdeck-copy.test.js",
+      "src/components/app-shell/StaffDeckProjectBinding.test.tsx",
+      "src/composition/modules/staffdeck/publish-runtime-integration.test.tsx",
+      "src/composition/modules/staffdeck/public-approval-consumer.test.tsx"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 6410,
+    "summary": [
+      " Test Files  8 passed (8)",
+      "      Tests  89 passed (89)",
+      "   Duration  3.87s (transform 8.34s, setup 0ms, import 11.29s, tests 3.16s, environment 5.06s)"
+    ]
+  }
+]

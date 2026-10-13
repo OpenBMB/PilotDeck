@@ -1,0 +1,425 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/resources-complete.mjs"
+  ],
+  "results": [
+    {
+      "id": "I01-MODULE-get_base",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 52
+    },
+    {
+      "id": "I01-MODULE-update_base",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b",
+          "description": "matrix update"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I01-MODULE-list_versions",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 40
+    },
+    {
+      "id": "I01-MODULE-list_documents",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 35
+    },
+    {
+      "id": "I01-MODULE-get_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 45
+    },
+    {
+      "id": "I01-MODULE-update_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_6cd9fb607dfd464083b36863bdcde569",
+          "title": "A_PRIVATE_MATRIX_9351 updated"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 67
+    },
+    {
+      "id": "I01-MODULE-list_document_buckets",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I01-MODULE-update_bucket",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_6cd9fb607dfd464083b36863bdcde569",
+          "summary": "A_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 47
+    },
+    {
+      "id": "I01-MODULE-list_bucket_chunks",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I01-MODULE-update_chunk",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "chunkId": "binding_chunk_6cd9fb607dfd464083b36863bdcde569",
+          "content": "A_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 48
+    },
+    {
+      "id": "I01-MODULE-resolve_citation",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "chunkId": "binding_chunk_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 45
+    },
+    {
+      "id": "I01-MODULE-get_job",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "jobId": "binding_job_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 48
+    },
+    {
+      "id": "I01-MODULE-list_okf_concepts",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 70
+    },
+    {
+      "id": "I01-MODULE-upsert_okf_concept",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b",
+          "conceptId": "matrix.concept",
+          "contentMd": "# Matrix\n\nA_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 445
+    },
+    {
+      "id": "I01-MODULE-export_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 210
+    },
+    {
+      "id": "I01-MODULE-lint_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 237
+    },
+    {
+      "id": "I01-MODULE-reject_discovery",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "suggestionId": "binding_suggestion_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 167
+    },
+    {
+      "id": "I01-SDK-list_knowledge_versions",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 133
+    },
+    {
+      "id": "I01-SDK-list_knowledge_documents",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 189
+    },
+    {
+      "id": "I01-SDK-get_knowledge_document",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b",
+          "documentId": "binding_document_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 88
+    },
+    {
+      "id": "I01-SDK-update_knowledge_document",
+      "status": "FAIL",
+      "error": "{\"type\":\"urn:staffdeck:error:knowledge_document_conflict\",\"title\":\"KNOWLEDGE_DOCUMENT_CONFLICT\",\"status\":409,\"code\":\"KNOWLEDGE_DOCUMENT_CONFLICT\",\"detail\":\"The knowledge base version has changed. Reload documents before editing.\",\"request_id\":\"req_a0c542f59f8f4afb98d3329f6041ad44\"}\n\n409 !== 200\n",
+      "elapsedMs": 81
+    },
+    {
+      "id": "I01-SDK-list_document_buckets",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "documentId": "binding_document_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 227
+    },
+    {
+      "id": "I01-SDK-list_bucket_chunks",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 238
+    },
+    {
+      "id": "I01-SDK-update_knowledge_bucket",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "bucketId": "binding_bucket_6cd9fb607dfd464083b36863bdcde569",
+          "body": {
+            "summary": "A_PRIVATE_MATRIX_9351"
+          }
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 159
+    },
+    {
+      "id": "I01-SDK-update_knowledge_chunk",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "chunkId": "binding_chunk_6cd9fb607dfd464083b36863bdcde569",
+          "body": {
+            "content": "A_PRIVATE_MATRIX_9351"
+          }
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 248
+    },
+    {
+      "id": "I01-SDK-list_knowledge_concepts",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 173
+    },
+    {
+      "id": "I01-SDK-get_knowledge_concept",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b",
+          "conceptId": "matrix.concept"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 173
+    },
+    {
+      "id": "I01-SDK-export_knowledge_okf",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "knowledgeBaseId": "kb_4c06b05e570d495b"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 173
+    },
+    {
+      "id": "I01-SDK-get_knowledge_job",
+      "status": "PASS",
+      "evidence": {
+        "input": {
+          "jobId": "binding_job_6cd9fb607dfd464083b36863bdcde569"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 221
+    },
+    {
+      "id": "I01-LIST-ISOLATION",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\n422 !== 200\n",
+      "elapsedMs": 171
+    },
+    {
+      "id": "I01-REAL-PREVIEW-JOB-EVENTS",
+      "status": "PASS",
+      "evidence": {
+        "jobId": "skilljob_ddb0eca10b2b4583",
+        "foreignReadCancelEvents": 404,
+        "ownerReadCancelEvents": 200,
+        "ownerJob": {
+          "job_id": "skilljob_ddb0eca10b2b4583",
+          "name": "skill.distill",
+          "status": "failed",
+          "error": "400: No enabled default model config",
+          "created_at": "2026-10-13T10:16:33.348597",
+          "updated_at": "2026-10-13T10:16:33.349073",
+          "last_seq": 2
+        },
+        "events": "event: job_attached\ndata: {\"job_id\": \"skilljob_ddb0eca10b2b4583\", \"after_seq\": 0}\n\nevent: job_started\ndata: {\"job_id\": \"skilljob_ddb0eca10b2b4583\", \"seq\": 1, \"name\": \"skill.distill\"}\n\nevent: error\ndata: {\"job_id\": \"skilljob_ddb0eca10b2b4583\", \"seq\": 2, \"message\": \"400: No enabled default model config\"}\n\nevent: job_complete\ndata: {\"job_id\": \"skilljob_ddb0eca10b2b4583\", \"status\": \"failed\", \"error\": \"400: No enabled default model config\"}\n\n"
+      },
+      "elapsedMs": 360
+    },
+    {
+      "id": "I01-CANCEL-OWNER-module",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 40
+    },
+    {
+      "id": "I01-CANCEL-OWNER-sdk",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 27
+    },
+    {
+      "id": "I01-MODULE-delete_document",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 45
+    },
+    {
+      "id": "I01-MODULE-delete_base",
+      "status": "PASS",
+      "evidence": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "elapsedMs": 36
+    }
+  ]
+}

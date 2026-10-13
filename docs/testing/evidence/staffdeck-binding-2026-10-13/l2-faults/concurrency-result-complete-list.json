@@ -1,0 +1,166 @@
+[
+  {
+    "name": "B03 three processes same project",
+    "status": "PASS",
+    "elapsedMs": 1964,
+    "evidence": {
+      "processes": 3,
+      "requestsPerProcess": 20,
+      "requests": 60,
+      "agentId": "agent_a97fb310efc24304",
+      "before": {
+        "apiAgents": 56,
+        "agents": 57,
+        "mappings": 55
+      },
+      "after": {
+        "apiAgents": 57,
+        "agents": 58,
+        "mappings": 56
+      },
+      "pdRecords": 1
+    }
+  },
+  {
+    "name": "B03 ten projects concurrent, three rounds",
+    "status": "PASS",
+    "elapsedMs": 10439,
+    "evidence": {
+      "projects": 10,
+      "before": {
+        "apiAgents": 57,
+        "agents": 58,
+        "mappings": 56
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "apiAgents": 67,
+          "agents": 68,
+          "mappings": 66,
+          "pdRecords": 11
+        },
+        {
+          "round": 2,
+          "apiAgents": 67,
+          "agents": 68,
+          "mappings": 66,
+          "pdRecords": 11
+        },
+        {
+          "round": 3,
+          "apiAgents": 67,
+          "agents": 68,
+          "mappings": 66,
+          "pdRecords": 11
+        }
+      ],
+      "records": 11
+    }
+  },
+  {
+    "name": "B03 interrupt uuid",
+    "status": "PASS",
+    "elapsedMs": 687,
+    "evidence": {
+      "phase": "uuid",
+      "stableBindingId": "9c3d86f3-1fd2-4702-99f5-a723a98b7181",
+      "agentId": "agent_c465aaeb77f64b04",
+      "before": {
+        "apiAgents": 67,
+        "agents": 68,
+        "mappings": 66
+      },
+      "after": {
+        "apiAgents": 68,
+        "agents": 69,
+        "mappings": 67
+      },
+      "pdRecords": 12
+    }
+  },
+  {
+    "name": "B03 interrupt before-commit",
+    "status": "PASS",
+    "elapsedMs": 707,
+    "evidence": {
+      "phase": "before-commit",
+      "stableBindingId": "d609416d-f38c-4c8c-a8f8-1bdd6a725bf0",
+      "agentId": "agent_2d56f8e65b124b17",
+      "before": {
+        "apiAgents": 68,
+        "agents": 69,
+        "mappings": 67
+      },
+      "after": {
+        "apiAgents": 69,
+        "agents": 70,
+        "mappings": 68
+      },
+      "pdRecords": 13
+    }
+  },
+  {
+    "name": "B03 interrupt after-commit",
+    "status": "PASS",
+    "elapsedMs": 820,
+    "evidence": {
+      "phase": "after-commit",
+      "stableBindingId": "0006c463-71db-46b9-9eeb-f834b62fe498",
+      "agentId": "agent_48244525f8da4f99",
+      "before": {
+        "apiAgents": 69,
+        "agents": 70,
+        "mappings": 68
+      },
+      "after": {
+        "apiAgents": 70,
+        "agents": 71,
+        "mappings": 69
+      },
+      "pdRecords": 14
+    }
+  },
+  {
+    "name": "B03 interrupt activation",
+    "status": "PASS",
+    "elapsedMs": 1071,
+    "evidence": {
+      "phase": "activation",
+      "stableBindingId": "2dc3529e-d0e4-4756-8e93-4e56be02463e",
+      "agentId": "agent_9a6c5de93a3c4476",
+      "before": {
+        "apiAgents": 70,
+        "agents": 71,
+        "mappings": 69
+      },
+      "after": {
+        "apiAgents": 71,
+        "agents": 72,
+        "mappings": 70
+      },
+      "pdRecords": 15
+    }
+  },
+  {
+    "name": "B03 interrupt after-activation",
+    "status": "PASS",
+    "elapsedMs": 1042,
+    "evidence": {
+      "phase": "after-activation",
+      "stableBindingId": "16e4101f-b53b-4db2-99b8-516d0d030a04",
+      "agentId": "agent_b9957f9e02af4cb5",
+      "before": {
+        "apiAgents": 71,
+        "agents": 72,
+        "mappings": 70
+      },
+      "after": {
+        "apiAgents": 72,
+        "agents": 73,
+        "mappings": 71
+      },
+      "pdRecords": 16
+    }
+  }
+]

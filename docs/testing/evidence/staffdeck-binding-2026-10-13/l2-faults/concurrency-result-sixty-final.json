@@ -1,0 +1,60 @@
+[
+  {
+    "name": "B03 three processes same project",
+    "status": "PASS",
+    "elapsedMs": 1550,
+    "evidence": {
+      "processes": 3,
+      "requestsPerProcess": 20,
+      "requests": 60,
+      "agentId": "agent_92a39561b7594f60",
+      "before": {
+        "apiAgents": 40,
+        "agents": 41,
+        "mappings": 39
+      },
+      "after": {
+        "apiAgents": 41,
+        "agents": 42,
+        "mappings": 40
+      },
+      "pdRecords": 1
+    }
+  },
+  {
+    "name": "B03 ten projects concurrent, three rounds",
+    "status": "FAIL",
+    "elapsedMs": 3339,
+    "error": "apiAgents\n\n50 !== 51\n"
+  },
+  {
+    "name": "B03 interrupt uuid",
+    "status": "FAIL",
+    "elapsedMs": 671,
+    "error": "apiAgents\n\n50 !== 51\n"
+  },
+  {
+    "name": "B03 interrupt before-commit",
+    "status": "FAIL",
+    "elapsedMs": 702,
+    "error": "apiAgents\n\n50 !== 51\n"
+  },
+  {
+    "name": "B03 interrupt after-commit",
+    "status": "FAIL",
+    "elapsedMs": 712,
+    "error": "apiAgents\n\n50 !== 51\n"
+  },
+  {
+    "name": "B03 interrupt activation",
+    "status": "FAIL",
+    "elapsedMs": 966,
+    "error": "apiAgents\n\n50 !== 51\n"
+  },
+  {
+    "name": "B03 interrupt after-activation",
+    "status": "FAIL",
+    "elapsedMs": 1013,
+    "error": "apiAgents\n\n50 !== 51\n"
+  }
+]

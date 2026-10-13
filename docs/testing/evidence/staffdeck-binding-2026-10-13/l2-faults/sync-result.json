@@ -1,0 +1,35 @@
+[
+  {
+    "id": "I03",
+    "status": "PASS",
+    "imported": {
+      "status": "imported",
+      "target_agent_id": "agent_18620b8fef73461d",
+      "source_agent_id": "agent_binding-tenant_overall",
+      "imported": [
+        {
+          "resource_type": "knowledge_base",
+          "resource_id": "kb_bb2de6e22811470d",
+          "display_id": "kb_bb2de6e22811470d",
+          "name": "Global binding sync marker"
+        }
+      ],
+      "missing": []
+    },
+    "promoted": {
+      "status": "imported",
+      "target_agent_id": "agent_binding-tenant_overall",
+      "source_agent_id": "agent_18620b8fef73461d",
+      "imported": [
+        {
+          "resource_type": "knowledge_base",
+          "resource_id": "kb_d41c15446e6b4a03",
+          "display_id": "kb_d41c15446e6b4a03",
+          "name": "A sop_specific BINDING_MARKER"
+        }
+      ],
+      "missing": []
+    },
+    "foreignTargetStatus": 403
+  }
+]

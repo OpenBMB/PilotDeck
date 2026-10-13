@@ -30,7 +30,7 @@ export function validatePublishRuntimeBinding(binding, owner) {
   if (endpoint(management.endpoint) !== endpoint(binding.discoveryEndpoint)) {
     throw error('SOP_RUNTIME_OWNER_MISMATCH', 'Management and discovery must use the same public owner endpoint.');
   }
-  if (!text(binding.defaultSopId)) throw error('SOP_RUNTIME_NOT_CONFIGURED', 'defaultSopId must be configured.');
+  if (!text(binding.defaultSopId) && binding.allowEmpty !== true) throw error('SOP_RUNTIME_NOT_CONFIGURED', 'defaultSopId must be configured.');
   return { definitionsPath: resolve(binding.definitionsPath), defaultSopId: binding.defaultSopId };
 }
 
@@ -112,6 +112,35 @@ async function serialize(key, action) {
  */
 export function createPublishRuntimeCoordinator({ store = createAtomicBundleStore(), requestRefresh } = {}) {
   return {
+    async archive({ binding, owner, sopId, archive }) {
+      const config = structuredClone(binding);
+      return serialize(text(config?.definitionsPath) ? resolve(config.definitionsPath) : 'unconfigured', async () => {
+        const response = await archive();
+        if (!Number.isInteger(response?.status) || response.status < 200 || response.status >= 300) return response;
+        const runtime = { status: 'not-refreshed', ownerArchived: true, snapshotWritten: false, refreshRequested: false, effective: false, sopId };
+        let phase = 'configuration';
+        try {
+          const profile = validatePublishRuntimeBinding(config, owner);
+          if ((response.body?.skill_id ?? response.body?.id) !== sopId || response.body?.status !== 'archived') {
+            throw error('SOP_ARCHIVE_RESPONSE_INVALID', 'Expected the requested archived SOP.');
+          }
+          phase = 'snapshot';
+          const bundle = await store.read(profile.definitionsPath);
+          if (!Array.isArray(bundle?.sops)) throw error('SOP_BUNDLE_INVALID', 'Expected a definitions bundle.');
+          await store.write(profile.definitionsPath, { ...bundle, sops: bundle.sops.filter(item => (item.id ?? item.skill_id) !== sopId) });
+          runtime.snapshotWritten = true;
+          phase = 'refresh';
+          const receipt = await requestRefresh({ definitionsPath: profile.definitionsPath, owner, sopId });
+          if (receipt?.reloaded !== true) throw error('SOP_RUNTIME_REFRESH_REJECTED', 'Runtime extension refresh did not acknowledge invalidation.');
+          runtime.refreshRequested = true;
+          runtime.status = 'awaiting-runtime-observation';
+        } catch (cause) {
+          runtime.status = 'failed';
+          runtime.failure = { phase, code: cause?.code ?? 'SOP_RUNTIME_REFRESH_FAILED' };
+        }
+        return { ...response, runtime };
+      });
+    },
     async publish({ binding, owner, sopId, publish }) {
       // Capture request-local configuration before asynchronous work starts.
       const config = structuredClone(binding);
@@ -129,7 +158,7 @@ export function createPublishRuntimeCoordinator({ store = createAtomicBundleStor
           runtime.sopId = definition.id;
           runtime.version = definition.version;
           phase = 'snapshot';
-          const bundle = mergePublishedDefinition(await store.read(profile.definitionsPath), definition, profile.defaultSopId);
+          const bundle = mergePublishedDefinition(await store.read(profile.definitionsPath), definition, profile.defaultSopId ?? definition.id);
           await store.write(profile.definitionsPath, bundle);
           runtime.snapshotWritten = true;
           phase = 'refresh';

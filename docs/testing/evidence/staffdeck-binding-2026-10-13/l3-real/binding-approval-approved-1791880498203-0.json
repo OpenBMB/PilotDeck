@@ -1,0 +1,547 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 3854,
+    "displayUsed": 3854,
+    "localEstimateTokens": 3854,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.0345290997706422,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 3854,
+      "system": 3372,
+      "tools": 153,
+      "messages": 329,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " human decision is \"",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "approved\".",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 23
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " According",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 33
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " to the SOP instructions",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 43
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ",",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 67
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I should:\n",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 68
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "1",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 79
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". Submit with status",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 80
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " completed and quote",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 11,
+      "offset": 100
+    },
+    "sequence": 14
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the approved or rejected",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 12,
+      "offset": 120
+    },
+    "sequence": 15
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " decision\n2.",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 13,
+      "offset": 145
+    },
+    "sequence": 16
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Put",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 14,
+      "offset": 157
+    },
+    "sequence": 17
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the final user-facing",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 15,
+      "offset": 161
+    },
+    "sequence": 18
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " answer in replyFragment",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 16,
+      "offset": 183
+    },
+    "sequence": 19
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n3. Use",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 17,
+      "offset": 207
+    },
+    "sequence": 20
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " slotUpdates {} (",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 18,
+      "offset": 214
+    },
+    "sequence": 21
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "no new fields known",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 19,
+      "offset": 231
+    },
+    "sequence": 22
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ")\n4.",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 20,
+      "offset": 250
+    },
+    "sequence": 23
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " No nextStepId",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 21,
+      "offset": 254
+    },
+    "sequence": 24
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " since this is the",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 22,
+      "offset": 268
+    },
+    "sequence": 25
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " final SOP node",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 23,
+      "offset": 286
+    },
+    "sequence": 26
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n\nLet me submit",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 24,
+      "offset": 301
+    },
+    "sequence": 27
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the completion now.",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 25,
+      "offset": 316
+    },
+    "sequence": 28
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+    "text": "The human decision is \"approved\". According to the SOP instructions, I should:\n1. Submit with status completed and quote the approved or rejected decision\n2. Put the final user-facing answer in replyFragment\n3. Use slotUpdates {} (no new fields known)\n4. No nextStepId since this is the final SOP node\n\nLet me submit the completion now.",
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 0,
+      "revision": 29
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 29
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "tool:call_5aa2ee472fee4c789ef68484",
+      "previousId": "724aa9b8-86f9-4f58-b2ef-f58694cae8db:thinking:0",
+      "order": 1,
+      "revision": 30
+    },
+    "type": "tool_call_started",
+    "toolCallId": "call_5aa2ee472fee4c789ef68484",
+    "name": "submit_step_result",
+    "argsPreview": "{\"status\":\"completed\",\"replyFragment\":\"✅ **Project A binding approval procedure completed.**\\n\\nDecision: **Approved** by binding-stranger.\\n\\nSOP `binding_approval_1791880498203` has been finalized with no further steps.\",\"slotUpdates\":{}}",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 30
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "call_5aa2ee472fee4c789ef68484",
+    "ok": true,
+    "resultPreview": "{\"submittedStepId\":\"approval\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"approval\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "resultLineCount": 1,
+    "resultBytes": 146,
+    "toolName": "submit_step_result",
+    "data": {
+      "status": "completed",
+      "replyFragment": "✅ **Project A binding approval procedure completed.**\n\nDecision: **Approved** by binding-stranger.\n\nSOP `binding_approval_1791880498203` has been finalized with no further steps.",
+      "slotUpdates": {},
+      "taskSummary": null,
+      "structuredResult": null,
+      "nextStepId": null,
+      "events": []
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+      "id": "result:call_5aa2ee472fee4c789ef68484",
+      "previousId": "tool:call_5aa2ee472fee4c789ef68484",
+      "order": 2,
+      "revision": 31
+    },
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 31
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "call_5aa2ee472fee4c789ef68484",
+    "fullText": "{\"submittedStepId\":\"approval\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"approval\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 32
+  },
+  {
+    "type": "agent_status",
+    "event": "structured_output_completed",
+    "detail": {
+      "message": "Structured output was returned, so this turn has completed.",
+      "messageI18n": {
+        "key": "[REDACTED]"
+      },
+      "code": "structured_output_completed",
+      "visible": true,
+      "scope": "turn",
+      "source": "agent"
+    },
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 33
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "✅ **Project A binding approval procedure completed.**\n\nDecision: **Approved** by binding-stranger.\n\nSOP `binding_approval_1791880498203` has been finalized with no further steps.",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "model": "qwen3.6-flash-distill",
+    "sequence": 34
+  },
+  {
+    "type": "structured_output",
+    "payload": {
+      "sop": {
+        "status": "completed",
+        "replyFragment": "✅ **Project A binding approval procedure completed.**\n\nDecision: **Approved** by binding-stranger.\n\nSOP `binding_approval_1791880498203` has been finalized with no further steps.",
+        "slotUpdates": {},
+        "taskSummary": null,
+        "structuredResult": null,
+        "nextStepId": null,
+        "events": []
+      }
+    },
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 35
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 4255,
+      "outputTokens": 182,
+      "totalTokens": 4437
+    },
+    "finishReason": "completed",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 36
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 4255,
+      "outputTokens": 182,
+      "totalTokens": 4437
+    },
+    "finishReason": "completed",
+    "runId": "74f355c3-aeca-41ad-b157-5cab2d315045",
+    "sequence": 37
+  }
+]

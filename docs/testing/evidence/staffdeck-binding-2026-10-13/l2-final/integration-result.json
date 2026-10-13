@@ -1,0 +1,32 @@
+[
+  {
+    "file": "runtime.mjs",
+    "status": "PASS",
+    "elapsedMs": 821,
+    "exitCode": 0
+  },
+  {
+    "file": "sync.mjs",
+    "status": "FAIL",
+    "elapsedMs": 61,
+    "exitCode": 1
+  },
+  {
+    "file": "sop-lifecycle.mjs",
+    "status": "PASS",
+    "elapsedMs": 551,
+    "exitCode": 0
+  },
+  {
+    "file": "compatibility.mjs",
+    "status": "PASS",
+    "elapsedMs": 22019,
+    "exitCode": 0
+  },
+  {
+    "file": "upgrade.py",
+    "status": "PASS",
+    "elapsedMs": 3843,
+    "exitCode": 0
+  }
+]

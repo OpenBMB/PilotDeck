@@ -485,7 +485,7 @@ export class SopAgentLoop implements AgentLoopRunner {
         ? sopNodeSessionId(input.sessionId, prepared.step.skillId, prepared.step.nodeId) : input.sessionId,
       appendSystemPrompt: joinPrompt(input.appendSystemPrompt, joinPrompt(renderSopInstruction(prepared, modelContext),
         this.protocolCorrections.get(input.sessionId) === sopStepKey(prepared.step.skillId, prepared.step.nodeId)
-          ? prepared.step.isTerminal
+          ? prepared.step.isTerminal && !prepared.step.declaresHandoff && prepared.step.expectedUserInfo.length === 0
             ? "SOP_STEP_RESULT_REQUIRED: The previous assistant text was only a draft. The final SOP node is still active. Call submit_step_result now with status completed, the final answer in replyFragment, slotUpdates {}, and no nextStepId. Do not repeat the draft as plain assistant text."
             : "SOP_STEP_RESULT_REQUIRED: Your previous response did not submit the current SOP node result. Text cannot create an approval or missing-field wait. Follow the current node contract and call submit_step_result with your actual result before ending. Do not claim a persisted wait or completion without a successful tool receipt."
           : "")),
@@ -728,8 +728,13 @@ class SopControlToolPort implements ToolPort {
     const ordinary = calls.filter((call) => call.name !== SUBMIT_SOP_STEP_RESULT_TOOL);
     const step = this.options.currentStep(execution.sessionId);
     let ordinaryResults: PilotDeckToolResult[] = [];
-    if (ordinary.length > 0 && step && this.options.selectedSopId(execution.sessionId) && step.requiredToolNames.length === 0) {
+    if (ordinary.length > 0 && step && this.options.selectedSopId(execution.sessionId)
+      && (step.requiredToolNames.length === 0 || (step.node.type === 'response' && this.options.authorityPort))) {
       for (const call of ordinary) {
+        if (call.name !== 'knowledge_query' && step.requiredToolNames.length > 0) {
+          ordinaryResults.push(...await this.options.delegate.executeAll([call], context, execution));
+          continue;
+        }
         try {
           const projection = step?.optionalKnowledge;
           if (call.name !== "knowledge_query" || !projection || !this.options.authorityPort) throw authorityError("SOP_AUTHORITY_TOOL_UNAVAILABLE");
@@ -1106,9 +1111,11 @@ function renderSopInstruction(prepared: StaffDeckSopPrepareResponse, modelContex
     step.transitions && step.transitions.length > 0
       ? "Choose nextStepId from the transition whose condition matches the available facts. If the target is a handoff step, advance to it first and use status handoff there when approval is required."
       : undefined,
-    step.declaresHandoff ? "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. When the responsible person has explicitly replied with approval, persist that reply with submit_step_result status completed and advance to an allowed next step. Do not end with a plain-text approval summary." : undefined,
+    step.declaresHandoff ? "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary." : undefined,
     step.isTerminal
-      ? "This is the active final SOP node, even if the previous node already submitted completed. Put the final user-facing answer in replyFragment and call submit_step_result with status completed, slotUpdates {}, and no nextStepId. Do not emit the answer as plain assistant text or claim the SOP is complete before this tool succeeds."
+      ? step.declaresHandoff || step.expectedUserInfo.length > 0
+        ? "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+        : "This is the active final SOP node, even if the previous node already submitted completed. Put the final user-facing answer in replyFragment and call submit_step_result with status completed, slotUpdates {}, and no nextStepId. Do not emit the answer as plain assistant text or claim the SOP is complete before this tool succeeds."
       : "A completed submission closes only this node. Its replyFragment is this node's result, not a submission or final answer for a successor node; the successor must be prepared and submitted separately.",
     !step.declaresHandoff && step.expectedUserInfo.length === 0 && step.allowedNextStepIds.length > 0
       && !step.allowedActions.some((action) => action === "ask_user" || action === "ask_missing")

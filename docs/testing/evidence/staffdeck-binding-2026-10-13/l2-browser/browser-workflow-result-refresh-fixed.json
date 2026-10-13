@@ -1,0 +1,231 @@
+{
+  "results": [
+    {
+      "id": "U01/U02-CREATE-RETRY",
+      "status": "PASS",
+      "project": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-AVJp5e-workspace-BrowserQA1791881325599",
+      "originalBindingId": "4ce88cd1-d4e0-4fdf-b82e-f93223cd016d",
+      "failedProjectRetained": true,
+      "refreshRestored": true
+    },
+    {
+      "id": "U02-KNOWLEDGE-UPLOAD",
+      "status": "PASS",
+      "marker": "BROWSER_UPLOAD_BINDING_4812",
+      "actualIngestionAndQuery": true
+    },
+    {
+      "id": "U02-SOP-PUBLISH",
+      "status": "PASS",
+      "sopId": "browser_sop_1791881335057",
+      "draftSeed": "real management API",
+      "publication": "browser action",
+      "viewports": [
+        [
+          1440,
+          960
+        ],
+        [
+          390,
+          844
+        ]
+      ]
+    },
+    {
+      "id": "U02-WORKFLOW",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\n1 !== 0\n",
+      "errors": []
+    }
+  ],
+  "network": [
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/create-workspace",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/file",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 502
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 502
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 502
+    }
+  ]
+}

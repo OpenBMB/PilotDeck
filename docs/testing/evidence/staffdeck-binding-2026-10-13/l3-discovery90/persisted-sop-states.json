@@ -1,0 +1,3047 @@
+[
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-private-1791895684882-0",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-private-1791895684882-0",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_private_1791895684882",
+        "slots_json": {},
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_private_1791895684882",
+        "active_step_id": "answer",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 9,
+      "resumeRequests": {},
+      "updatedAt": "2026-10-13T12:48:39.307Z"
+    }
+  },
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-approval-approved-1791895684882-0",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-approval-approved-1791895684882-0",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_approval_1791895684882",
+        "slots_json": {
+          "decision": "approved",
+          "approved_by_user_id": "binding-stranger"
+        },
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_approval_1791895684882",
+        "active_step_id": "approval",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 13,
+      "resumeRequests": {
+        "approval-approved-1791895684882-0": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791895684882-0",
+          "requestId": "approval-approved-1791895684882-0",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision.",
+          "waitId": "3c4ff80a-35d4-40a2-b82d-049430aedfcf",
+          "source": "human",
+          "slotUpdates": {},
+          "authorization": "[REDACTED]"
+        }
+      },
+      "updatedAt": "2026-10-13T12:49:24.027Z"
+    }
+  },
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-approval-rejected-1791895684882-0",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-approval-rejected-1791895684882-0",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_approval_1791895684882",
+        "slots_json": {
+          "binding_approval_decision": "rejected",
+          "approved_by": "binding-stranger"
+        },
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_approval_1791895684882",
+        "active_step_id": "approval",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 10,
+      "resumeRequests": {
+        "approval-rejected-1791895684882-0": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791895684882-0",
+          "requestId": "approval-rejected-1791895684882-0",
+          "revision": 6,
+          "message": "Human decision: rejected. Finish the procedure with this decision.",
+          "waitId": "a44d0e50-d4b3-4f4f-8b31-ef82a8428733",
+          "source": "human",
+          "slotUpdates": {},
+          "authorization": "[REDACTED]"
+        }
+      },
+      "updatedAt": "2026-10-13T12:50:04.334Z"
+    }
+  },
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-private-1791895684882-1",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-private-1791895684882-1",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_private_1791895684882",
+        "slots_json": {},
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_private_1791895684882",
+        "active_step_id": "answer",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 9,
+      "resumeRequests": {},
+      "updatedAt": "2026-10-13T12:50:33.163Z"
+    }
+  },
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-approval-approved-1791895684882-1",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-approval-approved-1791895684882-1",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_approval_1791895684882",
+        "slots_json": {},
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_approval_1791895684882",
+        "active_step_id": "approval",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 13,
+      "resumeRequests": {
+        "approval-approved-1791895684882-1": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791895684882-1",
+          "requestId": "approval-approved-1791895684882-1",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision.",
+          "waitId": "94c6d630-78c1-4720-82b3-da56f4eae714",
+          "source": "human",
+          "slotUpdates": {},
+          "authorization": "[REDACTED]"
+        }
+      },
+      "updatedAt": "2026-10-13T12:50:52.773Z"
+    }
+  },
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-approval-rejected-1791895684882-1",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-approval-rejected-1791895684882-1",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_approval_1791895684882",
+        "slots_json": {},
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_approval_1791895684882",
+        "active_step_id": "approval",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 10,
+      "resumeRequests": {
+        "approval-rejected-1791895684882-1": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791895684882-1",
+          "requestId": "approval-rejected-1791895684882-1",
+          "revision": 6,
+          "message": "Human decision: rejected. Finish the procedure with this decision.",
+          "waitId": "5f29fabe-0183-4e4d-9550-0d61e9c76817",
+          "source": "human",
+          "slotUpdates": {},
+          "authorization": "[REDACTED]"
+        }
+      },
+      "updatedAt": "2026-10-13T12:51:12.841Z"
+    }
+  },
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-private-1791895684882-2",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-private-1791895684882-2",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_private_1791895684882",
+        "slots_json": {},
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_private_1791895684882",
+        "active_step_id": "answer",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 9,
+      "resumeRequests": {},
+      "updatedAt": "2026-10-13T12:51:38.690Z"
+    }
+  },
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-approval-approved-1791895684882-2",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-approval-approved-1791895684882-2",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_approval_1791895684882",
+        "slots_json": {},
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_approval_1791895684882",
+        "active_step_id": "approval",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 10,
+      "resumeRequests": {
+        "approval-approved-1791895684882-2": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791895684882-2",
+          "requestId": "approval-approved-1791895684882-2",
+          "revision": 6,
+          "message": "Human decision: approved. Finish the procedure with this decision.",
+          "waitId": "506f4734-97b5-4b0e-b146-4f350b50cb76",
+          "source": "human",
+          "slotUpdates": {},
+          "authorization": "[REDACTED]"
+        }
+      },
+      "updatedAt": "2026-10-13T12:52:13.762Z"
+    }
+  },
+  {
+    "bindingId": "65d83a1f-5c48-4fc7-93fd-164d3e202547",
+    "agentId": "agent_676b4208248c4a48",
+    "sessionKey": "binding-approval-rejected-1791895684882-2",
+    "persisted": {
+      "schemaVersion": 3,
+      "sessionId": "binding-approval-rejected-1791895684882-2",
+      "bundle": {
+        "sops": [
+          {
+            "id": "binding_a_sop",
+            "skill_id": "binding_a_sop",
+            "version": "1.0.0",
+            "name": "Binding A SOP",
+            "business_domain": null,
+            "description": "A binding acceptance",
+            "content": {
+              "skill_id": "binding_a_sop",
+              "name": "Binding A SOP",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "A binding acceptance",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_A_SOP"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "respond",
+                  "name": "Answer",
+                  "instruction": "Return BINDING_A_COMPLETED then submit completed",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:44:49.636352",
+            "updated_at": "2026-10-13T12:44:49.645227"
+          },
+          {
+            "id": "binding_private_1791895684882",
+            "skill_id": "binding_private_1791895684882",
+            "version": "1.0.0",
+            "name": "Cobalt private knowledge procedure",
+            "business_domain": null,
+            "description": "Retrieve the cobalt approval code during authorized SOP execution",
+            "content": {
+              "skill_id": "binding_private_1791895684882",
+              "name": "Cobalt private knowledge procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Retrieve the cobalt approval code during authorized SOP execution",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_PRIVATE_COBALT"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "answer",
+                  "type": "response",
+                  "name": "Retrieve cobalt code",
+                  "instruction": "You must call knowledge_query for cobalt approval verification code, cite its evidence, then submit completed. Do not guess.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user",
+                    "call_tool:knowledge_query"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [
+                      "kb_b5e954e284fe44ce"
+                    ],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": null,
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "answer",
+              "terminal_node_ids": [
+                "answer"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.930401",
+            "updated_at": "2026-10-13T12:48:04.939614"
+          },
+          {
+            "id": "binding_approval_1791895684882",
+            "skill_id": "binding_approval_1791895684882",
+            "version": "1.0.0",
+            "name": "Project A binding approval procedure",
+            "business_domain": null,
+            "description": "Wait for human approval and finish with the human decision",
+            "content": {
+              "skill_id": "binding_approval_1791895684882",
+              "name": "Project A binding approval procedure",
+              "version": "1.0.0",
+              "business_domain": null,
+              "description": "Wait for human approval and finish with the human decision",
+              "capability_scope": "general",
+              "step_timeout_seconds": null,
+              "trigger_intents": [
+                "BINDING_HUMAN_APPROVAL"
+              ],
+              "user_utterance_examples": [],
+              "goal": [],
+              "required_info": [],
+              "slot_filling_policy": {},
+              "response_rules": [],
+              "nodes": [
+                {
+                  "node_id": "approval",
+                  "type": "handoff",
+                  "name": "Human approval",
+                  "instruction": "On first entry submit_step_result status handoff and ask for approval. After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.",
+                  "optional": false,
+                  "condition": null,
+                  "expected_user_info": [],
+                  "allowed_actions": [
+                    "answer_user"
+                  ],
+                  "knowledge_scope": {},
+                  "capability_refs": {
+                    "general_skill_ids": [],
+                    "tool_ids": [],
+                    "knowledge_base_ids": [],
+                    "required_general_skill_ids": [],
+                    "required_tool_ids": [],
+                    "required_knowledge_base_ids": []
+                  },
+                  "retry_policy": {},
+                  "metadata": {},
+                  "sub_sop_id": null,
+                  "assignee_user_id": "binding-stranger",
+                  "assignee_notify_channel": null
+                }
+              ],
+              "edges": [],
+              "start_node_id": "approval",
+              "terminal_node_ids": [
+                "approval"
+              ],
+              "interruption_policy": {}
+            },
+            "validation_errors": [],
+            "status": "published",
+            "call_count": 0,
+            "positive_feedback_count": 0,
+            "negative_feedback_count": 0,
+            "positive_rate": 0,
+            "negative_rate": 0,
+            "total_call_count": 0,
+            "total_positive_feedback_count": 0,
+            "total_negative_feedback_count": 0,
+            "total_positive_rate": 0,
+            "total_negative_rate": 0,
+            "recent_versions": [
+              "1.0.0"
+            ],
+            "recent_call_count": 0,
+            "recent_positive_feedback_count": 0,
+            "recent_negative_feedback_count": 0,
+            "recent_positive_rate": 0,
+            "recent_negative_rate": 0,
+            "agent_id": "agent_676b4208248c4a48",
+            "branch_status": "active",
+            "branch_sync_state": "synced",
+            "branch_base_version": "1.0.0",
+            "branch_head_version": "1.0.0",
+            "metadata": {
+              "owner_user_id": "binding-actor",
+              "owner_username": "binding-actor",
+              "owner_display_name": "binding-actor",
+              "created_by_user_id": "binding-actor",
+              "created_by_username": "binding-actor",
+              "created_by": "binding-actor",
+              "created_by_display_name": "binding-actor",
+              "creator_name": "binding-actor",
+              "scope": "agent_private",
+              "visibility": "agent_private",
+              "owner_agent_id": "agent_676b4208248c4a48",
+              "created_from_agent": true
+            },
+            "created_at": "2026-10-13T12:48:04.998487",
+            "updated_at": "2026-10-13T12:48:05.003063"
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "selected_skill_id": "binding_approval_1791895684882",
+        "slots_json": {},
+        "skill_stack_json": [],
+        "successful_tool_names": [],
+        "active_skill_id": "binding_approval_1791895684882",
+        "active_step_id": "approval",
+        "awaiting_input_json": null,
+        "summary": null,
+        "status": "completed"
+      },
+      "revision": 13,
+      "resumeRequests": {
+        "approval-rejected-1791895684882-2": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791895684882-2",
+          "requestId": "approval-rejected-1791895684882-2",
+          "revision": 9,
+          "message": "Human decision: rejected. Finish the procedure with this decision.",
+          "waitId": "a26baf3c-d51c-4151-920d-5ce3af5793c5",
+          "source": "human",
+          "slotUpdates": {},
+          "authorization": "[REDACTED]"
+        }
+      },
+      "updatedAt": "2026-10-13T12:52:47.636Z"
+    }
+  }
+]

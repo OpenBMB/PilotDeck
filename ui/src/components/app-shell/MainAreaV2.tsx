@@ -265,6 +265,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
             />
           ) : (
             <h1
+              data-desktop-no-drag={selectedSession ? '' : undefined}
               className={cn(
                 'min-w-0 max-w-[34rem] truncate text-[15px] font-semibold leading-5 text-neutral-950 dark:text-neutral-50',
                 selectedSession && 'cursor-text',
@@ -432,6 +433,7 @@ export default function MainAreaV2(props: MainAreaV2Props) {
       : props.modulePage.label;
     return <DedicatedWorkspacePage title={title} isSidebarCollapsed={props.isSidebarCollapsed} onOpenSidebar={props.onOpenSidebar}>
       <Page
+        key={props.selectedProject?.name}
         sessionId={props.selectedSession?.id ?? ''}
         projectKey={props.selectedProject?.name}
         host={props.moduleHost ?? { selectedProject: props.selectedProject, selectedSession: props.selectedSession, projects: props.projects }}

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "B03-GATEWAY-CRASH",
+    "phase": "request-outstanding",
+    "status": "PASS",
+    "outstandingRequestObserved": true,
+    "acknowledged": false,
+    "bindingId": "cda0e59a-fce7-42cc-a073-c1f2865ab066",
+    "agentId": "agent_1aa6a33397764e4a",
+    "before": {
+      "agents": 10,
+      "mappings": 7
+    },
+    "after": {
+      "agents": 11,
+      "mappings": 8
+    },
+    "elapsedMs": 1408
+  },
+  {
+    "id": "B03-GATEWAY-CRASH",
+    "phase": "loaded-response-held",
+    "status": "PASS",
+    "outstandingRequestObserved": true,
+    "acknowledged": true,
+    "bindingId": "b393b771-f3ef-406e-8669-5c657793387c",
+    "agentId": "agent_9a3c7636277d4e31",
+    "before": {
+      "agents": 11,
+      "mappings": 8
+    },
+    "after": {
+      "agents": 12,
+      "mappings": 9
+    },
+    "elapsedMs": 947
+  }
+]

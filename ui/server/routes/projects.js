@@ -3,9 +3,12 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import os from 'os';
+import { ensureProjectBinding, refreshProjectBinding } from '../../../src/pilot/staffdeck/projectBinding.js';
+import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
 import {
   addProjectManually,
   extractProjectDirectory,
+  registeredProjectDirectory,
 } from '../projects.js';
 import {
   getProjectDiscoveryContext,
@@ -20,6 +23,29 @@ import { normalizePathForComparison } from '../utils/pathSafety.js';
 import { isVirtualProjectPath, resolvePilotHome } from '../utils/pilotPaths.js';
 
 const router = express.Router();
+const bindingFailure = (code, message) => ({ status: 'failed', error: { code, message } });
+
+router.get('/:projectName/staffdeck-binding', async (req, res) => {
+  try {
+    const root = await registeredProjectDirectory(req.params.projectName);
+    if (!root) return res.status(404).json(bindingFailure('PROJECT_NOT_FOUND', 'Project not found'));
+    return res.json(await refreshProjectBinding(root, {
+      activate: async () => { await (await getPilotDeckGateway()).reloadExtensions({ projectKey: root }); },
+    }));
+  } catch (error) { return res.status(error?.status || 503).json(bindingFailure(error?.code || 'PROJECT_BINDING_UNAVAILABLE', 'Cannot read StaffDeck binding')); }
+});
+router.post('/:projectName/staffdeck-binding/ensure', async (req, res) => {
+  try {
+    if (String(req.user?.id) !== process.env.STAFFDECK_COPY_PILOTDECK_USER_ID) {
+      return res.status(403).json(bindingFailure('PROJECT_BINDING_FORBIDDEN', 'StaffDeck binding is unavailable to this user'));
+    }
+    const root = await registeredProjectDirectory(req.params.projectName);
+    if (!root) return res.status(404).json(bindingFailure('PROJECT_NOT_FOUND', 'Project not found'));
+    const binding = await ensureProjectBinding(root, {
+      activate: async () => { await (await getPilotDeckGateway()).reloadExtensions({ projectKey: root }); } });
+    return res.json(binding);
+  } catch (error) { return res.status(error?.status || 503).json(bindingFailure(error?.code || 'PROJECT_BINDING_UNAVAILABLE', 'Cannot initialize StaffDeck binding')); }
+});
 
 function sanitizeGitError(message, token) {
   if (!message || !token) return message;

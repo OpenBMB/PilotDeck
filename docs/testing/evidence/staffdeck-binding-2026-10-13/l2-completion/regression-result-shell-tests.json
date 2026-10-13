@@ -1,0 +1,24 @@
+[
+  {
+    "name": "shell-tests",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/ui",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "src/components/app-shell/MainAreaV2.test.tsx",
+      "src/components/app-shell/SidebarV2.test.tsx",
+      "src/components/app-shell/appShellSelection.test.tsx",
+      "src/components/app-shell/useSessionIndicators.test.tsx",
+      "src/components/app-shell/StaffDeckProjectBinding.test.tsx"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 5405,
+    "summary": [
+      " Test Files  5 passed (5)",
+      "      Tests  44 passed (44)",
+      "   Duration  1.33s (transform 710ms, setup 0ms, import 1.32s, tests 561ms, environment 3.50s)"
+    ]
+  }
+]

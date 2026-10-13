@@ -133,7 +133,7 @@ export function createStaffDeckCopyRouter({ loadConfig }) {
     try {
       const operation = requiredText(req.body?.operation);
       if (!OPERATIONS.has(operation)) throw new CopyError(400, 'COPY_OPERATION_UNSUPPORTED', 'Unsupported StaffDeck copy operation.');
-      const binding = { ...bindingFor(loadConfig(), req.user, operation),
+      const binding = { ...bindingFor(loadConfig(req), req.user, operation),
         signal: req.moduleRequestSignal ?? bindModuleRequestAbort(req, res) };
       const input = req.body?.input && typeof req.body.input === 'object' && !Array.isArray(req.body.input) ? req.body.input : {};
       await verifyFormalUser(binding);
