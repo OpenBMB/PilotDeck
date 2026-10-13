@@ -4,6 +4,8 @@ import { generatedFrontendModules, generatedFrontendProfile } from './generated/
 import { slots, type Assembly, type Binding, type CompositionProfile, type Slot } from './contracts';
 import { registerPermissionPanels } from '../components/chat/tools/configs/permissionPanelRegistry';
 import { authenticatedFetch } from '../utils/api';
+import staffdeckSop from './modules/staffdeck-sop';
+import staffdeckKnowledge from './modules/staffdeck-knowledge';
 
 let activeAssembly: Assembly | null = null;
 
@@ -60,6 +62,7 @@ export type RuntimeModule = {
 };
 
 export type RuntimeCapabilities = {
+  projectBindings?: boolean;
   modules: Partial<Record<Slot, RuntimeModule>>;
   gatewayCapabilities: string[];
   gatewayState?: 'ready' | 'unavailable';
@@ -82,6 +85,7 @@ export async function readRuntimeCapabilities(
   }
   const modules = isRecord(body.modules) ? body.modules : {};
   return {
+    projectBindings: body.projectBindings === true,
     modules: modules as Partial<Record<Slot, RuntimeModule>>,
     gatewayCapabilities: Array.isArray(body.gatewayCapabilities)
       ? body.gatewayCapabilities.filter((item): item is string => typeof item === 'string')
@@ -152,8 +156,10 @@ export type ModuleCompositionState = {
 
 const staticProfile: CompositionProfile = generatedFrontendProfile as unknown as CompositionProfile;
 
-export function assembleProfile(profile: CompositionProfile): Assembly {
-  return assembleFrontend(profile, generatedFrontendModules, resolveFrontendChoices(profile, generatedFrontendModules));
+export function assembleProfile(profile: CompositionProfile, projectBindings = false): Assembly {
+  const catalog = projectBindings ? [...generatedFrontendModules, staffdeckSop, staffdeckKnowledge]
+    .filter((value, index, rows) => rows.findIndex(row => row.id === value.id) === index) : generatedFrontendModules;
+  return assembleFrontend(profile, catalog, resolveFrontendChoices(profile, catalog));
 }
 
 export function resolveModuleCompositionState(
@@ -162,7 +168,9 @@ export function resolveModuleCompositionState(
   error: string | null,
 ): ModuleCompositionState {
   try {
-    const assembly = assembleProfile(profile);
+    if (runtime?.projectBindings) profile = { ...profile, modules: { ...profile.modules,
+      sop: runtime.modules.sop as Binding, knowledge: runtime.modules.knowledge as Binding } };
+    const assembly = assembleProfile(profile, runtime?.projectBindings);
     // Static imports are not an authorization to activate a module. Keep
     // every module-owned contribution dormant until the server projection
     // has confirmed that this exact assembly is available.
@@ -196,7 +204,12 @@ export function useModuleComposition(): ModuleCompositionState {
     void readRuntimeCapabilities()
       .then((next) => { if (!cancelled) { setRuntime(next); setError(null); } })
       .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); });
-    const refresh = () => setRefreshKey((current) => current + 1);
+    const refresh = () => {
+      cancelled = true;
+      setRuntime(null);
+      setError(null);
+      setRefreshKey((current) => current + 1);
+    };
     window.addEventListener('pilotdeck:module-runtime-changed', refresh);
     return () => {
       cancelled = true;

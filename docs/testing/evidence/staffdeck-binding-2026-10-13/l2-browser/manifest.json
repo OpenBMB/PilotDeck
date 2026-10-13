@@ -1,0 +1,41 @@
+{
+  "exportedAt": "2026-10-13T08:56:40.748Z",
+  "files": [
+    "browser-failure.png",
+    "browser-late-response.png",
+    "browser-published.png",
+    "browser-result.json",
+    "browser-switch-result.json",
+    "browser-upload.png",
+    "browser-workflow-mobile.png",
+    "browser-workflow-result-archive-browser.json",
+    "browser-workflow-result-archive-verified.json",
+    "browser-workflow-result-final-archive.json",
+    "browser-workflow-result-final-loaded.json",
+    "browser-workflow-result-final.json",
+    "browser-workflow-result-menu-fixed.json",
+    "browser-workflow-result-ready-loaded.json",
+    "browser-workflow-result-refresh-fixed.json",
+    "compatibility-result.json",
+    "concurrency-result.json",
+    "desktop-a.png",
+    "mobile-b.png",
+    "regression-result-core-build.json",
+    "regression-result-ui-build.json",
+    "regression-result-ui-tests.json",
+    "regression-result-ui-typecheck.json",
+    "regression-result.json",
+    "results.json",
+    "sync-result.json",
+    "pd-binding-store.json"
+  ],
+  "excludes": [
+    "credentials",
+    "env",
+    "config",
+    "databases",
+    "raw logs",
+    "model capture"
+  ],
+  "screenshots": "Only isolated fixture screens; visually reviewed before delivery"
+}

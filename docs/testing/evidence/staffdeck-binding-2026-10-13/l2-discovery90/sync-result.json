@@ -1,0 +1,59 @@
+[
+  {
+    "id": "I03",
+    "status": "PASS",
+    "imported": {
+      "status": "imported",
+      "target_agent_id": "agent_12d908bea2584ac0",
+      "source_agent_id": "agent_binding-tenant_overall",
+      "imported": [
+        {
+          "resource_type": "knowledge_base",
+          "resource_id": "kb_b900b83945e14055",
+          "display_id": "kb_b900b83945e14055",
+          "name": "Global binding sync marker 1791880937739"
+        }
+      ],
+      "missing": []
+    },
+    "promoted": {
+      "status": "imported",
+      "target_agent_id": "agent_binding-tenant_overall",
+      "source_agent_id": "agent_12d908bea2584ac0",
+      "imported": [
+        {
+          "resource_type": "knowledge_base",
+          "resource_id": "kb_d3095ab01dd1408e",
+          "display_id": "kb_d3095ab01dd1408e",
+          "name": "A sop_specific BINDING_MARKER"
+        }
+      ],
+      "missing": []
+    },
+    "foreignTargetStatus": 403
+  },
+  {
+    "id": "I03-SOP",
+    "status": "PASS",
+    "sopImport": {
+      "status": "imported",
+      "target_agent_id": "agent_12d908bea2584ac0",
+      "source_agent_id": "agent_binding-tenant_overall",
+      "imported": [
+        {
+          "resource_type": "skill",
+          "resource_id": "skill_0d7bd77617ae4fda",
+          "display_id": "binding_global_sync_1791880937970",
+          "name": "Global SOP binding sync"
+        }
+      ],
+      "missing": []
+    },
+    "sopPromotion": {
+      "status": "promoted",
+      "skill_id": "binding_global_sync_1791880937970",
+      "version": "1.1.0"
+    },
+    "foreignTargetStatus": 403
+  }
+]

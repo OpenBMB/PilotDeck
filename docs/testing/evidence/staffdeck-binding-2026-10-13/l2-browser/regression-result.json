@@ -1,0 +1,162 @@
+[
+  {
+    "name": "core-build",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck",
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 14102,
+    "summary": []
+  },
+  {
+    "name": "ui-build",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/ui",
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 17291,
+    "summary": [
+      "✓ built in 16.56s"
+    ]
+  },
+  {
+    "name": "ui-typecheck",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/ui",
+    "command": [
+      "npm",
+      "run",
+      "typecheck"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 10020,
+    "summary": []
+  },
+  {
+    "name": "core-tests",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck",
+    "command": [
+      "/Users/a1/.nvm/versions/node/v22.23.1/bin/node",
+      "--test",
+      "dist/tests/pilot/staffdeck-project-binding.spec.js",
+      "dist/tests/pilot/staffdeck-project-binding-faults.spec.js",
+      "dist/tests/composition/public-approval-bridge.spec.js",
+      "dist/tests/sop/staffdeck-sop-agent-loop.spec.js"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 41498,
+    "summary": [
+      "# tests 97",
+      "# pass 97",
+      "# fail 0",
+      "# skipped 0",
+      "# duration_ms 41461.209167"
+    ]
+  },
+  {
+    "name": "publish-tests",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck",
+    "command": [
+      "/Users/a1/.nvm/versions/node/v22.23.1/bin/node",
+      "--test",
+      "ui/server/staffdeck-publish-route.test.js",
+      "ui/server/staffdeck-publish-runtime.test.mjs"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 106,
+    "summary": [
+      "# tests 10",
+      "# pass 10",
+      "# fail 0",
+      "# skipped 0",
+      "# duration_ms 72.560209"
+    ]
+  },
+  {
+    "name": "ui-tests",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/ui",
+    "command": [
+      "npx",
+      "vitest",
+      "run",
+      "server/routes/projects.binding.test.js",
+      "server/routes/modules.test.js",
+      "server/routes/modules-sdk.test.js",
+      "server/routes/modules-public-bridge.test.js",
+      "server/routes/staffdeck-copy.test.js",
+      "src/components/app-shell/StaffDeckProjectBinding.test.tsx",
+      "src/composition/modules/staffdeck/publish-runtime-integration.test.tsx",
+      "src/composition/modules/staffdeck/public-approval-consumer.test.tsx"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 5966,
+    "summary": [
+      " Test Files  8 passed (8)",
+      "      Tests  89 passed (89)",
+      "   Duration  3.77s (transform 8.59s, setup 0ms, import 10.71s, tests 3.14s, environment 4.65s)"
+    ]
+  },
+  {
+    "name": "sd-tests",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/StaffDeck",
+    "command": [
+      "/Users/a1/Desktop/claw/openbmb/StaffDeck-pilotdeck-agent-loop/backend/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "backend/tests/test_project_agent_binding.py",
+      "backend/tests/test_project_binding_upgrade.py",
+      "backend/tests/test_pilotdeck_domain_binding.py",
+      "backend/tests/test_pilotdeck_approval_binding.py",
+      "backend/tests/test_sop_capability_authority.py",
+      "backend/tests/test_public_pilotdeck_knowledge_read.py",
+      "backend/tests/test_capability_scope.py",
+      "backend/tests/test_public_sop_route.py",
+      "backend/tests/test_public_sop_selected_base.py",
+      "backend/tests_harness/test_pilotdeck_harness_model.py"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 17655,
+    "summary": [
+      "67 passed in 16.35s"
+    ]
+  },
+  {
+    "name": "pd-diff",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck",
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 563,
+    "summary": []
+  },
+  {
+    "name": "sd-diff",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/StaffDeck",
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 197,
+    "summary": []
+  }
+]

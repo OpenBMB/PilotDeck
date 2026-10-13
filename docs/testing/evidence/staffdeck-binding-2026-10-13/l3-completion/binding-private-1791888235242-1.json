@@ -1,0 +1,1435 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10820,
+    "displayUsed": 10820,
+    "localEstimateTokens": 10820,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09693950688073394,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10820,
+      "system": 3282,
+      "tools": 7511,
+      "messages": 27,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " SOP",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " step",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 7
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " instruct",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 12
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "s me to call",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 21
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " `",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 33
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "knowledge_query` for",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 35
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 55
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " cobalt approval verification",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 59
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " code. Let me",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 11,
+      "offset": 88
+    },
+    "sequence": 14
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " do",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 12,
+      "offset": 101
+    },
+    "sequence": 15
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " that now.\n",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 13,
+      "offset": 104
+    },
+    "sequence": 16
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "I need to retrieve",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 1,
+      "revision": 15,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 17
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " the cobalt approval",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 1,
+      "revision": 16,
+      "offset": 18
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 18
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " verification code by calling",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 1,
+      "revision": 17,
+      "offset": 38
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 19
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " `knowledge_query`.",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 1,
+      "revision": 18,
+      "offset": 67
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 20
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " Let me do that",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 1,
+      "revision": 19,
+      "offset": 86
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 21
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " now",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 1,
+      "revision": 20,
+      "offset": 101
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 22
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": ".\n\n",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 1,
+      "revision": 21,
+      "offset": 105
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 23
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+    "text": "The SOP step instructs me to call `knowledge_query` for the cobalt approval verification code. Let me do that now.\n",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 0,
+      "revision": 25
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 24
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+    "text": "I need to retrieve the cobalt approval verification code by calling `knowledge_query`. Let me do that now.\n\n",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:thinking:0",
+      "order": 1,
+      "revision": 26
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 25
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "tool:call_29cd77aa6a234cfeac2a7ec5",
+      "previousId": "58a84f34-46d3-4531-a73e-d1518a6b1e18:text:0",
+      "order": 2,
+      "revision": 27
+    },
+    "type": "tool_call_started",
+    "toolCallId": "call_29cd77aa6a234cfeac2a7ec5",
+    "name": "knowledge_query",
+    "argsPreview": "{\"query\":\"cobalt approval verification code\"}",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 26
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "call_29cd77aa6a234cfeac2a7ec5",
+    "ok": true,
+    "resultPreview": "{\"selected_buckets\":[{\"id\":\"kbucket_798f56d826474eb9\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_378ff4c02ced4453\",\"document_id\":\"kdoc_87696e38ff5c42d8\",\"bucket_key\":\"binding_cobalt_sop_policy\",\"title\":\"Binding cobalt SOP policy\",\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"token_estimate\":64,\"chunk_count\":1,\"status\":\"ready\",\"metadata\":{\"ingest_schema_version\":2,\"content\":\"# Binding cobalt SOP policy\\n\\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"bucket_type\":\"structure\",\"concept_type\":\"Topic\",\"section_ids\":[\"sec_1\"],\"section_paths\":[\"Binding cobalt SOP policy\"],\"representative_chunk_ids\":[\"kchunk_79694466d3584a15\"],\"applicable_query_types\":[\"answer\",\"policy_check\"],\"quality\":{\"status\":\"ready\",\"warnings\":[],\"has_source_sections\":true,\"has_summary\":true,\"content_chars\":128},\"document_card\":{\"title\":\"sop_specific\",\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\"},\"chunk_count\":1},\"created_at\":\"2026-10-13T10:37:35.255518\",\"updated_at\":\"2026-10-13T10:37:35.257049\"},{\"id\":\"kbucket_7d46977774ac494c\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_d2761ff2d4f54b10\",\"document_id\":\"kdoc_e96fd97293ad4101\",\"bucket_key\":\"binding_amber_policy\",\"title\":\"Binding amber policy\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"token_estimate\":41,\"chunk_count\":1,\"status\":\"ready\",\"metadata\":{\"ingest_schema_version\":2,\"content\":\"# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\",\"bucket_type\":\"structure\",\"concept_type\":\"Topic\",\"section_ids\":[\"sec_1\"],\"section_paths\":[\"Binding amber policy\"],\"representative_chunk_ids\":[\"kchunk_150935fcb47d4bcc\"],\"applicable_query_types\":[\"answer\",\"policy_check\"],\"quality\":{\"status\":\"ready\",\"warnings\":[],\"has_source_sections\":true,\"has_summary\":true,\"content_chars\":82},\"document_card\":{\"title\":\"general\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\"},\"chunk_count\":1},\"created_at\":\"2026-10-13T10:37:34.678721\",\"updated_at\":\"2026-10-13T10:37:34.681707\"}],\"chunks\":[{\"id\":\"kchunk_79694466d3584a15\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_378ff4c02ced4453\",\"document_id\":\"kdoc_87696e38ff5c42d8\",\"bucket_id\":\"kbucket_798f56d826474eb9\",\"chunk_index\":0,\"content\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"summary\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"source_ref\":\"sop_specific.md / Binding cobalt SOP policy / evidence 1\",\"metadata\":{\"ingest_schema_version\":2,\"node_type\":\"evidence_chunk\",\"related_group_id\":null,\"related_chunk_index\":0,\"section_id\":\"sec_1\",\"section_path\":\"Binding cobalt SOP policy\",\"section_title\":\"Binding cobalt SOP policy\",\"bucket_title\":\"Binding cobalt SOP policy\",\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"context_window\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"related_chunk_ids\":[],\"related_chunk_count\":0,\"related_previous_chunk_id\":null,\"related_next_chunk_id\":null},\"created_at\":\"2026-10-13T10:37:35.257011\",\"updated_at\":\"2026-10-13T10:37:35.257016\"},{\"id\":\"kchunk_150935fcb47d4bcc\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_d2761ff2d4f54b10\",\"document_id\":\"kdoc_e96fd97293ad4101\",\"bucket_id\":\"kbucket_7d46977774ac494c\",\"chunk_index\":0,\"content\":\"The amber project verification code is AMBER_BINDING_7391.\",\"summary\":\"The amber project verification code is AMBER_BINDING_7391.\",\"source_ref\":\"general.md / Binding amber policy / evidence 1\",\"metadata\":{\"ingest_schema_version\":2,\"node_type\":\"evidence_chunk\",\"related_group_id\":null,\"related_chunk_index\":0,\"section_id\":\"sec_1\",\"section_path\":\"Binding amber policy\",\"section_title\":\"Binding amber policy\",\"bucket_title\":\"Binding amber policy\",\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"context_window\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"related_chunk_ids\":[],\"related_chunk_count\":0,\"related_previous_chunk_id\":null,\"related_next_chunk_id\":null},\"created_at\":\"2026-10-13T10:37:34.681624\",\"updated_at\":\"2026-10-13T10:37:34.681630\"}],\"trace\":[{\"phase\":\"okf_concept_route\",\"message\":\"正在选择 OKF Wiki 页面\",\"candidate_count\":6,\"selected_count\":4},{\"phase\":\"document_route\",\"message\":\"正在选择知识文档\",\"candidate_count\":2,\"mode\":\"chat\"},{\"phase\":\"document_route_lexical\",\"message\":\"按检索相关性选择知识文档\",\"selected_count\":2},{\"phase\":\"bucket_route\",\"message\":\"正在选择内部索引\",\"candidate_count\":2,\"selected_document_ids\":[\"kdoc_87696e38ff5c42d8\",\"kdoc_e96fd97293ad4101\"]},{\"phase\":\"bucket_route_lexical\",\"message\":\"按检索相关性选择内部索引\",\"selected_count\":2},{\"phase\":\"section_expand\",\"message\":\"正在展开章节\",\"section_count\":2},{\"phase\":\"read_chunks\",\"message\":\"读取引用来源\",\"chunk_count\":2},{\"phase\":\"evidence_pack\",\"message\":\"整理引用来源包\",\"evidence_count\":2}],\"route_trace\":[{\"phase\":\"okf_concept_route\",\"message\":\"正在选择 OKF Wiki 页面\",\"candidate_count\":6,\"selected_count\":4},{\"phase\":\"document_route\",\"message\":\"正在选择知识文档\",\"candidate_count\":2,\"mode\":\"chat\"},{\"phase\":\"document_route_lexical\",\"message\":\"按检索相关性选择知识文档\",\"selected_count\":2},{\"phase\":\"bucket_route\",\"message\":\"正在选择内部索引\",\"candidate_count\":2,\"selected_document_ids\":[\"kdoc_87696e38ff5c42d8\",\"kdoc_e96fd97293ad4101\"]},{\"phase\":\"bucket_route_lexical\",\"message\":\"按检索相关性选择内部索引\",\"selected_count\":2},{\"phase\":\"section_expand\",\"message\":\"正在展开章节\",\"section_count\":2},{\"phase\":\"read_chunks\",\"message\":\"读取引用来源\",\"chunk_count\":2},{\"phase\":\"evidence_pack\",\"message\":\"整理引用来源包\",\"evidence_count\":2}],\"selected_documents\":[{\"id\":\"kdoc_87696e38ff5c42d8\",\"knowledge_base_id\":\"kb_378ff4c02ced4453\",\"title\":\"sop_specific\",\"filename\":\"sop_specific.md\",\"file_type\":\"md\",\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"outline\":[{\"section_id\":\"sec_1\",\"title\":\"Binding cobalt SOP policy\",\"path\":\"Binding cobalt SOP policy\",\"level\":1,\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\"}],\"key_entities\":[\"Binding\",\"cobalt\",\"SOP\",\"policy\",\"The\",\"approval\",\"verification\",\"code\",\"COBALT_SOP_8624\",\"This\",\"knowledge\",\"only\",\"for\",\"execution\"],\"section_count\":1,\"chunk_count\":1,\"updated_at\":\"2026-10-13T10:37:35.260048\"},{\"id\":\"kdoc_e96fd97293ad4101\",\"knowledge_base_id\":\"kb_d2761ff2d4f54b10\",\"title\":\"general\",\"filename\":\"general.md\",\"file_type\":\"md\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"outline\":[{\"section_id\":\"sec_1\",\"title\":\"Binding amber policy\",\"path\":\"Binding amber policy\",\"level\":1,\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\"}],\"key_entities\":[\"Binding\",\"amber\",\"policy\",\"The\",\"project\",\"verification\",\"code\",\"AMBER_BINDING_7391\"],\"section_count\":1,\"chunk_count\":1,\"updated_at\":\"2026-10-13T10:37:34.706345\"}],\"selected_concepts\":[{\"id\":\"kconcept_9da1394b00774f3c\",\"concept_id\":\"topics/binding-cobalt-sop-policy\",\"type\":\"Topic\",\"title\":\"Binding cobalt SOP policy\",\"description\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"links\":[{\"label\":\"Binding cobalt SOP policy\",\"target\":\"/sources/sop-specific/sections/sec-1.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"source_refs\":[{\"document_id\":\"kdoc_87696e38ff5c42d8\",\"bucket_id\":\"kbucket_798f56d826474eb9\",\"bucket_key\":\"binding_cobalt_sop_policy\"}],\"content\":\"# Summary\\n\\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Source Sections\\n\\n- [Binding cobalt SOP policy](/sources/sop-specific/sections/sec-1.md)\\n\\n# Notes\\n\\n# Binding cobalt SOP policy\\n\\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)\"},{\"id\":\"kconcept_245696265aa94bb6\",\"concept_id\":\"sources/sop-specific/sections/sec-1\",\"type\":\"Source Section\",\"title\":\"Binding cobalt SOP policy\",\"description\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"links\":[{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"source_refs\":[{\"document_id\":\"kdoc_87696e38ff5c42d8\",\"section_id\":\"sec_1\",\"section_path\":\"Binding cobalt SOP policy\"}],\"content\":\"# Summary\\n\\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Content\\n\\n# Binding cobalt SOP policy\\n\\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)\"},{\"id\":\"kconcept_c1ec6e4965984cdc\",\"concept_id\":\"sources/sop-specific\",\"type\":\"Source Document\",\"title\":\"sop_specific\",\"description\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"links\":[{\"label\":\"Binding cobalt SOP policy\",\"target\":\"/sources/sop-specific/sections/sec-1.md\"},{\"label\":\"Binding cobalt SOP policy\",\"target\":\"/topics/binding-cobalt-sop-policy.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"source_refs\":[{\"document_id\":\"kdoc_87696e38ff5c42d8\",\"filename\":\"sop_specific.md\"}],\"content\":\"# Summary\\n\\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Outline\\n\\n- [Binding cobalt SOP policy](/sources/sop-specific/sections/sec-1.md) - # Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Knowledge Buckets\\n\\n- [Binding cobalt SOP policy](/topics/binding-cobalt-sop-policy.md) - # Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)\"},{\"id\":\"kconcept_4ea2b2f241cb4f4c\",\"concept_id\":\"topics/binding-amber-policy\",\"type\":\"Topic\",\"title\":\"Binding amber policy\",\"description\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"links\":[{\"label\":\"Binding amber policy\",\"target\":\"/sources/general/sections/sec-1.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_e96fd97293ad4101\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_e96fd97293ad4101\"}],\"source_refs\":[{\"document_id\":\"kdoc_e96fd97293ad4101\",\"bucket_id\":\"kbucket_7d46977774ac494c\",\"bucket_key\":\"binding_amber_policy\"}],\"content\":\"# Summary\\n\\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Source Sections\\n\\n- [Binding amber policy](/sources/general/sections/sec-1.md)\\n\\n# Notes\\n\\n# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_e96fd97293ad4101)\"}],\"expanded_sections\":[{\"document_id\":\"kdoc_87696e38ff5c42d8\",\"section_id\":\"sec_1\",\"title\":\"Binding cobalt SOP policy\",\"path\":\"Binding cobalt SOP policy\",\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"level\":1,\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"reason\":\"命中内部索引：Binding cobalt SOP policy\"},{\"document_id\":\"kdoc_e96fd97293ad4101\",\"section_id\":\"sec_1\",\"title\":\"Binding amber policy\",\"path\":\"Binding amber policy\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"level\":1,\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"reason\":\"命中内部索引：Binding amber policy\"}],\"okf_citations\":[{\"concept_id\":\"topics/binding-cobalt-sop-policy\",\"title\":\"Binding cobalt SOP policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"},{\"concept_id\":\"sources/sop-specific/sections/sec-1\",\"title\":\"Binding cobalt SOP policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"},{\"concept_id\":\"sources/sop-specific\",\"title\":\"sop_specific\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"},{\"concept_id\":\"topics/binding-amber-policy\",\"title\":\"Binding amber policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_e96fd97293ad4101\"}],\"evidence_pack\":[{\"chunk_id\":\"kchunk_79694466d3584a15\",\"related_group_id\":null,\"related_chunk_ids\":[],\"related_chunk_index\":0,\"document_id\":\"kdoc_87696e38ff5c42d8\",\"bucket_id\":\"kbucket_798f56d826474eb9\",\"source_path\":\"sop_specific.md / Binding cobalt SOP policy / evidence 1\",\"section_path\":\"Binding cobalt SOP policy\",\"summary\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"content\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"excerpt\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"relevance_score\":18.38,\"confidence_reason\":\"引用来源摘要、章节路径或正文与查询相关\"},{\"chunk_id\":\"kchunk_150935fcb47d4bcc\",\"related_group_id\":null,\"related_chunk_ids\":[],\"related_chunk_index\":0,\"document_id\":\"kdoc_e96fd97293ad4101\",\"bucket_id\":\"kbucket_7d46977774ac494c\",\"source_path\":\"general.md / Binding amber policy / evidence 1\",\"section_path\":\"Binding amber policy\",\"summary\":\"The amber project verification code is AMBER_BINDING_7391.\",\"content\":\"The amber project verification code is AMBER_BINDING_7391.\",\"excerpt\":\"The amber project verification code is AMBER_BINDING_7391.\",\"relevance_score\":5.06,\"confidence_reason\":\"引用来源摘要、章节路径或正文与查询相关\"}]}",
+    "resultLineCount": 1,
+    "resultBytes": 15009,
+    "toolName": "knowledge_query",
+    "resultPath": "/var/folders/xd/mml9c6fj2g95x40hgf_n6lrr0000gn/T/pilotdeck-tool-output/81088/binding-private-1791888235242-1/735b5764-1ea1-4977-88bc-2e8a928c25f8/call_29cd77aa6a234cfeac2a7ec5.txt",
+    "data": {
+      "selected_buckets": [
+        {
+          "id": "kbucket_798f56d826474eb9",
+          "tenant_id": "binding-tenant",
+          "knowledge_base_id": "kb_378ff4c02ced4453",
+          "document_id": "kdoc_87696e38ff5c42d8",
+          "bucket_key": "binding_cobalt_sop_policy",
+          "title": "Binding cobalt SOP policy",
+          "summary": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "token_estimate": 64,
+          "chunk_count": 1,
+          "status": "ready",
+          "metadata": {
+            "ingest_schema_version": 2,
+            "content": "# Binding cobalt SOP policy\n\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+            "bucket_type": "structure",
+            "concept_type": "Topic",
+            "section_ids": [
+              "sec_1"
+            ],
+            "section_paths": [
+              "Binding cobalt SOP policy"
+            ],
+            "representative_chunk_ids": [
+              "kchunk_79694466d3584a15"
+            ],
+            "applicable_query_types": [
+              "answer",
+              "policy_check"
+            ],
+            "quality": {
+              "status": "ready",
+              "warnings": [],
+              "has_source_sections": true,
+              "has_summary": true,
+              "content_chars": 128
+            },
+            "document_card": {
+              "title": "sop_specific",
+              "summary": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution."
+            },
+            "chunk_count": 1
+          },
+          "created_at": "2026-10-13T10:37:35.255518",
+          "updated_at": "2026-10-13T10:37:35.257049"
+        },
+        {
+          "id": "kbucket_7d46977774ac494c",
+          "tenant_id": "binding-tenant",
+          "knowledge_base_id": "kb_d2761ff2d4f54b10",
+          "document_id": "kdoc_e96fd97293ad4101",
+          "bucket_key": "binding_amber_policy",
+          "title": "Binding amber policy",
+          "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "token_estimate": 41,
+          "chunk_count": 1,
+          "status": "ready",
+          "metadata": {
+            "ingest_schema_version": 2,
+            "content": "# Binding amber policy\n\nThe amber project verification code is AMBER_BINDING_7391.",
+            "bucket_type": "structure",
+            "concept_type": "Topic",
+            "section_ids": [
+              "sec_1"
+            ],
+            "section_paths": [
+              "Binding amber policy"
+            ],
+            "representative_chunk_ids": [
+              "kchunk_150935fcb47d4bcc"
+            ],
+            "applicable_query_types": [
+              "answer",
+              "policy_check"
+            ],
+            "quality": {
+              "status": "ready",
+              "warnings": [],
+              "has_source_sections": true,
+              "has_summary": true,
+              "content_chars": 82
+            },
+            "document_card": {
+              "title": "general",
+              "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391."
+            },
+            "chunk_count": 1
+          },
+          "created_at": "2026-10-13T10:37:34.678721",
+          "updated_at": "2026-10-13T10:37:34.681707"
+        }
+      ],
+      "chunks": [
+        {
+          "id": "kchunk_79694466d3584a15",
+          "tenant_id": "binding-tenant",
+          "knowledge_base_id": "kb_378ff4c02ced4453",
+          "document_id": "kdoc_87696e38ff5c42d8",
+          "bucket_id": "kbucket_798f56d826474eb9",
+          "chunk_index": 0,
+          "content": "The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "summary": "The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "source_ref": "sop_specific.md / Binding cobalt SOP policy / evidence 1",
+          "metadata": {
+            "ingest_schema_version": 2,
+            "node_type": "evidence_chunk",
+            "related_group_id": null,
+            "related_chunk_index": 0,
+            "section_id": "sec_1",
+            "section_path": "Binding cobalt SOP policy",
+            "section_title": "Binding cobalt SOP policy",
+            "bucket_title": "Binding cobalt SOP policy",
+            "source_span": {
+              "start_paragraph": 0,
+              "end_paragraph": 1
+            },
+            "context_window": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+            "related_chunk_ids": [],
+            "related_chunk_count": 0,
+            "related_previous_chunk_id": null,
+            "related_next_chunk_id": null
+          },
+          "created_at": "2026-10-13T10:37:35.257011",
+          "updated_at": "2026-10-13T10:37:35.257016"
+        },
+        {
+          "id": "kchunk_150935fcb47d4bcc",
+          "tenant_id": "binding-tenant",
+          "knowledge_base_id": "kb_d2761ff2d4f54b10",
+          "document_id": "kdoc_e96fd97293ad4101",
+          "bucket_id": "kbucket_7d46977774ac494c",
+          "chunk_index": 0,
+          "content": "The amber project verification code is AMBER_BINDING_7391.",
+          "summary": "The amber project verification code is AMBER_BINDING_7391.",
+          "source_ref": "general.md / Binding amber policy / evidence 1",
+          "metadata": {
+            "ingest_schema_version": 2,
+            "node_type": "evidence_chunk",
+            "related_group_id": null,
+            "related_chunk_index": 0,
+            "section_id": "sec_1",
+            "section_path": "Binding amber policy",
+            "section_title": "Binding amber policy",
+            "bucket_title": "Binding amber policy",
+            "source_span": {
+              "start_paragraph": 0,
+              "end_paragraph": 1
+            },
+            "context_window": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+            "related_chunk_ids": [],
+            "related_chunk_count": 0,
+            "related_previous_chunk_id": null,
+            "related_next_chunk_id": null
+          },
+          "created_at": "2026-10-13T10:37:34.681624",
+          "updated_at": "2026-10-13T10:37:34.681630"
+        }
+      ],
+      "trace": [
+        {
+          "phase": "okf_concept_route",
+          "message": "正在选择 OKF Wiki 页面",
+          "candidate_count": 6,
+          "selected_count": 4
+        },
+        {
+          "phase": "document_route",
+          "message": "正在选择知识文档",
+          "candidate_count": 2,
+          "mode": "chat"
+        },
+        {
+          "phase": "document_route_lexical",
+          "message": "按检索相关性选择知识文档",
+          "selected_count": 2
+        },
+        {
+          "phase": "bucket_route",
+          "message": "正在选择内部索引",
+          "candidate_count": 2,
+          "selected_document_ids": [
+            "kdoc_87696e38ff5c42d8",
+            "kdoc_e96fd97293ad4101"
+          ]
+        },
+        {
+          "phase": "bucket_route_lexical",
+          "message": "按检索相关性选择内部索引",
+          "selected_count": 2
+        },
+        {
+          "phase": "section_expand",
+          "message": "正在展开章节",
+          "section_count": 2
+        },
+        {
+          "phase": "read_chunks",
+          "message": "读取引用来源",
+          "chunk_count": 2
+        },
+        {
+          "phase": "evidence_pack",
+          "message": "整理引用来源包",
+          "evidence_count": 2
+        }
+      ],
+      "route_trace": [
+        {
+          "phase": "okf_concept_route",
+          "message": "正在选择 OKF Wiki 页面",
+          "candidate_count": 6,
+          "selected_count": 4
+        },
+        {
+          "phase": "document_route",
+          "message": "正在选择知识文档",
+          "candidate_count": 2,
+          "mode": "chat"
+        },
+        {
+          "phase": "document_route_lexical",
+          "message": "按检索相关性选择知识文档",
+          "selected_count": 2
+        },
+        {
+          "phase": "bucket_route",
+          "message": "正在选择内部索引",
+          "candidate_count": 2,
+          "selected_document_ids": [
+            "kdoc_87696e38ff5c42d8",
+            "kdoc_e96fd97293ad4101"
+          ]
+        },
+        {
+          "phase": "bucket_route_lexical",
+          "message": "按检索相关性选择内部索引",
+          "selected_count": 2
+        },
+        {
+          "phase": "section_expand",
+          "message": "正在展开章节",
+          "section_count": 2
+        },
+        {
+          "phase": "read_chunks",
+          "message": "读取引用来源",
+          "chunk_count": 2
+        },
+        {
+          "phase": "evidence_pack",
+          "message": "整理引用来源包",
+          "evidence_count": 2
+        }
+      ],
+      "selected_documents": [
+        {
+          "id": "kdoc_87696e38ff5c42d8",
+          "knowledge_base_id": "kb_378ff4c02ced4453",
+          "title": "sop_specific",
+          "filename": "sop_specific.md",
+          "file_type": "md",
+          "summary": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "outline": [
+            {
+              "section_id": "sec_1",
+              "title": "Binding cobalt SOP policy",
+              "path": "Binding cobalt SOP policy",
+              "level": 1,
+              "summary": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution."
+            }
+          ],
+          "key_entities": [
+            "Binding",
+            "cobalt",
+            "SOP",
+            "policy",
+            "The",
+            "approval",
+            "verification",
+            "code",
+            "COBALT_SOP_8624",
+            "This",
+            "knowledge",
+            "only",
+            "for",
+            "execution"
+          ],
+          "section_count": 1,
+          "chunk_count": 1,
+          "updated_at": "2026-10-13T10:37:35.260048"
+        },
+        {
+          "id": "kdoc_e96fd97293ad4101",
+          "knowledge_base_id": "kb_d2761ff2d4f54b10",
+          "title": "general",
+          "filename": "general.md",
+          "file_type": "md",
+          "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "outline": [
+            {
+              "section_id": "sec_1",
+              "title": "Binding amber policy",
+              "path": "Binding amber policy",
+              "level": 1,
+              "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391."
+            }
+          ],
+          "key_entities": [
+            "Binding",
+            "amber",
+            "policy",
+            "The",
+            "project",
+            "verification",
+            "code",
+            "AMBER_BINDING_7391"
+          ],
+          "section_count": 1,
+          "chunk_count": 1,
+          "updated_at": "2026-10-13T10:37:34.706345"
+        }
+      ],
+      "selected_concepts": [
+        {
+          "id": "kconcept_9da1394b00774f3c",
+          "concept_id": "topics/binding-cobalt-sop-policy",
+          "type": "Topic",
+          "title": "Binding cobalt SOP policy",
+          "description": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "links": [
+            {
+              "label": "Binding cobalt SOP policy",
+              "target": "/sources/sop-specific/sections/sec-1.md"
+            },
+            {
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+            }
+          ],
+          "citations": [
+            {
+              "index": 1,
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+            }
+          ],
+          "source_refs": [
+            {
+              "document_id": "kdoc_87696e38ff5c42d8",
+              "bucket_id": "kbucket_798f56d826474eb9",
+              "bucket_key": "binding_cobalt_sop_policy"
+            }
+          ],
+          "content": "# Summary\n\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\n\n# Source Sections\n\n- [Binding cobalt SOP policy](/sources/sop-specific/sections/sec-1.md)\n\n# Notes\n\n# Binding cobalt SOP policy\n\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)"
+        },
+        {
+          "id": "kconcept_245696265aa94bb6",
+          "concept_id": "sources/sop-specific/sections/sec-1",
+          "type": "Source Section",
+          "title": "Binding cobalt SOP policy",
+          "description": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "links": [
+            {
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+            }
+          ],
+          "citations": [
+            {
+              "index": 1,
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+            }
+          ],
+          "source_refs": [
+            {
+              "document_id": "kdoc_87696e38ff5c42d8",
+              "section_id": "sec_1",
+              "section_path": "Binding cobalt SOP policy"
+            }
+          ],
+          "content": "# Summary\n\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\n\n# Content\n\n# Binding cobalt SOP policy\n\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)"
+        },
+        {
+          "id": "kconcept_c1ec6e4965984cdc",
+          "concept_id": "sources/sop-specific",
+          "type": "Source Document",
+          "title": "sop_specific",
+          "description": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "links": [
+            {
+              "label": "Binding cobalt SOP policy",
+              "target": "/sources/sop-specific/sections/sec-1.md"
+            },
+            {
+              "label": "Binding cobalt SOP policy",
+              "target": "/topics/binding-cobalt-sop-policy.md"
+            },
+            {
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+            }
+          ],
+          "citations": [
+            {
+              "index": 1,
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+            }
+          ],
+          "source_refs": [
+            {
+              "document_id": "kdoc_87696e38ff5c42d8",
+              "filename": "sop_specific.md"
+            }
+          ],
+          "content": "# Summary\n\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\n\n# Outline\n\n- [Binding cobalt SOP policy](/sources/sop-specific/sections/sec-1.md) - # Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\n\n# Knowledge Buckets\n\n- [Binding cobalt SOP policy](/topics/binding-cobalt-sop-policy.md) - # Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)"
+        },
+        {
+          "id": "kconcept_4ea2b2f241cb4f4c",
+          "concept_id": "topics/binding-amber-policy",
+          "type": "Topic",
+          "title": "Binding amber policy",
+          "description": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "links": [
+            {
+              "label": "Binding amber policy",
+              "target": "/sources/general/sections/sec-1.md"
+            },
+            {
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+            }
+          ],
+          "citations": [
+            {
+              "index": 1,
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+            }
+          ],
+          "source_refs": [
+            {
+              "document_id": "kdoc_e96fd97293ad4101",
+              "bucket_id": "kbucket_7d46977774ac494c",
+              "bucket_key": "binding_amber_policy"
+            }
+          ],
+          "content": "# Summary\n\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Source Sections\n\n- [Binding amber policy](/sources/general/sections/sec-1.md)\n\n# Notes\n\n# Binding amber policy\n\nThe amber project verification code is AMBER_BINDING_7391.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_e96fd97293ad4101)"
+        }
+      ],
+      "expanded_sections": [
+        {
+          "document_id": "kdoc_87696e38ff5c42d8",
+          "section_id": "sec_1",
+          "title": "Binding cobalt SOP policy",
+          "path": "Binding cobalt SOP policy",
+          "summary": "# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "level": 1,
+          "source_span": {
+            "start_paragraph": 0,
+            "end_paragraph": 1
+          },
+          "reason": "命中内部索引：Binding cobalt SOP policy"
+        },
+        {
+          "document_id": "kdoc_e96fd97293ad4101",
+          "section_id": "sec_1",
+          "title": "Binding amber policy",
+          "path": "Binding amber policy",
+          "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "level": 1,
+          "source_span": {
+            "start_paragraph": 0,
+            "end_paragraph": 1
+          },
+          "reason": "命中内部索引：Binding amber policy"
+        }
+      ],
+      "okf_citations": [
+        {
+          "concept_id": "topics/binding-cobalt-sop-policy",
+          "title": "Binding cobalt SOP policy",
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+        },
+        {
+          "concept_id": "sources/sop-specific/sections/sec-1",
+          "title": "Binding cobalt SOP policy",
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+        },
+        {
+          "concept_id": "sources/sop-specific",
+          "title": "sop_specific",
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8"
+        },
+        {
+          "concept_id": "topics/binding-amber-policy",
+          "title": "Binding amber policy",
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+        }
+      ],
+      "evidence_pack": [
+        {
+          "chunk_id": "kchunk_79694466d3584a15",
+          "related_group_id": null,
+          "related_chunk_ids": [],
+          "related_chunk_index": 0,
+          "document_id": "kdoc_87696e38ff5c42d8",
+          "bucket_id": "kbucket_798f56d826474eb9",
+          "source_path": "sop_specific.md / Binding cobalt SOP policy / evidence 1",
+          "section_path": "Binding cobalt SOP policy",
+          "summary": "The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "content": "The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "excerpt": "The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.",
+          "relevance_score": 18.38,
+          "confidence_reason": "引用来源摘要、章节路径或正文与查询相关"
+        },
+        {
+          "chunk_id": "kchunk_150935fcb47d4bcc",
+          "related_group_id": null,
+          "related_chunk_ids": [],
+          "related_chunk_index": 0,
+          "document_id": "kdoc_e96fd97293ad4101",
+          "bucket_id": "kbucket_7d46977774ac494c",
+          "source_path": "general.md / Binding amber policy / evidence 1",
+          "section_path": "Binding amber policy",
+          "summary": "The amber project verification code is AMBER_BINDING_7391.",
+          "content": "The amber project verification code is AMBER_BINDING_7391.",
+          "excerpt": "The amber project verification code is AMBER_BINDING_7391.",
+          "relevance_score": 5.06,
+          "confidence_reason": "引用来源摘要、章节路径或正文与查询相关"
+        }
+      ]
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "previousId": "tool:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 3,
+      "revision": 28
+    },
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 27
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "call_29cd77aa6a234cfeac2a7ec5",
+    "fullText": "{\"selected_buckets\":[{\"id\":\"kbucket_798f56d826474eb9\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_378ff4c02ced4453\",\"document_id\":\"kdoc_87696e38ff5c42d8\",\"bucket_key\":\"binding_cobalt_sop_policy\",\"title\":\"Binding cobalt SOP policy\",\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"token_estimate\":64,\"chunk_count\":1,\"status\":\"ready\",\"metadata\":{\"ingest_schema_version\":2,\"content\":\"# Binding cobalt SOP policy\\n\\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"bucket_type\":\"structure\",\"concept_type\":\"Topic\",\"section_ids\":[\"sec_1\"],\"section_paths\":[\"Binding cobalt SOP policy\"],\"representative_chunk_ids\":[\"kchunk_79694466d3584a15\"],\"applicable_query_types\":[\"answer\",\"policy_check\"],\"quality\":{\"status\":\"ready\",\"warnings\":[],\"has_source_sections\":true,\"has_summary\":true,\"content_chars\":128},\"document_card\":{\"title\":\"sop_specific\",\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\"},\"chunk_count\":1},\"created_at\":\"2026-10-13T10:37:35.255518\",\"updated_at\":\"2026-10-13T10:37:35.257049\"},{\"id\":\"kbucket_7d46977774ac494c\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_d2761ff2d4f54b10\",\"document_id\":\"kdoc_e96fd97293ad4101\",\"bucket_key\":\"binding_amber_policy\",\"title\":\"Binding amber policy\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"token_estimate\":41,\"chunk_count\":1,\"status\":\"ready\",\"metadata\":{\"ingest_schema_version\":2,\"content\":\"# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\",\"bucket_type\":\"structure\",\"concept_type\":\"Topic\",\"section_ids\":[\"sec_1\"],\"section_paths\":[\"Binding amber policy\"],\"representative_chunk_ids\":[\"kchunk_150935fcb47d4bcc\"],\"applicable_query_types\":[\"answer\",\"policy_check\"],\"quality\":{\"status\":\"ready\",\"warnings\":[],\"has_source_sections\":true,\"has_summary\":true,\"content_chars\":82},\"document_card\":{\"title\":\"general\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\"},\"chunk_count\":1},\"created_at\":\"2026-10-13T10:37:34.678721\",\"updated_at\":\"2026-10-13T10:37:34.681707\"}],\"chunks\":[{\"id\":\"kchunk_79694466d3584a15\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_378ff4c02ced4453\",\"document_id\":\"kdoc_87696e38ff5c42d8\",\"bucket_id\":\"kbucket_798f56d826474eb9\",\"chunk_index\":0,\"content\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"summary\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"source_ref\":\"sop_specific.md / Binding cobalt SOP policy / evidence 1\",\"metadata\":{\"ingest_schema_version\":2,\"node_type\":\"evidence_chunk\",\"related_group_id\":null,\"related_chunk_index\":0,\"section_id\":\"sec_1\",\"section_path\":\"Binding cobalt SOP policy\",\"section_title\":\"Binding cobalt SOP policy\",\"bucket_title\":\"Binding cobalt SOP policy\",\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"context_window\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"related_chunk_ids\":[],\"related_chunk_count\":0,\"related_previous_chunk_id\":null,\"related_next_chunk_id\":null},\"created_at\":\"2026-10-13T10:37:35.257011\",\"updated_at\":\"2026-10-13T10:37:35.257016\"},{\"id\":\"kchunk_150935fcb47d4bcc\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_d2761ff2d4f54b10\",\"document_id\":\"kdoc_e96fd97293ad4101\",\"bucket_id\":\"kbucket_7d46977774ac494c\",\"chunk_index\":0,\"content\":\"The amber project verification code is AMBER_BINDING_7391.\",\"summary\":\"The amber project verification code is AMBER_BINDING_7391.\",\"source_ref\":\"general.md / Binding amber policy / evidence 1\",\"metadata\":{\"ingest_schema_version\":2,\"node_type\":\"evidence_chunk\",\"related_group_id\":null,\"related_chunk_index\":0,\"section_id\":\"sec_1\",\"section_path\":\"Binding amber policy\",\"section_title\":\"Binding amber policy\",\"bucket_title\":\"Binding amber policy\",\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"context_window\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"related_chunk_ids\":[],\"related_chunk_count\":0,\"related_previous_chunk_id\":null,\"related_next_chunk_id\":null},\"created_at\":\"2026-10-13T10:37:34.681624\",\"updated_at\":\"2026-10-13T10:37:34.681630\"}],\"trace\":[{\"phase\":\"okf_concept_route\",\"message\":\"正在选择 OKF Wiki 页面\",\"candidate_count\":6,\"selected_count\":4},{\"phase\":\"document_route\",\"message\":\"正在选择知识文档\",\"candidate_count\":2,\"mode\":\"chat\"},{\"phase\":\"document_route_lexical\",\"message\":\"按检索相关性选择知识文档\",\"selected_count\":2},{\"phase\":\"bucket_route\",\"message\":\"正在选择内部索引\",\"candidate_count\":2,\"selected_document_ids\":[\"kdoc_87696e38ff5c42d8\",\"kdoc_e96fd97293ad4101\"]},{\"phase\":\"bucket_route_lexical\",\"message\":\"按检索相关性选择内部索引\",\"selected_count\":2},{\"phase\":\"section_expand\",\"message\":\"正在展开章节\",\"section_count\":2},{\"phase\":\"read_chunks\",\"message\":\"读取引用来源\",\"chunk_count\":2},{\"phase\":\"evidence_pack\",\"message\":\"整理引用来源包\",\"evidence_count\":2}],\"route_trace\":[{\"phase\":\"okf_concept_route\",\"message\":\"正在选择 OKF Wiki 页面\",\"candidate_count\":6,\"selected_count\":4},{\"phase\":\"document_route\",\"message\":\"正在选择知识文档\",\"candidate_count\":2,\"mode\":\"chat\"},{\"phase\":\"document_route_lexical\",\"message\":\"按检索相关性选择知识文档\",\"selected_count\":2},{\"phase\":\"bucket_route\",\"message\":\"正在选择内部索引\",\"candidate_count\":2,\"selected_document_ids\":[\"kdoc_87696e38ff5c42d8\",\"kdoc_e96fd97293ad4101\"]},{\"phase\":\"bucket_route_lexical\",\"message\":\"按检索相关性选择内部索引\",\"selected_count\":2},{\"phase\":\"section_expand\",\"message\":\"正在展开章节\",\"section_count\":2},{\"phase\":\"read_chunks\",\"message\":\"读取引用来源\",\"chunk_count\":2},{\"phase\":\"evidence_pack\",\"message\":\"整理引用来源包\",\"evidence_count\":2}],\"selected_documents\":[{\"id\":\"kdoc_87696e38ff5c42d8\",\"knowledge_base_id\":\"kb_378ff4c02ced4453\",\"title\":\"sop_specific\",\"filename\":\"sop_specific.md\",\"file_type\":\"md\",\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"outline\":[{\"section_id\":\"sec_1\",\"title\":\"Binding cobalt SOP policy\",\"path\":\"Binding cobalt SOP policy\",\"level\":1,\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\"}],\"key_entities\":[\"Binding\",\"cobalt\",\"SOP\",\"policy\",\"The\",\"approval\",\"verification\",\"code\",\"COBALT_SOP_8624\",\"This\",\"knowledge\",\"only\",\"for\",\"execution\"],\"section_count\":1,\"chunk_count\":1,\"updated_at\":\"2026-10-13T10:37:35.260048\"},{\"id\":\"kdoc_e96fd97293ad4101\",\"knowledge_base_id\":\"kb_d2761ff2d4f54b10\",\"title\":\"general\",\"filename\":\"general.md\",\"file_type\":\"md\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"outline\":[{\"section_id\":\"sec_1\",\"title\":\"Binding amber policy\",\"path\":\"Binding amber policy\",\"level\":1,\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\"}],\"key_entities\":[\"Binding\",\"amber\",\"policy\",\"The\",\"project\",\"verification\",\"code\",\"AMBER_BINDING_7391\"],\"section_count\":1,\"chunk_count\":1,\"updated_at\":\"2026-10-13T10:37:34.706345\"}],\"selected_concepts\":[{\"id\":\"kconcept_9da1394b00774f3c\",\"concept_id\":\"topics/binding-cobalt-sop-policy\",\"type\":\"Topic\",\"title\":\"Binding cobalt SOP policy\",\"description\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"links\":[{\"label\":\"Binding cobalt SOP policy\",\"target\":\"/sources/sop-specific/sections/sec-1.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"source_refs\":[{\"document_id\":\"kdoc_87696e38ff5c42d8\",\"bucket_id\":\"kbucket_798f56d826474eb9\",\"bucket_key\":\"binding_cobalt_sop_policy\"}],\"content\":\"# Summary\\n\\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Source Sections\\n\\n- [Binding cobalt SOP policy](/sources/sop-specific/sections/sec-1.md)\\n\\n# Notes\\n\\n# Binding cobalt SOP policy\\n\\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)\"},{\"id\":\"kconcept_245696265aa94bb6\",\"concept_id\":\"sources/sop-specific/sections/sec-1\",\"type\":\"Source Section\",\"title\":\"Binding cobalt SOP policy\",\"description\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"links\":[{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"source_refs\":[{\"document_id\":\"kdoc_87696e38ff5c42d8\",\"section_id\":\"sec_1\",\"section_path\":\"Binding cobalt SOP policy\"}],\"content\":\"# Summary\\n\\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Content\\n\\n# Binding cobalt SOP policy\\n\\nThe cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)\"},{\"id\":\"kconcept_c1ec6e4965984cdc\",\"concept_id\":\"sources/sop-specific\",\"type\":\"Source Document\",\"title\":\"sop_specific\",\"description\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"links\":[{\"label\":\"Binding cobalt SOP policy\",\"target\":\"/sources/sop-specific/sections/sec-1.md\"},{\"label\":\"Binding cobalt SOP policy\",\"target\":\"/topics/binding-cobalt-sop-policy.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"}],\"source_refs\":[{\"document_id\":\"kdoc_87696e38ff5c42d8\",\"filename\":\"sop_specific.md\"}],\"content\":\"# Summary\\n\\n# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Outline\\n\\n- [Binding cobalt SOP policy](/sources/sop-specific/sections/sec-1.md) - # Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Knowledge Buckets\\n\\n- [Binding cobalt SOP policy](/topics/binding-cobalt-sop-policy.md) - # Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8)\"},{\"id\":\"kconcept_4ea2b2f241cb4f4c\",\"concept_id\":\"topics/binding-amber-policy\",\"type\":\"Topic\",\"title\":\"Binding amber policy\",\"description\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"links\":[{\"label\":\"Binding amber policy\",\"target\":\"/sources/general/sections/sec-1.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_e96fd97293ad4101\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_e96fd97293ad4101\"}],\"source_refs\":[{\"document_id\":\"kdoc_e96fd97293ad4101\",\"bucket_id\":\"kbucket_7d46977774ac494c\",\"bucket_key\":\"binding_amber_policy\"}],\"content\":\"# Summary\\n\\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Source Sections\\n\\n- [Binding amber policy](/sources/general/sections/sec-1.md)\\n\\n# Notes\\n\\n# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_e96fd97293ad4101)\"}],\"expanded_sections\":[{\"document_id\":\"kdoc_87696e38ff5c42d8\",\"section_id\":\"sec_1\",\"title\":\"Binding cobalt SOP policy\",\"path\":\"Binding cobalt SOP policy\",\"summary\":\"# Binding cobalt SOP policy The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"level\":1,\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"reason\":\"命中内部索引：Binding cobalt SOP policy\"},{\"document_id\":\"kdoc_e96fd97293ad4101\",\"section_id\":\"sec_1\",\"title\":\"Binding amber policy\",\"path\":\"Binding amber policy\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"level\":1,\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"reason\":\"命中内部索引：Binding amber policy\"}],\"okf_citations\":[{\"concept_id\":\"topics/binding-cobalt-sop-policy\",\"title\":\"Binding cobalt SOP policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"},{\"concept_id\":\"sources/sop-specific/sections/sec-1\",\"title\":\"Binding cobalt SOP policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"},{\"concept_id\":\"sources/sop-specific\",\"title\":\"sop_specific\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_87696e38ff5c42d8\"},{\"concept_id\":\"topics/binding-amber-policy\",\"title\":\"Binding amber policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_e96fd97293ad4101\"}],\"evidence_pack\":[{\"chunk_id\":\"kchunk_79694466d3584a15\",\"related_group_id\":null,\"related_chunk_ids\":[],\"related_chunk_index\":0,\"document_id\":\"kdoc_87696e38ff5c42d8\",\"bucket_id\":\"kbucket_798f56d826474eb9\",\"source_path\":\"sop_specific.md / Binding cobalt SOP policy / evidence 1\",\"section_path\":\"Binding cobalt SOP policy\",\"summary\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"content\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"excerpt\":\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\",\"relevance_score\":18.38,\"confidence_reason\":\"引用来源摘要、章节路径或正文与查询相关\"},{\"chunk_id\":\"kchunk_150935fcb47d4bcc\",\"related_group_id\":null,\"related_chunk_ids\":[],\"related_chunk_index\":0,\"document_id\":\"kdoc_e96fd97293ad4101\",\"bucket_id\":\"kbucket_7d46977774ac494c\",\"source_path\":\"general.md / Binding amber policy / evidence 1\",\"section_path\":\"Binding amber policy\",\"summary\":\"The amber project verification code is AMBER_BINDING_7391.\",\"content\":\"The amber project verification code is AMBER_BINDING_7391.\",\"excerpt\":\"The amber project verification code is AMBER_BINDING_7391.\",\"relevance_score\":5.06,\"confidence_reason\":\"引用来源摘要、章节路径或正文与查询相关\"}]}",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 28
+  },
+  {
+    "type": "agent_status",
+    "event": "turn_continued",
+    "detail": {
+      "reason": "next_turn"
+    },
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 29
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 30
+  },
+  {
+    "type": "context_budget",
+    "used": 16829,
+    "displayUsed": 16829,
+    "localEstimateTokens": 14856,
+    "estimateSource": "usage",
+    "usageTokens": 16829,
+    "calibrationActualInputTokens": 12793,
+    "calibrationEstimatedInputTokens": 10820,
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.1507758744266055,
+    "state": "ok",
+    "source": "calibrated",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 14856,
+      "system": 3282,
+      "tools": 7511,
+      "messages": 4063,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 31
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 31,
+      "offset": 0
+    },
+    "sequence": 32
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " knowledge query returned",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 32,
+      "offset": 3
+    },
+    "sequence": 33
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the cobalt approval",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 33,
+      "offset": 28
+    },
+    "sequence": 34
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " verification code. Now",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 34,
+      "offset": 48
+    },
+    "sequence": 35
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I need to submit",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 35,
+      "offset": 71
+    },
+    "sequence": 36
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 36,
+      "offset": 88
+    },
+    "sequence": 37
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " step result as instructed",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 37,
+      "offset": 92
+    },
+    "sequence": 38
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " by the SOP.",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 38,
+      "offset": 118
+    },
+    "sequence": 39
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 39,
+      "offset": 130
+    },
+    "sequence": 40
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "The `",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "order": 5,
+      "revision": 41,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 41
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "knowledge_query` returned",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "order": 5,
+      "revision": 42,
+      "offset": 5
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 42
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " the cobalt",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "order": 5,
+      "revision": 43,
+      "offset": 30
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 43
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " approval verification code.",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "order": 5,
+      "revision": 44,
+      "offset": 41
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 44
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " Now I'll submit",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "order": 5,
+      "revision": 45,
+      "offset": 69
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 45
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " the completed",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "order": 5,
+      "revision": 46,
+      "offset": 85
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 46
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " step result.\n\n",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "order": 5,
+      "revision": 47,
+      "offset": 99
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 47
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+    "text": "The knowledge query returned the cobalt approval verification code. Now I need to submit the step result as instructed by the SOP.\n",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "previousId": "result:call_29cd77aa6a234cfeac2a7ec5",
+      "order": 4,
+      "revision": 51
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 48
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+    "text": "The `knowledge_query` returned the cobalt approval verification code. Now I'll submit the completed step result.\n\n",
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:thinking:0",
+      "order": 5,
+      "revision": 52
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 49
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "tool:call_7b924e601cd744ddbb33be61",
+      "previousId": "1a5b72cf-28bd-4acf-862b-540fb4a921d7:text:0",
+      "order": 6,
+      "revision": 53
+    },
+    "type": "tool_call_started",
+    "toolCallId": "call_7b924e601cd744ddbb33be61",
+    "name": "submit_step_result",
+    "argsPreview": "{\"status\":\"completed\",\"replyFragment\":\"**Cobalt approval verification code:** `COBALT_SOP_8624`\\n\\n_Citation: \\\"Binding cobalt SOP policy\\\" — doc `kdoc_87696e38ff5c42d8`, chunk `kchunk_79694466d3584a15`. Content: \\\"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\\\"_\",\"slotUpdates\":{}}",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 50
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "call_7b924e601cd744ddbb33be61",
+    "ok": true,
+    "resultPreview": "{\"submittedStepId\":\"answer\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"answer\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "resultLineCount": 1,
+    "resultBytes": 142,
+    "toolName": "submit_step_result",
+    "data": {
+      "status": "completed",
+      "replyFragment": "**Cobalt approval verification code:** `COBALT_SOP_8624`\n\n_Citation: \"Binding cobalt SOP policy\" — doc `kdoc_87696e38ff5c42d8`, chunk `kchunk_79694466d3584a15`. Content: \"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\"_",
+      "slotUpdates": {},
+      "taskSummary": null,
+      "structuredResult": null,
+      "nextStepId": null,
+      "events": []
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+      "id": "result:call_7b924e601cd744ddbb33be61",
+      "previousId": "tool:call_7b924e601cd744ddbb33be61",
+      "order": 7,
+      "revision": 54
+    },
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 51
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "call_7b924e601cd744ddbb33be61",
+    "fullText": "{\"submittedStepId\":\"answer\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"answer\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 52
+  },
+  {
+    "type": "agent_status",
+    "event": "structured_output_completed",
+    "detail": {
+      "message": "Structured output was returned, so this turn has completed.",
+      "messageI18n": {
+        "key": "[REDACTED]"
+      },
+      "code": "structured_output_completed",
+      "visible": true,
+      "scope": "turn",
+      "source": "agent"
+    },
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 53
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "**Cobalt approval verification code:** `COBALT_SOP_8624`\n\n_Citation: \"Binding cobalt SOP policy\" — doc `kdoc_87696e38ff5c42d8`, chunk `kchunk_79694466d3584a15`. Content: \"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\"_",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "model": "qwen3.6-flash-distill",
+    "sequence": 54
+  },
+  {
+    "type": "structured_output",
+    "payload": {
+      "sop": {
+        "status": "completed",
+        "replyFragment": "**Cobalt approval verification code:** `COBALT_SOP_8624`\n\n_Citation: \"Binding cobalt SOP policy\" — doc `kdoc_87696e38ff5c42d8`, chunk `kchunk_79694466d3584a15`. Content: \"The cobalt approval verification code is COBALT_SOP_8624. This knowledge is only for SOP execution.\"_",
+        "slotUpdates": {},
+        "taskSummary": null,
+        "structuredResult": null,
+        "nextStepId": null,
+        "events": []
+      }
+    },
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 55
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 30161,
+      "outputTokens": 291,
+      "totalTokens": 30452
+    },
+    "finishReason": "completed",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 56
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 30161,
+      "outputTokens": 291,
+      "totalTokens": 30452
+    },
+    "finishReason": "completed",
+    "runId": "735b5764-1ea1-4977-88bc-2e8a928c25f8",
+    "sequence": 57
+  }
+]

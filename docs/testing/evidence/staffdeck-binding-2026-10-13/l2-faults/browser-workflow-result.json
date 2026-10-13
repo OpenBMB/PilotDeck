@@ -1,0 +1,88 @@
+{
+  "results": [
+    {
+      "id": "U01/U02-CREATE-RETRY",
+      "status": "PASS",
+      "project": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-AHIHdA-workspace-BrowserQA1791879203130",
+      "originalBindingId": "6f9edd3b-009f-4e49-98d4-0c29470aab71",
+      "failedProjectRetained": true,
+      "refreshRestored": true
+    },
+    {
+      "id": "U02-WORKFLOW",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('menuitem', { name: /New Knowledge Base|Create Knowledge Base/ })\u001b[22m\n",
+      "errors": []
+    }
+  ],
+  "network": [
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/create-workspace",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    }
+  ]
+}

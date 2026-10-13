@@ -1,0 +1,358 @@
+{
+  "selected_buckets": [
+    {
+      "id": "kbucket_7d46977774ac494c",
+      "tenant_id": "binding-tenant",
+      "knowledge_base_id": "kb_d2761ff2d4f54b10",
+      "document_id": "kdoc_e96fd97293ad4101",
+      "bucket_key": "binding_amber_policy",
+      "title": "Binding amber policy",
+      "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+      "token_estimate": 41,
+      "chunk_count": 1,
+      "status": "ready",
+      "metadata": {
+        "ingest_schema_version": 2,
+        "content": "# Binding amber policy\n\nThe amber project verification code is AMBER_BINDING_7391.",
+        "bucket_type": "structure",
+        "concept_type": "Topic",
+        "section_ids": [
+          "sec_1"
+        ],
+        "section_paths": [
+          "Binding amber policy"
+        ],
+        "representative_chunk_ids": [
+          "kchunk_150935fcb47d4bcc"
+        ],
+        "applicable_query_types": [
+          "answer",
+          "policy_check"
+        ],
+        "quality": {
+          "status": "ready",
+          "warnings": [],
+          "has_source_sections": true,
+          "has_summary": true,
+          "content_chars": 82
+        },
+        "document_card": {
+          "title": "general",
+          "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391."
+        },
+        "chunk_count": 1
+      },
+      "created_at": "2026-10-13T10:37:34.678721",
+      "updated_at": "2026-10-13T10:37:34.681707"
+    }
+  ],
+  "chunks": [
+    {
+      "id": "kchunk_150935fcb47d4bcc",
+      "tenant_id": "binding-tenant",
+      "knowledge_base_id": "kb_d2761ff2d4f54b10",
+      "document_id": "kdoc_e96fd97293ad4101",
+      "bucket_id": "kbucket_7d46977774ac494c",
+      "chunk_index": 0,
+      "content": "The amber project verification code is AMBER_BINDING_7391.",
+      "summary": "The amber project verification code is AMBER_BINDING_7391.",
+      "source_ref": "general.md / Binding amber policy / evidence 1",
+      "metadata": {
+        "ingest_schema_version": 2,
+        "node_type": "evidence_chunk",
+        "related_group_id": null,
+        "related_chunk_index": 0,
+        "section_id": "sec_1",
+        "section_path": "Binding amber policy",
+        "section_title": "Binding amber policy",
+        "bucket_title": "Binding amber policy",
+        "source_span": {
+          "start_paragraph": 0,
+          "end_paragraph": 1
+        },
+        "context_window": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+        "related_chunk_ids": [],
+        "related_chunk_count": 0,
+        "related_previous_chunk_id": null,
+        "related_next_chunk_id": null
+      },
+      "created_at": "2026-10-13T10:37:34.681624",
+      "updated_at": "2026-10-13T10:37:34.681630"
+    }
+  ],
+  "trace": [
+    {
+      "phase": "okf_concept_route",
+      "message": "正在选择 OKF Wiki 页面",
+      "candidate_count": 3,
+      "selected_count": 3
+    },
+    {
+      "phase": "document_route",
+      "message": "正在选择知识文档",
+      "candidate_count": 1,
+      "mode": "chat"
+    },
+    {
+      "phase": "document_route_lexical",
+      "message": "按检索相关性选择知识文档",
+      "selected_count": 1
+    },
+    {
+      "phase": "bucket_route",
+      "message": "正在选择内部索引",
+      "candidate_count": 1,
+      "selected_document_ids": [
+        "kdoc_e96fd97293ad4101"
+      ]
+    },
+    {
+      "phase": "bucket_route_lexical",
+      "message": "按检索相关性选择内部索引",
+      "selected_count": 1
+    },
+    {
+      "phase": "section_expand",
+      "message": "正在展开章节",
+      "section_count": 1
+    },
+    {
+      "phase": "read_chunks",
+      "message": "读取引用来源",
+      "chunk_count": 1
+    },
+    {
+      "phase": "evidence_pack",
+      "message": "整理引用来源包",
+      "evidence_count": 1
+    }
+  ],
+  "route_trace": [
+    {
+      "phase": "okf_concept_route",
+      "message": "正在选择 OKF Wiki 页面",
+      "candidate_count": 3,
+      "selected_count": 3
+    },
+    {
+      "phase": "document_route",
+      "message": "正在选择知识文档",
+      "candidate_count": 1,
+      "mode": "chat"
+    },
+    {
+      "phase": "document_route_lexical",
+      "message": "按检索相关性选择知识文档",
+      "selected_count": 1
+    },
+    {
+      "phase": "bucket_route",
+      "message": "正在选择内部索引",
+      "candidate_count": 1,
+      "selected_document_ids": [
+        "kdoc_e96fd97293ad4101"
+      ]
+    },
+    {
+      "phase": "bucket_route_lexical",
+      "message": "按检索相关性选择内部索引",
+      "selected_count": 1
+    },
+    {
+      "phase": "section_expand",
+      "message": "正在展开章节",
+      "section_count": 1
+    },
+    {
+      "phase": "read_chunks",
+      "message": "读取引用来源",
+      "chunk_count": 1
+    },
+    {
+      "phase": "evidence_pack",
+      "message": "整理引用来源包",
+      "evidence_count": 1
+    }
+  ],
+  "selected_documents": [
+    {
+      "id": "kdoc_e96fd97293ad4101",
+      "knowledge_base_id": "kb_d2761ff2d4f54b10",
+      "title": "general",
+      "filename": "general.md",
+      "file_type": "md",
+      "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+      "outline": [
+        {
+          "section_id": "sec_1",
+          "title": "Binding amber policy",
+          "path": "Binding amber policy",
+          "level": 1,
+          "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391."
+        }
+      ],
+      "key_entities": [
+        "Binding",
+        "amber",
+        "policy",
+        "The",
+        "project",
+        "verification",
+        "code",
+        "AMBER_BINDING_7391"
+      ],
+      "section_count": 1,
+      "chunk_count": 1,
+      "updated_at": "2026-10-13T10:37:34.706345"
+    }
+  ],
+  "selected_concepts": [
+    {
+      "id": "kconcept_4ea2b2f241cb4f4c",
+      "concept_id": "topics/binding-amber-policy",
+      "type": "Topic",
+      "title": "Binding amber policy",
+      "description": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+      "links": [
+        {
+          "label": "Binding amber policy",
+          "target": "/sources/general/sections/sec-1.md"
+        },
+        {
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+        }
+      ],
+      "citations": [
+        {
+          "index": 1,
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+        }
+      ],
+      "source_refs": [
+        {
+          "document_id": "kdoc_e96fd97293ad4101",
+          "bucket_id": "kbucket_7d46977774ac494c",
+          "bucket_key": "binding_amber_policy"
+        }
+      ],
+      "content": "# Summary\n\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Source Sections\n\n- [Binding amber policy](/sources/general/sections/sec-1.md)\n\n# Notes\n\n# Binding amber policy\n\nThe amber project verification code is AMBER_BINDING_7391.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_e96fd97293ad4101)"
+    },
+    {
+      "id": "kconcept_acc1a733c5a54c93",
+      "concept_id": "sources/general/sections/sec-1",
+      "type": "Source Section",
+      "title": "Binding amber policy",
+      "description": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+      "links": [
+        {
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+        }
+      ],
+      "citations": [
+        {
+          "index": 1,
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+        }
+      ],
+      "source_refs": [
+        {
+          "document_id": "kdoc_e96fd97293ad4101",
+          "section_id": "sec_1",
+          "section_path": "Binding amber policy"
+        }
+      ],
+      "content": "# Summary\n\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Content\n\n# Binding amber policy\n\nThe amber project verification code is AMBER_BINDING_7391.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_e96fd97293ad4101)"
+    },
+    {
+      "id": "kconcept_23fab887465842fd",
+      "concept_id": "sources/general",
+      "type": "Source Document",
+      "title": "general",
+      "description": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+      "links": [
+        {
+          "label": "Binding amber policy",
+          "target": "/sources/general/sections/sec-1.md"
+        },
+        {
+          "label": "Binding amber policy",
+          "target": "/topics/binding-amber-policy.md"
+        },
+        {
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+        }
+      ],
+      "citations": [
+        {
+          "index": 1,
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+        }
+      ],
+      "source_refs": [
+        {
+          "document_id": "kdoc_e96fd97293ad4101",
+          "filename": "general.md"
+        }
+      ],
+      "content": "# Summary\n\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Outline\n\n- [Binding amber policy](/sources/general/sections/sec-1.md) - # Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Knowledge Buckets\n\n- [Binding amber policy](/topics/binding-amber-policy.md) - # Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_e96fd97293ad4101)"
+    }
+  ],
+  "expanded_sections": [
+    {
+      "document_id": "kdoc_e96fd97293ad4101",
+      "section_id": "sec_1",
+      "title": "Binding amber policy",
+      "path": "Binding amber policy",
+      "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+      "level": 1,
+      "source_span": {
+        "start_paragraph": 0,
+        "end_paragraph": 1
+      },
+      "reason": "命中内部索引：Binding amber policy"
+    }
+  ],
+  "okf_citations": [
+    {
+      "concept_id": "topics/binding-amber-policy",
+      "title": "Binding amber policy",
+      "label": "Original document",
+      "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+    },
+    {
+      "concept_id": "sources/general/sections/sec-1",
+      "title": "Binding amber policy",
+      "label": "Original document",
+      "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+    },
+    {
+      "concept_id": "sources/general",
+      "title": "general",
+      "label": "Original document",
+      "target": "ultrarag://knowledge/documents/kdoc_e96fd97293ad4101"
+    }
+  ],
+  "evidence_pack": [
+    {
+      "chunk_id": "kchunk_150935fcb47d4bcc",
+      "related_group_id": null,
+      "related_chunk_ids": [],
+      "related_chunk_index": 0,
+      "document_id": "kdoc_e96fd97293ad4101",
+      "bucket_id": "kbucket_7d46977774ac494c",
+      "source_path": "general.md / Binding amber policy / evidence 1",
+      "section_path": "Binding amber policy",
+      "summary": "The amber project verification code is AMBER_BINDING_7391.",
+      "content": "The amber project verification code is AMBER_BINDING_7391.",
+      "excerpt": "The amber project verification code is AMBER_BINDING_7391.",
+      "relevance_score": 18.38,
+      "confidence_reason": "引用来源摘要、章节路径或正文与查询相关"
+    }
+  ]
+}

@@ -59,6 +59,17 @@ export function createPublishRuntimeObserver() {
       current.forEach(row => merged.set(row.sopId, row));
       update({ owner, receipts: [...merged.values()], error: Boolean(runtime?.failure) || parsed.some(row => !row) });
     },
+    captureArchive(sopId: string) {
+      const capturedEpoch = epoch;
+      return (envelope: unknown) => {
+        if (!active || capturedEpoch !== epoch) return;
+        if (!object(envelope) || !object(envelope.runtime) || envelope.runtime.ownerArchived !== true) {
+          update({ ...state, error: true }); return;
+        }
+        update({ ...state, receipts: state.receipts.filter(row => row.sopId !== sopId),
+          error: envelope.runtime.status === 'failed' || Boolean(envelope.runtime.receiptFailure) });
+      };
+    },
     capturePublish(sopId: string) {
       const capturedEpoch = epoch;
       const capturedOwner = state.owner && ownerKey(state.owner);

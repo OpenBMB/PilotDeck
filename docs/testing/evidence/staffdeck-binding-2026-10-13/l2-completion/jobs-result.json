@@ -1,0 +1,11 @@
+[
+  {
+    "id": "I01/I05-JOBS",
+    "status": "PASS",
+    "jobId": "binding_job_224fa3632d014095ae3af77ee6fa8572",
+    "readsResultsCancelEventsDenied": true,
+    "rightfulEventsVisible": true,
+    "unknownMissingProjectDenied": true,
+    "elapsedMs": 299
+  }
+]

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { projectBindingEnvironment, projectForStaffDeckPrincipal } from '../pilot/staffdeck/projectBinding.js';
 import {
   readFile as readFileAsync,
   realpath,
@@ -587,7 +588,7 @@ export type CreateLocalGatewayResult = {
    * AlwaysOnManager / CronManager in response to a config change.
    */
   updateSubsystems: (update: SubsystemUpdate) => void;
-  getPublicHostCapabilities: () => PublicHostCapabilityProvider;
+  getPublicHostCapabilities: (principal?: import('../composition/nativeHostCapabilityProvider.js').PublicHostPrincipal) => PublicHostCapabilityProvider;
   getPublicApprovals: () => PublicApprovalBridge;
 };
 
@@ -769,13 +770,15 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     telemetry,
     sessionCatalog,
     sessionAdmission: async (runtime) => {
-      const tenantId = env.STAFFDECK_COPY_TENANT_ID, agentId = env.STAFFDECK_COPY_TARGET_AGENT_ID;
+      const projectEnv = projectBindingEnvironment(runtime.projectRoot, env);
+      const tenantId = projectEnv.STAFFDECK_COPY_TENANT_ID, agentId = projectEnv.STAFFDECK_COPY_TARGET_AGENT_ID;
       const pilotDeckUserId = env.STAFFDECK_COPY_PILOTDECK_USER_ID;
       const sop = runtime.snapshot.config.modules?.sop;
-      if (!tenantId || !agentId || !pilotDeckUserId || !sop || sop.discoveryAgentId !== agentId
+      if (!tenantId || !agentId || !pilotDeckUserId || (sop && sop.discoveryAgentId !== agentId)
         || readNativeInstallationOwner(env.DATABASE_PATH || joinPath(pilotHome, "auth.db")) !== pilotDeckUserId) return undefined;
-      return authenticateNativeStaffDeckAdmission({ env, projectKey: runtime.projectRoot, pilotDeckUserId,
-        discoveryEndpoint: sop.discoveryEndpoint, discoveryAgentId: sop.discoveryAgentId, discoveryApiKey: sop.discoveryApiKey });
+      return authenticateNativeStaffDeckAdmission({ env: projectEnv, projectKey: runtime.projectRoot, pilotDeckUserId,
+        discoveryEndpoint: sop?.discoveryEndpoint ?? `${projectEnv.STAFFDECK_FORMAL_API_ORIGIN}/api/v1`,
+        discoveryAgentId: sop?.discoveryAgentId ?? agentId, discoveryApiKey: sop?.discoveryApiKey ?? projectEnv.STAFFDECK_SOP_MANAGEMENT_API_KEY });
     },
     storageProvider: sessionDataPlane.persistence,
     nativeSessionStorage: options.nativeSessionStorage,
@@ -937,9 +940,12 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       const original = readNativeSessionAdmission(entries, sessionKey);
       if (!original) return undefined;
       const sop = registry.resolve(projectKey).snapshot.config.modules?.sop;
-      const current = await authenticateNativeStaffDeckAdmission({ env, projectKey,
-        pilotDeckUserId: original.pilotDeckUserId, discoveryEndpoint: sop?.discoveryEndpoint,
-        discoveryAgentId: sop?.discoveryAgentId, discoveryApiKey: sop?.discoveryApiKey });
+      const projectEnv = projectBindingEnvironment(projectKey, env);
+      const current = await authenticateNativeStaffDeckAdmission({ env: projectEnv, projectKey,
+        pilotDeckUserId: original.pilotDeckUserId,
+        discoveryEndpoint: sop?.discoveryEndpoint ?? `${projectEnv.STAFFDECK_FORMAL_API_ORIGIN}/api/v1`,
+        discoveryAgentId: sop?.discoveryAgentId ?? projectEnv.STAFFDECK_COPY_TARGET_AGENT_ID,
+        discoveryApiKey: sop?.discoveryApiKey ?? projectEnv.STAFFDECK_SOP_MANAGEMENT_API_KEY });
       if (!current || current.actorUserId !== original.actorUserId || current.credentialId !== original.credentialId
         || current.staffDeckOrigin !== original.staffDeckOrigin || current.tenantId !== original.tenantId
         || current.agentId !== original.agentId || current.pilotDeckUserId !== original.pilotDeckUserId
@@ -956,6 +962,15 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   });
   let approvalAuthenticator: Promise<{ authenticate(input: { bearer: string; signal?: AbortSignal }): Promise<import("../composition/publicApprovalBridge.js").PublicApprovalSubject> }> | undefined;
   const publicApprovals = createPublicApprovalBridge({
+    ...(env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true' ? {
+      resolveBinding: async (input: import('../gateway/protocol/types.js').GatewaySopStatusInput) => {
+        const projects = input.projectKey ? [await dialog.projects.resolveProjectKey(input.projectKey)] : await dialog.projects.listProjectKeys();
+        const admissions = await Promise.all(projects.map(key => sessionAdmission(key, input.sessionKey)));
+        const matches = admissions.filter(value => value !== undefined);
+        if (matches.length !== 1) throw Object.assign(new Error('SOP_APPROVAL_SESSION_FORBIDDEN'), { status: 403 });
+        return matches[0]!;
+      },
+    } : {}),
     binding: { tenantId: env.STAFFDECK_COPY_TENANT_ID ?? "", agentId: env.STAFFDECK_COPY_TARGET_AGENT_ID ?? "",
       pilotDeckUserId: env.STAFFDECK_COPY_PILOTDECK_USER_ID ?? "" },
     authenticate: async (input) => {
@@ -1473,7 +1488,11 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     listProjects: dialog.listProjects,
     describeProject: dialog.describeProject,
     reloadConfig: () => runtimeRefresh.reloadConfig(),
-    reloadExtensions: (input) => runtimeRefresh.reloadExtensions(input),
+    reloadExtensions: async (input) => {
+      const result = await runtimeRefresh.reloadExtensions(input);
+      if (env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true' && input?.projectKey) registry.resolve(input.projectKey);
+      return result;
+    },
     // Defensive: re-check the on-disk config at the start of every
     // turn so an apiKey/url edit applied between two messages takes
     // effect on the next one, even if the fs watcher missed it.
@@ -1502,26 +1521,33 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     },
     isProjectBusy: (projectKey: string) => router!.hasActiveUserTurn(projectKey),
     getPublicApprovals: () => publicApprovals,
-    getPublicHostCapabilities: () => {
-      const runtime = registry.resolve();
+    getPublicHostCapabilities: (principal) => {
+      const root = principal ? projectForStaffDeckPrincipal(principal, env) : undefined;
+      if (env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true' && !root) throw new Error('PROJECT_BINDING_PRINCIPAL_REQUIRED');
+      const runtime = registry.resolve(root);
       const modelPorts = createActiveRuntimeModelPorts({
         config: runtime.snapshot.config.model,
         model: runtime.model,
-        catalog: () => sessionModels.modelCatalogList({ includeAuto: false }),
+        catalog: () => sessionModels.modelCatalogList({ includeAuto: false, projectKey: root }),
       });
       const textParse = createActiveRuntimeTextParsingPort();
       return createRuntimeHostCapabilityProvider({
         profile: { id: runtime.projectRoot },
         tools: {},
         model: { catalog: async () => {
-          const result = await sessionModels.modelCatalogList({ includeAuto: false });
+          const result = await sessionModels.modelCatalogList({ includeAuto: false, projectKey: root });
           return { ...result, items: result.items.map(item => ({ ...item,
             name: item.displayName, enabled: item.available,
             is_default: result.defaultSelection?.provider === item.provider && result.defaultSelection.model === item.model,
           })) };
         }, prepare: modelPorts.prepare, stream: modelPorts.stream },
         file: { parse: textParse },
-        sopAuthority: { read: readSopAuthority },
+        sopAuthority: { read: (input, caller) => {
+          if (root && input.projectKey && input.projectKey !== root) {
+            throw Object.assign(new Error('The callback belongs to another project.'), { status: 403, code: 'PROJECT_BINDING_SCOPE_MISMATCH' });
+          }
+          return readSopAuthority({ ...input, ...(root ? { projectKey: root } : {}) }, caller);
+        } },
         skills: isDisabledModuleBinding(runtime.snapshot.config.modules?.skills) ? {} : { list: async () => {
           const result = await skillManager.list({ projectKey: runtime.projectRoot });
           return { ...result, items: result.items.map(item => ({ ...item, id: item.slug })) };

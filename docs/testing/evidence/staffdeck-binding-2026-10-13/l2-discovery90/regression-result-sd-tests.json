@@ -1,0 +1,29 @@
+[
+  {
+    "name": "sd-tests",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/StaffDeck",
+    "command": [
+      "/Users/a1/Desktop/claw/openbmb/StaffDeck-pilotdeck-agent-loop/backend/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "backend/tests/test_project_agent_binding.py",
+      "backend/tests/test_project_binding_upgrade.py",
+      "backend/tests/test_pilotdeck_domain_binding.py",
+      "backend/tests/test_pilotdeck_approval_binding.py",
+      "backend/tests/test_sop_capability_authority.py",
+      "backend/tests/test_public_pilotdeck_knowledge_read.py",
+      "backend/tests/test_capability_scope.py",
+      "backend/tests/test_public_sop_route.py",
+      "backend/tests/test_public_sop_selected_base.py",
+      "backend/tests/test_public_staffdeck_facade.py",
+      "backend/tests_harness/test_pilotdeck_harness_model.py"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 18943,
+    "summary": [
+      "82 passed in 17.95s"
+    ]
+  }
+]

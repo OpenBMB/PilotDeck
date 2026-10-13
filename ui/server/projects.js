@@ -21,6 +21,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { ensureProjectBinding, projectBindingSummary } from '../../src/pilot/staffdeck/projectBinding.js';
 
 import {
     getPilotDeckGateway,
@@ -255,6 +256,7 @@ async function getProjects(progressCallback = null) {
 
         result.push({
             name,
+            staffdeckBinding: projectBindingSummary(fullPath),
             displayName: projectDisplayName(fullPath),
             fullPath,
             path: fullPath,
@@ -455,6 +457,12 @@ async function extractProjectDirectory(projectName) {
     return resolvePilotHome(process.env);
 }
 
+export async function registeredProjectDirectory(projectName) {
+    if (typeof projectName !== 'string' || !projectName || projectName === 'general') return undefined;
+    const marked = await readMarkedProjectPaths();
+    return marked.get(projectName);
+}
+
 async function addProjectManually(projectPath, _displayName = null) {
     if (!projectPath) {
         throw new Error('projectPath is required');
@@ -484,8 +492,13 @@ async function addProjectManually(projectPath, _displayName = null) {
         throw error;
     }
 
+    const staffdeckBinding = await ensureProjectBinding(absolute, {
+        activate: async () => { await (await getPilotDeckGateway()).reloadExtensions({ projectKey: absolute }); },
+    }).catch(() => ({ status: 'failed', error: { code: 'PROJECT_BINDING_UNAVAILABLE',
+        message: 'StaffDeck binding is unavailable. The project is registered; retry to connect.' } }));
     return {
         name,
+        staffdeckBinding,
         displayName: projectDisplayName(absolute),
         fullPath: absolute,
         path: absolute,

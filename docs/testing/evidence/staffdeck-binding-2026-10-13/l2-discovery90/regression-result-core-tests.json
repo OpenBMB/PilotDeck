@@ -1,0 +1,25 @@
+[
+  {
+    "name": "core-tests",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck",
+    "command": [
+      "/Users/a1/.nvm/versions/node/v22.23.1/bin/node",
+      "--test",
+      "dist/tests/pilot/staffdeck-project-binding.spec.js",
+      "dist/tests/pilot/staffdeck-project-binding-faults.spec.js",
+      "dist/tests/composition/public-approval-bridge.spec.js",
+      "dist/tests/sop/staffdeck-sop-agent-loop.spec.js",
+      "dist/tests/sop/staffdeck-sop-discovery-client.spec.js"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 41612,
+    "summary": [
+      "# tests 101",
+      "# pass 101",
+      "# fail 0",
+      "# skipped 0",
+      "# duration_ms 41546.71425"
+    ]
+  }
+]

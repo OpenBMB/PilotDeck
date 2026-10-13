@@ -1,0 +1,32 @@
+[
+  {
+    "name": "B05 revoke",
+    "status": "FAIL",
+    "elapsedMs": 1605,
+    "error": "Cannot read properties of undefined (reading 'startsWith')"
+  },
+  {
+    "name": "B05 downgrade",
+    "status": "FAIL",
+    "elapsedMs": 1820,
+    "error": "Cannot read properties of undefined (reading 'startsWith')"
+  },
+  {
+    "name": "B05 archive",
+    "status": "FAIL",
+    "elapsedMs": 978,
+    "error": "Cannot read properties of undefined (reading 'startsWith')"
+  },
+  {
+    "name": "B05 missing",
+    "status": "FAIL",
+    "elapsedMs": 959,
+    "error": "Cannot read properties of undefined (reading 'startsWith')"
+  },
+  {
+    "name": "B05 Gateway unavailable preserves original target",
+    "status": "FAIL",
+    "elapsedMs": 177388,
+    "error": "Service did not recover"
+  }
+]

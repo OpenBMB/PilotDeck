@@ -1,0 +1,29 @@
+{
+  "exportedAt": "2026-10-13T09:03:29.896Z",
+  "files": [
+    "browser-late-response.png",
+    "browser-switch-result.json",
+    "compatibility-result.json",
+    "gateway-crash-result.json",
+    "integration-result.json",
+    "jobs-result.json",
+    "results.json",
+    "runtime-a-0.json",
+    "runtime-b-0.json",
+    "runtime-result.json",
+    "sop-lifecycle-result.json",
+    "sync-result.json",
+    "upgrade-result.json",
+    "pd-binding-store.json",
+    "persisted-sop-states.json"
+  ],
+  "excludes": [
+    "credentials",
+    "env",
+    "config",
+    "databases",
+    "raw logs",
+    "model capture"
+  ],
+  "screenshots": "Only isolated fixture screens; visually reviewed before delivery"
+}

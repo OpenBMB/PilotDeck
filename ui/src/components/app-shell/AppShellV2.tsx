@@ -32,6 +32,7 @@ import type { Contribution, SurfaceProps } from '../../composition/contracts';
 import { getSettingsPathFromTab } from '../settings/navigation';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
+import { StaffDeckProjectBinding } from './StaffDeckProjectBinding';
 import MainAreaV2 from './MainAreaV2';
 import { useDesktopCommands } from '../desktop/useDesktopCommands';
 import { useWorkspaceUpload } from '../main-content-v2/useWorkspaceUpload';
@@ -72,6 +73,7 @@ export default function AppShellV2() {
   const navigate = useNavigate();
   const location = useLocation();
   const composition = useModuleComposition();
+  const restoredProjectName = useRef(sessionStorage.getItem('pilotdeck-active-project'));
   // Match the V2 URL shapes and hoist params up. A single wildcard route
   // owns this shell so state survives every URL transition.
   const matchProjectChat = useMatch('/p/:projectName/c/:sessionId');
@@ -86,7 +88,7 @@ export default function AppShellV2() {
   // replace /knowledge (or another module page) with /p/general first.
   const isDeclaredModuleRoute = generatedFrontendModules.some((module) =>
     module.pages?.some((page) => page.path === location.pathname),
-  );
+  ) || ['/knowledge', '/knowledge/new', '/sop', '/sop/distill'].includes(location.pathname);
   const hasScheduledTasks = Boolean(composition.assembly?.pages.some((page) => page.path === SCHEDULED_TASKS_PATH));
   const isDisabledBusinessRoute = generatedBusinessRoutePaths.some((path) => path === location.pathname)
     && !modulePage
@@ -102,10 +104,6 @@ export default function AppShellV2() {
   const sessionId =
     matchProjectChat?.params.sessionId ?? matchLegacySession?.params.sessionId ?? undefined;
   const { t } = useTranslation('common');
-
-  useEffect(() => {
-    if (isDisabledBusinessRoute) navigate('/', { replace: true });
-  }, [isDisabledBusinessRoute, navigate]);
 
   const { isMobile } = useDeviceSettings({ trackPWA: false });
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -161,6 +159,16 @@ export default function AppShellV2() {
   });
   const workspaceTab = activeTab === 'cron' || activeTab === 'skills' || activeTab === 'memory' || activeTab === 'always-on' ? 'chat' : activeTab;
   const workspaceUpload = useWorkspaceUpload(selectedProject?.name);
+  useEffect(() => {
+    if (selectedProject?.name) sessionStorage.setItem('pilotdeck-active-project', selectedProject.name);
+    else if (!isLoadingProjects) sessionStorage.removeItem('pilotdeck-active-project');
+    if (selectedProject || !isLoadingProjects) window.dispatchEvent(new Event('pilotdeck:module-runtime-changed'));
+  }, [selectedProject?.name, isLoadingProjects]);
+  useEffect(() => {
+    if (isDisabledBusinessRoute && !isLoadingProjects && (selectedProject || !restoredProjectName.current)) {
+      navigate('/', { replace: true });
+    }
+  }, [isDisabledBusinessRoute, isLoadingProjects, selectedProject, navigate]);
   const shellActiveTab = dedicatedTab ?? workspaceTab;
   const { processingSessions: remoteProcessingSessions, unreadSessionIds, markRead, acknowledge, selectSession: acknowledgeNavigation } = useSessionIndicators({
     scope: String(user?.id ?? 'local'),
@@ -235,7 +243,10 @@ export default function AppShellV2() {
       didDefaultProjectRef.current = true;
       return;
     }
-    const target = chooseDefaultProject(sidebarSharedProps.projects);
+    const restored = isDedicatedRoute && restoredProjectName.current
+      ? sidebarSharedProps.projects.find(project => project.name === restoredProjectName.current)
+      : undefined;
+    const target = restored ?? chooseDefaultProject(sidebarSharedProps.projects);
     if (!target) return;
     if (isDedicatedRoute) {
       setSelectedProject(target);
@@ -702,7 +713,8 @@ export default function AppShellV2() {
 	      onCollapse={onCollapseSidebar}
 	      onLoadMoreSessions={loadMoreSessions}
       loadingMoreProjectIds={loadingMoreProjectIds}
-      modulePages={(composition.assembly?.pages ?? []).filter((page) => page.path !== '/chat' && page.path !== SCHEDULED_TASKS_PATH)}
+      modulePages={(composition.assembly?.pages ?? []).filter((page) => page.path !== '/chat' && page.path !== SCHEDULED_TASKS_PATH
+        && !['/knowledge/new', '/sop/distill'].includes(page.path))}
       hasScheduledTasks={hasScheduledTasks}
     />
   );
@@ -760,6 +772,7 @@ export default function AppShellV2() {
         className="app-main flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950"
       >
         {composition.assembly?.approvalInbox && <ApproverAccount session={approverSession} />}
+        <StaffDeckProjectBinding key={selectedProject?.name} projectName={selectedProject?.name} />
         <MainAreaV2
           workspaceUpload={workspaceUpload}
           projects={sidebarSharedProps.projects}
@@ -800,8 +813,8 @@ export default function AppShellV2() {
               navigate(`/p/${encodeURIComponent(target.name)}`);
             }
           }}
-          isSidebarCollapsed={!isMobile && !desktopSidebarOpen}
-          onOpenSidebar={onOpenDesktopSidebar}
+          isSidebarCollapsed={isMobile || !desktopSidebarOpen}
+          onOpenSidebar={isMobile ? onMenuClick : onOpenDesktopSidebar}
           externalMessageUpdate={externalMessageUpdate}
           misroutedFileFromUrl={misroutedFileFromUrl}
           onMisroutedFileUrlHandled={handleMisroutedFileUrlHandled}

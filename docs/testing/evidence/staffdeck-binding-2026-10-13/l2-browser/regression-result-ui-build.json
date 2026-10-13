@@ -1,0 +1,17 @@
+[
+  {
+    "name": "ui-build",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/ui",
+    "command": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 17356,
+    "summary": [
+      "✓ built in 16.71s"
+    ]
+  }
+]

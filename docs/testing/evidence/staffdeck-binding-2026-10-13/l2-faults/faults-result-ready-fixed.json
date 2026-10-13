@@ -1,0 +1,276 @@
+[
+  {
+    "name": "B05 revoke",
+    "status": "PASS",
+    "elapsedMs": 2363,
+    "evidence": {
+      "failure": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T08:34:20.727Z",
+          "agentId": "agent_fdd41d3d9cec4f93",
+          "error": {
+            "code": "PROJECT_BINDING_CREDENTIAL_INVALID",
+            "message": "StaffDeck account credential is inactive or lacks the required access."
+          }
+        }
+      },
+      "restored": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T08:34:21.861Z",
+          "agentId": "agent_fdd41d3d9cec4f93"
+        }
+      },
+      "before": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "after": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "ordinaryChat": true,
+      "eventTypes": [
+        "turn_started",
+        "input_accepted",
+        "model_request_started",
+        "context_budget",
+        "model_selection_changed",
+        "assistant_text_delta",
+        "assistant_block",
+        "turn_completed",
+        "turn_completed"
+      ]
+    }
+  },
+  {
+    "name": "B05 downgrade",
+    "status": "PASS",
+    "elapsedMs": 1311,
+    "evidence": {
+      "failure": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T08:34:22.692Z",
+          "agentId": "agent_fdd41d3d9cec4f93",
+          "error": {
+            "code": "PROJECT_BINDING_CREDENTIAL_INVALID",
+            "message": "StaffDeck account credential is inactive or lacks the required access."
+          }
+        }
+      },
+      "restored": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T08:34:23.201Z",
+          "agentId": "agent_fdd41d3d9cec4f93"
+        }
+      },
+      "before": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "after": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "ordinaryChat": true,
+      "eventTypes": [
+        "turn_started",
+        "input_accepted",
+        "model_request_started",
+        "context_budget",
+        "model_selection_changed",
+        "assistant_text_delta",
+        "assistant_block",
+        "turn_completed",
+        "turn_completed"
+      ]
+    }
+  },
+  {
+    "name": "B05 archive",
+    "status": "PASS",
+    "elapsedMs": 1397,
+    "evidence": {
+      "failure": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T08:34:24.087Z",
+          "agentId": "agent_fdd41d3d9cec4f93",
+          "error": {
+            "code": "PROJECT_BINDING_TARGET_UNAVAILABLE",
+            "message": "The bound StaffDeck agent is unavailable or archived."
+          }
+        }
+      },
+      "restored": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T08:34:24.628Z",
+          "agentId": "agent_fdd41d3d9cec4f93"
+        }
+      },
+      "before": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "after": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "ordinaryChat": true,
+      "eventTypes": [
+        "turn_started",
+        "input_accepted",
+        "model_request_started",
+        "context_budget",
+        "model_selection_changed",
+        "assistant_text_delta",
+        "assistant_block",
+        "turn_completed",
+        "turn_completed"
+      ]
+    }
+  },
+  {
+    "name": "B05 missing",
+    "status": "PASS",
+    "elapsedMs": 1242,
+    "evidence": {
+      "failure": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T08:34:25.352Z",
+          "agentId": "agent_fdd41d3d9cec4f93",
+          "error": {
+            "code": "PROJECT_BINDING_UPSTREAM_REJECTED",
+            "message": "StaffDeck request failed (404)."
+          }
+        }
+      },
+      "restored": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T08:34:25.868Z",
+          "agentId": "agent_fdd41d3d9cec4f93"
+        }
+      },
+      "before": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "after": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "ordinaryChat": true,
+      "eventTypes": [
+        "turn_started",
+        "input_accepted",
+        "model_request_started",
+        "context_budget",
+        "model_selection_changed",
+        "assistant_text_delta",
+        "assistant_block",
+        "turn_completed",
+        "turn_completed"
+      ]
+    }
+  },
+  {
+    "name": "B05 Gateway unavailable preserves original target",
+    "status": "PASS",
+    "elapsedMs": 7570,
+    "evidence": {
+      "failure": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T08:34:31.643Z",
+          "agentId": "agent_fdd41d3d9cec4f93",
+          "error": {
+            "code": "PROJECT_BINDING_UNAVAILABLE",
+            "message": "StaffDeck connection is unavailable. Retry to recover the binding."
+          }
+        }
+      },
+      "restored": {
+        "http": 200,
+        "binding": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "15d5fa9b-15a3-4f7d-b59d-e8aef1847bda",
+          "agentName": "ProjectB-15d5fa9b",
+          "origin": "http://127.0.0.1:25610",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T08:34:33.149Z",
+          "agentId": "agent_fdd41d3d9cec4f93"
+        }
+      },
+      "before": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "after": {
+        "agents": 41,
+        "mappings": 39
+      },
+      "chatRequiresRunningGateway": true
+    }
+  }
+]

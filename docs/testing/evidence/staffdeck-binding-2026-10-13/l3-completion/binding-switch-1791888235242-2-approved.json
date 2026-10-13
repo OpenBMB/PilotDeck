@@ -1,0 +1,258 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10301,
+    "displayUsed": 10301,
+    "localEstimateTokens": 10301,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09228963589449542,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10301,
+      "system": 3039,
+      "tools": 7254,
+      "messages": 8,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " user wants",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " a",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 14
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " brief reply",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 16
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". Simple greeting.",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 28
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Hey! How",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+      "previousId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 1,
+      "revision": 8,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 10
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " can I help you",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+      "previousId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 1,
+      "revision": 9,
+      "offset": 8
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 11
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " today",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+      "previousId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 1,
+      "revision": 10,
+      "offset": 23
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 12
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "?",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+      "previousId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 1,
+      "revision": 11,
+      "offset": 29
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 13
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+    "text": "The user wants a brief reply. Simple greeting.",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 0,
+      "revision": 13
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 14
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+    "text": "Hey! How can I help you today?",
+    "timeline": {
+      "version": 1,
+      "turnId": "cf21cba6-6895-460d-b975-00814d48266e",
+      "id": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:text:0",
+      "previousId": "ff8444aa-08f6-4b41-b91b-516ee6feeb1a:thinking:0",
+      "order": 1,
+      "revision": 14
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 15
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12158,
+      "outputTokens": 24,
+      "totalTokens": 12182
+    },
+    "finishReason": "completed",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 16
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12158,
+      "outputTokens": 24,
+      "totalTokens": 12182
+    },
+    "finishReason": "completed",
+    "runId": "cf21cba6-6895-460d-b975-00814d48266e",
+    "sequence": 17
+  }
+]

@@ -1,0 +1,301 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10404,
+    "displayUsed": 10404,
+    "localEstimateTokens": 10404,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09321244266055045,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10404,
+      "system": 3038,
+      "tools": 7358,
+      "messages": 8,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " user said",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " \"",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 13
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Hello,",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 15
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " reply briefly\". This",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 21
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " is a simple greeting",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 42
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 63
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I should respond briefly",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 64
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " and warmly.\n",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 89
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Hello! How",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:text:0",
+      "previousId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 1,
+      "revision": 12,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 14
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " can I help you",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:text:0",
+      "previousId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 1,
+      "revision": 13,
+      "offset": 10
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 15
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " today?",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:text:0",
+      "previousId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 1,
+      "revision": 14,
+      "offset": 25
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 16
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+    "text": "The user said \"Hello, reply briefly\". This is a simple greeting. I should respond briefly and warmly.\n",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 0,
+      "revision": 16
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 17
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "8124304d-817f-487b-adce-4d7481a2bd9c:text:0",
+    "text": "Hello! How can I help you today?",
+    "timeline": {
+      "version": 1,
+      "turnId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+      "id": "8124304d-817f-487b-adce-4d7481a2bd9c:text:0",
+      "previousId": "8124304d-817f-487b-adce-4d7481a2bd9c:thinking:0",
+      "order": 1,
+      "revision": 17
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 18
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12299,
+      "outputTokens": 36,
+      "totalTokens": 12335
+    },
+    "finishReason": "completed",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 19
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12299,
+      "outputTokens": 36,
+      "totalTokens": 12335
+    },
+    "finishReason": "completed",
+    "runId": "b376ddd1-a3b9-4903-8bf2-d20b01ef8340",
+    "sequence": 20
+  }
+]

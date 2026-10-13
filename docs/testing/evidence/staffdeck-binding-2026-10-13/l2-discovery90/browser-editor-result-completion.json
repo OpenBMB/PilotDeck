@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/browser-editor.mjs"
+  ],
+  "results": [
+    {
+      "id": "U02-EDITOR-1440",
+      "status": "FAIL",
+      "error": "{\"error\":{\"code\":\"SOP_MANAGEMENT_UPSTREAM_FAILED\",\"message\":\"The SOP graph is invalid.\"}}",
+      "elapsedMs": 2708
+    },
+    {
+      "id": "U02-EDITOR-390",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Create new project', exact: true })\u001b[22m\n",
+      "elapsedMs": 30313
+    }
+  ]
+}

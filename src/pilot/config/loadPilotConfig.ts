@@ -13,6 +13,7 @@ import {
 } from "../paths.js";
 import { sha256, stableStringify } from "./hash.js";
 import { mergeConfigSources } from "./merge.js";
+import { applyProjectBinding } from "../staffdeck/projectBinding.js";
 import { parseMemoryConfig } from "./parseMemoryConfig.js";
 import { parseAdaptersConfig, parseGatewayConfig } from "./parseGatewayConfig.js";
 import { parseToolsConfig } from "./parseToolsConfig.js";
@@ -101,7 +102,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
     });
   }
 
-  const rawConfig = mergeConfigSources(defaultConfig, projectConfig, envConfig) as PilotRawConfig;
+  const rawConfig = applyProjectBinding(mergeConfigSources(defaultConfig, projectConfig, envConfig), options.projectRoot, env, true) as PilotRawConfig;
   validateTopLevel(rawConfig, diagnostics);
   const schemaVersion = parseSchemaVersion(rawConfig.schemaVersion, diagnostics);
 

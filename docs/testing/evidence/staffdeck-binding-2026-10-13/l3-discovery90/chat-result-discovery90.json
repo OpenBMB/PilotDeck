@@ -1,0 +1,92 @@
+[
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 0,
+    "sessionKey": "binding-chat-general-1791895556006",
+    "status": "PASS",
+    "markerPresent": true,
+    "errors": [],
+    "elapsedMs": 11091
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 0,
+    "sessionKey": "binding-chat-sop-private-1791895567097",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 26276
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 0,
+    "sessionKey": "binding-chat-other-project-1791895593373",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 3644
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 1,
+    "sessionKey": "binding-chat-general-1791895597017",
+    "status": "PASS",
+    "markerPresent": true,
+    "errors": [],
+    "elapsedMs": 9943
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 1,
+    "sessionKey": "binding-chat-sop-private-1791895606960",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 16471
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 1,
+    "sessionKey": "binding-chat-other-project-1791895623431",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 3673
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 2,
+    "sessionKey": "binding-chat-general-1791895627104",
+    "status": "PASS",
+    "markerPresent": true,
+    "errors": [],
+    "elapsedMs": 29933
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 2,
+    "sessionKey": "binding-chat-sop-private-1791895657037",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 15189
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 2,
+    "sessionKey": "binding-chat-other-project-1791895672226",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 3128
+  }
+]
