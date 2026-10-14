@@ -34,3 +34,14 @@ The Web bridge also persists its server-owned interaction binding. After a Web r
 Generation jobs and SSE event sequences live in Runtime SQLite. A new PD worker marks former unfinished jobs interrupted; the user retries them. One invalid model result receives one repair attempt. Neither failure nor cancellation overwrites the saved draft. Browser reconnects replay persisted events.
 
 Focused validation includes `portable_sop/tests`, `tests/sop/portable-sop-runtime.spec.ts`, `tests/composition/pilotdeck-native-approval.spec.ts`, and `ui/server/{native-sop-service,sop-continuations,pilotdeck-approval-authority}.test.mjs`. Real Knowledge queries, production migration and Feishu acceptance are separate from native SOP acceptance.
+
+Runtime deployment switches `SOP_KNOWLEDGE_ENABLED` and
+`SOP_VERSION_MANAGEMENT_ENABLED` default to `true` and take effect after Runtime
+restart. Native capabilities, generation and the graph editor use the same
+`features` policy. Knowledge-off rejects knowledge-dependent publications and
+execution, including child SOPs. Version-off hides manual version/history/rollback
+and rejects history/rollback API calls; editing and publishing still create
+immutable internal snapshots. Reenabling restores historical versions.
+The accepted local deployment uses knowledge **off**, version management **on**.
+See [incremental acceptance](ACCEPTANCE-FEATURES-1014.zh-CN.md) for the four-policy,
+desktop/mobile and real-model evidence; real knowledge queries were cancelled.

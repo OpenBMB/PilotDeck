@@ -49,15 +49,17 @@ export function createNativeSopRouter({ config = readSopConfig, readOwner = read
   route('get', '/native/capabilities', async (_req, res) => {
     const port = await getHost();
     const models = await port.call('list_model_catalog', {});
-    res.json({ models: models.body?.data ?? models.body?.items ?? [], bindings: config().capabilityBindings ?? [], owner: { id: 'pilotdeck:owner', username: '当前登录 owner' } });
+    const features = await service.call('features');
+    res.json({ features, models: models.body?.data ?? models.body?.items ?? [], bindings: (config().capabilityBindings ?? []).filter(binding => features.knowledge !== false || binding.kind !== 'knowledge'), owner: { id: 'pilotdeck:owner', username: '当前登录 owner' } });
   });
   route('post', '/native/management', async (req, res) => {
     if (!MANAGEMENT_OPERATIONS.has(req.body?.operation)) throw nativeSopError('SOP_MANAGEMENT_OPERATION_UNSUPPORTED', 'Unsupported operation', 400);
     res.json(await service.call(req.body.operation, req.body.input ?? {}));
   });
   route('post', '/native/jobs', async (req, res) => {
+    const features = await service.call('features');
     const input = { prompt: req.body?.prompt, instruction: req.body?.instruction, modelId: req.body?.modelId,
-      capabilities: config().capabilityBindings ?? [], published: (await service.call('list')).data.filter(row => row.status === 'published').map(row => ({ sopId: row.sop_id, version: row.published_version })) };
+      capabilities: (config().capabilityBindings ?? []).filter(binding => features.knowledge !== false || binding.kind !== 'knowledge'), published: (await service.call('list')).data.filter(row => row.status === 'published').map(row => ({ sopId: row.sop_id, version: row.published_version })) };
     const kind = req.body?.kind === 'rewrite' ? 'rewrite' : 'generate';
     if (kind === 'rewrite') {
       const draft = await service.call('get_draft', { sopId: req.body.sopId, draftId: req.body.draftId });

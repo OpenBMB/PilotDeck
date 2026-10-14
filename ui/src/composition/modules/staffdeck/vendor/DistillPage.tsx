@@ -3777,6 +3777,8 @@ export function SkillFlow({
   sopSkills,
   tools,
   knowledgeBases,
+  knowledgeEnabled = true,
+  versionManagement = true,
   tenantUsers,
   containerRef,
   lockSkillId,
@@ -3798,6 +3800,8 @@ export function SkillFlow({
   sopSkills: SkillRead[];
   tools: ToolRead[];
   knowledgeBases: KnowledgeBaseRead[];
+  knowledgeEnabled?: boolean;
+  versionManagement?: boolean;
   tenantUsers: Array<{ id: string; username: string; display_name?: string; source?: string; channel_identities?: Array<{ channel: string; display_name?: string; external_user_id?: string }> }>;
   containerRef: RefObject<HTMLDivElement>;
   lockSkillId?: boolean;
@@ -4789,6 +4793,7 @@ export function SkillFlow({
       {isFullscreen && inspectorOpen && (
         basicInspectorOpen ? (
           <SkillFlowBasicInspector
+            versionManagement={versionManagement}
             skill={skill}
             lockSkillId={lockSkillId}
             onEditBasic={editFlowBasic}
@@ -4807,6 +4812,7 @@ export function SkillFlow({
             toolStatuses={toolStatuses}
             generalSkillOptions={generalSkillOptions}
             toolOptions={toolOptions}
+            knowledgeEnabled={knowledgeEnabled}
             knowledgeBaseOptions={knowledgeBaseOptions}
             sopOptions={sopOptions}
             tenantUserOptions={tenantUserOptions}
@@ -4863,11 +4869,13 @@ function FlowInspectorSection({
 }
 
 function SkillFlowBasicInspector({
+  versionManagement = true,
   skill,
   lockSkillId,
   onEditBasic,
 }: {
   skill: SkillCard;
+  versionManagement?: boolean;
   lockSkillId?: boolean;
   onEditBasic: (
     field: keyof SkillCard,
@@ -4885,10 +4893,10 @@ function SkillFlowBasicInspector({
       </div>
       <div className={FLOW_INSPECTOR_BODY_CLASS}>
         <div className="grid min-w-0 gap-[12px]">
-          <FlowInspectorSection title="身份与版本" description="定义 SOP 的稳定标识、展示名称和所属业务域。">
+          <FlowInspectorSection title={versionManagement ? "身份与版本" : "基本信息"} description="定义 SOP 的稳定标识、展示名称和所属业务域。">
             <EditableSourceTextLine label="SOP 名称" value={skill.name || ''} onChange={(value) => onEditBasic('name', value)} />
             <EditableSourceTextLine label={fieldLabel('skill_id')} value={skill.skill_id || ''} readOnly={lockSkillId} onChange={(value) => onEditBasic('skill_id', value)} />
-            <EditableSourceTextLine label={fieldLabel('version')} value={skill.version || ''} onChange={(value) => onEditBasic('version', value)} />
+            {versionManagement && <EditableSourceTextLine label={fieldLabel('version')} value={skill.version || ''} onChange={(value) => onEditBasic('version', value)} />}
             <EditableSourceTextLine label={fieldLabel('business_domain')} value={skill.business_domain || ''} onChange={(value) => onEditBasic('business_domain', value)} />
             <EditableSourceNumberLine
               label={fieldLabel('step_timeout_seconds')}
@@ -4935,6 +4943,7 @@ function SkillFlowInspector({
   generalSkillOptions,
   toolOptions,
   knowledgeBaseOptions,
+  knowledgeEnabled = true,
   sopOptions,
   tenantUserOptions,
   onEditNode,
@@ -4955,6 +4964,7 @@ function SkillFlowInspector({
   generalSkillOptions: CapabilityReferenceOption[];
   toolOptions: CapabilityReferenceOption[];
   knowledgeBaseOptions: CapabilityReferenceOption[];
+  knowledgeEnabled?: boolean;
   sopOptions: SelectOption[];
   tenantUserOptions: SelectOption[];
   onEditNode: (index: number, field: string, value: string | string[] | boolean | Record<string, unknown>) => void;
@@ -4993,7 +5003,7 @@ function SkillFlowInspector({
           <FlowInspectorSection title="节点定义" description="节点名称、类型和执行目标会直接进入 TaskFrame。">
             <EditableSourceTextLine label="节点名称" value={String(node.name || '')} onChange={(value) => onEditNode(nodeIndex, 'name', value)} />
             <EditableSourceTextLine label={fieldLabel('step_id')} value={nodeId} onChange={(value) => onEditNode(nodeIndex, 'step_id', value)} />
-            <EditableSourceSelectLine label={fieldLabel('type')} value={String(node.type || 'collect_info')} options={NODE_TYPE_OPTIONS} onChange={(value) => onEditNode(nodeIndex, 'type', value)} />
+            <EditableSourceSelectLine label={fieldLabel('type')} value={String(node.type || 'collect_info')} options={NODE_TYPE_OPTIONS.filter(option => knowledgeEnabled || option.value !== 'knowledge_query')} onChange={(value) => onEditNode(nodeIndex, 'type', value)} />
             {String(node.type || '') === 'subflow' && (
               <EditableSourceSelectLine
                 label="调用子 SOP"
@@ -5037,7 +5047,7 @@ function SkillFlowInspector({
               <FlowInspectorSection title="节点专用能力" description="SOP-specific 能力只有在这里明确引用后，才会进入当前节点的 Harness 能力清单。">
                 <EditableCapabilityReferencesLine label="SOP 技能" values={asStringList(node.general_skill_ids)} requiredValues={asStringList(node.required_general_skill_ids)} options={generalSkillOptions} emptyText="未指定技能" onChange={(value) => onEditNode(nodeIndex, 'general_skill_ids', value)} onRequiredChange={(value) => onEditNode(nodeIndex, 'required_general_skill_ids', value)} />
                 <EditableCapabilityReferencesLine label="SOP 工具" values={asStringList(node.tool_ids)} requiredValues={asStringList(node.required_tool_ids)} options={toolOptions} emptyText="未指定工具" onChange={(value) => onEditNode(nodeIndex, 'tool_ids', value)} onRequiredChange={(value) => onEditNode(nodeIndex, 'required_tool_ids', value)} />
-                <EditableCapabilityReferencesLine label="SOP 知识库" values={asStringList(node.knowledge_base_ids)} requiredValues={asStringList(node.required_knowledge_base_ids)} options={knowledgeBaseOptions} emptyText="未指定知识库" onChange={(value) => onEditNode(nodeIndex, 'knowledge_base_ids', value)} onRequiredChange={(value) => onEditNode(nodeIndex, 'required_knowledge_base_ids', value)} />
+                {knowledgeEnabled && <EditableCapabilityReferencesLine label="SOP 知识库" values={asStringList(node.knowledge_base_ids)} requiredValues={asStringList(node.required_knowledge_base_ids)} options={knowledgeBaseOptions} emptyText="未指定知识库" onChange={(value) => onEditNode(nodeIndex, 'knowledge_base_ids', value)} onRequiredChange={(value) => onEditNode(nodeIndex, 'required_knowledge_base_ids', value)} />}
               </FlowInspectorSection>
             </>
           )}

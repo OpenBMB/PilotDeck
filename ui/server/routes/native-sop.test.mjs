@@ -1,6 +1,7 @@
 // @vitest-environment node
 import express from 'express';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+vi.mock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), getPilotDeckHostCapabilities: vi.fn(), continueSopViaGateway: vi.fn() }));
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -31,5 +32,26 @@ it('native routes enforce owner and session scope and replay persisted SSE event
     expect((await post('/resume', command)).body.duplicate).toBe(true);
     expect(resumes).toBe(1);
     expect(await (await fetch(origin + '/native/jobs/job/events?after_seq=1')).text()).toContain('"saved_draft"');
+  } finally { await new Promise(resolve => server.close(resolve)); await router.dispose(); await rm(root, { recursive: true, force: true }); }
+});
+
+it.each([[false, false], [false, true], [true, false], [true, true]])('shares knowledge=%s versions=%s with the editor and generation worker', async (knowledge, versionManagement) => {
+  const root = await mkdtemp(join(tmpdir(), 'sop-features-route-'));
+  const features = { knowledge, versionManagement };
+  const bindings = [{ kind: 'tool', capabilityId: 'tool', toolName: 'read_file' }, { kind: 'knowledge', capabilityId: 'kb', toolName: 'knowledge_query' }];
+  let generated;
+  const app = express(); app.use(express.json()); app.use((req, _res, next) => { req.user = { id: 'owner' }; next(); });
+  const service = { recover: async () => {}, call: async operation => operation === 'features' ? features : { data: [] },
+    generate: async input => { generated = input; return { id: 'job' }; } };
+  const router = createNativeSopRouter({ config: () => ({ hostAdapter: 'pilotdeck', capabilityBindings: bindings }),
+    readOwner: () => 'owner', service, continuationPath: join(root, 'queue.json'), getHost: async () => ({ call: async () => ({ body: { data: [] } }) }) });
+  app.use('/api/sop', router); const server = app.listen(0); const origin = `http://127.0.0.1:${server.address().port}/api/sop/native`;
+  try {
+    const editor = await (await fetch(origin + '/capabilities')).json();
+    expect(editor.features).toEqual(features);
+    const job = await fetch(origin + '/jobs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: 'Make workflow' }) });
+    expect(job.status).toBe(202);
+    expect(generated.capabilities).toEqual(editor.bindings);
+    expect(editor.bindings.map(value => value.kind)).toEqual(knowledge ? ['tool', 'knowledge'] : ['tool']);
   } finally { await new Promise(resolve => server.close(resolve)); await router.dispose(); await rm(root, { recursive: true, force: true }); }
 });
