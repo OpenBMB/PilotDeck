@@ -359,7 +359,7 @@ export class SopStateStore {
     }
     const definition = snapshot.definition;
     const next: PersistedSopState = { schemaVersion: 3, sessionId,
-      bundle: { ...(local?.bundle ?? {}), sops: [{ id: snapshot.state.sop_id,
+      bundle: { ...(local?.bundle ?? {}), sops: [{ id: state.active_skill_id ?? state.selected_skill_id ?? snapshot.state.sop_id,
         version: snapshot.state.sop_version, name: String(definition.name ?? snapshot.state.sop_id), content: definition.content as Record<string, unknown> }] },
       state, revision: snapshot.state.revision, wait: waitForState(state, local?.wait),
       replyDelivery: local?.replyDelivery, resumeRequests: local?.resumeRequests ?? {}, updatedAt: new Date().toISOString() };

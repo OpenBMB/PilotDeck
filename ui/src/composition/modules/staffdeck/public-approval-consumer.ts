@@ -36,6 +36,12 @@ export function usePublicApprovalInbox({ scope, readApproverBearer, refreshKey, 
       setError('SOP_APPROVAL_SESSION_MAPPING_UNAVAILABLE');
       return;
     }
+    if (!bearer()) {
+      setStatus(null);
+      setLoading(false);
+      setError('');
+      return;
+    }
     const controller = new AbortController();
     statusAbort.current = controller;
     setLoading(true);

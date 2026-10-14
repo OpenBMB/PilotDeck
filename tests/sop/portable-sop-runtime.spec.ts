@@ -143,6 +143,15 @@ test("PilotDeck AgentLoop executes against independent HTTP Runtime and recovers
     assert.equal((await runtime.session("scoped-session")).state.sop_id, scopedId);
     assert.equal(scoped.state.active_skill_id, "local");
     assert.equal(scoped.step.skillId, "local");
+    const scopedStore = new SopStateStore(join(root, "scoped-projection"), runtime);
+    const restoredScoped = await scopedStore.loadOrCreate("scoped-session", { sops: [] }, "local");
+    assert.equal(restoredScoped.bundle.sops[0].id, "local");
+    const replayContext = { ...context, sessionId: "scoped-session", requestId: "scoped-replay", expectedRevision: 0 };
+    const firstScopedPrepare = await scopedHost.prepare({ bundle: restoredScoped.bundle,
+      state: restoredScoped.state, context: replayContext });
+    const rereadScoped = await scopedStore.loadOrCreate("scoped-session", restoredScoped.bundle, "local");
+    assert.deepEqual(await scopedHost.prepare({ bundle: rereadScoped.bundle,
+      state: rereadScoped.state, context: replayContext }), firstScopedPrepare);
 
     for (const kind of ["tool", "skill", "knowledge"] as const) {
       const sopId = `capability-${kind}`;

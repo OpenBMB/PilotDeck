@@ -27,7 +27,7 @@ export function resolveBusinessBindings(profile: CompositionProfile): Record<str
 
 export function defaultFrontendChoice(binding: Binding, slot: Slot): string {
   if (binding.frontendModule) return binding.frontendModule;
-  if (binding.implementationId === 'staffdeck.portable-sop') return 'staffdeck.sop';
+  if (binding.implementationId === 'staffdeck.portable-sop' || (slot === 'sop' && binding.contract === 'sop.lifecycle/v3')) return 'staffdeck.sop';
   if (binding.implementationId === 'staffdeck.knowledge') return 'staffdeck.knowledge';
   if (binding.implementationId) return binding.implementationId;
   if (binding.provider === 'pilotdeck') {
@@ -78,10 +78,12 @@ export function assembleFrontend(
       continue;
     }
     const contract = binding.contract ?? slotContracts[slot];
-    if (contract !== slotContracts[slot]) throw new Error(`Unsupported backend contract: ${slot} / ${contract}`);
+    const portableSop = slot === 'sop' && contract === 'sop.lifecycle/v3';
+    if (contract !== slotContracts[slot] && !portableSop) throw new Error(`Unsupported backend contract: ${slot} / ${contract}`);
     const frontend = catalog.find(module => module.id === choices[slot]);
     if (!frontend || frontend.slot !== slot) throw new Error(`Missing frontend for enabled slot: ${slot}`);
-    if (frontend.contract !== contract) throw new Error(`Frontend contract mismatch: ${frontend.id}`);
+    if (frontend.contract !== contract && !(portableSop && frontend.id === 'staffdeck.sop'
+      && frontend.contract === 'sop.lifecycle/v2')) throw new Error(`Frontend contract mismatch: ${frontend.id}`);
     if (frontend.frontendApiVersion && frontend.frontendApiVersion !== 'frontend-module/v1') {
       throw new Error(`Frontend API version mismatch: ${frontend.id}`);
     }
