@@ -24,6 +24,7 @@ import type {
 import { toolError } from "../../tool/index.js";
 
 import { StaffDeckSopClient, StaffDeckSopClientError } from "./StaffDeckSopClient.js";
+import { PortableSopHostClient, PortableSopRuntimeClient, type PortableSopReceipt } from "./PortableSopRuntimeClient.js";
 import { StaffDeckSopDiscoveryClient } from "./StaffDeckSopDiscoveryClient.js";
 import { loadStaffDeckSopDefinitions, parseSopNodeModel } from "./StaffDeckSopDefinitions.js";
 import { SopStateStore } from "./SopStateStore.js";
@@ -99,8 +100,10 @@ export class SopAgentLoop implements AgentLoopRunner {
   ) {
     config.stopOnStructuredOutput = true;
     assertRequiredSopTools(options.bundle, options.profile.defaultSopId, capabilities.toolExecution.list());
-    this.stateStore = options.stateStore ?? new SopStateStore(join(config.staffDeckSop!.stateRoot, "sessions"));
-    this.client = options.client ?? new StaffDeckSopClient(options.profile.endpoint, {
+    const runtime = "contract" in options.profile && options.profile.contract === "sop.lifecycle/v3"
+      ? new PortableSopRuntimeClient(options.profile.endpoint, { timeoutMs: options.profile.timeoutMs }) : undefined;
+    this.stateStore = options.stateStore ?? new SopStateStore(join(config.staffDeckSop!.stateRoot, "sessions"), runtime);
+    this.client = options.client ?? (runtime ? new PortableSopHostClient(runtime, options.profile.capabilityBindings, options.profile.runtimeSopScope) : new StaffDeckSopClient(options.profile.endpoint, {
       timeoutMs: options.profile.timeoutMs,
       ...("implementationId" in options.profile
         ? {
@@ -112,7 +115,7 @@ export class SopAgentLoop implements AgentLoopRunner {
             },
           }
       : {}),
-    });
+    }));
     this.discovery = options.profile.discoveryEndpoint && options.profile.discoveryAgentId && options.profile.discoveryApiKey
       ? new StaffDeckSopDiscoveryClient(
           options.profile.discoveryEndpoint,
@@ -130,6 +133,7 @@ export class SopAgentLoop implements AgentLoopRunner {
         (this.nodeTools ?? capabilities.toolExecution).executeAll(calls, context, execution) },
       client: this.client,
       stateStore: this.stateStore,
+      capabilityBindings: options.profile.capabilityBindings,
       authorityPort: options.authorityPort,
       bundle: options.bundle,
       defaultSopId: options.profile.defaultSopId,
@@ -498,7 +502,7 @@ export class SopAgentLoop implements AgentLoopRunner {
     this.preparedSteps.delete(input.sessionId);
     this.nodeModelOverrides.delete(input.sessionId);
     if (!selectedSopId) return undefined;
-    const persisted = await this.stateStore.loadOrCreate(
+    let persisted = await this.stateStore.loadOrCreate(
       input.sessionId,
       this.options.bundle,
       selectedSopId,
@@ -506,16 +510,24 @@ export class SopAgentLoop implements AgentLoopRunner {
     if (isTerminalSopStatus(persisted.state.status)) {
       return undefined;
     }
+    if (this.stateStore.runtime && persisted.state.status === "awaiting_user") {
+      const wait = persisted.state.awaiting_input_json as Record<string, unknown>;
+      await this.stateStore.runtime.resume({ protocolVersion: "3.0", sessionId: input.sessionId,
+        requestId: `sop.user-resume:${input.turnId}:${persisted.revision}`, operationId: "sop.user-resume",
+        turnId: input.turnId, expectedRevision: persisted.revision, waitId: String(wait.wait_id),
+        response: { source: "user", message: this.collectInputs.get(input.sessionId) ?? "" } });
+      persisted = await this.stateStore.loadOrCreate(input.sessionId, persisted.bundle, selectedSopId);
+    }
     const ownerPrepared = await this.client.prepare({
       bundle: persisted.bundle,
       state: persisted.state,
       context: {
         runId: `sop:${input.sessionId}:${input.turnId}`,
         operationId: `sop.prepare:${input.sessionId}:${input.turnId}`,
-        requestId: `sop.prepare:${input.sessionId}:${input.turnId}:${input.stepId ?? 0}`,
+        requestId: `sop.prepare:${input.sessionId}:${input.turnId}:${input.stepId ?? 0}:${persisted.revision}`,
         sessionId: input.sessionId,
         turnId: input.turnId,
-        idempotencyKey: `sop.prepare:${input.sessionId}:${input.turnId}:${input.stepId ?? 0}`,
+        idempotencyKey: `sop.prepare:${input.sessionId}:${input.turnId}:${input.stepId ?? 0}:${persisted.revision}`,
         expectedRevision: persisted.revision,
       },
       signal: input.abortSignal,
@@ -541,7 +553,8 @@ export class SopAgentLoop implements AgentLoopRunner {
           `${code}: SOP node '${prepared.step.nodeId}' model '${nodeModelOverride.provider}/${nodeModelOverride.model}': ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    const saved = await this.stateStore.replace(input.sessionId, persisted.bundle, prepared.state, persisted.revision);
+    const saved = await this.stateStore.replace(input.sessionId, persisted.bundle, prepared.state,
+      this.stateStore.runtime ? undefined : persisted.revision);
     if (this.options.authorityPort && prepared.step.node.type === "response"
       && capabilities.toolExecution.list().some(tool => tool.name === "knowledge_query")) {
       const context = { sessionKey: input.sessionId, projectKey: input.cwd,
@@ -690,6 +703,7 @@ type SopControlToolPortOptions = Readonly<{
   delegate: ToolPort;
   client: StaffDeckSopRuntimeClient;
   stateStore: SopStateStore;
+  capabilityBindings?: SopRuntimeConfig["capabilityBindings"];
   authorityPort?: SopCapabilityAuthorityPort;
   bundle: StaffDeckSopBundle;
   defaultSopId: string;
@@ -767,6 +781,14 @@ class SopControlToolPort implements ToolPort {
         ordinaryResults
           .filter((result): result is Extract<PilotDeckToolResult, { type: "success" }> => result.type === "success")
           .map((result) => result.toolName),
+        ordinaryResults.filter(result => result.type === "success").flatMap(result => {
+          const bindings = this.options.capabilityBindings?.filter(binding => binding.toolName === result.toolName) ?? [];
+          return [...new Set([result.toolName, ...bindings.map(binding => binding.capabilityId)])].map(capabilityId => ({
+          capabilityId, operationId: this.options.stateStore.runtime
+            ? `${execution.turnId}:${step?.nodeId}:${result.toolCallId}:${capabilityId}` : result.toolCallId,
+          nodeId: step?.nodeId ?? "", sessionId: execution.sessionId, turnId: execution.turnId,
+          status: "succeeded" as const, evidence: { toolCallId: result.toolCallId },
+        })); }),
       );
     }
 
@@ -871,13 +893,19 @@ class SopControlToolPort implements ToolPort {
         state: persisted.state,
         proposal,
         successfulToolNames,
+        receipts: (Array.isArray(persisted.state.capability_receipts) ? persisted.state.capability_receipts : [])
+          .filter((receipt: PortableSopReceipt) => receipt.turnId === execution.turnId
+            && (!this.options.stateStore.runtime || !currentStep
+              || currentStep.requiredToolNames.includes(receipt.capabilityId)
+              || (currentStep as unknown as { capabilityRequirements?: { capability_id: string }[] }).capabilityRequirements
+                ?.some(item => item.capability_id === receipt.capabilityId))),
         context: {
           runId: execution.runId,
           operationId: execution.operationId ?? `sop.submit:${execution.sessionId}:${execution.turnId}`,
-          requestId: `sop.submit:${call.id}`,
+          requestId: `sop.submit:${this.options.stateStore.runtime ? `${execution.turnId}:${currentStep?.nodeId}:${call.id}` : call.id}`,
           sessionId: execution.sessionId,
           turnId: execution.turnId,
-          idempotencyKey: call.id,
+          idempotencyKey: this.options.stateStore.runtime ? `${execution.turnId}:${currentStep?.nodeId}:${call.id}` : call.id,
           deadlineAt: execution.operationDeadline,
           expectedRevision: persisted.revision,
         },

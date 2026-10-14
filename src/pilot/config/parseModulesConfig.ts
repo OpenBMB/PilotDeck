@@ -262,7 +262,7 @@ function parseSopModule(
   warnUnknownKeys(value, [
     "enabled", "provider", "implementationId", "contract", "transport", "manifestPath",
     "endpoint", "definitionsPath", "defaultSopId", "discoveryEndpoint", "discoveryAgentId",
-    "discoveryApiKey", "discoveryPath", "discoveryTimeoutMs", "timeoutMs", "contextMode", "deployment", "frontendModule",
+    "discoveryApiKey", "discoveryPath", "discoveryTimeoutMs", "timeoutMs", "contextMode", "deployment", "frontendModule", "capabilityBindings", "runtimeSopScope",
   ], path, diagnostics);
   if (value.enabled === false) return undefined;
   if (value.enabled !== true) {
@@ -303,6 +303,19 @@ function parseSopModule(
     || value.discoveryApiKey !== undefined;
   const deployment = parseDeployment(value.deployment, path, diagnostics);
   const frontendModule = nonEmptyText(value.frontendModule);
+  const capabilityBindings = Array.isArray(value.capabilityBindings) ? value.capabilityBindings.filter((item): item is {
+    capabilityId: string; toolName: string; kind: "tool" | "skill" | "knowledge";
+  } => isRecord(item) && Boolean(nonEmptyText(item.capabilityId)) && Boolean(nonEmptyText(item.toolName))
+    && ["tool", "skill", "knowledge"].includes(String(item.kind))) : undefined;
+  if (value.capabilityBindings !== undefined && (!capabilityBindings || capabilityBindings.length !== (value.capabilityBindings as unknown[]).length)) {
+    fatal(diagnostics, "SOP_CAPABILITY_BINDINGS_INVALID", "capabilityBindings requires capabilityId, toolName and tool/skill/knowledge kind.", `${path}.capabilityBindings`);
+  }
+  const runtimeSopScope = isRecord(value.runtimeSopScope)
+    && nonEmptyText(value.runtimeSopScope.tenantId) && nonEmptyText(value.runtimeSopScope.agentId)
+    ? { tenantId: String(value.runtimeSopScope.tenantId), agentId: String(value.runtimeSopScope.agentId) } : undefined;
+  if (value.runtimeSopScope !== undefined && !runtimeSopScope) {
+    fatal(diagnostics, "SOP_RUNTIME_SCOPE_INVALID", "runtimeSopScope requires tenantId and agentId.", `${path}.runtimeSopScope`);
+  }
   if (value.timeoutMs !== undefined && timeoutMs === undefined) {
     fatal(diagnostics, "SOP_MODULE_TIMEOUT_INVALID", "modules.sop.timeoutMs must be a positive integer.", `${path}.timeoutMs`);
   }
@@ -326,6 +339,8 @@ function parseSopModule(
     endpoint,
     definitionsPath: isAbsolute(definitionsPath) ? definitionsPath : resolve(pilotHome, definitionsPath),
     defaultSopId,
+    ...(capabilityBindings ? { capabilityBindings } : {}),
+    ...(runtimeSopScope ? { runtimeSopScope } : {}),
     stateRoot: env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true'
       ? resolve(isAbsolute(definitionsPath) ? definitionsPath : resolve(pilotHome, definitionsPath), '..', 'state')
       : join(pilotHome, "sop"),
@@ -353,22 +368,23 @@ function parseSopModule(
   if (!implementationId) {
     fatal(diagnostics, "SOP_MODULE_IMPLEMENTATION_ID_INVALID", "modules.sop.implementationId must be a non-empty string.", `${path}.implementationId`);
   }
-  if (value.contract !== STAFFDECK_SOP_CONTRACT) {
+  const v3 = value.contract === "sop.lifecycle/v3" && value.transport === "sop-http-v3";
+  if (value.contract !== STAFFDECK_SOP_CONTRACT && !v3) {
     fatal(diagnostics, "SOP_MODULE_CONTRACT_UNSUPPORTED", `modules.sop.contract must be ${STAFFDECK_SOP_CONTRACT}.`, `${path}.contract`);
   }
-  if (value.transport !== STAFFDECK_SOP_TRANSPORT) {
+  if (value.transport !== STAFFDECK_SOP_TRANSPORT && !v3) {
     fatal(diagnostics, "SOP_MODULE_TRANSPORT_UNSUPPORTED", `modules.sop.transport must be ${STAFFDECK_SOP_TRANSPORT}.`, `${path}.transport`);
   }
   const manifestPath = nonEmptyText(value.manifestPath) ?? "/healthz";
   if (!manifestPath.startsWith("/")) {
     fatal(diagnostics, "SOP_MODULE_MANIFEST_PATH_INVALID", "modules.sop.manifestPath must start with '/'.", `${path}.manifestPath`);
   }
-  if (!implementationId || value.contract !== STAFFDECK_SOP_CONTRACT || value.transport !== STAFFDECK_SOP_TRANSPORT || !manifestPath.startsWith("/")) return undefined;
+  if (!implementationId || (!v3 && (value.contract !== STAFFDECK_SOP_CONTRACT || value.transport !== STAFFDECK_SOP_TRANSPORT)) || !manifestPath.startsWith("/")) return undefined;
   return {
     ...base,
     implementationId,
-    contract: STAFFDECK_SOP_CONTRACT,
-    transport: STAFFDECK_SOP_TRANSPORT,
+    contract: v3 ? "sop.lifecycle/v3" : STAFFDECK_SOP_CONTRACT,
+    transport: v3 ? "sop-http-v3" : STAFFDECK_SOP_TRANSPORT,
     manifestPath,
     ...(frontendModule ? { frontendModule } : {}),
   };

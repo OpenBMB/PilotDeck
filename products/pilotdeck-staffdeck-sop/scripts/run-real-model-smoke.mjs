@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import YAML from "yaml";
@@ -7,6 +7,7 @@ import YAML from "yaml";
 import { createLocalGateway } from "../../../dist/src/cli/createLocalGateway.js";
 import { getPilotProjectChatDir } from "../../../dist/src/pilot/paths.js";
 import { readTranscript } from "../../../dist/src/session/index.js";
+import { PortableSopRuntimeClient } from "../../../dist/src/sop/staffdeck/PortableSopRuntimeClient.js";
 
 const SOP_DEFINITION = `sops:
   - id: real_model_smoke
@@ -17,6 +18,7 @@ const SOP_DEFINITION = `sops:
       nodes:
         - node_id: confirm
           type: handoff
+          assignee_user_id: smoke-reviewer
           instruction: Read approval-context.txt using read_file before submitting this SOP result.
           allowed_actions:
             - "call_tool:read_file"
@@ -39,6 +41,7 @@ const knowledgeBaseId = process.env.REAL_MODEL_KNOWLEDGE_BASE_ID?.trim();
 const knowledgeTenantId = process.env.REAL_MODEL_KNOWLEDGE_TENANT_ID?.trim() ?? "tenant_demo";
 const knowledgeActorUserId = process.env.REAL_MODEL_KNOWLEDGE_ACTOR_USER_ID?.trim() ?? "admin";
 const skillName = process.env.REAL_MODEL_SKILL_NAME?.trim() ?? "approval-guide";
+const businessGraph = process.env.REAL_MODEL_BUSINESS_GRAPH === "true";
 if (knowledgeEndpoint && !knowledgeBaseId) {
   throw new Error("REAL_MODEL_KNOWLEDGE_BASE_ID is required when REAL_MODEL_KNOWLEDGE_ENDPOINT is set.");
 }
@@ -47,8 +50,10 @@ if (!selected || !providerId || !provider) {
 }
 
 const root = await mkdtemp(join(tmpdir(), "pilotdeck-real-sop-smoke-"));
+const evidenceRoot = process.env.SOP_ACCEPTANCE_EVIDENCE_DIR ?? root;
+await mkdir(evidenceRoot, { recursive: true, mode: 0o700 });
 const projectRoot = join(root, "project");
-const sessionKey = "real-model-sop-smoke";
+const sessionKey = `real-model-sop-smoke-${Date.now()}`;
 try {
   await mkdir(projectRoot, { recursive: true });
   await writeFile(join(projectRoot, "approval-context.txt"), "Real-model business-tool smoke context.\n", "utf8");
@@ -60,7 +65,38 @@ try {
       "utf8",
     );
   }
-  await writeFile(join(projectRoot, "onboarding.yaml"), SOP_DEFINITION, "utf8");
+  const definition = YAML.parse(SOP_DEFINITION).sops[0];
+  definition.id = `real_model_smoke_${Date.now()}`;
+  if (knowledgeEndpoint) {
+    definition.content.capability_requirements = [
+      { kind: "tool", capability_id: "read_file", node_id: "confirm", required: true },
+      { kind: "skill", capability_id: "read_skill", node_id: "confirm", required: true },
+      { kind: "knowledge", capability_id: "knowledge_query", node_id: "confirm", required: true },
+    ];
+    definition.content.nodes[0].allowed_actions.push("call_tool:read_skill", "call_tool:knowledge_query");
+  }
+  if (businessGraph) {
+    assert.ok(knowledgeEndpoint, "The business graph requires the configured Knowledge module");
+    definition.content = {
+      start_node_id: "collect", terminal_node_ids: ["done"],
+      nodes: [
+        { node_id: "collect", type: "collect_info", expected_user_info: ["ticket"],
+          instruction: "Ask for a release ticket if absent. Store ticket in slotUpdates, then finish this node." },
+        { node_id: "verify", type: "action", allowed_actions: ["call_tool:read_skill", "call_tool:read_file", "call_tool:knowledge_query"],
+          instruction: `Call read_skill for ${skillName}, read_file for approval-context.txt, and knowledge_query with query 'owner approval before release', tenantId '${knowledgeTenantId}', actorUserId '${knowledgeActorUserId}', knowledgeBaseIds ['${knowledgeBaseId}']. Quote RELEASE_OWNER_1014 from retrieved evidence. Only complete after all three calls succeed.` },
+        { node_id: "approval", type: "handoff", assignee_user_id: "smoke-reviewer",
+          instruction: "Request human approval. After the operator replies, finish this node quoting their decision." },
+        { node_id: "done", type: "respond", instruction: "Reply RELEASE_ACCEPTANCE_COMPLETE with the ticket and human decision, then finish." },
+      ],
+      edges: [
+        { source_node_id: "collect", next_node_id: "verify" },
+        { source_node_id: "verify", next_node_id: "approval" },
+        { source_node_id: "approval", next_node_id: "done" },
+      ],
+      capability_requirements: definition.content.capability_requirements.map(requirement => ({ ...requirement, node_id: "verify" })),
+    };
+  }
+  await writeFile(join(projectRoot, "onboarding.yaml"), YAML.stringify({ sops: [definition] }), "utf8");
   const modules = {
     agentLoop: { enabled: true, provider: "pilotdeck" },
     modelProvider: { enabled: true, provider: "pilotdeck" },
@@ -73,6 +109,8 @@ try {
         contract: "staffdeck.knowledge/v1",
         transport: "module-http-v2",
         endpoint: knowledgeEndpoint,
+        tenantId: knowledgeTenantId,
+        actorUserId: knowledgeActorUserId,
         manifestPath: "/module-manifest",
         callPath: "/v2/module/call",
         methods: ["query", "resolve_citation"],
@@ -80,10 +118,13 @@ try {
     } : {}),
     sop: {
       enabled: true,
-      provider: "staffdeck",
+      implementationId: "portable-sop",
+      contract: "sop.lifecycle/v3",
+      transport: "sop-http-v3",
+      manifestPath: "/healthz",
       endpoint: sopEndpoint,
       definitionsPath: "onboarding.yaml",
-      defaultSopId: "real_model_smoke",
+      defaultSopId: definition.id,
       timeoutMs: 30000,
     },
   };
@@ -96,7 +137,10 @@ try {
     },
     model: { providers: { [providerId]: provider } },
     modules,
-  }), "utf8");
+  }), { encoding: "utf8", mode: 0o600 });
+  const runtime = new PortableSopRuntimeClient(sopEndpoint);
+  await runtime.publishDefinition({ sop_id: definition.id, version: definition.version,
+    name: definition.name, content: definition.content });
 
   const local = createLocalGateway({
     projectRoot,
@@ -106,11 +150,21 @@ try {
   });
   try {
     const handoffEvents = [];
+    const collectionEvents = [];
+    if (businessGraph) {
+      for await (const event of local.gateway.submitTurn({ sessionKey, channelKey: "smoke",
+        workspaceCwd: projectRoot, message: "Start the release acceptance procedure. Ask me for the ticket.", mode: "bypassPermissions" })) collectionEvents.push(event);
+      const collected = await runtime.session(sessionKey);
+      assert.equal(collected.state.status, "awaiting_user");
+      assert.equal(collected.state.active_node_id, "collect");
+    }
     for await (const event of local.gateway.submitTurn({
       sessionKey,
       channelKey: "smoke",
       workspaceCwd: projectRoot,
-      message: knowledgeEndpoint
+      message: businessGraph
+        ? "The release ticket is SOP-1014. Continue through verification and request operator approval. Complete each active node only according to its own instruction."
+        : knowledgeEndpoint
         ? `First call read_skill for ${skillName}, then read_file for approval-context.txt, then call knowledge_query with query 'owner approval before release', tenantId '${knowledgeTenantId}', actorUserId '${knowledgeActorUserId}', knowledgeBaseIds ['${knowledgeBaseId}'], queryType 'answer', maxChunks 8, maxBuckets 4, budgetTokens 4000, and needEvidencePack true. After those succeed, call submit_step_result with status handoff and replyFragment 'Waiting for real-model approval.'.`
         : "First call read_file for approval-context.txt. After it succeeds, call submit_step_result with status handoff and replyFragment 'Waiting for real-model approval.'.",
       mode: "bypassPermissions",
@@ -135,17 +189,25 @@ try {
         `the real model did not query StaffDeck Knowledge: ${JSON.stringify(handoffEventSummary)}`,
       );
     }
-    const waiting = await local.gateway.sopStatus({ sessionKey, projectKey: projectRoot });
+    await writeFile(join(evidenceRoot, "pilotdeck-handoff-events.json"), JSON.stringify(handoffEvents, null, 2), { mode: 0o600 });
+    const waiting = await local.sopControl.status({ sessionKey, projectKey: projectRoot });
     assert.equal(waiting?.state.status, "handoff", "the real model did not enter the handoff state");
     assert.equal(waiting?.wait?.kind, "handoff");
-    const resumed = await local.gateway.resumeSop({
+    const resumed = await local.sopControl.resume({
       sessionKey,
       projectKey: projectRoot,
       requestId: "real-model-approval-1",
       waitId: waiting.wait.id,
       source: "human",
-      message: "Approval received. Call submit_step_result with status completed and a brief reply.",
+      message: businessGraph
+        ? "Approved SOP-1014. Complete the release and return RELEASE_ACCEPTANCE_COMPLETE."
+        : knowledgeEndpoint
+        ? `Approval received. First read_skill for ${skillName}, read_file for approval-context.txt, and knowledge_query with query 'owner approval before release', tenantId '${knowledgeTenantId}', actorUserId '${knowledgeActorUserId}', knowledgeBaseIds ['${knowledgeBaseId}']. Then submit_step_result status completed and a brief reply.`
+        : "Approval received. Call submit_step_result with status completed and a brief reply.",
       expectedRevision: waiting.revision,
+      authority: { tenantId: "smoke-tenant", sessionId: sessionKey, subject: {
+        tenantId: "smoke-tenant", userId: "smoke-reviewer", source: "web", role: "member", disabled: false,
+      } },
     });
     const completionEvents = [];
     for await (const event of local.gateway.submitTurn({
@@ -162,6 +224,21 @@ try {
     const statePath = join(projectRoot, "sop", "sessions", `${Buffer.from(sessionKey, "utf8").toString("base64url")}.json`);
     const state = JSON.parse(await readFile(statePath, "utf8"));
     assert.equal(state.state.status, "completed", "the real model did not complete the SOP control step");
+    const remote = await runtime.session(sessionKey);
+    assert.equal(remote.state.status, "completed");
+    if (businessGraph) {
+      assert.equal(remote.state.active_node_id, "done");
+      assert.equal(remote.state.slots.ticket, "SOP-1014");
+      assert.ok(completionEvents.some(event => event.type === "assistant_text_delta" && event.text?.includes("RELEASE_ACCEPTANCE_COMPLETE")));
+    }
+    await writeFile(join(evidenceRoot, businessGraph ? "pilotdeck-business-graph.json" : "pilotdeck-real-model.json"), JSON.stringify({
+      status: "PASS", selected, sessionKey, collectionEvents, handoffEvents, completionEvents,
+      waiting, remote, projectRoot,
+    }, null, 2), { mode: 0o600 });
+    if (process.env.REAL_MODEL_SKIP_COMPACTION === "true") {
+      console.log(JSON.stringify({ status: "passed", model: selected, sessionKey,
+        runtimeStatus: remote.state.status, revision: remote.state.revision, evidenceRoot }));
+    } else {
     // Build enough real history that manual compaction cannot be a no-op.
     for (let index = 0; index < 3; index += 1) {
       const historyEvents = [];
@@ -214,11 +291,12 @@ try {
       knowledge: Boolean(knowledgeEndpoint),
       sopStatus: state.state.status,
     }));
+    }
   } finally {
     await local.dispose();
   }
 } finally {
-  await rm(root, { recursive: true, force: true });
+  console.log(`Private execution artifacts retained: ${root}`);
 }
 
 function summarizeEvents(events) {

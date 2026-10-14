@@ -38,6 +38,10 @@ test('project bindings recover creation, isolate targets, and defer SOP executio
     await ensureProjectBinding(b, { env, request });
     assert.equal(agents.size, 2);
     const ca = applyProjectBinding({}, a, env), cb = applyProjectBinding({}, b, env);
+    assert.equal(ca.modules.sop.contract, 'sop.lifecycle/v3');
+    assert.equal(ca.modules.sop.transport, 'sop-http-v3');
+    assert.equal(ca.modules.sop.manifestPath, '/healthz');
+    assert.deepEqual(ca.modules.sop.runtimeSopScope, { tenantId: 'tenant', agentId: ca.modules.knowledge.agentId });
     assert.equal(ca.modules.sop.timeoutMs, 30000);
     assert.equal(ca.modules.sop.discoveryTimeoutMs, 90000);
     const independent = applyProjectBinding({ modules: { sop: { timeoutMs: 120000 } } }, a, env);

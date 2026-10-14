@@ -32,6 +32,8 @@ const sdEnv = { ...base, PYTHONPATH: `${sd}/backend:${sd}/backend/src`,
   PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${basePort + 2}/ws`,
   PILOTDECK_GATEWAY_TOKEN_PATH: join(home, 'server-token'), PILOTDECK_USER_ID: '1',
   STAFFDECK_COPY_TENANT_ID: 'binding-tenant', STAFFDECK_COPY_ACTOR_USER_ID: 'binding-actor' };
+sdEnv.PYTHONPATH += `:${sd}/portable_sop/src`;
+sdEnv.SOP_RUNTIME_ENDPOINT = `http://127.0.0.1:${basePort + 1}`;
 const results = [], processes = new Map(), capture = [];
 function run(command, args, cwd, env = base) {
   const result = spawnSync(command, args, { cwd, env, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
@@ -115,10 +117,14 @@ try {
     PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${basePort + 2}/ws`, PILOTDECK_GATEWAY_PORT: String(basePort + 2),
     PILOTDECK_DISABLE_LOCAL_AUTH: '1', WORKSPACES_ROOT: workspace, SERVER_PORT: String(basePort + 3), HOST: '127.0.0.1' };
   writeFileSync(join(qa, 'env.json'), JSON.stringify(pdEnv), { mode: 0o600 });
-  startSD(); await ready(origin + '/api/health', 'sd');
   start('sop', python, ['-m', 'uvicorn', 'staffdeck_sop_runtime.api:app', '--host', '127.0.0.1', '--port', String(basePort + 1)], sd,
-    { ...sdEnv, PYTHONPATH: `${sdEnv.PYTHONPATH}:${sd}/portable_sop/src` });
+    { ...sdEnv, SOP_RUNTIME_DB: join(qa, 'sop-runtime.sqlite') });
   await ready(`http://127.0.0.1:${basePort + 1}/healthz`, 'sop');
+  for (const tenant of ['binding-tenant', 'binding-other-tenant']) {
+    run(python, ['-m', 'app.skills.migrate_sop_runtime', '--tenant-id', tenant], sd, sdEnv);
+  }
+  sdEnv.SOP_RUNTIME_LEGACY_WRITES = 'disabled';
+  startSD(); await ready(origin + '/api/health', 'sd');
   startGateway(); startWeb(); await ready(webOrigin + '/api/projects', 'web');
   const projects = {};
   await check('B01', 'new and existing registration, clone, no creation during reads', async () => {

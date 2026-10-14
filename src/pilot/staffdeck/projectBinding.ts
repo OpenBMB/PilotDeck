@@ -159,7 +159,9 @@ export function applyProjectBinding(config: any, projectRoot: string | undefined
     userTokenEnv: "STAFFDECK_COPY_USER_TOKEN",
   } };
   next.modules.sop = {
-    enabled: true, provider: "staffdeck", endpoint: env.STAFFDECK_SOP_RUNTIME_ORIGIN,
+    enabled: true, implementationId: "portable-sop", contract: "sop.lifecycle/v3",
+    transport: "sop-http-v3", manifestPath: "/healthz", endpoint: env.STAFFDECK_SOP_RUNTIME_ORIGIN,
+    runtimeSopScope: { tenantId: binding.tenantId, agentId },
     definitionsPath, defaultSopId, discoveryEndpoint: endpoint, discoveryAgentId: agentId,
     discoveryApiKey: "${STAFFDECK_SOP_MANAGEMENT_API_KEY}", timeoutMs: 30000, discoveryTimeoutMs: 90000, ...sopTimeouts,
     management: { enabled: true, endpoint, apiKeyEnv: "STAFFDECK_SOP_MANAGEMENT_API_KEY",

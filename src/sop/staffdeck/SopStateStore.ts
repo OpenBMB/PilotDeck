@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { PortableSopRuntimeClient, PortableSopRuntimeError, projectRuntimeState, type PortableSopState, type PortableSopReceipt } from "./PortableSopRuntimeClient.js";
 
 import type {
   StaffDeckSopBundle,
@@ -40,7 +41,7 @@ type PersistedResumeResult = StaffDeckSopResumeResult & Readonly<{
 export class SopStateStore {
   private static readonly sessionLocks = new Map<string, Promise<void>>();
 
-  constructor(private readonly root: string) {}
+  constructor(private readonly root: string, readonly runtime?: PortableSopRuntimeClient) {}
 
   async loadOrCreate(
     sessionId: string,
@@ -89,12 +90,12 @@ export class SopStateStore {
     result: StaffDeckSopSubmitResult,
   ): Promise<PersistedSopState> {
     return this.withSessionLock(sessionId, async () => {
-      const current = await this.read(sessionId);
+      const current = await this.readLocal(sessionId);
       const currentRevision = current?.revision ?? 0;
-      if (currentRevision !== expectedRevision) {
+      if (!this.runtime && currentRevision !== expectedRevision) {
         throw sopStateError("SOP_REVISION_CONFLICT", `Expected SOP revision ${expectedRevision}, found ${currentRevision}.`);
       }
-      const revision = currentRevision + 1;
+      const revision = this.runtime ? Number(state.revision) : currentRevision + 1;
       const now = new Date().toISOString();
       const wait = waitForState(state, current?.wait);
       const next: PersistedSopState = {
@@ -214,7 +215,11 @@ export class SopStateStore {
         if (input.expectedRevision === undefined) throw sopStateError("SOP_REVISION_REQUIRED", "Approval requires the original revision.");
         authorization = { authority: structuredClone(input.authority!), approval, expectedRevision: input.expectedRevision };
       }
-      const revision = current.revision + 1;
+      const remote = this.runtime ? await this.runtime.resume({ protocolVersion: "3.0",
+        sessionId: input.sessionId, requestId: input.requestId, operationId: `sop.resume:${input.requestId}`,
+        turnId: input.requestId, expectedRevision: current.revision, waitId: input.waitId,
+        slotUpdates: input.slotUpdates, response: { source: input.source, message: input.message } }) : undefined;
+      const revision = remote ? (remote.state as PortableSopState).revision : current.revision + 1;
       const result: StaffDeckSopResumeResult = {
         accepted: true,
         duplicate: false,
@@ -233,6 +238,7 @@ export class SopStateStore {
             ...(isRecord(current.state.slots_json) ? current.state.slots_json : {}),
             ...(input.slotUpdates ?? {}),
           },
+          ...(remote ? projectRuntimeState(remote.state as PortableSopState) : {}),
         },
         revision,
         wait: undefined,
@@ -251,6 +257,7 @@ export class SopStateStore {
     bundle: StaffDeckSopBundle,
     defaultSopId: string,
     toolNames: readonly string[],
+    receipts: readonly PortableSopReceipt[] = [],
   ): Promise<PersistedSopState> {
     return this.withSessionLock(sessionId, async () => {
       const current = await this.loadOrCreateUnlocked(sessionId, bundle, defaultSopId);
@@ -261,6 +268,7 @@ export class SopStateStore {
       return this.replaceUnlocked(sessionId, current.bundle, {
         ...current.state,
         successful_tool_names: successful,
+        capability_receipts: [...(Array.isArray(current.state.capability_receipts) ? current.state.capability_receipts : []), ...receipts],
       });
     });
   }
@@ -283,7 +291,7 @@ export class SopStateStore {
         skill_stack_json: [],
         successful_tool_names: [],
       },
-      revision: 1,
+      revision: this.runtime ? 0 : 1,
       resumeRequests: {},
       updatedAt: new Date().toISOString(),
     };
@@ -297,7 +305,12 @@ export class SopStateStore {
     state: StaffDeckSopState,
   ): Promise<PersistedSopState> {
     const current = await this.read(sessionId);
-    const revision = (current?.revision ?? 0) + 1;
+    const revision = this.runtime ? Number(state.revision ?? current?.revision ?? 0) : (current?.revision ?? 0) + 1;
+    if (this.runtime && current && current.state.active_step_id === state.active_step_id
+      && current.state.status === "active" && current.revision === revision) {
+      state = { ...state, successful_tool_names: state.successful_tool_names?.length ? state.successful_tool_names : current.state.successful_tool_names,
+        capability_receipts: state.capability_receipts ?? current.state.capability_receipts };
+    }
     const wait = waitForState(state, current?.wait);
     const next: PersistedSopState = {
       schemaVersion: 3,
@@ -331,6 +344,30 @@ export class SopStateStore {
   }
 
   private async read(sessionId: string): Promise<PersistedSopState | undefined> {
+    const local = await this.readLocal(sessionId);
+    if (!this.runtime) return local;
+    let snapshot;
+    try { snapshot = await this.runtime.session(sessionId); }
+    catch (error) {
+      if (error instanceof PortableSopRuntimeError && error.code === "SESSION_NOT_FOUND" && !local?.state.session_id) return local;
+      throw error;
+    }
+    const state = projectRuntimeState(snapshot.state);
+    if (local && local.revision === snapshot.state.revision && local.state.active_step_id === state.active_step_id && local.state.status === "active") {
+      state.successful_tool_names = local.state.successful_tool_names;
+      state.capability_receipts = local.state.capability_receipts;
+    }
+    const definition = snapshot.definition;
+    const next: PersistedSopState = { schemaVersion: 3, sessionId,
+      bundle: { ...(local?.bundle ?? {}), sops: [{ id: snapshot.state.sop_id,
+        version: snapshot.state.sop_version, name: String(definition.name ?? snapshot.state.sop_id), content: definition.content as Record<string, unknown> }] },
+      state, revision: snapshot.state.revision, wait: waitForState(state, local?.wait),
+      replyDelivery: local?.replyDelivery, resumeRequests: local?.resumeRequests ?? {}, updatedAt: new Date().toISOString() };
+    await this.write(next);
+    return next;
+  }
+
+  private async readLocal(sessionId: string): Promise<PersistedSopState | undefined> {
     const path = this.pathFor(sessionId);
     let content: string;
     try {
@@ -381,7 +418,7 @@ function isPersistedState(value: unknown): value is Record<string, unknown> & {
 }
 
 function migratePersistedState(value: ReturnType<typeof persistedStateShape>): PersistedSopState {
-  const revision = typeof value.revision === "number" && Number.isInteger(value.revision) && value.revision > 0
+  const revision = typeof value.revision === "number" && Number.isInteger(value.revision) && value.revision >= 0
     ? value.revision
     : 1;
   return {
@@ -412,9 +449,9 @@ function waitForState(state: StaffDeckSopState, existing?: StaffDeckSopWait): St
   const status = state.status;
   const kind = status === "handoff" ? "handoff" : status === "waiting_external_task" ? "external_task" : undefined;
   if (!kind) return undefined;
-  if (existing?.kind === kind && existing.skillId === state.active_skill_id
-    && existing.stepId === state.active_step_id) return existing;
   const awaiting = isRecord(state.awaiting_input_json) ? state.awaiting_input_json : {};
+  if (existing?.kind === kind && existing.skillId === state.active_skill_id
+    && existing.stepId === state.active_step_id && (typeof awaiting.wait_id !== "string" || existing.id === awaiting.wait_id)) return existing;
   return {
     id: randomUUID(),
     kind,

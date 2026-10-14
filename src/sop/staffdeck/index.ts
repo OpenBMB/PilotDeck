@@ -1,4 +1,5 @@
 export { StaffDeckSopClient, StaffDeckSopClientError } from "./StaffDeckSopClient.js";
+export { PortableSopRuntimeClient, PortableSopRuntimeError } from "./PortableSopRuntimeClient.js";
 export { StaffDeckSopDiscoveryClient, StaffDeckSopDiscoveryClientError } from "./StaffDeckSopDiscoveryClient.js";
 export { loadStaffDeckSopDefinitions } from "./StaffDeckSopDefinitions.js";
 export { SopAgentLoop, SUBMIT_SOP_STEP_RESULT_TOOL, createStaffDeckSopAgentLoop } from "./SopAgentLoop.js";

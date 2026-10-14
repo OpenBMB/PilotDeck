@@ -12,7 +12,7 @@
 | sop | StaffDeck Portable SOP | sop-runtime:8091 |
 | knowledge | StaffDeck Knowledge | knowledge-runtime:8090 |
 
-sop-runtime 和 knowledge-runtime 使用同一份 StaffDeck backend 源码，但使用独立的 SQLite 数据卷。Knowledge 只在 Compose 内网监听，不暴露宿主机端口。
+sop-runtime 仅安装独立 `portable_sop` 包，使用 `sop.lifecycle/v3` session API 和自己的 SQLite 数据卷。knowledge-runtime 仍使用 StaffDeck backend；Knowledge 只在 Compose 内网监听，不暴露宿主机端口。
 
 ## 1. 环境要求
 
@@ -39,7 +39,7 @@ StaffDeck 当前部署不需要 Redis、PostgreSQL、MySQL、MinIO 等额外服�
 export STAFFDECK_SOP_ROOT=/opt/openbmb/StaffDeck-portable-sop
 ~~~
 
-应使用包含 Knowledge module API 的 codex/portable-sop-runtime 版本。当前 StaffDeck origin/main 尚未提供该 API。
+本次版本配对使用两个仓库的 `standalone_alpha1_decouple_sop_1013` 分支。完整验收状态和部署限制见 `ACCEPTANCE-1014.zh-CN.md`。定义必须先发布到 Runtime，执行过程中使用已保存快照。
 
 ## 3. 配置模型 API
 

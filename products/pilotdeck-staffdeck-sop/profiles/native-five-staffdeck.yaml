@@ -73,9 +73,9 @@ modules:
       - resolve_citation
   sop:
     enabled: true
-    implementationId: staffdeck.portable-sop
-    contract: sop.lifecycle/v2
-    transport: sop-http-v2
+    implementationId: portable-sop
+    contract: sop.lifecycle/v3
+    transport: sop-http-v3
     endpoint: http://sop-runtime:8091
     manifestPath: /healthz
     definitionsPath: ../sops/operator-approval.yaml

@@ -25,6 +25,30 @@ ${modules}
 `;
 }
 
+test("loadPilotConfig accepts lifecycle v3 and explicit host capability bindings", () => {
+  const root = mkdtempSync(join(tmpdir(), "portable-sop-config-"));
+  try {
+    const configPath = join(root, "pilotdeck.yaml");
+    writeFileSync(configPath, configWithModules(`
+modules:
+  sop:
+    enabled: true
+    implementationId: portable-sop
+    contract: sop.lifecycle/v3
+    transport: sop-http-v3
+    endpoint: http://runtime:8091
+    definitionsPath: definitions.json
+    defaultSopId: flow
+    capabilityBindings:
+      - { capabilityId: knowledge-1, toolName: knowledge_query, kind: knowledge }
+`));
+    const snapshot = loadPilotConfig({ configPath, env: { PILOT_HOME: root } });
+    assert.equal(snapshot.diagnostics.filter(d => d.severity === "fatal").length, 0);
+    assert.equal((snapshot.config.modules?.sop as { contract?: string } | undefined)?.contract, "sop.lifecycle/v3");
+    assert.deepEqual(snapshot.config.modules?.sop?.capabilityBindings, [{ capabilityId: "knowledge-1", toolName: "knowledge_query", kind: "knowledge" }]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 for (const contextMode of [undefined, "new_session", "inherit"] as const)
 test(`loadPilotConfig resolves the StaffDeck SOP module profile (${contextMode ?? "default"})`, () => {
   const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-config-"));
