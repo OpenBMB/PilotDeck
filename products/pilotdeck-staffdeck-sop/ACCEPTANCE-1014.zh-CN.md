@@ -15,7 +15,7 @@ PilotDeck 实际模型会话为 `real-model-sop-smoke-1791954754286`，最终 re
 `real-model-sop-smoke-1791956455451` 最终 revision 8：收集工单、调用
 Tool/Skill/Knowledge、人工审批、完成。两宿主使用相同业务图和自己的能力绑定。
 
-未完成的验收：PilotDeck 公共审批页面、StaffDeck 真实飞书流程。
+未完成的验收：PilotDeck 公共审批页面。
 原 binding QA 依赖当前 StaffDeck 分支不存在的 PilotDeckProjectBinding 模型。
 独立 Gateway 已验证真实模型和工具调用，但完整 browser bearer 流程尚未跑通。
 
@@ -23,6 +23,12 @@ PilotDeck 真实飞书已通过入站、模型/工具、等待、宿主控制接
 `feishu.json` 保存入站消息 `om_x100b63c57fdb88acb0bbeab6f4007e7` 和回复消息
 `om_x100b63c579088ca4cefaeb4b3716d74`，Runtime revision 3。
 这条证据不覆盖公共浏览器 reviewer 审批。cc-connect 在该轮测试后已恢复。
+
+StaffDeck 真实飞书会话 `session_2fd7b89933ec499e` 已完成入站、等待通知、
+正式 reviewer API 审批、恢复与最终投递，Runtime revision 5，最终 outbox
+记录 `chdlv_cca3bba558dd47da` 为 delivered。入站消息 ID 为
+`om_x100b63c539e69938b0f95cd4929de85`。飞书历史查询权限不足，远端回复
+消息 ID 尚未补取；reaction 权限也不足。测试绑定已停用，cc-connect 已恢复。
 
 构建通过：PilotDeck TypeScript、PilotDeck UI、StaffDeck UI。
 本轮聚焦测试：136 项非导出测试通过，8 项导出测试通过；导出测试须设置
