@@ -31,6 +31,14 @@ test('maps StaffDeck implementations to public frontend modules', () => {
   assert.deepEqual(selected.map(item => item.id), ['pilotdeck.chat', 'pilotdeck.tools', 'pilotdeck.context', 'pilotdeck.model', 'staffdeck.sop', 'staffdeck.knowledge']);
 });
 
+test('selects the native SOP host explicitly and preserves that selection in the browser profile', () => {
+  const profile = { ...native, modules: { ...native.modules, sop: { enabled: true, implementationId: 'portable-sop', contract: 'sop.lifecycle/v3', hostAdapter: 'pilotdeck' } } };
+  assert.equal(selectFrontendModules(profile).find(item => item.slot === 'sop').id, 'pilotdeck.sop');
+  const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
+  assert.match(source, /modules\/pilotdeck-sop/); assert.match(source, /"hostAdapter": "pilotdeck"/);
+  assert.doesNotMatch(source, /modules\/staffdeck-sop/);
+});
+
 test('rejects an explicit frontend registry key that is not registered', () => {
   assert.throws(() => selectFrontendModules({ modules: { knowledge: { enabled: true, implementationId: 'vendor.unknown', frontendModule: 'vendor.missing' } } }), /No registered frontend implementation/);
 });

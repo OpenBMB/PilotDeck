@@ -57,6 +57,12 @@ export class PortableSopRuntimeClient {
     return this.request("/v1/definitions", { method: "POST", body: definition });
   }
 
+  async catalog(): Promise<readonly Record<string, unknown>[]> {
+    const result = await this.request("/v1/management/catalog", { method: "GET" });
+    if (!Array.isArray(result.definitions)) throw new PortableSopRuntimeError("SOP_RUNTIME_PROTOCOL", "Missing published definitions.");
+    return result.definitions as Record<string, unknown>[];
+  }
+
   async prepare(input: PortableSopEnvelope & { sessionId: string; sopId: string; version?: string }): Promise<Record<string, unknown>> {
     return this.request(`/v1/sessions/${encodeURIComponent(input.sessionId)}/prepare`, { method: "POST", body: { ...this.envelope(input), sopId: input.sopId, ...(input.version ? { version: input.version } : {}) } });
   }
@@ -135,8 +141,8 @@ export class PortableSopHostClient implements StaffDeckSopRuntimeClient {
     const state = response.state as PortableSopState;
     const step = response.step as Record<string, unknown>;
     const requirements = step.capabilityRequirements as Array<{ capability_id: string; required: boolean }>;
-    const requiredTools = [...step.requiredCapabilityIds as string[], ...requirements.filter(item => item.required)
-      .map(item => this.bindings.find(binding => binding.capabilityId === item.capability_id)?.toolName ?? item.capability_id)];
+    const requiredTools = [...new Set([...(step.requiredCapabilityIds as string[]), ...requirements.filter(item => item.required)
+      .map(item => item.capability_id)])].map(id => this.bindings.find(binding => binding.capabilityId === id)?.toolName ?? id);
     return { state: projectRuntimeState(state), step: {
       ...step, skillId: selected, skillName: selected, version: state.sop_version,
       knownSlots: state.slots, allowedNextStepIds: step.allowedNextNodeIds,

@@ -3764,7 +3764,7 @@ function SkillSource({
   );
 }
 
-function SkillFlow({
+export function SkillFlow({
   skill,
   selectedPaths,
   highlightedPaths,

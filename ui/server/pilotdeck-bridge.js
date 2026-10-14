@@ -67,12 +67,15 @@ import {
 import { createNormalizedMessage } from './pilotdeck-message.js';
 import { readPermissionSettings } from './services/permissionSettings.js';
 import { createGatewayConnectionCache } from './services/gatewayConnectionCache.js';
+import { createSopInteractionBindingStore } from './sop-interaction-binding.mjs';
 import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const GENERAL_HOME = resolvePilotHome(process.env);
+const sopInteractionBindings = createSopInteractionBindingStore(sessionKey =>
+    path.join(GENERAL_HOME, 'sop', 'interaction-bindings', `${sanitizeSessionIdForPath(sessionKey)}.json`));
 
 const GATEWAY_URL =
     process.env.PILOTDECK_GATEWAY_URL || 'ws://127.0.0.1:18789/ws';
@@ -1997,6 +2000,7 @@ export async function runChatViaGateway(
         for await (const event of stream) {
             if (event && event.type === 'input_accepted') {
                 inputAccepted = true;
+                await sopInteractionBindings.remember(sessionKey, gw);
                 writer.send({ type: 'session-input-accepted', sessionId: sessionKey, runId });
                 // Queue acceptance already recorded this choice; execution must
                 // never replace a newer accepted message's model preference.
@@ -2204,6 +2208,18 @@ export async function runChatViaGateway(
         }
     }
     return { sessionKey, runId, inputAccepted, sawTurnCompleted, sawGatewayError };
+}
+
+/** Continue through the same Web connection and interaction binding as normal chat. */
+export async function continueSopViaGateway(input, onInputAccepted) {
+    const projectKey = input.projectKey || GENERAL_HOME;
+    const state = ensureSessionState(input.sessionKey, projectKey, 'web');
+    const previousWriter = state.interactionWriter;
+    const writer = previousWriter || { send() {}, isConnected() { return false; } };
+    const gateway = await ensureGateway();
+    await sopInteractionBindings.restore(input.sessionKey, gateway);
+    return runChatViaGateway(input.message, { sessionId: input.sessionKey, projectPath: projectKey,
+        runId: input.runId }, writer, 'pilotdeck', { onInputAccepted });
 }
 
 export function queuedInputDispositionAfterTurn(finishReason, queuePaused) {

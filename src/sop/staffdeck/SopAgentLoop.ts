@@ -99,7 +99,7 @@ export class SopAgentLoop implements AgentLoopRunner {
     private readonly options: SopAgentLoopOptions,
   ) {
     config.stopOnStructuredOutput = true;
-    assertRequiredSopTools(options.bundle, options.profile.defaultSopId, capabilities.toolExecution.list());
+    if (options.profile.hostAdapter !== "pilotdeck") assertRequiredSopTools(options.bundle, options.profile.defaultSopId, capabilities.toolExecution.list());
     const runtime = "contract" in options.profile && options.profile.contract === "sop.lifecycle/v3"
       ? new PortableSopRuntimeClient(options.profile.endpoint, { timeoutMs: options.profile.timeoutMs }) : undefined;
     this.stateStore = options.stateStore ?? new SopStateStore(join(config.staffDeckSop!.stateRoot, "sessions"), runtime);
@@ -534,10 +534,21 @@ export class SopAgentLoop implements AgentLoopRunner {
     });
     // The owner exposes a knowledge_query node without mapping its domain
     // binding to the PilotDeck tool name. Keep that host mapping here.
-    let prepared = ownerPrepared.step.node.type === "knowledge_query"
+    let prepared = this.options.profile.hostAdapter !== "pilotdeck" && ownerPrepared.step.node.type === "knowledge_query"
       ? { ...ownerPrepared, step: { ...ownerPrepared.step,
           requiredToolNames: [...new Set([...ownerPrepared.step.requiredToolNames, "knowledge_query"])] } }
       : ownerPrepared;
+    if (this.options.profile.hostAdapter === "pilotdeck") {
+      const requirements = (prepared.step as unknown as { capabilityRequirements?: { capability_id: string; kind: string; required: boolean }[] }).capabilityRequirements ?? [];
+      const tools = new Set(capabilities.toolExecution.list().map(tool => tool.name));
+      for (const toolName of prepared.step.requiredToolNames) {
+        if (!tools.has(toolName)) throw Object.assign(new Error(`Required tool unavailable: ${toolName}`), { code: "SOP_CAPABILITY_BINDING_UNAVAILABLE" });
+      }
+      for (const requirement of requirements.filter(item => item.required)) {
+        const binding = this.options.profile.capabilityBindings?.find(item => item.capabilityId === requirement.capability_id && item.kind === requirement.kind);
+        if (!binding || !tools.has(binding.toolName)) throw Object.assign(new Error(`Required ${requirement.kind} binding unavailable: ${requirement.capability_id}`), { code: "SOP_CAPABILITY_BINDING_UNAVAILABLE" });
+      }
+    }
     // Portable output supplies no authority, even if it contains additional fields.
     const { optionalKnowledge: _untrusted, optionalKnowledgeUnavailable: _reason, ...ownerStep } = prepared.step;
     prepared = { ...prepared, step: ownerStep };
@@ -583,8 +594,17 @@ export class SopAgentLoop implements AgentLoopRunner {
     const existing = await this.stateStore.status(input.sessionId);
     const persistedSelection = existing?.state.selected_skill_id ?? existing?.state.active_skill_id;
     if (persistedSelection) {
-      ensureBundleSop(this.options.bundle, persistedSelection);
+      if (this.options.profile.hostAdapter !== "pilotdeck") ensureBundleSop(this.options.bundle, persistedSelection);
       this.selectedSops.set(input.sessionId, persistedSelection);
+      return;
+    }
+    if (this.options.profile.hostAdapter === "pilotdeck") {
+      const definitions = await this.stateStore.runtime!.catalog();
+      const sops = definitions.map(item => ({ id: item.sop_id, ...item }));
+      (this.options.bundle as { sops: readonly Record<string, unknown>[] }).sops = sops;
+      const requested = latestUserMessage(input.messages).match(/(?:\/sop\s+)([\w.-]+)/u)?.[1] ?? this.options.profile.defaultSopId;
+      ensureBundleSop(this.options.bundle, requested);
+      this.selectedSops.set(input.sessionId, requested);
       return;
     }
     if (!discovery) {
@@ -614,8 +634,8 @@ export function createStaffDeckSopAgentLoop(
   runnerFactory?: AgentLoopRuntimeFactory,
   authorityPort?: SopCapabilityAuthorityPort,
 ): SopAgentLoop {
-  const bundle = loadStaffDeckSopDefinitions(profile.definitionsPath);
-  if (!bundle.sops.some((definition) => sopId(definition) === profile.defaultSopId)) {
+  const bundle = profile.hostAdapter === "pilotdeck" ? { sops: [] } : loadStaffDeckSopDefinitions(profile.definitionsPath);
+  if (profile.hostAdapter !== "pilotdeck" && !bundle.sops.some((definition) => sopId(definition) === profile.defaultSopId)) {
     throw new Error(`StaffDeck SOP defaultSopId '${profile.defaultSopId}' is not present in ${profile.definitionsPath}.`);
   }
   return new SopAgentLoop(input.config, input.capabilities, input.seedState, {
@@ -885,6 +905,7 @@ class SopControlToolPort implements ToolPort {
         ? persisted.state.successful_tool_names.filter((name): name is string => typeof name === "string" && name.length > 0)
         : [];
       if (proposal.status === "completed" && currentStep?.node.type === "knowledge_query"
+        && currentStep.requiredToolNames.includes("knowledge_query")
         && !successfulToolNames.includes("knowledge_query")) {
         return controlError(call, "REQUIRED_CAPABILITY_NOT_INVOKED: the current knowledge node requires a successful knowledge_query receipt before completion.", "invalid_tool_input");
       }
@@ -896,7 +917,7 @@ class SopControlToolPort implements ToolPort {
         receipts: (Array.isArray(persisted.state.capability_receipts) ? persisted.state.capability_receipts : [])
           .filter((receipt: PortableSopReceipt) => receipt.turnId === execution.turnId
             && (!this.options.stateStore.runtime || !currentStep
-              || currentStep.requiredToolNames.includes(receipt.capabilityId)
+              || (currentStep as unknown as { requiredCapabilityIds?: string[] }).requiredCapabilityIds?.includes(receipt.capabilityId)
               || (currentStep as unknown as { capabilityRequirements?: { capability_id: string }[] }).capabilityRequirements
                 ?.some(item => item.capability_id === receipt.capabilityId))),
         context: {

@@ -27,6 +27,7 @@ type PersistedSopState = Readonly<{
   wait?: StaffDeckSopWait;
   replyDelivery?: StaffDeckSopReplyDelivery;
   resumeRequests: Record<string, PersistedResumeResult>;
+  resumeIntent?: { input: StaffDeckSopResumeInput; original: { bundle: StaffDeckSopBundle; state: StaffDeckSopState; wait?: StaffDeckSopWait; revision: number } };
   updatedAt: string;
 }>;
 
@@ -180,7 +181,11 @@ export class SopStateStore {
 
   async resume(input: StaffDeckSopResumeInput): Promise<StaffDeckSopResumeResult> {
     return this.withSessionLock(input.sessionId, async () => {
-      const current = await this.read(input.sessionId);
+      const local = await this.readLocal(input.sessionId);
+      if (local?.resumeIntent && !isDeepStrictEqual(local.resumeIntent.input, input)) {
+        throw sopStateError("SOP_RESUME_REQUEST_CONFLICT", "An original resume must be recovered before another command is accepted.");
+      }
+      const current = local?.resumeIntent ? { ...local, ...local.resumeIntent.original } : await this.read(input.sessionId);
       if (!current) throw sopStateError("SOP_SESSION_NOT_FOUND", `No StaffDeck SOP state exists for '${input.sessionId}'.`);
       const duplicate = current.resumeRequests[input.requestId];
       if (duplicate) {
@@ -215,6 +220,9 @@ export class SopStateStore {
         if (input.expectedRevision === undefined) throw sopStateError("SOP_REVISION_REQUIRED", "Approval requires the original revision.");
         authorization = { authority: structuredClone(input.authority!), approval, expectedRevision: input.expectedRevision };
       }
+      if (this.runtime && !current.resumeIntent) await this.write({ ...current,
+        resumeIntent: { input: structuredClone(input), original: { bundle: current.bundle, state: current.state,
+          wait: current.wait, revision: current.revision } } });
       const remote = this.runtime ? await this.runtime.resume({ protocolVersion: "3.0",
         sessionId: input.sessionId, requestId: input.requestId, operationId: `sop.resume:${input.requestId}`,
         turnId: input.requestId, expectedRevision: current.revision, waitId: input.waitId,
@@ -230,6 +238,7 @@ export class SopStateStore {
       };
       await this.write({
         ...current,
+        resumeIntent: undefined,
         state: {
           ...current.state,
           status: "active",
@@ -363,6 +372,7 @@ export class SopStateStore {
         version: snapshot.state.sop_version, name: String(definition.name ?? snapshot.state.sop_id), content: definition.content as Record<string, unknown> }] },
       state, revision: snapshot.state.revision, wait: waitForState(state, local?.wait),
       replyDelivery: local?.replyDelivery, resumeRequests: local?.resumeRequests ?? {}, updatedAt: new Date().toISOString() };
+    if (local?.resumeIntent) (next as { resumeIntent?: PersistedSopState['resumeIntent'] }).resumeIntent = local.resumeIntent;
     await this.write(next);
     return next;
   }
@@ -432,6 +442,7 @@ function migratePersistedState(value: ReturnType<typeof persistedStateShape>): P
     resumeRequests: isRecord(value.resumeRequests)
       ? Object.fromEntries(Object.entries(value.resumeRequests).filter((entry): entry is [string, PersistedResumeResult] => isResumeResult(entry[1])))
       : {},
+    ...(isRecord(value.resumeIntent) ? { resumeIntent: value.resumeIntent as PersistedSopState['resumeIntent'] } : {}),
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date(0).toISOString(),
   };
 }
@@ -530,6 +541,12 @@ function validateAuthority(authority: StaffDeckApprovalAuthority | undefined, se
     throw sopStateError("SOP_APPROVAL_AUTH_REQUIRED", "Authenticated native subject and original session access are required.");
   }
   // Preserve SD handoff policy: admins may reply; members must be the assignee.
+  if (authority.hostAdapter === "pilotdeck") {
+    if (authority.tenantId !== "pilotdeck" || approval.assigneeUserId !== "pilotdeck:owner") {
+      throw sopStateError("SOP_APPROVAL_FORBIDDEN", "This node is not assigned to the PilotDeck owner.");
+    }
+    return;
+  }
   if (authority.subject.role !== "admin" && authority.subject.userId !== approval.assigneeUserId) {
     throw sopStateError("SOP_APPROVAL_FORBIDDEN", "Handoff is not assigned to this member.");
   }

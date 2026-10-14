@@ -3,6 +3,19 @@ import { resolve } from 'node:path';
 import type { PublicApprovalBinding, PublicApprovalSessionResolver } from './publicApprovalBridge.js';
 import type { AgentTranscriptEntry, SessionMetadataValue } from '../session/transcript/TranscriptEntry.js';
 
+export function readPilotDeckSessionAdmission(entries: readonly AgentTranscriptEntry[], sessionKey: string) {
+  let admission: SessionMetadataValue['pilotDeckAdmission'];
+  for (const entry of entries) {
+    if (entry.type !== 'session_metadata' || !entry.metadata.pilotDeckAdmission) continue;
+    if (entry.sessionId !== sessionKey || (entry.turnId !== 'host-admission' && !entry.metadata.isSnapshot)) return undefined;
+    const next = entry.metadata.pilotDeckAdmission;
+    if (next.hostAdapter !== 'pilotdeck' || ![next.ownerId, next.projectKey, next.executionProfileId].every(value => typeof value === 'string' && value.trim())) return undefined;
+    if (admission && JSON.stringify(admission) !== JSON.stringify(next)) return undefined;
+    admission = next;
+  }
+  return admission;
+}
+
 export function readNativeSessionAdmission(entries: readonly AgentTranscriptEntry[], sessionKey: string) {
   let admission: SessionMetadataValue['staffDeckAdmission'];
   for (const entry of entries) {

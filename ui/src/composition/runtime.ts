@@ -6,6 +6,7 @@ import { registerPermissionPanels } from '../components/chat/tools/configs/permi
 import { authenticatedFetch } from '../utils/api';
 import staffdeckSop from './modules/staffdeck-sop';
 import staffdeckKnowledge from './modules/staffdeck-knowledge';
+import pilotdeckSop from './modules/pilotdeck-sop';
 
 let activeAssembly: Assembly | null = null;
 
@@ -53,6 +54,7 @@ export function activateAssembly(assembly: Assembly, runtime?: RuntimeCapabiliti
 
 export type RuntimeModule = {
   enabled: boolean;
+  hostAdapter?: 'pilotdeck' | 'staffdeck';
   provider?: string;
   implementationId?: string;
   frontendModule?: string;
@@ -117,7 +119,7 @@ export function validateRuntimeCapabilities(assembly: Assembly, runtime: Runtime
     if (expected.provider && actual.provider !== expected.provider) {
       errors.push(`Runtime provider differs for ${slot}.`);
     }
-    for (const field of ['implementationId', 'frontendModule', 'contract', 'transport'] as const) {
+    for (const field of ['implementationId', 'frontendModule', 'contract', 'transport', 'hostAdapter'] as const) {
       const expectedValue = expected[field];
       if (expectedValue !== undefined && actual[field] !== expectedValue) {
         errors.push(`Runtime ${field} differs for ${slot}.`);
@@ -157,7 +159,7 @@ export type ModuleCompositionState = {
 const staticProfile: CompositionProfile = generatedFrontendProfile as unknown as CompositionProfile;
 
 export function assembleProfile(profile: CompositionProfile, projectBindings = false): Assembly {
-  const catalog = projectBindings ? [...generatedFrontendModules, staffdeckSop, staffdeckKnowledge]
+  const catalog = projectBindings ? [...generatedFrontendModules, staffdeckSop, staffdeckKnowledge, pilotdeckSop]
     .filter((value, index, rows) => rows.findIndex(row => row.id === value.id) === index) : generatedFrontendModules;
   return assembleFrontend(profile, catalog, resolveFrontendChoices(profile, catalog));
 }

@@ -110,7 +110,8 @@ export default function AppShellV2() {
   const { ws, sendMessage, latestMessage, isConnected, subscribe } = useWebSocket();
   const wasConnectedRef = useRef(false);
   const { user } = useAuth();
-  const approverSession = useApproverSession(user ? String(user.id) : null);
+  const nativeSop = composition.profile.modules?.sop?.hostAdapter === 'pilotdeck';
+  const approverSession = useApproverSession(user && !nativeSop ? String(user.id) : null);
   const [readySessionId, setReadySessionId] = useState<string | null>(null);
 
   const {
@@ -771,7 +772,7 @@ export default function AppShellV2() {
         onTouchMoveCapture={acknowledge}
         className="app-main flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950"
       >
-        {composition.assembly?.approvalInbox && <ApproverAccount session={approverSession} />}
+        {composition.assembly?.approvalInbox && !nativeSop && <ApproverAccount session={approverSession} />}
         <StaffDeckProjectBinding key={selectedProject?.name} projectName={selectedProject?.name} />
         <MainAreaV2
           workspaceUpload={workspaceUpload}

@@ -260,7 +260,7 @@ function parseSopModule(
     );
   }
   warnUnknownKeys(value, [
-    "enabled", "provider", "implementationId", "contract", "transport", "manifestPath",
+    "enabled", "provider", "implementationId", "contract", "transport", "manifestPath", "hostAdapter",
     "endpoint", "definitionsPath", "defaultSopId", "discoveryEndpoint", "discoveryAgentId",
     "discoveryApiKey", "discoveryPath", "discoveryTimeoutMs", "timeoutMs", "contextMode", "deployment", "frontendModule", "capabilityBindings", "runtimeSopScope",
   ], path, diagnostics);
@@ -276,10 +276,15 @@ function parseSopModule(
     return undefined;
   }
   const endpoint = nonEmptyText(value.endpoint);
+  const hostAdapter = value.hostAdapter ?? "staffdeck";
+  if (hostAdapter !== "pilotdeck" && hostAdapter !== "staffdeck") {
+    fatal(diagnostics, "SOP_HOST_ADAPTER_INVALID", "hostAdapter must be pilotdeck or staffdeck.", `${path}.hostAdapter`);
+    return undefined;
+  }
   if (!endpoint || !isHttpUrl(endpoint)) {
     fatal(diagnostics, "SOP_MODULE_ENDPOINT_INVALID", "modules.sop.endpoint must be an absolute http(s) URL.", `${path}.endpoint`);
   }
-  const definitionsPath = nonEmptyText(value.definitionsPath);
+  const definitionsPath = nonEmptyText(value.definitionsPath) ?? (hostAdapter === 'pilotdeck' ? join(pilotHome, 'sop', 'explicit-import.json') : undefined);
   if (!definitionsPath) {
     fatal(diagnostics, "SOP_MODULE_DEFINITIONS_PATH_INVALID", "modules.sop.definitionsPath must be a non-empty path.", `${path}.definitionsPath`);
   }
@@ -336,6 +341,7 @@ function parseSopModule(
   }
   if (!endpoint || !definitionsPath || !defaultSopId) return undefined;
   const base = {
+    hostAdapter: hostAdapter as "pilotdeck" | "staffdeck",
     endpoint,
     definitionsPath: isAbsolute(definitionsPath) ? definitionsPath : resolve(pilotHome, definitionsPath),
     defaultSopId,

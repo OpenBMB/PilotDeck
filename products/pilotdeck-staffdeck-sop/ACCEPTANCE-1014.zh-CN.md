@@ -1,5 +1,9 @@
 # SOP v3 本地验收与交付
 
+此文件保留此前双宿主验收记录。当前 PD 原生三服务交付见
+`ACCEPTANCE-NATIVE-1014.zh-CN.md`；生产迁移和旧服务器已按用户要求移出范围。
+下文 StaffDeck reviewer 与知识查询的历史证据不代表本轮 PD 原生验收。
+
 两仓库分支为 `standalone_alpha1_decouple_sop_1013`。完整逐项结果见
 StaffDeck `portable_sop/ACCEPTANCE-1014.md`。私有原始证据位于
 `/Users/a1/.codex/sop-acceptance-1014/evidence`，不提交凭据、数据库或模型配置。

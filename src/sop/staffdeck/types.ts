@@ -10,6 +10,7 @@ export const STAFFDECK_SOP_OPERATIONS = ["prepare", "submit"] as const;
 export type StaffDeckSopContextMode = "new_session" | "inherit";
 
 type SopRuntimeConfigBase = Readonly<{
+  hostAdapter?: "pilotdeck" | "staffdeck";
   endpoint: string;
   definitionsPath: string;
   defaultSopId: string;
@@ -137,6 +138,7 @@ export type StaffDeckSopWait = Readonly<{
 
 /** Created by the authenticated host root, never deserialized from browser input. */
 export type StaffDeckApprovalAuthority = Readonly<{
+  hostAdapter?: "pilotdeck" | "staffdeck";
   tenantId: string;
   sessionId: string;
   subject: Readonly<{ tenantId: string; userId: string; source: "web"; role: "admin" | "member"; disabled: boolean }>;

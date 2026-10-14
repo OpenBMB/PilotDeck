@@ -80,6 +80,47 @@ test("PilotDeck AgentLoop executes against independent HTTP Runtime and recovers
     const recovered = await new SopStateStore(join(root, "sessions"), runtime).status("host-session");
     assert.equal(recovered?.state.status, "completed");
     assert.equal(recovered?.revision, 1);
+    // Native catalog discovery and replaceable capabilities use logical IDs,
+    // with no StaffDeck authority or local definition file.
+    for (const scenario of ['success', 'missing', 'failed'] as const) {
+      const id = `native-${scenario}`;
+      const refs = { required_tool_ids: ['tool-resource'], required_general_skill_ids: ['skill-resource'], required_knowledge_base_ids: ['knowledge-resource'] };
+      const content = { skill_id: id, version: '1', start_node_id: 'lookup', terminal_node_ids: ['lookup'], nodes: [{ node_id: 'lookup', capability_refs: refs }], edges: [] };
+      const manage = async (operation: string, input: object) => {
+        const response = await fetch(`${endpoint}/v1/management/call`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation, input }) });
+        assert.ok(response.ok); return (await response.json()).result;
+      };
+      const draft = await manage('create', { content });
+      await manage('publish', { sopId: id, draftId: draft.id, expectedRevision: 0 });
+      const bindings = [{ kind: 'tool' as const, capabilityId: 'tool-resource', toolName: 'lookup' },
+        { kind: 'skill' as const, capabilityId: 'skill-resource', toolName: 'lookup' },
+        { kind: 'knowledge' as const, capabilityId: 'knowledge-resource', toolName: 'lookup' }];
+      const nativeProfile = { ...profile, hostAdapter: 'pilotdeck' as const, defaultSopId: id,
+        capabilityBindings: scenario === 'missing' ? bindings.slice(0, 2) : bindings };
+      let count = 0;
+      const nativeModel: ModelInvokerPort = { prepare: model.prepare,
+        async *stream(): AsyncIterable<CanonicalModelEvent> {
+          if (++count > 5) throw new Error('stop failed capability case');
+          const toolCall = count === 1 ? { id: 'lookup', name: 'lookup', input: {} }
+            : { id: `submit${count}`, name: 'submit_step_result', input: { status: 'completed', replyFragment: 'Done' } };
+          yield { type: 'message_start', role: 'assistant' }; yield { type: 'tool_call_start', id: toolCall.id, name: toolCall.name };
+          yield { type: 'tool_call_end', toolCall }; yield { type: 'message_end', finishReason: 'tool_call' };
+        },
+      };
+      const nativeTools: ToolPort = scenario === 'failed' ? { list: tools.list, async executeAll(calls) { return calls.map(call => ({ type: 'error' as const, toolName: call.name, toolCallId: call.id,
+        content: [{ type: 'text' as const, text: 'Knowledge double failure' }], error: { code: 'tool_execution_failed', message: 'Knowledge double failure' }, startedAt: new Date().toISOString(), completedAt: new Date().toISOString() })); } } : tools;
+      const nativeSession = createAgentSession({ sessionId: id, config: { provider: 'test', model: 'test', cwd: root,
+        permissionMode: 'default', permissionContext: createDefaultPermissionContext({ cwd: root, canPrompt: false }), staffDeckSop: nativeProfile },
+        dependencies: { router: {} as never, ports: { model: nativeModel, tools: nativeTools }, tools: {
+          registry: { list: () => nativeTools.list() } as never, scheduler: { executeAll: async () => [] } as never } },
+        agentLoopFactory: input => new SopAgentLoop(input.config, input.capabilities, input.seedState, { profile: nativeProfile, bundle: { sops: [] } }),
+      });
+      try { for await (const _event of nativeSession.submit({ type: 'text', text: 'Start' }, { turnId: 'native-turn' })) { /* Consume the real loop. */ } }
+      catch (error) { if (scenario === 'success') throw error; }
+      const nativeState = await runtime.session(id);
+      assert.equal(nativeState.state.status, scenario === 'success' ? 'completed' : 'active', scenario);
+      if (scenario === 'success') assert.equal((nativeState.state.metadata.consumed_receipt_ids as string[]).length, 3);
+    }
     const host = new PortableSopHostClient(runtime);
     const conformanceCases = JSON.parse(await readFile(join(process.env.SOP_RUNTIME_SOURCE!,
       "../tests/fixtures/host_conformance.json"), "utf8")) as Array<{
@@ -187,7 +228,7 @@ test("PilotDeck AgentLoop executes against independent HTTP Runtime and recovers
         requestId: "prepare", operationId: "prepare", turnId: "turn" });
       await runtime.submit({ protocolVersion: "3.0", sessionId, requestId: "wait", operationId: "wait",
         turnId: "turn", expectedRevision: 0, proposal: { status, reply: "Waiting" } });
-      const store = new SopStateStore(join(root, "approval-tests"), runtime);
+      let store = new SopStateStore(join(root, "approval-tests"), runtime);
       const pending = await store.status(sessionId);
       assert.ok(pending?.wait);
       const input = { sessionId, requestId: "resume", waitId: pending.wait.id,
@@ -197,6 +238,18 @@ test("PilotDeck AgentLoop executes against independent HTTP Runtime and recovers
           tenantId: "tenant", userId: "reviewer", source: "web" as const, role: "member" as const, disabled: false } } } : {}) };
       if (status === "handoff") {
         await assert.rejects(store.resume({ ...input, authority: undefined }), { code: "SOP_APPROVAL_AUTH_REQUIRED" });
+        const persistence = store as unknown as { write(value: { resumeIntent?: unknown; resumeRequests?: Record<string, unknown> }): Promise<void> };
+        const originalWrite = persistence.write.bind(store);
+        persistence.write = async value => {
+          if (!value.resumeIntent && value.resumeRequests?.resume) throw new Error('crash after Runtime resume before local receipt');
+          await originalWrite(value);
+        };
+        await assert.rejects(store.resume(input), /crash after Runtime/);
+        assert.equal((await runtime.session(sessionId)).state.revision, 2);
+        store = new SopStateStore(join(root, "approval-tests"), runtime);
+        // A status refresh sees the new Runtime revision but must retain the
+        // original durable resume command so its idempotent replay still works.
+        assert.equal((await store.status(sessionId))!.revision, 2);
       }
       const resumed = await store.resume(input);
       assert.equal(resumed.revision, 2);

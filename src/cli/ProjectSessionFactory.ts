@@ -47,7 +47,7 @@ import type { SessionExecutionHandle } from "../sandbox/SessionExecutionProvider
 export type ProjectSessionFactoryRuntime = ProjectSessionRuntime;
 
 export type ProjectSessionFactoryOptions<Runtime extends ProjectSessionFactoryRuntime> = {
-  sessionAdmission?(runtime: Runtime): Promise<import('../session/transcript/TranscriptEntry.js').SessionMetadataValue['staffDeckAdmission']>;
+  sessionAdmission?(runtime: Runtime): Promise<import('../session/transcript/TranscriptEntry.js').SessionMetadataValue['staffDeckAdmission'] | import('../session/transcript/TranscriptEntry.js').SessionMetadataValue['pilotDeckAdmission']>;
   registerSessionExecution?: (sessionKey: string, handle: SessionExecutionHandle) => () => void;
   resolveRuntime(projectKey?: string): Runtime;
   acquireRuntimeLease(runtime: Runtime): () => Promise<void>;
@@ -135,7 +135,8 @@ export class ProjectSessionFactory<Runtime extends ProjectSessionFactoryRuntime>
         // Only new original sessions receive admission facts. Never backfill old histories.
         if (original.entries.length === 0 && original.diagnostics.every(diagnostic => diagnostic.code === 'transcript_missing')) {
           const admission = await this.options.sessionAdmission(prepared.runtime);
-          if (admission) await storage.transcript.recordSessionMetadata(context.sessionKey, 'host-admission', { staffDeckAdmission: admission });
+          if (admission) await storage.transcript.recordSessionMetadata(context.sessionKey, 'host-admission',
+            'hostAdapter' in admission ? { pilotDeckAdmission: admission } : { staffDeckAdmission: admission });
         }
       }
       const resumed = await resumeAgentSession({

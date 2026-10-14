@@ -18,7 +18,7 @@ import { registeredProjectDirectory } from '../projects.js';
 
 const router = express.Router();
 const SLOTS = ['agentLoop', 'skills', 'tools', 'context', 'modelProvider', 'sop', 'knowledge'];
-const PUBLIC_FIELDS = ['enabled', 'provider', 'implementationId', 'frontendModule', 'contract', 'transport', 'methods'];
+const PUBLIC_FIELDS = ['enabled', 'provider', 'implementationId', 'frontendModule', 'contract', 'transport', 'methods', 'hostAdapter'];
 const KNOWLEDGE_OPERATIONS = new Set([
   'list_bases', 'create_base', 'get_base', 'update_base', 'delete_base', 'list_versions',
   'sync_base', 'publish_version', 'rollback_version', 'list_documents', 'get_document',

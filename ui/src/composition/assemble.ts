@@ -27,6 +27,7 @@ export function resolveBusinessBindings(profile: CompositionProfile): Record<str
 
 export function defaultFrontendChoice(binding: Binding, slot: Slot): string {
   if (binding.frontendModule) return binding.frontendModule;
+  if (slot === 'sop' && binding.hostAdapter === 'pilotdeck') return 'pilotdeck.sop';
   if (binding.implementationId === 'staffdeck.portable-sop' || (slot === 'sop' && binding.contract === 'sop.lifecycle/v3')) return 'staffdeck.sop';
   if (binding.implementationId === 'staffdeck.knowledge') return 'staffdeck.knowledge';
   if (binding.implementationId) return binding.implementationId;

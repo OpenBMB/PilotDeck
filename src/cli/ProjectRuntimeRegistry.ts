@@ -139,7 +139,7 @@ type SdkTaskBudgetLedgerRecord =
 const DEFAULT_SDK_TASK_BUDGET_LEDGER_COMPACT_AFTER_RECORDS = 512;
 
 export type ProjectRuntimeRegistryOptions = {
-  sessionAdmission?(runtime: ProjectRuntime): Promise<import('../session/transcript/TranscriptEntry.js').SessionMetadataValue['staffDeckAdmission']>;
+  sessionAdmission?(runtime: ProjectRuntime): Promise<import('../session/transcript/TranscriptEntry.js').SessionMetadataValue['staffDeckAdmission'] | import('../session/transcript/TranscriptEntry.js').SessionMetadataValue['pilotDeckAdmission']>;
   registerSessionExecution?: (sessionKey: string, handle: SessionExecutionHandle) => () => void;
   fallbackProjectRoot: string;
   pilotHome: string;

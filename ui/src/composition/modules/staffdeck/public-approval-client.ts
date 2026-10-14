@@ -37,11 +37,11 @@ async function json<T>(path: string, init: RequestInit): Promise<T> {
 }
 
 /** Uses the existing PD authenticated SOP route and an independent normal approver login. */
-export function createPublicApprovalClient(readApproverBearer: () => string) {
+export function createPublicApprovalClient(readApproverBearer: () => string, hostAdapter: 'staffdeck' | 'pilotdeck' = 'staffdeck') {
   return Object.freeze({
     async status(scope: ApprovalScope, options: { signal?: AbortSignal } = {}): Promise<ApprovalStatus | null> {
       assertScope(scope);
-      const headers = approverHeader(readApproverBearer());
+      const headers = hostAdapter === 'pilotdeck' ? {} : approverHeader(readApproverBearer());
       const query = new URLSearchParams({ sessionKey: scope.sessionKey });
       if (scope.projectKey) query.set('projectKey', scope.projectKey);
       const body = await json<{ status: ApprovalStatus | null }>(`/api/sop/status?${query}`, { headers, signal: options.signal });
@@ -54,7 +54,7 @@ export function createPublicApprovalClient(readApproverBearer: () => string) {
       if (!nonempty(reply.requestId) || !nonempty(reply.waitId) || !nonempty(reply.message) || !Number.isInteger(reply.expectedRevision) || reply.expectedRevision < 0) {
         throw new Error('Original approval request, wait, revision and reply are required.');
       }
-      const headers = approverHeader(readApproverBearer());
+      const headers = hostAdapter === 'pilotdeck' ? {} : approverHeader(readApproverBearer());
       const body = await json<ApprovalReceipt>('/api/sop/resume', {
         method: 'POST', headers, signal: options.signal,
         body: JSON.stringify({ sessionKey: reply.sessionKey, ...(reply.projectKey ? { projectKey: reply.projectKey } : {}),
