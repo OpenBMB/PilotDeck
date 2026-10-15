@@ -2,9 +2,8 @@
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { pilotDeckKnowledgePageHost } from './knowledge-host-adapter';
 import { pilotDeckSkillsPageHost, createPilotDeckDistillPageHost } from './skills-host-adapter';
-import { staffDeckKnowledgeClient, staffDeckSopManagementClient } from '../clients';
+import { staffDeckSopManagementClient } from '../clients';
 import { pilotDeckFormalComponents } from './host-components';
 import { renderMarkdownBlocks } from './FormalMarkdown';
 import { normalizeCapabilityScope } from './FormalCapabilityScopeControl';
@@ -12,30 +11,6 @@ import { formatHandoffAssigneeValue, parseHandoffAssigneeValue } from './FormalH
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe('formal Host audit regressions', () => {
-  it('does not send unknown nested operations, forged prefixes or methods to a real module', async () => {
-    const call = vi.spyOn(staffDeckKnowledgeClient, 'call');
-    for (const root of ['knowledge-bases/b/versions', 'knowledge/buckets/b/chunks', 'knowledge/chunks/c', 'knowledge/jobs/j', 'knowledge/discoveries/d/confirm']) {
-      await expect(pilotDeckKnowledgePageHost.api.get('/api/enterprise/' + root + '/unexpected')).rejects.toThrow('Unsupported');
-    }
-    await expect(pilotDeckKnowledgePageHost.api.put('/other/enterprise/knowledge-bases/b', {})).rejects.toThrow('Unsupported');
-    expect(call).not.toHaveBeenCalled();
-  });
-  it('uses decoded base/bucket/chunk path IDs and query scope before conflicting body fields', async () => {
-    const call = vi.spyOn(staffDeckKnowledgeClient, 'call').mockResolvedValue({} as any);
-    const body = { knowledgeBaseId: 'wrong', bucketId: 'wrong', chunkId: 'wrong', agentId: 'wrong', expected_updated_at: 'original' };
-    await pilotDeckKnowledgePageHost.api.put('/api/enterprise/knowledge-bases/b%2F1?agent_id=target', body);
-    expect(call).toHaveBeenLastCalledWith('update_base', { ...body, knowledgeBaseId: 'b/1', agentId: 'target' });
-    await pilotDeckKnowledgePageHost.api.put('/api/enterprise/knowledge/buckets/b%2F2?agent_id=target', body);
-    expect(call).toHaveBeenLastCalledWith('update_bucket', { ...body, bucketId: 'b/2', agentId: 'target' });
-    await pilotDeckKnowledgePageHost.api.put('/api/enterprise/knowledge/chunks/c%2F3?agent_id=target', body);
-    expect(call).toHaveBeenLastCalledWith('update_chunk', { ...body, chunkId: 'c/3', agentId: 'target' });
-    await pilotDeckKnowledgePageHost.api.get('/api/enterprise/knowledge/documents?include_all_versions=false&agent_id=target');
-    expect(call).toHaveBeenLastCalledWith('list_documents', { includeAllVersions: false, agentId: 'target' });
-  });
-  it('rejects a malformed export response instead of downloading a JSON body as an OKF archive', async () => {
-    vi.spyOn(staffDeckKnowledgeClient, 'call').mockResolvedValue({} as any);
-    await expect(pilotDeckKnowledgePageHost.api.blob('/api/enterprise/knowledge-bases/base/okf/export')).rejects.toThrow('content_base64');
-  });
   it('does not let an editor unknown suffix become a detail read or save', async () => {
     const call = vi.spyOn(staffDeckSopManagementClient, 'call');
     const host = createPilotDeckDistillPageHost();

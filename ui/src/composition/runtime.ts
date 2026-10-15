@@ -115,7 +115,8 @@ export function validateRuntimeCapabilities(assembly: Assembly, runtime: Runtime
     }
     for (const field of ['implementationId', 'frontendModule', 'contract', 'transport'] as const) {
       const expectedValue = expected[field];
-      if (expectedValue !== undefined && actual[field] !== expectedValue) {
+      const canonical = (value: unknown) => slot === 'knowledge' && field === 'frontendModule' && value === 'staffdeck.knowledge' ? 'knowledge-core' : value;
+      if (expectedValue !== undefined && canonical(actual[field]) !== canonical(expectedValue)) {
         errors.push(`Runtime ${field} differs for ${slot}.`);
       }
     }

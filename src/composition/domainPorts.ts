@@ -22,6 +22,7 @@ import type { PilotDeckToolDefinition } from "../tool/index.js";
 import { HttpModuleClient } from "./HttpModuleClient.js";
 import type { ExternalModuleBinding } from "./types.js";
 import { currentKnowledgeAuthority } from "./sopCapabilityAuthority.js";
+import { knowledgeCoreRequest, knowledgeCoreCapabilities } from './knowledgeCoreOperations.mjs';
 
 export type { SkillManagementPort } from "../extension/skills/types.js";
 
@@ -105,6 +106,7 @@ export function createSkillManagementPort(binding: ExternalModuleBinding): Skill
 }
 
 export function createKnowledgeModulePort(binding: ExternalModuleBinding): KnowledgeModulePort {
+  if (binding.contract === "knowledge-core/v1") return createIndependentKnowledgePort(binding);
   const client = new HttpModuleClient(binding);
   let sequence = 0;
   return Object.freeze({
@@ -123,6 +125,37 @@ export function createKnowledgeModulePort(binding: ExternalModuleBinding): Knowl
   });
 }
 
+function createIndependentKnowledgePort(binding: ExternalModuleBinding): KnowledgeModulePort {
+  return Object.freeze({
+    async call(operation, input) {
+      assertDeclaredMethod(binding, operation, "Knowledge Core");
+      if (currentKnowledgeAuthority()) {
+        throw protocolFailure("Knowledge Core does not accept an SD capability lease.");
+      }
+      const token = binding.credentialEnv ? process.env[binding.credentialEnv]?.trim() : undefined;
+      if (binding.credentialEnv && !token) throw protocolFailure("Knowledge credential is unavailable.");
+      const capabilities = await knowledgeCoreCapabilities(binding, fetch, AbortSignal.timeout(binding.timeoutMs ?? 120_000));
+      const request = knowledgeCoreRequest(operation, input, binding, capabilities);
+      const url = request.url;
+      const response = await fetch(url, {
+        method: request.method,
+        headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        signal: AbortSignal.timeout(binding.timeoutMs ?? 120_000),
+        body: request.body === undefined ? undefined : JSON.stringify(request.body),
+      });
+      const body = response.headers.get('content-type')?.includes('application/zip')
+        ? { filename: 'knowledge.okf.zip', content_base64: Buffer.from(await response.arrayBuffer()).toString('base64') }
+        : await response.json();
+      if (!response.ok) throw Object.assign(new Error(typeof body.detail === 'string' ? body.detail : 'Knowledge request failed'), { status: response.status });
+      if (operation === 'list_spaces') {
+        const allowed = new Set(binding.spaces?.map(space => space.id));
+        return body.filter((space: { id: string }) => allowed.has(space.id));
+      }
+      return body;
+    },
+  });
+}
+
 function assertDeclaredMethod(binding: ExternalModuleBinding, operation: string, owner: string): void {
   if (!binding.methods.includes(operation)) throw protocolFailure(`${owner} operation '${operation}' is not declared.`);
 }
@@ -134,13 +167,13 @@ export function createKnowledgeQueryTool(
   const bindingHasReadCredential = "credentialEnv" in scope && typeof scope.credentialEnv === "string";
   return {
     name: "knowledge_query",
-    description: "Query the configured knowledge module for grounded evidence and citations. The host supplies tenant and agent scope; provide a natural-language query and optionally select knowledge_base_ids.",
+    description: "Query the configured knowledge module for grounded evidence and citations. Provide a query, optionally knowledge_base_ids and model_id. Set use_model to false for lexical retrieval.",
     kind: "custom",
     inputSchema: {
       type: "object",
       required: ["query"],
       additionalProperties: true,
-      properties: { query: { type: "string" } },
+      properties: { query: { type: "string" }, knowledge_base_ids: { type: "array", items: { type: "string" } }, model_id: { type: "string" }, use_model: { type: "boolean" } },
     },
     isReadOnly: () => true,
     isConcurrencySafe: () => true,

@@ -40,12 +40,18 @@ export type ExternalModuleBinding = Readonly<{
   enabled: true;
   implementationId: string;
   contract: string;
-  transport: typeof MODULE_HTTP_TRANSPORT;
+  transport: typeof MODULE_HTTP_TRANSPORT | "rest-http-v1";
   endpoint: string;
   manifestPath: string;
   callPath: string;
   /** Server-only environment variable holding the SD account public credential. */
   credentialEnv?: string;
+  spaceId?: string;
+  spaces?: readonly Readonly<{ id: string; name?: string }>[];
+  pilotDeckUserId?: string;
+  readOnly?: boolean;
+  namespace?: string;
+  capabilitiesCredentialEnv?: string;
   timeoutMs?: number;
   methods: readonly string[];
   /** Optional static frontend registry key selected by the profile. */
@@ -83,7 +89,8 @@ export function isDisabledModuleBinding(binding: CoreModuleBinding | undefined):
 }
 
 export function isExternalModuleBinding(binding: CoreModuleBinding | undefined): binding is ExternalModuleBinding {
-  return binding !== undefined && "implementationId" in binding && binding.transport === MODULE_HTTP_TRANSPORT;
+  return binding !== undefined && "implementationId" in binding
+    && (binding.transport === MODULE_HTTP_TRANSPORT || binding.transport === "rest-http-v1");
 }
 
 export function isExternalAgentLoopBinding(binding: CoreModuleBinding | undefined): binding is ExternalAgentLoopBinding {

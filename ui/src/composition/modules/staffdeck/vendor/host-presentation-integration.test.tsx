@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { KnowledgePageHostProvider, CapabilityScopeControl, CapabilityScopeLoading, Progress, StatCard, Paginator } from './KnowledgePageHost';
-import { pilotDeckKnowledgePageHost } from './knowledge-host-adapter';
+import { pilotDeckFormalComponents } from './host-components';
+const { CapabilityScopeControl, CapabilityScopeLoading, Progress, StatCard, Paginator } = pilotDeckFormalComponents;
 import type { ReactNode } from 'react';
 
 afterEach(cleanup);
-const mount = (content: ReactNode) => render(<KnowledgePageHostProvider value={pilotDeckKnowledgePageHost}>{content}</KnowledgePageHostProvider>);
+const mount = (content: ReactNode) => render(<>{content}</>);
 
 describe('actual PilotDeck Host presentation injection', () => {
   it('preserves source StatCard and Progress value/aria/indicator', () => {

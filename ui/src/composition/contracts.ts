@@ -90,6 +90,7 @@ export type FrontendModule = {
   slot?: Slot;
   businessModuleId?: string;
   contract: string;
+  compatibleContracts?: string[];
   source?: 'pilotdeck' | 'staffdeck' | 'third-party' | 'fixture';
   frontendApiVersion?: string;
   /** Stable emitted marker used by composition build-exclusion verification. */

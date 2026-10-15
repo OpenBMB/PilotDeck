@@ -3,14 +3,13 @@ import * as React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from './dialog-primitives';
-import { pilotDeckKnowledgePageHost } from './knowledge-host-adapter';
 import { pilotDeckSkillsPageHost } from './skills-host-adapter';
-import { KnowledgePageHostProvider, Dialog as KnowledgeDialog, DialogContent as KnowledgeContent, DialogTitle as KnowledgeTitle } from './KnowledgePageHost';
+import { SkillsPageHostProvider as SkillsPageHostProvider, Dialog as SkillsDialog, DialogContent as SkillsContent, DialogTitle as SkillsTitle } from './SkillsPageHost';
 
 afterEach(cleanup);
 describe('formal Dialog primitive mounted by PilotDeck', () => {
-  it('is injected into both actual hosts and forwards content/title refs, style and aria while Close controls the owner', async () => {
-    for (const host of [pilotDeckKnowledgePageHost, pilotDeckSkillsPageHost]) {
+  it('is injected into the SOP host and forwards content/title refs, style and aria while Close controls the owner', async () => {
+    for (const host of [pilotDeckSkillsPageHost]) {
       expect(host.components?.Dialog).toBe(PilotDeckDialog);
       expect(host.components?.DialogContent).toBe(PilotDeckDialogContent);
       expect(host.components?.DialogTitle).toBe(PilotDeckDialogTitle);
@@ -21,12 +20,12 @@ describe('formal Dialog primitive mounted by PilotDeck', () => {
     const escape = vi.fn();
     function Owner() {
       const [open, setOpen] = React.useState(true);
-      return <KnowledgePageHostProvider value={pilotDeckKnowledgePageHost}><KnowledgeDialog open={open} onOpenChange={(next: boolean) => { change(next); setOpen(next); }}>
-        <KnowledgeContent ref={content} style={{ maxWidth: '840px' }} aria-describedby={undefined} aria-label="Formal details" onEscapeKeyDown={escape}>
-          <KnowledgeTitle ref={title} asChild><h3>Original document details</h3></KnowledgeTitle>
+      return <SkillsPageHostProvider value={pilotDeckSkillsPageHost}><SkillsDialog open={open} onOpenChange={(next: boolean) => { change(next); setOpen(next); }}>
+        <SkillsContent ref={content} style={{ maxWidth: '840px' }} aria-describedby={undefined} aria-label="Formal details" onEscapeKeyDown={escape}>
+          <SkillsTitle ref={title} asChild><h3>Original document details</h3></SkillsTitle>
           <p>Complete original body</p>
-        </KnowledgeContent>
-      </KnowledgeDialog></KnowledgePageHostProvider>;
+        </SkillsContent>
+      </SkillsDialog></SkillsPageHostProvider>;
     }
     render(<Owner />);
     expect(content.current).toBe(screen.getByRole('dialog'));

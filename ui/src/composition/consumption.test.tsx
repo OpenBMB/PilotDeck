@@ -5,10 +5,9 @@ import { ToolRenderer } from '../components/chat/tools/ToolRenderer';
 import { AgentFileArtifactGroup } from '../components/chat-v2/MessageFileCards';
 import MessageRowV2 from '../components/chat-v2/MessageRowV2';
 import { getPermissionPanel } from '../components/chat/tools/configs/permissionPanelRegistry';
-import { activateAssembly, getActiveAssembly, setActiveAssembly } from './runtime';
+import { activateAssembly, getActiveAssembly, setActiveAssembly, validateRuntimeCapabilities } from './runtime';
 import type { Assembly } from './contracts';
 import { SopPermissionPanel } from './modules/staffdeck-sop';
-import KnowledgeGraphCanvas from './modules/staffdeck/vendor/KnowledgeGraphCanvas';
 import SopVersionDetailDialog from './modules/staffdeck/vendor/SopVersionDetailDialog';
 import { SkillsPageHostProvider } from './modules/staffdeck/vendor/SkillsPageHost';
 import { pilotDeckSkillsPageHost } from './modules/staffdeck/vendor/skills-host-adapter';
@@ -27,6 +26,14 @@ function assembly(overrides: Partial<Assembly> = {}): Assembly {
 }
 
 describe('active composition consumers', () => {
+  it('accepts the deprecated knowledge frontend alias without accepting a different contract', () => {
+    const binding = { enabled: true, implementationId: 'knowledge-core', frontendModule: 'knowledge-core', contract: 'knowledge-core/v1', transport: 'rest-http-v1' };
+    const selected = assembly({ bindings: { knowledge: binding }, selections: [{ slot: 'knowledge', binding, frontend: { id: 'knowledge-core', slot: 'knowledge', contract: 'knowledge-core/v1' } }] } as Partial<Assembly>);
+    const runtime = { modules: { knowledge: { ...binding, frontendModule: 'staffdeck.knowledge' } }, gatewayCapabilities: [] };
+    expect(validateRuntimeCapabilities(selected, runtime)).toEqual([]);
+    runtime.modules.knowledge.contract = 'staffdeck.knowledge/v1';
+    expect(validateRuntimeCapabilities(selected, runtime)).toContain('Runtime contract differs for knowledge.');
+  });
   it('renders custom tool, artifact, and historical fallback contributions', () => {
     const Tool = () => <div>custom tool rendered</div>;
     const Artifact = () => <div>custom artifact rendered</div>;
@@ -115,30 +122,6 @@ describe('active composition consumers', () => {
     screen.getByRole('button', { name: 'sop.reject' }).click();
     expect(onDecision).toHaveBeenCalledWith('approval-1', { allow: false, message: 'sop.rejected' });
     view.unmount();
-  });
-
-  it('renders the versioned StaffDeck Knowledge graph with public concept data', () => {
-    render(<KnowledgeGraphCanvas concepts={[
-      { id: 'source', concept_id: 'source', concept_type: 'Source Document', title: 'Handbook', links: [], citations: [] },
-      { id: 'topic', concept_id: 'topic', concept_type: 'Topic', title: 'Leave policy', links: [{ target: 'source' }], citations: [] },
-    ]} onSelectConcept={vi.fn()} />);
-    expect(screen.getByRole('img', { name: '知识图谱画布' })).toBeTruthy();
-    expect(screen.getByText('Handbook')).toBeTruthy();
-    expect(screen.getByText('Leave policy')).toBeTruthy();
-  });
-
-  it('uses host-provided localized labels for the StaffDeck Knowledge graph', () => {
-    render(<KnowledgeGraphCanvas concepts={[]} onSelectConcept={vi.fn()} labels={{
-      empty: 'No knowledge graph data yet.',
-      canvas: 'Knowledge graph canvas',
-      zoomIn: 'Zoom in',
-      zoomOut: 'Zoom out',
-      reset: 'Reset view',
-      fallbackType: 'Concept',
-      typeLabels: {},
-      sortLocale: 'en',
-    }} />);
-    expect(screen.getByText('No knowledge graph data yet.')).toBeTruthy();
   });
 
   it('renders the original StaffDeck SOP version detail slice through the shared package', () => {

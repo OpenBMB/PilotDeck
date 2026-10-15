@@ -13,8 +13,36 @@ import { createStaffDeckPublishRoute } from '../staffdeck-publish-route.js';
 import { createPublicCapabilityClient, decodePublicJobEvents, planPublicOperation, PUBLIC_APPROVED_OPERATIONS, PUBLIC_OPERATION_CONTRACTS } from '../staffdeck-public-capabilities.mjs';
 import { createPilotDeckHostCapabilityGateway, encodeHostCapabilityStream, isHostCapabilityStreamBody, PILOTDECK_HOST_UI_OPERATIONS } from '../pilotdeck-host-capability-gateway.mjs';
 import { createStaffDeckCopyRouter, verifyStaffDeckKnowledgeBinding } from './staffdeck-copy.js';
+import { createKnowledgeCoreRouter } from './knowledge-core.js';
+import { createKnowledgeCapabilitiesRouter } from './knowledge-capabilities.js';
+import { knowledgeCoreRequest } from '../../../src/composition/knowledgeCoreOperations.mjs';
 
 const router = express.Router();
+async function independentKnowledgeCall(req, res, binding, operation, input) {
+  if (binding.enabled !== true) return res.status(503).json({ detail: 'Knowledge module is unavailable' });
+  if (!binding.pilotDeckUserId || String(req.user?.id ?? '') !== String(binding.pilotDeckUserId)) {
+    return res.status(403).json({ detail: 'Knowledge host user is not bound' });
+  }
+  try {
+    const bearer = binding.credentialEnv ? process.env[binding.credentialEnv]?.trim() : undefined;
+    if (binding.credentialEnv && !bearer) return res.status(503).json({ detail: 'Knowledge credential is unavailable' });
+    const request = knowledgeCoreRequest(operation, input || {}, {
+      ...binding, methods: binding.methods || ['query', 'resolve_citation'],
+      readOnly: binding.readOnly === true || process.env.PILOTDECK_MODULE_ADMIN === '0',
+    });
+    const response = await fetch(request.url, {
+      method: request.method, headers: { 'content-type': 'application/json', ...(bearer ? { authorization: 'Bearer ' + bearer } : {}) },
+      body: request.body === undefined ? undefined : JSON.stringify(request.body),
+      signal: moduleUpstreamSignal(req.moduleRequestSignal, Number(binding.timeoutMs) || 120000),
+    });
+    const result = response.headers.get('content-type')?.includes('application/zip')
+      ? { filename: 'knowledge.okf.zip', content_base64: Buffer.from(await response.arrayBuffer()).toString('base64') }
+      : await response.json();
+    return res.status(response.status).json(response.ok ? { result } : result);
+  } catch (error) {
+    return res.status(error.status || 503).json({ detail: error.status ? error.message : 'Knowledge service unavailable' });
+  }
+}
 const SLOTS = ['agentLoop', 'skills', 'tools', 'context', 'modelProvider', 'sop', 'knowledge'];
 const PUBLIC_FIELDS = ['enabled', 'provider', 'implementationId', 'frontendModule', 'contract', 'transport', 'methods'];
 const KNOWLEDGE_OPERATIONS = new Set([
@@ -46,18 +74,22 @@ const SOP_MANAGEMENT_OPERATIONS = new Set([
  * Gateway capabilities are supplemental and must not prevent module pages from
  * mounting while the chat runtime is starting or temporarily unavailable.
  */
-export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDeckGateway, getHostCapabilities } = {}) {
-  const readConfig = loadConfig ?? (() => {
+export function readModuleConfig() {
     const path = process.env.PILOTDECK_CONFIG_PATH || join(process.env.PILOT_HOME || join(homedir(), '.pilotdeck'), 'pilotdeck.yaml');
     if (!existsSync(path)) return {};
     try { return parseYaml(readFileSync(path, 'utf8')) ?? {}; } catch { return {}; }
-  });
+}
+
+export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDeckGateway, getHostCapabilities } = {}) {
+  const readConfig = loadConfig ?? readModuleConfig;
   const route = express.Router();
   route.use((req, res, next) => {
     req.moduleRequestSignal = bindModuleRequestAbort(req, res);
     next();
   });
   route.use('/staffdeck-copy', createStaffDeckCopyRouter({ loadConfig: readConfig }));
+  route.use('/knowledge/core', createKnowledgeCoreRouter({ loadConfig: readConfig }));
+  route.use('/knowledge/capabilities', createKnowledgeCapabilitiesRouter({ loadConfig: readConfig, getGateway, getHostCapabilities }));
   const hostCapabilityCall = async (req, res, callback = false) => {
     try {
       const config = readConfig();
@@ -137,6 +169,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
   route.post('/knowledge/query', async (req, res) => {
     try {
       const binding = readConfig()?.modules?.knowledge;
+      if (binding?.contract === 'knowledge-core/v1') return independentKnowledgeCall(req, res, binding, 'query', req.body);
       if (binding?.enabled !== true || typeof binding.endpoint !== 'string') {
         return res.status(501).json({ error: { code: 'MODULE_DISABLED', message: 'Knowledge module is not configured for HTTP queries.' } });
       }
@@ -180,6 +213,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
   route.post('/knowledge/citation', async (req, res) => {
     try {
       const binding = readConfig()?.modules?.knowledge;
+      if (binding?.contract === 'knowledge-core/v1') return independentKnowledgeCall(req, res, binding, 'resolve_citation', req.body);
       if (binding?.enabled !== true || typeof binding.endpoint !== 'string') {
         return res.status(501).json({ error: { code: 'MODULE_DISABLED', message: 'Knowledge module is not configured for HTTP citations.' } });
       }
@@ -215,6 +249,7 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
     try {
       const binding = readConfig()?.modules?.knowledge;
       const operation = typeof req.body?.operation === 'string' ? req.body.operation : '';
+      if (binding?.contract === 'knowledge-core/v1') return independentKnowledgeCall(req, res, binding, operation, req.body?.input);
       if (!KNOWLEDGE_OPERATIONS.has(operation)) {
         return res.status(400).json({ error: { code: 'MODULE_OPERATION_UNSUPPORTED', message: 'Knowledge operation is not part of staffdeck.knowledge/v1.' } });
       }

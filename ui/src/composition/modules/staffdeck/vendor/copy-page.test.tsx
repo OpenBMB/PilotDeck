@@ -5,14 +5,12 @@ import * as React from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import KnowledgePage from './KnowledgePage';
 import SkillsPage from './SkillsPage';
-import { DataTable as KnowledgeDataTable } from './KnowledgePageHost';
+import { DataTable as KnowledgeDataTable } from './SkillsPageHost';
 import { PilotDeckDataTable, PilotDeckResourceImportDialog } from './business-primitives';
-import { PilotDeckKnowledgePageProvider, pilotDeckKnowledgePageHost } from './knowledge-host-adapter';
 import { PilotDeckSkillsPageProvider, PilotDeckDistillPageProvider, pilotDeckSopDestination, createPilotDeckDistillPageHost, pilotDeckDistillPageHost, pilotDeckSkillsPageHost } from './skills-host-adapter';
 import { useDistillPageHost } from './DistillPageHost';
-import { staffDeckCopyClient, staffDeckKnowledgeClient, staffDeckSopClient, staffDeckSopManagementClient } from '../clients';
+import { staffDeckCopyClient, staffDeckSopClient, staffDeckSopManagementClient } from '../clients';
 
 const agents = [
   { id: 'employee-real', tenant_id: 'tenant_demo', name: 'Employee', is_overall: false, active: true, copy_target: true, can_manage: true },
@@ -93,8 +91,8 @@ describe('PilotDeck shared plaza pages', () => {
     expect(pilotDeckSopDestination('/enterprise/skills-other?x=1')).toBe('/enterprise/skills-other?x=1');
     expect(pilotDeckSopDestination('/knowledge?x=1')).toBe('/knowledge?x=1');
   });
-  it('injects the same complete business primitives into Knowledge and Skills', () => {
-    for (const host of [pilotDeckKnowledgePageHost, pilotDeckSkillsPageHost]) {
+  it('injects complete business primitives into Skills', () => {
+    for (const host of [pilotDeckSkillsPageHost]) {
       expect(host.components?.DataTable).toBe(PilotDeckDataTable);
       expect(host.components?.ResourceImportDialog).toBe(PilotDeckResourceImportDialog);
     }
@@ -136,7 +134,8 @@ describe('PilotDeck shared plaza pages', () => {
     const onRowClick = vi.fn();
     const copiedBase = { id: 'copied-base', name: 'Copied policy' };
     vi.spyOn(staffDeckCopyClient, 'call').mockResolvedValue(agents as never);
-    render(<MemoryRouter><PilotDeckKnowledgePageProvider>
+    vi.spyOn(staffDeckSopManagementClient, 'call').mockResolvedValue({ data: [], drafts: [] } as never);
+    render(<MemoryRouter><PilotDeckSkillsPageProvider>
       <KnowledgeDataTable
         aria-label="知识库列表"
         columns={[{ key: 'name', title: '名称', dataIndex: 'name' }]}
@@ -144,62 +143,10 @@ describe('PilotDeck shared plaza pages', () => {
         rowKey={(row: typeof copiedBase) => row.id}
         onRowClick={onRowClick}
       />
-    </PilotDeckKnowledgePageProvider></MemoryRouter>);
+    </PilotDeckSkillsPageProvider></MemoryRouter>);
 
     fireEvent.click(await screen.findByRole('row', { name: 'Copied policy' }));
     expect(onRowClick).toHaveBeenCalledExactlyOnceWith(copiedBase, 0);
-  });
-
-  it('loads a newly copied Knowledge document on its first desktop row click', async () => {
-    const calls: Array<{ operation: string; input: Record<string, unknown> }> = [];
-    vi.spyOn(staffDeckCopyClient, 'call').mockResolvedValue(agents as never);
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_path, init) => {
-      const { operation, input = {}, scope } = JSON.parse(String(init?.body));
-      calls.push({ operation, input: { ...input, agentId: scope?.agentId } });
-      const data = operation === 'list_knowledge_bases' ? [
-        { id: 'old-base', name: 'Existing guide', status: 'active' },
-        { id: 'copied-base', name: 'Copied policy', status: 'active' },
-      ] : operation === 'list_knowledge_documents' ? [input.knowledgeBaseId === 'copied-base'
-        ? { id: 'copied-document', knowledge_base_id: 'copied-base', filename: 'copied.md', title: 'Copied policy' }
-        : { id: 'old-document', knowledge_base_id: 'old-base', filename: 'old.md', title: 'Existing guide' }]
-        : [];
-      return new Response(JSON.stringify({ data }), { status: 200 });
-    });
-    render(<MemoryRouter><PilotDeckKnowledgePageProvider><KnowledgePage currentUser={currentUser} /></PilotDeckKnowledgePageProvider></MemoryRouter>);
-
-    const table = await screen.findByRole('table', { name: '知识库列表' });
-    fireEvent.click(await within(table).findByRole('row', { name: /Copied policy/ }));
-    await waitFor(() => expect(calls).toContainEqual({
-      operation: 'list_document_buckets',
-      input: { agentId: 'employee-real', documentId: 'copied-document' },
-    }));
-    expect(calls).toContainEqual({
-      operation: 'list_knowledge_concepts',
-      input: { agentId: 'employee-real', knowledgeBaseId: 'copied-base' },
-    });
-  });
-
-  it('selects a real Knowledge base and submits a scoped copy request', async () => {
-    const calls: Array<{ operation: string; input: Record<string, unknown> }> = [];
-    vi.spyOn(staffDeckCopyClient, 'call').mockImplementation(async (operation, input = {}) => {
-      calls.push({ operation, input });
-      if (operation === 'list_agents') return agents as any;
-      if (operation === 'list_knowledge_bases') return [{ id: 'base-real', name: 'Policy', status: 'active' }] as any;
-      if (operation === 'import_resources') return { imported: [{ id: 'base-real' }], missing: [] } as any;
-      throw new Error(`Unexpected copy operation: ${operation}`);
-    });
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ data: [] }), { status: 200 }));
-    render(<MemoryRouter><PilotDeckKnowledgePageProvider><KnowledgePage currentUser={currentUser} /></PilotDeckKnowledgePageProvider></MemoryRouter>);
-
-    fireEvent.keyDown(await screen.findByRole('button', { name: /新增/ }), { key: 'Enter' });
-    fireEvent.click(await screen.findByText('从广场复制'));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.click(await within(dialog).findByText('Policy'));
-    fireEvent.click(within(dialog).getByRole('button', { name: /复制|确认/ }));
-    expect(calls).toContainEqual({ operation: 'list_knowledge_bases', input: { sourceAgentId: 'plaza-real' } });
-    await waitFor(() => expect(calls).toContainEqual({ operation: 'import_resources', input: {
-      targetAgentId: 'employee-real', sourceAgentId: 'plaza-real', resourceType: 'knowledge_base', resourceIds: ['base-real'],
-    } }));
   });
 
   it('selects a published SOP and submits a scoped copy request', async () => {

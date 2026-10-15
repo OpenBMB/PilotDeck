@@ -28,7 +28,8 @@ export async function handlePublicHostHttpRequest(req: IncomingMessage, res: Ser
     let input;
     try { input = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { send(400, { code: 'PUBLIC_HOST_INPUT_INVALID' }); return true; }
     const principal = input?.principal;
-    if (!principal || !['pilotDeckUserId', 'tenantId', 'actorUserId', 'agentId'].every(name => typeof principal[name] === 'string' && principal[name].trim())) {
+    if (!principal || !['pilotDeckUserId', 'tenantId', 'actorUserId'].every(name => typeof principal[name] === 'string' && principal[name].trim())
+        || principal.agentId !== undefined && (typeof principal.agentId !== 'string' || !principal.agentId.trim())) {
       send(400, { code: 'PUBLIC_HOST_PRINCIPAL_REQUIRED' }); return true;
     }
     const provider = await options.resolve(principal);

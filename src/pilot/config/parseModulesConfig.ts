@@ -96,6 +96,7 @@ function parseCoreModule(
     "manifestPath", "callPath", "timeoutMs", "methods", "catalog", "frontendModule",
     "command", "args", "env", "host", "port", "connectTimeoutMs", "deployment",
     "defaultBaseId", "resultLimit", "tenantId", "actorUserId", "agentId", "credentialEnv",
+    "spaceId", "spaces", "pilotDeckUserId", "readOnly", "namespace", "capabilitiesCredentialEnv",
   ], path, diagnostics);
   if (value.enabled === false && (name === "skills" || name === "knowledge")) {
     return { enabled: false };
@@ -135,7 +136,7 @@ function parseExternalModule(
   const callPath = nonEmptyText(value.callPath) ?? "/v2/module/call";
   const timeoutMs = optionalPositiveInteger(value.timeoutMs);
   const parsedMethods = value.methods === undefined ? undefined : readStringArray(value.methods);
-  const methods = parsedMethods ?? supportedMethods(slot);
+  const methods = parsedMethods ?? (contract === "knowledge-core/v1" ? ["query", "resolve_citation"] : supportedMethods(slot));
   if (!implementationId) fatal(diagnostics, "MODULE_IMPLEMENTATION_ID_INVALID", `${path}.implementationId must be a non-empty string.`, `${path}.implementationId`);
   if (!contract) fatal(diagnostics, "MODULE_CONTRACT_INVALID", `${path}.contract must be a non-empty string.`, `${path}.contract`);
   if (!transport) fatal(diagnostics, "MODULE_TRANSPORT_INVALID", `${path}.transport must be a non-empty string.`, `${path}.transport`);
@@ -159,6 +160,44 @@ function parseExternalModule(
   const actorUserId = nonEmptyText(value.actorUserId);
   const agentId = nonEmptyText(value.agentId);
   const credentialEnv = nonEmptyText(value.credentialEnv);
+  if (slot === "knowledge" && contract === "knowledge-core/v1") {
+    if (validateExternalContract({ slot, contract, transport: transport || '', methods })
+        || value.methods !== undefined && !parsedMethods) return undefined;
+    const capabilitiesCredentialEnv = nonEmptyText(value.capabilitiesCredentialEnv);
+    if (value.capabilitiesCredentialEnv !== undefined && (!capabilitiesCredentialEnv || !/^[A-Z][A-Z0-9_]*$/.test(capabilitiesCredentialEnv))) {
+      fatal(diagnostics, "MODULE_CREDENTIAL_ENV_INVALID", `${path}.capabilitiesCredentialEnv must name a server environment variable.`, path);
+      return undefined;
+    }
+    if (value.credentialEnv !== undefined && (!credentialEnv || !/^[A-Z][A-Z0-9_]*$/.test(credentialEnv))) {
+      fatal(diagnostics, "MODULE_CREDENTIAL_ENV_INVALID", `${path}.credentialEnv must name a server environment variable.`, path);
+      return undefined;
+    }
+    const spaceId = nonEmptyText(value.spaceId);
+    const pilotDeckUserId = nonEmptyText(value.pilotDeckUserId);
+    const spaces = Array.isArray(value.spaces) ? value.spaces.filter(isRecord).map(row => ({
+      id: nonEmptyText(row.id), name: nonEmptyText(row.name),
+    })) : [];
+    if ((spaceId || spaces.length) && (!spaceId || !spaces.length || spaces.some(row => !row.id) || !spaces.some(row => row.id === spaceId)
+        || new Set(spaces.map(row => row.id)).size !== spaces.length) || !pilotDeckUserId) {
+      fatal(diagnostics, "MODULE_KNOWLEDGE_SPACES_INVALID", `${path} requires pilotDeckUserId; scoped bindings require unique spaces and a default spaceId.`, path);
+      return undefined;
+    }
+    if (tenantId || actorUserId || agentId) {
+      fatal(diagnostics, "MODULE_KNOWLEDGE_IDENTITY_INVALID", `${path} uses spaces and bearer identity, not employee identity fields.`, path);
+      return undefined;
+    }
+    if (!implementationId || !endpoint || !isHttpUrl(endpoint) || transport !== "rest-http-v1") return undefined;
+    return { enabled: true, implementationId, contract, transport, endpoint,
+      manifestPath: "/api/km/config", callPath: "/api/km/v1", methods, ...(spaceId ? { spaceId } : {}),
+      spaces: spaces as Array<{ id: string; name?: string }>, pilotDeckUserId,
+      namespace: nonEmptyText(value.namespace) || 'local',
+      ...(capabilitiesCredentialEnv ? { capabilitiesCredentialEnv } : {}),
+      ...(credentialEnv ? { credentialEnv } : {}), ...(timeoutMs ? { timeoutMs } : {}),
+      ...(value.readOnly === true ? { readOnly: true } : {}),
+      frontendModule: frontendModule === 'staffdeck.knowledge' ? 'knowledge-core' : frontendModule ?? 'knowledge-core',
+      ...(deployment ? { deployment } : {}),
+    };
+  }
   if (value.credentialEnv !== undefined && (slot !== "knowledge" || !credentialEnv
       || !/^[A-Z][A-Z0-9_]*$/.test(credentialEnv))) {
     fatal(diagnostics, "MODULE_CREDENTIAL_ENV_INVALID",
