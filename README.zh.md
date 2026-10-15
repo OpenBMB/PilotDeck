@@ -33,6 +33,7 @@
 
 **更新日志** 🔥
 
+- **[2026.10.15]** PilotDeck 2.0 正式发布！支持一键安装与可视化配置，长任务稳定续跑，2000 条交互消息不是问题！新增优质 Word / Excel / PPT 办公 Skills，一键交付办公成果！欢迎访问官网 [pilotdeck.openbmb.cn](https://pilotdeck.openbmb.cn)，体验与共建。
 - **[2026.05.28]** PilotDeck 正式开源！欢迎访问官网 [pilotdeck.openbmb.cn](https://pilotdeck.openbmb.cn)，期待社区的贡献、反馈与 Star 支持。
 
 ---
