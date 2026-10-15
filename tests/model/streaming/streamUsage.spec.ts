@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createModelRuntime } from '../../../src/model/ModelRuntime.js';
 import { parseModelConfig } from '../../../src/model/config/parseModelConfig.js';
 import type { CanonicalModelEvent } from '../../../src/model/protocol/canonical.js';
+import { applyModelEventToAssembler, assembleAssistantMessage, createModelMessageAssemblerState } from '../../../src/model/streaming/assembleModelMessage.js';
 
 const request = { provider: 'test', model: 'model', messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'hello' }] }] };
 function config(extraBody?: Record<string, unknown>, url = 'https://example.test/v1') {
@@ -39,6 +40,55 @@ test('OpenAI stream requests ask for usage and parse the trailing empty-choices 
   assert.equal(calls, 1);
   assert.equal(events.some(event => event.type === 'error'), false);
   assert.equal(events.find(event => event.type === 'usage')?.usage.totalTokens, 120);
+});
+
+test('cumulative OpenAI stream usage is assembled once per request', async () => {
+  const runtime = createModelRuntime(config(), { fetch: async () => new Response([
+    'data: {"choices":[{"delta":{"content":"hello"}}],"usage":{"prompt_tokens":100,"completion_tokens":1,"total_tokens":101}}\n\n',
+    'data: {"choices":[{"delta":{"content":" world"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":2,"total_tokens":102}}\n\n',
+    'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":3,"total_tokens":103}}\n\n',
+    'data: [DONE]\n\n',
+  ].join(''), { headers: { 'content-type': 'text/event-stream' } }) });
+  const assembler = createModelMessageAssemblerState();
+  const events = await collect(runtime.stream(request));
+  assert.equal(events.some(event => event.type === 'error'), false);
+  assert.equal(events.filter(event => event.type === 'usage').length, 3);
+  for (const event of events) applyModelEventToAssembler(assembler, event);
+  const assembled = assembleAssistantMessage(assembler);
+  assert.deepEqual(assembled.message.content, [{ type: 'text', text: 'hello world' }]);
+  assert.equal(assembled.finishReason, 'stop');
+  assert.equal(assembled.usage?.inputTokens, 100);
+  assert.equal(assembled.usage?.outputTokens, 3);
+  assert.equal(assembled.usage?.totalTokens, 103);
+});
+
+test('assembled usage adds interrupted and continuation requests using each latest snapshot', async () => {
+  const retryConfig = config();
+  retryConfig.providers.test!.retry = { streamMaxRetries: 1, baseDelayMs: 1, jitter: 0 };
+  let calls = 0;
+  const runtime = createModelRuntime(retryConfig, { fetch: async () => {
+    calls++;
+    const chunks = calls === 1 ? [
+      'data: {"choices":[{"delta":{"content":"hello"}}],"usage":{"prompt_tokens":100,"completion_tokens":1,"total_tokens":101}}\n\n',
+      'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":2,"total_tokens":102}}\n\n',
+    ] : [
+      'data: {"choices":[{"delta":{"content":" world"}}],"usage":{"prompt_tokens":110,"completion_tokens":1,"total_tokens":111}}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":110,"completion_tokens":3,"total_tokens":113}}\n\n',
+      'data: [DONE]\n\n',
+    ];
+    return new Response(chunks.join(''), { headers: { 'content-type': 'text/event-stream' } });
+  } });
+  const assembler = createModelMessageAssemblerState();
+  const events = await collect(runtime.stream(request));
+  assert.equal(calls, 2);
+  assert.equal(events.filter(event => event.type === 'request_started').length, 2);
+  assert.equal(events.some(event => event.type === 'error'), false);
+  for (const event of events) applyModelEventToAssembler(assembler, event);
+  const assembled = assembleAssistantMessage(assembler);
+  assert.deepEqual(assembled.message.content, [{ type: 'text', text: 'hello world' }]);
+  assert.equal(assembled.usage?.inputTokens, 210);
+  assert.equal(assembled.usage?.outputTokens, 5);
+  assert.equal(assembled.usage?.totalTokens, 215);
 });
 
 const compatibilityCases = [400, 422].flatMap(status =>
