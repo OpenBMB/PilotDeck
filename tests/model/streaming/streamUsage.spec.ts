@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createModelRuntime } from '../../../src/model/ModelRuntime.js';
 import { parseModelConfig } from '../../../src/model/config/parseModelConfig.js';
-import type { CanonicalModelEvent } from '../../../src/model/protocol/canonical.js';
+import type { CanonicalModelEvent, CanonicalUsage } from '../../../src/model/protocol/canonical.js';
 import { applyModelEventToAssembler, assembleAssistantMessage, createModelMessageAssemblerState } from '../../../src/model/streaming/assembleModelMessage.js';
 
 const request = { provider: 'test', model: 'model', messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'hello' }] }] };
@@ -62,6 +62,45 @@ test('cumulative OpenAI stream usage is assembled once per request', async () =>
   assert.equal(assembled.usage?.totalTokens, 103);
 });
 
+const partialUsageCases: { name: string; snapshots: Record<string, unknown>[]; expected: CanonicalUsage }[] = [
+  { name: 'input then output', snapshots: [{ prompt_tokens: 100 }, { completion_tokens: 3 }],
+    expected: { inputTokens: 100, outputTokens: 3, totalTokens: 103 } },
+  { name: 'output then input', snapshots: [{ completion_tokens: 3 }, { prompt_tokens: 100 }],
+    expected: { inputTokens: 100, outputTokens: 3, totalTokens: 103 } },
+  { name: 'later cache details', snapshots: [
+    { prompt_tokens: 100 }, { prompt_tokens_details: { cached_tokens: 40, cache_write_tokens: 5 } }, { completion_tokens: 3 },
+  ], expected: { inputTokens: 55, outputTokens: 3, cacheReadTokens: 40, cacheWriteTokens: 5, totalTokens: 103 } },
+  { name: 'updated aliases', snapshots: [
+    { prompt_tokens: 100 }, { input_tokens: 80, output_tokens: 3, input_tokens_details: { cached_tokens: 40 } },
+  ], expected: { inputTokens: 40, outputTokens: 3, cacheReadTokens: 40, totalTokens: 83 } },
+  { name: 'explicit zeroes', snapshots: [
+    { prompt_tokens: 100, completion_tokens: 3, prompt_tokens_details: { cached_tokens: 40, cache_write_tokens: 5 } },
+    { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, total_tokens: 0 },
+  ], expected: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0 } },
+  { name: 'omitted and invalid fields', snapshots: [
+    { prompt_tokens: 100 }, { prompt_tokens: null, completion_tokens: 3 }, { completion_tokens: 'ignored' },
+  ], expected: { inputTokens: 100, outputTokens: 3, totalTokens: 103 } },
+  { name: 'explicit total zero before cache details', snapshots: [
+    { prompt_tokens: 100, completion_tokens: 3, total_tokens: 0 }, { cache_read_input_tokens: 40 },
+  ], expected: { inputTokens: 60, outputTokens: 3, cacheReadTokens: 40, totalTokens: 0 } },
+];
+for (const { name, snapshots, expected } of partialUsageCases) {
+  test(`partial OpenAI stream usage preserves a complete snapshot: ${name}`, async () => {
+    const runtime = createModelRuntime(config(), { fetch: async () => new Response([
+      ...snapshots.map(usage => `data: ${JSON.stringify({ choices: [], usage })}\n\n`),
+      'data: [DONE]\n\n',
+    ].join(''), { headers: { 'content-type': 'text/event-stream' } }) });
+    const assembler = createModelMessageAssemblerState();
+    const events = await collect(runtime.stream(request));
+    assert.equal(events.some(event => event.type === 'error'), false);
+    for (const event of events) applyModelEventToAssembler(assembler, event);
+    assert.deepEqual(assembleAssistantMessage(assembler).usage, {
+      inputTokens: undefined, outputTokens: undefined, cacheReadTokens: undefined,
+      cacheWriteTokens: undefined, totalTokens: undefined, ...expected,
+    });
+  });
+}
+
 test('assembled usage adds interrupted and continuation requests using each latest snapshot', async () => {
   const retryConfig = config();
   retryConfig.providers.test!.retry = { streamMaxRetries: 1, baseDelayMs: 1, jitter: 0 };
@@ -69,11 +108,11 @@ test('assembled usage adds interrupted and continuation requests using each late
   const runtime = createModelRuntime(retryConfig, { fetch: async () => {
     calls++;
     const chunks = calls === 1 ? [
-      'data: {"choices":[{"delta":{"content":"hello"}}],"usage":{"prompt_tokens":100,"completion_tokens":1,"total_tokens":101}}\n\n',
-      'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":2,"total_tokens":102}}\n\n',
+      'data: {"choices":[{"delta":{"content":"hello"}}],"usage":{"prompt_tokens":100,"completion_tokens":1}}\n\n',
+      'data: {"choices":[],"usage":{"completion_tokens":2}}\n\n',
     ] : [
-      'data: {"choices":[{"delta":{"content":" world"}}],"usage":{"prompt_tokens":110,"completion_tokens":1,"total_tokens":111}}\n\n',
-      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":110,"completion_tokens":3,"total_tokens":113}}\n\n',
+      'data: {"choices":[{"delta":{"content":" world"}}],"usage":{"completion_tokens":1}}\n\n',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":110,"completion_tokens":3}}\n\n',
       'data: [DONE]\n\n',
     ];
     return new Response(chunks.join(''), { headers: { 'content-type': 'text/event-stream' } });
@@ -83,6 +122,7 @@ test('assembled usage adds interrupted and continuation requests using each late
   assert.equal(calls, 2);
   assert.equal(events.filter(event => event.type === 'request_started').length, 2);
   assert.equal(events.some(event => event.type === 'error'), false);
+  assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.usage.totalTokens), [101, 102, 1, 113]);
   for (const event of events) applyModelEventToAssembler(assembler, event);
   const assembled = assembleAssistantMessage(assembler);
   assert.deepEqual(assembled.message.content, [{ type: 'text', text: 'hello world' }]);
