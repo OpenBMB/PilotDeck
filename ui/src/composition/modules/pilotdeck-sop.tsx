@@ -92,6 +92,7 @@ export function PilotDeckSopPage() {
   const versionManagement = capabilities.features?.versionManagement !== false;
   const knowledgeEnabled = capabilities.features?.knowledge !== false;
   const bindings = (kind: string) => capabilities.bindings.filter((value: any) => value.kind === kind).map((value: any) => ({ id: value.capabilityId, name: value.capabilityId }));
+  const publishedSops = rows.filter(row => row.status === 'published').map(row => ({ id: row.sop_id, skill_id: row.sop_id, name: row.name || row.sop_id, version: row.published_version!, content: row.content }));
   return <StaffDeckLocaleBoundary><main className="h-full overflow-y-auto p-4 text-foreground sm:p-6" data-testid="native-sop-page">
     <h1 className="text-xl font-semibold">SOP 工作流</h1>
     <p className="my-2 text-sm text-muted-foreground">生成后保存草稿，发布后可在对话使用 /sop 工作流ID。人工节点由当前登录 owner 处理。</p>
@@ -129,7 +130,8 @@ export function PilotDeckSopPage() {
         <button className={button} onClick={() => { setSource(JSON.stringify(content, null, 2)); setSourceOpen(!sourceOpen); }}>JSON 编辑</button>
       </div>
       {sourceOpen && <div><textarea aria-label="SOP JSON" className="h-64 w-full rounded border border-border bg-background p-2 font-mono text-xs" value={source} onChange={event => setSource(event.target.value)} /><button className={button} onClick={() => void action(async () => { const result = await management('validate', { content: JSON.parse(source) }); setContent(result.content); setNotice('定义校验通过'); })}>校验并应用 JSON</button></div>}
-      <div ref={graph} className="relative min-h-[580px] overflow-hidden rounded border border-border"><SkillFlow versionManagement={versionManagement} knowledgeEnabled={knowledgeEnabled} skill={content} selectedPaths={[]} highlightedPaths={[]} updatingPaths={[]} dirtyPaths={[]} textDiffs={[]} toolDescriptions={{}} toolStatuses={{}} generalSkills={bindings('skill')} sopSkills={rows.filter(row => row.status === 'published').map(row => ({ id: row.sop_id, skill_id: row.sop_id, name: row.name || row.sop_id, version: row.published_version! }))} tools={bindings('tool')} knowledgeBases={bindings('knowledge')} tenantUsers={[{ id: 'pilotdeck:owner', username: '当前登录 owner' }]} containerRef={graph as any} lockSkillId={Boolean(draft)} assistantPanelOpen={false} onAssistantPanelOpenChange={() => {}} onFullscreenChange={() => {}} onToggle={() => {}} onEdit={value => setContent(value)} /></div>
+      <div className="grid gap-2 sm:grid-cols-2">{content.nodes?.map((node: any, index: number) => <label key={node.node_id || index} className="grid min-w-0 gap-1 text-sm">{node.name || node.node_id} · 节点模型<select aria-label={`节点模型 ${node.node_id}`} className="max-w-full rounded border border-border bg-background p-2" value={node.model || ''} onChange={event => { const nodes = [...(content.nodes || [])]; const next = { ...node }; if (event.target.value) next.model = event.target.value; else delete next.model; nodes[index] = next; setContent({ ...content, nodes }); }}><option value="">继承会话模型</option>{capabilities.models.map((model: any) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</select></label>)}</div>
+      <div ref={graph} className="relative min-h-[580px] overflow-hidden rounded border border-border"><SkillFlow nodeModels={capabilities.models} versionManagement={versionManagement} knowledgeEnabled={knowledgeEnabled} skill={content} selectedPaths={[]} highlightedPaths={[]} updatingPaths={[]} dirtyPaths={[]} textDiffs={[]} toolDescriptions={{}} toolStatuses={{}} generalSkills={bindings('skill')} sopSkills={publishedSops} tools={bindings('tool')} knowledgeBases={bindings('knowledge')} tenantUsers={[{ id: 'pilotdeck:owner', username: '当前登录 owner' }]} containerRef={graph as any} lockSkillId={Boolean(draft)} assistantPanelOpen={false} onAssistantPanelOpenChange={() => {}} onFullscreenChange={() => {}} onToggle={() => {}} onEdit={value => setContent(value)} /></div>
     </section>}
     {versionManagement && <SopVersionDetailDialog detail={detail} onClose={() => setDetail(null)} />}
   </main></StaffDeckLocaleBoundary>;
@@ -140,7 +142,7 @@ export function PilotDeckSopApproval({ sessionId, projectKey, refreshKey, disabl
   const [status, setStatus] = useState<ApprovalStatus | null>(null), [error, setError] = useState(''), [submitting, setSubmitting] = useState(false);
   const pending = useRef<{ key: string; requestId: string; message: string } | null>(null);
   useEffect(() => {
-    setStatus(null); setError(''); if (!sessionId) return;
+    setError(''); if (!sessionId) { setStatus(null); return; }
     const controller = new AbortController();
     const load = () => approvalClient.status({ sessionKey: sessionId, projectKey }, { signal: controller.signal }).then(setStatus).catch(cause => { if (!controller.signal.aborted) setError(cause.message); });
     void load(); const timer = setInterval(() => void load(), 1500);
@@ -153,12 +155,14 @@ export function PilotDeckSopApproval({ sessionId, projectKey, refreshKey, disabl
     setSubmitting(true); setError('');
     try {
       await approvalClient.resume({ sessionKey: sessionId, projectKey, requestId: pending.current.requestId, waitId: approval.waitId, expectedRevision: approval.revision, message });
+      try { sessionStorage.removeItem(`pilotdeck-sop-approval:${key}`); } catch { /* Approval already committed; storage is optional. */ }
       setStatus(await approvalClient.status({ sessionKey: sessionId, projectKey }));
     } catch (cause) { const text = (cause as Error).message; setError(text); onError?.(text); }
     finally { setSubmitting(false); }
   };
-  if (!status?.approval && !status?.approvalError) return error ? <p role="alert">{error}</p> : null;
-  return <FormalSopApprovalInbox status={status} error={error} submitting={submitting || disabled} onReply={reply} />;
+  const scopedStatus = status?.sessionId === sessionId ? status : null;
+  if (!scopedStatus?.approval && !scopedStatus?.approvalError) return error ? <p role="alert">{error}</p> : null;
+  return <FormalSopApprovalInbox status={scopedStatus} error={error} draftStorageKey={scopedStatus.approval ? `pilotdeck-sop-approval:${sessionId}:${scopedStatus.approval.waitId}:${scopedStatus.approval.revision}` : undefined} submitting={submitting || disabled} onReply={reply} />;
 }
 
 const module: FrontendModule = {

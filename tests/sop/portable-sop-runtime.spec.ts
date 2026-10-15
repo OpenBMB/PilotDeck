@@ -122,6 +122,37 @@ test("PilotDeck AgentLoop executes against independent HTTP Runtime and recovers
       if (scenario === 'success') assert.equal((nativeState.state.metadata.consumed_receipt_ids as string[]).length, 3);
     }
     const host = new PortableSopHostClient(runtime);
+    // First prepare must use the Runtime node, including expanded child IDs,
+    // rather than a stale host catalog cached before publication.
+    {
+      const managed = async (operation: string, input: object) => {
+        const response = await fetch(`${endpoint}/v1/management/call`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation, input }) });
+        assert.ok(response.ok); return (await response.json()).result;
+      };
+      const childDraft = await managed('create', { content: { skill_id: 'model-child', version: '1', start_node_id: 'child', nodes: [{ node_id: 'child', model: 'p/child-model', contextMode: 'inherit' }], terminal_node_ids: ['child'], edges: [] } });
+      await managed('publish', { sopId: 'model-child', draftId: childDraft.id, expectedRevision: 0 });
+      const parentDraft = await managed('create', { content: { skill_id: 'model-parent', version: '1',
+        start_node_id: 'sub', nodes: [{ node_id: 'sub', type: 'subflow', sub_sop_id: 'model-child', sub_sop_version: '1' }], terminal_node_ids: ['sub'], edges: [] } });
+      await managed('publish', { sopId: 'model-parent', draftId: parentDraft.id, expectedRevision: 0 });
+      const observed: string[] = [];
+      const port: ModelInvokerPort = { prepare: async ({ request }) => { observed.push(request.model); return { request, model: request.model, provider: request.provider }; },
+        async *stream() {
+          const toolCall = { id: 'finish', name: 'submit_step_result', input: { status: 'completed', replyFragment: 'Child finished' } };
+          yield { type: 'message_start', role: 'assistant' }; yield { type: 'tool_call_start', id: toolCall.id, name: toolCall.name };
+          yield { type: 'tool_call_end', toolCall }; yield { type: 'message_end', finishReason: 'tool_call' };
+        } };
+      const selected = { ...profile, hostAdapter: 'pilotdeck' as const, defaultSopId: 'model-parent' };
+      const session = createAgentSession({ sessionId: 'pinned-child-model', config: { provider: 'test', model: 'wrong-caller', cwd: root,
+        permissionMode: 'default', permissionContext: createDefaultPermissionContext({ cwd: root, canPrompt: false }), staffDeckSop: selected },
+        dependencies: { router: {} as never, ports: { model: port, tools }, tools: { registry: { list: () => tools.list() } as never, scheduler: { executeAll: async () => [] } as never } },
+        agentLoopFactory: input => new SopAgentLoop(input.config, input.capabilities, input.seedState, { profile: selected,
+          bundle: { sops: [{ id: 'model-parent', version: '1', content: { nodes: [{ node_id: 'sub', model: 'p/stale' }] } }] } }),
+      });
+      const events = [];
+      for await (const event of session.submit({ type: 'text', text: 'Execute child' }, { turnId: 'child-turn' })) events.push(event);
+      assert.equal(observed[0], 'child-model', JSON.stringify(events));
+      assert.equal((await runtime.session('pinned-child-model')).state.status, 'completed');
+    }
     const conformanceCases = JSON.parse(await readFile(join(process.env.SOP_RUNTIME_SOURCE!,
       "../tests/fixtures/host_conformance.json"), "utf8")) as Array<{
       id: string; kind?: string; status: string; receipt?: boolean; required_field?: string;

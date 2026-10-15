@@ -262,6 +262,8 @@ export class SopAgentLoop implements AgentLoopRunner {
                 return { ...completed, result: { ...completed.result, sessionId: nodeInput.sessionId } };
               }
               if (next.value.type === "tool_result" && next.value.result.type === "error"
+                && !(next.value.result.toolName === SUBMIT_SOP_STEP_RESULT_TOOL
+                  && (next.value.result.error.details?.sopRuntime as { code?: string } | undefined)?.code === "HANDOFF_REQUIRED")
                 && next.value.result.error.code !== "invalid_tool_input") sawToolError = true;
               if (next.value.type === "turn_completed") continue;
               yield { ...next.value, sessionId: nodeInput.sessionId } as AgentEvent;
@@ -552,9 +554,9 @@ export class SopAgentLoop implements AgentLoopRunner {
     // Portable output supplies no authority, even if it contains additional fields.
     const { optionalKnowledge: _untrusted, optionalKnowledgeUnavailable: _reason, ...ownerStep } = prepared.step;
     prepared = { ...prepared, step: ownerStep };
-    const contextMode = resolveContextMode(prepared.step, this.options.profile, persisted.bundle, prepared.step.skillId);
+    const contextMode = resolveContextMode(prepared.step, this.options.profile, persisted.bundle, prepared.step.skillId, Boolean(this.stateStore.runtime));
     prepared = { ...prepared, step: { ...prepared.step, contextMode } };
-    const nodeModelOverride = resolveNodeModelOverride(prepared.step, persisted.bundle, prepared.step.skillId);
+    const nodeModelOverride = resolveNodeModelOverride(prepared.step, persisted.bundle, prepared.step.skillId, Boolean(this.stateStore.runtime));
     if (nodeModelOverride) {
       try {
         await capabilities.model.execution.validateSelection?.(nodeModelOverride);
@@ -1259,7 +1261,15 @@ function resolveContextMode(
   profile: SopRuntimeConfig,
   bundle: StaffDeckSopBundle,
   selectedSopId: string,
+  runtimeOwned = false,
 ): StaffDeckSopContextMode {
+  if (runtimeOwned) {
+    const mode = step.node.contextMode;
+    if (mode !== undefined && mode !== "new_session" && mode !== "inherit") {
+      throw new StaffDeckSopClientError("SOP_DEFINITION_INVALID", "node.contextMode must be new_session or inherit");
+    }
+    return mode ?? profile.contextMode ?? "new_session";
+  }
   if (step.contextMode !== undefined) {
     if (step.contextMode !== "new_session" && step.contextMode !== "inherit") {
       throw new StaffDeckSopClientError("SOP_RUNTIME_PROTOCOL", "step.contextMode must be new_session or inherit");
@@ -1280,11 +1290,12 @@ function resolveNodeModelOverride(
   step: StaffDeckSopPrepareResponse["step"],
   bundle: StaffDeckSopBundle,
   selectedSopId: string,
+  runtimeOwned = false,
 ): Pick<AgentModelOverride, "provider" | "model"> | undefined {
   const definition = bundle.sops.find((candidate) => sopId(candidate) === selectedSopId);
   const content = definition && isRecord(definition.content) ? definition.content : definition;
   const nodes = content && Array.isArray(content.nodes) ? content.nodes : [];
-  const node = nodes.find((candidate) => isRecord(candidate)
+  const node = runtimeOwned ? step.node : nodes.find((candidate) => isRecord(candidate)
     && (candidate.node_id === step.nodeId || candidate.nodeId === step.nodeId));
   if (!isRecord(node) || node.model === undefined) return undefined;
   const model = parseSopNodeModel(node.model);

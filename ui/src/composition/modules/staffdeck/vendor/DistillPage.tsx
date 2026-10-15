@@ -3288,6 +3288,8 @@ function SkillSource({
       currentNode.assignee_notify_channel = userId ? channel : null;
     } else if (nodeField === 'type') {
       applyNodeTypeChange(currentNode, String(listValue));
+    } else if (nodeField === 'model' && !listValue) {
+      delete currentNode.model;
     } else if (CAPABILITY_REFERENCE_FIELDS.includes(nodeField)) {
       const currentRefs = nodeCapabilityRefs(currentNode);
       currentNode.capability_refs = updateCapabilityRefs(
@@ -3779,6 +3781,7 @@ export function SkillFlow({
   knowledgeBases,
   knowledgeEnabled = true,
   versionManagement = true,
+  nodeModels,
   tenantUsers,
   containerRef,
   lockSkillId,
@@ -3802,6 +3805,7 @@ export function SkillFlow({
   knowledgeBases: KnowledgeBaseRead[];
   knowledgeEnabled?: boolean;
   versionManagement?: boolean;
+  nodeModels?: Array<{ id: string; name?: string }>;
   tenantUsers: Array<{ id: string; username: string; display_name?: string; source?: string; channel_identities?: Array<{ channel: string; display_name?: string; external_user_id?: string }> }>;
   containerRef: RefObject<HTMLDivElement>;
   lockSkillId?: boolean;
@@ -4813,6 +4817,7 @@ export function SkillFlow({
             generalSkillOptions={generalSkillOptions}
             toolOptions={toolOptions}
             knowledgeEnabled={knowledgeEnabled}
+            nodeModels={nodeModels}
             knowledgeBaseOptions={knowledgeBaseOptions}
             sopOptions={sopOptions}
             tenantUserOptions={tenantUserOptions}
@@ -4944,6 +4949,7 @@ function SkillFlowInspector({
   toolOptions,
   knowledgeBaseOptions,
   knowledgeEnabled = true,
+  nodeModels,
   sopOptions,
   tenantUserOptions,
   onEditNode,
@@ -4965,6 +4971,7 @@ function SkillFlowInspector({
   toolOptions: CapabilityReferenceOption[];
   knowledgeBaseOptions: CapabilityReferenceOption[];
   knowledgeEnabled?: boolean;
+  nodeModels?: Array<{ id: string; name?: string }>;
   sopOptions: SelectOption[];
   tenantUserOptions: SelectOption[];
   onEditNode: (index: number, field: string, value: string | string[] | boolean | Record<string, unknown>) => void;
@@ -5004,6 +5011,7 @@ function SkillFlowInspector({
             <EditableSourceTextLine label="节点名称" value={String(node.name || '')} onChange={(value) => onEditNode(nodeIndex, 'name', value)} />
             <EditableSourceTextLine label={fieldLabel('step_id')} value={nodeId} onChange={(value) => onEditNode(nodeIndex, 'step_id', value)} />
             <EditableSourceSelectLine label={fieldLabel('type')} value={String(node.type || 'collect_info')} options={NODE_TYPE_OPTIONS.filter(option => knowledgeEnabled || option.value !== 'knowledge_query')} onChange={(value) => onEditNode(nodeIndex, 'type', value)} />
+            {nodeModels && <label className="grid gap-2 text-sm">节点模型<select aria-label="节点模型" className="max-w-full rounded border border-border bg-background p-2" value={String(node.model || '')} onChange={event => onEditNode(nodeIndex, 'model', event.target.value)}><option value="">继承会话模型</option>{nodeModels.map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</select></label>}
             {String(node.type || '') === 'subflow' && (
               <EditableSourceSelectLine
                 label="调用子 SOP"
@@ -5182,7 +5190,7 @@ function SkillFlowNodeCard({
 }
 
 function NestedSopPreview({ childSop, subSopId }: { childSop?: SkillRead; subSopId: string }) {
-  const childNodes = childSop ? skillGraphSteps(childSop.content) : [];
+  const childNodes = childSop?.content ? skillGraphSteps(childSop.content) : [];
   const visibleNodes = childNodes.slice(0, 4);
   return (
     <div className="grid gap-[7px] rounded-[10px] border border-[#cfe5df] bg-[#f3faf7] p-[9px] text-[#315e59]">
@@ -7982,7 +7990,7 @@ function wouldCreateSopNestingCycle(
     if (visiting.has(skillId)) return false;
     visiting.add(skillId);
     const row = byId.get(skillId);
-    const childIds = (row?.content.nodes || [])
+    const childIds = (row?.content?.nodes || [])
       .filter((node) => String(node.type || '') === 'subflow')
       .map((node) => String(node.sub_sop_id || '').trim())
       .filter(Boolean);
