@@ -10,7 +10,7 @@ export type PilotDeckBackgroundTaskStatus =
   | "failed"
   | "cancelled";
 
-export type PilotDeckBackgroundTaskKind = "bash" | "monitor";
+export type PilotDeckBackgroundTaskKind = "bash" | "monitor" | "agent";
 
 /**
  * State envelope for a single background bash task. The shape is a strict
@@ -46,6 +46,45 @@ export type PilotDeckBackgroundBashTask = {
   /** Total bytes captured across stdout + stderr. */
   outputBytes: number;
 };
+
+/**
+ * State envelope for a managed `local_agent` background task (asynchronous
+ * subagent execution). `taskId` IS the subagent id — a single stable id is
+ * used by the `agent` tool result, the `task_*` tools, and the
+ * `background_subagent_result` delivery message.
+ *
+ * Lifecycle: `running` → `completed` (report appended to the output store)
+ * | `failed` (error appended) | `cancelled` (cooperative stop won). Stop is
+ * cooperative: a non-cooperative callback is force-cancelled after the stop
+ * grace window and a late settle is a guarded no-op.
+ */
+export type PilotDeckBackgroundAgentTask = {
+  taskId: string;
+  type: "local_agent";
+  agentId?: string;
+  /** Owning session — other sessions cannot inspect/stop this task via task_*. */
+  sessionId?: string;
+  kind: "agent";
+  /** Human-readable label (the `agent` tool `description`). */
+  command: string;
+  /** Stable subagent id; equals `taskId`. */
+  subagentId: string;
+  subagentType?: string;
+  /** Turn that spawned this task; owns result delivery for the active request. */
+  originTurnId?: string;
+  status: PilotDeckBackgroundTaskStatus;
+  completionStatusSentInAttachment: boolean;
+  lastReportedTotalLines: number;
+  isBackgrounded: true;
+  interrupted: boolean;
+  startedAt: Date;
+  endedAt?: Date;
+  outputBytes: number;
+};
+
+export type PilotDeckBackgroundTask =
+  | PilotDeckBackgroundBashTask
+  | PilotDeckBackgroundAgentTask;
 
 export type PilotDeckTaskOutputSlice = {
   content: string;
