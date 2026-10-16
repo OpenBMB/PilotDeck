@@ -5,6 +5,7 @@ export type SettingsMenuKey =
   | 'usage'
   | 'agent'
   | 'agentRoute'
+  | 'agentSubagents'
   | 'agentMemory'
   | 'agentResident'
   | 'agentSearch'

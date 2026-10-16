@@ -68,6 +68,13 @@ function collectReferenceSlots(config) {
   add('agent.subagents.default', agent?.subagents?.default, 'inherit', {
     inherit: () => { agent.subagents.default = 'inherit'; },
   });
+  if (isRecord(agent?.subagents?.profiles)) {
+    for (const [id, profile] of Object.entries(agent.subagents.profiles)) {
+      add(`agent.subagents.profiles.${id}.model`, profile?.model, 'inherit', {
+        inherit: () => { delete profile.model; },
+      });
+    }
+  }
   const memory = config?.memory;
   add('memory.model', memory?.model, 'inherit', {
     // Memory inherits by omitting its override; unlike subagents, the runtime
@@ -290,6 +297,13 @@ export function rewriteModelReferences(config, { providerRenames = new Map(), mo
   if (agent) {
     agent.model = renameRef(agent.model, providerRenames, modelRenames);
     if (agent.subagents) agent.subagents.default = renameRef(agent.subagents.default, providerRenames, modelRenames);
+    if (isRecord(agent.subagents?.profiles)) {
+      for (const profile of Object.values(agent.subagents.profiles)) {
+        if (isRecord(profile) && Object.hasOwn(profile, 'model')) {
+          profile.model = renameRef(profile.model, providerRenames, modelRenames);
+        }
+      }
+    }
   }
   if (config?.memory) config.memory.model = renameRef(config.memory.model, providerRenames, modelRenames);
 
