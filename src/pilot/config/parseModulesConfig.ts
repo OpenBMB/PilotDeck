@@ -260,7 +260,7 @@ function parseSopModule(
     );
   }
   warnUnknownKeys(value, [
-    "enabled", "provider", "implementationId", "contract", "transport", "manifestPath", "hostAdapter",
+    "enabled", "provider", "implementationId", "contract", "transport", "manifestPath", "hostAdapter", "localRuntime",
     "endpoint", "definitionsPath", "defaultSopId", "discoveryEndpoint", "discoveryAgentId",
     "discoveryApiKey", "discoveryPath", "discoveryTimeoutMs", "timeoutMs", "contextMode", "deployment", "frontendModule", "capabilityBindings", "runtimeSopScope",
   ], path, diagnostics);
@@ -280,6 +280,28 @@ function parseSopModule(
   if (hostAdapter !== "pilotdeck" && hostAdapter !== "staffdeck") {
     fatal(diagnostics, "SOP_HOST_ADAPTER_INVALID", "hostAdapter must be pilotdeck or staffdeck.", `${path}.hostAdapter`);
     return undefined;
+  }
+  const localRuntime = value.localRuntime;
+  if (localRuntime !== undefined && (!isRecord(localRuntime) || typeof localRuntime.enabled !== 'boolean'
+    || ['knowledgeEnabled', 'versionManagementEnabled'].some(key => localRuntime[key] !== undefined && typeof localRuntime[key] !== 'boolean')
+    || (localRuntime.python !== undefined && !nonEmptyText(localRuntime.python)))) {
+    fatal(diagnostics, 'SOP_LOCAL_RUNTIME_INVALID', 'localRuntime requires enabled and optional python/knowledgeEnabled/versionManagementEnabled.', `${path}.localRuntime`);
+    return undefined;
+  }
+  if (isRecord(localRuntime) && localRuntime.enabled === true) {
+    if (hostAdapter !== 'pilotdeck' || value.implementationId !== 'portable-sop'
+      || value.contract !== 'sop.lifecycle/v3' || value.transport !== 'sop-http-v3') {
+      fatal(diagnostics, 'SOP_LOCAL_RUNTIME_INVALID', 'localRuntime requires pilotdeck with portable-sop lifecycle/v3.', `${path}.localRuntime`);
+      return undefined;
+    }
+    try {
+      const origin = new URL(endpoint!);
+      if (origin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(origin.hostname)
+        || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) throw new Error();
+    } catch {
+      fatal(diagnostics, 'SOP_LOCAL_RUNTIME_INVALID', 'localRuntime endpoint must be a loopback HTTP origin.', `${path}.endpoint`);
+      return undefined;
+    }
   }
   if (!endpoint || !isHttpUrl(endpoint)) {
     fatal(diagnostics, "SOP_MODULE_ENDPOINT_INVALID", "modules.sop.endpoint must be an absolute http(s) URL.", `${path}.endpoint`);
@@ -342,6 +364,11 @@ function parseSopModule(
   if (!endpoint || !definitionsPath || !defaultSopId) return undefined;
   const base = {
     hostAdapter: hostAdapter as "pilotdeck" | "staffdeck",
+    ...(isRecord(localRuntime) ? { localRuntime: { enabled: localRuntime.enabled as boolean,
+      ...(localRuntime.python === undefined ? {} : { python: String(localRuntime.python) }),
+      ...(localRuntime.knowledgeEnabled === undefined ? {} : { knowledgeEnabled: localRuntime.knowledgeEnabled as boolean }),
+      ...(localRuntime.versionManagementEnabled === undefined ? {} : { versionManagementEnabled: localRuntime.versionManagementEnabled as boolean }),
+    } } : {}),
     endpoint,
     definitionsPath: isAbsolute(definitionsPath) ? definitionsPath : resolve(pilotHome, definitionsPath),
     defaultSopId,

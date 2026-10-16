@@ -11,6 +11,7 @@ export type StaffDeckSopContextMode = "new_session" | "inherit";
 
 type SopRuntimeConfigBase = Readonly<{
   hostAdapter?: "pilotdeck" | "staffdeck";
+  localRuntime?: Readonly<{ enabled: boolean; python?: string; knowledgeEnabled?: boolean; versionManagementEnabled?: boolean }>;
   endpoint: string;
   definitionsPath: string;
   defaultSopId: string;

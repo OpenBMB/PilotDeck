@@ -37,6 +37,7 @@ function createHarness({
   requestExists = false,
   waitForPortImpl = vi.fn(async () => undefined),
   env = {},
+  localSopConfig = () => null,
 } = {}) {
   const spawned = [];
   const spawnImpl = vi.fn(() => {
@@ -48,6 +49,7 @@ function createHarness({
   const supervisor = createRuntimeSupervisor({
     mode,
     env: { PILOTDECK_GATEWAY_PORT: '18789', ...env },
+    localSopConfig,
     spawnImpl,
     waitForPortImpl,
     exists: () => requestExists,
@@ -62,6 +64,30 @@ function createHarness({
 }
 
 describe('web runtime supervisor', () => {
+  it('waits for managed SOP readiness and passes its publisher token to PD', async () => {
+    const { supervisor, spawnImpl, exit } = createHarness({ localSopConfig: () => ({}) });
+    expect(supervisor.children.has('server')).toBe(false);
+    const sop = supervisor.children.get('sop');
+    sop.emit('message', { type: 'pilotdeck:sop-ready', publishToken: 'private-test-token' });
+    expect(supervisor.children.has('server')).toBe(true);
+    expect(spawnImpl.mock.calls[1][2].env.SOP_RUNTIME_PUBLISH_TOKEN).toBe('private-test-token');
+    sop.emit('message', { type: 'pilotdeck:sop-ready', publishToken: 'duplicate' });
+    expect(spawnImpl).toHaveBeenCalledTimes(2);
+    sop.emit('close', 1, null);
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
+    expect(supervisor.children.size).toBe(0);
+  });
+
+  it('does not start PD when managed SOP fails and stops SOP on shutdown', async () => {
+    const failed = createHarness({ localSopConfig: () => ({}) });
+    failed.supervisor.children.get('sop').emit('error', new Error('Python missing'));
+    await vi.waitFor(() => expect(failed.exit).toHaveBeenCalledWith(1));
+    expect(failed.spawnImpl).toHaveBeenCalledTimes(1);
+    const running = createHarness({ localSopConfig: () => ({}) });
+    const sop = running.supervisor.children.get('sop');
+    await running.supervisor.stop('SIGINT');
+    expect(sop.kill).toHaveBeenCalledWith('SIGINT');
+  });
   it('starts the UI server first and Vite only in development', () => {
     expect(normalizeSupervisorMode('anything')).toBe('start-built');
     expect(getRuntimeCommands('start-built').map(({ name }) => name)).toEqual(['server', 'gateway']);

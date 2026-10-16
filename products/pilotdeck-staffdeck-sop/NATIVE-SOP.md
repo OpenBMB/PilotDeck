@@ -1,5 +1,44 @@
 # Native PilotDeck SOP host
 
+## One-command startup without Docker
+
+Requires Node 22.13+ (22.x), pnpm, Python 3.11+ with venv/pip, and an existing PD
+profile with model credentials and normal owner login. Install JS dependencies
+once using `pnpm install`. Add the following to the native SOP binding below:
+
+```yaml
+    localRuntime:
+      enabled: true
+      python: python3
+      knowledgeEnabled: false
+      versionManagementEnabled: true
+```
+
+Then run from the PD repository:
+
+```bash
+PILOTDECK_CONFIG_PATH=/absolute/path/pilotdeck.yaml pnpm start:sop
+```
+
+This builds Gateway/Web with that profile and starts managed SOP + Web + Gateway.
+The SOP endpoint in YAML must be a free loopback HTTP origin, for example
+`http://127.0.0.1:8091`. No StaffDeck checkout or Docker daemon is needed.
+On first start PD creates `$PILOT_HOME/sop-runtime/venv`, installs its bundled
+`packages/sop-runtime` Python package (network needed for initial dependencies),
+and waits for Runtime health before starting Web. Later starts reuse the venv.
+SQLite and the generated publisher token remain under `$PILOT_HOME/sop-runtime`
+(default `~/.pilotdeck/sop-runtime`); stopping PD preserves them.
+Ctrl+C stops all owned processes. A failed Runtime startup prevents PD startup;
+an unexpected Runtime exit stops the managed PD processes. An occupied endpoint
+is rejected rather than silently using another Runtime. Existing independent
+services should keep `localRuntime` absent/disabled, or be stopped first.
+Existing `pnpm dev` and `pnpm --dir ui start:built` also manage Runtime when enabled.
+Changing local Runtime options requires restarting the supervisor.
+
+The bundled Python source is synchronized from the standalone portable package
+using `node scripts/sync-sop-runtime.mjs /path/to/portable_sop`; only Python Core
+and Runtime files are copied, never the StaffDeck backend.
+
 Set `modules.sop.hostAdapter: pilotdeck` to use PD owner identity, native management and automatic continuation. Existing profiles default to `staffdeck` and retain their normal StaffDeck approval adapter.
 
 ```yaml
