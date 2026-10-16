@@ -24,6 +24,7 @@ import type {
 import { toolError } from "../../tool/index.js";
 
 import { StaffDeckSopClient, StaffDeckSopClientError } from "./StaffDeckSopClient.js";
+import { PortableSopHostClient, PortableSopRuntimeClient, type PortableSopReceipt } from "./PortableSopRuntimeClient.js";
 import { StaffDeckSopDiscoveryClient } from "./StaffDeckSopDiscoveryClient.js";
 import { loadStaffDeckSopDefinitions, parseSopNodeModel } from "./StaffDeckSopDefinitions.js";
 import { SopStateStore } from "./SopStateStore.js";
@@ -98,9 +99,11 @@ export class SopAgentLoop implements AgentLoopRunner {
     private readonly options: SopAgentLoopOptions,
   ) {
     config.stopOnStructuredOutput = true;
-    assertRequiredSopTools(options.bundle, options.profile.defaultSopId, capabilities.toolExecution.list());
-    this.stateStore = options.stateStore ?? new SopStateStore(join(config.staffDeckSop!.stateRoot, "sessions"));
-    this.client = options.client ?? new StaffDeckSopClient(options.profile.endpoint, {
+    if (options.profile.hostAdapter !== "pilotdeck") assertRequiredSopTools(options.bundle, options.profile.defaultSopId, capabilities.toolExecution.list());
+    const runtime = "contract" in options.profile && options.profile.contract === "sop.lifecycle/v3"
+      ? new PortableSopRuntimeClient(options.profile.endpoint, { timeoutMs: options.profile.timeoutMs }) : undefined;
+    this.stateStore = options.stateStore ?? new SopStateStore(join(config.staffDeckSop!.stateRoot, "sessions"), runtime);
+    this.client = options.client ?? (runtime ? new PortableSopHostClient(runtime, options.profile.capabilityBindings, options.profile.runtimeSopScope) : new StaffDeckSopClient(options.profile.endpoint, {
       timeoutMs: options.profile.timeoutMs,
       ...("implementationId" in options.profile
         ? {
@@ -112,7 +115,7 @@ export class SopAgentLoop implements AgentLoopRunner {
             },
           }
       : {}),
-    });
+    }));
     this.discovery = options.profile.discoveryEndpoint && options.profile.discoveryAgentId && options.profile.discoveryApiKey
       ? new StaffDeckSopDiscoveryClient(
           options.profile.discoveryEndpoint,
@@ -130,6 +133,7 @@ export class SopAgentLoop implements AgentLoopRunner {
         (this.nodeTools ?? capabilities.toolExecution).executeAll(calls, context, execution) },
       client: this.client,
       stateStore: this.stateStore,
+      capabilityBindings: options.profile.capabilityBindings,
       authorityPort: options.authorityPort,
       bundle: options.bundle,
       defaultSopId: options.profile.defaultSopId,
@@ -258,6 +262,8 @@ export class SopAgentLoop implements AgentLoopRunner {
                 return { ...completed, result: { ...completed.result, sessionId: nodeInput.sessionId } };
               }
               if (next.value.type === "tool_result" && next.value.result.type === "error"
+                && !(next.value.result.toolName === SUBMIT_SOP_STEP_RESULT_TOOL
+                  && (next.value.result.error.details?.sopRuntime as { code?: string } | undefined)?.code === "HANDOFF_REQUIRED")
                 && next.value.result.error.code !== "invalid_tool_input") sawToolError = true;
               if (next.value.type === "turn_completed") continue;
               yield { ...next.value, sessionId: nodeInput.sessionId } as AgentEvent;
@@ -485,7 +491,7 @@ export class SopAgentLoop implements AgentLoopRunner {
         ? sopNodeSessionId(input.sessionId, prepared.step.skillId, prepared.step.nodeId) : input.sessionId,
       appendSystemPrompt: joinPrompt(input.appendSystemPrompt, joinPrompt(renderSopInstruction(prepared, modelContext),
         this.protocolCorrections.get(input.sessionId) === sopStepKey(prepared.step.skillId, prepared.step.nodeId)
-          ? prepared.step.isTerminal
+          ? prepared.step.isTerminal && !prepared.step.declaresHandoff && prepared.step.expectedUserInfo.length === 0
             ? "SOP_STEP_RESULT_REQUIRED: The previous assistant text was only a draft. The final SOP node is still active. Call submit_step_result now with status completed, the final answer in replyFragment, slotUpdates {}, and no nextStepId. Do not repeat the draft as plain assistant text."
             : "SOP_STEP_RESULT_REQUIRED: Your previous response did not submit the current SOP node result. Text cannot create an approval or missing-field wait. Follow the current node contract and call submit_step_result with your actual result before ending. Do not claim a persisted wait or completion without a successful tool receipt."
           : "")),
@@ -498,7 +504,7 @@ export class SopAgentLoop implements AgentLoopRunner {
     this.preparedSteps.delete(input.sessionId);
     this.nodeModelOverrides.delete(input.sessionId);
     if (!selectedSopId) return undefined;
-    const persisted = await this.stateStore.loadOrCreate(
+    let persisted = await this.stateStore.loadOrCreate(
       input.sessionId,
       this.options.bundle,
       selectedSopId,
@@ -506,32 +512,51 @@ export class SopAgentLoop implements AgentLoopRunner {
     if (isTerminalSopStatus(persisted.state.status)) {
       return undefined;
     }
+    if (this.stateStore.runtime && persisted.state.status === "awaiting_user") {
+      const wait = persisted.state.awaiting_input_json as Record<string, unknown>;
+      await this.stateStore.runtime.resume({ protocolVersion: "3.0", sessionId: input.sessionId,
+        requestId: `sop.user-resume:${input.turnId}:${persisted.revision}`, operationId: "sop.user-resume",
+        turnId: input.turnId, expectedRevision: persisted.revision, waitId: String(wait.wait_id),
+        response: { source: "user", message: this.collectInputs.get(input.sessionId) ?? "" } });
+      persisted = await this.stateStore.loadOrCreate(input.sessionId, persisted.bundle, selectedSopId);
+    }
     const ownerPrepared = await this.client.prepare({
       bundle: persisted.bundle,
       state: persisted.state,
       context: {
         runId: `sop:${input.sessionId}:${input.turnId}`,
         operationId: `sop.prepare:${input.sessionId}:${input.turnId}`,
-        requestId: `sop.prepare:${input.sessionId}:${input.turnId}:${input.stepId ?? 0}`,
+        requestId: `sop.prepare:${input.sessionId}:${input.turnId}:${input.stepId ?? 0}:${persisted.revision}`,
         sessionId: input.sessionId,
         turnId: input.turnId,
-        idempotencyKey: `sop.prepare:${input.sessionId}:${input.turnId}:${input.stepId ?? 0}`,
+        idempotencyKey: `sop.prepare:${input.sessionId}:${input.turnId}:${input.stepId ?? 0}:${persisted.revision}`,
         expectedRevision: persisted.revision,
       },
       signal: input.abortSignal,
     });
     // The owner exposes a knowledge_query node without mapping its domain
     // binding to the PilotDeck tool name. Keep that host mapping here.
-    let prepared = ownerPrepared.step.node.type === "knowledge_query"
+    let prepared = this.options.profile.hostAdapter !== "pilotdeck" && ownerPrepared.step.node.type === "knowledge_query"
       ? { ...ownerPrepared, step: { ...ownerPrepared.step,
           requiredToolNames: [...new Set([...ownerPrepared.step.requiredToolNames, "knowledge_query"])] } }
       : ownerPrepared;
+    if (this.options.profile.hostAdapter === "pilotdeck") {
+      const requirements = (prepared.step as unknown as { capabilityRequirements?: { capability_id: string; kind: string; required: boolean }[] }).capabilityRequirements ?? [];
+      const tools = new Set(capabilities.toolExecution.list().map(tool => tool.name));
+      for (const toolName of prepared.step.requiredToolNames) {
+        if (!tools.has(toolName)) throw Object.assign(new Error(`Required tool unavailable: ${toolName}`), { code: "SOP_CAPABILITY_BINDING_UNAVAILABLE" });
+      }
+      for (const requirement of requirements.filter(item => item.required)) {
+        const binding = this.options.profile.capabilityBindings?.find(item => item.capabilityId === requirement.capability_id && item.kind === requirement.kind);
+        if (!binding || !tools.has(binding.toolName)) throw Object.assign(new Error(`Required ${requirement.kind} binding unavailable: ${requirement.capability_id}`), { code: "SOP_CAPABILITY_BINDING_UNAVAILABLE" });
+      }
+    }
     // Portable output supplies no authority, even if it contains additional fields.
     const { optionalKnowledge: _untrusted, optionalKnowledgeUnavailable: _reason, ...ownerStep } = prepared.step;
     prepared = { ...prepared, step: ownerStep };
-    const contextMode = resolveContextMode(prepared.step, this.options.profile, persisted.bundle, prepared.step.skillId);
+    const contextMode = resolveContextMode(prepared.step, this.options.profile, persisted.bundle, prepared.step.skillId, Boolean(this.stateStore.runtime));
     prepared = { ...prepared, step: { ...prepared.step, contextMode } };
-    const nodeModelOverride = resolveNodeModelOverride(prepared.step, persisted.bundle, prepared.step.skillId);
+    const nodeModelOverride = resolveNodeModelOverride(prepared.step, persisted.bundle, prepared.step.skillId, Boolean(this.stateStore.runtime));
     if (nodeModelOverride) {
       try {
         await capabilities.model.execution.validateSelection?.(nodeModelOverride);
@@ -541,7 +566,8 @@ export class SopAgentLoop implements AgentLoopRunner {
           `${code}: SOP node '${prepared.step.nodeId}' model '${nodeModelOverride.provider}/${nodeModelOverride.model}': ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    const saved = await this.stateStore.replace(input.sessionId, persisted.bundle, prepared.state, persisted.revision);
+    const saved = await this.stateStore.replace(input.sessionId, persisted.bundle, prepared.state,
+      this.stateStore.runtime ? undefined : persisted.revision);
     if (this.options.authorityPort && prepared.step.node.type === "response"
       && capabilities.toolExecution.list().some(tool => tool.name === "knowledge_query")) {
       const context = { sessionKey: input.sessionId, projectKey: input.cwd,
@@ -570,8 +596,17 @@ export class SopAgentLoop implements AgentLoopRunner {
     const existing = await this.stateStore.status(input.sessionId);
     const persistedSelection = existing?.state.selected_skill_id ?? existing?.state.active_skill_id;
     if (persistedSelection) {
-      ensureBundleSop(this.options.bundle, persistedSelection);
+      if (this.options.profile.hostAdapter !== "pilotdeck") ensureBundleSop(this.options.bundle, persistedSelection);
       this.selectedSops.set(input.sessionId, persistedSelection);
+      return;
+    }
+    if (this.options.profile.hostAdapter === "pilotdeck") {
+      const definitions = await this.stateStore.runtime!.catalog();
+      const sops = definitions.map(item => ({ id: item.sop_id, ...item }));
+      (this.options.bundle as { sops: readonly Record<string, unknown>[] }).sops = sops;
+      const requested = latestUserMessage(input.messages).match(/(?:\/sop\s+)([\w.-]+)/u)?.[1] ?? this.options.profile.defaultSopId;
+      ensureBundleSop(this.options.bundle, requested);
+      this.selectedSops.set(input.sessionId, requested);
       return;
     }
     if (!discovery) {
@@ -601,8 +636,8 @@ export function createStaffDeckSopAgentLoop(
   runnerFactory?: AgentLoopRuntimeFactory,
   authorityPort?: SopCapabilityAuthorityPort,
 ): SopAgentLoop {
-  const bundle = loadStaffDeckSopDefinitions(profile.definitionsPath);
-  if (!bundle.sops.some((definition) => sopId(definition) === profile.defaultSopId)) {
+  const bundle = profile.hostAdapter === "pilotdeck" ? { sops: [] } : loadStaffDeckSopDefinitions(profile.definitionsPath);
+  if (profile.hostAdapter !== "pilotdeck" && !bundle.sops.some((definition) => sopId(definition) === profile.defaultSopId)) {
     throw new Error(`StaffDeck SOP defaultSopId '${profile.defaultSopId}' is not present in ${profile.definitionsPath}.`);
   }
   return new SopAgentLoop(input.config, input.capabilities, input.seedState, {
@@ -690,6 +725,7 @@ type SopControlToolPortOptions = Readonly<{
   delegate: ToolPort;
   client: StaffDeckSopRuntimeClient;
   stateStore: SopStateStore;
+  capabilityBindings?: SopRuntimeConfig["capabilityBindings"];
   authorityPort?: SopCapabilityAuthorityPort;
   bundle: StaffDeckSopBundle;
   defaultSopId: string;
@@ -728,8 +764,13 @@ class SopControlToolPort implements ToolPort {
     const ordinary = calls.filter((call) => call.name !== SUBMIT_SOP_STEP_RESULT_TOOL);
     const step = this.options.currentStep(execution.sessionId);
     let ordinaryResults: PilotDeckToolResult[] = [];
-    if (ordinary.length > 0 && step && this.options.selectedSopId(execution.sessionId) && step.requiredToolNames.length === 0) {
+    if (ordinary.length > 0 && step && this.options.selectedSopId(execution.sessionId)
+      && (step.requiredToolNames.length === 0 || (step.node.type === 'response' && this.options.authorityPort))) {
       for (const call of ordinary) {
+        if (call.name !== 'knowledge_query' && step.requiredToolNames.length > 0) {
+          ordinaryResults.push(...await this.options.delegate.executeAll([call], context, execution));
+          continue;
+        }
         try {
           const projection = step?.optionalKnowledge;
           if (call.name !== "knowledge_query" || !projection || !this.options.authorityPort) throw authorityError("SOP_AUTHORITY_TOOL_UNAVAILABLE");
@@ -762,6 +803,14 @@ class SopControlToolPort implements ToolPort {
         ordinaryResults
           .filter((result): result is Extract<PilotDeckToolResult, { type: "success" }> => result.type === "success")
           .map((result) => result.toolName),
+        ordinaryResults.filter(result => result.type === "success").flatMap(result => {
+          const bindings = this.options.capabilityBindings?.filter(binding => binding.toolName === result.toolName) ?? [];
+          return [...new Set([result.toolName, ...bindings.map(binding => binding.capabilityId)])].map(capabilityId => ({
+          capabilityId, operationId: this.options.stateStore.runtime
+            ? `${execution.turnId}:${step?.nodeId}:${result.toolCallId}:${capabilityId}` : result.toolCallId,
+          nodeId: step?.nodeId ?? "", sessionId: execution.sessionId, turnId: execution.turnId,
+          status: "succeeded" as const, evidence: { toolCallId: result.toolCallId },
+        })); }),
       );
     }
 
@@ -858,6 +907,7 @@ class SopControlToolPort implements ToolPort {
         ? persisted.state.successful_tool_names.filter((name): name is string => typeof name === "string" && name.length > 0)
         : [];
       if (proposal.status === "completed" && currentStep?.node.type === "knowledge_query"
+        && currentStep.requiredToolNames.includes("knowledge_query")
         && !successfulToolNames.includes("knowledge_query")) {
         return controlError(call, "REQUIRED_CAPABILITY_NOT_INVOKED: the current knowledge node requires a successful knowledge_query receipt before completion.", "invalid_tool_input");
       }
@@ -866,13 +916,19 @@ class SopControlToolPort implements ToolPort {
         state: persisted.state,
         proposal,
         successfulToolNames,
+        receipts: (Array.isArray(persisted.state.capability_receipts) ? persisted.state.capability_receipts : [])
+          .filter((receipt: PortableSopReceipt) => receipt.turnId === execution.turnId
+            && (!this.options.stateStore.runtime || !currentStep
+              || (currentStep as unknown as { requiredCapabilityIds?: string[] }).requiredCapabilityIds?.includes(receipt.capabilityId)
+              || (currentStep as unknown as { capabilityRequirements?: { capability_id: string }[] }).capabilityRequirements
+                ?.some(item => item.capability_id === receipt.capabilityId))),
         context: {
           runId: execution.runId,
           operationId: execution.operationId ?? `sop.submit:${execution.sessionId}:${execution.turnId}`,
-          requestId: `sop.submit:${call.id}`,
+          requestId: `sop.submit:${this.options.stateStore.runtime ? `${execution.turnId}:${currentStep?.nodeId}:${call.id}` : call.id}`,
           sessionId: execution.sessionId,
           turnId: execution.turnId,
-          idempotencyKey: call.id,
+          idempotencyKey: this.options.stateStore.runtime ? `${execution.turnId}:${currentStep?.nodeId}:${call.id}` : call.id,
           deadlineAt: execution.operationDeadline,
           expectedRevision: persisted.revision,
         },
@@ -1106,9 +1162,11 @@ function renderSopInstruction(prepared: StaffDeckSopPrepareResponse, modelContex
     step.transitions && step.transitions.length > 0
       ? "Choose nextStepId from the transition whose condition matches the available facts. If the target is a handoff step, advance to it first and use status handoff there when approval is required."
       : undefined,
-    step.declaresHandoff ? "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. When the responsible person has explicitly replied with approval, persist that reply with submit_step_result status completed and advance to an allowed next step. Do not end with a plain-text approval summary." : undefined,
+    step.declaresHandoff ? "This step declares a human handoff. When approval is required, use status handoff to create the resumable approval wait; do not use awaiting_user. After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval. If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately; do not substitute failed merely because the human rejected. Do not end with a plain-text approval summary." : undefined,
     step.isTerminal
-      ? "This is the active final SOP node, even if the previous node already submitted completed. Put the final user-facing answer in replyFragment and call submit_step_result with status completed, slotUpdates {}, and no nextStepId. Do not emit the answer as plain assistant text or claim the SOP is complete before this tool succeeds."
+      ? step.declaresHandoff || step.expectedUserInfo.length > 0
+        ? "This is the active final SOP node. Being final does not remove its approval or required-field contract. Persist a required wait with submit_step_result before ending; complete only when this node's conditions are satisfied, preserving supplied fields in slotUpdates and omitting nextStepId. Do not claim completion before the tool succeeds."
+        : "This is the active final SOP node, even if the previous node already submitted completed. Put the final user-facing answer in replyFragment and call submit_step_result with status completed, slotUpdates {}, and no nextStepId. Do not emit the answer as plain assistant text or claim the SOP is complete before this tool succeeds."
       : "A completed submission closes only this node. Its replyFragment is this node's result, not a submission or final answer for a successor node; the successor must be prepared and submitted separately.",
     !step.declaresHandoff && step.expectedUserInfo.length === 0 && step.allowedNextStepIds.length > 0
       && !step.allowedActions.some((action) => action === "ask_user" || action === "ask_missing")
@@ -1203,7 +1261,15 @@ function resolveContextMode(
   profile: SopRuntimeConfig,
   bundle: StaffDeckSopBundle,
   selectedSopId: string,
+  runtimeOwned = false,
 ): StaffDeckSopContextMode {
+  if (runtimeOwned) {
+    const mode = step.node.contextMode;
+    if (mode !== undefined && mode !== "new_session" && mode !== "inherit") {
+      throw new StaffDeckSopClientError("SOP_DEFINITION_INVALID", "node.contextMode must be new_session or inherit");
+    }
+    return mode ?? profile.contextMode ?? "new_session";
+  }
   if (step.contextMode !== undefined) {
     if (step.contextMode !== "new_session" && step.contextMode !== "inherit") {
       throw new StaffDeckSopClientError("SOP_RUNTIME_PROTOCOL", "step.contextMode must be new_session or inherit");
@@ -1224,11 +1290,12 @@ function resolveNodeModelOverride(
   step: StaffDeckSopPrepareResponse["step"],
   bundle: StaffDeckSopBundle,
   selectedSopId: string,
+  runtimeOwned = false,
 ): Pick<AgentModelOverride, "provider" | "model"> | undefined {
   const definition = bundle.sops.find((candidate) => sopId(candidate) === selectedSopId);
   const content = definition && isRecord(definition.content) ? definition.content : definition;
   const nodes = content && Array.isArray(content.nodes) ? content.nodes : [];
-  const node = nodes.find((candidate) => isRecord(candidate)
+  const node = runtimeOwned ? step.node : nodes.find((candidate) => isRecord(candidate)
     && (candidate.node_id === step.nodeId || candidate.nodeId === step.nodeId));
   if (!isRecord(node) || node.model === undefined) return undefined;
   const model = parseSopNodeModel(node.model);

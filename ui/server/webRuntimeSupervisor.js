@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readLocalSopConfig } from './localSopRuntime.mjs';
 import {
   getRestartRequestFile,
   RESTART_EXIT_CODE,
@@ -94,6 +95,7 @@ export function createRuntimeSupervisor({
   error = console.error,
   exit = process.exit,
   processLike = process,
+  localSopConfig = readLocalSopConfig,
 } = {}) {
   const normalizedMode = normalizeSupervisorMode(mode);
   const commandSpecs = getRuntimeCommands(normalizedMode, cwd);
@@ -115,6 +117,7 @@ export function createRuntimeSupervisor({
   let handlingCriticalExit = false;
   let gatewayStopPromise = null;
   let shutdownSignal = null;
+  let sopStarting = false;
 
   const sendGatewayState = (state, gatewayError) => {
     const server = children.get('server');
@@ -136,7 +139,7 @@ export function createRuntimeSupervisor({
     const child = spawnImpl(spec.command, spec.args, {
       cwd: spec.cwd,
       stdio: spec.ipc ? ['inherit', 'inherit', 'inherit', 'ipc'] : 'inherit',
-      env: name === 'gateway' ? { ...runtimeEnv, PILOTDECK_KM_MANAGED_BY_WEB: '1' } : runtimeEnv,
+      env: { ...runtimeEnv, ...(name === 'gateway' ? { PILOTDECK_KM_MANAGED_BY_WEB: '1' } : {}) },
       windowsHide: platform === 'win32',
     });
     children.set(name, child);
@@ -275,9 +278,7 @@ export function createRuntimeSupervisor({
     exit(typeof code === 'number' ? code : (signal ? 1 : 0));
   };
 
-  const startRuntime = () => {
-    stopping = false;
-    configuration = null;
+  const startWeb = () => {
     const { child: server } = spawnProcess('server');
     server.on('message', handleServerMessage);
     if (normalizedMode === 'dev') spawnProcess('client');
@@ -295,6 +296,48 @@ export function createRuntimeSupervisor({
         void handleCriticalExit(code, signal);
       });
     }
+  };
+
+  const startRuntime = () => {
+    stopping = false;
+    configuration = null;
+    let local;
+    try { local = localSopConfig(runtimeEnv); }
+    catch (configError) {
+      error(`[runtime-supervisor] ${configError.message}`);
+      void handleCriticalExit(1, null);
+      return;
+    }
+    if (!local) { startWeb(); return; }
+    sopStarting = true;
+    specByName.set('sop', { name: 'sop', command: process.execPath,
+      args: [path.join(cwd, 'server', 'localSopRuntime.mjs')], cwd: path.resolve(cwd, '..'), ipc: true, critical: true });
+    const { child } = spawnProcess('sop');
+    const timer = setTimeout(() => {
+      if (sopStarting && !stopping) {
+        error('[runtime-supervisor] Local SOP Runtime startup timed out.');
+        void handleCriticalExit(1, null);
+      }
+    }, 300_000);
+    child.once('error', (spawnError) => {
+      clearTimeout(timer);
+      error(`[runtime-supervisor] Local SOP Runtime failed: ${spawnError.message}`);
+      void handleCriticalExit(1, null);
+    });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      if (children.get('sop') !== child || stopping) return;
+      children.delete('sop');
+      error('[runtime-supervisor] Local SOP Runtime exited; stopping PD.');
+      void handleCriticalExit(code || 1, signal);
+    });
+    child.on('message', (message) => {
+      if (message?.type !== 'pilotdeck:sop-ready' || children.get('sop') !== child || !sopStarting || stopping) return;
+      clearTimeout(timer);
+      sopStarting = false;
+      runtimeEnv.SOP_RUNTIME_PUBLISH_TOKEN = message.publishToken;
+      startWeb();
+    });
   };
 
   const stop = async (signal) => {

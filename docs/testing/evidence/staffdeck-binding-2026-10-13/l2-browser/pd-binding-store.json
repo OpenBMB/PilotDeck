@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "installationId": "d2c32c02-fe82-422e-8a4a-909f2bf46415",
+  "projects": [
+    {
+      "projectRoot": "$QA_ROOT/workspace/ProjectA",
+      "bindingId": "6d4be101-a6b8-429b-8720-9a366c0656ee",
+      "agentName": "ProjectA-6d4be101",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:51:04.917Z",
+      "agentId": "agent_a62b48f1f023490e"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ProjectB",
+      "bindingId": "b932bb13-19f8-40d1-873f-8382aad49628",
+      "agentName": "ProjectB-b932bb13",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:51:06.153Z",
+      "agentId": "agent_b6e2fca40dff4f1d"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/clones/repo",
+      "bindingId": "6e3423cf-0ea7-42c1-a146-3f65a54d60f7",
+      "agentName": "repo-6e3423cf",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T07:52:12.550Z",
+      "agentId": "agent_aa230624422740f6"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ProjectFailure",
+      "bindingId": "9aaff7dd-2abe-4559-b8a7-6a155e6d0b1e",
+      "agentName": "ProjectFailure-9aaff7dd",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T07:52:35.542Z",
+      "agentId": "agent_c5f417b20b494f3c"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ExistingC",
+      "bindingId": "81e2aa5a-b0ff-4ade-9751-12eb465e165a",
+      "agentName": "ExistingC-81e2aa5a",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:01:00.113Z",
+      "agentId": "agent_3ad90e723e6c4185"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ExplicitD",
+      "bindingId": "f29a9f21-0811-43ee-9f45-80752fc804ff",
+      "agentName": "Explicit existing D",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:01:00.133Z",
+      "agentId": "agent_080b20f31e6c4acb"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ExistingC1791878653724",
+      "bindingId": "44ce9cf1-3091-43d1-8c30-2f9ec1aa583e",
+      "agentName": "ExistingC1791878653724-44ce9cf1",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:04:22.139Z",
+      "agentId": "agent_9c75236799444652"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ExplicitD1791878653724",
+      "bindingId": "187f9729-60a8-4b7f-8c58-5c74e33c4623",
+      "agentName": "Explicit existing D 1791878653724",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:04:22.163Z",
+      "agentId": "agent_2ddede1590484c3c"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ExistingC1791878815442",
+      "bindingId": "5ccb4e2e-3214-4419-8e32-775ee23c6304",
+      "agentName": "ExistingC1791878815442-5ccb4e2e",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:07:04.814Z",
+      "agentId": "agent_3c42b72d364b4f9b"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/ExplicitD1791878815442",
+      "bindingId": "b94dcee1-f452-4a89-ab26-04b145b09711",
+      "agentName": "Explicit existing D 1791878815442",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:07:04.838Z",
+      "agentId": "agent_125dee16ea1142c7"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/BrowserQA1791879671447",
+      "bindingId": "519c1d0f-e3ec-4719-90d5-134c33215855",
+      "agentName": "BrowserQA1791879671447-519c1d0f",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:21:15.176Z",
+      "agentId": "agent_807dac9e21494566"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/BrowserQA1791879739797",
+      "bindingId": "25550fd4-76d9-4c56-ac98-f2f247b49a7f",
+      "agentName": "BrowserQA1791879739797-25550fd4",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:22:23.376Z",
+      "agentId": "agent_0f20386164bc4e84"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/BrowserQA1791880893397",
+      "bindingId": "453a43ec-aaa6-411c-a5cd-10002afa0eaa",
+      "agentName": "BrowserQA1791880893397-453a43ec",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:41:37.454Z",
+      "agentId": "agent_e4c179ad5a304f00"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/BrowserQA1791880939246",
+      "bindingId": "d09e350c-ba1e-4591-b789-9bf775010acd",
+      "agentName": "BrowserQA1791880939246-d09e350c",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:42:23.520Z",
+      "agentId": "agent_bfb38b8535124e5d"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/BrowserQA1791880999615",
+      "bindingId": "c984bfbc-5596-4c59-8573-5c19a181002b",
+      "agentName": "BrowserQA1791880999615-c984bfbc",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:43:23.489Z",
+      "agentId": "agent_405d9a50fbf24d57"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/BrowserQA1791881325599",
+      "bindingId": "4ce88cd1-d4e0-4fdf-b82e-f93223cd016d",
+      "agentName": "BrowserQA1791881325599-4ce88cd1",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:48:52.754Z",
+      "agentId": "agent_fc5245f94bcc4f60"
+    },
+    {
+      "projectRoot": "$QA_ROOT/workspace/BrowserQA1791881403719",
+      "bindingId": "96be82d5-5986-404b-9f8b-bf507afc2ea5",
+      "agentName": "BrowserQA1791881403719-96be82d5",
+      "origin": "http://127.0.0.1:25810",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T08:50:07.703Z",
+      "agentId": "agent_f9651de8ceba4b62"
+    }
+  ]
+}

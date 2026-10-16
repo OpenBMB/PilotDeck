@@ -10,6 +10,8 @@ lerna-debug.log*
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Runtime data
+packages/sop-runtime/src/*.egg-info/
+packages/sop-runtime/**/__pycache__/
 pids
 *.pid
 *.seed

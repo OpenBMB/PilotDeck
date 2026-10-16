@@ -17,6 +17,16 @@ const runtime = { sopId: '新增', status: 'awaiting-runtime-observation', owner
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 
 describe('mounted publish/runtime observation', () => {
+  it('clears an archived publication receipt and ignores a late archive from another owner', () => {
+    const observer = createPublishRuntimeObserver();
+    observer.acceptBootstrap(bootstrap('agent', [runtime]));
+    observer.captureArchive(runtime.sopId)({ runtime: { ownerArchived: true, status: 'awaiting-runtime-observation' } });
+    expect(observer.getSnapshot().receipts).toEqual([]);
+    const late = observer.captureArchive(runtime.sopId);
+    observer.acceptBootstrap(bootstrap('replacement', [runtime]));
+    late({ runtime: { ownerArchived: true } });
+    expect(observer.getSnapshot().receipts).toEqual([runtime]);
+  });
   it('restores only owner-scoped gateway receipts and never promotes an ack to effective', () => {
     const observer = createPublishRuntimeObserver();
     observer.acceptBootstrap(bootstrap('agent', [runtime]));

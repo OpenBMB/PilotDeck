@@ -1,0 +1,177 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10405,
+    "displayUsed": 10405,
+    "localEstimateTokens": 10405,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09322140194954129,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10405,
+      "system": 3039,
+      "tools": 7358,
+      "messages": 8,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Hello",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "blockId": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+      "id": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 5
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "! How",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "blockId": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+      "id": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 5
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 6
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " can",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "blockId": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+      "id": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 10
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 7
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " I help you today",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "blockId": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+      "id": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 14
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 8
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "?",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "blockId": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+      "id": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 31
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 9
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+    "text": "Hello! How can I help you today?",
+    "timeline": {
+      "version": 1,
+      "turnId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+      "id": "e53e3215-fe8a-40d3-8945-6c5834a57f2b:text:0",
+      "order": 0,
+      "revision": 8
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "sequence": 10
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12300,
+      "outputTokens": 13,
+      "totalTokens": 12313
+    },
+    "finishReason": "completed",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "sequence": 11
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12300,
+      "outputTokens": 13,
+      "totalTokens": 12313
+    },
+    "finishReason": "completed",
+    "runId": "80b889af-ad93-46a9-8d61-ea85b5dec5ec",
+    "sequence": 12
+  }
+]

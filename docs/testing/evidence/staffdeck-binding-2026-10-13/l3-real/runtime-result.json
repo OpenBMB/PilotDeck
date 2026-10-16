@@ -1,0 +1,44 @@
+[
+  {
+    "id": "I02",
+    "project": "a",
+    "status": "PASS",
+    "sessionKey": "binding-a-1791877211043",
+    "state": "completed"
+  },
+  {
+    "id": "I02",
+    "project": "b",
+    "status": "PASS",
+    "sessionKey": "binding-b-1791877236008",
+    "ordinaryChat": true
+  },
+  {
+    "id": "I02",
+    "project": "a",
+    "status": "PASS",
+    "sessionKey": "binding-a-1791877237602",
+    "state": "completed"
+  },
+  {
+    "id": "I02",
+    "project": "b",
+    "status": "PASS",
+    "sessionKey": "binding-b-1791877256225",
+    "ordinaryChat": true
+  },
+  {
+    "id": "I02",
+    "project": "a",
+    "status": "PASS",
+    "sessionKey": "binding-a-1791877257780",
+    "state": "completed"
+  },
+  {
+    "id": "I02",
+    "project": "b",
+    "status": "PASS",
+    "sessionKey": "binding-b-1791877283748",
+    "ordinaryChat": true
+  }
+]

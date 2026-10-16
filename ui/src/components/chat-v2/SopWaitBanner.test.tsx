@@ -17,6 +17,14 @@ afterEach(() => {
 });
 
 describe('SopWaitBanner', () => {
+  it('leaves human bearer authentication to the public approval inbox', async () => {
+    vi.mocked(api.sopStatus).mockResolvedValue(new Response(JSON.stringify({ error: { code: 'APPROVAL_AUTH_REQUIRED' } }), { status: 401 }));
+    const onError = vi.fn();
+    render(<SopWaitBanner sessionKey="session-1" projectKey="/project" refreshKey="idle" allowedWaitKind="external_task" onPrepared={vi.fn()} onError={onError} />);
+    await waitFor(() => expect(api.sopStatus).toHaveBeenCalledTimes(1));
+    expect(onError).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('sop-wait-banner')).toBeNull();
+  });
   it('never exposes the legacy human resume action in the approval extension', async () => {
     vi.mocked(api.sopStatus).mockResolvedValue(new Response(JSON.stringify({
       status: { sessionId: 'session-1', revision: 4, state: {}, wait: { id: 'wait-1', kind: 'handoff' } },

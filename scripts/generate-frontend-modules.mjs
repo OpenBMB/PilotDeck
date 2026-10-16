@@ -38,6 +38,7 @@ const MODULE_SOURCES = {
   'pilotdeck.model': 'modules/pilotdeck-model',
   'staffdeck.sop': 'modules/staffdeck-sop',
   'knowledge-core': 'modules/knowledge-core',
+  'pilotdeck.sop': 'modules/pilotdeck-sop',
   'fixture.knowledge-search': 'modules/fixture-knowledge-search',
   'agent.routing': 'modules/agent-routing',
   'agent.resident': 'modules/agent-resident',
@@ -91,6 +92,7 @@ export function selectFrontendModules(profile) {
     // unless the profile explicitly selects a frontend module. The frontend
     // does not need to know the deployment owner's implementation id.
     const requestedId = binding?.frontendModule
+      ?? (slot === 'sop' && binding?.hostAdapter === 'pilotdeck' ? 'pilotdeck.sop' : undefined)
       ?? IMPLEMENTATION_FRONTENDS[binding?.implementationId]
       ?? DEFAULT_FRONTEND[slot];
     const id = requestedId === 'staffdeck.knowledge' ? 'knowledge-core' : requestedId;
@@ -153,7 +155,7 @@ export function renderGeneratedEntrypoint(profile, outputPath = defaultOutput, c
 }
 
 function frontendBinding(binding) {
-  const fields = ['enabled', 'provider', 'implementationId', 'frontendModule', 'contract', 'transport', 'methods'];
+  const fields = ['enabled', 'provider', 'implementationId', 'frontendModule', 'contract', 'transport', 'methods', 'hostAdapter'];
   const result = Object.fromEntries(fields.filter((field) => binding?.[field] !== undefined).map((field) => [field, binding[field]]));
   if (binding?.management && typeof binding.management === 'object' && !Array.isArray(binding.management)) {
     const management = binding.management;

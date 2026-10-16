@@ -1,4 +1,5 @@
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
+import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 
 export type ReadSkillInput = {
   skillName: string;
@@ -48,14 +49,10 @@ export function createReadSkillTool(deps: ReadSkillDeps): PilotDeckToolDefinitio
         return { content: [{ type: "text", text }] };
       }
       if (available.length === 0) {
-        return {
-          content: [{ type: "text", text: `Skill '${input.skillName}' not found. No skills are currently loaded.` }],
-        };
+        throw new PilotDeckToolRuntimeError("tool_execution_failed", `Skill '${input.skillName}' not found. No skills are currently loaded.`);
       }
       const names = available.map((s) => s.name).join(", ");
-      return {
-        content: [{ type: "text", text: `Skill '${input.skillName}' not found. Available skills: ${names}` }],
-      };
+      throw new PilotDeckToolRuntimeError("tool_execution_failed", `Skill '${input.skillName}' not found. Available skills: ${names}`);
     },
   };
 }

@@ -1,0 +1,226 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10303,
+    "displayUsed": 10303,
+    "localEstimateTokens": 10303,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09230755447247706,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10303,
+      "system": 3038,
+      "tools": 7254,
+      "messages": 11,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " user wants",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " a",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 14
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " short greeting.\n",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 16
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Hello!",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:text:0",
+      "previousId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 1,
+      "revision": 7,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 9
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " How can I help",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:text:0",
+      "previousId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 1,
+      "revision": 8,
+      "offset": 6
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 10
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " you today?",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:text:0",
+      "previousId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 1,
+      "revision": 9,
+      "offset": 21
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 11
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+    "text": "The user wants a short greeting.\n",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 0,
+      "revision": 11
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 12
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:text:0",
+    "text": "Hello! How can I help you today?",
+    "timeline": {
+      "version": 1,
+      "turnId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+      "id": "8cf39ca5-3930-447b-9937-8a695c9c15b8:text:0",
+      "previousId": "8cf39ca5-3930-447b-9937-8a695c9c15b8:thinking:0",
+      "order": 1,
+      "revision": 12
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 13
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12160,
+      "outputTokens": 21,
+      "totalTokens": 12181
+    },
+    "finishReason": "completed",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 14
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12160,
+      "outputTokens": 21,
+      "totalTokens": 12181
+    },
+    "finishReason": "completed",
+    "runId": "c4a3c2df-bdfe-4ed5-9bb3-827d1dc2eefb",
+    "sequence": 15
+  }
+]

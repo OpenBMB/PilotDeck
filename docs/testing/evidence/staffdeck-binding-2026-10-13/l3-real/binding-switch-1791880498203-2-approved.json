@@ -1,0 +1,903 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10300,
+    "displayUsed": 10300,
+    "localEstimateTokens": 10300,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.09228067660550458,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10300,
+      "system": 3038,
+      "tools": 7254,
+      "messages": 8,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Here",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "'s",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 4
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " a thinking",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 6
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " process",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 17
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ":\n\n1.",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 25
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "  **Analyze",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 30
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " User Input:** The",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 41
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " user said",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 59
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " \"Hello, reply",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 69
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " briefly\". This is",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 11,
+      "offset": 83
+    },
+    "sequence": 14
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " a",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 12,
+      "offset": 101
+    },
+    "sequence": 15
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " simple greeting with a",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 13,
+      "offset": 103
+    },
+    "sequence": 16
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " constraint to keep the",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 14,
+      "offset": 126
+    },
+    "sequence": 17
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " response short.\n",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 15,
+      "offset": 149
+    },
+    "sequence": 18
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "2.  **",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 16,
+      "offset": 166
+    },
+    "sequence": 19
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "Identify",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 17,
+      "offset": 172
+    },
+    "sequence": 20
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Constraints:** \"reply",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 18,
+      "offset": 180
+    },
+    "sequence": 21
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " briefly\" means",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 19,
+      "offset": 202
+    },
+    "sequence": 22
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I should keep my",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 20,
+      "offset": 217
+    },
+    "sequence": 23
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " response concise.\n",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 21,
+      "offset": 234
+    },
+    "sequence": 24
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "3.",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 22,
+      "offset": 253
+    },
+    "sequence": 25
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "  **Formulate",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 23,
+      "offset": 255
+    },
+    "sequence": 26
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Response:** A simple",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 24,
+      "offset": 268
+    },
+    "sequence": 27
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ", friendly greeting back",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 25,
+      "offset": 289
+    },
+    "sequence": 28
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " that acknowledges the constraint",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 26,
+      "offset": 313
+    },
+    "sequence": 29
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". Examples",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 27,
+      "offset": 346
+    },
+    "sequence": 30
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ": \"Hello!",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 28,
+      "offset": 356
+    },
+    "sequence": 31
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " How can I help",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 29,
+      "offset": 365
+    },
+    "sequence": 32
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " you today",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 30,
+      "offset": 380
+    },
+    "sequence": 33
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "?\" or \"Hi",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 31,
+      "offset": 390
+    },
+    "sequence": 34
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " there",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 32,
+      "offset": 399
+    },
+    "sequence": 35
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "! What can I",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 33,
+      "offset": 405
+    },
+    "sequence": 36
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " do for",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 34,
+      "offset": 417
+    },
+    "sequence": 37
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " you?\"\n4",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 35,
+      "offset": 424
+    },
+    "sequence": 38
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". ",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 36,
+      "offset": 432
+    },
+    "sequence": 39
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " **Check against constraints",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 37,
+      "offset": 434
+    },
+    "sequence": 40
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ":** Both are brief",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 38,
+      "offset": 462
+    },
+    "sequence": 41
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " and",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 39,
+      "offset": 480
+    },
+    "sequence": 42
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " appropriate. I'll",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 40,
+      "offset": 484
+    },
+    "sequence": 43
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " go with something straightforward",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 41,
+      "offset": 502
+    },
+    "sequence": 44
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".\n5.",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 42,
+      "offset": 536
+    },
+    "sequence": 45
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "  **Output Generation",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 43,
+      "offset": 540
+    },
+    "sequence": 46
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ":** \"Hello!",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 44,
+      "offset": 561
+    },
+    "sequence": 47
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " How can",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 45,
+      "offset": 572
+    },
+    "sequence": 48
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I help you today",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 46,
+      "offset": 580
+    },
+    "sequence": 49
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "?\" matches the requirement",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 47,
+      "offset": 597
+    },
+    "sequence": 50
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " perfectly. No extra",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 48,
+      "offset": 623
+    },
+    "sequence": 51
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " fluff.✅",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 49,
+      "offset": 643
+    },
+    "sequence": 52
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Hello",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+      "previousId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 1,
+      "revision": 51,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 53
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "! How",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+      "previousId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 1,
+      "revision": 52,
+      "offset": 5
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 54
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " can I help you",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+      "previousId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 1,
+      "revision": 53,
+      "offset": 10
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 55
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " today?",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+      "previousId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 1,
+      "revision": 54,
+      "offset": 25
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 56
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+    "text": "Here's a thinking process:\n\n1.  **Analyze User Input:** The user said \"Hello, reply briefly\". This is a simple greeting with a constraint to keep the response short.\n2.  **Identify Constraints:** \"reply briefly\" means I should keep my response concise.\n3.  **Formulate Response:** A simple, friendly greeting back that acknowledges the constraint. Examples: \"Hello! How can I help you today?\" or \"Hi there! What can I do for you?\"\n4.  **Check against constraints:** Both are brief and appropriate. I'll go with something straightforward.\n5.  **Output Generation:** \"Hello! How can I help you today?\" matches the requirement perfectly. No extra fluff.✅",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 0,
+      "revision": 56
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 57
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+    "text": "Hello! How can I help you today?",
+    "timeline": {
+      "version": 1,
+      "turnId": "fd783e48-d258-4a6f-b956-28c92488f661",
+      "id": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:text:0",
+      "previousId": "4fd483c5-b297-44dc-bdc1-e0f0b6c3b95f:thinking:0",
+      "order": 1,
+      "revision": 57
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 58
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12157,
+      "outputTokens": 169,
+      "totalTokens": 12326
+    },
+    "finishReason": "completed",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 59
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 12157,
+      "outputTokens": 169,
+      "totalTokens": 12326
+    },
+    "finishReason": "completed",
+    "runId": "fd783e48-d258-4a6f-b956-28c92488f661",
+    "sequence": 60
+  }
+]

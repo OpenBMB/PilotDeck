@@ -16,6 +16,7 @@
     "pilotdeck-agent-loop-sidecar": "dist/src/cli/pilotdeck-agent-loop-sidecar.js"
   },
   "scripts": {
+    "start:sop": "node scripts/start-native-sop.mjs",
     "check:runtime": "node scripts/check-node-runtime.mjs",
     "install:browser": "npx @playwright/mcp install-browser chrome-for-testing",
     "install:asr": "node scripts/install-asr.mjs",

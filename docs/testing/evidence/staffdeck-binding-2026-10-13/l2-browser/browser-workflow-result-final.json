@@ -1,0 +1,138 @@
+{
+  "results": [
+    {
+      "id": "U01/U02-CREATE-RETRY",
+      "status": "PASS",
+      "project": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-AVJp5e-workspace-BrowserQA1791879671447",
+      "originalBindingId": "519c1d0f-e3ec-4719-90d5-134c33215855",
+      "failedProjectRetained": true,
+      "refreshRestored": true
+    },
+    {
+      "id": "U02-KNOWLEDGE-UPLOAD",
+      "status": "PASS",
+      "marker": "BROWSER_UPLOAD_BINDING_4812",
+      "actualIngestionAndQuery": true
+    },
+    {
+      "id": "U02-WORKFLOW",
+      "status": "FAIL",
+      "error": "locator.click: Error: strict mode violation: getByRole('menuitem', { name: /enable|publish/i }) resolved to 2 elements:\n    1) <div tabindex=\"-1\" role=\"menuitem\" data-variant=\"default\" data-orientation=\"vertical\" data-radix-collection-item=\"\" data-slot=\"dropdown-menu-item\" class=\"group/dropdown-menu-item relative flex items-center outline-hidden select-none focus:bg-accent not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive data-disabled:pointer-events-n…>…</div> aka getByRole('menuitem', { name: 'Enable Local Version' })\n    2) <div tabindex=\"-1\" role=\"menuitem\" data-variant=\"default\" data-orientation=\"vertical\" data-radix-collection-item=\"\" data-slot=\"dropdown-menu-item\" class=\"group/dropdown-menu-item relative flex items-center outline-hidden select-none focus:bg-accent not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive data-disabled:pointer-events-n…>…</div> aka getByRole('menuitem', { name: 'Publish to Marketplace' })\n\nCall log:\n\u001b[2m  - waiting for getByRole('menuitem', { name: /enable|publish/i })\u001b[22m\n",
+      "errors": []
+    }
+  ],
+  "network": [
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/projects/create-workspace",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/runtime",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/host-capabilities/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/file",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/sop/management/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-sdk/call",
+      "status": 200
+    },
+    {
+      "path": "/api/modules/staffdeck-copy/call",
+      "status": 200
+    }
+  ]
+}

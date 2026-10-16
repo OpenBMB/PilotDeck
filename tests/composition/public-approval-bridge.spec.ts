@@ -117,3 +117,27 @@ test('foreign authoritative session/project tuple is rejected before status or r
   assert.equal((await response.json()).code, 'SOP_APPROVAL_SESSION_FORBIDDEN');
   assert.equal((await f.store.status('session'))!.wait!.id, f.command.waitId);
 }));
+
+test('project approval HTTP resolves the admitted agent and rejects another project identity', async () => {
+  const admitted = { ...binding, agentId: 'project-a', sessionKey: 'session-a', projectKey: '/a' };
+  let lookups = 0;
+  const bridge = createPublicApprovalBridge({ binding: { ...binding, agentId: '' },
+    resolveBinding: async () => admitted,
+    resolveSession: async () => admitted,
+    authenticate: async () => subject,
+    status: async () => { lookups++; return undefined; },
+    resume: async () => { throw new Error('Not expected'); },
+  });
+  const server = await startGatewayServer({ gateway: {} as Gateway, publicApprovals: bridge, port: 0, token: 'service' });
+  try {
+    const call = (agentId: string, projectKey = '/a') => fetch(`${server.url}/api/module-host/approvals/status`, {
+      method: 'POST', headers: { authorization: 'Bearer service', 'x-staffdeck-approver-authorization': 'Bearer actor',
+        'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 'tenant', agentId, projectKey, sessionKey: 'session-a' }),
+    });
+    assert.equal((await call('project-a')).status, 200);
+    assert.equal((await call('project-b')).status, 403);
+    assert.equal((await call('project-a', '/b')).status, 403);
+    assert.equal(lookups, 1);
+  } finally { await server.close(); }
+});

@@ -10,6 +10,8 @@ export const STAFFDECK_SOP_OPERATIONS = ["prepare", "submit"] as const;
 export type StaffDeckSopContextMode = "new_session" | "inherit";
 
 type SopRuntimeConfigBase = Readonly<{
+  hostAdapter?: "pilotdeck" | "staffdeck";
+  localRuntime?: Readonly<{ enabled: boolean; python?: string; knowledgeEnabled?: boolean; versionManagementEnabled?: boolean }>;
   endpoint: string;
   definitionsPath: string;
   defaultSopId: string;
@@ -24,6 +26,8 @@ type SopRuntimeConfigBase = Readonly<{
   timeoutMs?: number;
   /** How a SOP node receives model messages when no node override is present. */
   contextMode?: StaffDeckSopContextMode;
+  capabilityBindings?: readonly Readonly<{ capabilityId: string; toolName: string; kind: "tool" | "skill" | "knowledge" }>[];
+  runtimeSopScope?: Readonly<{ tenantId: string; agentId: string }>;
   deployment?: ModuleDeployment;
   /** Optional static frontend registry key selected by the profile. */
   frontendModule?: string;
@@ -37,8 +41,8 @@ export type StaffDeckSopRuntimeConfig = SopRuntimeConfigBase & Readonly<{
 /** Versioned HTTP boundary between the PilotDeck host and StaffDeck SOP owner. */
 export type ProtocolSopRuntimeConfig = SopRuntimeConfigBase & Readonly<{
   implementationId: string;
-  contract: typeof STAFFDECK_SOP_CONTRACT;
-  transport: typeof STAFFDECK_SOP_TRANSPORT;
+  contract: typeof STAFFDECK_SOP_CONTRACT | "sop.lifecycle/v3";
+  transport: typeof STAFFDECK_SOP_TRANSPORT | "sop-http-v3";
   manifestPath: string;
 }>;
 
@@ -64,8 +68,8 @@ export type StaffDeckSopModuleManifest = Readonly<{
 
 export type SopRuntimeManifestExpectation = Readonly<{
   implementationId: string;
-  contract: typeof STAFFDECK_SOP_CONTRACT;
-  transport: typeof STAFFDECK_SOP_TRANSPORT;
+  contract: typeof STAFFDECK_SOP_CONTRACT | "sop.lifecycle/v3";
+  transport: typeof STAFFDECK_SOP_TRANSPORT | "sop-http-v3";
 }>;
 
 /** Host execution identity forwarded to the stateless SOP runtime. */
@@ -135,6 +139,7 @@ export type StaffDeckSopWait = Readonly<{
 
 /** Created by the authenticated host root, never deserialized from browser input. */
 export type StaffDeckApprovalAuthority = Readonly<{
+  hostAdapter?: "pilotdeck" | "staffdeck";
   tenantId: string;
   sessionId: string;
   subject: Readonly<{ tenantId: string; userId: string; source: "web"; role: "admin" | "member"; disabled: boolean }>;
@@ -265,6 +270,7 @@ export type StaffDeckSopRuntimeClient = Readonly<{
     state: StaffDeckSopState;
     proposal: StaffDeckSopProposal;
     successfulToolNames: readonly string[];
+    receipts?: readonly import("./PortableSopRuntimeClient.js").PortableSopReceipt[];
     context?: StaffDeckSopOperationContext;
     signal?: AbortSignal;
   }): Promise<StaffDeckSopSubmitResponse>;

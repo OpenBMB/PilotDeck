@@ -1,0 +1,126 @@
+[
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 0,
+    "sessionKey": "binding-chat-general-1791887885003",
+    "status": "PASS",
+    "markerPresent": true,
+    "errors": [],
+    "elapsedMs": 30406
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 0,
+    "sessionKey": "binding-chat-sop-private-1791887915409",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 21220
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 0,
+    "sessionKey": "binding-chat-other-project-1791887936629",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 3305
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 1,
+    "sessionKey": "binding-chat-general-1791887939934",
+    "status": "FAIL",
+    "markerPresent": false,
+    "errors": [
+      {
+        "type": "error",
+        "code": "agent_invalid_state",
+        "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+        "recoverable": false,
+        "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+        "sequence": 3
+      },
+      {
+        "type": "error",
+        "code": "agent_invalid_state",
+        "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+        "recoverable": false,
+        "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+        "sequence": 5
+      }
+    ],
+    "elapsedMs": 30103
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 1,
+    "sessionKey": "binding-chat-sop-private-1791887970037",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 10285
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 1,
+    "sessionKey": "binding-chat-other-project-1791887980322",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 4137
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "general",
+    "repetition": 2,
+    "sessionKey": "binding-chat-general-1791887984460",
+    "status": "FAIL",
+    "markerPresent": false,
+    "errors": [
+      {
+        "type": "error",
+        "code": "agent_invalid_state",
+        "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+        "recoverable": false,
+        "runId": "1cbc43a8-ed39-4ea1-9613-7be04f3bcae9",
+        "sequence": 3
+      },
+      {
+        "type": "error",
+        "code": "agent_invalid_state",
+        "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+        "recoverable": false,
+        "runId": "1cbc43a8-ed39-4ea1-9613-7be04f3bcae9",
+        "sequence": 5
+      }
+    ],
+    "elapsedMs": 30095
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "sop-private",
+    "repetition": 2,
+    "sessionKey": "binding-chat-sop-private-1791888014555",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 32852
+  },
+  {
+    "id": "L3-CHAT",
+    "name": "other-project",
+    "repetition": 2,
+    "sessionKey": "binding-chat-other-project-1791888047407",
+    "status": "PASS",
+    "markerPresent": false,
+    "errors": [],
+    "elapsedMs": 3846
+  }
+]

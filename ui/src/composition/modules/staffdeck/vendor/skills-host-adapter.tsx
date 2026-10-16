@@ -336,9 +336,10 @@ export const pilotDeckSkillsPageHost: SkillsPageHost = {
 };
 
 function runtimePublishOptions(path: string, observer?: PublishRuntimeObserver, options?: ModuleRequestOptions): ModuleRequestOptions | undefined {
-  const match = path.match(/^\/api\/enterprise\/skills\/([^/]+)\/publish(?:\?|$)/);
+  const match = path.match(/^\/api\/enterprise\/skills\/([^/]+)\/(publish|archive)(?:\?|$)/);
   if (!observer || !match) return options;
-  return { ...options, onManagementEnvelope: observer.capturePublish(decodeURIComponent(match[1])) };
+  const sopId = decodeURIComponent(match[1]);
+  return { ...options, onManagementEnvelope: match[2] === 'archive' ? observer.captureArchive(sopId) : observer.capturePublish(sopId) };
 }
 
 function createPilotDeckSkillsPageHost(context: CopyContext, observer?: PublishRuntimeObserver): SkillsPageHost {

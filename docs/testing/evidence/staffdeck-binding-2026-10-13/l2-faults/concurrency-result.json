@@ -1,0 +1,71 @@
+[
+  {
+    "name": "B03 three processes same project",
+    "status": "PASS",
+    "elapsedMs": 0,
+    "evidence": {
+      "requests": 3,
+      "agentId": "agent_1f7dd30df9664655"
+    }
+  },
+  {
+    "name": "B03 ten projects concurrent, three rounds",
+    "status": "PASS",
+    "elapsedMs": 0,
+    "evidence": {
+      "projects": 10,
+      "rounds": 3,
+      "records": 11
+    }
+  },
+  {
+    "name": "B03 interrupt uuid",
+    "status": "PASS",
+    "elapsedMs": 0,
+    "evidence": {
+      "phase": "uuid",
+      "stableBindingId": "39be9a54-c98e-4669-93f5-0ce0aef89bc2",
+      "agentId": "agent_a259c6fb28ba442c"
+    }
+  },
+  {
+    "name": "B03 interrupt before-commit",
+    "status": "PASS",
+    "elapsedMs": 0,
+    "evidence": {
+      "phase": "before-commit",
+      "stableBindingId": "44fc4b6c-5d49-4ac2-b4f4-54dd188c2606",
+      "agentId": "agent_862f61bbbe974b07"
+    }
+  },
+  {
+    "name": "B03 interrupt after-commit",
+    "status": "PASS",
+    "elapsedMs": 0,
+    "evidence": {
+      "phase": "after-commit",
+      "stableBindingId": "262e4e7c-2048-44bc-b1ee-fb064be203c0",
+      "agentId": "agent_332a3aad7cd14336"
+    }
+  },
+  {
+    "name": "B03 interrupt activation",
+    "status": "PASS",
+    "elapsedMs": 0,
+    "evidence": {
+      "phase": "activation",
+      "stableBindingId": "cb7b448a-e827-458d-827b-e1a5e978705b",
+      "agentId": "agent_9a851318da634b1c"
+    }
+  },
+  {
+    "name": "B03 interrupt after-activation",
+    "status": "PASS",
+    "elapsedMs": 0,
+    "evidence": {
+      "phase": "after-activation",
+      "stableBindingId": "620b656c-5b6c-4535-ae0f-1c4e6df6b35c",
+      "agentId": "agent_1a49d6d38af74f3e"
+    }
+  }
+]

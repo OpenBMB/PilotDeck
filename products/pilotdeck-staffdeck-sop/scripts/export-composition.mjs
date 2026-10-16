@@ -170,7 +170,9 @@ function readSopBinding(value) {
   const definitionsPath = requiredText(value, "definitionsPath", "sop");
   const defaultSopId = requiredText(value, "defaultSopId", "sop");
   if (value.provider === "staffdeck") {
-    return { kind: "legacy", ...value, definitionsPath, defaultSopId };
+    const { provider: _provider, ...portable } = value;
+    return readSopBinding({ ...portable, implementationId: "portable-sop",
+      contract: "sop.lifecycle/v3", transport: "sop-http-v3", endpoint: value.endpoint ?? "http://sop-runtime:8091", definitionsPath, defaultSopId });
   }
   if (value.provider !== undefined) {
     throw new Error("modules.sop.provider must be staffdeck or omitted for a protocol binding.");
@@ -178,13 +180,15 @@ function readSopBinding(value) {
   for (const field of ["implementationId", "contract", "transport", "endpoint"]) {
     requiredText(value, field, "sop");
   }
-  if (value.contract !== "sop.lifecycle/v2" || value.transport !== "sop-http-v2") {
+  if (!((value.contract === "sop.lifecycle/v2" && value.transport === "sop-http-v2")
+    || (value.contract === "sop.lifecycle/v3" && value.transport === "sop-http-v3"))) {
     throw new Error("Unsupported SOP contract or transport for this exporter.");
   }
-  const builtin = value.implementationId === "staffdeck.portable-sop";
+  const builtin = ["staffdeck.portable-sop", "portable-sop"].includes(value.implementationId);
   return {
     kind: "external",
     ...value,
+    ...(builtin ? { implementationId: "portable-sop", contract: "sop.lifecycle/v3", transport: "sop-http-v3", manifestPath: "/healthz" } : {}),
     definitionsPath,
     defaultSopId,
     ...(builtin
@@ -280,7 +284,7 @@ async function writeGeneratedFrontend(output, profile) {
 async function copyStaffDeck(source, output, includeSop, includeKnowledge) {
   if (!includeSop && !includeKnowledge) return;
   const destination = join(output, "staffdeck");
-  await copyRequired(join(source, "backend"), join(destination, "backend"));
+  if (includeKnowledge) await copyRequired(join(source, "backend"), join(destination, "backend"));
   await copyRequired(join(source, "portable_sop"), join(destination, "portable_sop"));
   if (includeSop) {
     const dockerfile = join(destination, "portable_sop", "Dockerfile");
@@ -343,6 +347,12 @@ async function writeDeploymentFiles(output, profile, profilePath, assembly) {
       ? sop.definitionsPath
       : resolve(dirname(profilePath), sop.definitionsPath);
     await copyRequired(source, join(output, "sops", "definition.yaml"));
+    if (sop.contract === "sop.lifecycle/v3") {
+      const definitions = YAML.parse(await readFile(source, "utf8"));
+      const bundle = Array.isArray(definitions) ? { sops: definitions }
+        : Array.isArray(definitions?.sops) ? definitions : { sops: [definitions] };
+      await writeFile(join(output, "sops", "definition.json"), JSON.stringify(bundle), "utf8");
+    }
     deployment.modules.sop = {
       ...deployment.modules.sop,
       ...(sop.kind === "legacy" ? { endpoint: "http://sop-runtime:8091" } : {}),
@@ -449,6 +459,9 @@ function compose(sop, providerHosts, externalModules) {
   }
   if (Object.keys(dependencies).length > 0) pilotdeck.depends_on = dependencies;
   const volumes = { "pilotdeck-home": {} };
+  if (managed.some(module => module.slot === "sop" && module.deployment.builtin === "staffdeck-sop")) {
+    volumes["sop-runtime-data"] = {};
+  }
   if (managed.some((module) => module.slot === "knowledge" && module.deployment.builtin === "staffdeck-knowledge")) {
     volumes["staffdeck-knowledge-data"] = {};
   }
@@ -478,6 +491,11 @@ function deploymentService(slot, deployment) {
     MODULE_IMPLEMENTATION_ID: `exported.${slot}`,
     MODULE_PORT: String(deployment.port),
   };
+  if (deployment.builtin === "staffdeck-sop") {
+    service.environment.SOP_RUNTIME_DB = "/data/sop-runtime.sqlite";
+    service.environment.SOP_DEFINITIONS_DIR = "/definitions";
+    service.volumes = ["sop-runtime-data:/data", "./sops:/definitions:ro"];
+  }
   if (deployment.builtin === "staffdeck-knowledge") {
     service.environment = {
       ...service.environment,

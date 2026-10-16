@@ -1,0 +1,1222 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 10421,
+    "displayUsed": 10421,
+    "localEstimateTokens": 10421,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.0933647505733945,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 10421,
+      "system": 3038,
+      "tools": 7358,
+      "messages": 25,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " user wants",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " me to",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 14
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " find an",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 20
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " \"amber project verification",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 28
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " code\"",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 56
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " using knowledge_query.",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 62
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Let me search for",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 85
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " this",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 103
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " information.",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 11,
+      "offset": 108
+    },
+    "sequence": 14
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+    "text": "The user wants me to find an \"amber project verification code\" using knowledge_query. Let me search for this information.",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 0,
+      "revision": 15
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 15
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "tool:call_394428b45a224a6eade16f26",
+      "previousId": "3f4c3b16-a8da-4de4-b641-c55ad38e2f43:thinking:0",
+      "order": 1,
+      "revision": 16
+    },
+    "type": "tool_call_started",
+    "toolCallId": "call_394428b45a224a6eade16f26",
+    "name": "knowledge_query",
+    "argsPreview": "{\"query\":\"amber project verification code\"}",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 16
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "call_394428b45a224a6eade16f26",
+    "ok": true,
+    "resultPreview": "{\"selected_buckets\":[{\"id\":\"kbucket_d0851545d5c24a2c\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_8a81d78932c844db\",\"document_id\":\"kdoc_5ca6a52eac154d80\",\"bucket_key\":\"binding_amber_policy\",\"title\":\"Binding amber policy\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"token_estimate\":41,\"chunk_count\":1,\"status\":\"ready\",\"metadata\":{\"ingest_schema_version\":2,\"content\":\"# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\",\"bucket_type\":\"structure\",\"concept_type\":\"Topic\",\"section_ids\":[\"sec_1\"],\"section_paths\":[\"Binding amber policy\"],\"representative_chunk_ids\":[\"kchunk_fdb09d37e5314b76\"],\"applicable_query_types\":[\"answer\",\"policy_check\"],\"quality\":{\"status\":\"ready\",\"warnings\":[],\"has_source_sections\":true,\"has_summary\":true,\"content_chars\":82},\"document_card\":{\"title\":\"general\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\"},\"chunk_count\":1},\"created_at\":\"2026-10-13T07:34:35.468596\",\"updated_at\":\"2026-10-13T07:34:35.472138\"}],\"chunks\":[{\"id\":\"kchunk_fdb09d37e5314b76\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_8a81d78932c844db\",\"document_id\":\"kdoc_5ca6a52eac154d80\",\"bucket_id\":\"kbucket_d0851545d5c24a2c\",\"chunk_index\":0,\"content\":\"The amber project verification code is AMBER_BINDING_7391.\",\"summary\":\"The amber project verification code is AMBER_BINDING_7391.\",\"source_ref\":\"general.md / Binding amber policy / evidence 1\",\"metadata\":{\"ingest_schema_version\":2,\"node_type\":\"evidence_chunk\",\"related_group_id\":null,\"related_chunk_index\":0,\"section_id\":\"sec_1\",\"section_path\":\"Binding amber policy\",\"section_title\":\"Binding amber policy\",\"bucket_title\":\"Binding amber policy\",\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"context_window\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"related_chunk_ids\":[],\"related_chunk_count\":0,\"related_previous_chunk_id\":null,\"related_next_chunk_id\":null},\"created_at\":\"2026-10-13T07:34:35.472077\",\"updated_at\":\"2026-10-13T07:34:35.472083\"}],\"trace\":[{\"phase\":\"okf_concept_route\",\"message\":\"正在选择 OKF Wiki 页面\",\"candidate_count\":3,\"selected_count\":3},{\"phase\":\"document_route\",\"message\":\"正在选择知识文档\",\"candidate_count\":1,\"mode\":\"chat\"},{\"phase\":\"document_route_lexical\",\"message\":\"按检索相关性选择知识文档\",\"selected_count\":1},{\"phase\":\"bucket_route\",\"message\":\"正在选择内部索引\",\"candidate_count\":1,\"selected_document_ids\":[\"kdoc_5ca6a52eac154d80\"]},{\"phase\":\"bucket_route_lexical\",\"message\":\"按检索相关性选择内部索引\",\"selected_count\":1},{\"phase\":\"section_expand\",\"message\":\"正在展开章节\",\"section_count\":1},{\"phase\":\"read_chunks\",\"message\":\"读取引用来源\",\"chunk_count\":1},{\"phase\":\"evidence_pack\",\"message\":\"整理引用来源包\",\"evidence_count\":1}],\"route_trace\":[{\"phase\":\"okf_concept_route\",\"message\":\"正在选择 OKF Wiki 页面\",\"candidate_count\":3,\"selected_count\":3},{\"phase\":\"document_route\",\"message\":\"正在选择知识文档\",\"candidate_count\":1,\"mode\":\"chat\"},{\"phase\":\"document_route_lexical\",\"message\":\"按检索相关性选择知识文档\",\"selected_count\":1},{\"phase\":\"bucket_route\",\"message\":\"正在选择内部索引\",\"candidate_count\":1,\"selected_document_ids\":[\"kdoc_5ca6a52eac154d80\"]},{\"phase\":\"bucket_route_lexical\",\"message\":\"按检索相关性选择内部索引\",\"selected_count\":1},{\"phase\":\"section_expand\",\"message\":\"正在展开章节\",\"section_count\":1},{\"phase\":\"read_chunks\",\"message\":\"读取引用来源\",\"chunk_count\":1},{\"phase\":\"evidence_pack\",\"message\":\"整理引用来源包\",\"evidence_count\":1}],\"selected_documents\":[{\"id\":\"kdoc_5ca6a52eac154d80\",\"knowledge_base_id\":\"kb_8a81d78932c844db\",\"title\":\"general\",\"filename\":\"general.md\",\"file_type\":\"md\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"outline\":[{\"section_id\":\"sec_1\",\"title\":\"Binding amber policy\",\"path\":\"Binding amber policy\",\"level\":1,\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\"}],\"key_entities\":[\"Binding\",\"amber\",\"policy\",\"The\",\"project\",\"verification\",\"code\",\"AMBER_BINDING_7391\"],\"section_count\":1,\"chunk_count\":1,\"updated_at\":\"2026-10-13T07:34:35.497758\"}],\"selected_concepts\":[{\"id\":\"kconcept_f025084d3dba4b37\",\"concept_id\":\"topics/binding-amber-policy\",\"type\":\"Topic\",\"title\":\"Binding amber policy\",\"description\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"links\":[{\"label\":\"Binding amber policy\",\"target\":\"/sources/general/sections/sec-1.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"source_refs\":[{\"document_id\":\"kdoc_5ca6a52eac154d80\",\"bucket_id\":\"kbucket_d0851545d5c24a2c\",\"bucket_key\":\"binding_amber_policy\"}],\"content\":\"# Summary\\n\\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Source Sections\\n\\n- [Binding amber policy](/sources/general/sections/sec-1.md)\\n\\n# Notes\\n\\n# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)\"},{\"id\":\"kconcept_41985edd2a3f46f4\",\"concept_id\":\"sources/general/sections/sec-1\",\"type\":\"Source Section\",\"title\":\"Binding amber policy\",\"description\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"links\":[{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"source_refs\":[{\"document_id\":\"kdoc_5ca6a52eac154d80\",\"section_id\":\"sec_1\",\"section_path\":\"Binding amber policy\"}],\"content\":\"# Summary\\n\\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Content\\n\\n# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)\"},{\"id\":\"kconcept_ad4a61387a444be1\",\"concept_id\":\"sources/general\",\"type\":\"Source Document\",\"title\":\"general\",\"description\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"links\":[{\"label\":\"Binding amber policy\",\"target\":\"/sources/general/sections/sec-1.md\"},{\"label\":\"Binding amber policy\",\"target\":\"/topics/binding-amber-policy.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"source_refs\":[{\"document_id\":\"kdoc_5ca6a52eac154d80\",\"filename\":\"general.md\"}],\"content\":\"# Summary\\n\\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Outline\\n\\n- [Binding amber policy](/sources/general/sections/sec-1.md) - # Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Knowledge Buckets\\n\\n- [Binding amber policy](/topics/binding-amber-policy.md) - # Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)\"}],\"expanded_sections\":[{\"document_id\":\"kdoc_5ca6a52eac154d80\",\"section_id\":\"sec_1\",\"title\":\"Binding amber policy\",\"path\":\"Binding amber policy\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"level\":1,\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"reason\":\"命中内部索引：Binding amber policy\"}],\"okf_citations\":[{\"concept_id\":\"topics/binding-amber-policy\",\"title\":\"Binding amber policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"},{\"concept_id\":\"sources/general/sections/sec-1\",\"title\":\"Binding amber policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"},{\"concept_id\":\"sources/general\",\"title\":\"general\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"evidence_pack\":[{\"chunk_id\":\"kchunk_fdb09d37e5314b76\",\"related_group_id\":null,\"related_chunk_ids\":[],\"related_chunk_index\":0,\"document_id\":\"kdoc_5ca6a52eac154d80\",\"bucket_id\":\"kbucket_d0851545d5c24a2c\",\"source_path\":\"general.md / Binding amber policy / evidence 1\",\"section_path\":\"Binding amber policy\",\"summary\":\"The amber project verification code is AMBER_BINDING_7391.\",\"content\":\"The amber project verification code is AMBER_BINDING_7391.\",\"excerpt\":\"The amber project verification code is AMBER_BINDING_7391.\",\"relevance_score\":18.38,\"confidence_reason\":\"引用来源摘要、章节路径或正文与查询相关\"}]}",
+    "resultLineCount": 1,
+    "resultBytes": 8891,
+    "toolName": "knowledge_query",
+    "resultPath": "/var/folders/xd/mml9c6fj2g95x40hgf_n6lrr0000gn/T/pilotdeck-tool-output/21776/binding-chat-general-1791877209887/a09b9b99-b899-4648-a753-14f742ead978/call_394428b45a224a6eade16f26.txt",
+    "data": {
+      "selected_buckets": [
+        {
+          "id": "kbucket_d0851545d5c24a2c",
+          "tenant_id": "binding-tenant",
+          "knowledge_base_id": "kb_8a81d78932c844db",
+          "document_id": "kdoc_5ca6a52eac154d80",
+          "bucket_key": "binding_amber_policy",
+          "title": "Binding amber policy",
+          "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "token_estimate": 41,
+          "chunk_count": 1,
+          "status": "ready",
+          "metadata": {
+            "ingest_schema_version": 2,
+            "content": "# Binding amber policy\n\nThe amber project verification code is AMBER_BINDING_7391.",
+            "bucket_type": "structure",
+            "concept_type": "Topic",
+            "section_ids": [
+              "sec_1"
+            ],
+            "section_paths": [
+              "Binding amber policy"
+            ],
+            "representative_chunk_ids": [
+              "kchunk_fdb09d37e5314b76"
+            ],
+            "applicable_query_types": [
+              "answer",
+              "policy_check"
+            ],
+            "quality": {
+              "status": "ready",
+              "warnings": [],
+              "has_source_sections": true,
+              "has_summary": true,
+              "content_chars": 82
+            },
+            "document_card": {
+              "title": "general",
+              "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391."
+            },
+            "chunk_count": 1
+          },
+          "created_at": "2026-10-13T07:34:35.468596",
+          "updated_at": "2026-10-13T07:34:35.472138"
+        }
+      ],
+      "chunks": [
+        {
+          "id": "kchunk_fdb09d37e5314b76",
+          "tenant_id": "binding-tenant",
+          "knowledge_base_id": "kb_8a81d78932c844db",
+          "document_id": "kdoc_5ca6a52eac154d80",
+          "bucket_id": "kbucket_d0851545d5c24a2c",
+          "chunk_index": 0,
+          "content": "The amber project verification code is AMBER_BINDING_7391.",
+          "summary": "The amber project verification code is AMBER_BINDING_7391.",
+          "source_ref": "general.md / Binding amber policy / evidence 1",
+          "metadata": {
+            "ingest_schema_version": 2,
+            "node_type": "evidence_chunk",
+            "related_group_id": null,
+            "related_chunk_index": 0,
+            "section_id": "sec_1",
+            "section_path": "Binding amber policy",
+            "section_title": "Binding amber policy",
+            "bucket_title": "Binding amber policy",
+            "source_span": {
+              "start_paragraph": 0,
+              "end_paragraph": 1
+            },
+            "context_window": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+            "related_chunk_ids": [],
+            "related_chunk_count": 0,
+            "related_previous_chunk_id": null,
+            "related_next_chunk_id": null
+          },
+          "created_at": "2026-10-13T07:34:35.472077",
+          "updated_at": "2026-10-13T07:34:35.472083"
+        }
+      ],
+      "trace": [
+        {
+          "phase": "okf_concept_route",
+          "message": "正在选择 OKF Wiki 页面",
+          "candidate_count": 3,
+          "selected_count": 3
+        },
+        {
+          "phase": "document_route",
+          "message": "正在选择知识文档",
+          "candidate_count": 1,
+          "mode": "chat"
+        },
+        {
+          "phase": "document_route_lexical",
+          "message": "按检索相关性选择知识文档",
+          "selected_count": 1
+        },
+        {
+          "phase": "bucket_route",
+          "message": "正在选择内部索引",
+          "candidate_count": 1,
+          "selected_document_ids": [
+            "kdoc_5ca6a52eac154d80"
+          ]
+        },
+        {
+          "phase": "bucket_route_lexical",
+          "message": "按检索相关性选择内部索引",
+          "selected_count": 1
+        },
+        {
+          "phase": "section_expand",
+          "message": "正在展开章节",
+          "section_count": 1
+        },
+        {
+          "phase": "read_chunks",
+          "message": "读取引用来源",
+          "chunk_count": 1
+        },
+        {
+          "phase": "evidence_pack",
+          "message": "整理引用来源包",
+          "evidence_count": 1
+        }
+      ],
+      "route_trace": [
+        {
+          "phase": "okf_concept_route",
+          "message": "正在选择 OKF Wiki 页面",
+          "candidate_count": 3,
+          "selected_count": 3
+        },
+        {
+          "phase": "document_route",
+          "message": "正在选择知识文档",
+          "candidate_count": 1,
+          "mode": "chat"
+        },
+        {
+          "phase": "document_route_lexical",
+          "message": "按检索相关性选择知识文档",
+          "selected_count": 1
+        },
+        {
+          "phase": "bucket_route",
+          "message": "正在选择内部索引",
+          "candidate_count": 1,
+          "selected_document_ids": [
+            "kdoc_5ca6a52eac154d80"
+          ]
+        },
+        {
+          "phase": "bucket_route_lexical",
+          "message": "按检索相关性选择内部索引",
+          "selected_count": 1
+        },
+        {
+          "phase": "section_expand",
+          "message": "正在展开章节",
+          "section_count": 1
+        },
+        {
+          "phase": "read_chunks",
+          "message": "读取引用来源",
+          "chunk_count": 1
+        },
+        {
+          "phase": "evidence_pack",
+          "message": "整理引用来源包",
+          "evidence_count": 1
+        }
+      ],
+      "selected_documents": [
+        {
+          "id": "kdoc_5ca6a52eac154d80",
+          "knowledge_base_id": "kb_8a81d78932c844db",
+          "title": "general",
+          "filename": "general.md",
+          "file_type": "md",
+          "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "outline": [
+            {
+              "section_id": "sec_1",
+              "title": "Binding amber policy",
+              "path": "Binding amber policy",
+              "level": 1,
+              "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391."
+            }
+          ],
+          "key_entities": [
+            "Binding",
+            "amber",
+            "policy",
+            "The",
+            "project",
+            "verification",
+            "code",
+            "AMBER_BINDING_7391"
+          ],
+          "section_count": 1,
+          "chunk_count": 1,
+          "updated_at": "2026-10-13T07:34:35.497758"
+        }
+      ],
+      "selected_concepts": [
+        {
+          "id": "kconcept_f025084d3dba4b37",
+          "concept_id": "topics/binding-amber-policy",
+          "type": "Topic",
+          "title": "Binding amber policy",
+          "description": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "links": [
+            {
+              "label": "Binding amber policy",
+              "target": "/sources/general/sections/sec-1.md"
+            },
+            {
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+            }
+          ],
+          "citations": [
+            {
+              "index": 1,
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+            }
+          ],
+          "source_refs": [
+            {
+              "document_id": "kdoc_5ca6a52eac154d80",
+              "bucket_id": "kbucket_d0851545d5c24a2c",
+              "bucket_key": "binding_amber_policy"
+            }
+          ],
+          "content": "# Summary\n\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Source Sections\n\n- [Binding amber policy](/sources/general/sections/sec-1.md)\n\n# Notes\n\n# Binding amber policy\n\nThe amber project verification code is AMBER_BINDING_7391.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)"
+        },
+        {
+          "id": "kconcept_41985edd2a3f46f4",
+          "concept_id": "sources/general/sections/sec-1",
+          "type": "Source Section",
+          "title": "Binding amber policy",
+          "description": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "links": [
+            {
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+            }
+          ],
+          "citations": [
+            {
+              "index": 1,
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+            }
+          ],
+          "source_refs": [
+            {
+              "document_id": "kdoc_5ca6a52eac154d80",
+              "section_id": "sec_1",
+              "section_path": "Binding amber policy"
+            }
+          ],
+          "content": "# Summary\n\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Content\n\n# Binding amber policy\n\nThe amber project verification code is AMBER_BINDING_7391.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)"
+        },
+        {
+          "id": "kconcept_ad4a61387a444be1",
+          "concept_id": "sources/general",
+          "type": "Source Document",
+          "title": "general",
+          "description": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "links": [
+            {
+              "label": "Binding amber policy",
+              "target": "/sources/general/sections/sec-1.md"
+            },
+            {
+              "label": "Binding amber policy",
+              "target": "/topics/binding-amber-policy.md"
+            },
+            {
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+            }
+          ],
+          "citations": [
+            {
+              "index": 1,
+              "label": "Original document",
+              "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+            }
+          ],
+          "source_refs": [
+            {
+              "document_id": "kdoc_5ca6a52eac154d80",
+              "filename": "general.md"
+            }
+          ],
+          "content": "# Summary\n\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Outline\n\n- [Binding amber policy](/sources/general/sections/sec-1.md) - # Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Knowledge Buckets\n\n- [Binding amber policy](/topics/binding-amber-policy.md) - # Binding amber policy The amber project verification code is AMBER_BINDING_7391.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)"
+        }
+      ],
+      "expanded_sections": [
+        {
+          "document_id": "kdoc_5ca6a52eac154d80",
+          "section_id": "sec_1",
+          "title": "Binding amber policy",
+          "path": "Binding amber policy",
+          "summary": "# Binding amber policy The amber project verification code is AMBER_BINDING_7391.",
+          "level": 1,
+          "source_span": {
+            "start_paragraph": 0,
+            "end_paragraph": 1
+          },
+          "reason": "命中内部索引：Binding amber policy"
+        }
+      ],
+      "okf_citations": [
+        {
+          "concept_id": "topics/binding-amber-policy",
+          "title": "Binding amber policy",
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+        },
+        {
+          "concept_id": "sources/general/sections/sec-1",
+          "title": "Binding amber policy",
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+        },
+        {
+          "concept_id": "sources/general",
+          "title": "general",
+          "label": "Original document",
+          "target": "ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80"
+        }
+      ],
+      "evidence_pack": [
+        {
+          "chunk_id": "kchunk_fdb09d37e5314b76",
+          "related_group_id": null,
+          "related_chunk_ids": [],
+          "related_chunk_index": 0,
+          "document_id": "kdoc_5ca6a52eac154d80",
+          "bucket_id": "kbucket_d0851545d5c24a2c",
+          "source_path": "general.md / Binding amber policy / evidence 1",
+          "section_path": "Binding amber policy",
+          "summary": "The amber project verification code is AMBER_BINDING_7391.",
+          "content": "The amber project verification code is AMBER_BINDING_7391.",
+          "excerpt": "The amber project verification code is AMBER_BINDING_7391.",
+          "relevance_score": 18.38,
+          "confidence_reason": "引用来源摘要、章节路径或正文与查询相关"
+        }
+      ]
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "result:call_394428b45a224a6eade16f26",
+      "previousId": "tool:call_394428b45a224a6eade16f26",
+      "order": 2,
+      "revision": 17
+    },
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 17
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "call_394428b45a224a6eade16f26",
+    "fullText": "{\"selected_buckets\":[{\"id\":\"kbucket_d0851545d5c24a2c\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_8a81d78932c844db\",\"document_id\":\"kdoc_5ca6a52eac154d80\",\"bucket_key\":\"binding_amber_policy\",\"title\":\"Binding amber policy\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"token_estimate\":41,\"chunk_count\":1,\"status\":\"ready\",\"metadata\":{\"ingest_schema_version\":2,\"content\":\"# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\",\"bucket_type\":\"structure\",\"concept_type\":\"Topic\",\"section_ids\":[\"sec_1\"],\"section_paths\":[\"Binding amber policy\"],\"representative_chunk_ids\":[\"kchunk_fdb09d37e5314b76\"],\"applicable_query_types\":[\"answer\",\"policy_check\"],\"quality\":{\"status\":\"ready\",\"warnings\":[],\"has_source_sections\":true,\"has_summary\":true,\"content_chars\":82},\"document_card\":{\"title\":\"general\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\"},\"chunk_count\":1},\"created_at\":\"2026-10-13T07:34:35.468596\",\"updated_at\":\"2026-10-13T07:34:35.472138\"}],\"chunks\":[{\"id\":\"kchunk_fdb09d37e5314b76\",\"tenant_id\":\"binding-tenant\",\"knowledge_base_id\":\"kb_8a81d78932c844db\",\"document_id\":\"kdoc_5ca6a52eac154d80\",\"bucket_id\":\"kbucket_d0851545d5c24a2c\",\"chunk_index\":0,\"content\":\"The amber project verification code is AMBER_BINDING_7391.\",\"summary\":\"The amber project verification code is AMBER_BINDING_7391.\",\"source_ref\":\"general.md / Binding amber policy / evidence 1\",\"metadata\":{\"ingest_schema_version\":2,\"node_type\":\"evidence_chunk\",\"related_group_id\":null,\"related_chunk_index\":0,\"section_id\":\"sec_1\",\"section_path\":\"Binding amber policy\",\"section_title\":\"Binding amber policy\",\"bucket_title\":\"Binding amber policy\",\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"context_window\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"related_chunk_ids\":[],\"related_chunk_count\":0,\"related_previous_chunk_id\":null,\"related_next_chunk_id\":null},\"created_at\":\"2026-10-13T07:34:35.472077\",\"updated_at\":\"2026-10-13T07:34:35.472083\"}],\"trace\":[{\"phase\":\"okf_concept_route\",\"message\":\"正在选择 OKF Wiki 页面\",\"candidate_count\":3,\"selected_count\":3},{\"phase\":\"document_route\",\"message\":\"正在选择知识文档\",\"candidate_count\":1,\"mode\":\"chat\"},{\"phase\":\"document_route_lexical\",\"message\":\"按检索相关性选择知识文档\",\"selected_count\":1},{\"phase\":\"bucket_route\",\"message\":\"正在选择内部索引\",\"candidate_count\":1,\"selected_document_ids\":[\"kdoc_5ca6a52eac154d80\"]},{\"phase\":\"bucket_route_lexical\",\"message\":\"按检索相关性选择内部索引\",\"selected_count\":1},{\"phase\":\"section_expand\",\"message\":\"正在展开章节\",\"section_count\":1},{\"phase\":\"read_chunks\",\"message\":\"读取引用来源\",\"chunk_count\":1},{\"phase\":\"evidence_pack\",\"message\":\"整理引用来源包\",\"evidence_count\":1}],\"route_trace\":[{\"phase\":\"okf_concept_route\",\"message\":\"正在选择 OKF Wiki 页面\",\"candidate_count\":3,\"selected_count\":3},{\"phase\":\"document_route\",\"message\":\"正在选择知识文档\",\"candidate_count\":1,\"mode\":\"chat\"},{\"phase\":\"document_route_lexical\",\"message\":\"按检索相关性选择知识文档\",\"selected_count\":1},{\"phase\":\"bucket_route\",\"message\":\"正在选择内部索引\",\"candidate_count\":1,\"selected_document_ids\":[\"kdoc_5ca6a52eac154d80\"]},{\"phase\":\"bucket_route_lexical\",\"message\":\"按检索相关性选择内部索引\",\"selected_count\":1},{\"phase\":\"section_expand\",\"message\":\"正在展开章节\",\"section_count\":1},{\"phase\":\"read_chunks\",\"message\":\"读取引用来源\",\"chunk_count\":1},{\"phase\":\"evidence_pack\",\"message\":\"整理引用来源包\",\"evidence_count\":1}],\"selected_documents\":[{\"id\":\"kdoc_5ca6a52eac154d80\",\"knowledge_base_id\":\"kb_8a81d78932c844db\",\"title\":\"general\",\"filename\":\"general.md\",\"file_type\":\"md\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"outline\":[{\"section_id\":\"sec_1\",\"title\":\"Binding amber policy\",\"path\":\"Binding amber policy\",\"level\":1,\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\"}],\"key_entities\":[\"Binding\",\"amber\",\"policy\",\"The\",\"project\",\"verification\",\"code\",\"AMBER_BINDING_7391\"],\"section_count\":1,\"chunk_count\":1,\"updated_at\":\"2026-10-13T07:34:35.497758\"}],\"selected_concepts\":[{\"id\":\"kconcept_f025084d3dba4b37\",\"concept_id\":\"topics/binding-amber-policy\",\"type\":\"Topic\",\"title\":\"Binding amber policy\",\"description\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"links\":[{\"label\":\"Binding amber policy\",\"target\":\"/sources/general/sections/sec-1.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"source_refs\":[{\"document_id\":\"kdoc_5ca6a52eac154d80\",\"bucket_id\":\"kbucket_d0851545d5c24a2c\",\"bucket_key\":\"binding_amber_policy\"}],\"content\":\"# Summary\\n\\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Source Sections\\n\\n- [Binding amber policy](/sources/general/sections/sec-1.md)\\n\\n# Notes\\n\\n# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)\"},{\"id\":\"kconcept_41985edd2a3f46f4\",\"concept_id\":\"sources/general/sections/sec-1\",\"type\":\"Source Section\",\"title\":\"Binding amber policy\",\"description\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"links\":[{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"source_refs\":[{\"document_id\":\"kdoc_5ca6a52eac154d80\",\"section_id\":\"sec_1\",\"section_path\":\"Binding amber policy\"}],\"content\":\"# Summary\\n\\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Content\\n\\n# Binding amber policy\\n\\nThe amber project verification code is AMBER_BINDING_7391.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)\"},{\"id\":\"kconcept_ad4a61387a444be1\",\"concept_id\":\"sources/general\",\"type\":\"Source Document\",\"title\":\"general\",\"description\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"links\":[{\"label\":\"Binding amber policy\",\"target\":\"/sources/general/sections/sec-1.md\"},{\"label\":\"Binding amber policy\",\"target\":\"/topics/binding-amber-policy.md\"},{\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"citations\":[{\"index\":1,\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"source_refs\":[{\"document_id\":\"kdoc_5ca6a52eac154d80\",\"filename\":\"general.md\"}],\"content\":\"# Summary\\n\\n# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Outline\\n\\n- [Binding amber policy](/sources/general/sections/sec-1.md) - # Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Knowledge Buckets\\n\\n- [Binding amber policy](/topics/binding-amber-policy.md) - # Binding amber policy The amber project verification code is AMBER_BINDING_7391.\\n\\n# Citations\\n\\n[1] [Original document](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80)\"}],\"expanded_sections\":[{\"document_id\":\"kdoc_5ca6a52eac154d80\",\"section_id\":\"sec_1\",\"title\":\"Binding amber policy\",\"path\":\"Binding amber policy\",\"summary\":\"# Binding amber policy The amber project verification code is AMBER_BINDING_7391.\",\"level\":1,\"source_span\":{\"start_paragraph\":0,\"end_paragraph\":1},\"reason\":\"命中内部索引：Binding amber policy\"}],\"okf_citations\":[{\"concept_id\":\"topics/binding-amber-policy\",\"title\":\"Binding amber policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"},{\"concept_id\":\"sources/general/sections/sec-1\",\"title\":\"Binding amber policy\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"},{\"concept_id\":\"sources/general\",\"title\":\"general\",\"label\":\"Original document\",\"target\":\"ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80\"}],\"evidence_pack\":[{\"chunk_id\":\"kchunk_fdb09d37e5314b76\",\"related_group_id\":null,\"related_chunk_ids\":[],\"related_chunk_index\":0,\"document_id\":\"kdoc_5ca6a52eac154d80\",\"bucket_id\":\"kbucket_d0851545d5c24a2c\",\"source_path\":\"general.md / Binding amber policy / evidence 1\",\"section_path\":\"Binding amber policy\",\"summary\":\"The amber project verification code is AMBER_BINDING_7391.\",\"content\":\"The amber project verification code is AMBER_BINDING_7391.\",\"excerpt\":\"The amber project verification code is AMBER_BINDING_7391.\",\"relevance_score\":18.38,\"confidence_reason\":\"引用来源摘要、章节路径或正文与查询相关\"}]}",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 18
+  },
+  {
+    "type": "agent_status",
+    "event": "turn_continued",
+    "detail": {
+      "reason": "next_turn"
+    },
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 19
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 20
+  },
+  {
+    "type": "context_budget",
+    "used": 14759,
+    "displayUsed": 14759,
+    "localEstimateTokens": 12864,
+    "estimateSource": "usage",
+    "usageTokens": 14759,
+    "calibrationActualInputTokens": 12316,
+    "calibrationEstimatedInputTokens": 10421,
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.13223014621559634,
+    "state": "ok",
+    "source": "calibrated",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 12864,
+      "system": 3038,
+      "tools": 7358,
+      "messages": 2468,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 21
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "previousId": "result:call_394428b45a224a6eade16f26",
+      "order": 3,
+      "revision": 20,
+      "offset": 0
+    },
+    "sequence": 22
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " knowledge query returned",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "previousId": "result:call_394428b45a224a6eade16f26",
+      "order": 3,
+      "revision": 21,
+      "offset": 3
+    },
+    "sequence": 23
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " the amber project verification",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "previousId": "result:call_394428b45a224a6eade16f26",
+      "order": 3,
+      "revision": 22,
+      "offset": 28
+    },
+    "sequence": 24
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " code clearly",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "previousId": "result:call_394428b45a224a6eade16f26",
+      "order": 3,
+      "revision": 23,
+      "offset": 59
+    },
+    "sequence": 25
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "previousId": "result:call_394428b45a224a6eade16f26",
+      "order": 3,
+      "revision": 24,
+      "offset": 72
+    },
+    "sequence": 26
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "The amber project",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 26,
+      "offset": 0
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 27
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " verification code is:",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 27,
+      "offset": 17
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 28
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "\n\n**AMBER",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 28,
+      "offset": 39
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 29
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "_BINDING_73",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 29,
+      "offset": 48
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 30
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "91**\n\n",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 30,
+      "offset": 59
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 31
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "**Source:** [",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 31,
+      "offset": 65
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 32
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "Binding amber policy](",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 32,
+      "offset": 78
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 33
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "ultrarag://",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 33,
+      "offset": 100
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 34
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "knowledge",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 34,
+      "offset": 111
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 35
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "/documents/kdoc_",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 35,
+      "offset": 120
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 36
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "5ca6a",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 36,
+      "offset": 136
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 37
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "52eac",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 37,
+      "offset": 141
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 38
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "154d",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 38,
+      "offset": 146
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 39
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "80) —",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 39,
+      "offset": 150
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 40
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " document `general.md",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 40,
+      "offset": 155
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 41
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "`,",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 41,
+      "offset": 176
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 42
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " section \"Binding amber",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 42,
+      "offset": 178
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 43
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " policy\"",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 43,
+      "offset": 201
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 44
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": " (`kdoc_",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 44,
+      "offset": 209
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 45
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "5ca",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 45,
+      "offset": 217
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 46
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "6a52",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 46,
+      "offset": 220
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 47
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "eac15",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 47,
+      "offset": 224
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 48
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "4d80",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 48,
+      "offset": 229
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 49
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "`).",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 49,
+      "offset": 233
+    },
+    "model": "qwen3.6-flash-distill",
+    "sequence": 50
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+    "text": "The knowledge query returned the amber project verification code clearly.",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "previousId": "result:call_394428b45a224a6eade16f26",
+      "order": 3,
+      "revision": 51
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 51
+  },
+  {
+    "type": "assistant_block",
+    "kind": "text",
+    "blockId": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+    "text": "The amber project verification code is:\n\n**AMBER_BINDING_7391**\n\n**Source:** [Binding amber policy](ultrarag://knowledge/documents/kdoc_5ca6a52eac154d80) — document `general.md`, section \"Binding amber policy\" (`kdoc_5ca6a52eac154d80`).",
+    "timeline": {
+      "version": 1,
+      "turnId": "a09b9b99-b899-4648-a753-14f742ead978",
+      "id": "25ae801b-f830-4085-bdc0-561c0e20b98a:text:0",
+      "previousId": "25ae801b-f830-4085-bdc0-561c0e20b98a:thinking:0",
+      "order": 4,
+      "revision": 52
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 52
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 27275,
+      "outputTokens": 155,
+      "totalTokens": 27430
+    },
+    "finishReason": "completed",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 53
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 27275,
+      "outputTokens": 155,
+      "totalTokens": 27430
+    },
+    "finishReason": "completed",
+    "runId": "a09b9b99-b899-4648-a753-14f742ead978",
+    "sequence": 54
+  }
+]

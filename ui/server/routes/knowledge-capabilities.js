@@ -10,7 +10,7 @@ export function createKnowledgeCapabilitiesRouter({ loadConfig, getGateway, getH
   router.use((req, res, next) => { req.moduleRequestSignal ??= bindModuleRequestAbort(req, res); next(); });
   router.post('/:operation', async (req, res) => {
     try {
-      const binding = loadConfig()?.modules?.knowledge;
+      const binding = loadConfig(req)?.modules?.knowledge;
       if (binding?.enabled !== true || binding.contract !== 'knowledge-core/v1') throw failure(503, 'Independent KM is not configured');
       if (internal) {
         const token = binding.capabilitiesCredentialEnv && process.env[binding.capabilitiesCredentialEnv];

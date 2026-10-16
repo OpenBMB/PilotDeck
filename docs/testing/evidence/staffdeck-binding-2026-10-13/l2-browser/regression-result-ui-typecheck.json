@@ -1,0 +1,15 @@
+[
+  {
+    "name": "ui-typecheck",
+    "cwd": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/ui",
+    "command": [
+      "npm",
+      "run",
+      "typecheck"
+    ],
+    "status": "PASS",
+    "exitCode": 0,
+    "elapsedMs": 10911,
+    "summary": []
+  }
+]

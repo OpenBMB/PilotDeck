@@ -7,6 +7,21 @@ import { createStaffDeckPublishRoute } from './staffdeck-publish-route.js';
 
 const owner = { tenantId: 'tenant', actorUserId: 'actor', agentId: 'agent', credentialId: 'owned' };
 const definition = version => ({ id: 'row-' + version, skill_id: 'selected', name: 'Test', version, status: 'published', content: { skill_id: 'selected', version, nodes: [{ node_id: 'n', extension: { preserved: true } }], edges: [] } });
+test('archive removes only the requested runtime definition after owner success', async t => {
+  const f = await fixture(t), calls = [];
+  const route = createStaffDeckPublishRoute({ getGateway: async () => ({ reloadExtensions: async input => { calls.push(input); return { reloaded: true }; } }) });
+  await route.publish({ ...f, owner, sopId: 'selected', publish: async () => ({ status: 200, body: { sop: definition('2') } }) });
+  assert.equal((await route.read({ ...f, owner })).receipts.length, 1);
+  calls.length = 0;
+  const failure = await route.archive({ ...f, owner, sopId: 'selected', archive: async () => ({ status: 403, body: {} }) });
+  assert.equal(failure.status, 403);
+  assert.equal(JSON.parse(await readFile(f.path, 'utf8')).sops.length, 1);
+  const archived = await route.archive({ ...f, owner, sopId: 'selected', archive: async () => ({ status: 200, body: { skill_id: 'selected', status: 'archived' } }) });
+  assert.equal(archived.runtime.refreshRequested, true);
+  assert.equal(JSON.parse(await readFile(f.path, 'utf8')).sops.length, 0);
+  assert.deepEqual((await route.read({ ...f, owner })).receipts, []);
+  assert.deepEqual(calls, [{ changedPaths: [f.path] }]);
+});
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'publish-route-'));
   t.after(() => rm(dir, { recursive: true, force: true }));

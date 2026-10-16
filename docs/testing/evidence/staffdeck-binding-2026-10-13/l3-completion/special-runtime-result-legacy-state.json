@@ -1,0 +1,62 @@
+[
+  {
+    "name": "L3-APPROVAL-approved",
+    "repetition": 0,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-approved-1791889045312-0",
+      "decision": "approved",
+      "sopId": "binding_approval_1791889045312",
+      "legacyFixedTarget": true,
+      "browserApproval": false,
+      "finalStatus": "completed",
+      "replay": true,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-approved-1791889045312-0",
+        "requestId": "approval-approved-1791889045312-0",
+        "revision": 6,
+        "message": "Human decision: approved. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 49703
+  },
+  {
+    "name": "L3-APPROVAL-rejected",
+    "repetition": 0,
+    "status": "PASS",
+    "evidence": {
+      "sessionKey": "binding-approval-rejected-1791889045312-0",
+      "decision": "rejected",
+      "sopId": "binding_approval_1791889045312",
+      "legacyFixedTarget": true,
+      "browserApproval": false,
+      "finalStatus": "completed",
+      "replay": true,
+      "receipt": {
+        "accepted": true,
+        "duplicate": false,
+        "sessionId": "binding-approval-rejected-1791889045312-0",
+        "requestId": "approval-rejected-1791889045312-0",
+        "revision": 9,
+        "message": "Human decision: rejected. Finish the procedure with this decision."
+      }
+    },
+    "elapsedMs": 60294
+  },
+  {
+    "name": "C01-RESTORE",
+    "status": "PASS",
+    "restored": {
+      "projectRoot": "$QA_ROOT/workspace/ProjectA",
+      "bindingId": "5162da74-64c6-41e8-a463-568caf377882",
+      "agentName": "ProjectA-5162da74",
+      "origin": "http://127.0.0.1:26010",
+      "tenantId": "binding-tenant",
+      "status": "bound",
+      "updatedAt": "2026-10-13T10:59:22.329Z",
+      "agentId": "agent_201e85d986634414"
+    }
+  }
+]

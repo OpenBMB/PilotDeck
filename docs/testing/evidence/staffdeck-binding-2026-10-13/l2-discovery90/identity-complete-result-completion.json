@@ -1,0 +1,396 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/identity-complete.mjs"
+  ],
+  "results": [
+    {
+      "id": "I05-MISSING-UNKNOWN-knowledge-missing",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/knowledge/call",
+        "header": "",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "elapsedMs": 17
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-knowledge-unknown-binding-project",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/knowledge/call",
+        "header": "unknown-binding-project",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-knowledge-projectKey",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/knowledge/call",
+        "fields": {
+          "projectKey": "$QA_ROOT/workspace/ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 82
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-knowledge-projectName",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/knowledge/call",
+        "fields": {
+          "projectName": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 44
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-knowledge-agentId",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/knowledge/call",
+        "fields": {
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 36
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-management-missing",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/sop/management/call",
+        "header": "",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-management-unknown-binding-project",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/sop/management/call",
+        "header": "unknown-binding-project",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-management-projectKey",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/sop/management/call",
+        "fields": {
+          "projectKey": "$QA_ROOT/workspace/ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 39
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-management-projectName",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/sop/management/call",
+        "fields": {
+          "projectName": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 33
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-management-agentId",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/sop/management/call",
+        "fields": {
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 34
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-staffdeck-copy-missing",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "header": "",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "elapsedMs": 2
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-staffdeck-copy-unknown-binding-project",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "header": "unknown-binding-project",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-copy-projectKey",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "fields": {
+          "projectKey": "$QA_ROOT/workspace/ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 17
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-copy-projectName",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "fields": {
+          "projectName": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 16
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-copy-agentId",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "fields": {
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 16
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-staffdeck-sdk-missing",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "header": "",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "elapsedMs": 2
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-staffdeck-sdk-unknown-binding-project",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "header": "unknown-binding-project",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "elapsedMs": 2
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-sdk-projectKey",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "fields": {
+          "projectKey": "$QA_ROOT/workspace/ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 29
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-sdk-projectName",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "fields": {
+          "projectName": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 30
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-sdk-agentId",
+      "status": "PASS",
+      "evidence": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "fields": {
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "elapsedMs": 29
+    },
+    {
+      "id": "I05-SDK-wrong-scope",
+      "status": "PASS",
+      "evidence": {
+        "status": 403,
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The selected agent belongs to another project."
+        }
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "I05-SDK-missing-scope",
+      "status": "PASS",
+      "evidence": {
+        "status": 400,
+        "error": {
+          "code": "PUBLIC_SELECTED_SCOPE_REQUIRED",
+          "message": "The current agent or team selection is required."
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "id": "I05-SDK-input-agent",
+      "status": "PASS",
+      "evidence": {
+        "status": 400,
+        "error": {
+          "code": "PUBLIC_SELECTED_SCOPE_INVALID",
+          "message": "Selection belongs in the explicit scope field."
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "id": "I05-SDK-input-tenant",
+      "status": "PASS",
+      "evidence": {
+        "status": 400,
+        "error": {
+          "code": "PUBLIC_SCOPE_OVERRIDE",
+          "message": "SDK identity comes from the verified owner."
+        }
+      },
+      "elapsedMs": 3
+    },
+    {
+      "id": "I05-SDK-body-owner",
+      "status": "PASS",
+      "evidence": {
+        "status": 400,
+        "error": {
+          "code": "PUBLIC_SCOPE_OVERRIDE",
+          "message": "Host identity field agent_id cannot be supplied in the public body."
+        }
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "I05-FOREIGN-JOB-get_job",
+      "status": "PASS",
+      "evidence": {
+        "status": 403,
+        "jobId": "binding_job_777afed152164d9e8ea6c1b79573d729",
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The task belongs to another project."
+        }
+      },
+      "elapsedMs": 9
+    },
+    {
+      "id": "I05-FOREIGN-JOB-get_job_result",
+      "status": "PASS",
+      "evidence": {
+        "status": 403,
+        "jobId": "binding_job_777afed152164d9e8ea6c1b79573d729",
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The task belongs to another project."
+        }
+      },
+      "elapsedMs": 7
+    },
+    {
+      "id": "I05-FOREIGN-JOB-cancel_job",
+      "status": "PASS",
+      "evidence": {
+        "status": 403,
+        "jobId": "binding_job_777afed152164d9e8ea6c1b79573d729",
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The task belongs to another project."
+        }
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "I05-FOREIGN-JOB-job_events",
+      "status": "PASS",
+      "evidence": {
+        "status": 403,
+        "jobId": "binding_job_777afed152164d9e8ea6c1b79573d729",
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The task belongs to another project."
+        }
+      },
+      "elapsedMs": 7
+    },
+    {
+      "id": "I05-ENSURE-ROUTE-AUTHORITY",
+      "status": "PASS",
+      "evidence": {
+        "routeAgentId": "agent_12d908bea2584ac0",
+        "unknownStatus": 404
+      },
+      "elapsedMs": 16
+    }
+  ]
+}

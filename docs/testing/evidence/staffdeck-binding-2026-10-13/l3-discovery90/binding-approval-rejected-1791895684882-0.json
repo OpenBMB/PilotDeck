@@ -1,0 +1,973 @@
+[
+  {
+    "type": "turn_started",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 0
+  },
+  {
+    "type": "input_accepted",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 1
+  },
+  {
+    "type": "model_request_started",
+    "model": "qwen3.6-flash-distill",
+    "provider": "provider1",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 2
+  },
+  {
+    "type": "context_budget",
+    "used": 3936,
+    "displayUsed": 3936,
+    "localEstimateTokens": 3936,
+    "estimateSource": "estimator",
+    "total": 128000,
+    "totalContextTokens": 128000,
+    "maxContextTokens": 111616,
+    "effectiveTotal": 111616,
+    "effectiveContextTokens": 111616,
+    "maxOutputTokens": 16384,
+    "reservedOutputTokens": 16384,
+    "warningRatio": 0.8,
+    "blockingRatio": 0.9,
+    "ratio": 0.035263761467889905,
+    "state": "ok",
+    "source": "local",
+    "exact": false,
+    "breakdown": {
+      "source": "local_estimate",
+      "total": 3936,
+      "system": 3421,
+      "tools": 153,
+      "messages": 362,
+      "mcp": 0,
+      "memory": 0
+    },
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 3
+  },
+  {
+    "type": "model_selection_changed",
+    "provider": "provider1",
+    "model": "qwen3.6-flash-distill",
+    "source": "default",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 4
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 2,
+      "offset": 0
+    },
+    "sequence": 5
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " user has",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 3,
+      "offset": 3
+    },
+    "sequence": 6
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " provided",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 4,
+      "offset": 12
+    },
+    "sequence": 7
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " a human",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 5,
+      "offset": 21
+    },
+    "sequence": 8
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " decision: \"rejected",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 6,
+      "offset": 29
+    },
+    "sequence": 9
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\".",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 7,
+      "offset": 49
+    },
+    "sequence": 10
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " According to the SOP",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 8,
+      "offset": 51
+    },
+    "sequence": 11
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " instructions:",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 9,
+      "offset": 72
+    },
+    "sequence": 12
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\n\n\"After an authorized",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 10,
+      "offset": 86
+    },
+    "sequence": 13
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " human reply,",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 11,
+      "offset": 108
+    },
+    "sequence": 14
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " persist the actual decision",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 12,
+      "offset": 121
+    },
+    "sequence": 15
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " according to this node",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 13,
+      "offset": 149
+    },
+    "sequence": 16
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "'s instruction with submit",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 14,
+      "offset": 172
+    },
+    "sequence": 17
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "_step_result and advance",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 15,
+      "offset": 198
+    },
+    "sequence": 18
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " only to an allowed",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 16,
+      "offset": 222
+    },
+    "sequence": 19
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " next step. A",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 17,
+      "offset": 241
+    },
+    "sequence": 20
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " completed node means its",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 18,
+      "offset": 254
+    },
+    "sequence": 21
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " decision was processed,",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 19,
+      "offset": 279
+    },
+    "sequence": 22
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " not that the decision",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 20,
+      "offset": 303
+    },
+    "sequence": 23
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " was approval.\"\n\n",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 21,
+      "offset": 325
+    },
+    "sequence": 24
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "And: \"If",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 22,
+      "offset": 342
+    },
+    "sequence": 25
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " this node instruct",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 23,
+      "offset": 350
+    },
+    "sequence": 26
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "s completed after either",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 24,
+      "offset": 369
+    },
+    "sequence": 27
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " approval or rejection,",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 25,
+      "offset": 393
+    },
+    "sequence": 28
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " submit completed for either",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 26,
+      "offset": 416
+    },
+    "sequence": 29
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " decision and quote",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 27,
+      "offset": 444
+    },
+    "sequence": 30
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " it accurately\"\n\n",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 28,
+      "offset": 463
+    },
+    "sequence": 31
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "The step instruction says",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 29,
+      "offset": 480
+    },
+    "sequence": 32
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ": \"After a",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 30,
+      "offset": 505
+    },
+    "sequence": 33
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " human reply, submit",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 31,
+      "offset": 515
+    },
+    "sequence": 34
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " completed and quote the",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 32,
+      "offset": 535
+    },
+    "sequence": 35
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " approved or rejected decision",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 33,
+      "offset": 559
+    },
+    "sequence": 36
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". Do not wait",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 34,
+      "offset": 589
+    },
+    "sequence": 37
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " again",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 35,
+      "offset": 602
+    },
+    "sequence": 38
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ".\"\n\nThis is",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 36,
+      "offset": 608
+    },
+    "sequence": 39
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " also the active final",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 37,
+      "offset": 619
+    },
+    "sequence": 40
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " SOP node.",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 38,
+      "offset": 641
+    },
+    "sequence": 41
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " Since it's the",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 39,
+      "offset": 651
+    },
+    "sequence": 42
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " final node and we",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 40,
+      "offset": 666
+    },
+    "sequence": 43
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " have a decision,",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 41,
+      "offset": 684
+    },
+    "sequence": 44
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " I should submit",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 42,
+      "offset": 701
+    },
+    "sequence": 45
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " with status \"completed",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 43,
+      "offset": 717
+    },
+    "sequence": 46
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "\"",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 44,
+      "offset": 740
+    },
+    "sequence": 47
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " (since the node",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 45,
+      "offset": 741
+    },
+    "sequence": 48
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " requires completion after a",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 46,
+      "offset": 757
+    },
+    "sequence": 49
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " human reply regardless of",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 47,
+      "offset": 785
+    },
+    "sequence": 50
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " approve",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 48,
+      "offset": 811
+    },
+    "sequence": 51
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": "/reject) and",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 49,
+      "offset": 819
+    },
+    "sequence": 52
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " quote the rejection",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 50,
+      "offset": 831
+    },
+    "sequence": 53
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": ". This is the",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 51,
+      "offset": 851
+    },
+    "sequence": 54
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " final node so no",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 52,
+      "offset": 864
+    },
+    "sequence": 55
+  },
+  {
+    "type": "assistant_thinking_delta",
+    "text": " nextStepId.",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 53,
+      "offset": 881
+    },
+    "sequence": 56
+  },
+  {
+    "type": "assistant_block",
+    "kind": "thinking",
+    "blockId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+    "text": "The user has provided a human decision: \"rejected\". According to the SOP instructions:\n\n\"After an authorized human reply, persist the actual decision according to this node's instruction with submit_step_result and advance only to an allowed next step. A completed node means its decision was processed, not that the decision was approval.\"\n\nAnd: \"If this node instructs completed after either approval or rejection, submit completed for either decision and quote it accurately\"\n\nThe step instruction says: \"After a human reply, submit completed and quote the approved or rejected decision. Do not wait again.\"\n\nThis is also the active final SOP node. Since it's the final node and we have a decision, I should submit with status \"completed\" (since the node requires completion after a human reply regardless of approve/reject) and quote the rejection. This is the final node so no nextStepId.",
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 0,
+      "revision": 57
+    },
+    "streamState": "closed",
+    "model": "qwen3.6-flash-distill",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 57
+  },
+  {
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "tool:call_d401175790d64b03a543cddc",
+      "previousId": "a834a302-43b6-497c-baea-f345d4e219f6:thinking:0",
+      "order": 1,
+      "revision": 58
+    },
+    "type": "tool_call_started",
+    "toolCallId": "call_d401175790d64b03a543cddc",
+    "name": "submit_step_result",
+    "argsPreview": "{\"status\":\"completed\",\"replyFragment\":\"✅ **Project A Binding Approval Procedure Complete**\\n\\nDecision: **Rejected** by binding-stranger.\\n\\nThe binding approval for Project A has been processed as rejected. No further steps in this SOP.\",\"slotUpdates\":{\"binding_approval_decision\":\"rejected\",\"approved_by\":\"binding-stranger\"},\"taskSummary\":\"Project A binding approval procedure concluded. Human (binding-stranger) rejected the binding. SOP completed.\"}",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 58
+  },
+  {
+    "type": "tool_call_finished",
+    "toolCallId": "call_d401175790d64b03a543cddc",
+    "ok": true,
+    "resultPreview": "{\"submittedStepId\":\"approval\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"approval\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "resultLineCount": 1,
+    "resultBytes": 146,
+    "toolName": "submit_step_result",
+    "data": {
+      "status": "completed",
+      "replyFragment": "✅ **Project A Binding Approval Procedure Complete**\n\nDecision: **Rejected** by binding-stranger.\n\nThe binding approval for Project A has been processed as rejected. No further steps in this SOP.",
+      "slotUpdates": {
+        "binding_approval_decision": "rejected",
+        "approved_by": "binding-stranger"
+      },
+      "taskSummary": "Project A binding approval procedure concluded. Human (binding-stranger) rejected the binding. SOP completed.",
+      "structuredResult": null,
+      "nextStepId": null,
+      "events": []
+    },
+    "timeline": {
+      "version": 1,
+      "turnId": "2685a178-a675-489b-9208-b7990a6ea14d",
+      "id": "result:call_d401175790d64b03a543cddc",
+      "previousId": "tool:call_d401175790d64b03a543cddc",
+      "order": 2,
+      "revision": 59
+    },
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 59
+  },
+  {
+    "type": "tool_result_detail_available",
+    "toolCallId": "call_d401175790d64b03a543cddc",
+    "fullText": "{\"submittedStepId\":\"approval\",\"status\":\"completed\",\"resultStatus\":\"completed\",\"activeStepId\":\"approval\",\"sopStatus\":\"completed\",\"nextStepId\":null}",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 60
+  },
+  {
+    "type": "agent_status",
+    "event": "structured_output_completed",
+    "detail": {
+      "message": "Structured output was returned, so this turn has completed.",
+      "messageI18n": {
+        "key": "[REDACTED]"
+      },
+      "code": "structured_output_completed",
+      "visible": true,
+      "scope": "turn",
+      "source": "agent"
+    },
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 61
+  },
+  {
+    "type": "assistant_text_delta",
+    "text": "✅ **Project A Binding Approval Procedure Complete**\n\nDecision: **Rejected** by binding-stranger.\n\nThe binding approval for Project A has been processed as rejected. No further steps in this SOP.",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "model": "qwen3.6-flash-distill",
+    "sequence": 62
+  },
+  {
+    "type": "structured_output",
+    "payload": {
+      "sop": {
+        "status": "completed",
+        "replyFragment": "✅ **Project A Binding Approval Procedure Complete**\n\nDecision: **Rejected** by binding-stranger.\n\nThe binding approval for Project A has been processed as rejected. No further steps in this SOP.",
+        "slotUpdates": {
+          "binding_approval_decision": "rejected",
+          "approved_by": "binding-stranger"
+        },
+        "taskSummary": "Project A binding approval procedure concluded. Human (binding-stranger) rejected the binding. SOP completed.",
+        "structuredResult": null,
+        "nextStepId": null,
+        "events": []
+      }
+    },
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 63
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 4310,
+      "outputTokens": 322,
+      "totalTokens": 4632
+    },
+    "finishReason": "completed",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 64
+  },
+  {
+    "type": "turn_completed",
+    "usage": {
+      "inputTokens": 4310,
+      "outputTokens": 322,
+      "totalTokens": 4632
+    },
+    "finishReason": "completed",
+    "runId": "2685a178-a675-489b-9208-b7990a6ea14d",
+    "sequence": 65
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck/scripts/staffdeck-binding/browser-editor.mjs"
+  ],
+  "results": [
+    {
+      "id": "U02-EDITOR-1440",
+      "status": "FAIL",
+      "error": "event: job_attached\ndata: {\"job_id\": \"skilljob_1f1d7cf253da49ca\", \"after_seq\": 0}\n\nevent: job_started\ndata: {\"job_id\": \"skilljob_1f1d7cf253da49ca\", \"seq\": 1, \"name\": \"skill.distill\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_1f1d7cf253da49ca\", \"seq\": 2, \"text\": \"正在调用模型生成新技能\"}\n\nevent: error\ndata: {\"job_id\": \"skilljob_1f1d7cf253da49ca\", \"seq\": 3, \"message\": \"Secret cannot be decrypted with current APP_SECRET\"}\n\nevent: job_complete\ndata: {\"job_id\": \"skilljob_1f1d7cf253da49ca\", \"status\": \"failed\", \"error\": \"Secret cannot be decrypted with current APP_SECRET\"}\n\n",
+      "elapsedMs": 2538
+    },
+    {
+      "id": "U02-EDITOR-390",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.pwa-menu-button')\u001b[22m\n",
+      "elapsedMs": 30360
+    }
+  ]
+}

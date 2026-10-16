@@ -1,0 +1,2531 @@
+{
+  "recordedAt": "2026-10-13T11:11:13.820Z",
+  "release": "NOT APPROVED",
+  "blockingCase": "L3-DISCOVERY-01: general chat repetitions 1 and 2 timed out before knowledge_query",
+  "firstFailuresRetained": true,
+  "cases": [
+    {
+      "id": "B05-CONTROLLED-SD-TIMEOUT",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/faults-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 11392,
+      "expected": "Timeout/old key fails; recovery keeps binding, agent and existing session.",
+      "actual": {
+        "failure": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "1b02629a-8274-4e73-9a48-5f0424d84392",
+          "agentName": "ProjectB-1b02629a",
+          "origin": "http://127.0.0.1:25910",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T10:11:46.061Z",
+          "agentId": "agent_07843a3996844ddd",
+          "error": {
+            "code": 23,
+            "message": "The operation was aborted due to timeout"
+          }
+        },
+        "restored": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "1b02629a-8274-4e73-9a48-5f0424d84392",
+          "agentName": "ProjectB-1b02629a",
+          "origin": "http://127.0.0.1:25910",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T10:11:46.191Z",
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "before": {
+          "agents": 12,
+          "mappings": 9
+        },
+        "after": {
+          "agents": 12,
+          "mappings": 9
+        },
+        "ordinaryChatEvents": [
+          "turn_started",
+          "input_accepted",
+          "model_request_started",
+          "context_budget",
+          "model_selection_changed",
+          "assistant_text_delta",
+          "assistant_block",
+          "turn_completed",
+          "turn_completed"
+        ],
+        "injection": "SIGSTOP formal isolated SD; binding request expires at its configured 10000ms deadline"
+      },
+      "evidence": "l2-completion/faults-complete-result-completion.json"
+    },
+    {
+      "id": "B05-CREDENTIAL-ROTATION-EXISTING-SESSION",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/faults-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 5907,
+      "expected": "Timeout/old key fails; recovery keeps binding, agent and existing session.",
+      "actual": {
+        "sessionKey": "binding-rotation-1791886295651",
+        "oldCredentialStatus": 401,
+        "credentialIdStable": true,
+        "failure": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "1b02629a-8274-4e73-9a48-5f0424d84392",
+          "agentName": "ProjectB-1b02629a",
+          "origin": "http://127.0.0.1:25910",
+          "tenantId": "binding-tenant",
+          "status": "failed",
+          "updatedAt": "2026-10-13T10:11:47.251Z",
+          "agentId": "agent_07843a3996844ddd",
+          "error": {
+            "code": "PROJECT_BINDING_CREDENTIAL_INVALID",
+            "message": "StaffDeck account credential is inactive or lacks the required access."
+          }
+        },
+        "restored": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectB",
+          "bindingId": "1b02629a-8274-4e73-9a48-5f0424d84392",
+          "agentName": "ProjectB-1b02629a",
+          "origin": "http://127.0.0.1:25910",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T10:11:52.143Z",
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "events": [
+          "turn_started",
+          "input_accepted",
+          "model_request_started",
+          "context_budget",
+          "model_selection_changed",
+          "assistant_text_delta",
+          "assistant_block",
+          "turn_completed",
+          "turn_completed"
+        ],
+        "before": {
+          "agents": 12,
+          "mappings": 9
+        },
+        "after": {
+          "agents": 12,
+          "mappings": 9
+        }
+      },
+      "evidence": "l2-completion/faults-complete-result-completion.json"
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-knowledge-missing",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 17,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/knowledge/call",
+        "header": "",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-knowledge-unknown-binding-project",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 3,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/knowledge/call",
+        "header": "unknown-binding-project",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-knowledge-projectKey",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 82,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/knowledge/call",
+        "fields": {
+          "projectKey": "$QA_ROOT/workspace/ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-knowledge-projectName",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 44,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/knowledge/call",
+        "fields": {
+          "projectName": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-knowledge-agentId",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 36,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/knowledge/call",
+        "fields": {
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-management-missing",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 3,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/sop/management/call",
+        "header": "",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-management-unknown-binding-project",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 3,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/sop/management/call",
+        "header": "unknown-binding-project",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-management-projectKey",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 39,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/sop/management/call",
+        "fields": {
+          "projectKey": "$QA_ROOT/workspace/ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-management-projectName",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 33,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/sop/management/call",
+        "fields": {
+          "projectName": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-management-agentId",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 34,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/sop/management/call",
+        "fields": {
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-staffdeck-copy-missing",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 2,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "header": "",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-staffdeck-copy-unknown-binding-project",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 3,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "header": "unknown-binding-project",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-copy-projectKey",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 17,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "fields": {
+          "projectKey": "$QA_ROOT/workspace/ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-copy-projectName",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 16,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "fields": {
+          "projectName": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-copy-agentId",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 16,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-copy/call",
+        "fields": {
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-staffdeck-sdk-missing",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 2,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "header": "",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-MISSING-UNKNOWN-staffdeck-sdk-unknown-binding-project",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 2,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "header": "unknown-binding-project",
+        "status": 409,
+        "error": {
+          "code": "PROJECT_BINDING_PROJECT_REQUIRED",
+          "message": "Select a bound project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-sdk-projectKey",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 29,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "fields": {
+          "projectKey": "$QA_ROOT/workspace/ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-sdk-projectName",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 30,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "fields": {
+          "projectName": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-ProjectB"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-TRUSTED-HEADER-staffdeck-sdk-agentId",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 29,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "route": "/api/modules/staffdeck-sdk/call",
+        "fields": {
+          "agentId": "agent_07843a3996844ddd"
+        },
+        "status": 200,
+        "selectionFromRegisteredHeader": true
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-SDK-wrong-scope",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 6,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 403,
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The selected agent belongs to another project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-SDK-missing-scope",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 3,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 400,
+        "error": {
+          "code": "PUBLIC_SELECTED_SCOPE_REQUIRED",
+          "message": "The current agent or team selection is required."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-SDK-input-agent",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 3,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 400,
+        "error": {
+          "code": "PUBLIC_SELECTED_SCOPE_INVALID",
+          "message": "Selection belongs in the explicit scope field."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-SDK-input-tenant",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 3,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 400,
+        "error": {
+          "code": "PUBLIC_SCOPE_OVERRIDE",
+          "message": "SDK identity comes from the verified owner."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-SDK-body-owner",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 5,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 400,
+        "error": {
+          "code": "PUBLIC_SCOPE_OVERRIDE",
+          "message": "Host identity field agent_id cannot be supplied in the public body."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-FOREIGN-JOB-get_job",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 9,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 403,
+        "jobId": "binding_job_777afed152164d9e8ea6c1b79573d729",
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The task belongs to another project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-FOREIGN-JOB-get_job_result",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 7,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 403,
+        "jobId": "binding_job_777afed152164d9e8ea6c1b79573d729",
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The task belongs to another project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-FOREIGN-JOB-cancel_job",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 6,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 403,
+        "jobId": "binding_job_777afed152164d9e8ea6c1b79573d729",
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The task belongs to another project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-FOREIGN-JOB-job_events",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 7,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "status": 403,
+        "jobId": "binding_job_777afed152164d9e8ea6c1b79573d729",
+        "error": {
+          "code": "PROJECT_BINDING_SCOPE_MISMATCH",
+          "message": "The task belongs to another project."
+        }
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I05-ENSURE-ROUTE-AUTHORITY",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/identity-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 16,
+      "expected": "Registered project controls identity; missing/unknown/conflicting fields cannot select another project.",
+      "actual": {
+        "routeAgentId": "agent_12d908bea2584ac0",
+        "unknownStatus": 404
+      },
+      "evidence": "l2-completion/identity-complete-result-completion.json"
+    },
+    {
+      "id": "I01-MODULE-get_base",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 56,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-update_base",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 46,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "description": "matrix update"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-list_versions",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 47,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-list_documents",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 40,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-get_document",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 43,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-update_document",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 52,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8",
+          "title": "A_PRIVATE_MATRIX_9351 updated"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-list_document_buckets",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 47,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-update_bucket",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 44,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "bucketId": "binding_bucket_7e47c10f9828432ab773406fb1af3ee8",
+          "summary": "A_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-list_bucket_chunks",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 43,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "bucketId": "binding_bucket_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-update_chunk",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 44,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "chunkId": "binding_chunk_7e47c10f9828432ab773406fb1af3ee8",
+          "content": "A_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-resolve_citation",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 48,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "chunkId": "binding_chunk_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-get_job",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 45,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "jobId": "binding_job_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-list_okf_concepts",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 48,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-upsert_okf_concept",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 43,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "conceptId": "matrix.concept",
+          "contentMd": "# Matrix\n\nA_PRIVATE_MATRIX_9351"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-export_okf",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 37,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-lint_okf",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 37,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-reject_discovery",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 44,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "suggestionId": "binding_suggestion_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-list_knowledge_versions",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 31,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-list_knowledge_documents",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 32,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-get_knowledge_document",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 29,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-update_knowledge_document",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 54,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8",
+          "body": {
+            "title": "A_PRIVATE_MATRIX_9351"
+          }
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-list_document_buckets",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 28,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "documentId": "binding_document_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-list_bucket_chunks",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 30,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "bucketId": "binding_bucket_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-update_knowledge_bucket",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 30,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "bucketId": "binding_bucket_7e47c10f9828432ab773406fb1af3ee8",
+          "body": {
+            "summary": "A_PRIVATE_MATRIX_9351"
+          }
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-update_knowledge_chunk",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 32,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "chunkId": "binding_chunk_7e47c10f9828432ab773406fb1af3ee8",
+          "body": {
+            "content": "A_PRIVATE_MATRIX_9351"
+          }
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-list_knowledge_concepts",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 30,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-get_knowledge_concept",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 29,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923",
+          "conceptId": "matrix.concept"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-export_knowledge_okf",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 30,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "knowledgeBaseId": "kb_033315cce44b4923"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-SDK-get_knowledge_job",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 29,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "input": {
+          "jobId": "binding_job_7e47c10f9828432ab773406fb1af3ee8"
+        },
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-LIST-ISOLATION",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 157,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "ownerCollectionsReadable": true,
+        "foreignPrivateRowsAbsent": true
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-REAL-PREVIEW-JOB-EVENTS",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 25954,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "jobId": "skilljob_adca907f3d6a4cf2",
+        "foreignReadCancelEvents": 404,
+        "ownerReadCancelEvents": 200,
+        "ownerJob": {
+          "job_id": "skilljob_adca907f3d6a4cf2",
+          "name": "skill.distill",
+          "status": "succeeded",
+          "error": null,
+          "created_at": "2026-10-13T10:51:55.744317",
+          "updated_at": "2026-10-13T10:52:21.396103",
+          "last_seq": 276
+        },
+        "events": "event: job_attached\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"after_seq\": 0}\n\nevent: job_started\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 1, \"name\": \"skill.distill\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 2, \"text\": \"正在调用模型生成新技能\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 3, \"text\": \"模型正在规划技能结构\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 4, \"content\": \"Binding acceptance ordinary chat\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 5, \"text\": \"正在校验模型输出结构\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 6, \"text\": \"模型输出需要修复，正在重试\"}\n\nevent: chunk_reset\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 7}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 8, \"content\": \"{\\n  \\\"draft_skill\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 9, \"content\": \" {\\n    \\\"skill_id\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 10, \"content\": \" \\\"binding_editor_s\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 11, \"content\": \"op\\\",\\n    \\\"name\\\": \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 12, \"content\": \"Binding editor pro\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 13, \"content\": \"cedure\\\",\\n    \\\"vers\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 14, \"content\": \"ion\\\": \\\"1.0.0\\\",\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 15, \"content\": \" \\\"business_domain\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 16, \"content\": \": \\\"general\\\",\\n    \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 17, \"content\": \"description\\\": \\\"Bro\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 18, \"content\": \"wser authoring acc\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 19, \"content\": \"eptance\\\",\\n    \\\"cap\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 20, \"content\": \"ability_scope\\\": \\\"g\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 21, \"content\": \"eneral\\\",\\n    \\\"step\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 22, \"content\": \"_timeout_seconds\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 23, \"content\": \" null,\\n    \\\"trigge\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 24, \"content\": \"r_intents\\\": [\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 25, \"content\": \"  \\\"BINDING_EDITOR\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 26, \"content\": \"\\n    ],\\n    \\\"user_\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 27, \"content\": \"utterance_examples\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 28, \"content\": \"\\\": [\\n      \\\"A_PRIV\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 29, \"content\": \"ATE_PREVIEW_8137\\\"\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 30, \"content\": \"    ],\\n    \\\"goal\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 31, \"content\": \" [\\n      \\\"Answer t\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 32, \"content\": \"he user then compl\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 33, \"content\": \"ete\\\"\\n    ],\\n    \\\"r\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 34, \"content\": \"equired_info\\\": [],\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 35, \"content\": \"\\n    \\\"slot_filling\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 36, \"content\": \"_policy\\\": {\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 37, \"content\": \"\\\"enabled\\\": true,\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 38, \"content\": \"     \\\"multi_slot_p\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 39, \"content\": \"er_turn\\\": true,\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 40, \"content\": \"    \\\"extract_scope\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 41, \"content\": \"\\\": \\\"all_skill_expe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 42, \"content\": \"cted_user_info\\\",\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 43, \"content\": \"     \\\"skip_satisfi\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 44, \"content\": \"ed_steps\\\": true,\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 45, \"content\": \"     \\\"description\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 46, \"content\": \": \\\"每轮用户消息都应同时抽取所有可\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 47, \"content\": \"识别的信息；如果用户一次提供多个字段\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 48, \"content\": \"，必须一次性写入 slot_upda\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 49, \"content\": \"tes，不要按步骤重复追问。\\\",\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 50, \"content\": \"     \\\"target_info\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 51, \"content\": \": []\\n    },\\n    \\\"r\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 52, \"content\": \"esponse_rules\\\": [\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 53, \"content\": \"      \\\"信息不足时先追问，不要\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 54, \"content\": \"编造事实。\\\",\\n      \\\"步骤是\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 55, \"content\": \"可自适应推进的目标，不是固定问答脚本\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 56, \"content\": \"；已由当前用户消息、历史信息或路由意\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 57, \"content\": \"图满足的内容不得重复追问，应直接推进\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 58, \"content\": \"到下一缺失信息、工具调用或最终回复。\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 59, \"content\": \"\\\",\\n      \\\"流程必须形成闭环\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 60, \"content\": \"：不得把“请稍候/正在处理/稍后反馈\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 61, \"content\": \"”作为最终回复；需要外部事实、外部状\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 62, \"content\": \"态或外部副作用时必须调用已配置工具或\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 63, \"content\": \"转人工，并向用户给出明确结果。\\\"\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 64, \"content\": \"   ],\\n    \\\"nodes\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 65, \"content\": \" [\\n      {\\n       \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 66, \"content\": \" \\\"node_id\\\": \\\"answe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 67, \"content\": \"r\\\",\\n        \\\"type\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 68, \"content\": \": \\\"response\\\",\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 69, \"content\": \"    \\\"name\\\": \\\"Answe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 70, \"content\": \"r\\\",\\n        \\\"instr\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 71, \"content\": \"uction\\\": \\\"Reply BR\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 72, \"content\": \"OWSER_EDITOR_COMPL\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 73, \"content\": \"ETE and finish将本步骤\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 74, \"content\": \"作为目标而不是固定话术；如果用户当前\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 75, \"content\": \"消息、历史 slots 或路由意图已\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 76, \"content\": \"满足本步骤，直接写入对应 slot \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 77, \"content\": \"并继续到下一缺失信息、工具调用或最终\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 78, \"content\": \"回复，不要重复确认。给用户明确最终回\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 79, \"content\": \"复；无法闭环时转人工，不要只说请稍候\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 80, \"content\": \"。\\\",\\n        \\\"optio\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 81, \"content\": \"nal\\\": false,\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 82, \"content\": \"   \\\"condition\\\": nu\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 83, \"content\": \"ll,\\n        \\\"expec\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 84, \"content\": \"ted_user_info\\\": []\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 85, \"content\": \",\\n        \\\"allowed\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 86, \"content\": \"_actions\\\": [\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 87, \"content\": \"     \\\"answer_user\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 88, \"content\": \"\\n        ],\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 89, \"content\": \"  \\\"knowledge_scope\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 90, \"content\": \"\\\": {},\\n        \\\"ca\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 91, \"content\": \"pability_refs\\\": {\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 92, \"content\": \"          \\\"general\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 93, \"content\": \"_skill_ids\\\": [],\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 94, \"content\": \"         \\\"tool_ids\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 95, \"content\": \"\\\": [],\\n          \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 96, \"content\": \"knowledge_base_ids\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 97, \"content\": \"\\\": [],\\n          \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 98, \"content\": \"required_general_s\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 99, \"content\": \"kill_ids\\\": [],\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 100, \"content\": \"       \\\"required_t\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 101, \"content\": \"ool_ids\\\": [],\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 102, \"content\": \"      \\\"required_kn\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 103, \"content\": \"owledge_base_ids\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 104, \"content\": \" []\\n        },\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 105, \"content\": \"     \\\"retry_policy\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 106, \"content\": \"\\\": {},\\n        \\\"me\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 107, \"content\": \"tadata\\\": {},\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 108, \"content\": \"   \\\"sub_sop_id\\\": n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 109, \"content\": \"ull,\\n        \\\"assi\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 110, \"content\": \"gnee_user_id\\\": nul\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 111, \"content\": \"l,\\n        \\\"assign\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 112, \"content\": \"ee_notify_channel\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 113, \"content\": \": null\\n      }\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 114, \"content\": \" ],\\n    \\\"edges\\\": [\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 115, \"content\": \"],\\n    \\\"start_node\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 116, \"content\": \"_id\\\": \\\"answer\\\",\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 117, \"content\": \"  \\\"terminal_node_i\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 118, \"content\": \"ds\\\": [\\n      \\\"answ\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 119, \"content\": \"er\\\"\\n    ],\\n    \\\"in\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 120, \"content\": \"terruption_policy\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 121, \"content\": \": {\\n      \\\"related\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 122, \"content\": \"_question\\\": \\\"回答相关问\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 123, \"content\": \"题后回到当前流程。\\\",\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 124, \"content\": \"\\\"unrelated_busines\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 125, \"content\": \"s\\\": \\\"可切换新流程并保留当前进度\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 126, \"content\": \"。\\\",\\n      \\\"chitcha\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 127, \"content\": \"t\\\": \\\"简短回应后引导用户继续当前\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 128, \"content\": \"流程。\\\",\\n      \\\"user_\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 129, \"content\": \"wants_human\\\": \\\"直接转\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 130, \"content\": \"人工。\\\"\\n    }\\n  },\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 131, \"content\": \"\\\"warnings\\\": [],\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 132, \"content\": \"\\\"tool_suggestions\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 133, \"content\": \": []\\n}\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 134, \"text\": \"正在校验步骤闭环与工具接入\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 135, \"text\": \"正在校验技能结果（1/3）\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 136, \"text\": \"校验范围：来源一致性、闭环能力、自适应推进、图结构、子 SOP、能力策略、工具依据、副作用确认、中断恢复\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 137, \"text\": \"校验未通过，正在应用第 1 轮修正\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 138, \"text\": \"正在校验技能结果（2/3）\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 139, \"text\": \"校验范围：来源一致性、闭环能力、自适应推进、图结构、子 SOP、能力策略、工具依据、副作用确认、中断恢复\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 140, \"text\": \"校验未通过，正在应用第 2 轮修正\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 141, \"text\": \"正在校验技能结果（3/3）\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 142, \"text\": \"校验范围：来源一致性、闭环能力、自适应推进、图结构、子 SOP、能力策略、工具依据、副作用确认、中断恢复\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 143, \"text\": \"校验未通过，正在应用第 3 轮修正\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 144, \"text\": \"校验达到上限，保留最后一版技能草稿\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 145, \"text\": \"正在整理校验后的技能草稿\"}\n\nevent: chunk_reset\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 146}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 147, \"content\": \"{\\n  \\\"draft_skill\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 148, \"content\": \" {\\n    \\\"skill_id\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 149, \"content\": \" \\\"binding_editor_s\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 150, \"content\": \"op\\\",\\n    \\\"name\\\": \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 151, \"content\": \"Binding editor pro\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 152, \"content\": \"cedure\\\",\\n    \\\"vers\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 153, \"content\": \"ion\\\": \\\"1.0.0\\\",\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 154, \"content\": \" \\\"business_domain\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 155, \"content\": \": \\\"general\\\",\\n    \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 156, \"content\": \"description\\\": \\\"Bro\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 157, \"content\": \"wser authoring acc\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 158, \"content\": \"eptance\\\",\\n    \\\"cap\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 159, \"content\": \"ability_scope\\\": \\\"g\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 160, \"content\": \"eneral\\\",\\n    \\\"step\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 161, \"content\": \"_timeout_seconds\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 162, \"content\": \" null,\\n    \\\"trigge\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 163, \"content\": \"r_intents\\\": [\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 164, \"content\": \"  \\\"BINDING_EDITOR\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 165, \"content\": \"\\n    ],\\n    \\\"user_\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 166, \"content\": \"utterance_examples\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 167, \"content\": \"\\\": [\\n      \\\"A_PRIV\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 168, \"content\": \"ATE_PREVIEW_8137\\\"\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 169, \"content\": \"    ],\\n    \\\"goal\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 170, \"content\": \" [\\n      \\\"Answer t\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 171, \"content\": \"he user then compl\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 172, \"content\": \"ete\\\"\\n    ],\\n    \\\"r\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 173, \"content\": \"equired_info\\\": [],\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 174, \"content\": \"\\n    \\\"slot_filling\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 175, \"content\": \"_policy\\\": {\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 176, \"content\": \"\\\"enabled\\\": true,\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 177, \"content\": \"     \\\"multi_slot_p\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 178, \"content\": \"er_turn\\\": true,\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 179, \"content\": \"    \\\"extract_scope\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 180, \"content\": \"\\\": \\\"all_skill_expe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 181, \"content\": \"cted_user_info\\\",\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 182, \"content\": \"     \\\"skip_satisfi\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 183, \"content\": \"ed_steps\\\": true,\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 184, \"content\": \"     \\\"description\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 185, \"content\": \": \\\"每轮用户消息都应同时抽取所有可\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 186, \"content\": \"识别的信息；如果用户一次提供多个字段\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 187, \"content\": \"，必须一次性写入 slot_upda\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 188, \"content\": \"tes，不要按步骤重复追问。\\\",\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 189, \"content\": \"     \\\"target_info\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 190, \"content\": \": []\\n    },\\n    \\\"r\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 191, \"content\": \"esponse_rules\\\": [\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 192, \"content\": \"      \\\"信息不足时先追问，不要\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 193, \"content\": \"编造事实。\\\",\\n      \\\"步骤是\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 194, \"content\": \"可自适应推进的目标，不是固定问答脚本\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 195, \"content\": \"；已由当前用户消息、历史信息或路由意\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 196, \"content\": \"图满足的内容不得重复追问，应直接推进\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 197, \"content\": \"到下一缺失信息、工具调用或最终回复。\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 198, \"content\": \"\\\",\\n      \\\"流程必须形成闭环\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 199, \"content\": \"：不得把“请稍候/正在处理/稍后反馈\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 200, \"content\": \"”作为最终回复；需要外部事实、外部状\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 201, \"content\": \"态或外部副作用时必须调用已配置工具或\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 202, \"content\": \"转人工，并向用户给出明确结果。\\\"\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 203, \"content\": \"   ],\\n    \\\"nodes\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 204, \"content\": \" [\\n      {\\n       \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 205, \"content\": \" \\\"node_id\\\": \\\"answe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 206, \"content\": \"r\\\",\\n        \\\"type\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 207, \"content\": \": \\\"response\\\",\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 208, \"content\": \"    \\\"name\\\": \\\"Answe\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 209, \"content\": \"r\\\",\\n        \\\"instr\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 210, \"content\": \"uction\\\": \\\"Reply BR\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 211, \"content\": \"OWSER_EDITOR_COMPL\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 212, \"content\": \"ETE and finish将本步骤\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 213, \"content\": \"作为目标而不是固定话术；如果用户当前\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 214, \"content\": \"消息、历史 slots 或路由意图已\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 215, \"content\": \"满足本步骤，直接写入对应 slot \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 216, \"content\": \"并继续到下一缺失信息、工具调用或最终\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 217, \"content\": \"回复，不要重复确认。给用户明确最终回\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 218, \"content\": \"复；无法闭环时转人工，不要只说请稍候\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 219, \"content\": \"。\\\",\\n        \\\"optio\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 220, \"content\": \"nal\\\": false,\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 221, \"content\": \"   \\\"condition\\\": nu\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 222, \"content\": \"ll,\\n        \\\"expec\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 223, \"content\": \"ted_user_info\\\": []\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 224, \"content\": \",\\n        \\\"allowed\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 225, \"content\": \"_actions\\\": [\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 226, \"content\": \"     \\\"answer_user\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 227, \"content\": \"\\n        ],\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 228, \"content\": \"  \\\"knowledge_scope\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 229, \"content\": \"\\\": {},\\n        \\\"ca\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 230, \"content\": \"pability_refs\\\": {\\n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 231, \"content\": \"          \\\"general\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 232, \"content\": \"_skill_ids\\\": [],\\n \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 233, \"content\": \"         \\\"tool_ids\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 234, \"content\": \"\\\": [],\\n          \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 235, \"content\": \"knowledge_base_ids\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 236, \"content\": \"\\\": [],\\n          \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 237, \"content\": \"required_general_s\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 238, \"content\": \"kill_ids\\\": [],\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 239, \"content\": \"       \\\"required_t\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 240, \"content\": \"ool_ids\\\": [],\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 241, \"content\": \"      \\\"required_kn\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 242, \"content\": \"owledge_base_ids\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 243, \"content\": \" []\\n        },\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 244, \"content\": \"     \\\"retry_policy\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 245, \"content\": \"\\\": {},\\n        \\\"me\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 246, \"content\": \"tadata\\\": {},\\n     \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 247, \"content\": \"   \\\"sub_sop_id\\\": n\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 248, \"content\": \"ull,\\n        \\\"assi\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 249, \"content\": \"gnee_user_id\\\": nul\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 250, \"content\": \"l,\\n        \\\"assign\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 251, \"content\": \"ee_notify_channel\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 252, \"content\": \": null\\n      }\\n   \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 253, \"content\": \" ],\\n    \\\"edges\\\": [\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 254, \"content\": \"],\\n    \\\"start_node\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 255, \"content\": \"_id\\\": \\\"answer\\\",\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 256, \"content\": \"  \\\"terminal_node_i\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 257, \"content\": \"ds\\\": [\\n      \\\"answ\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 258, \"content\": \"er\\\"\\n    ],\\n    \\\"in\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 259, \"content\": \"terruption_policy\\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 260, \"content\": \": {\\n      \\\"related\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 261, \"content\": \"_question\\\": \\\"回答相关问\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 262, \"content\": \"题后回到当前流程。\\\",\\n      \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 263, \"content\": \"\\\"unrelated_busines\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 264, \"content\": \"s\\\": \\\"可切换新流程并保留当前进度\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 265, \"content\": \"。\\\",\\n      \\\"chitcha\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 266, \"content\": \"t\\\": \\\"简短回应后引导用户继续当前\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 267, \"content\": \"流程。\\\",\\n      \\\"user_\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 268, \"content\": \"wants_human\\\": \\\"直接转\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 269, \"content\": \"人工。\\\"\\n    }\\n  },\\n  \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 270, \"content\": \"\\\"warnings\\\": [\\n    \"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 271, \"content\": \"\\\"模型校验已达到 3 轮上限，保留最\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 272, \"content\": \"后一版技能草稿。\\\"\\n  ],\\n  \\\"\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 273, \"content\": \"tool_suggestions\\\":\"}\n\nevent: chunk\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 274, \"content\": \" []\\n}\"}\n\nevent: status\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 275, \"text\": \"校验完成，已完成 Skill Card 结构化\"}\n\nevent: complete\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"seq\": 276, \"draft_skill\": {\"skill_id\": \"binding_editor_sop\", \"name\": \"Binding editor procedure\", \"version\": \"1.0.0\", \"business_domain\": \"general\", \"description\": \"Browser authoring acceptance\", \"capability_scope\": \"general\", \"step_timeout_seconds\": null, \"trigger_intents\": [\"BINDING_EDITOR\"], \"user_utterance_examples\": [\"A_PRIVATE_PREVIEW_8137\"], \"goal\": [\"Answer the user then complete\"], \"required_info\": [], \"slot_filling_policy\": {\"enabled\": true, \"multi_slot_per_turn\": true, \"extract_scope\": \"all_skill_expected_user_info\", \"skip_satisfied_steps\": true, \"description\": \"每轮用户消息都应同时抽取所有可识别的信息；如果用户一次提供多个字段，必须一次性写入 slot_updates，不要按步骤重复追问。\", \"target_info\": []}, \"response_rules\": [\"信息不足时先追问，不要编造事实。\", \"步骤是可自适应推进的目标，不是固定问答脚本；已由当前用户消息、历史信息或路由意图满足的内容不得重复追问，应直接推进到下一缺失信息、工具调用或最终回复。\", \"流程必须形成闭环：不得把“请稍候/正在处理/稍后反馈”作为最终回复；需要外部事实、外部状态或外部副作用时必须调用已配置工具或转人工，并向用户给出明确结果。\"], \"nodes\": [{\"node_id\": \"answer\", \"type\": \"response\", \"name\": \"Answer\", \"instruction\": \"Reply BROWSER_EDITOR_COMPLETE and finish将本步骤作为目标而不是固定话术；如果用户当前消息、历史 slots 或路由意图已满足本步骤，直接写入对应 slot 并继续到下一缺失信息、工具调用或最终回复，不要重复确认。给用户明确最终回复；无法闭环时转人工，不要只说请稍候。\", \"optional\": false, \"condition\": null, \"expected_user_info\": [], \"allowed_actions\": [\"answer_user\"], \"knowledge_scope\": {}, \"capability_refs\": {\"general_skill_ids\": [], \"tool_ids\": [], \"knowledge_base_ids\": [], \"required_general_skill_ids\": [], \"required_tool_ids\": [], \"required_knowledge_base_ids\": []}, \"retry_policy\": {}, \"metadata\": {}, \"sub_sop_id\": null, \"assignee_user_id\": null, \"assignee_notify_channel\": null}], \"edges\": [], \"start_node_id\": \"answer\", \"terminal_node_ids\": [\"answer\"], \"interruption_policy\": {\"related_question\": \"回答相关问题后回到当前流程。\", \"unrelated_business\": \"可切换新流程并保留当前进度。\", \"chitchat\": \"简短回应后引导用户继续当前流程。\", \"user_wants_human\": \"直接转人工。\"}}, \"warnings\": [\"模型校验已达到 3 轮上限，保留最后一版技能草稿。\"], \"tool_suggestions\": []}\n\nevent: job_complete\ndata: {\"job_id\": \"skilljob_adca907f3d6a4cf2\", \"status\": \"succeeded\", \"error\": null}\n\n"
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-CANCEL-OWNER-module",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 50,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-CANCEL-OWNER-sdk",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 31,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-delete_document",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 47,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "I01-MODULE-delete_base",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/resources-complete.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 36,
+      "expected": "Owner succeeds; foreign private resource/job ID is denied; lists exclude private rows.",
+      "actual": {
+        "foreignStatus": 404,
+        "ownerStatus": 200
+      },
+      "evidence": "l2-completion/resources-complete-result-strict-owner.json"
+    },
+    {
+      "id": "U02-EDITOR-1440",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/browser-editor.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 29049,
+      "expected": "Blank UI project, generated valid SOP, graph edit, save, publish and archive succeed without script errors or horizontal overflow.",
+      "actual": {
+        "project": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-Editor14401791889553622",
+        "viewport": [
+          1440,
+          960
+        ],
+        "fromBlank": true,
+        "generationThroughFormalSD": true,
+        "saveStatus": 201,
+        "publishStatus": 200,
+        "archiveStatus": 200,
+        "errors": [],
+        "network": [
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/host-capabilities/call",
+            "status": 409
+          },
+          {
+            "path": "/api/modules/host-capabilities/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 202
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/events",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 201
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          }
+        ]
+      },
+      "evidence": "l2-completion/browser-editor-result-final-editor.json"
+    },
+    {
+      "id": "U02-EDITOR-390",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/browser-editor.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 30361,
+      "expected": "Blank UI project, generated valid SOP, graph edit, save, publish and archive succeed without script errors or horizontal overflow.",
+      "actual": {
+        "project": "private-var-folders-xd-mml9c6fj2g95x40hgf_n6lrr0000gn-T-binding-acceptance-CRfI8G-workspace-Editor3901791889582947",
+        "viewport": [
+          390,
+          844
+        ],
+        "fromBlank": true,
+        "generationThroughFormalSD": true,
+        "saveStatus": 201,
+        "publishStatus": 200,
+        "archiveStatus": 200,
+        "errors": [],
+        "network": [
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/runtime",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/host-capabilities/call",
+            "status": 409
+          },
+          {
+            "path": "/api/modules/host-capabilities/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 202
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/events",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 201
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/sop/management/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-sdk/call",
+            "status": 200
+          },
+          {
+            "path": "/api/modules/staffdeck-copy/call",
+            "status": 200
+          }
+        ]
+      },
+      "evidence": "l2-completion/browser-editor-result-final-editor.json"
+    },
+    {
+      "id": "controlled-timeout",
+      "scenario": "controlled-timeout",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/discovery-faults.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 23,
+      "expected": "Timeout/cancellation/503 rejected; delayed formal route recovers without binding or database changes.",
+      "actual": {
+        "name": "controlled-timeout",
+        "status": "PASS",
+        "elapsedMs": 23
+      },
+      "evidence": "l2-completion/discovery-faults-result.json"
+    },
+    {
+      "id": "caller-cancellation",
+      "scenario": "caller-cancellation",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/discovery-faults.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 1,
+      "expected": "Timeout/cancellation/503 rejected; delayed formal route recovers without binding or database changes.",
+      "actual": {
+        "name": "caller-cancellation",
+        "status": "PASS",
+        "elapsedMs": 1
+      },
+      "evidence": "l2-completion/discovery-faults-result.json"
+    },
+    {
+      "id": "upstream-503",
+      "scenario": "upstream-503",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/discovery-faults.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 88,
+      "expected": "Timeout/cancellation/503 rejected; delayed formal route recovers without binding or database changes.",
+      "actual": {
+        "name": "upstream-503",
+        "status": "PASS",
+        "elapsedMs": 88
+      },
+      "evidence": "l2-completion/discovery-faults-result.json"
+    },
+    {
+      "id": "real-route-recovery",
+      "scenario": "real-route-recovery",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/discovery-faults.mjs",
+      "options": {},
+      "environment": "CRfI8G SQLite; ports 25910-25914",
+      "elapsedMs": 31227,
+      "expected": "Timeout/cancellation/503 rejected; delayed formal route recovers without binding or database changes.",
+      "actual": {
+        "decision": "start_new_task",
+        "agentId": "agent_12d908bea2584ac0",
+        "counts": {
+          "agents": 30,
+          "mappings": 27
+        },
+        "timeoutMs": 120000,
+        "discoveryTimeoutMs": 90000,
+        "injectedDelayMs": 31000
+      },
+      "evidence": "l2-completion/discovery-faults-result.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "general",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 30406,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "general",
+        "repetition": 0,
+        "sessionKey": "binding-chat-general-1791887885003",
+        "status": "PASS",
+        "markerPresent": true,
+        "errors": [],
+        "elapsedMs": 30406
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "sop-private",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 21220,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "sop-private",
+        "repetition": 0,
+        "sessionKey": "binding-chat-sop-private-1791887915409",
+        "status": "PASS",
+        "markerPresent": false,
+        "errors": [],
+        "elapsedMs": 21220
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "other-project",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 3305,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "other-project",
+        "repetition": 0,
+        "sessionKey": "binding-chat-other-project-1791887936629",
+        "status": "PASS",
+        "markerPresent": false,
+        "errors": [],
+        "elapsedMs": 3305
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "general",
+      "repetition": 1,
+      "status": "FAIL",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 30103,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "general",
+        "repetition": 1,
+        "sessionKey": "binding-chat-general-1791887939934",
+        "status": "FAIL",
+        "markerPresent": false,
+        "errors": [
+          {
+            "type": "error",
+            "code": "agent_invalid_state",
+            "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+            "recoverable": false,
+            "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+            "sequence": 3
+          },
+          {
+            "type": "error",
+            "code": "agent_invalid_state",
+            "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+            "recoverable": false,
+            "runId": "a691b9e6-e86c-42e6-bb3b-6189c58d5178",
+            "sequence": 5
+          }
+        ],
+        "elapsedMs": 30103
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "sop-private",
+      "repetition": 1,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 10285,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "sop-private",
+        "repetition": 1,
+        "sessionKey": "binding-chat-sop-private-1791887970037",
+        "status": "PASS",
+        "markerPresent": false,
+        "errors": [],
+        "elapsedMs": 10285
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "other-project",
+      "repetition": 1,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 4137,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "other-project",
+        "repetition": 1,
+        "sessionKey": "binding-chat-other-project-1791887980322",
+        "status": "PASS",
+        "markerPresent": false,
+        "errors": [],
+        "elapsedMs": 4137
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "general",
+      "repetition": 2,
+      "status": "FAIL",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 30095,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "general",
+        "repetition": 2,
+        "sessionKey": "binding-chat-general-1791887984460",
+        "status": "FAIL",
+        "markerPresent": false,
+        "errors": [
+          {
+            "type": "error",
+            "code": "agent_invalid_state",
+            "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+            "recoverable": false,
+            "runId": "1cbc43a8-ed39-4ea1-9613-7be04f3bcae9",
+            "sequence": 3
+          },
+          {
+            "type": "error",
+            "code": "agent_invalid_state",
+            "message": "StaffDeck SOP discovery request failed: StaffDeck SOP discovery request timed out.",
+            "recoverable": false,
+            "runId": "1cbc43a8-ed39-4ea1-9613-7be04f3bcae9",
+            "sequence": 5
+          }
+        ],
+        "elapsedMs": 30095
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "sop-private",
+      "repetition": 2,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 32852,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "sop-private",
+        "repetition": 2,
+        "sessionKey": "binding-chat-sop-private-1791888014555",
+        "status": "PASS",
+        "markerPresent": false,
+        "errors": [],
+        "elapsedMs": 32852
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "L3-CHAT",
+      "scenario": "other-project",
+      "repetition": 2,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/chat.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 3846,
+      "expected": "Real knowledge tool and source marker only in authorized general chat; no SOP-private or cross-project leakage.",
+      "actual": {
+        "id": "L3-CHAT",
+        "name": "other-project",
+        "repetition": 2,
+        "sessionKey": "binding-chat-other-project-1791888047407",
+        "status": "PASS",
+        "markerPresent": false,
+        "errors": [],
+        "elapsedMs": 3846
+      },
+      "evidence": "l3-completion/chat-result-completion.json"
+    },
+    {
+      "id": "I02",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "runtime-result"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": null,
+      "expected": "A published SOP completes; B stays ordinary chat without SOP tools.",
+      "actual": {
+        "id": "I02",
+        "project": "a",
+        "status": "PASS",
+        "sessionKey": "binding-a-1791888121697",
+        "state": "completed"
+      },
+      "evidence": "l3-completion/runtime-result.json"
+    },
+    {
+      "id": "I02",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "runtime-result"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": null,
+      "expected": "A published SOP completes; B stays ordinary chat without SOP tools.",
+      "actual": {
+        "id": "I02",
+        "project": "b",
+        "status": "PASS",
+        "sessionKey": "binding-b-1791888143826",
+        "ordinaryChat": true
+      },
+      "evidence": "l3-completion/runtime-result.json"
+    },
+    {
+      "id": "I02",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "runtime-result"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": null,
+      "expected": "A published SOP completes; B stays ordinary chat without SOP tools.",
+      "actual": {
+        "id": "I02",
+        "project": "a",
+        "status": "PASS",
+        "sessionKey": "binding-a-1791888144959",
+        "state": "completed"
+      },
+      "evidence": "l3-completion/runtime-result.json"
+    },
+    {
+      "id": "I02",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "runtime-result"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": null,
+      "expected": "A published SOP completes; B stays ordinary chat without SOP tools.",
+      "actual": {
+        "id": "I02",
+        "project": "b",
+        "status": "PASS",
+        "sessionKey": "binding-b-1791888157958",
+        "ordinaryChat": true
+      },
+      "evidence": "l3-completion/runtime-result.json"
+    },
+    {
+      "id": "I02",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "runtime-result"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": null,
+      "expected": "A published SOP completes; B stays ordinary chat without SOP tools.",
+      "actual": {
+        "id": "I02",
+        "project": "a",
+        "status": "PASS",
+        "sessionKey": "binding-a-1791888159272",
+        "state": "completed"
+      },
+      "evidence": "l3-completion/runtime-result.json"
+    },
+    {
+      "id": "I02",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "runtime-result"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": null,
+      "expected": "A published SOP completes; B stays ordinary chat without SOP tools.",
+      "actual": {
+        "id": "I02",
+        "project": "b",
+        "status": "PASS",
+        "sessionKey": "binding-b-1791888171297",
+        "ordinaryChat": true
+      },
+      "evidence": "l3-completion/runtime-result.json"
+    },
+    {
+      "id": "L3-SOP-PRIVATE",
+      "scenario": "L3-SOP-PRIVATE",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 18516,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-private-1791888235242-0",
+        "sopId": "binding_private_1791888235242",
+        "knowledgeBaseId": "kb_378ff4c02ced4453",
+        "finalStatus": "completed"
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-APPROVAL-approved",
+      "scenario": "L3-APPROVAL-approved",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 40067,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-approval-approved-1791888235242-0",
+        "decision": "approved",
+        "sopId": "binding_approval_1791888235242",
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791888235242-0",
+          "requestId": "approval-approved-1791888235242-0",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-APPROVAL-rejected",
+      "scenario": "L3-APPROVAL-rejected",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 34678,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-approval-rejected-1791888235242-0",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791888235242",
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791888235242-0",
+          "requestId": "approval-rejected-1791888235242-0",
+          "revision": 6,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-SOP-PRIVATE",
+      "scenario": "L3-SOP-PRIVATE",
+      "repetition": 1,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 19173,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-private-1791888235242-1",
+        "sopId": "binding_private_1791888235242",
+        "knowledgeBaseId": "kb_378ff4c02ced4453",
+        "finalStatus": "completed"
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-APPROVAL-approved",
+      "scenario": "L3-APPROVAL-approved",
+      "repetition": 1,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 22222,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-approval-approved-1791888235242-1",
+        "decision": "approved",
+        "sopId": "binding_approval_1791888235242",
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791888235242-1",
+          "requestId": "approval-approved-1791888235242-1",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-APPROVAL-rejected",
+      "scenario": "L3-APPROVAL-rejected",
+      "repetition": 1,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 30727,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-approval-rejected-1791888235242-1",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791888235242",
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791888235242-1",
+          "requestId": "approval-rejected-1791888235242-1",
+          "revision": 6,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-SOP-PRIVATE",
+      "scenario": "L3-SOP-PRIVATE",
+      "repetition": 2,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 25988,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-private-1791888235242-2",
+        "sopId": "binding_private_1791888235242",
+        "knowledgeBaseId": "kb_378ff4c02ced4453",
+        "finalStatus": "completed"
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-APPROVAL-approved",
+      "scenario": "L3-APPROVAL-approved",
+      "repetition": 2,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 26882,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-approval-approved-1791888235242-2",
+        "decision": "approved",
+        "sopId": "binding_approval_1791888235242",
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791888235242-2",
+          "requestId": "approval-approved-1791888235242-2",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-APPROVAL-rejected",
+      "scenario": "L3-APPROVAL-rejected",
+      "repetition": 2,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "completion"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 34475,
+      "expected": "Three real repetitions complete authorized private knowledge and both human decisions in A.",
+      "actual": {
+        "sessionKey": "binding-approval-rejected-1791888235242-2",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791888235242",
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791888235242-2",
+          "requestId": "approval-rejected-1791888235242-2",
+          "revision": 6,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-completion.json"
+    },
+    {
+      "id": "L3-APPROVAL-approved",
+      "scenario": "L3-APPROVAL-approved",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "browser-final",
+        "BINDING_QA_BROWSER_APPROVAL": "true",
+        "BINDING_QA_REPETITIONS": "2",
+        "BINDING_QA_ONLY": "approvals"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 41433,
+      "expected": "Desktop/mobile login and approval reply buttons produce accepted receipt and completed A state.",
+      "actual": {
+        "sessionKey": "binding-approval-approved-1791889194439-0",
+        "decision": "approved",
+        "sopId": "binding_approval_1791889194439",
+        "legacyFixedTarget": false,
+        "browserApproval": true,
+        "finalStatus": "completed",
+        "replay": false,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791889194439-0",
+          "requestId": "a9a7feb9-713f-44a1-9db9-0bfb92aab22b",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-browser-final.json"
+    },
+    {
+      "id": "L3-APPROVAL-rejected",
+      "scenario": "L3-APPROVAL-rejected",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "browser-final",
+        "BINDING_QA_BROWSER_APPROVAL": "true",
+        "BINDING_QA_REPETITIONS": "2",
+        "BINDING_QA_ONLY": "approvals"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 33766,
+      "expected": "Desktop/mobile login and approval reply buttons produce accepted receipt and completed A state.",
+      "actual": {
+        "sessionKey": "binding-approval-rejected-1791889194439-0",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791889194439",
+        "legacyFixedTarget": false,
+        "browserApproval": true,
+        "finalStatus": "completed",
+        "replay": false,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791889194439-0",
+          "requestId": "c657cd2a-b4ec-4518-9d06-77f3d380d38c",
+          "revision": 6,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-browser-final.json"
+    },
+    {
+      "id": "L3-APPROVAL-approved",
+      "scenario": "L3-APPROVAL-approved",
+      "repetition": 1,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "browser-final",
+        "BINDING_QA_BROWSER_APPROVAL": "true",
+        "BINDING_QA_REPETITIONS": "2",
+        "BINDING_QA_ONLY": "approvals"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 41320,
+      "expected": "Desktop/mobile login and approval reply buttons produce accepted receipt and completed A state.",
+      "actual": {
+        "sessionKey": "binding-approval-approved-1791889194439-1",
+        "decision": "approved",
+        "sopId": "binding_approval_1791889194439",
+        "legacyFixedTarget": false,
+        "browserApproval": true,
+        "finalStatus": "completed",
+        "replay": false,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791889194439-1",
+          "requestId": "668c0b1e-0b51-4b5c-a679-efed7adc8084",
+          "revision": 9,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-browser-final.json"
+    },
+    {
+      "id": "L3-APPROVAL-rejected",
+      "scenario": "L3-APPROVAL-rejected",
+      "repetition": 1,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "browser-final",
+        "BINDING_QA_BROWSER_APPROVAL": "true",
+        "BINDING_QA_REPETITIONS": "2",
+        "BINDING_QA_ONLY": "approvals"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 28925,
+      "expected": "Desktop/mobile login and approval reply buttons produce accepted receipt and completed A state.",
+      "actual": {
+        "sessionKey": "binding-approval-rejected-1791889194439-1",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791889194439",
+        "legacyFixedTarget": false,
+        "browserApproval": true,
+        "finalStatus": "completed",
+        "replay": false,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791889194439-1",
+          "requestId": "8c692b3e-fdf6-49a0-8048-675aefb5868e",
+          "revision": 9,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-browser-final.json"
+    },
+    {
+      "id": "L3-APPROVAL-approved",
+      "scenario": "L3-APPROVAL-approved",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "legacy-counts",
+        "BINDING_QA_LEGACY": "true",
+        "BINDING_QA_REPETITIONS": "1",
+        "BINDING_QA_ONLY": "approvals"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 53326,
+      "expected": "Fixed mode wait/restart/reply/resume works; project mode restores bound original agent with unchanged counts.",
+      "actual": {
+        "sessionKey": "binding-approval-approved-1791889435185-0",
+        "decision": "approved",
+        "sopId": "binding_approval_1791889435185",
+        "legacyFixedTarget": true,
+        "browserApproval": false,
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-approved-1791889435185-0",
+          "requestId": "approval-approved-1791889435185-0",
+          "revision": 6,
+          "message": "Human decision: approved. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-legacy-counts.json"
+    },
+    {
+      "id": "L3-APPROVAL-rejected",
+      "scenario": "L3-APPROVAL-rejected",
+      "repetition": 0,
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "legacy-counts",
+        "BINDING_QA_LEGACY": "true",
+        "BINDING_QA_REPETITIONS": "1",
+        "BINDING_QA_ONLY": "approvals"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": 61403,
+      "expected": "Fixed mode wait/restart/reply/resume works; project mode restores bound original agent with unchanged counts.",
+      "actual": {
+        "sessionKey": "binding-approval-rejected-1791889435185-0",
+        "decision": "rejected",
+        "sopId": "binding_approval_1791889435185",
+        "legacyFixedTarget": true,
+        "browserApproval": false,
+        "finalStatus": "completed",
+        "replay": true,
+        "receipt": {
+          "accepted": true,
+          "duplicate": false,
+          "sessionId": "binding-approval-rejected-1791889435185-0",
+          "requestId": "approval-rejected-1791889435185-0",
+          "revision": 9,
+          "message": "Human decision: rejected. Finish the procedure with this decision."
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-legacy-counts.json"
+    },
+    {
+      "id": "C01-RESTORE",
+      "scenario": "C01-RESTORE",
+      "status": "PASS",
+      "command": "env -u NODE_OPTIONS node scripts/staffdeck-binding/special-runtime.mjs",
+      "options": {
+        "BINDING_QA_RUN_LABEL": "legacy-counts",
+        "BINDING_QA_LEGACY": "true",
+        "BINDING_QA_REPETITIONS": "1",
+        "BINDING_QA_ONLY": "approvals"
+      },
+      "environment": "XU5lt0 SQLite; ports 26010-26013; qwen3.6-flash-distill",
+      "elapsedMs": null,
+      "expected": "Fixed mode wait/restart/reply/resume works; project mode restores bound original agent with unchanged counts.",
+      "actual": {
+        "name": "C01-RESTORE",
+        "status": "PASS",
+        "restored": {
+          "projectRoot": "$QA_ROOT/workspace/ProjectA",
+          "bindingId": "5162da74-64c6-41e8-a463-568caf377882",
+          "agentName": "ProjectA-5162da74",
+          "origin": "http://127.0.0.1:26010",
+          "tenantId": "binding-tenant",
+          "status": "bound",
+          "updatedAt": "2026-10-13T11:05:57.410Z",
+          "agentId": "agent_201e85d986634414"
+        },
+        "initialCounts": {
+          "agents": 6,
+          "mappings": 4
+        },
+        "finalCounts": {
+          "agents": 6,
+          "mappings": 4
+        }
+      },
+      "evidence": "l3-completion/special-runtime-result-legacy-counts.json"
+    }
+  ]
+}

@@ -1,0 +1,686 @@
+{
+  "status": "PASS",
+  "features": {
+    "knowledge": false,
+    "versionManagement": true
+  },
+  "preservedSessions": 24,
+  "staffdeckRequests": 0,
+  "cases": [
+    {
+      "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c",
+      "width": 1440,
+      "risk": "high",
+      "revision": 11,
+      "version": "1.0.0",
+      "slots": {
+        "ticket": "EIGHT-high-1440-14551",
+        "risk": "high",
+        "output_path": "eight-EIGHT-high-1440-14551.txt",
+        "branch": "high",
+        "route_marker": "HIGH_PATH_EXECUTED",
+        "child_version": "1.0.0"
+      },
+      "receiptIds": [
+        "f7de59f3-0076-4826-9ce4-cb4657d509bc:recipe:call_22307eadb5fe4d67bcdcd41c:eight-recipe",
+        "f7de59f3-0076-4826-9ce4-cb4657d509bc:recipe:call_bade1caf73044290be68741c:release-evidence",
+        "f7de59f3-0076-4826-9ce4-cb4657d509bc:recipe:call_c79da8d7484c4f6d8e643dba:eight-write"
+      ],
+      "nodeModels": [
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:collect",
+          "turnId": "f43121e5-0a63-4843-8d6b-ab068e7f1792",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:collect",
+          "turnId": "f43121e5-0a63-4843-8d6b-ab068e7f1792",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:collect",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:decide",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:done",
+          "turnId": "sop-resume:6a5e1d5a-b7e2-4053-9cd2-5646946f431b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:high_path",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:high_path",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:recipe",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:recipe",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:recipe",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Achild_done",
+          "turnId": "sop-resume:6a5e1d5a-b7e2-4053-9cd2-5646946f431b",
+          "model": "deepseek-v4.1-flash",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_df94b2cb-b2df-471a-ad6a-e0f4b708056c:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "sop-resume:6a5e1d5a-b7e2-4053-9cd2-5646946f431b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        }
+      ],
+      "tools": [
+        {
+          "toolName": "read_skill",
+          "type": "success",
+          "toolCallId": "call_22307eadb5fe4d67bcdcd41c",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc"
+        },
+        {
+          "toolName": "read_file",
+          "type": "success",
+          "toolCallId": "call_bade1caf73044290be68741c",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc"
+        },
+        {
+          "toolName": "write_file",
+          "type": "success",
+          "toolCallId": "call_c79da8d7484c4f6d8e643dba",
+          "turnId": "f7de59f3-0076-4826-9ce4-cb4657d509bc"
+        }
+      ],
+      "waitId": "d2a84d94-2a12-493e-a9cd-efec84ae42ca",
+      "runId": "sop-resume:6a5e1d5a-b7e2-4053-9cd2-5646946f431b",
+      "requestId": "e0b191bf-f2eb-4867-bf43-4940cae7f5b1",
+      "continuationCount": 1,
+      "restartPreserved": true
+    },
+    {
+      "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8",
+      "width": 1440,
+      "risk": "high",
+      "revision": 11,
+      "version": "1.0.1",
+      "slots": {
+        "ticket": "EIGHT-high-1440-07844",
+        "risk": "high",
+        "output_path": "eight-EIGHT-high-1440-07844.txt",
+        "branch": "high",
+        "route_marker": "HIGH_PATH_EXECUTED",
+        "child_version": "1.0.1"
+      },
+      "receiptIds": [
+        "843408d8-0e95-4911-8844-9d86b21955ae:recipe:call_5524f6e210eb48018fcdf971:eight-recipe",
+        "843408d8-0e95-4911-8844-9d86b21955ae:recipe:call_b2f39e5e3b234b18bf105846:eight-write",
+        "843408d8-0e95-4911-8844-9d86b21955ae:recipe:call_b4088a8e8c0b4753bdbce349:release-evidence"
+      ],
+      "nodeModels": [
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:collect",
+          "turnId": "6f91c737-546c-43ef-a829-698e52cdc720",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:collect",
+          "turnId": "6f91c737-546c-43ef-a829-698e52cdc720",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:collect",
+          "turnId": "6f91c737-546c-43ef-a829-698e52cdc720",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:collect",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:collect",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:decide",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:done",
+          "turnId": "sop-resume:f612a0c5-6f1d-43ab-a9a4-840222deba9d",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:high_path",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:recipe",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:recipe",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:recipe",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Achild_done",
+          "turnId": "sop-resume:f612a0c5-6f1d-43ab-a9a4-840222deba9d",
+          "model": "deepseek-v4.1-flash",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_c1288cfb-51d1-4875-aff8-87a6f008ecf8:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "sop-resume:f612a0c5-6f1d-43ab-a9a4-840222deba9d",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        }
+      ],
+      "tools": [
+        {
+          "toolName": "read_skill",
+          "type": "success",
+          "toolCallId": "call_5524f6e210eb48018fcdf971",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae"
+        },
+        {
+          "toolName": "read_file",
+          "type": "success",
+          "toolCallId": "call_b4088a8e8c0b4753bdbce349",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae"
+        },
+        {
+          "toolName": "write_file",
+          "type": "success",
+          "toolCallId": "call_b2f39e5e3b234b18bf105846",
+          "turnId": "843408d8-0e95-4911-8844-9d86b21955ae"
+        }
+      ],
+      "waitId": "746f1131-ed46-4c5c-bda9-43280ba57c47",
+      "runId": "sop-resume:f612a0c5-6f1d-43ab-a9a4-840222deba9d",
+      "requestId": "f056874f-64dc-4cf1-905e-99b101de6dbd",
+      "continuationCount": 1
+    },
+    {
+      "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71",
+      "width": 1440,
+      "risk": "low",
+      "revision": 11,
+      "version": "1.0.2",
+      "slots": {
+        "ticket": "EIGHT-low-1440-16031",
+        "risk": "low",
+        "output_path": "eight-EIGHT-low-1440-16031.txt",
+        "branch": "low",
+        "route_marker": "LOW_PATH_EXECUTED",
+        "child_version": "1.0.2"
+      },
+      "receiptIds": [
+        "f7c37844-d338-4616-b532-f839aad88110:recipe:call_37841214a2b342a28e5a77c2:release-evidence",
+        "f7c37844-d338-4616-b532-f839aad88110:recipe:call_c3201893e7f84b93a73346b0:eight-recipe",
+        "f7c37844-d338-4616-b532-f839aad88110:recipe:call_f57a62aa5c9e4d548aec6d00:eight-write"
+      ],
+      "nodeModels": [
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:collect",
+          "turnId": "58491967-e7b5-4ec7-b158-69416a53665d",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:collect",
+          "turnId": "58491967-e7b5-4ec7-b158-69416a53665d",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:collect",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:decide",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:done",
+          "turnId": "sop-resume:da59acfd-3299-4cab-8937-f5cc5171a7e0",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:low_path",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:low_path",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:recipe",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:recipe",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:recipe",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:recipe",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Achild_done",
+          "turnId": "sop-resume:da59acfd-3299-4cab-8937-f5cc5171a7e0",
+          "model": "deepseek-v4.1-flash",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_a79cb772-7b2c-4f55-bc99-16614a1e7c71:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "sop-resume:da59acfd-3299-4cab-8937-f5cc5171a7e0",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        }
+      ],
+      "tools": [
+        {
+          "toolName": "read_skill",
+          "type": "success",
+          "toolCallId": "call_c3201893e7f84b93a73346b0",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110"
+        },
+        {
+          "toolName": "read_file",
+          "type": "success",
+          "toolCallId": "call_37841214a2b342a28e5a77c2",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110"
+        },
+        {
+          "toolName": "write_file",
+          "type": "success",
+          "toolCallId": "call_f57a62aa5c9e4d548aec6d00",
+          "turnId": "f7c37844-d338-4616-b532-f839aad88110"
+        }
+      ],
+      "waitId": "250bb3f4-7e0c-4582-9ebb-78cad06a8d50",
+      "runId": "sop-resume:da59acfd-3299-4cab-8937-f5cc5171a7e0",
+      "requestId": "dda941db-0303-41bc-bda1-4b24cc923666",
+      "continuationCount": 1
+    },
+    {
+      "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6",
+      "width": 390,
+      "risk": "low",
+      "revision": 11,
+      "version": "1.0.2",
+      "slots": {
+        "ticket": "EIGHT-low-390-24266",
+        "risk": "low",
+        "output_path": "eight-EIGHT-low-390-24266.txt",
+        "branch": "low",
+        "route_marker": "LOW_PATH_EXECUTED",
+        "child_version": "1.0.2"
+      },
+      "receiptIds": [
+        "c80ccb16-3f64-4da6-8806-bc62efeafef4:recipe:call_12bd64fc5d384fc688a07e3d:eight-write",
+        "c80ccb16-3f64-4da6-8806-bc62efeafef4:recipe:call_424ccc1f4d464c508438db1d:eight-recipe",
+        "c80ccb16-3f64-4da6-8806-bc62efeafef4:recipe:call_5b961bfab18a4111a1d098eb:release-evidence"
+      ],
+      "nodeModels": [
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:collect",
+          "turnId": "0e6e5b05-f4db-4a11-bc1c-b524126064f8",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:collect",
+          "turnId": "0e6e5b05-f4db-4a11-bc1c-b524126064f8",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:collect",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:decide",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:done",
+          "turnId": "sop-resume:0ff59c8e-fe9e-44e3-9bd7-ccdaeefc9402",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:low_path",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:low_path",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:recipe",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:recipe",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:recipe",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Achild_done",
+          "turnId": "sop-resume:0ff59c8e-fe9e-44e3-9bd7-ccdaeefc9402",
+          "model": "deepseek-v4.1-flash",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_246b61ad-e459-4c59-a5da-8194e1ac5fa6:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "sop-resume:0ff59c8e-fe9e-44e3-9bd7-ccdaeefc9402",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        }
+      ],
+      "tools": [
+        {
+          "toolName": "read_skill",
+          "type": "success",
+          "toolCallId": "call_424ccc1f4d464c508438db1d",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4"
+        },
+        {
+          "toolName": "read_file",
+          "type": "success",
+          "toolCallId": "call_5b961bfab18a4111a1d098eb",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4"
+        },
+        {
+          "toolName": "write_file",
+          "type": "success",
+          "toolCallId": "call_12bd64fc5d384fc688a07e3d",
+          "turnId": "c80ccb16-3f64-4da6-8806-bc62efeafef4"
+        }
+      ],
+      "waitId": "4f627670-60f4-4acc-b4a0-f69357808ac4",
+      "runId": "sop-resume:0ff59c8e-fe9e-44e3-9bd7-ccdaeefc9402",
+      "requestId": "8ad27a38-2091-4a9d-8d6c-182966c42801",
+      "continuationCount": 1
+    },
+    {
+      "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b",
+      "width": 1440,
+      "risk": "high",
+      "revision": 11,
+      "version": "1.0.2",
+      "slots": {
+        "ticket": "EIGHT-high-1440-64333",
+        "risk": "high",
+        "branch": "high",
+        "output_path": "eight-EIGHT-high-1440-64333.txt",
+        "route_marker": "HIGH_PATH_EXECUTED",
+        "child_version": "1.0.2"
+      },
+      "receiptIds": [
+        "a136ba6a-bc4c-4bd0-988a-78630761303b:recipe:call_2ffefffb04ae40fd8a1fd740:eight-recipe",
+        "a136ba6a-bc4c-4bd0-988a-78630761303b:recipe:call_96a8a510f825411e8efbeda7:eight-write",
+        "a136ba6a-bc4c-4bd0-988a-78630761303b:recipe:call_e1869066150e44deb158754e:release-evidence"
+      ],
+      "nodeModels": [
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:collect",
+          "turnId": "b94e06d8-7740-41f0-b56d-f0c0e2a0e0e1",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:collect",
+          "turnId": "b94e06d8-7740-41f0-b56d-f0c0e2a0e0e1",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:collect",
+          "turnId": "b94e06d8-7740-41f0-b56d-f0c0e2a0e0e1",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:collect",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:decide",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:decide",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:done",
+          "turnId": "sop-resume:aa9008d2-5d0c-4730-9690-58d1850d91e2",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:high_path",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:high_path",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:recipe",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:recipe",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:recipe",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:recipe",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Achild_done",
+          "turnId": "sop-resume:aa9008d2-5d0c-4730-9690-58d1850d91e2",
+          "model": "deepseek-v4.1-flash",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        },
+        {
+          "sessionId": "web:s_8cab4941-7c89-4827-911e-17eaa41f5a8b:sop-node:eight_parent_1015:sub%3A%3Aeight_child_1015%3A%3Areview",
+          "turnId": "sop-resume:aa9008d2-5d0c-4730-9690-58d1850d91e2",
+          "model": "qwen3.6-flash-distill",
+          "provider": "provider1"
+        }
+      ],
+      "tools": [
+        {
+          "toolName": "read_skill",
+          "type": "success",
+          "toolCallId": "call_2ffefffb04ae40fd8a1fd740",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b"
+        },
+        {
+          "toolName": "read_file",
+          "type": "success",
+          "toolCallId": "call_e1869066150e44deb158754e",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b"
+        },
+        {
+          "toolName": "write_file",
+          "type": "success",
+          "toolCallId": "call_96a8a510f825411e8efbeda7",
+          "turnId": "a136ba6a-bc4c-4bd0-988a-78630761303b"
+        }
+      ],
+      "waitId": "21dbb64b-6a1b-4d1c-9bb5-86c883af578d",
+      "runId": "sop-resume:aa9008d2-5d0c-4730-9690-58d1850d91e2",
+      "requestId": "18502058-1e5a-4d3f-9ac4-d06221ba61dc",
+      "continuationCount": 1
+    }
+  ]
+}

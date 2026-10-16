@@ -1,0 +1,166 @@
+[
+  {
+    "id": "I02-LIFECYCLE",
+    "status": "PASS",
+    "firstVersion": "1.0.0",
+    "secondVersion": "1.0.1",
+    "rollback": {
+      "id": "sopdraft_d62059eb5d1c49f6",
+      "agent_id": "agent_18620b8fef73461d",
+      "sop_id": "binding_lifecycle_1791877909197",
+      "base_version": "1.0.0",
+      "draft_version": "1.0.1",
+      "content": {
+        "skill_id": "binding_lifecycle_1791877909197",
+        "name": "Lifecycle QA",
+        "version": "1.0.1",
+        "business_domain": null,
+        "description": "Lifecycle QA",
+        "capability_scope": "general",
+        "step_timeout_seconds": null,
+        "trigger_intents": [],
+        "user_utterance_examples": [],
+        "goal": [],
+        "required_info": [],
+        "slot_filling_policy": {},
+        "response_rules": [],
+        "nodes": [
+          {
+            "node_id": "answer",
+            "type": "respond",
+            "name": "Answer",
+            "instruction": "Answer and complete",
+            "optional": false,
+            "condition": null,
+            "expected_user_info": [],
+            "allowed_actions": [],
+            "knowledge_scope": {},
+            "capability_refs": {
+              "general_skill_ids": [],
+              "tool_ids": [],
+              "knowledge_base_ids": [],
+              "required_general_skill_ids": [],
+              "required_tool_ids": [],
+              "required_knowledge_base_ids": []
+            },
+            "retry_policy": {},
+            "metadata": {},
+            "sub_sop_id": null,
+            "assignee_user_id": null,
+            "assignee_notify_channel": null
+          }
+        ],
+        "edges": [],
+        "start_node_id": "answer",
+        "terminal_node_ids": [
+          "answer"
+        ],
+        "interruption_policy": {}
+      },
+      "status": "draft",
+      "source": "rollback",
+      "warnings": [],
+      "validation": {},
+      "etag": "\"bc52473b18e864f413d7afedf9f6fef677ffdaaf425f7daa429ceabfc900dc0d\"",
+      "created_at": "2026-10-13T07:51:49.654780Z",
+      "updated_at": "2026-10-13T07:51:49.654788Z",
+      "published_at": null
+    },
+    "archived": {
+      "id": "skill_32be531c061e4c40",
+      "skill_id": "binding_lifecycle_1791877909197",
+      "version": "1.1.0",
+      "name": "Lifecycle QA",
+      "business_domain": null,
+      "description": "Lifecycle QA",
+      "content": {
+        "skill_id": "binding_lifecycle_1791877909197",
+        "name": "Lifecycle QA",
+        "version": "1.1.0",
+        "business_domain": null,
+        "description": "Lifecycle QA",
+        "capability_scope": "general",
+        "step_timeout_seconds": null,
+        "trigger_intents": [],
+        "user_utterance_examples": [],
+        "goal": [],
+        "required_info": [],
+        "slot_filling_policy": {},
+        "response_rules": [],
+        "nodes": [
+          {
+            "node_id": "answer",
+            "type": "respond",
+            "name": "Answer",
+            "instruction": "Answer and complete",
+            "optional": false,
+            "condition": null,
+            "expected_user_info": [],
+            "allowed_actions": [],
+            "knowledge_scope": {},
+            "capability_refs": {
+              "general_skill_ids": [],
+              "tool_ids": [],
+              "knowledge_base_ids": [],
+              "required_general_skill_ids": [],
+              "required_tool_ids": [],
+              "required_knowledge_base_ids": []
+            },
+            "retry_policy": {},
+            "metadata": {},
+            "sub_sop_id": null,
+            "assignee_user_id": null,
+            "assignee_notify_channel": null
+          }
+        ],
+        "edges": [],
+        "start_node_id": "answer",
+        "terminal_node_ids": [
+          "answer"
+        ],
+        "interruption_policy": {}
+      },
+      "validation_errors": [],
+      "status": "archived",
+      "call_count": 0,
+      "positive_feedback_count": 0,
+      "negative_feedback_count": 0,
+      "positive_rate": 0,
+      "negative_rate": 0,
+      "total_call_count": 0,
+      "total_positive_feedback_count": 0,
+      "total_negative_feedback_count": 0,
+      "total_positive_rate": 0,
+      "total_negative_rate": 0,
+      "recent_versions": [
+        "1.0.0"
+      ],
+      "recent_call_count": 0,
+      "recent_positive_feedback_count": 0,
+      "recent_negative_feedback_count": 0,
+      "recent_positive_rate": 0,
+      "recent_negative_rate": 0,
+      "agent_id": "agent_18620b8fef73461d",
+      "branch_status": "inactive",
+      "branch_sync_state": "diverged",
+      "branch_base_version": "1.0.0",
+      "branch_head_version": "1.1.0",
+      "metadata": {
+        "owner_user_id": "binding-actor",
+        "owner_username": "binding-actor",
+        "owner_display_name": "binding-actor",
+        "created_by_user_id": "binding-actor",
+        "created_by_username": "binding-actor",
+        "created_by": "binding-actor",
+        "created_by_display_name": "binding-actor",
+        "creator_name": "binding-actor",
+        "scope": "agent_private",
+        "visibility": "agent_private",
+        "owner_agent_id": "agent_18620b8fef73461d",
+        "created_from_agent": true
+      },
+      "created_at": "2026-10-13T07:51:49.499114",
+      "updated_at": "2026-10-13T07:51:49.727353"
+    }
+  }
+]

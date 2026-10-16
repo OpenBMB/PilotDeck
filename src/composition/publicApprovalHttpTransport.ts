@@ -27,7 +27,7 @@ export async function handlePublicApprovalHttpRequest(req: IncomingMessage, res:
     const allowed = ['tenantId', 'agentId', 'sessionKey', 'projectKey', ...(operation === 'resume'
       ? ['source', 'requestId', 'waitId', 'expectedRevision', 'message', 'slotUpdates'] : [])];
     if (Object.keys(body).some(name => !allowed.includes(name))) throw Object.assign(new Error('Unexpected approval input'), { status: 400, code: 'APPROVAL_AUTHORITY_OVERRIDE' });
-    if (body.tenantId !== options.bridge.binding.tenantId || body.agentId !== options.bridge.binding.agentId) {
+    if (!options.bridge.dynamicBinding && (body.tenantId !== options.bridge.binding.tenantId || body.agentId !== options.bridge.binding.agentId)) {
       throw Object.assign(new Error('Approval scope mismatch'), { status: 403, code: 'APPROVAL_SUBJECT_MISMATCH' });
     }
     const input = { ...body, approverAuthorization: req.headers['x-staffdeck-approver-authorization'] };

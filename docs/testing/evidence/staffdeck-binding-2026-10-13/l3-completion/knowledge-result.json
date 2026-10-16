@@ -1,0 +1,21 @@
+[
+  {
+    "scope": "general",
+    "jobId": "kjob_edf721528c644420",
+    "existing": false,
+    "status": "PASS"
+  },
+  {
+    "scope": "sop_specific",
+    "jobId": "kjob_e582b89e4a654301",
+    "existing": false,
+    "status": "PASS"
+  },
+  {
+    "id": "I01",
+    "status": "PASS",
+    "generalVisible": true,
+    "sopHiddenInChat": true,
+    "bPrivateHidden": true
+  }
+]

@@ -11,6 +11,7 @@ export type PublicApprovalSessionResolver = (input: {
 }) => Promise<PublicApprovalSession | undefined>;
 export type PublicApprovalBridge = Readonly<{
   binding: PublicApprovalBinding;
+  dynamicBinding?: boolean;
   status(input: GatewaySopStatusInput, signal?: AbortSignal): Promise<StaffDeckSopStatusSnapshot | null>;
   resume(input: GatewaySopResumeInput, signal?: AbortSignal): Promise<StaffDeckSopResumeResult>;
 }>;
@@ -19,7 +20,9 @@ const nonempty = (value: unknown): value is string => typeof value === 'string' 
 const failure = (status: number, code: string) => Object.assign(new Error(code), { status, code });
 
 export function createPublicApprovalBridge(options: {
+  hostAdapter?: "pilotdeck" | "staffdeck";
   binding: PublicApprovalBinding;
+  resolveBinding?: (input: GatewaySopStatusInput) => Promise<PublicApprovalBinding>;
   authenticate(input: { bearer: string; signal?: AbortSignal }): Promise<PublicApprovalSubject>;
   resolveSession?: PublicApprovalSessionResolver;
   status(input: GatewaySopStatusInput): Promise<StaffDeckSopStatusSnapshot | undefined>;
@@ -27,14 +30,19 @@ export function createPublicApprovalBridge(options: {
 }): PublicApprovalBridge {
   const binding = Object.freeze({ ...options.binding });
   async function access(input: GatewaySopStatusInput, signal?: AbortSignal) {
+    const binding = options.resolveBinding ? await options.resolveBinding(input) : options.binding;
     if (!nonempty(input.sessionKey)) throw failure(400, 'APPROVAL_INPUT_INVALID');
     if (Object.hasOwn(input, 'authority') || Object.hasOwn(input, 'subject')) throw failure(400, 'APPROVAL_AUTHORITY_OVERRIDE');
+    const scope = input as GatewaySopStatusInput & { tenantId?: string; agentId?: string };
+    if ((scope.tenantId !== undefined && scope.tenantId !== binding.tenantId)
+      || (scope.agentId !== undefined && scope.agentId !== binding.agentId)) throw failure(403, 'APPROVAL_SUBJECT_MISMATCH');
     if (![binding.tenantId, binding.agentId, binding.pilotDeckUserId].every(nonempty)) throw failure(503, 'APPROVAL_BINDING_UNAVAILABLE');
     const authorization = input.approverAuthorization;
     if (typeof authorization !== 'string' || authorization.slice(0, 7).toLowerCase() !== 'bearer ' || !nonempty(authorization.slice(7))) {
       throw failure(401, 'APPROVAL_AUTH_REQUIRED');
     }
     const subject = await options.authenticate({ bearer: authorization.slice(7), signal });
+    if (options.hostAdapter === 'pilotdeck' && subject.userId !== binding.pilotDeckUserId) throw failure(403, 'APPROVAL_SUBJECT_MISMATCH');
     if (subject.tenantId !== binding.tenantId || subject.source !== 'web' || subject.disabled
       || !nonempty(subject.userId) || !['admin', 'member'].includes(subject.role)) throw failure(403, 'APPROVAL_SUBJECT_MISMATCH');
     if (!options.resolveSession) throw failure(503, 'SOP_APPROVAL_SESSION_MAPPING_UNAVAILABLE');
@@ -47,11 +55,12 @@ export function createPublicApprovalBridge(options: {
     signal?.throwIfAborted();
     return { session, subject };
   }
-  return Object.freeze({ binding,
+  return Object.freeze({ binding, dynamicBinding: Boolean(options.resolveBinding),
     async status(input, signal) {
       const { session, subject } = await access(input, signal);
       const snapshot = await options.status({ sessionKey: session.sessionKey, projectKey: session.projectKey });
       if (snapshot?.sessionId !== undefined && snapshot.sessionId !== session.sessionKey) throw failure(502, 'SOP_APPROVAL_SESSION_MISMATCH');
+      if (options.hostAdapter === 'pilotdeck' && snapshot?.approval && snapshot.approval.assigneeUserId !== 'pilotdeck:owner') throw failure(403, 'SOP_APPROVAL_FORBIDDEN');
       if (snapshot?.approval && subject.role !== 'admin' && snapshot.approval.assigneeUserId !== subject.userId) {
         throw failure(403, 'SOP_APPROVAL_FORBIDDEN');
       }
@@ -65,7 +74,7 @@ export function createPublicApprovalBridge(options: {
       return options.resume({ sessionKey: session.sessionKey, projectKey: session.projectKey,
         source: 'human', requestId: input.requestId, waitId: input.waitId, message: input.message,
         expectedRevision: input.expectedRevision, ...(input.slotUpdates ? { slotUpdates: input.slotUpdates } : {}),
-        authority: { tenantId: binding.tenantId, sessionId: session.sessionKey, subject } });
+        authority: { ...(options.hostAdapter ? { hostAdapter: options.hostAdapter } : {}), tenantId: session.tenantId, sessionId: session.sessionKey, subject } });
     },
   });
 }

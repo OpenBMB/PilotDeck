@@ -4,6 +4,9 @@ import { generatedFrontendModules, generatedFrontendProfile } from './generated/
 import { slots, type Assembly, type Binding, type CompositionProfile, type Slot } from './contracts';
 import { registerPermissionPanels } from '../components/chat/tools/configs/permissionPanelRegistry';
 import { authenticatedFetch } from '../utils/api';
+import staffdeckSop from './modules/staffdeck-sop';
+import knowledgeCore from './modules/knowledge-core';
+import pilotdeckSop from './modules/pilotdeck-sop';
 
 let activeAssembly: Assembly | null = null;
 
@@ -51,6 +54,7 @@ export function activateAssembly(assembly: Assembly, runtime?: RuntimeCapabiliti
 
 export type RuntimeModule = {
   enabled: boolean;
+  hostAdapter?: 'pilotdeck' | 'staffdeck';
   provider?: string;
   implementationId?: string;
   frontendModule?: string;
@@ -60,6 +64,7 @@ export type RuntimeModule = {
 };
 
 export type RuntimeCapabilities = {
+  projectBindings?: boolean;
   modules: Partial<Record<Slot, RuntimeModule>>;
   gatewayCapabilities: string[];
   gatewayState?: 'ready' | 'unavailable';
@@ -82,6 +87,7 @@ export async function readRuntimeCapabilities(
   }
   const modules = isRecord(body.modules) ? body.modules : {};
   return {
+    projectBindings: body.projectBindings === true,
     modules: modules as Partial<Record<Slot, RuntimeModule>>,
     gatewayCapabilities: Array.isArray(body.gatewayCapabilities)
       ? body.gatewayCapabilities.filter((item): item is string => typeof item === 'string')
@@ -113,7 +119,7 @@ export function validateRuntimeCapabilities(assembly: Assembly, runtime: Runtime
     if (expected.provider && actual.provider !== expected.provider) {
       errors.push(`Runtime provider differs for ${slot}.`);
     }
-    for (const field of ['implementationId', 'frontendModule', 'contract', 'transport'] as const) {
+    for (const field of ['implementationId', 'frontendModule', 'contract', 'transport', 'hostAdapter'] as const) {
       const expectedValue = expected[field];
       const canonical = (value: unknown) => slot === 'knowledge' && field === 'frontendModule' && value === 'staffdeck.knowledge' ? 'knowledge-core' : value;
       if (expectedValue !== undefined && canonical(actual[field]) !== canonical(expectedValue)) {
@@ -153,8 +159,10 @@ export type ModuleCompositionState = {
 
 const staticProfile: CompositionProfile = generatedFrontendProfile as unknown as CompositionProfile;
 
-export function assembleProfile(profile: CompositionProfile): Assembly {
-  return assembleFrontend(profile, generatedFrontendModules, resolveFrontendChoices(profile, generatedFrontendModules));
+export function assembleProfile(profile: CompositionProfile, projectBindings = false): Assembly {
+  const catalog = projectBindings ? [...generatedFrontendModules, staffdeckSop, knowledgeCore, pilotdeckSop]
+    .filter((value, index, rows) => rows.findIndex(row => row.id === value.id) === index) : generatedFrontendModules;
+  return assembleFrontend(profile, catalog, resolveFrontendChoices(profile, catalog));
 }
 
 export function resolveModuleCompositionState(
@@ -163,7 +171,9 @@ export function resolveModuleCompositionState(
   error: string | null,
 ): ModuleCompositionState {
   try {
-    const assembly = assembleProfile(profile);
+    if (runtime?.projectBindings) profile = { ...profile, modules: { ...profile.modules,
+      sop: runtime.modules.sop as Binding, knowledge: runtime.modules.knowledge as Binding } };
+    const assembly = assembleProfile(profile, runtime?.projectBindings);
     // Static imports are not an authorization to activate a module. Keep
     // every module-owned contribution dormant until the server projection
     // has confirmed that this exact assembly is available.
@@ -197,7 +207,12 @@ export function useModuleComposition(): ModuleCompositionState {
     void readRuntimeCapabilities()
       .then((next) => { if (!cancelled) { setRuntime(next); setError(null); } })
       .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); });
-    const refresh = () => setRefreshKey((current) => current + 1);
+    const refresh = () => {
+      cancelled = true;
+      setRuntime(null);
+      setError(null);
+      setRefreshKey((current) => current + 1);
+    };
     window.addEventListener('pilotdeck:module-runtime-changed', refresh);
     return () => {
       cancelled = true;

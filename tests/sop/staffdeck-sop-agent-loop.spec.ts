@@ -814,6 +814,74 @@ test("final SOP node offers only its submission and corrects a text draft", asyn
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("rejected submission followed by prose still receives bounded protocol correction", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-rejected-correction-"));
+  try {
+    let calls = 0, submissions = 0;
+    const model = modelFromStream(async function* () {
+      calls++;
+      if (calls === 2) { yield* yieldText("Approval request created."); return; }
+      yield* yieldToolCall(`submit-${calls}`, "submit_step_result", {
+        status: calls === 1 ? "completed" : "handoff", replyFragment: "Please approve.", slotUpdates: {},
+      });
+    });
+    const base = acceptingClient(undefined, true);
+    const client: StaffDeckSopRuntimeClient = { ...base, async submit(input) {
+      if (++submissions === 1) throw new StaffDeckSopClientError("HANDOFF_REQUIRED", "Human approval must be resumed before completing this node");
+      return base.submit(input);
+    } };
+    const session = createSopSession({ root, sessionId: "rejected-correction", model, client, context: new DefaultContextRuntime() });
+    const events = await collectSessionTurn(session, "Start approval", "correction-turn");
+    assert.equal(calls, 3);
+    assert.equal(submissions, 2);
+    assert.ok(!events.some(event => event.type === "turn_failed"), JSON.stringify(events));
+    assert.equal((await new SopStateStore(join(root, "sessions" )).status("rejected-correction"))?.state.status, "handoff");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const waiting of ["handoff", "awaiting_user"] as const) {
+  test(`terminal ${waiting} node corrects prose without forcing completion`, async () => {
+    const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-terminal-wait-"));
+    try {
+      let calls = 0;
+      const model = modelFromStream(async function* (prepared) {
+        const request = (prepared as { request: { systemPrompt: string; toolChoice: unknown } }).request;
+        assert.deepEqual(request.toolChoice, { type: "tool", name: "submit_step_result" });
+        assert.match(request.systemPrompt, /Being final does not remove/);
+        if (waiting === "handoff") assert.match(request.systemPrompt, /do not substitute failed merely because the human rejected/);
+        assert.doesNotMatch(request.systemPrompt, /Call submit_step_result now with status completed/);
+        if (calls++ === 0) { yield* yieldText("Please reply."); return; }
+        assert.match(request.systemPrompt, /Follow the current node contract/);
+        yield* yieldToolCall("wait", "submit_step_result", {
+          status: waiting, replyFragment: "Please reply.", slotUpdates: waiting === "handoff" ? {} : { goal: "Validate SOP" },
+        });
+      });
+      const base = acceptingClient();
+      const client: StaffDeckSopRuntimeClient = {
+        ...base,
+        async prepare(input) {
+          const prepared = await base.prepare(input);
+          return { ...prepared, state: { ...prepared.state, active_step_id: "lookup" }, step: { ...prepared.step,
+            node: { type: waiting === "handoff" ? "handoff" : "collect_info" },
+            expectedUserInfo: waiting === "handoff" ? [] : ["goal", "stage"], declaresHandoff: waiting === "handoff",
+            requiredToolNames: [], allowedNextStepIds: [], allowedActions: ["answer_user"], isTerminal: true } };
+        },
+        async submit(input) {
+          assert.equal(input.proposal.status, waiting);
+          return { state: { ...input.state, status: waiting, slots_json: input.proposal.slotUpdates }, result: {
+            status: waiting, replyFragment: input.proposal.replyFragment, slotUpdates: input.proposal.slotUpdates ?? {}, events: [],
+          } };
+        },
+      };
+      const session = createSopSession({ root, sessionId: "terminal-wait", model, client, context: new DefaultContextRuntime() });
+      const events = await collectSessionTurn(session, "Goal: Validate SOP", "terminal-wait-turn");
+      assert.ok(!events.some(event => event.type === "turn_failed"), JSON.stringify(events));
+      assert.equal(calls, 2);
+      assert.equal((await new SopStateStore(join(root, "sessions")).status("terminal-wait"))?.state.status, waiting);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+}
+
 test("recovery of a committed intermediate node continues instead of ending the turn", async () => {
   const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-active-recovery-"));
   try {
@@ -2230,7 +2298,7 @@ test("overlapping owner prepare cannot overwrite the concurrently saved SOP stat
   await session.dispose();
 });
 
-for (const mode of ["allow", "revoke", "stale", "empty", "invalid", "hidden", "untrusted"] as const) {
+for (const mode of ["allow", "required", "revoke", "stale", "empty", "invalid", "hidden", "untrusted"] as const) {
   test(`response optional Knowledge uses one authorized view across model/list/preflight: ${mode}`, async () => {
     const root = mkdtempSync(join(tmpdir(), "r150-optional-response-"));
     console.log(`optional-response-evidence=${root}`);
@@ -2253,7 +2321,7 @@ for (const mode of ["allow", "revoke", "stale", "empty", "invalid", "hidden", "u
     const client: StaffDeckSopRuntimeClient = { ...base, prepare: async input => {
       const p = await base.prepare(input);
       return { ...p, state: { ...p.state, active_step_id: "response" }, step: { ...p.step,
-        nodeId: "response", node: { type: "response" }, requiredToolNames: [], allowedActions: ["answer_user"],
+        nodeId: "response", node: { type: "response" }, requiredToolNames: mode === 'required' ? ['knowledge_query'] : [], allowedActions: ["answer_user"],
         ...(mode === "untrusted" ? { optionalKnowledge: { optionalCapabilities: [{ resourceId: "base" }] } as never } : {}) } };
     } };
     const query = { ...lookupTool(), name: "knowledge_query" };
@@ -2266,10 +2334,11 @@ for (const mode of ["allow", "revoke", "stale", "empty", "invalid", "hidden", "u
     const model = modelFromStream(async function* (prepared) {
       const request = (prepared as { request: { tools?: { name: string }[]; toolChoice: unknown } }).request;
       modelCalls++;
-      assert.ok(!request.tools?.some(tool => tool.name === "lookup_account"));
+      if (mode !== 'required') assert.ok(!request.tools?.some(tool => tool.name === "lookup_account"));
       if (modelCalls === 1) {
         const hidden = mode === "empty" || mode === "untrusted";
-        assert.deepEqual(request.tools?.map(tool => tool.name), hidden ? ["submit_step_result"] : ["knowledge_query", "submit_step_result"]);
+        assert.deepEqual(request.tools?.map(tool => tool.name), mode === 'required' ? ['lookup_account', 'knowledge_query', 'submit_step_result']
+          : hidden ? ["submit_step_result"] : ["knowledge_query", "submit_step_result"]);
         assert.deepEqual(request.toolChoice, hidden ? { type: "tool", name: "submit_step_result" } : "required");
         if (mode === "stale") {
           const p = (await store.status("optional-session"))!;
@@ -2286,11 +2355,11 @@ for (const mode of ["allow", "revoke", "stale", "empty", "invalid", "hidden", "u
       authorityPort: mode === "untrusted" ? undefined : authorityPort, bundle: optionalBundle, context: new DefaultContextRuntime() });
     const events = await collectSessionTurn(session, "Answer with available evidence", "optional-turn");
     if (receipts === undefined) console.log(JSON.stringify({ mode, events }));
-    assert.equal(searches, mode === "allow" ? 1 : 0);
-    assert.deepEqual(receipts, mode === "allow" ? ["knowledge_query"] : []);
+    assert.equal(searches, mode === "allow" || mode === 'required' ? 1 : 0);
+    assert.deepEqual(receipts, mode === "allow" || mode === 'required' ? ["knowledge_query"] : []);
     const result = events.find(event => event.type === "tool_result" && event.result.toolCallId === "optional-query");
     assert.ok(result && result.type === "tool_result");
-    assert.equal(result.result.type, mode === "allow" ? "success" : "error");
+    assert.equal(result.result.type, mode === "allow" || mode === 'required' ? "success" : "error");
     assert.equal((await store.status("optional-session"))?.state.status, "completed");
     assert.equal(currentKnowledgeAuthority(), undefined);
     await session.dispose();

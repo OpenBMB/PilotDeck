@@ -11,7 +11,7 @@ describe('independent knowledge gateway', () => {
     app.use(express.json());
     app.use((req, _res, next) => { req.user = { id: 'local-user' }; next(); });
     app.use('/km', createKnowledgeCoreRouter({
-      loadConfig: () => ({ modules: { knowledge: { enabled: true, contract: 'knowledge-core/v1',
+      loadConfig: req => ({ modules: { knowledge: { enabled: req?.user?.id === 'local-user', contract: 'knowledge-core/v1',
         endpoint: 'http://knowledge', bearer: 'server-token', pilotDeckUserId: 'local-user',
         spaceId: 'space-a', methods: ['query', 'list_bases', 'list_spaces', 'bind_base'],
         spaces: [{ id: 'space-a', name: 'Employee' }],

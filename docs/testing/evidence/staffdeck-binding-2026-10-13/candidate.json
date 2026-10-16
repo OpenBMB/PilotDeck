@@ -1,0 +1,77 @@
+{
+  "recordedAt": "2026-10-13T09:03:30.138Z",
+  "candidates": [
+    {
+      "path": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/PilotDeck",
+      "branch": "codex/standalone-alpha1-20261013",
+      "commit": "b243fa007dcd449a78cf48e3d1f9e10f99c6c845",
+      "dirty": [
+        "M src/cli/createLocalGateway.ts",
+        " M src/cli/pilotdeck.ts",
+        " M src/composition/publicApprovalBridge.ts",
+        " M src/composition/publicApprovalHttpTransport.ts",
+        " M src/pilot/config/loadPilotConfig.ts",
+        " M src/pilot/config/parseModulesConfig.ts",
+        " M src/sop/staffdeck/SopAgentLoop.ts",
+        " M tests/composition/public-approval-bridge.spec.ts",
+        " M tests/sop/staffdeck-sop-agent-loop.spec.ts",
+        " M ui/server/projects.js",
+        " M ui/server/routes/modules.js",
+        " M ui/server/routes/projects.js",
+        " M ui/server/routes/staffdeck-copy.js",
+        " M ui/server/staffdeck-publish-route.js",
+        " M ui/server/staffdeck-publish-route.test.js",
+        " M ui/server/staffdeck-publish-runtime.mjs",
+        " M ui/src/components/app-shell/AppShellV2.tsx",
+        " M ui/src/components/app-shell/MainAreaV2.tsx",
+        " M ui/src/composition/modules/staffdeck/publish-runtime-integration.test.tsx",
+        " M ui/src/composition/modules/staffdeck/publish-runtime-observer.ts",
+        " M ui/src/composition/modules/staffdeck/vendor/skills-host-adapter.tsx",
+        " M ui/src/composition/runtime.ts",
+        " M ui/src/utils/api.js",
+        "?? docs/delivery/staffdeck-project-binding.zh.md",
+        "?? docs/testing/evidence/",
+        "?? docs/testing/staffdeck-binding-acceptance-2026-10-13.md",
+        "?? scripts/staffdeck-binding/",
+        "?? src/pilot/staffdeck/",
+        "?? tests/pilot/staffdeck-project-binding-faults.spec.ts",
+        "?? tests/pilot/staffdeck-project-binding.spec.ts",
+        "?? ui/server/routes/projects.binding.test.js",
+        "?? ui/src/components/app-shell/StaffDeckProjectBinding.test.tsx",
+        "?? ui/src/components/app-shell/StaffDeckProjectBinding.tsx"
+      ],
+      "trackedDiff": "src/cli/createLocalGateway.ts                      | 54 ++++++++++----\n src/cli/pilotdeck.ts                               |  2 +-\n src/composition/publicApprovalBridge.ts            | 10 ++-\n src/composition/publicApprovalHttpTransport.ts     |  2 +-\n src/pilot/config/loadPilotConfig.ts                |  3 +-\n src/pilot/config/parseModulesConfig.ts             |  4 +-\n src/sop/staffdeck/SopAgentLoop.ts                  |  7 +-\n tests/composition/public-approval-bridge.spec.ts   | 24 ++++++\n tests/sop/staffdeck-sop-agent-loop.spec.ts         | 15 ++--\n ui/server/projects.js                              | 13 ++++\n ui/server/routes/modules.js                        | 85 ++++++++++++++++------\n ui/server/routes/projects.js                       | 26 +++++++\n ui/server/routes/staffdeck-copy.js                 |  2 +-\n ui/server/staffdeck-publish-route.js               | 21 ++++++\n ui/server/staffdeck-publish-route.test.js          | 15 ++++\n ui/server/staffdeck-publish-runtime.mjs            | 33 ++++++++-\n ui/src/components/app-shell/AppShellV2.tsx         | 27 +++++--\n ui/src/components/app-shell/MainAreaV2.tsx         |  1 +\n .../staffdeck/publish-runtime-integration.test.tsx | 10 +++\n .../modules/staffdeck/publish-runtime-observer.ts  | 11 +++\n .../staffdeck/vendor/skills-host-adapter.tsx       |  5 +-\n ui/src/composition/runtime.ts                      | 21 +++++-\n ui/src/utils/api.js                                |  4 +\n 23 files changed, 330 insertions(+), 65 deletions(-)"
+    },
+    {
+      "path": "/Users/a1/.codex/worktrees/standalone-alpha1-20261013/StaffDeck",
+      "branch": "standalone_alpha1",
+      "commit": "77c219737a9e8e24d6df39ba73212c60f5851b90",
+      "dirty": [
+        "M backend/app/api/knowledge.py",
+        " M backend/app/api/skills.py",
+        " M backend/app/db/models.py",
+        " M backend/app/knowledge/schema.py",
+        " M backend/app/public_api/app.py",
+        " M backend/app/public_api/pilotdeck_approval_binding.py",
+        " M backend/app/public_api/pilotdeck_approvals.py",
+        " M backend/app/public_api/pilotdeck_domain_binding.py",
+        " M backend/app/public_api/pilotdeck_domain_host.py",
+        " M backend/app/public_api/pilotdeck_harness_model.py",
+        " M backend/app/public_api/sop_capability_authority.py",
+        " M backend/tests/test_pilotdeck_domain_binding.py",
+        " M backend/tests/test_public_sop_route.py",
+        "?? backend/app/public_api/project_bindings.py",
+        "?? backend/app/public_api/project_knowledge.py",
+        "?? backend/tests/test_project_agent_binding.py",
+        "?? backend/tests/test_project_binding_upgrade.py",
+        "?? backend/tests/test_project_knowledge_scope.py"
+      ],
+      "trackedDiff": "backend/app/api/knowledge.py                         |  3 +++\n backend/app/api/skills.py                            |  9 +++++++++\n backend/app/db/models.py                             | 11 +++++++++++\n backend/app/knowledge/schema.py                      |  3 ++-\n backend/app/public_api/app.py                        |  3 +++\n backend/app/public_api/pilotdeck_approval_binding.py |  6 ++++--\n backend/app/public_api/pilotdeck_approvals.py        |  4 +++-\n backend/app/public_api/pilotdeck_domain_binding.py   | 18 ++++++++++--------\n backend/app/public_api/pilotdeck_domain_host.py      |  4 +---\n backend/app/public_api/pilotdeck_harness_model.py    |  6 +++---\n backend/app/public_api/sop_capability_authority.py   |  1 +\n backend/tests/test_pilotdeck_domain_binding.py       | 10 ++++++++++\n backend/tests/test_public_sop_route.py               |  3 ++-\n 13 files changed, 62 insertions(+), 19 deletions(-)"
+    }
+  ],
+  "status": "Uncommitted review candidate; builds and focused rechecks performed after defect fixes",
+  "dependencyLinksExcluded": [
+    "node_modules",
+    "ui/node_modules"
+  ]
+}

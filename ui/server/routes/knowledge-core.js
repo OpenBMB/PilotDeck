@@ -7,7 +7,7 @@ export function createKnowledgeCoreRouter({ loadConfig, fetchImpl = fetch }) {
   const router = express.Router();
   router.use(async (req, res) => {
     try {
-      const binding = loadConfig()?.modules?.knowledge;
+      const binding = loadConfig(req)?.modules?.knowledge;
       const bearer = binding?.credentialEnv ? process.env[binding.credentialEnv]?.trim() : binding?.bearer;
       if (binding?.enabled !== true || binding.contract !== 'knowledge-core/v1' || !binding.endpoint) {
         return res.status(501).json({ detail: 'Independent knowledge service is not configured' });

@@ -4,6 +4,15 @@ import { createPublicApprovalClient, approvalInboxItem } from './public-approval
 vi.mock('../../../utils/api', () => ({ authenticatedFetch: vi.fn() }));
 const request = vi.mocked(authenticatedFetch);
 beforeEach(() => vi.clearAllMocks());
+it('native approvals use only the existing PD login and original command', async () => {
+  const client = createPublicApprovalClient(() => { throw new Error('SD login must not be read'); }, 'pilotdeck');
+  request.mockResolvedValueOnce(new Response(JSON.stringify({ status: null })));
+  expect(await client.status({ sessionKey: 'native' })).toBeNull();
+  expect((request.mock.calls[0][1] as RequestInit).headers).toEqual({});
+  request.mockResolvedValueOnce(new Response(JSON.stringify({ accepted: true, duplicate: false, sessionId: 'native', requestId: 'r', revision: 2 })));
+  await client.resume({ sessionKey: 'native', requestId: 'r', waitId: 'w', expectedRevision: 1, message: 'Approved' });
+  expect((request.mock.calls[1][1] as RequestInit).headers).toEqual({});
+});
 it('reads only the original pinned wait with independent approver login and request abort', async () => {
   const signal = new AbortController().signal;
   const status = { sessionId: 'session', revision: 4, state: {}, approval: { waitId: 'wait', revision: 4, skillId: 'sop', version: '1.2.3', nodeId: 'handoff', assigneeUserId: 'actual-user' } };

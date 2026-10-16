@@ -321,9 +321,9 @@ function parseSopModule(
     );
   }
   warnUnknownKeys(value, [
-    "enabled", "provider", "implementationId", "contract", "transport", "manifestPath",
+    "enabled", "provider", "implementationId", "contract", "transport", "manifestPath", "hostAdapter", "localRuntime",
     "endpoint", "definitionsPath", "defaultSopId", "discoveryEndpoint", "discoveryAgentId",
-    "discoveryApiKey", "discoveryPath", "discoveryTimeoutMs", "timeoutMs", "contextMode", "deployment", "frontendModule",
+    "discoveryApiKey", "discoveryPath", "discoveryTimeoutMs", "timeoutMs", "contextMode", "deployment", "frontendModule", "capabilityBindings", "runtimeSopScope",
   ], path, diagnostics);
   if (value.enabled === false) return undefined;
   if (value.enabled !== true) {
@@ -337,10 +337,41 @@ function parseSopModule(
     return undefined;
   }
   const endpoint = nonEmptyText(value.endpoint);
+  const hostAdapter = value.hostAdapter ?? "staffdeck";
+  if (hostAdapter !== "pilotdeck" && hostAdapter !== "staffdeck") {
+    fatal(diagnostics, "SOP_HOST_ADAPTER_INVALID", "hostAdapter must be pilotdeck or staffdeck.", `${path}.hostAdapter`);
+    return undefined;
+  }
+  if (hostAdapter === "pilotdeck" && (value.contract !== "sop.lifecycle/v3" || value.transport !== "sop-http-v3")) {
+    fatal(diagnostics, "SOP_HOST_ADAPTER_INVALID", "The pilotdeck host requires sop.lifecycle/v3 with sop-http-v3.", `${path}.hostAdapter`);
+    return undefined;
+  }
+  const localRuntime = value.localRuntime;
+  if (localRuntime !== undefined && (!isRecord(localRuntime) || typeof localRuntime.enabled !== 'boolean'
+    || ['knowledgeEnabled', 'versionManagementEnabled'].some(key => localRuntime[key] !== undefined && typeof localRuntime[key] !== 'boolean')
+    || (localRuntime.python !== undefined && !nonEmptyText(localRuntime.python)))) {
+    fatal(diagnostics, 'SOP_LOCAL_RUNTIME_INVALID', 'localRuntime requires enabled and optional python/knowledgeEnabled/versionManagementEnabled.', `${path}.localRuntime`);
+    return undefined;
+  }
+  if (isRecord(localRuntime) && localRuntime.enabled === true) {
+    if (hostAdapter !== 'pilotdeck' || value.implementationId !== 'portable-sop'
+      || value.contract !== 'sop.lifecycle/v3' || value.transport !== 'sop-http-v3') {
+      fatal(diagnostics, 'SOP_LOCAL_RUNTIME_INVALID', 'localRuntime requires pilotdeck with portable-sop lifecycle/v3.', `${path}.localRuntime`);
+      return undefined;
+    }
+    try {
+      const origin = new URL(endpoint!);
+      if (origin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(origin.hostname)
+        || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) throw new Error();
+    } catch {
+      fatal(diagnostics, 'SOP_LOCAL_RUNTIME_INVALID', 'localRuntime endpoint must be a loopback HTTP origin.', `${path}.endpoint`);
+      return undefined;
+    }
+  }
   if (!endpoint || !isHttpUrl(endpoint)) {
     fatal(diagnostics, "SOP_MODULE_ENDPOINT_INVALID", "modules.sop.endpoint must be an absolute http(s) URL.", `${path}.endpoint`);
   }
-  const definitionsPath = nonEmptyText(value.definitionsPath);
+  const definitionsPath = nonEmptyText(value.definitionsPath) ?? (hostAdapter === 'pilotdeck' ? join(pilotHome, 'sop', 'explicit-import.json') : undefined);
   if (!definitionsPath) {
     fatal(diagnostics, "SOP_MODULE_DEFINITIONS_PATH_INVALID", "modules.sop.definitionsPath must be a non-empty path.", `${path}.definitionsPath`);
   }
@@ -364,6 +395,19 @@ function parseSopModule(
     || value.discoveryApiKey !== undefined;
   const deployment = parseDeployment(value.deployment, path, diagnostics);
   const frontendModule = nonEmptyText(value.frontendModule);
+  const capabilityBindings = Array.isArray(value.capabilityBindings) ? value.capabilityBindings.filter((item): item is {
+    capabilityId: string; toolName: string; kind: "tool" | "skill" | "knowledge";
+  } => isRecord(item) && Boolean(nonEmptyText(item.capabilityId)) && Boolean(nonEmptyText(item.toolName))
+    && ["tool", "skill", "knowledge"].includes(String(item.kind))) : undefined;
+  if (value.capabilityBindings !== undefined && (!capabilityBindings || capabilityBindings.length !== (value.capabilityBindings as unknown[]).length)) {
+    fatal(diagnostics, "SOP_CAPABILITY_BINDINGS_INVALID", "capabilityBindings requires capabilityId, toolName and tool/skill/knowledge kind.", `${path}.capabilityBindings`);
+  }
+  const runtimeSopScope = isRecord(value.runtimeSopScope)
+    && nonEmptyText(value.runtimeSopScope.tenantId) && nonEmptyText(value.runtimeSopScope.agentId)
+    ? { tenantId: String(value.runtimeSopScope.tenantId), agentId: String(value.runtimeSopScope.agentId) } : undefined;
+  if (value.runtimeSopScope !== undefined && !runtimeSopScope) {
+    fatal(diagnostics, "SOP_RUNTIME_SCOPE_INVALID", "runtimeSopScope requires tenantId and agentId.", `${path}.runtimeSopScope`);
+  }
   if (value.timeoutMs !== undefined && timeoutMs === undefined) {
     fatal(diagnostics, "SOP_MODULE_TIMEOUT_INVALID", "modules.sop.timeoutMs must be a positive integer.", `${path}.timeoutMs`);
   }
@@ -384,10 +428,20 @@ function parseSopModule(
   }
   if (!endpoint || !definitionsPath || !defaultSopId) return undefined;
   const base = {
+    hostAdapter: hostAdapter as "pilotdeck" | "staffdeck",
+    ...(isRecord(localRuntime) ? { localRuntime: { enabled: localRuntime.enabled as boolean,
+      ...(localRuntime.python === undefined ? {} : { python: String(localRuntime.python) }),
+      ...(localRuntime.knowledgeEnabled === undefined ? {} : { knowledgeEnabled: localRuntime.knowledgeEnabled as boolean }),
+      ...(localRuntime.versionManagementEnabled === undefined ? {} : { versionManagementEnabled: localRuntime.versionManagementEnabled as boolean }),
+    } } : {}),
     endpoint,
     definitionsPath: isAbsolute(definitionsPath) ? definitionsPath : resolve(pilotHome, definitionsPath),
     defaultSopId,
-    stateRoot: join(pilotHome, "sop"),
+    ...(capabilityBindings ? { capabilityBindings } : {}),
+    ...(runtimeSopScope ? { runtimeSopScope } : {}),
+    stateRoot: env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true'
+      ? resolve(isAbsolute(definitionsPath) ? definitionsPath : resolve(pilotHome, definitionsPath), '..', 'state')
+      : join(pilotHome, "sop"),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(contextMode === undefined ? {} : { contextMode }),
     ...(discoveryConfigured && discoveryEndpoint && discoveryAgentId && discoveryApiKey
@@ -412,22 +466,23 @@ function parseSopModule(
   if (!implementationId) {
     fatal(diagnostics, "SOP_MODULE_IMPLEMENTATION_ID_INVALID", "modules.sop.implementationId must be a non-empty string.", `${path}.implementationId`);
   }
-  if (value.contract !== STAFFDECK_SOP_CONTRACT) {
+  const v3 = value.contract === "sop.lifecycle/v3" && value.transport === "sop-http-v3";
+  if (value.contract !== STAFFDECK_SOP_CONTRACT && !v3) {
     fatal(diagnostics, "SOP_MODULE_CONTRACT_UNSUPPORTED", `modules.sop.contract must be ${STAFFDECK_SOP_CONTRACT}.`, `${path}.contract`);
   }
-  if (value.transport !== STAFFDECK_SOP_TRANSPORT) {
+  if (value.transport !== STAFFDECK_SOP_TRANSPORT && !v3) {
     fatal(diagnostics, "SOP_MODULE_TRANSPORT_UNSUPPORTED", `modules.sop.transport must be ${STAFFDECK_SOP_TRANSPORT}.`, `${path}.transport`);
   }
   const manifestPath = nonEmptyText(value.manifestPath) ?? "/healthz";
   if (!manifestPath.startsWith("/")) {
     fatal(diagnostics, "SOP_MODULE_MANIFEST_PATH_INVALID", "modules.sop.manifestPath must start with '/'.", `${path}.manifestPath`);
   }
-  if (!implementationId || value.contract !== STAFFDECK_SOP_CONTRACT || value.transport !== STAFFDECK_SOP_TRANSPORT || !manifestPath.startsWith("/")) return undefined;
+  if (!implementationId || (!v3 && (value.contract !== STAFFDECK_SOP_CONTRACT || value.transport !== STAFFDECK_SOP_TRANSPORT)) || !manifestPath.startsWith("/")) return undefined;
   return {
     ...base,
     implementationId,
-    contract: STAFFDECK_SOP_CONTRACT,
-    transport: STAFFDECK_SOP_TRANSPORT,
+    contract: v3 ? "sop.lifecycle/v3" : STAFFDECK_SOP_CONTRACT,
+    transport: v3 ? "sop-http-v3" : STAFFDECK_SOP_TRANSPORT,
     manifestPath,
     ...(frontendModule ? { frontendModule } : {}),
   };

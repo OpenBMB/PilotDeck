@@ -10,7 +10,7 @@ it('uses the bound PD principal, model ports and remote stream with service auth
   const app = express();
   app.use(express.json());
   app.use('/capabilities', createKnowledgeCapabilitiesRouter({ internal: true,
-    loadConfig: () => ({ modules: { knowledge: { enabled: true, contract: 'knowledge-core/v1',
+    loadConfig: req => ({ modules: { knowledge: { enabled: Boolean(req?.headers.authorization), contract: 'knowledge-core/v1',
       capabilitiesCredentialEnv: 'KM_TEST_CAPABILITIES', pilotDeckUserId: 'pd-user', namespace: 'pd',
       spaceId: 'a', spaces: [{ id: 'a' }] } } }),
     getGateway: async () => ({}),
