@@ -66,7 +66,7 @@ export const KNOWLEDGE_CORE_OPERATIONS = Object.freeze({
 });
 export const KNOWLEDGE_CORE_METHODS = Object.freeze(Object.keys(KNOWLEDGE_CORE_OPERATIONS));
 export const KNOWLEDGE_AGENT_METHODS = Object.freeze(['query', 'resolve_citation', 'list_documents', 'get_document', 'import_document', 'update_document', 'delete_document', 'list_document_buckets', 'list_document_chunks', 'get_bucket', 'get_chunk', 'update_bucket', 'update_chunk', 'get_job', 'cancel_job', 'list_concepts', 'get_concept', 'upsert_concept']);
-const aliases = { knowledgeBaseIds: 'knowledge_base_ids', expectedUpdatedAt: 'expected_updated_at', contentMd: 'content_md', contentBase64: 'content_base64', versionId: 'version_id', modelId: 'model_id', maxChunks: 'max_chunks', maxBuckets: 'max_buckets', queryType: 'query_type', documentId: 'document_id', sourceSpaceId: 'source_space_id', spaceId: 'space_id' };
+const aliases = { knowledgeBaseId: 'knowledge_base_id', knowledgeBaseIds: 'knowledge_base_ids', expectedUpdatedAt: 'expected_updated_at', contentMd: 'content_md', contentBase64: 'content_base64', versionId: 'version_id', modelId: 'model_id', maxChunks: 'max_chunks', maxBuckets: 'max_buckets', queryType: 'query_type', documentId: 'document_id', bucketId: 'bucket_id', chunkId: 'chunk_id', jobId: 'job_id', conceptId: 'concept_id', suggestionId: 'suggestion_id', sourceSpaceId: 'source_space_id', spaceId: 'space_id' };
 export function knowledgeCoreRequest(operationName, input, binding, capabilities) {
   const descriptor = KNOWLEDGE_CORE_OPERATIONS[operationName];
   if (!descriptor || !binding.methods.includes(operationName)) throw Object.assign(new Error(`Knowledge operation '${operationName}' is not declared or supported.`), { status: 400 });
@@ -127,7 +127,7 @@ export function knowledgeCoreRequest(operationName, input, binding, capabilities
   return { url, method: descriptor.method, body };
 }
 
-export async function knowledgeCoreCapabilities(binding, fetchImpl = fetch, signal) {
+export async function knowledgeCoreCapabilities(binding, fetchImpl = fetch, signal = AbortSignal.timeout(binding.timeoutMs ?? 120_000)) {
   const token = binding.credentialEnv ? process.env[binding.credentialEnv]?.trim() : binding.bearer;
   const response = await fetchImpl(new URL('/api/km/config', binding.endpoint), {
     headers: token ? { authorization: `Bearer ${token}` } : {}, signal,

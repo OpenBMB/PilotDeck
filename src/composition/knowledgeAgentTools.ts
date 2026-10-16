@@ -34,6 +34,7 @@ const writes = new Set(['import_document', 'update_document', 'delete_document',
 export async function createKnowledgeAgentTools(binding: ExternalModuleBinding): Promise<PilotDeckToolDefinition[]> {
   const methods = binding.agentMethods ?? (binding.methods.includes('query') ? ['query'] : []);
   if (methods.some(method => !binding.methods.includes(method) || !KNOWLEDGE_AGENT_METHODS.includes(method))) throw new Error('Agent knowledge method is not declared or supported');
+  if (methods.length === 0) return [];
   const port = createKnowledgeModulePort(binding);
   const capabilities = binding.contract === 'knowledge-core/v1' ? await knowledgeCoreCapabilities(binding) : undefined;
   const result: PilotDeckToolDefinition[] = [];
@@ -50,7 +51,7 @@ export async function createKnowledgeAgentTools(binding: ExternalModuleBinding):
     result.push({ name: 'knowledge_' + method, description: spec.description, kind: 'custom',
       inputSchema: { type: 'object', properties, required: [...spec.required], additionalProperties: false },
       isReadOnly: () => !writes.has(method), isConcurrencySafe: () => !writes.has(method),
-      async execute(input) {
+      async execute(input, context) {
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Knowledge arguments must be an object');
         const value = { ...input } as Record<string, unknown>;
         if (Object.keys(value).some(key => !Object.hasOwn(properties, key))) throw new Error('Unknown knowledge tool argument');
@@ -65,7 +66,7 @@ export async function createKnowledgeAgentTools(binding: ExternalModuleBinding):
           value.filename ??= 'knowledge.md';
           value.content_base64 = Buffer.from(String(value.content_md), 'utf8').toString('base64'); delete value.content_md;
         }
-        const data = await port.call(method, value);
+        const data = await port.call(method, value, context.abortSignal);
         return { content: [{ type: 'json', value: data }], data };
       },
     });

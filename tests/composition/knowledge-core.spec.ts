@@ -4,6 +4,43 @@ import test from 'node:test';
 import { createKnowledgeModulePort } from '../../src/composition/domainPorts.js';
 import { parseModulesConfig } from '../../src/pilot/config/parseModulesConfig.js';
 import type { PilotConfigDiagnostic } from '../../src/pilot/config/types.js';
+import { knowledgeCoreCapabilities } from '../../src/composition/knowledgeCoreOperations.mjs';
+import type { ExternalModuleBinding } from '../../src/composition/types.js';
+import { createKnowledgeAgentTools } from '../../src/composition/knowledgeAgentTools.js';
+import type { PilotDeckToolRuntimeContext } from '../../src/tool/index.js';
+
+test('capability discovery applies the binding timeout by default', async t => {
+  const server = createServer(() => {});
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const address = server.address() as { port: number };
+  const binding = { endpoint: `http://127.0.0.1:${address.port}`, timeoutMs: 25 } as ExternalModuleBinding;
+  await assert.rejects(knowledgeCoreCapabilities(binding), { name: 'TimeoutError' });
+});
+
+test('Agent cancellation aborts dispatched KM requests and rejects pre-aborted calls', async t => {
+  let dispatched: () => void = () => {};
+  const server = createServer((req, res) => {
+    if (req.url === '/api/km/config') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ api_protocol: 'knowledge-core/v1', modules: { spaces: false }, operations: { query: { method: 'POST', path: '/api/km/v1/query' } } }));
+    } else dispatched();
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const address = server.address() as { port: number };
+  const binding = { contract: 'knowledge-core/v1', endpoint: `http://127.0.0.1:${address.port}`, methods: ['query'] } as unknown as ExternalModuleBinding;
+  const port = createKnowledgeModulePort(binding);
+  const abort = new AbortController();
+  const received = new Promise<void>(resolve => { dispatched = resolve; });
+  const [tool] = await createKnowledgeAgentTools(binding);
+  const result = tool.execute({ query: 'receipts', use_model: false }, { abortSignal: abort.signal } as PilotDeckToolRuntimeContext);
+  const rejection = assert.rejects(result, { name: 'AbortError' });
+  await received;
+  abort.abort();
+  await rejection;
+  await assert.rejects(port.call('query', {}, abort.signal), { name: 'AbortError' });
+});
 
 test('unsupported independent methods are rejected during configuration', () => {
   const diagnostics: PilotConfigDiagnostic[] = [];

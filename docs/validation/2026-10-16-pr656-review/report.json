@@ -1,0 +1,91 @@
+{
+  "status": "passed",
+  "model": "provider1/deepseek-v4-flash-0731",
+  "checks": [
+    {
+      "name": "managed wheel with KM-prefixed hosted credential",
+      "status": "passed"
+    },
+    {
+      "name": "real PD hosted model",
+      "status": "passed",
+      "result": {
+        "review_acceptance": true
+      }
+    },
+    {
+      "name": "real PD file parser",
+      "status": "passed",
+      "result": {
+        "text": "# Review\nOriginal receipts.",
+        "file_type": "md"
+      }
+    },
+    {
+      "name": "runtime ingestion, stale revision, legacy query and camelCase citation, space filtering",
+      "status": "passed",
+      "document": "kdoc_91d31d983fe14c3a94adadb099892efa"
+    },
+    {
+      "name": "Agent tools against installed wheel",
+      "status": "passed",
+      "tools": [
+        "knowledge_query",
+        "knowledge_resolve_citation",
+        "knowledge_list_documents",
+        "knowledge_get_document",
+        "knowledge_import_document",
+        "knowledge_update_document",
+        "knowledge_delete_document",
+        "knowledge_list_document_buckets",
+        "knowledge_list_document_chunks",
+        "knowledge_get_bucket",
+        "knowledge_get_chunk",
+        "knowledge_update_bucket",
+        "knowledge_update_chunk",
+        "knowledge_get_job",
+        "knowledge_cancel_job",
+        "knowledge_list_concepts",
+        "knowledge_get_concept",
+        "knowledge_upsert_concept"
+      ]
+    },
+    {
+      "name": "real Agent multi-turn management",
+      "status": "passed",
+      "turns": 7
+    },
+    {
+      "name": "restart persistence and managed shutdown",
+      "status": "passed"
+    }
+  ],
+  "pageErrors": [],
+  "failedRequests": [],
+  "browser": {
+    "name": "Acceptance 1792138710906",
+    "selectedModel": "provider1/deepseek-v4-flash-0731",
+    "workflow": [
+      "create",
+      "upload",
+      "edit",
+      "bucket-edit",
+      "chunk-edit",
+      "wiki-edit",
+      "search",
+      "citation",
+      "copy",
+      "publish",
+      "rollback",
+      "sync",
+      "rename",
+      "hide",
+      "restore",
+      "graph",
+      "okf-lint",
+      "okf-export",
+      "okf-import",
+      "mobile"
+    ]
+  }
+}

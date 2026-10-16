@@ -15,7 +15,7 @@ import { createPilotDeckHostCapabilityGateway, encodeHostCapabilityStream, isHos
 import { createStaffDeckCopyRouter, verifyStaffDeckKnowledgeBinding } from './staffdeck-copy.js';
 import { createKnowledgeCoreRouter } from './knowledge-core.js';
 import { createKnowledgeCapabilitiesRouter } from './knowledge-capabilities.js';
-import { knowledgeCoreRequest } from '../../../src/composition/knowledgeCoreOperations.mjs';
+import { knowledgeCoreRequest, knowledgeCoreCapabilities } from '../../../src/composition/knowledgeCoreOperations.mjs';
 
 const router = express.Router();
 async function independentKnowledgeCall(req, res, binding, operation, input) {
@@ -26,18 +26,23 @@ async function independentKnowledgeCall(req, res, binding, operation, input) {
   try {
     const bearer = binding.credentialEnv ? process.env[binding.credentialEnv]?.trim() : undefined;
     if (binding.credentialEnv && !bearer) return res.status(503).json({ detail: 'Knowledge credential is unavailable' });
+    const capabilities = await knowledgeCoreCapabilities(binding, fetch, moduleUpstreamSignal(req.moduleRequestSignal, Number(binding.timeoutMs) || 120000));
     const request = knowledgeCoreRequest(operation, input || {}, {
       ...binding, methods: binding.methods || ['query', 'resolve_citation'],
       readOnly: binding.readOnly === true || process.env.PILOTDECK_MODULE_ADMIN === '0',
-    });
+    }, capabilities);
     const response = await fetch(request.url, {
       method: request.method, headers: { 'content-type': 'application/json', ...(bearer ? { authorization: 'Bearer ' + bearer } : {}) },
       body: request.body === undefined ? undefined : JSON.stringify(request.body),
       signal: moduleUpstreamSignal(req.moduleRequestSignal, Number(binding.timeoutMs) || 120000),
     });
-    const result = response.headers.get('content-type')?.includes('application/zip')
+    let result = response.headers.get('content-type')?.includes('application/zip')
       ? { filename: 'knowledge.okf.zip', content_base64: Buffer.from(await response.arrayBuffer()).toString('base64') }
       : await response.json();
+    if (response.ok && operation === 'list_spaces') {
+      const allowed = new Set(binding.spaces?.map(space => space.id));
+      result = result.filter(space => allowed.has(space.id));
+    }
     return res.status(response.status).json(response.ok ? { result } : result);
   } catch (error) {
     return res.status(error.status || 503).json({ detail: error.status ? error.message : 'Knowledge service unavailable' });

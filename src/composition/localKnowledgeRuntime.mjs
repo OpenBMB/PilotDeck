@@ -83,6 +83,13 @@ export async function startLocalKnowledgeRuntime(binding, { env = process.env, l
     for (const [key, flag] of Object.entries({ configFile: '--config', modelConfig: '--model-config', identityFile: '--identity-file', capabilitiesFile: '--capabilities-file' }))
       if (config[key]) args.push(flag, config[key]);
     const childEnv = Object.fromEntries(Object.entries(env).filter(([key]) => key !== 'PYTHONPATH' && !key.startsWith('KM_') && !key.startsWith('STAFFDECK_')));
+    if (config.capabilitiesFile) {
+      const bindings = JSON.parse(await readFile(config.capabilitiesFile, 'utf8'));
+      for (const binding of bindings) {
+        const key = binding.credential_env;
+        if (typeof key === 'string' && env[key] !== undefined) childEnv[key] = env[key];
+      }
+    }
     logFile = await open(join(directory, 'service.log'), 'a');
     child = spawn(config.python, args, { cwd: directory, env: childEnv, stdio: ['ignore', logFile.fd, logFile.fd], windowsHide: true });
     exitPromise = new Promise(resolveExit => {

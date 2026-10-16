@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse, stringify } from 'yaml';
@@ -62,10 +63,12 @@ if (!binding) {
   const moduleConfig = join(directory, 'configuration.json');
   if (!existsSync(moduleConfig)) await writeFile(moduleConfig, JSON.stringify({ preset: 'full', modules: { authentication: false, publication: false } }, null, 2) + '\n', { flag: 'wx' });
   // Existing local users are selected by ID; a fresh no-login PD creates ID 1.
-  const authDb = process.env.DATABASE_PATH || join(repo, 'ui/server/database/auth.db');
+  const configuredDatabase = config.webui?.runtime?.databasePath;
+  const authDbValue = configuredDatabase || process.env.DATABASE_PATH || join(pilotHome, 'auth.db');
+  const authDb = resolve(authDbValue.startsWith('~/') ? join(homedir(), authDbValue.slice(2)) : authDbValue);
   let userId = options['user-id'];
   if (!userId && existsSync(authDb)) {
-    const { default: Database } = await import('better-sqlite3');
+    const Database = createRequire(new URL('../ui/package.json', import.meta.url))('better-sqlite3');
     const db = new Database(authDb, { readonly: true });
     try { userId = String(db.prepare('SELECT id FROM users WHERE is_active = 1 ORDER BY id LIMIT 1').get()?.id || ''); }
     finally { db.close(); }

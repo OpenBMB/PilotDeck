@@ -51,7 +51,7 @@ export const generatedFrontendProfile = {
     "knowledge": {
       "enabled": true,
       "implementationId": "knowledge-core",
-      "frontendModule": "staffdeck.knowledge",
+      "frontendModule": "knowledge-core",
       "contract": "knowledge-core/v1",
       "transport": "rest-http-v1",
       "methods": [

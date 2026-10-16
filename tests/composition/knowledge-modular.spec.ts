@@ -15,6 +15,9 @@ test('catalog upload body belongs to the advertised route and partial contexts s
   } };
   const uploaded = knowledgeCoreRequest('import_document', { knowledge_base_id: 'base', filename: 'test.md', content_base64: 'eA==' }, binding, full);
   assert.equal(uploaded.body?.knowledge_base_id, undefined);
+  const camelCase = knowledgeCoreRequest('import_document', { knowledgeBaseId: 'base', filename: 'test.md', contentBase64: 'eA==' }, binding, full);
+  assert.equal(camelCase.url.pathname, uploaded.url.pathname);
+  assert.deepEqual(camelCase.body, uploaded.body);
   const partial = { api_protocol: 'knowledge-core/v1', modules: { spaces: true, catalog: true, versions: true }, operations: {
     import_document: { method: 'POST', path: '/api/km/v1/documents' },
     list_documents: { method: 'GET', path: '/api/km/v1/documents' },

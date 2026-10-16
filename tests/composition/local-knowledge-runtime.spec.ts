@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'node:http';
-import { mkdtemp, rm, access } from 'node:fs/promises';
+import { mkdtemp, rm, access, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startLocalKnowledgeRuntime, validateLocalKnowledgeRuntime } from '../../src/composition/localKnowledgeRuntime.mjs';
@@ -62,5 +62,30 @@ test('cancelled startup releases the child and lock before returning', async t =
   await assert.rejects(startLocalKnowledgeRuntime({ ...binding, localRuntime: {
     python: process.execPath, dataDirectory: directory,
   } }, { signal: abort.signal }), /abort/i);
+  await assert.rejects(access(join(directory, '.runtime-lock')));
+});
+
+test('managed KM forwards explicitly configured capability credentials without inheriting KM startup overrides', { skip: process.platform === 'win32' }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'pd-hosted-km-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const probe = createServer();
+  await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve));
+  const port = (probe.address() as { port: number }).port;
+  await new Promise<void>(resolve => probe.close(() => resolve()));
+  const python = join(directory, 'python.mjs');
+  await writeFile(python, `#!${process.execPath}
+import {createServer} from 'node:http';
+if (process.env.KM_TEST_HOST_TOKEN !== 'test-capability' || process.env.KM_READ_ONLY || process.env.STAFFDECK_TEST_OVERRIDE || process.env.PYTHONPATH) process.exit(2);
+const server = createServer((req, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(req.url === '/api/km/config' ? {api_protocol: 'knowledge-core/v1'} : {status: 'ready'})); });
+server.listen(Number(process.argv[process.argv.indexOf('--port') + 1]), '127.0.0.1');
+process.on('SIGTERM', () => server.close());
+`, { mode: 0o755 });
+  const capabilitiesFile = join(directory, 'capabilities.json');
+  await writeFile(capabilitiesFile, JSON.stringify([{ credential_env: 'KM_TEST_HOST_TOKEN' }]));
+  const runtime = await startLocalKnowledgeRuntime({ ...binding, endpoint: `http://127.0.0.1:${port}`,
+    localRuntime: { python, dataDirectory: directory, capabilitiesFile, startupTimeoutMs: 2000 } }, {
+    env: { ...process.env, KM_TEST_HOST_TOKEN: 'test-capability', KM_READ_ONLY: 'true', STAFFDECK_TEST_OVERRIDE: 'unused', PYTHONPATH: '/invalid' }, log: () => {},
+  });
+  await runtime.stop();
   await assert.rejects(access(join(directory, '.runtime-lock')));
 });

@@ -28,7 +28,7 @@ test('maps StaffDeck implementations to public frontend modules', () => {
     knowledge: { enabled: true, implementationId: 'staffdeck.knowledge' },
     skills: { enabled: false },
   } });
-  assert.deepEqual(selected.map(item => item.id), ['pilotdeck.chat', 'pilotdeck.tools', 'pilotdeck.context', 'pilotdeck.model', 'staffdeck.sop', 'staffdeck.knowledge']);
+  assert.deepEqual(selected.map(item => item.id), ['pilotdeck.chat', 'pilotdeck.tools', 'pilotdeck.context', 'pilotdeck.model', 'staffdeck.sop', 'knowledge-core']);
 });
 
 test('rejects an explicit frontend registry key that is not registered', () => {

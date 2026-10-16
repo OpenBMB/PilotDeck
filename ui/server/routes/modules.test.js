@@ -7,6 +7,56 @@ import { describe, expect, it, vi } from 'vitest';
 import { createModuleRuntimeRouter } from './modules.js';
 
 describe('module runtime route', () => {
+  it('negotiates instance-scoped KM queries, citations and management calls', async () => {
+    const calls = [];
+    let scoped = false;
+    const upstream = http.createServer(async (req, res) => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/api/km/config') {
+        res.end(JSON.stringify({ api_protocol: 'knowledge-core/v1', modules: { spaces: scoped, catalog: false, versions: false }, operations: {
+          query: { method: 'POST', path: '/api/km/v1/query' },
+          resolve_citation: { method: 'GET', path: '/api/km/v1/citations/{chunk_id}' },
+          list_documents: { method: 'GET', path: '/api/km/v1/documents' },
+          list_spaces: { method: 'GET', path: '/api/km/v1/spaces' },
+        } }));
+        return;
+      }
+      let raw = ''; for await (const part of req) raw += part;
+      calls.push({ url: req.url, body: raw ? JSON.parse(raw) : undefined });
+      res.end(JSON.stringify(req.url === '/api/km/v1/documents' ? []
+        : req.url === '/api/km/v1/spaces' ? [{ id: 'allowed' }, { id: 'other' }] : { chunks: [] }));
+    });
+    await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { req.user = { id: 'operator' }; next(); });
+    app.use('/api/modules', createModuleRuntimeRouter({ loadConfig: () => ({ modules: { knowledge: {
+      enabled: true, contract: 'knowledge-core/v1', endpoint: `http://127.0.0.1:${upstream.address().port}`,
+      pilotDeckUserId: 'operator', methods: ['query', 'resolve_citation', 'list_documents', 'list_spaces'],
+      ...(scoped ? { spaceId: 'allowed', spaces: [{ id: 'allowed' }] } : {}),
+    } } }) }));
+    const server = http.createServer(app);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const post = (path, body) => fetch(`http://127.0.0.1:${server.address().port}/api/modules/knowledge/${path}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    try {
+      expect((await post('query', { query: 'receipts', use_model: false })).status).toBe(200);
+      expect((await post('citation', { chunkId: 'chunk' })).status).toBe(200);
+      expect(await (await post('call', { operation: 'list_documents', input: {} })).json()).toEqual({ result: [] });
+      expect(calls).toEqual([
+        { url: '/api/km/v1/query', body: { query: 'receipts', use_model: false, max_chunks: 6 } },
+        { url: '/api/km/v1/citations/chunk', body: undefined },
+        { url: '/api/km/v1/documents', body: undefined },
+      ]);
+      scoped = true;
+      expect(await (await post('call', { operation: 'list_spaces', input: {} })).json()).toEqual({ result: [{ id: 'allowed' }] });
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+      await new Promise(resolve => upstream.close(resolve));
+    }
+  });
+
   it('returns sanitized module bindings and gateway capabilities', async () => {
     const app = express();
     app.use(express.json());

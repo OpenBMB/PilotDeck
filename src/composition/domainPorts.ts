@@ -32,7 +32,7 @@ export type SkillModulePort = Readonly<{
 }>;
 
 export type KnowledgeModulePort = Readonly<{
-  call(operation: string, input: Record<string, unknown>): Promise<unknown>;
+  call(operation: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>;
 }>;
 
 export function createSkillModulePort(binding: ExternalModuleBinding): SkillModulePort {
@@ -110,7 +110,7 @@ export function createKnowledgeModulePort(binding: ExternalModuleBinding): Knowl
   const client = new HttpModuleClient(binding);
   let sequence = 0;
   return Object.freeze({
-    async call(operation, input) {
+    async call(operation, input, signal) {
       if (!binding.methods.includes(operation)) throw protocolFailure(`Knowledge operation '${operation}' is not declared.`);
       const response = await client.call({
         runId: "knowledge",
@@ -118,6 +118,7 @@ export function createKnowledgeModulePort(binding: ExternalModuleBinding): Knowl
         requestId: `knowledge-${operation}-${++sequence}`,
         module: "knowledge",
         payload: { operation, input, ...(currentKnowledgeAuthority() ? { authorityContext: currentKnowledgeAuthority() } : {}) },
+        ...(signal ? { abortSignal: signal } : {}),
       });
       if (!response.ok) throw moduleFailure(response, `Knowledge module ${operation} failed.`);
       return response.payload?.result;
@@ -127,20 +128,23 @@ export function createKnowledgeModulePort(binding: ExternalModuleBinding): Knowl
 
 function createIndependentKnowledgePort(binding: ExternalModuleBinding): KnowledgeModulePort {
   return Object.freeze({
-    async call(operation, input) {
+    async call(operation, input, signal) {
+      signal?.throwIfAborted();
       assertDeclaredMethod(binding, operation, "Knowledge Core");
       if (currentKnowledgeAuthority()) {
         throw protocolFailure("Knowledge Core does not accept an SD capability lease.");
       }
       const token = binding.credentialEnv ? process.env[binding.credentialEnv]?.trim() : undefined;
       if (binding.credentialEnv && !token) throw protocolFailure("Knowledge credential is unavailable.");
-      const capabilities = await knowledgeCoreCapabilities(binding, fetch, AbortSignal.timeout(binding.timeoutMs ?? 120_000));
+      const timeout = AbortSignal.timeout(binding.timeoutMs ?? 120_000);
+      const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      const capabilities = await knowledgeCoreCapabilities(binding, fetch, requestSignal);
       const request = knowledgeCoreRequest(operation, input, binding, capabilities);
       const url = request.url;
       const response = await fetch(url, {
         method: request.method,
         headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-        signal: AbortSignal.timeout(binding.timeoutMs ?? 120_000),
+        signal: requestSignal,
         body: request.body === undefined ? undefined : JSON.stringify(request.body),
       });
       const body = response.headers.get('content-type')?.includes('application/zip')
@@ -177,7 +181,7 @@ export function createKnowledgeQueryTool(
     },
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    async execute(input) {
+    async execute(input, context) {
       const modelInput = input as Record<string, unknown>;
       if (bindingHasReadCredential && Object.keys(modelInput).some(key =>
           ["tenantId", "tenant_id", "actorUserId", "actor_user_id", "agentId", "agent_id", "modelConfigId", "model_config_id"].includes(key))) {
@@ -188,7 +192,7 @@ export function createKnowledgeQueryTool(
         ...(scope.tenantId ? { tenantId: scope.tenantId } : {}),
         ...(scope.actorUserId ? { actorUserId: scope.actorUserId } : {}),
         ...(scope.agentId ? { agentId: scope.agentId } : {}),
-      });
+      }, context.abortSignal);
       return { content: [{ type: "json", value: result }], data: result };
     },
   };

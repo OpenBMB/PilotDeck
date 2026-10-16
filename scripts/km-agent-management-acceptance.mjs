@@ -12,6 +12,9 @@ assert.ok(output, 'KM_AGENT_EVIDENCE required');
 await mkdir(output, { recursive: true });
 const directory = await mkdtemp(join(tmpdir(), 'km-agent-management-'));
 const endpoint = process.env.KM_AGENT_URL || 'http://127.0.0.1:18890';
+const credentialEnv = process.env.KM_AGENT_CREDENTIAL_ENV;
+const bearer = credentialEnv ? process.env[credentialEnv] : undefined;
+assert.ok(!credentialEnv || bearer, 'KM Agent credential is unavailable');
 const source = process.env.PD_MODEL_CONFIG || '/Users/a1/.pilotdeck/pilotdeck.yaml';
 const { config } = loadPilotConfig({ configPath: source });
 const raw = parse(await readFile(source, 'utf8'));
@@ -19,7 +22,7 @@ const selected = process.env.PD_MODEL_ID || 'provider1/deepseek-v4-flash-0731';
 const report = { status: 'not_accepted', model: selected, turns: [], readbacks: [] };
 let gateway;
 async function http(method, path, body) {
-  const response = await fetch(endpoint + '/api/km/v1' + path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const response = await fetch(endpoint + '/api/km/v1' + path, { method, headers: { 'content-type': 'application/json', ...(bearer ? { authorization: 'Bearer ' + bearer } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const value = await response.json();
   assert.ok(response.ok, JSON.stringify(value));
   report.readbacks.push({ method, path, status: response.status, value });
@@ -31,7 +34,7 @@ try {
   const providers = Object.fromEntries(Object.entries(raw.model.providers).filter(([id]) => config.model.providers[id]).map(([id, value]) =>
     [id, { ...value, apiKey: config.model.providers[id].apiKey }]));
   const binding = { enabled: true, implementationId: 'knowledge-core', contract: 'knowledge-core/v1', transport: 'rest-http-v1',
-    endpoint, namespace: 'local', pilotDeckUserId: 'acceptance-user', spaceId: space.id, spaces: [{ id: space.id }],
+    endpoint, ...(credentialEnv ? { credentialEnv } : {}), namespace: 'local', pilotDeckUserId: 'acceptance-user', spaceId: space.id, spaces: [{ id: space.id }],
     methods: [...KNOWLEDGE_CORE_METHODS], agentMethods: [...KNOWLEDGE_AGENT_METHODS], timeoutMs: 180000 };
   await writeFile(join(directory, 'pilotdeck.yaml'), stringify({ schemaVersion: 1, agent: { model: selected }, model: { providers },
     router: { enabled: false }, modules: { knowledge: binding, sop: { enabled: false } } }), { mode: 0o600 });
@@ -60,11 +63,11 @@ try {
   const chunks = await http('GET', '/documents/' + id + '/chunks' + scope);
   await turn(`读取主题 ${buckets[0].id} 的修订并修改其内容为 PDAGENT731 expense receipt bucket 45 days。再读取片段 ${chunks[0].id} 的修订并修改为 PDAGENT731 expense receipt evidence 45 days。`, ['knowledge_get_bucket', 'knowledge_update_bucket', 'knowledge_get_chunk', 'knowledge_update_chunk']);
   await turn(`为文档 ${id} 在知识库 ${base.id} 新建 Wiki 页 agent/pdagent731，内容 # Receipt Wiki\n\nPDAGENT731 requires receipts within 45 days. 然后读取该 Wiki 页修订并编辑为 # Receipt Wiki\n\nPDAGENT731 verified Wiki 45 days.`, ['knowledge_upsert_concept', 'knowledge_get_concept']);
-  const concepts = await http('GET', '/concepts' + scope);
+  const concepts = await http('GET', '/knowledge-bases/' + base.id + '/concepts' + scope);
   assert.ok(concepts.some(row => row.concept_id === 'agent/pdagent731' && row.content_md.includes('verified Wiki')));
   await turn(`读取文档 ${id} 最新修订，然后删除这个临时文档。`, ['knowledge_get_document', 'knowledge_delete_document']);
   document = await http('GET', '/documents/' + id + scope); assert.equal(document.status, 'archived');
-  const result = await http('POST', '/query', { space_id: space.id, knowledge_base_id: base.id, query: 'PDAGENT731', use_model: false });
+  const result = await http('POST', '/query', { space_id: space.id, knowledge_base_ids: [base.id], query: 'PDAGENT731', use_model: false });
   assert.equal(result.chunks.length, 0); assert.equal(result.selected_concepts.length, 0);
   report.status = 'passed';
 } catch (error) { report.error = error.stack; process.exitCode = 1; }
