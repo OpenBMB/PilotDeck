@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { chromium } from 'playwright';
 import { pathToFileURL } from 'node:url';
@@ -48,7 +48,7 @@ output.staffdeckStartup = useKnowledgeWrapper ? 'knowledge_wrapper_only' : 'form
 for (const operation of Object.keys(output.operationCoverage)) output.operationCoverage[operation] = 'not_run';
 
 function start(command, args, env, cwd) {
-  const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const child = spawn(command, args, { cwd, env: { ...process.env, ...env, PATH: dirname(process.execPath) + ':' + (env.PATH || process.env.PATH || '') }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   let logs = '';
   child.stdout.on('data', (chunk) => { logs += chunk.toString(); });
   child.stderr.on('data', (chunk) => { logs += chunk.toString(); });
@@ -141,6 +141,8 @@ await writeFile(configPath, (await readFile(configPath, 'utf8'))
   .replace(`endpoint: http://127.0.0.1:${ports.knowledge}`, `endpoint: http://127.0.0.1:${kmPort}`)
   .replace(`callPath: /v2/module/call`, `credentialEnv: STAFFDECK_KM_BEARER\n    pilotDeckUserId: __USER__\n    spaceId: sd:tenant_demo:agent_tenant_demo_overall\n    spaces:\n      - id: sd:tenant_demo:agent_tenant_demo_overall\n        name: Overall`), 'utf8');
 const staffEntrypoint = join(tempRoot, 'staffdeck_g4_app.py');
+const { KNOWLEDGE_CORE_METHODS } = await import('../src/composition/knowledgeCoreOperations.mjs');
+await writeFile(configPath, (await readFile(configPath, 'utf8')).replace(/methods: \[[^\]]+\]/, `methods: [${KNOWLEDGE_CORE_METHODS.join(', ')}]`));
 /* Kept only as a separately labeled Knowledge integration harness. The main
  * evidence run uses the unmodified formal app.main startup path below. */
 await writeFile(staffEntrypoint, `from fastapi import FastAPI
@@ -176,16 +178,16 @@ let pilotPage;
 try {
   const capabilitiesBearer = 'g4-real-capabilities-token';
   const capabilitiesArgs = process.env.G4_REQUIRE_MODEL_SELECTOR === '1' ? ['--capabilities-url', `http://127.0.0.1:${ports.staffApi}/api/internal/km/capabilities`, '--capabilities-bearer', capabilitiesBearer] : [];
-  const kmConfig = join(tempRoot, 'km-full.json');
-  await writeFile(kmConfig, JSON.stringify({ preset: 'full', modules: { authentication: true } }));
-  const kmArgs = ['-m', 'knowledge_core.cli', '--config', kmConfig, '--database-url', `sqlite:///${join(tempRoot, 'knowledge-owner.sqlite')}`, '--identity-file', kmIdentityFile, '--host', '127.0.0.1', '--port', String(kmPort)];
+  const kmConfigPath = join(tempRoot, 'km-full.json');
+  await writeFile(kmConfigPath, JSON.stringify({ preset: 'full', modules: { authentication: true } }));
+  const kmArgs = ['-m', 'knowledge_core.cli', '--config', kmConfigPath, '--database-url', `sqlite:///${join(tempRoot, 'knowledge-owner.sqlite')}`, '--identity-file', kmIdentityFile, '--host', '127.0.0.1', '--port', String(kmPort)];
   kmOwnerService = start(kmPython, kmArgs, {
     PYTHONPATH: join(kmRoot, 'knowledge_core/src'),
   }, tempRoot);
   await waitFor(`http://127.0.0.1:${kmPort}/health/ready`);
   const staffAppTarget = useKnowledgeWrapper ? 'staffdeck_g4_app:app' : 'app.main:app';
   knowledgeService = start(python, ['-m', 'uvicorn', staffAppTarget, '--host', '127.0.0.1', '--port', String(ports.staffApi), '--log-level', 'info'], {
-    PYTHONPATH: `${join(staffRoot, 'backend')}:${join(staffRoot, 'backend/src')}:${join(staffRoot, 'portable_sop/src')}`,
+    PYTHONPATH: `${join(staffRoot, 'backend')}:${join(staffRoot, 'backend/src')}:${join(staffRoot, 'portable_sop/src')}:${join(staffRoot, 'knowledge_core/src')}`,
     DATABASE_URL: `sqlite:///${database}`,
     STAFFDECK_KM_URL: `http://127.0.0.1:${kmPort}`,
     STAFFDECK_KM_BEARER: kmBearer,
@@ -274,11 +276,6 @@ try {
   await page.addInitScript((token) => localStorage.setItem('auth-token', token), account.token);
   await page.goto(`http://127.0.0.1:${ports.vite}/knowledge/new`, { waitUntil: 'domcontentloaded' });
   output.actions.push('open Knowledge new page');
-  const pilotBaseName = `G4 PilotDeck ${Date.now()}`;
-  await page.getByLabel('新建知识库', { exact: true }).click();
-  await page.getByRole('dialog').getByLabel('名称').fill(pilotBaseName);
-  await page.getByRole('dialog').getByRole('button', { name: '创建', exact: true }).click();
-  await page.getByRole('heading', { name: pilotBaseName, exact: true }).waitFor({ timeout: 20_000 });
   const { runKnowledgeAcceptance } = await import(pathToFileURL(join(staffRoot, 'packages/knowledge-ui/browser-acceptance.mjs')).href);
   output.pilotIndependent = await runKnowledgeAcceptance(page, { screenshotPrefix: join(artifactRoot, 'pilotdeck-km'), requireModelSelector: false });
   output.actions.push(...output.pilotIndependent.workflow);

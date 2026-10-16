@@ -52,8 +52,10 @@ export type ExternalModuleBinding = Readonly<{
   readOnly?: boolean;
   namespace?: string;
   capabilitiesCredentialEnv?: string;
+  localRuntime?: import('./localKnowledgeRuntime.mjs').LocalKnowledgeRuntimeConfig;
   timeoutMs?: number;
   methods: readonly string[];
+  agentMethods?: readonly string[];
   /** Optional static frontend registry key selected by the profile. */
   frontendModule?: string;
   /** Module-owned tenant scope used by integrations that require it. */

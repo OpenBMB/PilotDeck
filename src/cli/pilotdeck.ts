@@ -24,6 +24,7 @@ import { PilotDeckServerShutdownBundle } from "./PilotDeckServerShutdownBundle.j
 import { PilotDeckServerBootstrapBundle } from "./PilotDeckServerBootstrapBundle.js";
 import { ChannelAdapterBundle } from "./ChannelAdapterBundle.js";
 import { runSdkCli } from "./sdkCli.js";
+import { startLocalKnowledgeRuntime } from '../composition/localKnowledgeRuntime.mjs';
 
 await installGlobalProxy();
 
@@ -115,14 +116,27 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       sessionDataPlane,
     });
 
+    let knowledge: Awaited<ReturnType<typeof startLocalKnowledgeRuntime>> | undefined;
+    const knowledgeAbort = new AbortController();
+    const abortKnowledgeStartup = () => knowledgeAbort.abort();
+    process.once('SIGINT', abortKnowledgeStartup);
+    process.once('SIGTERM', abortKnowledgeStartup);
+    const disposeWithKnowledge = async () => {
+      try { await disposeGateway(); } finally { await knowledge?.stop(); }
+    };
     const bootstrap = new PilotDeckServerBootstrapBundle({
       automation,
-      disposeGateway,
+      disposeGateway: disposeWithKnowledge,
       telemetry,
       warn: (message, error) => console.warn(message, String(error)),
     });
 
     await bootstrap.run(async () => {
+      if (env.PILOTDECK_KM_MANAGED_BY_WEB !== '1') {
+        knowledge = await startLocalKnowledgeRuntime(snapshot.config.modules?.knowledge, { env, signal: knowledgeAbort.signal,
+          onExit: error => { console.error('[knowledge]', error.message); process.emit('SIGTERM'); },
+        });
+      }
       automation.attach({
         agentGateway: gateway,
         isProjectBusy,
@@ -258,7 +272,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       automation,
       closeServer: () => server.close(),
       flushChannelState: () => channelAdapters.flush(),
-      disposeGateway,
+      disposeGateway: disposeWithKnowledge,
       telemetry,
       log: (message) => console.log(message),
     });
@@ -278,6 +292,8 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     process.on("SIGTERM", () => {
       void shutdownAndExit(0);
     });
+    process.removeListener('SIGINT', abortKnowledgeStartup);
+    process.removeListener('SIGTERM', abortKnowledgeStartup);
     await new Promise(() => undefined);
     return;
   }

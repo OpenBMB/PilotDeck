@@ -78,6 +78,7 @@ import { SessionContextRuntimeBundle } from "./SessionContextRuntimeBundle.js";
 import { SessionFileHistoryBundle } from "./SessionFileHistoryBundle.js";
 import { SessionPlanTodoBundle } from "./SessionPlanTodoBundle.js";
 import { SessionGoalBundle } from "./SessionGoalBundle.js";
+import { createKnowledgeAgentTools } from '../composition/knowledgeAgentTools.js';
 import {
   SessionSubagentContinuationBundle,
   type SessionSubagentContinuationRuntime,
@@ -92,8 +93,6 @@ import type { SessionExecutionHandle } from "../sandbox/SessionExecutionProvider
 import type { LspServicePort } from "../lsp/index.js";
 import { McpRuntime } from "../mcp/runtime/McpRuntime.js";
 import {
-  createKnowledgeModulePort,
-  createKnowledgeQueryTool,
   createSkillModulePort,
   isDisabledModuleBinding,
   isExternalModuleBinding,
@@ -317,13 +316,10 @@ export class ProjectSessionRuntimeBundle {
       }
       const knowledgeBinding = runtime.snapshot.config.modules?.knowledge;
       if (isExternalModuleBinding(knowledgeBinding)) {
-        if (sessionTools.has("knowledge_query")) {
-          throw new Error("knowledge_query is already owned by this session.");
+        for (const tool of await createKnowledgeAgentTools(knowledgeBinding)) {
+          if (sessionTools.has(tool.name)) throw new Error(`${tool.name} is already owned by this session.`);
+          sessionTools.register(tool);
         }
-        sessionTools.register(createKnowledgeQueryTool(
-          createKnowledgeModulePort(knowledgeBinding),
-          knowledgeBinding,
-        ));
       }
       const userDialogTools = [
         ...(this.options.sdkSessionConfig?.userDialogKinds?.includes("input") ? [createRequestUserInputTool()] : []),

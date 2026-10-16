@@ -148,6 +148,7 @@ import { configureWebPush } from './services/vapid-keys.js';
 import { runtimeCoordination } from './services/runtimeCoordination.js';
 
 import { runServerStartupBeforeListen, startServerAfterStartup } from './services/server-startup.js';
+import { startLocalKnowledgeRuntime } from '../../src/composition/localKnowledgeRuntime.mjs';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 import { DISABLE_LOCAL_AUTH, IS_PLATFORM } from './constants/config.js';
 import { getConnectableHost } from '../shared/networkHosts.js';
@@ -3649,6 +3650,19 @@ async function ensureLocalUserWhenAuthDisabled() {
 
 // Initialize database and start server
 async function startServer() {
+    let knowledge;
+    let knowledgeStarting;
+    let startupStopped = false;
+    const knowledgeAbort = new AbortController();
+    const stopDuringStartup = async () => {
+        startupStopped = true;
+        knowledgeAbort.abort();
+        try { await knowledgeStarting; } catch {}
+        await knowledge?.stop();
+        process.exit(0);
+    };
+    process.once('SIGTERM', stopDuringStartup);
+    process.once('SIGINT', stopDuringStartup);
     try {
         await startServerAfterStartup({
             startupFn: async () => {
@@ -3657,6 +3671,15 @@ async function startServer() {
                     ensureLocalUserWhenAuthDisabledFn: ensureLocalUserWhenAuthDisabled,
                     configureWebPushFn: configureWebPush
                 });
+                knowledgeStarting = startLocalKnowledgeRuntime(readModuleConfig()?.modules?.knowledge, {
+                    signal: knowledgeAbort.signal,
+                    onExit: error => {
+                        console.error('[knowledge]', error.message);
+                        process.emit('SIGTERM');
+                    },
+                });
+                knowledge = await knowledgeStarting;
+                if (startupStopped) throw new Error('Startup cancelled');
             },
             listenFn: async () => {
                 // Check if running in production mode (dist folder exists)
@@ -3675,7 +3698,7 @@ async function startServer() {
                 const boundPort = await listenWithPortFallback(server, Number(SERVER_PORT), HOST);
                 if (boundPort === null) {
                     console.error(`${c.warn('[ERROR]')} Could not bind a port after ${PORT_FALLBACK_ATTEMPTS} attempts (preferred ${SERVER_PORT}). All tried ports were in use. Set SERVER_PORT to a free port and retry.`);
-                    process.exit(1);
+                    throw new Error('Could not bind PilotDeck web server port');
                 }
                 // Sync the actually-bound port back to the env so other modules
                 // that self-reference SERVER_PORT (e.g. routes/taskmaster.js) hit
@@ -3757,6 +3780,7 @@ async function startServer() {
                     // PilotDeck cron is owned by `pilotdeck server` and shuts
                     // down with it; ui/server never spawns its own daemon.
                 } finally {
+                    await knowledge?.stop();
                     process.exit(0);
                 }
             })();
@@ -3765,7 +3789,10 @@ async function startServer() {
         };
         process.on('SIGTERM', () => void gracefulShutdown());
         process.on('SIGINT', () => void gracefulShutdown());
+        process.removeListener('SIGTERM', stopDuringStartup);
+        process.removeListener('SIGINT', stopDuringStartup);
     } catch (error) {
+        await knowledge?.stop();
         console.error('[ERROR] Failed to start server:', error);
         process.exit(1);
     }

@@ -6,6 +6,7 @@ if (!target) throw Error('Temporary output path required');
 const { config } = loadPilotConfig({ configPath: process.env.PD_MODEL_CONFIG || '/Users/a1/.pilotdeck/pilotdeck.yaml' });
 const runtime = createModelRuntime(config.model);
 const candidates = Object.entries(config.model.providers).flatMap(([provider, row]) => Object.keys(row.models).map(model => ({ id: provider + '/' + model, provider, model })))
+  .filter(candidate => !process.env.PD_MODEL_ID || candidate.id === process.env.PD_MODEL_ID)
   .sort((a, b) => Number(b.id === config.agent.model.id) - Number(a.id === config.agent.model.id) || a.id.localeCompare(b.id));
 for (const candidate of candidates) {
   if (!['openai', 'openai-compatible', 'openai-chat-completions'].includes(runtime.getProviderProtocol(candidate.provider))) continue;

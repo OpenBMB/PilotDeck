@@ -1,0 +1,760 @@
+{
+  "status": "passed",
+  "directory": "/Users/a1/.codex/worktrees/standalone-alpha1-decouple-km-1013/PilotDeck/docs/validation/2026-10-16-local-knowledge/instance-Lv3lFu",
+  "steps": [
+    {
+      "check": "PD and managed KM ready",
+      "entry": [
+        "ui/server/webRuntimeSupervisor.js",
+        "start-built"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/km/v1/spaces",
+      "status": 201,
+      "result": {
+        "id": "local",
+        "name": "Local",
+        "tenant_id": "local"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/modules/knowledge/core/knowledge-bases",
+      "status": 201,
+      "result": {
+        "id": "kbase_4a4c977869f6459bb1bdf77e77f311ab",
+        "name": "Managed runtime",
+        "description": "",
+        "status": "active",
+        "created_at": "2026-10-16T06:46:56.606275",
+        "updated_at": "2026-10-16T06:46:56.606281"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/modules/knowledge/core/knowledge-bases/kbase_4a4c977869f6459bb1bdf77e77f311ab/documents",
+      "status": 202,
+      "result": {
+        "id": "kjob_f3977056dced4764b73f545217d4e136",
+        "filename": "managed.md",
+        "status": "queued",
+        "stage": "queued",
+        "progress": 0,
+        "error": null,
+        "document_id": null,
+        "created_at": "2026-10-16T06:46:56.620251",
+        "updated_at": "2026-10-16T06:46:56.620251",
+        "finished_at": null
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/km/v1/jobs/kjob_f3977056dced4764b73f545217d4e136?space_id=local",
+      "status": 200,
+      "result": {
+        "id": "kjob_f3977056dced4764b73f545217d4e136",
+        "filename": "managed.md",
+        "status": "running",
+        "stage": "processing",
+        "progress": 0.4,
+        "error": null,
+        "document_id": null,
+        "finished_at": null,
+        "created_at": "2026-10-16T06:46:56.620251",
+        "updated_at": "2026-10-16T06:46:56.623342"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/km/v1/jobs/kjob_f3977056dced4764b73f545217d4e136?space_id=local",
+      "status": 200,
+      "result": {
+        "id": "kjob_f3977056dced4764b73f545217d4e136",
+        "filename": "managed.md",
+        "status": "succeeded",
+        "stage": "done",
+        "progress": 1,
+        "error": null,
+        "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+        "finished_at": "2026-10-16T06:46:56.625064",
+        "created_at": "2026-10-16T06:46:56.620251",
+        "updated_at": "2026-10-16T06:46:56.625064"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/modules/knowledge/core/query",
+      "status": 200,
+      "result": {
+        "chunks": [
+          {
+            "id": "kchunk_ffe0978d71e142ba9f7d9c63963d7252",
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "bucket_id": "kbucket_72e414d345f14542b8a5751d1bc059e5",
+            "chunk_index": 0,
+            "content": "LOCALMANAGED731 receipts are retained for 45 days.",
+            "summary": "LOCALMANAGED731 receipts are retained for 45 days.",
+            "source_ref": "managed.md / Managed KM / evidence 1",
+            "metadata": {
+              "ingest_schema_version": 2,
+              "node_type": "evidence_chunk",
+              "related_group_id": null,
+              "related_chunk_index": 0,
+              "section_id": "sec_1",
+              "section_path": "Managed KM",
+              "section_title": "Managed KM",
+              "bucket_title": "Managed KM",
+              "source_span": {
+                "start_paragraph": 0,
+                "end_paragraph": 1
+              },
+              "context_window": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+              "related_chunk_ids": [],
+              "related_chunk_count": 0,
+              "related_previous_chunk_id": null,
+              "related_next_chunk_id": null
+            },
+            "created_at": "2026-10-16T06:46:56.625064",
+            "updated_at": "2026-10-16T06:46:56.625064"
+          }
+        ],
+        "buckets": [
+          {
+            "id": "kbucket_72e414d345f14542b8a5751d1bc059e5",
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "title": "Managed KM",
+            "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+            "content": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+            "metadata": {
+              "ingest_schema_version": 2,
+              "bucket_key": "managed_km",
+              "content": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+              "bucket_type": "structure",
+              "concept_type": "Topic",
+              "section_ids": [
+                "sec_1"
+              ],
+              "section_paths": [
+                "Managed KM"
+              ],
+              "applicable_query_types": [
+                "answer",
+                "policy_check"
+              ],
+              "quality": {
+                "status": "ready",
+                "warnings": [],
+                "has_source_sections": true,
+                "has_summary": true,
+                "content_chars": 64
+              },
+              "document_card": {
+                "title": "Managed persistence",
+                "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days."
+              },
+              "representative_chunk_ids": [
+                "kchunk_ffe0978d71e142ba9f7d9c63963d7252"
+              ],
+              "chunk_count": 1
+            },
+            "created_at": "2026-10-16T06:46:56.625064",
+            "updated_at": "2026-10-16T06:46:56.625064"
+          }
+        ],
+        "evidence_pack": [
+          {
+            "chunk_id": "kchunk_ffe0978d71e142ba9f7d9c63963d7252",
+            "related_group_id": null,
+            "related_chunk_ids": [],
+            "related_chunk_index": 0,
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "bucket_id": "kbucket_72e414d345f14542b8a5751d1bc059e5",
+            "source_path": "managed.md / Managed KM / evidence 1",
+            "section_path": "Managed KM",
+            "summary": "LOCALMANAGED731 receipts are retained for 45 days.",
+            "content": "LOCALMANAGED731 receipts are retained for 45 days.",
+            "excerpt": "LOCALMANAGED731 receipts are retained for 45 days.",
+            "relevance_score": 8.68,
+            "confidence_reason": "引用来源摘要、章节路径或正文与查询相关"
+          },
+          {
+            "chunk_id": "kconcept_30ad499264da49e896203c6f49d03504:2026-10-16T06:46:56.630939",
+            "concept_id": "sources/managed-persistence",
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "content": "---\ntype: \"Source Document\"\ntitle: \"Managed persistence\"\ndescription: \"# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\"\nresource: \"ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667\"\ntags: [\"source\", \"business-knowledge\"]\ntimestamp: \"2026-10-16T06:46:56.625064\"\n---\n\n# Summary\n\n# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Outline\n\n- [Managed KM](/sources/managed-persistence/sections/sec-1.md) - # Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Knowledge Buckets\n\n- [Managed KM](/topics/managed-km.md) - # Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667)\n",
+            "source_ref": "sources/managed-persistence.md"
+          },
+          {
+            "chunk_id": "kconcept_a6bc3f5815bd443dbc3630bd02d4dc12:2026-10-16T06:46:56.632435",
+            "concept_id": "sources/managed-persistence/sections/sec-1",
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "content": "---\ntype: \"Source Section\"\ntitle: \"Managed KM\"\ndescription: \"# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\"\nresource: \"ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667#section=sec_1\"\ntags: [\"source-section\"]\ntimestamp: \"2026-10-16T06:46:56.625064\"\nsource_document: \"sources/managed-persistence\"\nsection_path: \"Managed KM\"\n---\n\n# Summary\n\n# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Content\n\n# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667)\n",
+            "source_ref": "sources/managed-persistence/sections/sec-1.md"
+          },
+          {
+            "chunk_id": "kconcept_be149425868048a9a17658fc080c34ff:2026-10-16T06:46:56.632971",
+            "concept_id": "topics/managed-km",
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "content": "---\ntype: \"Topic\"\ntitle: \"Managed KM\"\ndescription: \"# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\"\nresource: \"ultrarag://knowledge/buckets/kbucket_72e414d345f14542b8a5751d1bc059e5\"\ntags: [\"knowledge-bucket\", \"structure\"]\ntimestamp: \"2026-10-16T06:46:56.625064\"\nsource_document: \"sources/managed-persistence\"\n---\n\n# Summary\n\n# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Source Sections\n\n- [Managed KM](/sources/managed-persistence/sections/sec-1.md)\n\n# Notes\n\n# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667)\n",
+            "source_ref": "topics/managed-km.md"
+          }
+        ],
+        "expanded_sections": [
+          {
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "section_id": "sec_1",
+            "title": "Managed KM",
+            "path": "Managed KM",
+            "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+            "level": 1,
+            "source_span": {
+              "start_paragraph": 0,
+              "end_paragraph": 1
+            },
+            "reason": "命中内部索引：Managed KM"
+          }
+        ],
+        "route_trace": [
+          {
+            "phase": "document_route",
+            "candidate_count": 1,
+            "message": "正在选择知识文档",
+            "mode": "auto"
+          },
+          {
+            "phase": "document_route_lexical",
+            "message": "按检索相关性选择知识文档",
+            "selected_count": 1
+          },
+          {
+            "phase": "bucket_route",
+            "candidate_count": 1,
+            "message": "正在选择内部索引",
+            "selected_document_ids": [
+              "kdoc_dfc02b1d3f784753bf70ab6474c24667"
+            ]
+          },
+          {
+            "phase": "bucket_route_lexical",
+            "message": "按检索相关性选择内部索引",
+            "selected_count": 1
+          },
+          {
+            "phase": "section_expand",
+            "section_count": 1,
+            "message": "正在展开章节"
+          },
+          {
+            "phase": "read_chunks",
+            "message": "读取引用来源",
+            "chunk_count": 1
+          },
+          {
+            "phase": "evidence_pack",
+            "evidence_count": 1,
+            "message": "整理引用来源包"
+          }
+        ],
+        "selected_concepts": [
+          {
+            "id": "kconcept_30ad499264da49e896203c6f49d03504",
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "concept_id": "sources/managed-persistence",
+            "concept_type": "Source Document",
+            "title": "Managed persistence",
+            "content_md": "---\ntype: \"Source Document\"\ntitle: \"Managed persistence\"\ndescription: \"# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\"\nresource: \"ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667\"\ntags: [\"source\", \"business-knowledge\"]\ntimestamp: \"2026-10-16T06:46:56.625064\"\n---\n\n# Summary\n\n# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Outline\n\n- [Managed KM](/sources/managed-persistence/sections/sec-1.md) - # Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Knowledge Buckets\n\n- [Managed KM](/topics/managed-km.md) - # Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667)\n",
+            "links": [
+              {
+                "label": "Managed KM",
+                "target": "/sources/managed-persistence/sections/sec-1.md"
+              },
+              {
+                "label": "Managed KM",
+                "target": "/topics/managed-km.md"
+              },
+              {
+                "label": "Original document",
+                "target": "ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667"
+              }
+            ],
+            "citations": [
+              {
+                "index": 1,
+                "label": "Original document",
+                "target": "ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667"
+              }
+            ],
+            "source_refs": [
+              {
+                "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+                "filename": "managed.md"
+              }
+            ],
+            "created_at": "2026-10-16T06:46:56.630936",
+            "updated_at": "2026-10-16T06:46:56.630939"
+          },
+          {
+            "id": "kconcept_a6bc3f5815bd443dbc3630bd02d4dc12",
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "concept_id": "sources/managed-persistence/sections/sec-1",
+            "concept_type": "Source Section",
+            "title": "Managed KM",
+            "content_md": "---\ntype: \"Source Section\"\ntitle: \"Managed KM\"\ndescription: \"# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\"\nresource: \"ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667#section=sec_1\"\ntags: [\"source-section\"]\ntimestamp: \"2026-10-16T06:46:56.625064\"\nsource_document: \"sources/managed-persistence\"\nsection_path: \"Managed KM\"\n---\n\n# Summary\n\n# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Content\n\n# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667)\n",
+            "links": [
+              {
+                "label": "Original document",
+                "target": "ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667"
+              }
+            ],
+            "citations": [
+              {
+                "index": 1,
+                "label": "Original document",
+                "target": "ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667"
+              }
+            ],
+            "source_refs": [
+              {
+                "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+                "section_id": "sec_1",
+                "section_path": "Managed KM"
+              }
+            ],
+            "created_at": "2026-10-16T06:46:56.632433",
+            "updated_at": "2026-10-16T06:46:56.632435"
+          },
+          {
+            "id": "kconcept_be149425868048a9a17658fc080c34ff",
+            "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "concept_id": "topics/managed-km",
+            "concept_type": "Topic",
+            "title": "Managed KM",
+            "content_md": "---\ntype: \"Topic\"\ntitle: \"Managed KM\"\ndescription: \"# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\"\nresource: \"ultrarag://knowledge/buckets/kbucket_72e414d345f14542b8a5751d1bc059e5\"\ntags: [\"knowledge-bucket\", \"structure\"]\ntimestamp: \"2026-10-16T06:46:56.625064\"\nsource_document: \"sources/managed-persistence\"\n---\n\n# Summary\n\n# Managed KM LOCALMANAGED731 receipts are retained for 45 days.\n\n# Source Sections\n\n- [Managed KM](/sources/managed-persistence/sections/sec-1.md)\n\n# Notes\n\n# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.\n\n# Citations\n\n[1] [Original document](ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667)\n",
+            "links": [
+              {
+                "label": "Managed KM",
+                "target": "/sources/managed-persistence/sections/sec-1.md"
+              },
+              {
+                "label": "Original document",
+                "target": "ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667"
+              }
+            ],
+            "citations": [
+              {
+                "index": 1,
+                "label": "Original document",
+                "target": "ultrarag://knowledge/documents/kdoc_dfc02b1d3f784753bf70ab6474c24667"
+              }
+            ],
+            "source_refs": [
+              {
+                "document_id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+                "bucket_id": "kbucket_72e414d345f14542b8a5751d1bc059e5",
+                "bucket_key": "managed_km"
+              }
+            ],
+            "created_at": "2026-10-16T06:46:56.632970",
+            "updated_at": "2026-10-16T06:46:56.632971"
+          }
+        ],
+        "selected_documents": [
+          {
+            "id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+            "title": "Managed persistence",
+            "filename": "managed.md",
+            "file_type": "md",
+            "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+            "outline": [
+              {
+                "section_id": "sec_1",
+                "title": "Managed KM",
+                "path": "Managed KM",
+                "level": 1,
+                "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days."
+              }
+            ],
+            "key_entities": [
+              "Managed",
+              "LOCALMANAGED731",
+              "receipts",
+              "are",
+              "retained",
+              "for",
+              "days"
+            ],
+            "section_count": 1,
+            "chunk_count": 1,
+            "updated_at": "2026-10-16T06:46:56.625064"
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/km/v1/documents?space_id=local&knowledge_base_id=kbase_4a4c977869f6459bb1bdf77e77f311ab",
+      "status": 200,
+      "result": [
+        {
+          "id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+          "filename": "managed.md",
+          "file_type": "md",
+          "title": "Managed persistence",
+          "status": "ready",
+          "content": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+          "metadata": {
+            "raw_text": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+            "document_card": {
+              "title": "Managed persistence",
+              "filename": "managed.md",
+              "file_type": "md",
+              "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+              "outline": [
+                {
+                  "section_id": "sec_1",
+                  "title": "Managed KM",
+                  "path": "Managed KM",
+                  "level": 1,
+                  "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days."
+                }
+              ],
+              "applicable_scenarios": [
+                "Managed KM"
+              ],
+              "key_entities": [
+                "Managed",
+                "LOCALMANAGED731",
+                "receipts",
+                "are",
+                "retained",
+                "for",
+                "days"
+              ],
+              "char_count": 64,
+              "section_count": 1
+            },
+            "section_tree": [
+              {
+                "section_id": "sec_1",
+                "related_section_id": "sec_1",
+                "node_type": "section",
+                "level": 1,
+                "title": "Managed KM",
+                "parent_id": null,
+                "path": "Managed KM",
+                "section_order": 1,
+                "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+                "content": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+                "source_span": {
+                  "start_paragraph": 0,
+                  "end_paragraph": 1
+                },
+                "anchor_entities": [
+                  "Managed",
+                  "LOCALMANAGED731",
+                  "receipts",
+                  "are",
+                  "retained",
+                  "for",
+                  "days"
+                ]
+              }
+            ],
+            "route_trace": [],
+            "ingest_schema_version": 2,
+            "char_count": 64,
+            "section_stats": {
+              "section_count": 1,
+              "paragraph_count": 2
+            },
+            "chunk_stats": {
+              "total_chunks": 1,
+              "chunk_count": 1,
+              "target_chars": 900,
+              "section_target_chars": 1400
+            },
+            "bucket_quality": [
+              {
+                "bucket_id": "kbucket_72e414d345f14542b8a5751d1bc059e5",
+                "title": "Managed KM",
+                "quality": {
+                  "status": "ready",
+                  "warnings": [],
+                  "has_source_sections": true,
+                  "has_summary": true,
+                  "content_chars": 64
+                }
+              }
+            ],
+            "okf": {
+              "version": "0.1",
+              "concept_count": 3,
+              "concept_types": [
+                "Source Document",
+                "Source Section",
+                "Topic"
+              ]
+            }
+          },
+          "bucket_count": 1,
+          "chunk_count": 1,
+          "created_at": "2026-10-16T06:46:56.625064",
+          "updated_at": "2026-10-16T06:46:56.625064"
+        }
+      ]
+    },
+    {
+      "check": "PD exit stopped managed KM"
+    },
+    {
+      "check": "PD and managed KM ready",
+      "entry": [
+        "ui/server/webRuntimeSupervisor.js",
+        "start-built"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/km/v1/documents?space_id=local&knowledge_base_id=kbase_4a4c977869f6459bb1bdf77e77f311ab",
+      "status": 200,
+      "result": [
+        {
+          "id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+          "filename": "managed.md",
+          "file_type": "md",
+          "title": "Managed persistence",
+          "status": "ready",
+          "content": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+          "metadata": {
+            "raw_text": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+            "document_card": {
+              "title": "Managed persistence",
+              "filename": "managed.md",
+              "file_type": "md",
+              "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+              "outline": [
+                {
+                  "section_id": "sec_1",
+                  "title": "Managed KM",
+                  "path": "Managed KM",
+                  "level": 1,
+                  "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days."
+                }
+              ],
+              "applicable_scenarios": [
+                "Managed KM"
+              ],
+              "key_entities": [
+                "Managed",
+                "LOCALMANAGED731",
+                "receipts",
+                "are",
+                "retained",
+                "for",
+                "days"
+              ],
+              "char_count": 64,
+              "section_count": 1
+            },
+            "section_tree": [
+              {
+                "section_id": "sec_1",
+                "related_section_id": "sec_1",
+                "node_type": "section",
+                "level": 1,
+                "title": "Managed KM",
+                "parent_id": null,
+                "path": "Managed KM",
+                "section_order": 1,
+                "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+                "content": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+                "source_span": {
+                  "start_paragraph": 0,
+                  "end_paragraph": 1
+                },
+                "anchor_entities": [
+                  "Managed",
+                  "LOCALMANAGED731",
+                  "receipts",
+                  "are",
+                  "retained",
+                  "for",
+                  "days"
+                ]
+              }
+            ],
+            "route_trace": [],
+            "ingest_schema_version": 2,
+            "char_count": 64,
+            "section_stats": {
+              "section_count": 1,
+              "paragraph_count": 2
+            },
+            "chunk_stats": {
+              "total_chunks": 1,
+              "chunk_count": 1,
+              "target_chars": 900,
+              "section_target_chars": 1400
+            },
+            "bucket_quality": [
+              {
+                "bucket_id": "kbucket_72e414d345f14542b8a5751d1bc059e5",
+                "title": "Managed KM",
+                "quality": {
+                  "status": "ready",
+                  "warnings": [],
+                  "has_source_sections": true,
+                  "has_summary": true,
+                  "content_chars": 64
+                }
+              }
+            ],
+            "okf": {
+              "version": "0.1",
+              "concept_count": 3,
+              "concept_types": [
+                "Source Document",
+                "Source Section",
+                "Topic"
+              ]
+            }
+          },
+          "bucket_count": 1,
+          "chunk_count": 1,
+          "created_at": "2026-10-16T06:46:56.625064",
+          "updated_at": "2026-10-16T06:46:56.625064"
+        }
+      ]
+    },
+    {
+      "check": "PD exit stopped managed KM"
+    },
+    {
+      "check": "PD and managed KM ready",
+      "entry": [
+        "--import",
+        "tsx",
+        "src/cli/pilotdeck.ts",
+        "server"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/km/v1/documents?space_id=local&knowledge_base_id=kbase_4a4c977869f6459bb1bdf77e77f311ab",
+      "status": 200,
+      "result": [
+        {
+          "id": "kdoc_dfc02b1d3f784753bf70ab6474c24667",
+          "filename": "managed.md",
+          "file_type": "md",
+          "title": "Managed persistence",
+          "status": "ready",
+          "content": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+          "metadata": {
+            "raw_text": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+            "document_card": {
+              "title": "Managed persistence",
+              "filename": "managed.md",
+              "file_type": "md",
+              "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+              "outline": [
+                {
+                  "section_id": "sec_1",
+                  "title": "Managed KM",
+                  "path": "Managed KM",
+                  "level": 1,
+                  "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days."
+                }
+              ],
+              "applicable_scenarios": [
+                "Managed KM"
+              ],
+              "key_entities": [
+                "Managed",
+                "LOCALMANAGED731",
+                "receipts",
+                "are",
+                "retained",
+                "for",
+                "days"
+              ],
+              "char_count": 64,
+              "section_count": 1
+            },
+            "section_tree": [
+              {
+                "section_id": "sec_1",
+                "related_section_id": "sec_1",
+                "node_type": "section",
+                "level": 1,
+                "title": "Managed KM",
+                "parent_id": null,
+                "path": "Managed KM",
+                "section_order": 1,
+                "summary": "# Managed KM LOCALMANAGED731 receipts are retained for 45 days.",
+                "content": "# Managed KM\n\nLOCALMANAGED731 receipts are retained for 45 days.",
+                "source_span": {
+                  "start_paragraph": 0,
+                  "end_paragraph": 1
+                },
+                "anchor_entities": [
+                  "Managed",
+                  "LOCALMANAGED731",
+                  "receipts",
+                  "are",
+                  "retained",
+                  "for",
+                  "days"
+                ]
+              }
+            ],
+            "route_trace": [],
+            "ingest_schema_version": 2,
+            "char_count": 64,
+            "section_stats": {
+              "section_count": 1,
+              "paragraph_count": 2
+            },
+            "chunk_stats": {
+              "total_chunks": 1,
+              "chunk_count": 1,
+              "target_chars": 900,
+              "section_target_chars": 1400
+            },
+            "bucket_quality": [
+              {
+                "bucket_id": "kbucket_72e414d345f14542b8a5751d1bc059e5",
+                "title": "Managed KM",
+                "quality": {
+                  "status": "ready",
+                  "warnings": [],
+                  "has_source_sections": true,
+                  "has_summary": true,
+                  "content_chars": 64
+                }
+              }
+            ],
+            "okf": {
+              "version": "0.1",
+              "concept_count": 3,
+              "concept_types": [
+                "Source Document",
+                "Source Section",
+                "Topic"
+              ]
+            }
+          },
+          "bucket_count": 1,
+          "chunk_count": 1,
+          "created_at": "2026-10-16T06:46:56.625064",
+          "updated_at": "2026-10-16T06:46:56.625064"
+        }
+      ]
+    },
+    {
+      "check": "PD exit stopped managed KM"
+    }
+  ]
+}

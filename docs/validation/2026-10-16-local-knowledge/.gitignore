@@ -1,0 +1,3 @@
+# Keep disposable local runtimes and credentials out of published evidence.
+first-install/
+instance-*/

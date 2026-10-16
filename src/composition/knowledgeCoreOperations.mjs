@@ -34,7 +34,7 @@ export const KNOWLEDGE_CORE_OPERATIONS = Object.freeze({
   import_document: operation('POST', i => kb(i) + '/documents', ['filename', 'content_base64', 'title', 'model_id', 'metadata', 'capability_scope']),
   import_okf: operation('POST', i => kb(i) + '/okf', ['filename', 'content_base64', 'title']),
   update_document: operation('PUT', doc, ['expected_updated_at', 'content_md', 'title', 'status', 'metadata']),
-  delete_document: operation('DELETE', doc),
+  delete_document: operation('DELETE', doc, [], ['expected_updated_at']),
   list_document_buckets: operation('GET', i => doc(i) + '/buckets'),
   update_bucket: operation('PUT', i => '/buckets/' + id(i, 'bucket_id', 'bucketId'), ['expected_updated_at', 'content_md', 'title', 'summary', 'metadata']),
   list_bucket_chunks: operation('GET', i => '/buckets/' + id(i, 'bucket_id', 'bucketId') + '/chunks'),
@@ -49,10 +49,10 @@ export const KNOWLEDGE_CORE_OPERATIONS = Object.freeze({
   get_chunk: operation('GET', i => '/chunks/' + id(i, 'chunk_id', 'chunkId')),
   get_concept: operation('GET', i => '/concepts/' + id(i, 'concept_id', 'conceptId')),
   get_discovery: operation('GET', suggestion),
-  upsert_okf_concept: operation('PUT', i => kb(i) + '/concepts/' + id(i, 'concept_id', 'conceptId').replaceAll('%2F', '/'), ['expected_updated_at', 'content_md', 'document_id', 'status']),
+  upsert_okf_concept: operation('PUT', i => kb(i) + '/concepts/' + id(i, 'concept_id', 'conceptId').replaceAll('%2F', '/'), ['expected_updated_at', 'content_md', 'document_id', 'status', 'create_only']),
   update_concept: operation('PUT', i => '/concepts/' + id(i, 'concept_id', 'conceptId'), ['expected_updated_at', 'content_md', 'title', 'summary', 'document_id']),
   list_concepts: operation('GET', () => '/concepts'),
-  upsert_concept: operation('PUT', i => '/concepts/' + id(i, 'concept_id', 'conceptId').replaceAll('%2F', '/'), ['expected_updated_at', 'content_md', 'document_id']),
+  upsert_concept: operation('PUT', i => '/concepts/' + id(i, 'concept_id', 'conceptId').replaceAll('%2F', '/'), ['expected_updated_at', 'content_md', 'document_id', 'create_only']),
   export_okf: operation('GET', i => kb(i) + '/okf'),
   lint_okf: operation('POST', i => kb(i) + '/okf/lint'),
   list_discoveries: operation('GET', i => kb(i) + '/suggestions'),
@@ -65,6 +65,7 @@ export const KNOWLEDGE_CORE_OPERATIONS = Object.freeze({
   resolve_citation: operation('GET', i => '/citations/' + id(i, 'chunk_id', 'chunkId')),
 });
 export const KNOWLEDGE_CORE_METHODS = Object.freeze(Object.keys(KNOWLEDGE_CORE_OPERATIONS));
+export const KNOWLEDGE_AGENT_METHODS = Object.freeze(['query', 'resolve_citation', 'list_documents', 'get_document', 'import_document', 'update_document', 'delete_document', 'list_document_buckets', 'list_document_chunks', 'get_bucket', 'get_chunk', 'update_bucket', 'update_chunk', 'get_job', 'cancel_job', 'list_concepts', 'get_concept', 'upsert_concept']);
 const aliases = { knowledgeBaseIds: 'knowledge_base_ids', expectedUpdatedAt: 'expected_updated_at', contentMd: 'content_md', contentBase64: 'content_base64', versionId: 'version_id', modelId: 'model_id', maxChunks: 'max_chunks', maxBuckets: 'max_buckets', queryType: 'query_type', documentId: 'document_id', sourceSpaceId: 'source_space_id', spaceId: 'space_id' };
 export function knowledgeCoreRequest(operationName, input, binding, capabilities) {
   const descriptor = KNOWLEDGE_CORE_OPERATIONS[operationName];
@@ -89,7 +90,8 @@ export function knowledgeCoreRequest(operationName, input, binding, capabilities
   const versionAction = ['copy_version', 'sync_base', 'publish_version', 'rollback_version'].includes(operationName);
   if (!['upsert_okf_concept', 'upsert_concept'].includes(operationName) && descriptor.fields.includes('expected_updated_at') && !value.expected_updated_at && (!versionAction || capabilities?.operations.get_branch)) throw Object.assign(new Error('expected_updated_at is required'), { status: 422 });
   let path;
-  const advertised = capabilities?.operations[operationName];
+  const conceptAlias = { list_concepts: 'list_okf_concepts', get_concept: 'get_okf_concept', upsert_concept: 'upsert_okf_concept' }[operationName];
+  const advertised = (value.knowledge_base_id && conceptAlias && capabilities?.operations[conceptAlias]) || capabilities?.operations[operationName];
   if (advertised) {
     path = advertised.path.replace(/\{([^}:]+)(?::path)?\}/g, (_match, field) => id(value, field, field));
     if (advertised.method !== descriptor.method) throw Object.assign(new Error('Knowledge method mismatch'), { status: 503 });
