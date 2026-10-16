@@ -18,7 +18,7 @@ export type PilotDeckConfig = {
   agent?: {
     model?: string;
     maxContextTokens?: number;
-    subagents?: { default?: string };
+    subagents?: { default?: string; timeoutMs?: number };
   };
   model?: {
     providers?: Record<string, V2Provider>;
