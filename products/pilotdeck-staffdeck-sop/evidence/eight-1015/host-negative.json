@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "results": [
+    {
+      "name": "missing-binding",
+      "sessionId": "web:s_0ff96dd0-5b0d-4a54-95ca-aed1b1df572b",
+      "revision": 0,
+      "status": "active",
+      "errorText": "New conversation\n◆\nSkills\n◆\nSOP 工作流\nProjects\nproject\nConversations\n/sop eight_missing_binding_1015 执行专用拒绝测试\nRequest approval for native_outbox_recovery\nRequest approval for native_outbox_recovery SOP\nSettings\n/sop eight_missing_binding_1015 执行专用拒绝测试\nGeneral conversation\n\n/sop eight_missing_binding_1015 执行专用拒绝测试\n\n22:06\n\nRequired tool unavailable: not-bound-test-1015\n\nDefault Permissions\nqwen3.6-flash-distill\n--"
+    },
+    {
+      "name": "unavailable-model",
+      "sessionId": "web:s_59917177-8568-4b0d-a666-fb4d148b150a",
+      "revision": 0,
+      "status": "active",
+      "errorText": "New conversation\n◆\nSkills\n◆\nSOP 工作流\nProjects\nproject\nConversations\n/sop eight_unavailable_model_1015 执行专用拒绝测试\n/sop eight_missing_binding_1015 执行专用拒绝测试\nRequest approval for native_outbox_recovery\nRequest approval for native_outbox_recovery SOP\nSettings\n/sop eight_unavailable_model_1015 执行专用拒绝测试\nGeneral conversation\n\n/sop eight_unavailable_model_1015 执行专用拒绝测试\n\n22:06\n\nmodel_not_found: SOP node 'work' model 'provider1/nonexistent-test-model-1015': Model nonexistent-test-model-1015 does not exist in provider provider1.\n\nDefault Permissions\nqwen3.6-flash-distill\n--"
+    }
+  ]
+}

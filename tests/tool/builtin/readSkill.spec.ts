@@ -50,3 +50,12 @@ test("read_skill preserves legacy content-only loading when metadata is unavaila
   if (first?.type !== "text") assert.fail("read_skill did not return text");
   assert.equal(first.text, "# Legacy prompt contribution");
 });
+
+for (const available of [[], [{ name: "other", path: "/skills/other/SKILL.md" }]]) {
+  test(`read_skill rejects a missing recipe with ${available.length} available skills`, async () => {
+    const tool = createReadSkillTool({ loader: async () => undefined, lister: () => available });
+    await assert.rejects(tool.execute({ skillName: "missing" }, baseContext()), {
+      code: "tool_execution_failed",
+    });
+  });
+}

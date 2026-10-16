@@ -1,0 +1,54 @@
+{
+  "status": "PASS",
+  "results": [
+    {
+      "name": "missing-slot",
+      "sessionId": "eight-negative-1792074406190-missing-slot",
+      "code": "REQUIRED_SLOT_MISSING",
+      "status": 422,
+      "unchanged": true
+    },
+    {
+      "name": "missing-receipt",
+      "sessionId": "eight-negative-1792074406190-missing-receipt",
+      "code": "REQUIRED_CAPABILITY_NOT_INVOKED",
+      "status": 422,
+      "unchanged": true
+    },
+    {
+      "name": "invalid-next",
+      "sessionId": "eight-negative-1792074406190-invalid-next",
+      "code": "INVALID_TRANSITION",
+      "status": 422,
+      "unchanged": true
+    },
+    {
+      "name": "wrong-node",
+      "sessionId": "eight-negative-1792074406190-wrong-node",
+      "code": "RECEIPT_SCOPE_MISMATCH",
+      "status": 422,
+      "unchanged": true
+    },
+    {
+      "name": "wrong-turn",
+      "sessionId": "eight-negative-1792074406190-wrong-turn",
+      "code": "RECEIPT_SCOPE_MISMATCH",
+      "status": 422,
+      "unchanged": true
+    },
+    {
+      "name": "undeclared",
+      "sessionId": "eight-negative-1792074406190-undeclared",
+      "code": "CAPABILITY_UNDECLARED",
+      "status": 422,
+      "unchanged": true
+    },
+    {
+      "name": "cas-and-submit-replay",
+      "sessionId": "eight-negative-1792074406190-cas",
+      "duplicate": true,
+      "stale": "SOP_REVISION_CONFLICT",
+      "revision": 1
+    }
+  ]
+}

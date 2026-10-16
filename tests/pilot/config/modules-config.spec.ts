@@ -25,6 +25,76 @@ ${modules}
 `;
 }
 
+test('loadPilotConfig accepts managed native SOP and rejects remote managed endpoints', () => {
+  const root = mkdtempSync(join(tmpdir(), 'local-sop-config-'));
+  try {
+    for (const endpoint of ['http://127.0.0.1:8091', 'http://remote.example:8091']) {
+      const configPath = join(root, 'pilotdeck.yaml');
+      writeFileSync(configPath, configWithModules(`modules:
+  sop:
+    enabled: true
+    hostAdapter: pilotdeck
+    implementationId: portable-sop
+    contract: sop.lifecycle/v3
+    transport: sop-http-v3
+    endpoint: ${endpoint}
+    defaultSopId: release
+    localRuntime: { enabled: true, knowledgeEnabled: false, versionManagementEnabled: true }
+`));
+      if (endpoint.includes('127.0.0.1')) {
+        const result = loadPilotConfig({ configPath, env: { PILOT_HOME: root } });
+        assert.equal(result.config.modules?.sop?.localRuntime?.knowledgeEnabled, false);
+        assert.equal(result.diagnostics.filter(d => d.severity === 'fatal').length, 0);
+      } else assert.throws(() => loadPilotConfig({ configPath, env: { PILOT_HOME: root } }));
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const binding of [
+  'provider: staffdeck',
+  'implementationId: portable-sop\n    contract: sop.lifecycle/v2\n    transport: sop-http-v2',
+]) test(`native SOP rejects incompatible binding: ${binding.split('\n')[0]}`, () => {
+  const root = mkdtempSync(join(tmpdir(), 'native-sop-binding-'));
+  try {
+    const configPath = join(root, 'pilotdeck.yaml');
+    writeFileSync(configPath, configWithModules(`modules:
+  sop:
+    enabled: true
+    hostAdapter: pilotdeck
+    ${binding}
+    endpoint: http://runtime:8091
+    defaultSopId: flow
+`));
+    assert.throws(() => loadPilotConfig({ configPath, env: { PILOT_HOME: root } }),
+      (error: unknown) => (error as { diagnostics?: Array<{ code: string }> }).diagnostics
+        ?.some(diagnostic => diagnostic.code === 'SOP_HOST_ADAPTER_INVALID') === true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("loadPilotConfig accepts lifecycle v3 and explicit host capability bindings", () => {
+  const root = mkdtempSync(join(tmpdir(), "portable-sop-config-"));
+  try {
+    const configPath = join(root, "pilotdeck.yaml");
+    writeFileSync(configPath, configWithModules(`
+modules:
+  sop:
+    enabled: true
+    implementationId: portable-sop
+    contract: sop.lifecycle/v3
+    transport: sop-http-v3
+    endpoint: http://runtime:8091
+    definitionsPath: definitions.json
+    defaultSopId: flow
+    capabilityBindings:
+      - { capabilityId: knowledge-1, toolName: knowledge_query, kind: knowledge }
+`));
+    const snapshot = loadPilotConfig({ configPath, env: { PILOT_HOME: root } });
+    assert.equal(snapshot.diagnostics.filter(d => d.severity === "fatal").length, 0);
+    assert.equal((snapshot.config.modules?.sop as { contract?: string } | undefined)?.contract, "sop.lifecycle/v3");
+    assert.deepEqual(snapshot.config.modules?.sop?.capabilityBindings, [{ capabilityId: "knowledge-1", toolName: "knowledge_query", kind: "knowledge" }]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 for (const contextMode of [undefined, "new_session", "inherit"] as const)
 test(`loadPilotConfig resolves the StaffDeck SOP module profile (${contextMode ?? "default"})`, () => {
   const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-config-"));
@@ -49,6 +119,7 @@ ${contextMode === undefined ? "" : `    contextMode: ${contextMode}`}
     assert.deepEqual(snapshot.config.modules?.agentLoop, { enabled: true, provider: "pilotdeck" });
     assert.deepEqual(snapshot.config.modules?.sop, {
       provider: "staffdeck",
+      hostAdapter: "staffdeck",
       endpoint: "http://sop-runtime:8091",
       definitionsPath: join(root, "sops", "definitions.yaml"),
       defaultSopId: "onboarding",
@@ -194,6 +265,7 @@ modules:
     const snapshot = loadPilotConfig({ configPath, env: { PILOT_HOME: root } });
     assert.deepEqual(snapshot.config.modules?.sop, {
       implementationId: "example.approval",
+      hostAdapter: "staffdeck",
       contract: "sop.lifecycle/v2",
       transport: "sop-http-v2",
       manifestPath: "/module-manifest",

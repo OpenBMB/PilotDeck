@@ -1,0 +1,131 @@
+{
+  "child": {
+    "skill_id": "eight_child_1015",
+    "version": "1.0.0",
+    "name": "八项验收子流程 1.0.0",
+    "start_node_id": "review",
+    "terminal_node_ids": [
+      "child_done"
+    ],
+    "required_info": [],
+    "nodes": [
+      {
+        "node_id": "review",
+        "type": "handoff",
+        "assignee_ref": "pilotdeck:owner",
+        "instruction": "必须调用 submit_step_result status handoff 创建真实人工审批。禁止模拟批准。人工已恢复后调用 submit_step_result status completed 推进 child_done。"
+      },
+      {
+        "node_id": "child_done",
+        "type": "response",
+        "model": "provider1/deepseek-v4.1-flash",
+        "contextMode": "new_session",
+        "instruction": "审批后汇总 ticket、risk、branch、output_path，调用 submit_step_result status completed，replyFragment 必须含 CHILD_VERSION_1.0.0，slotUpdates.child_version=\"1.0.0\"。这不是最终父流程终态，继续回到父流程。"
+      }
+    ],
+    "edges": [
+      {
+        "source_node_id": "review",
+        "next_node_id": "child_done"
+      }
+    ]
+  },
+  "parent": {
+    "skill_id": "eight_parent_1015",
+    "version": "1.0.0",
+    "name": "八项功能真实组合流程 1.0.0",
+    "start_node_id": "collect",
+    "terminal_node_ids": [
+      "done"
+    ],
+    "required_info": [
+      "ticket",
+      "risk"
+    ],
+    "nodes": [
+      {
+        "node_id": "collect",
+        "type": "collect_info",
+        "model": "provider1/qwen3.6-flash-distill",
+        "expected_user_info": [
+          "ticket",
+          "risk"
+        ],
+        "instruction": "收集 ticket 和 risk，risk 为 high 或 low。缺少时调用 submit_step_result status awaiting_user 询问；收到后 slotUpdates 保存 ticket/risk，status completed。"
+      },
+      {
+        "node_id": "recipe",
+        "type": "tool_call",
+        "capability_refs": {
+          "required_general_skill_ids": [
+            "eight-recipe"
+          ],
+          "required_tool_ids": [
+            "release-evidence",
+            "eight-write"
+          ]
+        },
+        "instruction": "先调用 read_skill(skillName=\"eight-release\") 实际读取技能，然后严格执行技能步骤：read_file release.txt；write_file 创建 eight-<ticket>.txt，含 SKILL_RECIPE_EXECUTED_1015、ticket、risk 和读取证据。禁止只描述。成功后调用 submit_step_result status completed，slotUpdates.output_path 保存路径。"
+      },
+      {
+        "node_id": "decide",
+        "type": "decision",
+        "instruction": "根据已知 risk 动态选择：high 选择 high_path；low 选择 low_path。调用 submit_step_result status completed，nextStepId 必须明确，slotUpdates.branch 为 high 或 low。不要问用户。"
+      },
+      {
+        "node_id": "high_path",
+        "type": "response",
+        "instruction": "记录已经走过高风险分支，slotUpdates.route_marker=\"HIGH_PATH_EXECUTED\"，status completed 进入子 SOP。"
+      },
+      {
+        "node_id": "low_path",
+        "type": "response",
+        "instruction": "记录已经走过低风险分支，slotUpdates.route_marker=\"LOW_PATH_EXECUTED\"，status completed 进入子 SOP。"
+      },
+      {
+        "node_id": "sub",
+        "type": "subflow",
+        "sub_sop_id": "eight_child_1015"
+      },
+      {
+        "node_id": "done",
+        "type": "response",
+        "instruction": "父流程最后节点，汇总 ticket、risk、branch、route_marker、child_version 和 output_path。必须调用 submit_step_result status completed，replyFragment 包含 SOP_EIGHT_COMPLETED_1015。"
+      }
+    ],
+    "edges": [
+      {
+        "source_node_id": "collect",
+        "next_node_id": "recipe"
+      },
+      {
+        "source_node_id": "recipe",
+        "next_node_id": "decide"
+      },
+      {
+        "source_node_id": "decide",
+        "next_node_id": "high_path",
+        "condition": "risk is high",
+        "priority": 1
+      },
+      {
+        "source_node_id": "decide",
+        "next_node_id": "low_path",
+        "condition": "risk is low",
+        "priority": 2
+      },
+      {
+        "source_node_id": "high_path",
+        "next_node_id": "sub"
+      },
+      {
+        "source_node_id": "low_path",
+        "next_node_id": "sub"
+      },
+      {
+        "source_node_id": "sub",
+        "next_node_id": "done"
+      }
+    ]
+  }
+}

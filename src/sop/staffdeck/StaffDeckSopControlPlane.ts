@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { SopStateStore } from "./SopStateStore.js";
+import { PortableSopRuntimeClient } from "./PortableSopRuntimeClient.js";
 import type {
   StaffDeckSopResumeInput,
   StaffDeckSopResumeResult,
@@ -50,7 +51,8 @@ export class StaffDeckSopControlPlane {
     const root = join(profile.stateRoot, "sessions");
     let store = this.stores.get(root);
     if (!store) {
-      store = new SopStateStore(root);
+      store = new SopStateStore(root, "contract" in profile && profile.contract === "sop.lifecycle/v3"
+        ? new PortableSopRuntimeClient(profile.endpoint, { timeoutMs: profile.timeoutMs }) : undefined);
       this.stores.set(root, store);
     }
     return store;

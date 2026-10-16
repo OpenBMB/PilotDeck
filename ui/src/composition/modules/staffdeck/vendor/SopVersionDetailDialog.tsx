@@ -57,6 +57,7 @@ export function SopVersionDetailDialog({ detail, onClose, labels = DEFAULT_LABEL
         <DialogTitle className="min-w-0 truncate text-[14px] font-normal leading-none text-[#757f9c]">
           {detail ? <>{labels.title}：<span {...USER_CONTENT_ATTRIBUTES}>{detail.name}</span> / <span {...USER_CONTENT_ATTRIBUTES}>{detail.version}</span></> : labels.emptyTitle}
         </DialogTitle>
+        <button type="button" aria-label="关闭" className="ml-auto shrink-0 rounded px-2 py-1 text-lg" onClick={onClose}>×</button>
       </div>
       {detail && <div className="flex min-h-0 flex-1 flex-col gap-[16px] overflow-y-auto px-[12px]">
         <div className="grid grid-cols-2 gap-[10px] max-[520px]:grid-cols-1">

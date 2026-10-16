@@ -6,6 +6,7 @@ export const slots = ['agentLoop', 'skills', 'tools', 'context', 'modelProvider'
 export type Slot = typeof slots[number];
 export type Binding = {
   enabled: boolean;
+  hostAdapter?: 'pilotdeck' | 'staffdeck';
   provider?: string;
   implementationId?: string;
   frontendModule?: string;

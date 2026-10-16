@@ -1,0 +1,54 @@
+{
+  "status": "BASELINE_RECORDED",
+  "features": {
+    "knowledge": false,
+    "versionManagement": true
+  },
+  "models": [
+    "provider1/qwen3.6-flash-distill"
+  ],
+  "bindings": [
+    {
+      "kind": "tool",
+      "capabilityId": "release-evidence",
+      "toolName": "read_file"
+    }
+  ],
+  "cases": [
+    {
+      "feature": "manual_create_edit",
+      "status": "PASS"
+    },
+    {
+      "feature": "node_model_ui",
+      "status": "FAIL",
+      "reason": "No node model selector in the deployed inspector"
+    },
+    {
+      "feature": "real_multiple_models",
+      "status": "BLOCKED",
+      "reason": "Only one model configured in current deployment"
+    },
+    {
+      "feature": "real_skill",
+      "status": "FAIL",
+      "reason": "Skills disabled in deployed profile; no skill capability binding"
+    },
+    {
+      "feature": "dynamic_branches",
+      "status": "NOT_YET_ACCEPTED",
+      "reason": "No deployed real two-branch evidence"
+    },
+    {
+      "feature": "sub_sop",
+      "status": "NOT_YET_ACCEPTED",
+      "reason": "No deployed real nested workflow evidence"
+    },
+    {
+      "feature": "conversation_tool_human",
+      "status": "FAIL",
+      "sessionId": "web:s_8f3f8e59-3376-42a0-8174-c4b70e894851",
+      "reason": "Real tool completed and reached handoff revision 3; approval draft reset during refresh; no baseline completion claimed"
+    }
+  ]
+}

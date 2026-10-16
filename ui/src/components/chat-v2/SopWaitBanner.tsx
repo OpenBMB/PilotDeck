@@ -63,6 +63,11 @@ export default function SopWaitBanner({
       const response = await api.sopStatus(sessionKey, projectKey);
       if (requestId !== statusRequestRef.current) return;
       if (!response.ok) {
+        if (response.status === 401 && allowedWaitKind === 'external_task') {
+          setStatus(null);
+          onWaitKind?.(null);
+          return;
+        }
         if (response.status === 404 || response.status === 501 || response.status === 503) {
           setStatus(null);
           onWaitKind?.(null);

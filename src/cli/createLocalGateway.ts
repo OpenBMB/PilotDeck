@@ -27,7 +27,7 @@ import {
 } from "../sop/staffdeck/index.js";
 import { createActiveRuntimeModelPorts } from "../composition/activeRuntimeModelPorts.js";
 import { createActiveRuntimeTextParsingPort } from "../composition/activeRuntimeTextParsing.js";
-import { authenticateNativeStaffDeckAdmission, createNativeApprovalSessionResolver, readNativeInstallationOwner, readNativeSessionAdmission } from "../composition/nativeApprovalSessionResolver.js";
+import { authenticateNativeStaffDeckAdmission, createNativeApprovalSessionResolver, readNativeInstallationOwner, readNativeSessionAdmission, readPilotDeckSessionAdmission } from "../composition/nativeApprovalSessionResolver.js";
 import {
   createNodeAttachmentPort,
   type CompactionPort,
@@ -634,7 +634,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     const selectedFactory = bindingFactory ?? configuredAgentLoopFactory;
     if (sop && input.config.isSubagent !== true) {
       const knowledge = registry.resolve(input.config.cwd).snapshot.config.modules?.knowledge;
-      const authority = isExternalModuleBinding(knowledge) && knowledge.implementationId === "staffdeck.knowledge"
+      const authority = sop.hostAdapter !== 'pilotdeck' && isExternalModuleBinding(knowledge) && knowledge.implementationId === "staffdeck.knowledge"
         && knowledge.contract === "staffdeck.knowledge/v1" && knowledge.credentialEnv && knowledge.agentId
         && knowledge.agentId === sop.discoveryAgentId && sop.discoveryEndpoint
         && new URL(knowledge.endpoint).origin === new URL(sop.discoveryEndpoint).origin
@@ -774,6 +774,11 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       const tenantId = projectEnv.STAFFDECK_COPY_TENANT_ID, agentId = projectEnv.STAFFDECK_COPY_TARGET_AGENT_ID;
       const pilotDeckUserId = env.STAFFDECK_COPY_PILOTDECK_USER_ID;
       const sop = runtime.snapshot.config.modules?.sop;
+      if (sop?.hostAdapter === 'pilotdeck') {
+        const ownerId = readNativeInstallationOwner(env.DATABASE_PATH || joinPath(pilotHome, "auth.db"));
+        return ownerId ? { hostAdapter: 'pilotdeck' as const, ownerId, projectKey: runtime.projectRoot,
+          executionProfileId: 'implementationId' in sop ? sop.implementationId : 'portable-sop' } : undefined;
+      }
       if (!tenantId || !agentId || !pilotDeckUserId || (sop && sop.discoveryAgentId !== agentId)
         || readNativeInstallationOwner(env.DATABASE_PATH || joinPath(pilotHome, "auth.db")) !== pilotDeckUserId) return undefined;
       return authenticateNativeStaffDeckAdmission({ env: projectEnv, projectKey: runtime.projectRoot, pilotDeckUserId,
@@ -993,6 +998,43 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     resume: (input) => sopControl.resume(input),
   });
   const restoringSessionKeys = new Set<string>();
+  const ownerDatabasePath = env.DATABASE_PATH || joinPath(pilotHome, "auth.db");
+  const readPilotDeckOwner = () => readNativeInstallationOwner(ownerDatabasePath);
+  let nativeAuthenticator: typeof approvalAuthenticator;
+  const pilotDeckApprovals = createPublicApprovalBridge({
+    hostAdapter: 'pilotdeck',
+    binding: { tenantId: 'pilotdeck', agentId: 'runtime-sop', pilotDeckUserId: readPilotDeckOwner() ?? '' },
+    resolveBinding: async () => ({ tenantId: 'pilotdeck', agentId: 'runtime-sop', pilotDeckUserId: readPilotDeckOwner() ?? '' }),
+    authenticate: async input => {
+      nativeAuthenticator ??= import(new URL('../../ui/server/pilotdeck-approval-authority.mjs', import.meta.url).href)
+        .then(module => module.createPilotDeckApprovalAuthority({ databasePath: ownerDatabasePath,
+          jwtSecret: env.JWT_SECRET, readOwner: readPilotDeckOwner }));
+      return (await nativeAuthenticator!).authenticate(input);
+    },
+    resolveSession: createNativeApprovalSessionResolver({
+      readOwner: readPilotDeckOwner,
+      listProjects: dialog.projects.listProjectKeys,
+      listSessions: projectKey => sessionCatalog.list({ projectRoot: projectKey, pilotHome, includeInternal: true }),
+      sessionAdmission: async (projectKey, sessionKey) => {
+        const sop = registry.resolve(projectKey).snapshot.config.modules?.sop;
+        if (sop?.hostAdapter !== 'pilotdeck') return undefined;
+        const storage = registry.createPersistentSessionStorage(projectKey, sessionKey);
+        try {
+          const { entries, diagnostics } = await storage.persistence.load();
+          if (diagnostics.length) return undefined;
+          const admission = readPilotDeckSessionAdmission(entries, sessionKey);
+          const profileId = 'implementationId' in sop ? sop.implementationId : 'portable-sop';
+          if (!admission || admission.ownerId !== readPilotDeckOwner() || admission.projectKey !== projectKey
+            || admission.executionProfileId !== profileId) return undefined;
+          return { tenantId: 'pilotdeck', agentId: 'runtime-sop', pilotDeckUserId: admission.ownerId, projectKey };
+        } finally { await storage.dispose(); }
+      },
+    }),
+    status: input => sopControl.status(input),
+    resume: input => sopControl.resume(input),
+  });
+  const approvalBridgeFor = (projectKey?: string) => registry.resolve(projectKey).snapshot.config.modules?.sop?.hostAdapter === 'pilotdeck'
+    ? pilotDeckApprovals : publicApprovals;
   const runRegistry = options.runRegistry ?? new FileRunRegistry(joinPath(pilotHome, "runs", "registry.json"));
   void runRegistry.markOrphansInterrupted();
   const nativeArchiveAuthorizer = options.nativeArchiveAuthorizer || options.nativeArchiveRetentionMs !== undefined
@@ -1070,7 +1112,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     turnTelemetryContextResolver,
     manualCompactionCoordinator,
     sopStatus: async (input) => {
-      if (input.approverAuthorization) return publicApprovals.status(input);
+      if (input.approverAuthorization) return approvalBridgeFor(input.projectKey).status(input);
       // The original external-task banner has its own continuation path. An
       // unauthenticated human projection cannot cross this boundary.
       const snapshot = await sopControl.status({ sessionKey: input.sessionKey, projectKey: input.projectKey });
@@ -1082,7 +1124,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       if (Object.hasOwn(input, "authority") || Object.hasOwn(input, "subject")) {
         throw Object.assign(new Error("APPROVAL_AUTHORITY_OVERRIDE"), { status: 400, code: "APPROVAL_AUTHORITY_OVERRIDE" });
       }
-      return input.source === "human" ? publicApprovals.resume(input) : sopControl.resume({
+      return input.source === "human" ? approvalBridgeFor(input.projectKey).resume(input) : sopControl.resume({
         sessionKey: input.sessionKey, projectKey: input.projectKey, source: input.source,
         requestId: input.requestId, waitId: input.waitId, message: input.message,
         expectedRevision: input.expectedRevision, slotUpdates: input.slotUpdates,
@@ -1522,7 +1564,9 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     isProjectBusy: (projectKey: string) => router!.hasActiveUserTurn(projectKey),
     getPublicApprovals: () => publicApprovals,
     getPublicHostCapabilities: (principal) => {
-      const root = principal ? projectForStaffDeckPrincipal(principal, env) : undefined;
+      if (principal?.hostAdapter === 'pilotdeck' && (principal.pilotDeckUserId !== readPilotDeckOwner()
+        || principal.actorUserId !== principal.pilotDeckUserId || principal.tenantId !== 'pilotdeck')) throw new Error('PILOTDECK_OWNER_REQUIRED');
+      const root = principal && principal.hostAdapter !== 'pilotdeck' ? projectForStaffDeckPrincipal(principal, env) : undefined;
       if (env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true' && !root) throw new Error('PROJECT_BINDING_PRINCIPAL_REQUIRED');
       const runtime = registry.resolve(root);
       const modelPorts = createActiveRuntimeModelPorts({

@@ -1,4 +1,5 @@
 import express from 'express';
+import { createNativeSopRouter } from './native-sop.mjs';
 
 import {
   getPilotDeckGateway,
@@ -39,6 +40,7 @@ export function createSopRouter({
     tenantId: process.env.STAFFDECK_COPY_TENANT_ID, userId: process.env.STAFFDECK_APPROVAL_USER_ID }),
 } = {}) {
   const router = express.Router();
+  router.use(createNativeSopRouter());
   const requireBoundUser = (req) => {
     const bound = boundPilotDeckUserId();
     if (!nonEmptyString(bound)) throw Object.assign(new Error('Approval binding unavailable.'), { code: 'APPROVAL_BINDING_UNAVAILABLE' });

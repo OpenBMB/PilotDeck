@@ -17,6 +17,24 @@ const knowledgeOnlyProfile = join(projectRoot, "products/pilotdeck-staffdeck-sop
 const sopOnlyProfile = join(projectRoot, "products/pilotdeck-staffdeck-sop/profiles/example-sop-external.yaml");
 const plainProfile = join(projectRoot, "products/pilotdeck-staffdeck-sop/profiles/pilotdeck-only.yaml");
 const nativeFiveStaffDeckProfile = join(projectRoot, "products/pilotdeck-staffdeck-sop/profiles/native-five-staffdeck.yaml");
+const portableProfile = join(projectRoot, "products/pilotdeck-staffdeck-sop/profiles/portable-sop-v3.yaml");
+
+test("SOP v3 export contains only the portable package and durable definition/state mounts", async () => {
+  const root = mkdtempSync(join(tmpdir(), "portable-sop-export-"));
+  try {
+    await runExport(portableProfile, join(root, "output"));
+    const output = join(root, "output");
+    assert.equal(existsSync(join(output, "staffdeck/backend")), false);
+    assert.equal(existsSync(join(output, "staffdeck/portable_sop/pyproject.toml")), true);
+    const definitions = JSON.parse(readFileSync(join(output, "sops/definition.json"), "utf8"));
+    assert.equal(definitions.sops[0].id, "approval");
+    const compose = YAML.parse(readFileSync(join(output, "compose.yaml"), "utf8"));
+    assert.deepEqual(compose.services["sop-runtime"].volumes, ["sop-runtime-data:/data", "./sops:/definitions:ro"]);
+    assert.equal(compose.services["sop-runtime"].environment.SOP_RUNTIME_DB, "/data/sop-runtime.sqlite");
+    const config = YAML.parse(readFileSync(join(output, "config/pilotdeck.yaml"), "utf8"));
+    assert.equal(config.modules.sop.contract, "sop.lifecycle/v3");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 async function runExport(profile: string, output: string, extraEnv: Record<string, string> = {}): Promise<void> {
   await execFile(process.execPath, [exporter, "--profile", profile, "--out", output], {

@@ -21,14 +21,16 @@ export type FormalSopApprovalInboxProps = {
   loading?: boolean;
   submitting?: boolean;
   error?: string;
+  draftStorageKey?: string;
   onReply: (approval: FormalSopApproval, message: string) => void | Promise<void>;
 };
 
 /** UI-only draft text. The callback owns authenticated resume/request ID and receipt handling. */
-export default function FormalSopApprovalInbox({ status, loading = false, submitting = false, error, onReply }: FormalSopApprovalInboxProps) {
-  const [message, setMessage] = useState('');
+export default function FormalSopApprovalInbox({ status, loading = false, submitting = false, error, draftStorageKey, onReply }: FormalSopApprovalInboxProps) {
+  const readDraft = () => { try { return draftStorageKey ? sessionStorage.getItem(draftStorageKey) || '' : ''; } catch { return ''; } };
+  const [message, setMessage] = useState(readDraft);
   const approval = status?.approval;
-  useEffect(() => setMessage(''), [status?.sessionId, approval?.waitId, approval?.revision]);
+  useEffect(() => setMessage(readDraft()), [status?.sessionId, approval?.waitId, approval?.revision, draftStorageKey]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,7 +51,7 @@ export default function FormalSopApprovalInbox({ status, loading = false, submit
               <dt>节点</dt><dd {...USER_CONTENT_ATTRIBUTES} className="min-w-0 break-all">{approval.nodeId}</dd>
             </dl>
             <label className="block text-sm font-medium">人工回复</label>
-            <textarea aria-label="人工回复" value={message} onChange={(event) => setMessage(event.target.value)}
+            <textarea aria-label="人工回复" value={message} onChange={(event) => { setMessage(event.target.value); if (draftStorageKey) { try { sessionStorage.setItem(draftStorageKey, event.target.value); } catch { /* In-memory editing remains available. */ } } }}
               disabled={submitting} rows={3} className="w-full rounded-lg border border-input bg-background p-2 text-sm" />
             {error && <p role="alert" {...USER_CONTENT_ATTRIBUTES} className="text-sm text-destructive">{error}</p>}
             <button type="submit" disabled={submitting || !message.trim() || !Number.isInteger(approval.revision) || approval.revision < 0}

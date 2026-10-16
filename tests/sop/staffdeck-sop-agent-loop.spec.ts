@@ -814,6 +814,31 @@ test("final SOP node offers only its submission and corrects a text draft", asyn
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("rejected submission followed by prose still receives bounded protocol correction", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-rejected-correction-"));
+  try {
+    let calls = 0, submissions = 0;
+    const model = modelFromStream(async function* () {
+      calls++;
+      if (calls === 2) { yield* yieldText("Approval request created."); return; }
+      yield* yieldToolCall(`submit-${calls}`, "submit_step_result", {
+        status: calls === 1 ? "completed" : "handoff", replyFragment: "Please approve.", slotUpdates: {},
+      });
+    });
+    const base = acceptingClient(undefined, true);
+    const client: StaffDeckSopRuntimeClient = { ...base, async submit(input) {
+      if (++submissions === 1) throw new StaffDeckSopClientError("HANDOFF_REQUIRED", "Human approval must be resumed before completing this node");
+      return base.submit(input);
+    } };
+    const session = createSopSession({ root, sessionId: "rejected-correction", model, client, context: new DefaultContextRuntime() });
+    const events = await collectSessionTurn(session, "Start approval", "correction-turn");
+    assert.equal(calls, 3);
+    assert.equal(submissions, 2);
+    assert.ok(!events.some(event => event.type === "turn_failed"), JSON.stringify(events));
+    assert.equal((await new SopStateStore(join(root, "sessions" )).status("rejected-correction"))?.state.status, "handoff");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 for (const waiting of ["handoff", "awaiting_user"] as const) {
   test(`terminal ${waiting} node corrects prose without forcing completion`, async () => {
     const root = mkdtempSync(join(tmpdir(), "pilotdeck-sop-terminal-wait-"));

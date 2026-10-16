@@ -24,7 +24,8 @@ for (const name of process.argv.slice(2).length ? process.argv.slice(2) : ['sd']
     command = python; cwd = sd;
     args = ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)];
     if (process.env.BINDING_QA_OBSERVE_SD_PATH) args = [join(pd, 'scripts/staffdeck-binding/observe-sd.py'), String(port)];
-    values = { ...common, PYTHONPATH: `${sd}/backend:${sd}/backend/src`, ULTRARAG_DOTENV: join(qa, 'absent.env'),
+    values = { ...common, PYTHONPATH: `${sd}/backend:${sd}/backend/src:${sd}/portable_sop/src`, ULTRARAG_DOTENV: join(qa, 'absent.env'),
+      SOP_RUNTIME_ENDPOINT: env.STAFFDECK_SOP_RUNTIME_ORIGIN, SOP_RUNTIME_LEGACY_WRITES: 'disabled',
       DATABASE_URL: `sqlite:///${qa}/sd.sqlite`, DEMO_SEED_ENABLED: 'false', STARTUP_ORPHAN_CLEANUP_ENABLED: 'false',
       APP_SECRET: 'binding-isolated-acceptance-secret', HARNESS_V3_ROOT: process.env.HARNESS_V3_ROOT,
       HARNESS_V3_HOME: join(qa, 'sd-home'), HARNESS_RUNTIME_CONFIG_PATH: join(qa, 'sd-runtime.json'),

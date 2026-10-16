@@ -20,6 +20,7 @@ const nonempty = (value: unknown): value is string => typeof value === 'string' 
 const failure = (status: number, code: string) => Object.assign(new Error(code), { status, code });
 
 export function createPublicApprovalBridge(options: {
+  hostAdapter?: "pilotdeck" | "staffdeck";
   binding: PublicApprovalBinding;
   resolveBinding?: (input: GatewaySopStatusInput) => Promise<PublicApprovalBinding>;
   authenticate(input: { bearer: string; signal?: AbortSignal }): Promise<PublicApprovalSubject>;
@@ -41,6 +42,7 @@ export function createPublicApprovalBridge(options: {
       throw failure(401, 'APPROVAL_AUTH_REQUIRED');
     }
     const subject = await options.authenticate({ bearer: authorization.slice(7), signal });
+    if (options.hostAdapter === 'pilotdeck' && subject.userId !== binding.pilotDeckUserId) throw failure(403, 'APPROVAL_SUBJECT_MISMATCH');
     if (subject.tenantId !== binding.tenantId || subject.source !== 'web' || subject.disabled
       || !nonempty(subject.userId) || !['admin', 'member'].includes(subject.role)) throw failure(403, 'APPROVAL_SUBJECT_MISMATCH');
     if (!options.resolveSession) throw failure(503, 'SOP_APPROVAL_SESSION_MAPPING_UNAVAILABLE');
@@ -58,6 +60,7 @@ export function createPublicApprovalBridge(options: {
       const { session, subject } = await access(input, signal);
       const snapshot = await options.status({ sessionKey: session.sessionKey, projectKey: session.projectKey });
       if (snapshot?.sessionId !== undefined && snapshot.sessionId !== session.sessionKey) throw failure(502, 'SOP_APPROVAL_SESSION_MISMATCH');
+      if (options.hostAdapter === 'pilotdeck' && snapshot?.approval && snapshot.approval.assigneeUserId !== 'pilotdeck:owner') throw failure(403, 'SOP_APPROVAL_FORBIDDEN');
       if (snapshot?.approval && subject.role !== 'admin' && snapshot.approval.assigneeUserId !== subject.userId) {
         throw failure(403, 'SOP_APPROVAL_FORBIDDEN');
       }
@@ -71,7 +74,7 @@ export function createPublicApprovalBridge(options: {
       return options.resume({ sessionKey: session.sessionKey, projectKey: session.projectKey,
         source: 'human', requestId: input.requestId, waitId: input.waitId, message: input.message,
         expectedRevision: input.expectedRevision, ...(input.slotUpdates ? { slotUpdates: input.slotUpdates } : {}),
-        authority: { tenantId: session.tenantId, sessionId: session.sessionKey, subject } });
+        authority: { ...(options.hostAdapter ? { hostAdapter: options.hostAdapter } : {}), tenantId: session.tenantId, sessionId: session.sessionKey, subject } });
     },
   });
 }

@@ -11,6 +11,15 @@ const approval = { waitId: 'wait', revision: 4, skillId: 'sop', version: '1', no
 const status = { sessionId: 'session', revision: 4, state: {}, approval };
 beforeEach(() => vi.clearAllMocks());
 
+it('waits for the normal approver login before requesting approval status', async () => {
+  const onError = vi.fn();
+  const { result } = renderHook(() => usePublicApprovalInbox({ scope: { sessionKey: 'session' }, readApproverBearer: () => '', onError }));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(request).not.toHaveBeenCalled();
+  expect(onError).not.toHaveBeenCalled();
+  expect(result.current.error).toBe('');
+});
+
 it('uses one original request ID for a failed human reply retry, then refreshes after receipt', async () => {
   request.mockResolvedValueOnce(new Response(JSON.stringify({ status })))
     .mockResolvedValueOnce(new Response('{"error":{"code":"TEMPORARY","message":"Retry"}}', { status: 503 }))

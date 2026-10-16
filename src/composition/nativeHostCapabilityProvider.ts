@@ -20,6 +20,7 @@ import type {
 } from "./publicHostPorts.js";
 
 export type PublicHostPrincipal = {
+  hostAdapter?: 'pilotdeck' | 'staffdeck';
   pilotDeckUserId: string;
   tenantId: string;
   actorUserId: string;

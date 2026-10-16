@@ -299,7 +299,7 @@ export const FLOW_VIEWER_FULLSCREEN_CLASS =
   'fixed inset-0 z-[80] bg-[#f7f8fa] p-[18px] sm:p-[24px] animate-in fade-in-0 duration-150';
 export const FLOW_VIEWER_FULLSCREEN_PANEL_CLASS =
   'min-h-0 flex-1 overflow-hidden rounded-[18px] border border-[#e3e7f1] bg-white shadow-[0_24px_72px_rgba(24,31,45,0.16)]';
-export const FLOW_VIEWER_BODY_CLASS = 'flex min-h-0 flex-1 overflow-hidden';
+export const FLOW_VIEWER_BODY_CLASS = 'flex min-h-0 flex-1 overflow-hidden max-sm:flex-col';
 export const FLOW_VIEWER_TITLE_CLASS = 'flex min-w-0 items-center gap-[10px]';
 export const FLOW_VIEWER_TITLE_MARK_CLASS =
   'grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-[#edf8f5] text-[#04756f]';
@@ -334,7 +334,7 @@ export const FLOW_FULLSCREEN_WITH_AI_CLASS =
   'ml-[min(380px,36vw)]';
 export const FLOW_FULLSCREEN_PANNABLE_CLASS = 'cursor-grab select-none active:cursor-grabbing';
 export const FLOW_INSPECTOR_CLASS =
-  'flex w-[min(500px,42vw)] min-w-[380px] shrink-0 flex-col border-l border-[#e1e6ee] bg-[#f8fafb]';
+  'flex w-[min(500px,42vw)] min-w-[380px] shrink-0 flex-col border-l border-[#e1e6ee] bg-[#f8fafb] max-sm:h-[55%] max-sm:w-full max-sm:min-w-0 max-sm:border-l-0 max-sm:border-t';
 export const FLOW_INSPECTOR_HEADER_CLASS =
   'flex shrink-0 items-start justify-between gap-[12px] border-b border-[#eceef1] px-[18px] py-[14px]';
 export const FLOW_INSPECTOR_BODY_CLASS = 'min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-[16px] py-[16px]';
