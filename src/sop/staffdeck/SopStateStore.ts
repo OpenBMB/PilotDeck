@@ -223,10 +223,20 @@ export class SopStateStore {
       if (this.runtime && !current.resumeIntent) await this.write({ ...current,
         resumeIntent: { input: structuredClone(input), original: { bundle: current.bundle, state: current.state,
           wait: current.wait, revision: current.revision } } });
-      const remote = this.runtime ? await this.runtime.resume({ protocolVersion: "3.0",
-        sessionId: input.sessionId, requestId: input.requestId, operationId: `sop.resume:${input.requestId}`,
-        turnId: input.requestId, expectedRevision: current.revision, waitId: input.waitId,
-        slotUpdates: input.slotUpdates, response: { source: input.source, message: input.message } }) : undefined;
+      let remote;
+      try {
+        remote = this.runtime ? await this.runtime.resume({ protocolVersion: "3.0",
+          sessionId: input.sessionId, requestId: input.requestId, operationId: `sop.resume:${input.requestId}`,
+          turnId: input.requestId, expectedRevision: current.revision, waitId: input.waitId,
+          slotUpdates: input.slotUpdates, response: { source: input.source, message: input.message } }) : undefined;
+      } catch (error) {
+        const status = error instanceof PortableSopRuntimeError ? error.details?.httpStatus : undefined;
+        if (typeof status === "number" && status >= 400 && status < 500 && status !== 408) {
+          // A definite rejection allows a corrected command; uncertain delivery must replay the original.
+          await this.write({ ...current, resumeIntent: undefined });
+        }
+        throw error;
+      }
       const revision = remote ? (remote.state as PortableSopState).revision : current.revision + 1;
       const result: StaffDeckSopResumeResult = {
         accepted: true,

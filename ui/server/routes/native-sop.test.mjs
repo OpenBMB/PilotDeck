@@ -55,3 +55,18 @@ it.each([[false, false], [false, true], [true, false], [true, true]])('shares kn
     expect(editor.bindings.map(value => value.kind)).toEqual(knowledge ? ['tool', 'knowledge'] : ['tool']);
   } finally { await new Promise(resolve => server.close(resolve)); await router.dispose(); await rm(root, { recursive: true, force: true }); }
 });
+
+it('ends an event replay when the reconnect cursor already includes the terminal event', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sop-terminal-replay-'));
+  const app = express(); app.use((req, _res, next) => { req.user = { id: 'owner' }; next(); });
+  const service = { recover: async () => {}, call: async operation => operation === 'job_events'
+    ? { data: [] } : { status: 'completed' } };
+  const router = createNativeSopRouter({ config: () => ({ hostAdapter: 'pilotdeck' }),
+    readOwner: () => 'owner', service, continuationPath: join(root, 'queue.json') });
+  app.use('/api/sop', router); const server = app.listen(0);
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/sop/native/jobs/job/events?after_seq=4`,
+      { signal: AbortSignal.timeout(1500) });
+    expect(await response.text()).toBe('');
+  } finally { await new Promise(resolve => server.close(resolve)); await router.dispose(); await rm(root, { recursive: true, force: true }); }
+});

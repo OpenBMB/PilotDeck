@@ -102,7 +102,8 @@ export class PortableSopRuntimeClient {
       }
       if (!response.ok || payload.ok === false) {
         const error = (payload.error ?? {}) as Record<string, unknown>;
-        throw new PortableSopRuntimeError(String(error.code ?? "SOP_RUNTIME_ERROR"), String(error.message ?? `Runtime returned HTTP ${response.status}`), error.details as Record<string, unknown> | undefined);
+        throw new PortableSopRuntimeError(String(error.code ?? "SOP_RUNTIME_ERROR"), String(error.message ?? `Runtime returned HTTP ${response.status}`),
+          { ...(error.details as Record<string, unknown> | undefined), httpStatus: response.status });
       }
       return (payload.payload ?? payload) as Record<string, unknown>;
     } catch (error) {

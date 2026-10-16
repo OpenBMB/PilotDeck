@@ -77,6 +77,7 @@ export function createNativeSopRouter({ config = readSopConfig, readOwner = read
     let after = Number(req.query.after_seq || req.headers['last-event-id'] || 0), closed = false;
     res.on('close', () => { closed = true; });
     while (!closed) {
+      const job = await service.call('job_get', { jobId: req.params.id });
       const events = await service.call('job_events', { jobId: req.params.id, afterSequence: after });
       for (const item of events.data) {
         after = item.sequence;
@@ -88,6 +89,7 @@ export function createNativeSopRouter({ config = readSopConfig, readOwner = read
         res.write(`id: ${after}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         if (failed || item.event === 'complete') { res.end(); return; }
       }
+      if (['completed', 'failed', 'cancelled', 'interrupted'].includes(job.status)) { res.end(); return; }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
   });

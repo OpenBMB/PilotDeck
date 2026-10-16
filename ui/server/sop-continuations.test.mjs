@@ -63,3 +63,76 @@ it('stops retrying rejected Gateway commands while retaining transport retries',
     expect((await queue.get(retry.key)).status).toBe('resuming');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+it('delivers later approvals while another session is still running, without duplicate dispatch', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sop-outbox-'));
+  let release;
+  const slow = new Promise(resolve => { release = resolve; });
+  const runs = [];
+  const queue = createSopContinuationQueue({ path: join(root, 'queue.json'),
+    resume: async () => ({ accepted: true }), accepted: async () => false,
+    run: async (row, onInputAccepted) => {
+      runs.push(row.input.sessionKey);
+      await onInputAccepted();
+      if (row.input.sessionKey === 'slow') await slow;
+    },
+  });
+  let draining;
+  try {
+    await queue.enqueue({ sessionKey: 'slow', waitId: 'w', requestId: 'r' }, 'owner');
+    draining = queue.drain();
+    await expect.poll(() => runs).toEqual(['slow']);
+    await queue.enqueue({ sessionKey: 'later', waitId: 'w', requestId: 'r' }, 'owner');
+    await queue.drain();
+    expect(runs).toEqual(['slow', 'later']);
+    await queue.drain();
+    expect(runs).toEqual(['slow', 'later']);
+  } finally {
+    release(); await draining; await queue.idle();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('shares dispatch before acceptance and lets other sessions progress', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sop-outbox-'));
+  let release;
+  const ready = new Promise(resolve => { release = resolve; });
+  const runs = [];
+  const queue = createSopContinuationQueue({ path: join(root, 'queue.json'),
+    resume: async () => ({ accepted: true }), accepted: async () => false,
+    run: async (row, onInputAccepted) => {
+      runs.push(row.input.sessionKey);
+      if (row.input.sessionKey === 'slow') await ready;
+      await onInputAccepted();
+    },
+  });
+  let first, second;
+  try {
+    await queue.enqueue({ sessionKey: 'slow', waitId: 'w', requestId: 'r' }, 'owner');
+    first = queue.drain();
+    await expect.poll(() => runs).toEqual(['slow']);
+    await queue.enqueue({ sessionKey: 'later', waitId: 'w', requestId: 'r' }, 'owner');
+    second = queue.drain();
+    await expect.poll(() => runs).toEqual(['slow', 'later']);
+  } finally {
+    release(); await Promise.all([first, second]); await queue.idle();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('retries a timed out resume because its result is uncertain', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sop-outbox-'));
+  let attempts = 0;
+  const queue = createSopContinuationQueue({ path: join(root, 'queue.json'),
+    resume: async () => {
+      if (++attempts === 1) throw Object.assign(new Error('Timed out'), { details: { httpStatus: 408 } });
+      return { accepted: true };
+    }, accepted: async () => false, run: async (_row, accepted) => accepted(),
+  });
+  try {
+    const row = await queue.enqueue({ sessionKey: 's', waitId: 'w', requestId: 'r' }, 'owner');
+    await queue.drain(); expect((await queue.get(row.key)).status).toBe('resuming');
+    await queue.drain(); expect((await queue.get(row.key)).status).toBe('accepted');
+    expect(attempts).toBe(2);
+  } finally { await queue.idle(); await rm(root, { recursive: true, force: true }); }
+});

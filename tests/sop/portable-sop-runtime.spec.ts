@@ -153,8 +153,8 @@ test("PilotDeck AgentLoop executes against independent HTTP Runtime and recovers
       assert.equal(observed[0], 'child-model', JSON.stringify(events));
       assert.equal((await runtime.session('pinned-child-model')).state.status, 'completed');
     }
-    const conformanceCases = JSON.parse(await readFile(join(process.env.SOP_RUNTIME_SOURCE!,
-      "../tests/fixtures/host_conformance.json"), "utf8")) as Array<{
+    const conformanceCases = JSON.parse(await readFile(join(process.cwd(),
+      "tests/sop/fixtures/host_conformance.json"), "utf8")) as Array<{
       id: string; kind?: string; status: string; receipt?: boolean; required_field?: string;
       node_type?: string; next_node_id?: string; error?: string; expected_status?: string;
       expected_revision?: number; resume?: boolean;

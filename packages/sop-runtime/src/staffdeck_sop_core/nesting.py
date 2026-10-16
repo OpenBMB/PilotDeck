@@ -59,9 +59,14 @@ def expand(
         content["edges"] = [
             e for e in original_edges if e not in incoming and e not in outgoing
         ]
-        content["edges"] += [{**e, "next_node_id": child_start} for e in incoming]
         content["edges"] += [
-            {**e, "source_node_id": mapping[t]} for t in terminals for e in outgoing
+            {**e, "next_node_id": child_start}
+            for e in incoming if e["source_node_id"] != placeholder["node_id"]
+        ]
+        content["edges"] += [
+            {**e, "source_node_id": mapping[t],
+             "next_node_id": child_start if e["next_node_id"] == placeholder["node_id"] else e["next_node_id"]}
+            for t in terminals for e in outgoing
         ]
         content["edges"] += [
             {

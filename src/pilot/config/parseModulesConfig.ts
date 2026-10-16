@@ -281,6 +281,10 @@ function parseSopModule(
     fatal(diagnostics, "SOP_HOST_ADAPTER_INVALID", "hostAdapter must be pilotdeck or staffdeck.", `${path}.hostAdapter`);
     return undefined;
   }
+  if (hostAdapter === "pilotdeck" && (value.contract !== "sop.lifecycle/v3" || value.transport !== "sop-http-v3")) {
+    fatal(diagnostics, "SOP_HOST_ADAPTER_INVALID", "The pilotdeck host requires sop.lifecycle/v3 with sop-http-v3.", `${path}.hostAdapter`);
+    return undefined;
+  }
   const localRuntime = value.localRuntime;
   if (localRuntime !== undefined && (!isRecord(localRuntime) || typeof localRuntime.enabled !== 'boolean'
     || ['knowledgeEnabled', 'versionManagementEnabled'].some(key => localRuntime[key] !== undefined && typeof localRuntime[key] !== 'boolean')

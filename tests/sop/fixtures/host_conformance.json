@@ -1,0 +1,12 @@
+[
+  {"id":"tool-success","kind":"tool","status":"completed","receipt":true,"expected_status":"completed","expected_revision":1},
+  {"id":"skill-success","kind":"skill","status":"completed","receipt":true,"expected_status":"completed","expected_revision":1},
+  {"id":"knowledge-success","kind":"knowledge","status":"completed","receipt":true,"expected_status":"completed","expected_revision":1},
+  {"id":"required-receipt","kind":"tool","status":"completed","receipt":false,"error":"REQUIRED_CAPABILITY_NOT_INVOKED"},
+  {"id":"required-slot","status":"completed","required_field":"name","error":"REQUIRED_SLOT_MISSING"},
+  {"id":"illegal-successor","status":"completed","next_node_id":"missing","error":"INVALID_TRANSITION"},
+  {"id":"approval-bypass","status":"completed","node_type":"handoff","error":"HANDOFF_REQUIRED"},
+  {"id":"user-wait","status":"awaiting_user","required_field":"name","expected_status":"awaiting_user","expected_revision":1,"resume":true},
+  {"id":"approval-wait","status":"handoff","node_type":"handoff","expected_status":"handoff","expected_revision":1,"resume":true},
+  {"id":"external-wait","status":"waiting_external_task","expected_status":"waiting_external_task","expected_revision":1,"resume":true}
+]

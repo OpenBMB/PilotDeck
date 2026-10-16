@@ -50,6 +50,27 @@ test('loadPilotConfig accepts managed native SOP and rejects remote managed endp
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+for (const binding of [
+  'provider: staffdeck',
+  'implementationId: portable-sop\n    contract: sop.lifecycle/v2\n    transport: sop-http-v2',
+]) test(`native SOP rejects incompatible binding: ${binding.split('\n')[0]}`, () => {
+  const root = mkdtempSync(join(tmpdir(), 'native-sop-binding-'));
+  try {
+    const configPath = join(root, 'pilotdeck.yaml');
+    writeFileSync(configPath, configWithModules(`modules:
+  sop:
+    enabled: true
+    hostAdapter: pilotdeck
+    ${binding}
+    endpoint: http://runtime:8091
+    defaultSopId: flow
+`));
+    assert.throws(() => loadPilotConfig({ configPath, env: { PILOT_HOME: root } }),
+      (error: unknown) => (error as { diagnostics?: Array<{ code: string }> }).diagnostics
+        ?.some(diagnostic => diagnostic.code === 'SOP_HOST_ADAPTER_INVALID') === true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("loadPilotConfig accepts lifecycle v3 and explicit host capability bindings", () => {
   const root = mkdtempSync(join(tmpdir(), "portable-sop-config-"));
   try {
