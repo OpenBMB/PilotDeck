@@ -1,0 +1,117 @@
+name: Sync Latest Release to OBS
+
+on:
+  schedule:
+    # 03:30 Asia/Shanghai (GitHub cron is UTC).
+    - cron: "30 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-to-obs
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      OBS_BUCKET: n00069-minicpm-5-0
+      OBS_ENDPOINT: https://obs.cn-north-4.myhuaweicloud.com
+      AWS_DEFAULT_REGION: cn-north-4
+      AWS_EC2_METADATA_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check credentials
+        env:
+          OBS_CREDENTIALS_BEARER_TOKEN: ${{ secrets.OBS_CREDENTIALS_BEARER_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$OBS_CREDENTIALS_BEARER_TOKEN" ]]; then
+            echo "::error::Repository secret OBS_CREDENTIALS_BEARER_TOKEN is missing."
+            exit 1
+          fi
+
+      - name: Install S3 client
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/obs-cli"
+          "$RUNNER_TEMP/obs-cli/bin/pip" install 'awscli>=1.36,<2'
+          echo "$RUNNER_TEMP/obs-cli/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve latest formal release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/releases/latest" > release.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          release = json.loads(Path("release.json").read_text())
+          assets = release.get("assets", [])
+          if release.get("draft") or release.get("prerelease") or not assets:
+              raise SystemExit("Latest formal release has no downloadable assets")
+          tag = release["tag_name"]
+          if any(c in tag for c in "\r\n"):
+              raise SystemExit("Release tag contains a newline")
+          prefix = f"PilotDeck/{tag}/"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"tag={tag}\ncount={len(assets)}\nprefix={prefix}\n")
+          PY
+
+      - name: Download and check release assets
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release-assets
+          gh release download "$RELEASE_TAG" --dir release-assets
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          assets = json.loads(Path("release.json").read_text())["assets"]
+          expected = {asset["name"]: asset["size"] for asset in assets}
+          actual = {p.name: p.stat().st_size for p in Path("release-assets").iterdir() if p.is_file()}
+          if actual != expected:
+              raise SystemExit("Downloaded asset names or sizes differ from the resolved release")
+          print(f"Verified {len(expected)} downloaded assets")
+          PY
+
+      - name: Obtain temporary credentials, upload and verify OBS assets
+        env:
+          OBS_PREFIX: ${{ steps.release.outputs.prefix }}
+          OBS_CREDENTIALS_BEARER_TOKEN: ${{ secrets.OBS_CREDENTIALS_BEARER_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/release_to_obs.py
+
+      - name: Write synchronization summary
+        if: ${{ always() }}
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          ASSET_COUNT: ${{ steps.release.outputs.count }}
+          OBS_PREFIX: ${{ steps.release.outputs.prefix }}
+          SYNC_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          {
+            echo "### Release synchronization to OBS"
+            printf 'Result: %s\n\n' "$SYNC_STATUS"
+            printf 'Release: %s\n\n' "${RELEASE_TAG:-unresolved}"
+            printf 'Assets: %s\n\n' "${ASSET_COUNT:-unresolved}"
+            if [[ -n "$OBS_PREFIX" ]]; then
+              printf 'Destination: obs://%s/%s\n' "$OBS_BUCKET" "$OBS_PREFIX"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
