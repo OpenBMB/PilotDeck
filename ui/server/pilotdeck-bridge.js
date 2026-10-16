@@ -1360,6 +1360,7 @@ function createSubagentStatusFrames(event, base) {
         activityId: `subagent:${subagentId}`,
         parentRunId: base.runId,
         runId: `subagent:${subagentId}`,
+        subagentTurnId: typeof detail.subagentTurnId === 'string' ? detail.subagentTurnId : undefined,
         phase: 'subagent',
         state: status,
         title,

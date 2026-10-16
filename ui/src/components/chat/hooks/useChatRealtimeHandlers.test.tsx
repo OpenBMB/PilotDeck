@@ -167,6 +167,52 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     expect(sessionStore.getMessages('web:s_test').find(m => m.kind === 'thinking')?.streamState).toBe('open');
   });
 
+  it('streams a resumed child round in the same parent run without reopening old rounds', async () => {
+    const bridgePath = '../../../../server/pilotdeck-bridge.js';
+    const { gatewayEventToFrames } = await import(bridgePath) as {
+      gatewayEventToFrames: (event: Record<string, unknown>, sessionId: string, provider: SessionProvider) => unknown[];
+    };
+    const { result } = renderHook(useSessionStore);
+    const sessionStore = result.current;
+    renderHook(() => useChatRealtimeHandlers({
+      provider, selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
+      selectedSession: { id: 'web:s_test' } as unknown as ProjectSession,
+      currentSessionId: 'web:s_test', setCurrentSessionId: noop, setIsLoading: noop,
+      setSessionRuntimeState: noop, activeRunId: 'run-1', setActiveRunId: noop,
+      setCanAbortSession: noop, setIsAborting: noop, setClaudeStatus: noop,
+      setPilotDeckStatus: noop, setTokenBudget: noop, setPendingPermissionRequests: noop,
+      pendingViewSessionRef: { current: null }, sessionStore,
+    }));
+    const deliver = (event: Record<string, unknown>) => {
+      for (const frame of gatewayEventToFrames({ type: 'agent_status', runId: 'run-1', ...event }, 'web:s_test', provider)) {
+        mocks.listener?.(frame);
+      }
+    };
+    const lifecycle = (round: number, event: string) => deliver({ event,
+      detail: { subagentId: 'child', subagentTurnId: `child-t${round}`, success: true } });
+    const delta = (round: number, text: string, offset: number) => deliver({ event: 'subagent_text_delta',
+      timeline: { version: 1, turnId: `child-t${round}`, id: 'text', order: 0, revision: offset + 1, offset },
+      detail: { subagentId: 'child', text } });
+    act(() => {
+      lifecycle(0, 'subagent_started');
+      delta(0, 'first', 0);
+      lifecycle(0, 'subagent_completed');
+      lifecycle(1, 'subagent_started');
+      delta(1, 'next', 0);
+      lifecycle(0, 'subagent_completed');
+      lifecycle(0, 'subagent_started');
+      delta(0, ' stale', 5);
+      delta(1, ' live', 4);
+    });
+    expect(sessionStore.getSubagentDetailMessages('web:s_test', 'child').map(m => [m.timeline?.turnId, m.content, m.streamState]))
+      .toEqual([['child-t0', 'first', 'closed'], ['child-t1', 'next live', 'open']]);
+    expect(sessionStore.getSessionSlot('web:s_test')?.activityMessages[0]).toMatchObject({
+      subagentTurnId: 'child-t1', state: 'running',
+    });
+    act(() => lifecycle(1, 'subagent_completed'));
+    expect(sessionStore.getSubagentDetailMessages('web:s_test', 'child')[1].streamState).toBe('closed');
+  });
+
   it('finalizes assistant streams when applied guidance creates a user boundary in the same run', () => {
     const sessionStore = createSessionStore();
     renderHook(() => useChatRealtimeHandlers({
