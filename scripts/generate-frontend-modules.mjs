@@ -23,11 +23,12 @@ const DEFAULT_FRONTEND = {
   context: 'pilotdeck.context',
   modelProvider: 'pilotdeck.model',
   sop: 'staffdeck.sop',
-  knowledge: 'staffdeck.knowledge',
+  knowledge: 'knowledge-core',
 };
 const IMPLEMENTATION_FRONTENDS = {
   'staffdeck.portable-sop': 'staffdeck.sop',
-  'staffdeck.knowledge': 'staffdeck.knowledge',
+  'staffdeck.knowledge': 'knowledge-core',
+  'knowledge-core': 'knowledge-core',
 };
 const MODULE_SOURCES = {
   'pilotdeck.chat': 'modules/pilotdeck-chat',
@@ -36,8 +37,8 @@ const MODULE_SOURCES = {
   'pilotdeck.context': 'modules/pilotdeck-context',
   'pilotdeck.model': 'modules/pilotdeck-model',
   'staffdeck.sop': 'modules/staffdeck-sop',
+  'knowledge-core': 'modules/knowledge-core',
   'pilotdeck.sop': 'modules/pilotdeck-sop',
-  'staffdeck.knowledge': 'modules/staffdeck-knowledge',
   'fixture.knowledge-search': 'modules/fixture-knowledge-search',
   'agent.routing': 'modules/agent-routing',
   'agent.resident': 'modules/agent-resident',
@@ -90,10 +91,11 @@ export function selectFrontendModules(profile) {
     // External implementations still use the slot's public browser adapter
     // unless the profile explicitly selects a frontend module. The frontend
     // does not need to know the deployment owner's implementation id.
-    const id = binding?.frontendModule
+    const requestedId = binding?.frontendModule
       ?? (slot === 'sop' && binding?.hostAdapter === 'pilotdeck' ? 'pilotdeck.sop' : undefined)
       ?? IMPLEMENTATION_FRONTENDS[binding?.implementationId]
       ?? DEFAULT_FRONTEND[slot];
+    const id = requestedId === 'staffdeck.knowledge' ? 'knowledge-core' : requestedId;
     if (!id || !MODULE_SOURCES[id]) {
       throw new Error(`No registered frontend implementation for ${slot}${binding?.implementationId ? ` (${binding.implementationId})` : ''}.`);
     }

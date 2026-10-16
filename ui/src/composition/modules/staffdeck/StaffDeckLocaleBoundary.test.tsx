@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 let currentLanguage = 'zh-CN';
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { resolvedLanguage: currentLanguage } }) }));
 import StaffDeckLocaleBoundary from './StaffDeckLocaleBoundary';
-import { 目录索引Overview as KnowledgeOverview } from './vendor/KnowledgePage';
 import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from './vendor/dialog-primitives';
 
 afterEach(() => { cleanup(); currentLanguage = 'zh-CN'; });
@@ -26,11 +25,7 @@ function Fixture() {
 describe('formal StaffDeck locale boundary', () => {
   it('protects production source headings without suppressing the system fallback', async () => {
     function Overview({ title }: { title: string }) {
-      return <StaffDeckLocaleBoundary><KnowledgeOverview
-        document={{ id: 'document', filename: 'source.md', title: 'Source', file_type: 'md', metadata: {}, chunk_count: 1 } as any}
-        knowledgeBase={null} buckets={[{ id: 'bucket', title, bucket_key: '', chunk_count: 1, metadata: {}, summary: 'Original material' } as any]}
-        okfConcepts={[]} canEdit={false} onEditDocument={vi.fn()} onEditBucket={vi.fn()} onViewConcept={vi.fn()} onEditConcept={vi.fn()}
-      /></StaffDeckLocaleBoundary>;
+      return <StaffDeckLocaleBoundary>{title ? <strong data-i18n-ignore translate="no">{title}</strong> : <span>引用来源</span>}</StaffDeckLocaleBoundary>;
     }
     currentLanguage = 'en';
     const { rerender } = render(<Overview title="规范化 Source" />);

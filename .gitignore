@@ -65,6 +65,7 @@ web_modules/
 
 # Output of 'npm pack'
 *.tgz
+!ui/vendor/knowledge-ui-0.1.0.tgz
 
 # Yarn Integrity file
 .yarn-integrity

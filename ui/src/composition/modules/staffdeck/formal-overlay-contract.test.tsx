@@ -6,7 +6,6 @@ import { pilotDeckFormalComponents } from './vendor/host-components';
 const { UIButton, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent, TooltipProvider, Tooltip, TooltipTrigger, TooltipContent, Accordion, AccordionItem, AccordionTrigger, AccordionContent } = pilotDeckFormalComponents;
 import StaffDeckLocaleBoundary from './StaffDeckLocaleBoundary';
 // Graph rendering is outside this overlay contract; its focused evidence is already delivered.
-vi.mock('./vendor/FormalKnowledgeGraphVisualization', () => ({ KnowledgeGraphVisualization: () => null }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { resolvedLanguage: 'en' } }) }));
 beforeEach(() => vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

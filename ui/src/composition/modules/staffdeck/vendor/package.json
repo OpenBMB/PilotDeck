@@ -13,9 +13,6 @@
     "tailwind-merge": "^3.6.0"
   },
   "exports": {
-    "./KnowledgeGraphCanvas": "./src/KnowledgeGraphCanvas.tsx",
-    "./KnowledgePage": "./src/KnowledgePage.tsx",
-    "./KnowledgePageHost": "./src/KnowledgePageHost.tsx",
     "./DistillPage": "./src/DistillPage.tsx",
     "./DistillPageHost": "./src/DistillPageHost.tsx",
     "./SkillsPage": "./src/SkillsPage.tsx",
@@ -36,8 +33,6 @@
     "./FormalIcons": "./src/FormalIcons.tsx",
     "./FormalStaffdeckIcon": "./src/FormalStaffdeckIcon.tsx",
     "./FormalSourceIcons": "./src/FormalSourceIcons.tsx",
-    "./FormalKnowledgeGraphVisualization": "./src/FormalKnowledgeGraphVisualization.tsx",
-    "./FormalKnowledgeGraphModel": "./src/FormalKnowledgeGraphModel.ts",
     "./FormalHandoff": "./src/FormalHandoff.ts",
     "./FormalApiError": "./src/FormalApiError.ts",
     "./FormalUserContent": "./src/FormalUserContent.ts",

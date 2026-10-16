@@ -28,7 +28,7 @@ test('maps StaffDeck implementations to public frontend modules', () => {
     knowledge: { enabled: true, implementationId: 'staffdeck.knowledge' },
     skills: { enabled: false },
   } });
-  assert.deepEqual(selected.map(item => item.id), ['pilotdeck.chat', 'pilotdeck.tools', 'pilotdeck.context', 'pilotdeck.model', 'staffdeck.sop', 'staffdeck.knowledge']);
+  assert.deepEqual(selected.map(item => item.id), ['pilotdeck.chat', 'pilotdeck.tools', 'pilotdeck.context', 'pilotdeck.model', 'staffdeck.sop', 'knowledge-core']);
 });
 
 test('selects the native SOP host explicitly and preserves that selection in the browser profile', () => {
@@ -37,6 +37,16 @@ test('selects the native SOP host explicitly and preserves that selection in the
   const source = renderGeneratedEntrypoint(profile, '/tmp/generated/frontend-modules.ts');
   assert.match(source, /modules\/pilotdeck-sop/); assert.match(source, /"hostAdapter": "pilotdeck"/);
   assert.doesNotMatch(source, /modules\/staffdeck-sop/);
+});
+
+test('generates native SOP and independent KM together with legacy knowledge frontend aliases', () => {
+  const source = renderGeneratedEntrypoint({ ...native, modules: { ...native.modules,
+    sop: { enabled: true, contract: 'sop.lifecycle/v3', hostAdapter: 'pilotdeck' },
+    knowledge: { enabled: true, contract: 'knowledge-core/v1', frontendModule: 'staffdeck.knowledge' },
+  } }, '/tmp/generated/frontend-modules.ts');
+  assert.match(source, /modules\/pilotdeck-sop/);
+  assert.match(source, /modules\/knowledge-core/);
+  assert.doesNotMatch(source, /modules\/staffdeck-knowledge/);
 });
 
 test('rejects an explicit frontend registry key that is not registered', () => {

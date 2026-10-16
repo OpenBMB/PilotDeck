@@ -8,6 +8,14 @@ import type { Gateway } from "../../src/gateway/protocol/types.js";
 
 const gateway = {} as Gateway;
 
+test("GatewayServer shutdown closes active WebSocket clients", { timeout: 5000 }, async (t) => {
+  const server = await startGatewayServer({ gateway: { describeServer: async () => ({ mode: "in_process", capabilities: [] }) } as unknown as Gateway, port: 0, token: "shutdown-token" });
+  const client = new GatewayWsClient({ url: server.wsUrl, token: server.token, clientName: "sdk" });
+  t.after(() => client.close());
+  await client.connect();
+  await server.close();
+});
+
 test("GatewayServer keeps non-loopback binding opt-in", async () => {
   await assert.rejects(
     () => startGatewayServer({ gateway, host: "0.0.0.0", port: 0, token: "remote-token" }),

@@ -22,6 +22,7 @@ import type { PilotDeckToolDefinition } from "../tool/index.js";
 import { HttpModuleClient } from "./HttpModuleClient.js";
 import type { ExternalModuleBinding } from "./types.js";
 import { currentKnowledgeAuthority } from "./sopCapabilityAuthority.js";
+import { knowledgeCoreRequest, knowledgeCoreCapabilities } from './knowledgeCoreOperations.mjs';
 
 export type { SkillManagementPort } from "../extension/skills/types.js";
 
@@ -31,7 +32,7 @@ export type SkillModulePort = Readonly<{
 }>;
 
 export type KnowledgeModulePort = Readonly<{
-  call(operation: string, input: Record<string, unknown>): Promise<unknown>;
+  call(operation: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>;
 }>;
 
 export function createSkillModulePort(binding: ExternalModuleBinding): SkillModulePort {
@@ -105,10 +106,11 @@ export function createSkillManagementPort(binding: ExternalModuleBinding): Skill
 }
 
 export function createKnowledgeModulePort(binding: ExternalModuleBinding): KnowledgeModulePort {
+  if (binding.contract === "knowledge-core/v1") return createIndependentKnowledgePort(binding);
   const client = new HttpModuleClient(binding);
   let sequence = 0;
   return Object.freeze({
-    async call(operation, input) {
+    async call(operation, input, signal) {
       if (!binding.methods.includes(operation)) throw protocolFailure(`Knowledge operation '${operation}' is not declared.`);
       const response = await client.call({
         runId: "knowledge",
@@ -116,9 +118,44 @@ export function createKnowledgeModulePort(binding: ExternalModuleBinding): Knowl
         requestId: `knowledge-${operation}-${++sequence}`,
         module: "knowledge",
         payload: { operation, input, ...(currentKnowledgeAuthority() ? { authorityContext: currentKnowledgeAuthority() } : {}) },
+        ...(signal ? { abortSignal: signal } : {}),
       });
       if (!response.ok) throw moduleFailure(response, `Knowledge module ${operation} failed.`);
       return response.payload?.result;
+    },
+  });
+}
+
+function createIndependentKnowledgePort(binding: ExternalModuleBinding): KnowledgeModulePort {
+  return Object.freeze({
+    async call(operation, input, signal) {
+      signal?.throwIfAborted();
+      assertDeclaredMethod(binding, operation, "Knowledge Core");
+      if (currentKnowledgeAuthority()) {
+        throw protocolFailure("Knowledge Core does not accept an SD capability lease.");
+      }
+      const token = binding.credentialEnv ? process.env[binding.credentialEnv]?.trim() : undefined;
+      if (binding.credentialEnv && !token) throw protocolFailure("Knowledge credential is unavailable.");
+      const timeout = AbortSignal.timeout(binding.timeoutMs ?? 120_000);
+      const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      const capabilities = await knowledgeCoreCapabilities(binding, fetch, requestSignal);
+      const request = knowledgeCoreRequest(operation, input, binding, capabilities);
+      const url = request.url;
+      const response = await fetch(url, {
+        method: request.method,
+        headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        signal: requestSignal,
+        body: request.body === undefined ? undefined : JSON.stringify(request.body),
+      });
+      const body = response.headers.get('content-type')?.includes('application/zip')
+        ? { filename: 'knowledge.okf.zip', content_base64: Buffer.from(await response.arrayBuffer()).toString('base64') }
+        : await response.json();
+      if (!response.ok) throw Object.assign(new Error(typeof body.detail === 'string' ? body.detail : 'Knowledge request failed'), { status: response.status });
+      if (operation === 'list_spaces') {
+        const allowed = new Set(binding.spaces?.map(space => space.id));
+        return body.filter((space: { id: string }) => allowed.has(space.id));
+      }
+      return body;
     },
   });
 }
@@ -134,17 +171,17 @@ export function createKnowledgeQueryTool(
   const bindingHasReadCredential = "credentialEnv" in scope && typeof scope.credentialEnv === "string";
   return {
     name: "knowledge_query",
-    description: "Query the configured knowledge module for grounded evidence and citations. The host supplies tenant and agent scope; provide a natural-language query and optionally select knowledge_base_ids.",
+    description: "Query the configured knowledge module for grounded evidence and citations. Provide a query, optionally knowledge_base_ids and model_id. Set use_model to false for lexical retrieval.",
     kind: "custom",
     inputSchema: {
       type: "object",
       required: ["query"],
       additionalProperties: true,
-      properties: { query: { type: "string" } },
+      properties: { query: { type: "string" }, knowledge_base_ids: { type: "array", items: { type: "string" } }, model_id: { type: "string" }, use_model: { type: "boolean" } },
     },
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    async execute(input) {
+    async execute(input, context) {
       const modelInput = input as Record<string, unknown>;
       if (bindingHasReadCredential && Object.keys(modelInput).some(key =>
           ["tenantId", "tenant_id", "actorUserId", "actor_user_id", "agentId", "agent_id", "modelConfigId", "model_config_id"].includes(key))) {
@@ -155,7 +192,7 @@ export function createKnowledgeQueryTool(
         ...(scope.tenantId ? { tenantId: scope.tenantId } : {}),
         ...(scope.actorUserId ? { actorUserId: scope.actorUserId } : {}),
         ...(scope.agentId ? { agentId: scope.agentId } : {}),
-      });
+      }, context.abortSignal);
       return { content: [{ type: "json", value: result }], data: result };
     },
   };

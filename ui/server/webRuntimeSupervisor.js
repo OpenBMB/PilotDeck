@@ -139,7 +139,7 @@ export function createRuntimeSupervisor({
     const child = spawnImpl(spec.command, spec.args, {
       cwd: spec.cwd,
       stdio: spec.ipc ? ['inherit', 'inherit', 'inherit', 'ipc'] : 'inherit',
-      env: { ...runtimeEnv },
+      env: { ...runtimeEnv, ...(name === 'gateway' ? { PILOTDECK_KM_MANAGED_BY_WEB: '1' } : {}) },
       windowsHide: platform === 'win32',
     });
     children.set(name, child);
@@ -165,7 +165,7 @@ export function createRuntimeSupervisor({
       timer = setTimeout(() => {
         if (child.exitCode == null) child.kill('SIGKILL');
         forceExitTimer = setTimeout(finish, 1_000);
-      }, 3_000);
+      }, name === 'server' ? 20_000 : 3_000);
       child.once('close', finish);
       if (!child.killed) child.kill(signal);
     });

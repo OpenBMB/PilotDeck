@@ -26,10 +26,10 @@ export function resolveBusinessBindings(profile: CompositionProfile): Record<str
 }
 
 export function defaultFrontendChoice(binding: Binding, slot: Slot): string {
-  if (binding.frontendModule) return binding.frontendModule;
+  if (binding.frontendModule) return binding.frontendModule === 'staffdeck.knowledge' ? 'knowledge-core' : binding.frontendModule;
   if (slot === 'sop' && binding.hostAdapter === 'pilotdeck') return 'pilotdeck.sop';
   if (binding.implementationId === 'staffdeck.portable-sop' || (slot === 'sop' && binding.contract === 'sop.lifecycle/v3')) return 'staffdeck.sop';
-  if (binding.implementationId === 'staffdeck.knowledge') return 'staffdeck.knowledge';
+  if (binding.implementationId === 'staffdeck.knowledge') return 'knowledge-core';
   if (binding.implementationId) return binding.implementationId;
   if (binding.provider === 'pilotdeck') {
     const frontendSlot = slot === 'agentLoop' ? 'chat' : slot === 'modelProvider' ? 'model' : slot;
@@ -80,10 +80,10 @@ export function assembleFrontend(
     }
     const contract = binding.contract ?? slotContracts[slot];
     const portableSop = slot === 'sop' && contract === 'sop.lifecycle/v3';
-    if (contract !== slotContracts[slot] && !portableSop) throw new Error(`Unsupported backend contract: ${slot} / ${contract}`);
+    if (contract !== slotContracts[slot] && !portableSop && !(slot === 'knowledge' && contract === 'knowledge-core/v1')) throw new Error(`Unsupported backend contract: ${slot} / ${contract}`);
     const frontend = catalog.find(module => module.id === choices[slot]);
     if (!frontend || frontend.slot !== slot) throw new Error(`Missing frontend for enabled slot: ${slot}`);
-    if (frontend.contract !== contract && !(portableSop && frontend.id === 'staffdeck.sop'
+    if (frontend.contract !== contract && !frontend.compatibleContracts?.includes(contract) && !(portableSop && frontend.id === 'staffdeck.sop'
       && frontend.contract === 'sop.lifecycle/v2')) throw new Error(`Frontend contract mismatch: ${frontend.id}`);
     if (frontend.frontendApiVersion && frontend.frontendApiVersion !== 'frontend-module/v1') {
       throw new Error(`Frontend API version mismatch: ${frontend.id}`);

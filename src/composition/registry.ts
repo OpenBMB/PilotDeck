@@ -3,6 +3,7 @@ import {
   HOST_MODEL_MODULE_METHODS,
   HOST_CAPABILITY_MODULE_METHODS,
 } from "../agent/modules/protocol.js";
+import { KNOWLEDGE_CORE_METHODS } from './knowledgeCoreOperations.mjs';
 import { MODULE_HTTP_TRANSPORT, MODULE_SLOT_CONTRACTS, type ComposableModuleSlot } from "./types.js";
 
 const CONTRACT_METHODS: Readonly<Record<ComposableModuleSlot, readonly string[]>> = Object.freeze({
@@ -35,6 +36,14 @@ export function validateExternalContract(input: {
   transport: string;
   methods: readonly string[];
 }): string | undefined {
+  if (input.slot === "knowledge" && input.contract === "knowledge-core/v1") {
+    if (input.transport !== "rest-http-v1") return "Knowledge Core requires rest-http-v1 transport.";
+    if (!input.methods.includes("query")) return "Knowledge Core must include query.";
+    const allowed = new Set<string>(KNOWLEDGE_CORE_METHODS);
+    const unknown = input.methods.find(method => !allowed.has(method));
+    if (unknown) return `Knowledge Core runtime does not support ${unknown}.`;
+    return undefined;
+  }
   if (input.contract !== supportedContract(input.slot)) {
     return `modules.${input.slot}.contract must be ${supportedContract(input.slot)}.`;
   }

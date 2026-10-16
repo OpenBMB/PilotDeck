@@ -3,6 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocketProvider } from './WebSocketContext';
 const invalidate = vi.hoisted(() => vi.fn());
 const auth = vi.hoisted(() => ({ token: 'fixture' as string | null }));
+const config = vi.hoisted(() => ({ IS_PLATFORM: false, DISABLE_LOCAL_AUTH: false }));
+vi.mock('../constants/config', () => config);
 vi.mock('../components/chat/utils/globalModelSelection', () => ({ globalModelSelectionStore: { invalidate, receiveMessage: vi.fn(), trackMessage: vi.fn() } }));
 vi.mock('../components/auth/context/AuthContext', () => ({ useAuth: () => ({ token: auth.token }) }));
 
@@ -20,7 +22,16 @@ class Socket extends EventTarget {
 }
 
 afterEach(() => {
-  cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); invalidate.mockClear(); Socket.instances = []; auth.token = 'fixture';
+  cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); invalidate.mockClear(); Socket.instances = []; auth.token = 'fixture'; config.DISABLE_LOCAL_AUTH = false;
+});
+
+it('connects without a login token when local authentication is disabled', () => {
+  auth.token = null;
+  config.DISABLE_LOCAL_AUTH = true;
+  vi.stubGlobal('WebSocket', Socket);
+  render(<WebSocketProvider><div>Chat</div></WebSocketProvider>);
+  expect(Socket.instances).toHaveLength(1);
+  expect(Socket.instances[0].url).toMatch(/\/ws$/);
 });
 
 it('waits for a login token before opening a non-platform socket', () => {

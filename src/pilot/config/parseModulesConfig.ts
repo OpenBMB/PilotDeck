@@ -1,4 +1,6 @@
 import { isAbsolute, join, resolve } from "node:path";
+import { KNOWLEDGE_AGENT_METHODS } from '../../composition/knowledgeCoreOperations.mjs';
+import { validateLocalKnowledgeRuntime } from '../../composition/localKnowledgeRuntime.mjs';
 
 import { isRecord } from "../../model/config/schema.js";
 import { resolveApiKey, type CredentialEnv } from "../../model/config/resolveCredentials.js";
@@ -93,15 +95,20 @@ function parseCoreModule(
   }
   warnUnknownKeys(value, [
     "enabled", "provider", "implementationId", "contract", "transport", "endpoint",
-    "manifestPath", "callPath", "timeoutMs", "methods", "catalog", "frontendModule",
+    "manifestPath", "callPath", "timeoutMs", "methods", "agentMethods", "catalog", "frontendModule",
     "command", "args", "env", "host", "port", "connectTimeoutMs", "deployment",
     "defaultBaseId", "resultLimit", "tenantId", "actorUserId", "agentId", "credentialEnv",
+    "spaceId", "spaces", "pilotDeckUserId", "readOnly", "namespace", "capabilitiesCredentialEnv", "localRuntime",
   ], path, diagnostics);
   if (value.enabled === false && (name === "skills" || name === "knowledge")) {
     return { enabled: false };
   }
   if (value.enabled !== true) {
     fatal(diagnostics, "MODULE_ENABLED_INVALID", `${path}.enabled must be true for a required binding.`, `${path}.enabled`);
+    return undefined;
+  }
+  if (value.localRuntime !== undefined && (name !== 'knowledge' || value.contract !== 'knowledge-core/v1')) {
+    fatal(diagnostics, 'MODULE_LOCAL_RUNTIME_INVALID', 'localRuntime requires knowledge-core/v1.', `${path}.localRuntime`);
     return undefined;
   }
   const hasExternal = value.implementationId !== undefined || value.contract !== undefined
@@ -135,7 +142,7 @@ function parseExternalModule(
   const callPath = nonEmptyText(value.callPath) ?? "/v2/module/call";
   const timeoutMs = optionalPositiveInteger(value.timeoutMs);
   const parsedMethods = value.methods === undefined ? undefined : readStringArray(value.methods);
-  const methods = parsedMethods ?? supportedMethods(slot);
+  const methods = parsedMethods ?? (contract === "knowledge-core/v1" ? ["query", "resolve_citation"] : supportedMethods(slot));
   if (!implementationId) fatal(diagnostics, "MODULE_IMPLEMENTATION_ID_INVALID", `${path}.implementationId must be a non-empty string.`, `${path}.implementationId`);
   if (!contract) fatal(diagnostics, "MODULE_CONTRACT_INVALID", `${path}.contract must be a non-empty string.`, `${path}.contract`);
   if (!transport) fatal(diagnostics, "MODULE_TRANSPORT_INVALID", `${path}.transport must be a non-empty string.`, `${path}.transport`);
@@ -159,6 +166,60 @@ function parseExternalModule(
   const actorUserId = nonEmptyText(value.actorUserId);
   const agentId = nonEmptyText(value.agentId);
   const credentialEnv = nonEmptyText(value.credentialEnv);
+  if (slot === "knowledge" && contract === "knowledge-core/v1") {
+    let localRuntime;
+    if (value.localRuntime !== undefined) {
+      try { localRuntime = validateLocalKnowledgeRuntime(value.localRuntime, endpoint ?? ''); }
+      catch (error) {
+        fatal(diagnostics, 'MODULE_LOCAL_RUNTIME_INVALID', error instanceof Error ? error.message : 'Invalid localRuntime', `${path}.localRuntime`);
+        return undefined;
+      }
+    }
+    if (validateExternalContract({ slot, contract, transport: transport || '', methods })
+        || value.methods !== undefined && !parsedMethods) return undefined;
+    const agentMethods = value.agentMethods === undefined ? (methods.includes('query') ? ['query'] : [])
+      : Array.isArray(value.agentMethods) && value.agentMethods.length === 0 ? [] : readStringArray(value.agentMethods);
+    if (!agentMethods || agentMethods.some(method => !methods.includes(method) || !KNOWLEDGE_AGENT_METHODS.includes(method))) {
+      fatal(diagnostics, 'MODULE_KNOWLEDGE_AGENT_METHODS_INVALID', `${path}.agentMethods must contain supported Agent operations declared in methods.`, path);
+      return undefined;
+    }
+    const capabilitiesCredentialEnv = nonEmptyText(value.capabilitiesCredentialEnv);
+    if (value.capabilitiesCredentialEnv !== undefined && (!capabilitiesCredentialEnv || !/^[A-Z][A-Z0-9_]*$/.test(capabilitiesCredentialEnv))) {
+      fatal(diagnostics, "MODULE_CREDENTIAL_ENV_INVALID", `${path}.capabilitiesCredentialEnv must name a server environment variable.`, path);
+      return undefined;
+    }
+    if (value.credentialEnv !== undefined && (!credentialEnv || !/^[A-Z][A-Z0-9_]*$/.test(credentialEnv))) {
+      fatal(diagnostics, "MODULE_CREDENTIAL_ENV_INVALID", `${path}.credentialEnv must name a server environment variable.`, path);
+      return undefined;
+    }
+    const spaceId = nonEmptyText(value.spaceId);
+    const pilotDeckUserId = nonEmptyText(value.pilotDeckUserId);
+    const spaces = Array.isArray(value.spaces) ? value.spaces.filter(isRecord).map(row => ({
+      id: nonEmptyText(row.id), name: nonEmptyText(row.name),
+    })) : [];
+    if ((spaceId || spaces.length) && (!spaceId || !spaces.length || spaces.some(row => !row.id) || !spaces.some(row => row.id === spaceId)
+        || new Set(spaces.map(row => row.id)).size !== spaces.length) || !pilotDeckUserId) {
+      fatal(diagnostics, "MODULE_KNOWLEDGE_SPACES_INVALID", `${path} requires pilotDeckUserId; scoped bindings require unique spaces and a default spaceId.`, path);
+      return undefined;
+    }
+    if (tenantId || actorUserId || agentId) {
+      fatal(diagnostics, "MODULE_KNOWLEDGE_IDENTITY_INVALID", `${path} uses spaces and bearer identity, not employee identity fields.`, path);
+      return undefined;
+    }
+    if (!implementationId || !endpoint || !isHttpUrl(endpoint) || transport !== "rest-http-v1") return undefined;
+    return { enabled: true, implementationId, contract, transport, endpoint,
+      manifestPath: "/api/km/config", callPath: "/api/km/v1", methods, agentMethods, ...(spaceId ? { spaceId } : {}),
+      spaces: spaces as Array<{ id: string; name?: string }>, pilotDeckUserId,
+      namespace: nonEmptyText(value.namespace) || 'local',
+      ...(localRuntime ? { localRuntime } : {}),
+      ...(capabilitiesCredentialEnv ? { capabilitiesCredentialEnv } : {}),
+      ...(credentialEnv ? { credentialEnv } : {}), ...(timeoutMs ? { timeoutMs } : {}),
+      ...(value.readOnly === true ? { readOnly: true } : {}),
+      frontendModule: frontendModule === 'staffdeck.knowledge' ? 'knowledge-core' : frontendModule ?? 'knowledge-core',
+      ...(deployment ? { deployment } : {}),
+    };
+  }
+  if (value.agentMethods !== undefined) fatal(diagnostics, 'MODULE_KNOWLEDGE_AGENT_METHODS_INVALID', 'agentMethods requires knowledge-core/v1.', path);
   if (value.credentialEnv !== undefined && (slot !== "knowledge" || !credentialEnv
       || !/^[A-Z][A-Z0-9_]*$/.test(credentialEnv))) {
     fatal(diagnostics, "MODULE_CREDENTIAL_ENV_INVALID",

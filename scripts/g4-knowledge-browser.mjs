@@ -1,19 +1,26 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { chromium } from 'playwright';
+import { pathToFileURL } from 'node:url';
 
 const root = resolve(import.meta.dirname, '..');
 const staffRoot = process.env.STAFFDECK_ROOT || resolve(root, '../StaffDeck-g4-knowledge-sd');
-const python = process.env.STAFFDECK_PYTHON || '/tmp/staffdeck-shared-venv/bin/python';
+const python = process.env.STAFFDECK_PYTHON || join(staffRoot, 'backend/.venv/bin/python');
 const harnessRoot = process.env.HARNESS_V3_ROOT || '/Users/a1/Desktop/claw/openbmb/deepseek-harness-dsh-v0.1.2-alpha.2';
-const useKnowledgeWrapper = process.env.G4_KNOWLEDGE_WRAPPER === '1';
+const useKnowledgeWrapper = false;
+assert.notEqual(process.env.G4_KNOWLEDGE_WRAPPER, '1', 'Acceptance requires the complete app.main lifespan');
 const ports = { knowledge: 16100, vite: 16101, api: 16102, gateway: 16103, staffApi: 16104, staffVite: 16105 };
+const kmPort = Number(process.env.G4_KM_PORT || 16106);
+const kmRoot = process.env.STAFFDECK_ROOT || resolve(root, '../StaffDeck-g4-knowledge-sd');
+const kmPython = process.env.KM_PYTHON || python;
 const artifactRoot = process.env.G4_KNOWLEDGE_ARTIFACT_ROOT || resolve(root, 'test-results/g4-knowledge-browser');
 const tempRoot = await mkdtemp(join(tmpdir(), 'pilotdeck-g4-knowledge-'));
 const database = join(tempRoot, 'staffdeck-knowledge.sqlite');
+const kmIdentityFile = join(tempRoot, 'km-identity.json');
+const kmBearer = 'g4-browser-km-token';
 const pilotHome = join(tempRoot, 'pilot-home');
 const configPath = join(tempRoot, 'pilotdeck.yaml');
 const output = {
@@ -38,9 +45,10 @@ const output = {
   cleanup: { tempRoot },
 };
 output.staffdeckStartup = useKnowledgeWrapper ? 'knowledge_wrapper_only' : 'formal_app_main_with_harness_v3';
+for (const operation of Object.keys(output.operationCoverage)) output.operationCoverage[operation] = 'not_run';
 
 function start(command, args, env, cwd) {
-  const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const child = spawn(command, args, { cwd, env: { ...process.env, ...env, PATH: dirname(process.execPath) + ':' + (env.PATH || process.env.PATH || '') }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   let logs = '';
   child.stdout.on('data', (chunk) => { logs += chunk.toString(); });
   child.stderr.on('data', (chunk) => { logs += chunk.toString(); });
@@ -62,10 +70,18 @@ async function waitFor(url, timeoutMs = 45_000) {
 }
 
 async function stop(handle) {
-  if (!handle?.child || handle.child.exitCode !== null) return;
+  if (!handle?.child) return;
+  if (handle.child.exitCode !== null || handle.child.signalCode !== null) return;
   try { process.kill(-handle.child.pid, 'SIGTERM'); } catch {}
-  await new Promise((resolveStop) => setTimeout(resolveStop, 800));
-  if (handle.child.exitCode === null) { try { process.kill(-handle.child.pid, 'SIGKILL'); } catch {} }
+  const deadline = Date.now() + 20000;
+  while (handle.child.exitCode === null && handle.child.signalCode === null && Date.now() < deadline) {
+    await new Promise(resolveStop => setTimeout(resolveStop, 100));
+  }
+  handle.forced = handle.child.exitCode === null && handle.child.signalCode === null;
+  if (handle.forced) {
+    try { process.kill(-handle.child.pid, 'SIGKILL'); } catch {}
+    await new Promise(resolveStop => handle.child.once('exit', resolveStop));
+  }
 }
 
 async function findKnowledgeBaseRow(page, baseName) {
@@ -108,13 +124,25 @@ async function findKnowledgeBaseRow(page, baseName) {
 
 await mkdir(artifactRoot, { recursive: true });
 await mkdir(pilotHome, { recursive: true });
+await writeFile(kmIdentityFile, JSON.stringify({
+  [kmBearer]: { id: 'g4-km-owner', tenant_id: 'tenant_demo', display_name: 'G4 KM owner', spaces: ['*'], permissions: ['read', 'write'] },
+}, null, 2));
 await writeFile(configPath, `schemaVersion: 1\nagent:\n  model: smoke/operator\nmodel:\n  providers:\n    smoke:\n      protocol: openai\n      url: http://127.0.0.1:19992/v1\n      apiKey: local-only\n      models:\n        operator:\n          capabilities:\n            supportsToolUse: true\nwebui:\n  runtime:\n    serverPort: ${ports.api}\n    vitePort: ${ports.vite}\n    databasePath: ${join(pilotHome, 'auth.db')}\n    workspacesRoot: ${join(pilotHome, 'workspaces')}\nmodules:\n  knowledge:\n    enabled: true\n    implementationId: staffdeck.knowledge\n    frontendModule: staffdeck.knowledge\n    contract: staffdeck.knowledge/v1\n    transport: module-http-v2\n    endpoint: http://127.0.0.1:${ports.knowledge}\n    callPath: /v2/module/call\n    tenantId: tenant_g4_browser\n    actorUserId: g4-owner\n    methods: [list_bases, create_base, get_base, update_base, delete_base, list_versions, sync_base, publish_version, rollback_version, list_documents, get_document, import_document, import_okf, update_document, delete_document, list_document_buckets, update_bucket, list_bucket_chunks, update_chunk, get_job, list_jobs, cancel_job, list_okf_concepts, get_okf_concept, upsert_okf_concept, export_okf, lint_okf, list_discoveries, confirm_discovery, reject_discovery, query, resolve_citation]\n  sop:\n    enabled: false\nrouter:\n  enabled: false\nfrontend:\n  businessModules:\n    agent.routing:\n      enabled: false\n`, 'utf8');
 
 await writeFile(configPath, (await readFile(configPath, 'utf8'))
   .replace('tenant_g4_browser', 'tenant_demo')
   .replace('g4-owner', 'admin')
-  .replace(`http://127.0.0.1:${ports.knowledge}`, `http://127.0.0.1:${ports.staffApi}`), 'utf8');
+  .replace('implementationId: staffdeck.knowledge', 'implementationId: knowledge-core')
+  .replace('frontendModule: staffdeck.knowledge', 'frontendModule: staffdeck.knowledge')
+  .replace('contract: staffdeck.knowledge/v1', 'contract: knowledge-core/v1')
+  .replace('transport: module-http-v2', 'transport: rest-http-v1')
+  .replace('    tenantId: tenant_demo\n', '')
+  .replace('    actorUserId: admin\n', '')
+  .replace(`endpoint: http://127.0.0.1:${ports.knowledge}`, `endpoint: http://127.0.0.1:${kmPort}`)
+  .replace(`callPath: /v2/module/call`, `credentialEnv: STAFFDECK_KM_BEARER\n    pilotDeckUserId: __USER__\n    spaceId: sd:tenant_demo:agent_tenant_demo_overall\n    spaces:\n      - id: sd:tenant_demo:agent_tenant_demo_overall\n        name: Overall`), 'utf8');
 const staffEntrypoint = join(tempRoot, 'staffdeck_g4_app.py');
+const { KNOWLEDGE_CORE_METHODS } = await import('../src/composition/knowledgeCoreOperations.mjs');
+await writeFile(configPath, (await readFile(configPath, 'utf8')).replace(/methods: \[[^\]]+\]/, `methods: [${KNOWLEDGE_CORE_METHODS.join(', ')}]`));
 /* Kept only as a separately labeled Knowledge integration harness. The main
  * evidence run uses the unmodified formal app.main startup path below. */
 await writeFile(staffEntrypoint, `from fastapi import FastAPI
@@ -142,14 +170,28 @@ def g4_shutdown():
 `, 'utf8');
 
 let knowledgeService;
+let kmOwnerService;
 let staffFrontendService;
 let pilotService;
 let browser;
+let pilotPage;
 try {
+  const capabilitiesBearer = 'g4-real-capabilities-token';
+  const capabilitiesArgs = process.env.G4_REQUIRE_MODEL_SELECTOR === '1' ? ['--capabilities-url', `http://127.0.0.1:${ports.staffApi}/api/internal/km/capabilities`, '--capabilities-bearer', capabilitiesBearer] : [];
+  const kmConfigPath = join(tempRoot, 'km-full.json');
+  await writeFile(kmConfigPath, JSON.stringify({ preset: 'full', modules: { authentication: true } }));
+  const kmArgs = ['-m', 'knowledge_core.cli', '--config', kmConfigPath, '--database-url', `sqlite:///${join(tempRoot, 'knowledge-owner.sqlite')}`, '--identity-file', kmIdentityFile, '--host', '127.0.0.1', '--port', String(kmPort)];
+  kmOwnerService = start(kmPython, kmArgs, {
+    PYTHONPATH: join(kmRoot, 'knowledge_core/src'),
+  }, tempRoot);
+  await waitFor(`http://127.0.0.1:${kmPort}/health/ready`);
   const staffAppTarget = useKnowledgeWrapper ? 'staffdeck_g4_app:app' : 'app.main:app';
-  knowledgeService = start(python, ['-m', 'uvicorn', staffAppTarget, '--host', '127.0.0.1', '--port', String(ports.staffApi), '--log-level', 'warning'], {
-    PYTHONPATH: `${join(staffRoot, 'backend')}:${join(staffRoot, 'backend/src')}:${join(staffRoot, 'portable_sop/src')}`,
+  knowledgeService = start(python, ['-m', 'uvicorn', staffAppTarget, '--host', '127.0.0.1', '--port', String(ports.staffApi), '--log-level', 'info'], {
+    PYTHONPATH: `${join(staffRoot, 'backend')}:${join(staffRoot, 'backend/src')}:${join(staffRoot, 'portable_sop/src')}:${join(staffRoot, 'knowledge_core/src')}`,
     DATABASE_URL: `sqlite:///${database}`,
+    STAFFDECK_KM_URL: `http://127.0.0.1:${kmPort}`,
+    STAFFDECK_KM_BEARER: kmBearer,
+    STAFFDECK_KM_CAPABILITIES_BEARER: capabilitiesBearer,
     APP_SECRET: 'g4-browser-secret',
     STAFFDECK_KNOWLEDGE_SEED: 'true',
     DEMO_SEED_ENABLED: 'false',
@@ -164,21 +206,34 @@ try {
     HARNESS_ADMIN_API_ENABLED: useKnowledgeWrapper ? 'false' : 'true',
   }, tempRoot);
   await waitFor(`http://127.0.0.1:${ports.staffApi}/api/health`);
+  if (process.env.G4_REQUIRE_MODEL_SELECTOR === '1') {
+    execFileSync(python, [join(staffRoot, 'knowledge_core/scripts/hosted_model_probe.py'), '--pilot-root', root, '--config', process.env.G4_EXISTING_MODEL_CONFIG || '/Users/a1/.pilotdeck/pilotdeck.yaml', '--node', process.execPath, '--output', join(artifactRoot, 'model-probe.json')], {
+      cwd: tempRoot, env: { ...process.env, PYTHONPATH: `${join(staffRoot, 'backend')}:${join(staffRoot, 'backend/src')}`, DATABASE_URL: `sqlite:///${database}`, APP_SECRET: 'g4-browser-secret', ULTRARAG_DOTENV: join(tempRoot, 'missing.env'), MODEL_API_TIMEOUT_SECONDS: '20', NODE_OPTIONS: '' }, stdio: 'pipe', timeout: 180000,
+    });
+    output.modelProbe = JSON.parse(await readFile(join(artifactRoot, 'model-probe.json'), 'utf8'));
+    await stop(kmOwnerService);
+    await writeFile(join(artifactRoot, 'km-bootstrap.log'), kmOwnerService.logs(), 'utf8');
+    kmOwnerService = start(kmPython, [...kmArgs, ...capabilitiesArgs], { PYTHONPATH: join(kmRoot, 'knowledge_core/src') }, tempRoot);
+    await waitFor(`http://127.0.0.1:${kmPort}/health/ready`);
+  }
   staffFrontendService = start(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(ports.staffVite), '--strictPort'], {
     NODE_OPTIONS: '', VITE_PROXY_TARGET: `http://127.0.0.1:${ports.staffApi}`, VITE_TENANT_ID: 'tenant_demo',
   }, join(staffRoot, 'frontend-enterprise'));
   await waitFor(`http://127.0.0.1:${ports.staffVite}/enterprise/knowledge`);
+  if (process.env.G4_SD_ONLY !== '1') {
   pilotService = start(process.execPath, ['scripts/dev-launcher.mjs'], {
     NODE_OPTIONS: '', PILOT_HOME: pilotHome, PILOTDECK_CONFIG_PATH: configPath,
     PILOTDECK_FRONTEND_PROFILE: configPath, PILOTDECK_DISABLE_LOCAL_AUTH: '0',
+    STAFFDECK_KM_BEARER: kmBearer,
     SERVER_PORT: String(ports.api), VITE_PORT: String(ports.vite),
     PILOTDECK_GATEWAY_PORT: String(ports.gateway), PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${ports.gateway}/ws`,
     PILOTDECK_MODULE_ADMIN: '1',
   }, root);
   await waitFor(`http://127.0.0.1:${ports.vite}/api/auth/status`);
+  }
   browser = await chromium.launch({ headless: process.env.HEADED !== '1', executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH || undefined });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const page = await context.newPage();
+  const page = pilotPage = await context.newPage();
   page.on('request', (request) => {
     const url = new URL(request.url());
     if (url.pathname.includes('/api/modules/knowledge')) output.requests.push({ method: request.method(), path: url.pathname, body: request.postDataJSON?.() ?? null });
@@ -191,113 +246,54 @@ try {
         responseStatus: response.status(),
         responseBody: await response.text().catch(() => ''),
       });
+    } else if (url.pathname.startsWith('/api/modules/knowledge/core/')) {
+      const method = response.request().method();
+      const operation = method === 'POST' && /\/documents$/.test(url.pathname)
+        ? 'import_document'
+        : method === 'POST' && url.pathname.endsWith('/query') ? 'query' : undefined;
+      output.requests.push({ operation, method, path: url.pathname, responseStatus: response.status(), responseBody: await response.text().catch(() => '') });
     }
   });
+  if (process.env.G4_SD_ONLY !== '1') {
   const credentials = { username: 'g4-browser-owner', password: 'g4-browser-owner-password' };
   output.actions.push('register-or-login single-user owner');
   const registration = await context.request.post(`http://127.0.0.1:${ports.vite}/api/auth/register`, { data: credentials });
   const account = registration.ok() ? await registration.json() : await (await context.request.post(`http://127.0.0.1:${ports.vite}/api/auth/login`, { data: credentials })).json();
   assert.equal(typeof account.token, 'string');
+  const pilotDeckUserId = account.user?.id ?? account.user?.user_id ?? account.id ?? account.userId;
+  assert.ok(pilotDeckUserId, `PilotDeck registration did not return a user id: ${JSON.stringify(account)}`);
+  await writeFile(configPath, (await readFile(configPath, 'utf8')).replace('__USER__', JSON.stringify(String(pilotDeckUserId))), 'utf8');
+  await stop(pilotService);
+  pilotService = start(process.execPath, ['scripts/dev-launcher.mjs'], {
+    NODE_OPTIONS: '', PILOT_HOME: pilotHome, PILOTDECK_CONFIG_PATH: configPath,
+    PILOTDECK_FRONTEND_PROFILE: configPath, PILOTDECK_DISABLE_LOCAL_AUTH: '0',
+    SERVER_PORT: String(ports.api), VITE_PORT: String(ports.vite),
+    PILOTDECK_GATEWAY_PORT: String(ports.gateway), PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${ports.gateway}/ws`,
+    PILOTDECK_MODULE_ADMIN: '1', STAFFDECK_KM_BEARER: kmBearer,
+  }, root);
+  await waitFor(`http://127.0.0.1:${ports.vite}/api/auth/status`);
   await context.request.post(`http://127.0.0.1:${ports.vite}/api/user/complete-onboarding`, { headers: { authorization: `Bearer ${account.token}` } });
   await page.addInitScript((token) => localStorage.setItem('auth-token', token), account.token);
   await page.goto(`http://127.0.0.1:${ports.vite}/knowledge/new`, { waitUntil: 'domcontentloaded' });
   output.actions.push('open Knowledge new page');
-  const file = join(tempRoot, 'g4-policy.md');
-  await writeFile(file, '# G4 Approval Policy\n\nOwner approval is required.\n\nUnchanged field: retain this paragraph.\n', 'utf8');
-  const chooser = page.locator('input[type=file]').first();
-  await chooser.setInputFiles(file);
-  output.actions.push('upload document through file input');
-  let uploadEvidence;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    uploadEvidence = output.requests.find((item) => item.operation === 'import_document' && Number.isInteger(item.responseStatus));
-    if (uploadEvidence) break;
-    await page.waitForTimeout(1_000);
+  const { runKnowledgeAcceptance } = await import(pathToFileURL(join(staffRoot, 'packages/knowledge-ui/browser-acceptance.mjs')).href);
+  output.pilotIndependent = await runKnowledgeAcceptance(page, { screenshotPrefix: join(artifactRoot, 'pilotdeck-km'), requireModelSelector: false });
+  output.actions.push(...output.pilotIndependent.workflow);
+  assert.deepEqual(output.pageErrors || [], []);
   }
-  assert.ok(uploadEvidence, 'PilotDeck file-input upload did not produce an import response');
-  assert.ok(uploadEvidence.responseStatus >= 200 && uploadEvidence.responseStatus < 300, `PilotDeck upload failed with HTTP ${uploadEvidence.responseStatus}`);
-  output.persistence.pilotUploadResponse = JSON.parse(uploadEvidence.responseBody);
-  output.actions.push('confirm PilotDeck UI upload response (new job row is adapter-refresh sensitive)');
-  output.actions.push('wait for persisted PilotDeck knowledge base after async ingest');
-  await page.goto(`http://127.0.0.1:${ports.vite}/knowledge`, { waitUntil: 'domcontentloaded' });
-  const row = await findKnowledgeBaseRow(page, 'g4-policy');
-  output.actions.push('refresh Knowledge management page and locate persisted base');
-  const baseText = await page.locator('body').innerText();
-  assert.match(baseText, /g4-policy/);
-  await row.click();
-  await page.getByText(/Knowledge graph|知识图谱/).last().waitFor({ timeout: 20_000 });
-  await page.waitForTimeout(800);
-  const detailTextBefore = await page.locator('body').innerText();
-  output.persistence.detailBefore = detailTextBefore.slice(-4000);
-  output.actions.push('open persisted document detail');
-  const viewDocumentButton = page.locator('.knowledge-pageindex-card').getByRole('button', { name: /详情|Details/ });
-  await viewDocumentButton.scrollIntoViewIfNeeded();
-  await viewDocumentButton.click();
-  await page.getByText(/文档详情|Document Details/).last().waitFor({ state: 'visible', timeout: 10_000 });
-  const editButton = page.getByRole('button', { name: /修改|编辑|Modify|Edit/ }).last();
-  assert.equal(await editButton.count(), 1, 'Persisted document detail did not expose the edit action');
-  await editButton.click();
-  const textarea = page.locator('textarea').last();
-  assert.equal(await textarea.count(), 1, 'Document editor did not render a textarea');
-  await textarea.fill('# G4 Approval Policy Updated\n\nOwner approval is required.\n\nUnchanged field: retain this paragraph.\n');
-  await page.getByRole('button', { name: /保存并重建索引|Save and rebuild/ }).last().click();
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    const saved = output.requests.find((item) => item.operation === 'update_document' && Number.isInteger(item.responseStatus));
-    if (saved) {
-      assert.ok(saved.responseStatus >= 200 && saved.responseStatus < 300, `Document update failed with HTTP ${saved.responseStatus}`);
-      break;
-    }
-    await page.waitForTimeout(1_000);
-    if (attempt === 29) throw new Error('Timed out waiting for update_document response evidence');
-  }
-  output.actions.push('edit正文 and save through UI');
-
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  const reloadedRow = await findKnowledgeBaseRow(page, 'g4-policy');
-  await reloadedRow.click();
-  await page.getByText(/Knowledge graph|知识图谱/).last().waitFor({ timeout: 20_000 });
-  const reloadedViewDocumentButton = page.locator('.knowledge-pageindex-card').getByRole('button', { name: /详情|Details/ });
-  await reloadedViewDocumentButton.scrollIntoViewIfNeeded();
-  await reloadedViewDocumentButton.click();
-  await page.getByText(/文档详情|Document Details/).last().waitFor({ state: 'visible', timeout: 10_000 });
-  await page.getByText('Unchanged field', { exact: false }).last().waitFor({ timeout: 20_000 });
-  output.persistence.detailAfter = (await page.locator('body').innerText()).slice(-4000);
-  assert.match(output.persistence.detailAfter, /G4 Approval Policy Updated/);
-  assert.match(output.persistence.detailAfter, /Unchanged field/);
-  output.actions.push('reload and verify unchanged field persisted');
-  await page.keyboard.press('Escape');
-  const openDocumentDialog = page.locator('[role="dialog"]').last();
-  if (await openDocumentDialog.count()) await openDocumentDialog.click({ position: { x: 4, y: 4 } });
-  await page.waitForTimeout(300);
-  const queryInput = page.getByPlaceholder(/输入知识问题|knowledge question/i);
-  assert.equal(await queryInput.count(), 1, 'PilotDeck Knowledge query input is required');
-  await queryInput.fill('Owner approval');
-  await page.getByRole('button', { name: /检索|Search/i }).click();
-  let queryEvidence;
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    queryEvidence = output.requests.find((item) => item.operation === 'query' && Number.isInteger(item.responseStatus));
-    if (queryEvidence) break;
-    await page.waitForTimeout(1_000);
-  }
-  assert.ok(queryEvidence, 'Timed out waiting for query response evidence');
-  assert.ok(queryEvidence.responseStatus >= 200 && queryEvidence.responseStatus < 300, `Knowledge query failed with HTTP ${queryEvidence.responseStatus}`);
-  const body = JSON.parse(queryEvidence.responseBody);
-  const result = body.result || body;
-  const citation = result.evidence_pack?.[0]?.chunk_id || result.evidence_pack?.[0]?.chunkId;
-  assert.ok(citation, `query returned no citation: ${JSON.stringify(result)}`);
-  const citationResponse = await context.request.post(`http://127.0.0.1:${ports.vite}/api/modules/knowledge/citation`, { headers: { authorization: `Bearer ${account.token}` }, data: { chunkId: citation } });
-  assert.equal(citationResponse.ok(), true);
-  output.persistence.pilotApiCitation = await citationResponse.json();
-  output.actions.push('PilotDeck query with required UI input and API-only citation resolve');
+  await context.close();
 
   const sdContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const sdPage = await sdContext.newPage();
+  output.sd.pageErrors = [];
+  sdPage.on('pageerror', error => output.sd.pageErrors.push(error.message));
   sdPage.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.pathname.includes('/api/enterprise/knowledge')) output.sd.requests.push({ method: request.method(), path: url.pathname, body: request.postDataJSON?.() ?? null });
+    if (url.pathname.includes('/api/enterprise/knowledge') || url.pathname.startsWith('/api/km/')) output.sd.requests.push({ method: request.method(), path: url.pathname, body: request.postDataJSON?.() ?? null });
   });
   sdPage.on('response', async (response) => {
     const url = new URL(response.url());
-    if (url.pathname.includes('/api/enterprise/knowledge')) {
+    if (url.pathname.includes('/api/enterprise/knowledge') || url.pathname.startsWith('/api/km/')) {
       output.sd.requests.push({ method: response.request().method(), path: url.pathname, responseStatus: response.status(), responseBody: await response.text().catch(() => '') });
     }
   });
@@ -318,6 +314,35 @@ try {
   }, { ...sdAccount, overallAgentId });
   await sdPage.goto(`http://127.0.0.1:${ports.staffVite}/enterprise/knowledge/new`, { waitUntil: 'domcontentloaded' });
   output.sd.actions.push('open StaffDeck native Knowledge new page');
+  const kmConfig = await sdContext.request.get(`http://127.0.0.1:${ports.staffVite}/api/km/config`, { headers: { authorization: `Bearer ${sdAccount.token}` } });
+  if (kmConfig.ok() && (await kmConfig.json()).enabled) {
+    const { runKnowledgeAcceptance } = await import(pathToFileURL(join(staffRoot, 'packages/knowledge-ui/browser-acceptance.mjs')).href);
+    output.sd.independent = await runKnowledgeAcceptance(sdPage, {
+      screenshotPrefix: join(artifactRoot, 'staffdeck-km'),
+      requireModelSelector: process.env.G4_REQUIRE_MODEL_SELECTOR === '1',
+      expectedModelId: output.modelProbe?.selected_model_id,
+    });
+    output.sd.actions.push(...output.sd.independent.workflow);
+    assert.deepEqual(output.sd.pageErrors, []);
+    if (process.env.G4_REQUIRE_MODEL_SELECTOR === '1') {
+      const selected = output.sd.independent.selectedModel;
+      assert.equal(selected, output.modelProbe.selected_model_id);
+      const modelRequests = output.sd.requests.filter(item => item.method === 'POST' && item.body && item.body.model_id === selected);
+      assert.ok(modelRequests.length >= 2, `Hosted model id was not propagated to upload/query requests: ${JSON.stringify(modelRequests)}`);
+      const modelCalls = knowledgeService.logs().split('\n').filter(line => line.includes('KM_MODEL_RESULT') && line.includes(`config_id=${selected}`));
+      assert.ok(modelCalls.length >= 2, 'Real hosted inference must succeed for ingestion and query');
+      for (const phase of ['ingestion', 'query']) assert.ok(knowledgeService.logs().includes(`phase=${phase}`), `No successful hosted model call for ${phase}`);
+      const queryReply = output.sd.requests.filter(item => item.path.endsWith('/query') && item.responseStatus === 200).at(-1);
+      assert.ok(queryReply, 'No successful hosted query response');
+      const queryEvidence = JSON.parse(queryReply.responseBody);
+      const routePhases = (queryEvidence.route_trace || []).map(item => item.phase);
+      assert.ok(routePhases.includes('document_route'), 'Model document routing was not exercised');
+      assert.ok(!routePhases.some(phase => /fallback|failed|invalid|document_route_lexical/.test(phase)),
+        `Lexical fallback or invalid model output cannot pass hosted inference: ${routePhases}`);
+      assert.ok(queryEvidence.evidence_pack?.length, 'Hosted query returned no valid evidence');
+      output.realModel = { status: 'passed', selectedModel: selected, modelCalls };
+    }
+  } else {
   const sdFile = join(tempRoot, 'g4-policy-sd.md');
   await writeFile(sdFile, '# G4 StaffDeck Policy\n\nOwner approval is required.\n\nUnchanged field: retain this paragraph.\n', 'utf8');
   await sdPage.locator('input[type=file]').first().setInputFiles(sdFile);
@@ -510,12 +535,27 @@ try {
   output.sd.actions.push('exercise native OKF import failure state with invalid archive');
 
   await sdPage.screenshot({ path: join(artifactRoot, 'g4-knowledge-staffdeck-native.png'), fullPage: true });
+  }
   await sdContext.close();
-  await page.screenshot({ path: join(artifactRoot, 'g4-knowledge-browser.png'), fullPage: true });
   await writeFile(join(artifactRoot, 'report.json'), `${JSON.stringify(output, null, 2)}\n`, 'utf8');
-  await context.close();
 } catch (error) {
   output.error = error instanceof Error ? error.stack : String(error);
+  output.startupLogs = {
+    kmOwnerService: kmOwnerService?.logs?.().slice(-12000),
+    knowledgeService: knowledgeService?.logs?.().slice(-12000),
+    staffFrontendService: staffFrontendService?.logs?.().slice(-12000),
+    pilotService: pilotService?.logs?.().slice(-12000),
+  };
+  output.configText = await readFile(configPath, 'utf8').catch(() => undefined);
+  if (pilotPage) {
+    output.pageDiagnostics = {
+      url: pilotPage.url(),
+      body: await pilotPage.locator('body').innerText().catch(() => ''),
+      inputs: await pilotPage.locator('input').evaluateAll(nodes => nodes.map(node => ({ type: node.type, aria: node.getAttribute('aria-label'), name: node.getAttribute('name') }))).catch(() => []),
+      buttons: await pilotPage.getByRole('button').evaluateAll(nodes => nodes.map(node => ({ text: (node.textContent || '').trim(), aria: node.getAttribute('aria-label') })).slice(-80)).catch(() => []),
+    };
+  }
+  output.tempRoot = tempRoot;
   await writeFile(join(artifactRoot, 'report.json'), `${JSON.stringify(output, null, 2)}\n`, 'utf8');
   throw error;
 } finally {
@@ -523,6 +563,21 @@ try {
   await stop(pilotService);
   await stop(staffFrontendService);
   await stop(knowledgeService);
+  await stop(kmOwnerService);
+  output.lifecycle = {};
+  for (const [name, handle] of Object.entries({ pilotService, staffFrontendService, knowledgeService, kmOwnerService })) {
+    if (!handle) continue;
+    await writeFile(join(artifactRoot, `${name}.log`), handle.logs(), 'utf8');
+    output.lifecycle[name] = { exitCode: handle.child.exitCode, signal: handle.child.signalCode, forced: !!handle.forced };
+  }
+  const completeHostedRun = process.env.G4_SD_ONLY === '1' && process.env.G4_REQUIRE_MODEL_SELECTOR === '1'
+    && output.sd.independent && output.realModel?.status === 'passed';
+  output.status = output.error || Object.values(output.lifecycle).some(item => item.forced) ? 'failed'
+    : completeHostedRun || output.pilotIndependent && output.sd.independent ? 'passed' : 'partial';
+  if (output.pilotIndependent && output.sd.independent) {
+    for (const name of ['import_document', 'update_document', 'query', 'list_versions', 'rollback_version', 'resolve_citation', 'okf_import_export_lint', 'structure_buckets_chunks']) output.operationCoverage[name] = 'passed';
+  }
+  await writeFile(join(artifactRoot, 'report.json'), `${JSON.stringify(output, null, 2)}\n`, 'utf8');
   await rm(tempRoot, { recursive: true, force: true });
   output.cleanup.removed = true;
   await writeFile(join(artifactRoot, 'cleanup.json'), `${JSON.stringify(output.cleanup, null, 2)}\n`, 'utf8').catch(() => undefined);

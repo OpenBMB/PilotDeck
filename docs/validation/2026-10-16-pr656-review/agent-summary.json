@@ -1,0 +1,231 @@
+{
+  "status": "passed",
+  "model": "provider1/deepseek-v4-flash-0731",
+  "turns": [
+    {
+      "required": [
+        "knowledge_import_document",
+        "knowledge_get_job"
+      ],
+      "completed": [
+        {
+          "name": "knowledge_list_documents",
+          "ok": false
+        },
+        {
+          "name": "knowledge_list_documents",
+          "ok": true
+        },
+        {
+          "name": "knowledge_import_document",
+          "ok": true
+        },
+        {
+          "name": "knowledge_get_job",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "required": [
+        "knowledge_query",
+        "knowledge_resolve_citation"
+      ],
+      "completed": [
+        {
+          "name": "knowledge_query",
+          "ok": true
+        },
+        {
+          "name": "knowledge_resolve_citation",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "required": [
+        "knowledge_get_document",
+        "knowledge_update_document"
+      ],
+      "completed": [
+        {
+          "name": "knowledge_get_document",
+          "ok": true
+        },
+        {
+          "name": "knowledge_update_document",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "required": [
+        "knowledge_query"
+      ],
+      "completed": [
+        {
+          "name": "knowledge_query",
+          "ok": true
+        },
+        {
+          "name": "knowledge_resolve_citation",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "required": [
+        "knowledge_get_bucket",
+        "knowledge_update_bucket",
+        "knowledge_get_chunk",
+        "knowledge_update_chunk"
+      ],
+      "completed": [
+        {
+          "name": "knowledge_get_bucket",
+          "ok": true
+        },
+        {
+          "name": "knowledge_get_chunk",
+          "ok": true
+        },
+        {
+          "name": "knowledge_update_bucket",
+          "ok": true
+        },
+        {
+          "name": "knowledge_update_chunk",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "required": [
+        "knowledge_upsert_concept",
+        "knowledge_get_concept"
+      ],
+      "completed": [
+        {
+          "name": "knowledge_upsert_concept",
+          "ok": true
+        },
+        {
+          "name": "knowledge_get_concept",
+          "ok": true
+        },
+        {
+          "name": "knowledge_upsert_concept",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "required": [
+        "knowledge_get_document",
+        "knowledge_delete_document"
+      ],
+      "completed": [
+        {
+          "name": "knowledge_get_document",
+          "ok": true
+        },
+        {
+          "name": "knowledge_delete_document",
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "lastReadback": {
+    "method": "POST",
+    "path": "/query",
+    "status": 200,
+    "value": {
+      "selected_buckets": [],
+      "chunks": [],
+      "trace": [
+        {
+          "phase": "document_route",
+          "candidate_count": 0,
+          "message": "正在选择知识文档",
+          "mode": "chat"
+        },
+        {
+          "phase": "document_route_lexical",
+          "message": "按检索相关性选择知识文档",
+          "selected_count": 0
+        },
+        {
+          "phase": "bucket_route",
+          "candidate_count": 0,
+          "message": "正在选择内部索引",
+          "selected_document_ids": []
+        },
+        {
+          "phase": "bucket_route_lexical",
+          "message": "按检索相关性选择内部索引",
+          "selected_count": 0
+        },
+        {
+          "phase": "section_expand",
+          "section_count": 0,
+          "message": "正在展开章节"
+        },
+        {
+          "phase": "read_chunks",
+          "message": "读取引用来源",
+          "chunk_count": 0
+        },
+        {
+          "phase": "evidence_pack",
+          "evidence_count": 0,
+          "message": "整理引用来源包"
+        }
+      ],
+      "route_trace": [
+        {
+          "phase": "document_route",
+          "candidate_count": 0,
+          "message": "正在选择知识文档",
+          "mode": "chat"
+        },
+        {
+          "phase": "document_route_lexical",
+          "message": "按检索相关性选择知识文档",
+          "selected_count": 0
+        },
+        {
+          "phase": "bucket_route",
+          "candidate_count": 0,
+          "message": "正在选择内部索引",
+          "selected_document_ids": []
+        },
+        {
+          "phase": "bucket_route_lexical",
+          "message": "按检索相关性选择内部索引",
+          "selected_count": 0
+        },
+        {
+          "phase": "section_expand",
+          "section_count": 0,
+          "message": "正在展开章节"
+        },
+        {
+          "phase": "read_chunks",
+          "message": "读取引用来源",
+          "chunk_count": 0
+        },
+        {
+          "phase": "evidence_pack",
+          "evidence_count": 0,
+          "message": "整理引用来源包"
+        }
+      ],
+      "selected_documents": [],
+      "selected_concepts": [],
+      "expanded_sections": [],
+      "okf_citations": [],
+      "evidence_pack": []
+    }
+  }
+}

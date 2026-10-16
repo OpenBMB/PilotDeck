@@ -5,7 +5,7 @@ import { slots, type Assembly, type Binding, type CompositionProfile, type Slot 
 import { registerPermissionPanels } from '../components/chat/tools/configs/permissionPanelRegistry';
 import { authenticatedFetch } from '../utils/api';
 import staffdeckSop from './modules/staffdeck-sop';
-import staffdeckKnowledge from './modules/staffdeck-knowledge';
+import knowledgeCore from './modules/knowledge-core';
 import pilotdeckSop from './modules/pilotdeck-sop';
 
 let activeAssembly: Assembly | null = null;
@@ -121,7 +121,8 @@ export function validateRuntimeCapabilities(assembly: Assembly, runtime: Runtime
     }
     for (const field of ['implementationId', 'frontendModule', 'contract', 'transport', 'hostAdapter'] as const) {
       const expectedValue = expected[field];
-      if (expectedValue !== undefined && actual[field] !== expectedValue) {
+      const canonical = (value: unknown) => slot === 'knowledge' && field === 'frontendModule' && value === 'staffdeck.knowledge' ? 'knowledge-core' : value;
+      if (expectedValue !== undefined && canonical(actual[field]) !== canonical(expectedValue)) {
         errors.push(`Runtime ${field} differs for ${slot}.`);
       }
     }
@@ -159,7 +160,7 @@ export type ModuleCompositionState = {
 const staticProfile: CompositionProfile = generatedFrontendProfile as unknown as CompositionProfile;
 
 export function assembleProfile(profile: CompositionProfile, projectBindings = false): Assembly {
-  const catalog = projectBindings ? [...generatedFrontendModules, staffdeckSop, staffdeckKnowledge, pilotdeckSop]
+  const catalog = projectBindings ? [...generatedFrontendModules, staffdeckSop, knowledgeCore, pilotdeckSop]
     .filter((value, index, rows) => rows.findIndex(row => row.id === value.id) === index) : generatedFrontendModules;
   return assembleFrontend(profile, catalog, resolveFrontendChoices(profile, catalog));
 }

@@ -4,7 +4,6 @@ import { Button } from './formal-primitives/button';
 import { Info, Check, ChevronDown, CircleAlert } from 'lucide-react';
 import * as FormalIcons from './FormalIcons';
 import * as SourceIcons from './FormalSourceIcons';
-import { KnowledgeGraphVisualization } from './FormalKnowledgeGraphVisualization';
 import { StatusBadge } from './FormalStatusBadge';
 import './FormalPresentation.css';
 import { Dialog as DialogPrimitive } from 'radix-ui';
@@ -46,7 +45,6 @@ export const pilotDeckFormalComponents = {
   DetailField, StatCard, StatusBadge, CapabilityScopeLoading,
   CapabilityScopeBadge, CapabilityScopeControl: wrap(CapabilityScopeControl),
   ModelConfigDropdown: wrap(ModelConfigDropdown),
-  KnowledgeGraphVisualization,
 };
 export const pilotDeckFormalIcons = { ...FormalIcons, ...SourceIcons };
 export const pilotDeckNotify = {
