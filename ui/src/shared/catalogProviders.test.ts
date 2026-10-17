@@ -56,4 +56,20 @@ describe('catalogProviders maxOutputTokens', () => {
     expect(ollama?.models.find((model) => model.id === 'qwen3:0.6b')?.maxContextTokens).toBe(40_960);
     expect(ollama?.models.find((model) => model.id === 'llama3.1:8b')?.maxOutputTokens).toBe(8_192);
   });
+
+  it('exposes OrcaRouter as an OpenAI-compatible gateway provider', () => {
+    const orcarouter = findCatalogProviderById('orcarouter');
+
+    expect(orcarouter?.protocol).toBe('openai');
+    expect(orcarouter?.defaultUrl).toBe('https://api.orcarouter.ai/v1');
+    expect(orcarouter?.modelListUrl).toBe('https://api.orcarouter.ai/v1/models');
+    expect(orcarouter?.modelListRequiresApiKey).toBe(true);
+    expect(orcarouter?.models.map((model) => model.id)).toEqual([
+      'orcarouter/fusion',
+      'orcarouter/auto',
+      'anthropic/claude-sonnet-4.6',
+      'deepseek/deepseek-v4-pro',
+      'google/gemini-2.5-pro',
+    ]);
+  });
 });
