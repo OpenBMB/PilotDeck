@@ -12,7 +12,7 @@ test('filesystem lock serializes independent processes', async t => {
   t.after(() => rm(home, { recursive: true, force: true }));
   const store = new OAuthStore<{ value: number }>(home);
   await store.write('id', { value: 0 });
-  const script = `import { OAuthStore } from ${JSON.stringify(new URL('../../../src/mcp/oauth/store.ts', import.meta.url).href)};
+  const script = `import { OAuthStore } from ${JSON.stringify(new URL('../../../src/mcp/oauth/store.js', import.meta.url).href)};
     const store = new OAuthStore(process.argv[1]);
     await store.locked('id', async () => {
       const current = await store.read('id');
