@@ -42,6 +42,8 @@ export function formFromRaw(name: string, value: unknown, id = newId()): McpServ
           ? raw.httpUrl
           : "",
     headers: toKeyValueRows(raw.headers),
+    oauth: raw.oauth && typeof raw.oauth === "object" && typeof (raw.oauth as { credentialId?: unknown }).credentialId === "string"
+      ? raw.oauth as { credentialId: string } : undefined,
   };
 }
 
@@ -97,6 +99,7 @@ export function stringifyServers(servers: McpServerForm[]): string {
       );
       mcpServers[name] = {
         url: server.url,
+        ...(server.oauth ? { oauth: server.oauth } : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
       };
     }
