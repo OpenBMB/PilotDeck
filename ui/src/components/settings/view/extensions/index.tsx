@@ -16,6 +16,7 @@ import { authenticatedFetch } from "../../../../utils/api";
 import { cn } from "../../../../lib/utils";
 import type { SettingsProject } from "../../shared/types";
 import { showSettingsSuccess } from "../../shared/SettingsSuccessToast";
+import McpOAuthControls from "./components/McpOAuthControls";
 import McpServerFormCard from "./components/McpServerFormCard";
 import AdvancedJsonEditor, {
   McpCodeIcon,
@@ -469,6 +470,7 @@ export default function McpServersSection({
     return (
       <McpServerFormCard
         server={server}
+        oauthControls={<McpOAuthControls key={`${scope}:${server.name}`} scope={scope} name={server.name} projectPath={projectPath || undefined} onComplete={() => void load()} />}
         editing={editingIds[scope] === server.id}
         saving={savingScope === scope}
         onChange={(patch) => updateServer(scope, server.id, patch)}
