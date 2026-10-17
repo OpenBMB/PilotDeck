@@ -1,4 +1,5 @@
 import express from 'express';
+import { createQccPreset } from '../../../src/mcp/presets/qcc.js';
 import { McpOAuthManager } from '../../../src/mcp/oauth/manager.js';
 import { resolvePilotHome } from '../utils/pilotPaths.js';
 import { readMcpConfigFile, writeMcpConfigFile } from '../services/mcpConfig.js';
@@ -19,6 +20,18 @@ async function reload(file) {
   const gateway = await getPilotDeckGateway();
   await gateway.reloadExtensions?.({ changedPaths: [file.path] });
 }
+router.post('/qcc-preset', async (_req, res) => {
+  try {
+    const file = await readMcpConfigFile('global');
+    const servers = file.config.mcpServers ?? {};
+    const preset = await createQccPreset(manager, servers);
+    file.config.mcpServers = { ...servers, ...preset };
+    await writeMcpConfigFile('global', JSON.stringify(file.config));
+    res.json({ success: true });
+  } catch {
+    res.status(400).json({ error: 'Cannot add QCC preset. Check resource discovery or existing qcc-* server names. Existing servers were not overwritten.' });
+  }
+});
 router.post('/:action', async (req, res) => {
   try {
     const config = await configured(req);
@@ -46,7 +59,8 @@ router.post('/:action', async (req, res) => {
         return res.json({ status: 'cancelled' });
       case 'disconnect': {
         const result = id ? await manager.disconnect(id, url) : { revoked: false };
-        delete server.oauth;
+        const shared = id && (await manager.store.read(id))?.resources.length > 1;
+        if (!shared) delete server.oauth;
         await writeMcpConfigFile(scope, JSON.stringify(file.config), projectPath);
         await reload(file);
         return res.json({ status: 'needs-auth', ...result });

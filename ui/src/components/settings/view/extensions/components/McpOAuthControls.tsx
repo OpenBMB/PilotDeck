@@ -6,6 +6,7 @@ import type { Scope } from '../types/mcp';
 type Props = { scope: Scope; name: string; projectPath?: string; onComplete: () => void };
 export default function McpOAuthControls({ scope, name, projectPath, onComplete }: Props) {
   const { t } = useTranslation('settings');
+  const [resourceCount, setResourceCount] = useState(1);
   const [status, setStatus] = useState('needs-auth');
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
@@ -28,6 +29,7 @@ export default function McpOAuthControls({ scope, name, projectPath, onComplete 
       inFlight = true;
       try {
         const data = await request('status');
+        if (!stopped) setResourceCount(data.resourceCount ?? 1);
         if (!stopped && status === 'pending' && data.status === 'authorized') {
           await request('complete');
           if (!stopped) { setUrl(''); completeRef.current(); }
@@ -54,6 +56,7 @@ export default function McpOAuthControls({ scope, name, projectPath, onComplete 
   return <section className="mcp-http-note" aria-label="MCP OAuth">
     <div>
       <p>{t('mcpOAuth.help')}</p>
+      {resourceCount > 1 && <p>{t('mcpOAuth.qccGrant')}</p>}
       <p role="status">{t(`mcpOAuth.${status}`, { defaultValue: status })}</p>
       {error && <p role="alert">{error}</p>}
       {status === 'authorized'

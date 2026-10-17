@@ -7,6 +7,8 @@ import { OAuthStore } from './store.js';
 export type OAuthCredential = {
   resources: string[];
   entry: string;
+  /** Optional issuer pin for explicitly configured multi-resource grants. */
+  expectedIssuer?: string;
   redirectUrl: string;
   client?: OAuthClientInformationMixed;
   tokens?: OAuthTokens;
@@ -60,7 +62,12 @@ export class McpOAuthManager {
       codeVerifier: () => { if (!record.verifier) throw new Error('Authorization expired. Retry.'); return record.verifier; },
       redirectToAuthorization: redirect,
       discoveryState: () => record.discovery,
-      saveDiscoveryState: async discovery => { record.discovery = discovery; await save(); },
+      saveDiscoveryState: async discovery => {
+        if (record.expectedIssuer && (discovery.authorizationServerUrl !== record.expectedIssuer || discovery.authorizationServerMetadata?.issuer !== record.expectedIssuer)) {
+          throw new Error('OAuth issuer changed. Reauthorize the configured grant.');
+        }
+        record.discovery = discovery; await save();
+      },
       validateResourceURL: async (target, resource) => {
         if (String(target) !== record.entry || (resource && resource !== record.entry)) throw new Error('OAuth resource metadata does not match the configured server.');
         return new URL(record.entry);
@@ -77,7 +84,7 @@ export class McpOAuthManager {
   async status(id: string, resource: string) {
     const record = await this.credential(id, resource);
     const pending = this.pending.get(id)?.status;
-    return { status: record.tokens ? 'authorized' : pending && pending !== 'authorized' ? pending : 'needs-auth' };
+    return { resourceCount: record.resources.length, status: record.tokens ? 'authorized' : pending && pending !== 'authorized' ? pending : 'needs-auth' };
   }
   async begin(id: string, resource: string): Promise<{ authorizationUrl?: string; status: string }> {
     return this.store.locked(id, async () => {

@@ -1892,6 +1892,8 @@
     "updated": "Updated {{time}} · refreshes every 30 seconds"
   },
   "mcpOAuth": {
+    "addQcc": "Add QCC OAuth preset (5 servers)",
+    "qccGrant": "The QCC preset shares one grant across company, risk, intellectual property, operations and executives. Disconnecting any preset server removes authorization for all five; deleting one server does not revoke the grant.",
   "help": "OAuth authorization uses your system browser on this computer. Save the server configuration first.",
   "needs-auth": "Not authorized",
   "pending": "Waiting for browser authorization…",

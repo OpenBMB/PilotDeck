@@ -431,6 +431,17 @@ export default function McpServersSection({
     );
   };
 
+  const addQccPreset = async () => {
+    setSavingScope('global'); setError(null);
+    try {
+      const response = await authenticatedFetch('/api/mcp/oauth/qcc-preset', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      await load();
+    } catch (err) { setError((err as Error).message); }
+    finally { setSavingScope(null); }
+  };
+
   const renderDetail = (scope: Scope) => {
     if (parseErrors[scope]) {
       return (
@@ -502,6 +513,10 @@ export default function McpServersSection({
                 <span>{t("mcpConfig.globalLocation")}</span>
               </p>
             </div>
+            <button className="button secondary compact" type="button" onClick={() => void addQccPreset()}
+              disabled={Boolean(savingScope) || Boolean(editingIds.global)}>
+              {t('mcpOAuth.addQcc')}
+            </button>
             <span className="mcp-config-count">
               {t("mcpConfig.serverUnit", { count: serverDrafts.global.length })}
             </span>
