@@ -6,7 +6,7 @@ import type {
 } from "./canonical.js";
 import { messageContent } from "./clone.js";
 
-export const SUPPORTED_INPUT_MODALITIES = ["text", "image", "pdf", "audio"] as const;
+export const SUPPORTED_INPUT_MODALITIES = ["text", "image", "pdf", "audio", "video"] as const;
 
 export type InputModality = (typeof SUPPORTED_INPUT_MODALITIES)[number];
 
@@ -42,7 +42,7 @@ export function downgradeUnsupportedContent(
   constraints: MultimodalConstraints,
 ): void {
   const allowed = new Set<InputModality>(constraints.input);
-  if (allowed.has("image") && allowed.has("pdf") && allowed.has("audio")) return;
+  if (allowed.has("image") && allowed.has("pdf") && allowed.has("audio") && allowed.has("video")) return;
 
   for (const msg of messages) {
     const content = messageContent(msg);
@@ -90,6 +90,9 @@ function mediaBlockToPlaceholder(
   if (block.type === "audio" && !allowed.has("audio")) {
     return `[Audio: ${block.mimeType} — omitted, model does not support audio input]`;
   }
+  if (block.type === "video" && !allowed.has("video")) {
+    return `[Video: ${block.mimeType} — omitted, model does not support video input]`;
+  }
   return undefined;
 }
 
@@ -103,6 +106,8 @@ export function contentBlockToInputModality(block: CanonicalContentBlock): Input
       return "pdf";
     case "audio":
       return "audio";
+    case "video":
+      return "video";
     case "thinking":
     case "tool_call":
     case "tool_result":
