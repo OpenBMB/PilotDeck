@@ -1890,5 +1890,19 @@
     "since": "Recorded since {{date}}. Earlier unrecorded usage is not included.",
     "empty": "No usage yet. Usage will appear here after your first conversation.",
     "updated": "Updated {{time}} · refreshes every 30 seconds"
-  }
+  },
+  "mcpOAuth": {
+  "help": "OAuth authorization uses your system browser on this computer. Save the server configuration first.",
+  "needs-auth": "Not authorized",
+  "pending": "Waiting for browser authorization…",
+  "authorized": "OAuth authorized",
+  "failed": "Authorization failed. Retry.",
+  "cancelled": "Authorization cancelled or expired.",
+  "start": "Prepare OAuth authorization",
+  "open": "Open authorization in system browser",
+  "return": "After signing in, return here. Status updates automatically. If the browser does not open, copy this link into the system browser on this computer.",
+  "disconnect": "Disconnect OAuth",
+  "cancel": "Cancel authorization",
+  "localDisconnect": "Local credentials removed. Remote revocation was not confirmed; revoke access at the provider if needed."
+}
 }
