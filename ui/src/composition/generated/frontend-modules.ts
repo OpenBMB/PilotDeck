@@ -4,7 +4,24 @@ import module1 from '../modules/pilotdeck-skills';
 import module2 from '../modules/pilotdeck-tools';
 import module3 from '../modules/pilotdeck-context';
 import module4 from '../modules/pilotdeck-model';
-import module5 from '../modules/knowledge-core';
+import module5 from '../modules/agent-routing';
+import module6 from '../modules/agent-resident';
+import module7 from '../modules/agent-scheduling';
+import module8 from '../modules/channels-integrations';
+import module9 from '../modules/model-providers';
+import module10 from '../modules/agent-model-selection';
+import module11 from '../modules/tools-search';
+import module12 from '../modules/tools-mcp';
+import module13 from '../modules/context-memory';
+import module14 from '../modules/workspace-office-preview';
+import module15 from '../modules/system-advanced';
+import module16 from '../modules/system-appearance';
+import module17 from '../modules/tools-permissions';
+import module18 from '../modules/system-telemetry';
+import module19 from '../modules/system-updates';
+import module20 from '../modules/host-preferences';
+import module21 from '../modules/chat-preferences';
+import module22 from '../modules/workspace-editor-preferences';
 
 export const generatedFrontendModules = [
   Object.assign({ slot: 'agentLoop' }, module0),
@@ -12,10 +29,31 @@ export const generatedFrontendModules = [
   Object.assign({ slot: 'tools' }, module2),
   Object.assign({ slot: 'context' }, module3),
   Object.assign({ slot: 'modelProvider' }, module4),
-  Object.assign({ slot: 'knowledge' }, module5),
+  module5,
+  module6,
+  module7,
+  module8,
+  module9,
+  module10,
+  module11,
+  module12,
+  module13,
+  module14,
+  module15,
+  module16,
+  module17,
+  module18,
+  module19,
+  module20,
+  module21,
+  module22,
 ] as const;
 
-export const generatedBusinessPaths = [] as const;
+export const generatedBusinessPaths = [
+  "/always-on",
+  "/cron",
+  "/memory"
+] as const;
 
 export const generatedBusinessRoutePaths = [
   "/always-on",
@@ -49,69 +87,65 @@ export const generatedFrontendProfile = {
       "enabled": false
     },
     "knowledge": {
-      "enabled": true,
-      "implementationId": "knowledge-core",
-      "frontendModule": "knowledge-core",
-      "contract": "knowledge-core/v1",
-      "transport": "rest-http-v1",
-      "methods": [
-        "identity",
-        "list_models",
-        "list_spaces",
-        "create_space",
-        "list_bindings",
-        "bind_base",
-        "update_binding",
-        "list_bases",
-        "create_base",
-        "get_base",
-        "update_base",
-        "delete_base",
-        "list_versions",
-        "get_branch",
-        "copy_version",
-        "sync_base",
-        "publish_version",
-        "rollback_version",
-        "update_branch",
-        "list_documents",
-        "get_document",
-        "import_document",
-        "import_okf",
-        "update_document",
-        "delete_document",
-        "list_document_buckets",
-        "update_bucket",
-        "list_bucket_chunks",
-        "list_document_chunks",
-        "update_chunk",
-        "get_job",
-        "list_jobs",
-        "cancel_job",
-        "list_okf_concepts",
-        "get_okf_concept",
-        "get_bucket",
-        "get_chunk",
-        "get_concept",
-        "get_discovery",
-        "upsert_okf_concept",
-        "update_concept",
-        "list_concepts",
-        "upsert_concept",
-        "export_okf",
-        "lint_okf",
-        "list_discoveries",
-        "confirm_discovery",
-        "review_discovery",
-        "reject_discovery",
-        "export_discovery",
-        "publish_discovery",
-        "query",
-        "resolve_citation"
-      ]
+      "enabled": false
     }
   },
   "frontend": {
-    "businessModules": {}
+    "businessModules": {
+      "agent.routing": {
+        "enabled": true
+      },
+      "agent.resident": {
+        "enabled": true
+      },
+      "agent.scheduling": {
+        "enabled": true
+      },
+      "channels.integrations": {
+        "enabled": true
+      },
+      "model.providers": {
+        "enabled": true
+      },
+      "agent.model-selection": {
+        "enabled": true
+      },
+      "tools.search": {
+        "enabled": true
+      },
+      "tools.mcp": {
+        "enabled": true
+      },
+      "context.memory": {
+        "enabled": true
+      },
+      "workspace.office-preview": {
+        "enabled": true
+      },
+      "system.advanced": {
+        "enabled": true
+      },
+      "system.appearance": {
+        "enabled": true
+      },
+      "tools.permissions": {
+        "enabled": true
+      },
+      "system.telemetry": {
+        "enabled": true
+      },
+      "system.updates": {
+        "enabled": true
+      },
+      "host.preferences": {
+        "enabled": true
+      },
+      "chat.preferences": {
+        "enabled": true
+      },
+      "workspace.editor-preferences": {
+        "enabled": true
+      }
+    }
   }
 } as const;

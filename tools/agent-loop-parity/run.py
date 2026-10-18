@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -410,7 +411,21 @@ def adapter_env(scenario: dict[str, Any], mode: str, source: Path, mock: str, ou
         "PARITY_INVOCATION_ID": invocation_id,
     })
     if mode in {"native", "sidecar"}:
-        env["PARITY_RUNTIME_ROOT"] = str(output.parent / ".runtime" / str(scenario["scenarioId"]))
+        # Native and sidecar adapters run sequentially for one scenario. The
+        # gateway adapter removes this runtime root in its finally block after
+        # each invocation, so the next adapter starts with an empty store.
+        # Keep the path stable because it is included in provider-visible
+        # runtime context and therefore affects deterministic token counts.
+        safe_ref = re.sub(r"[^A-Za-z0-9_.-]+", "_", ref)
+        # Keep the visible adapter home paths identical. The deterministic
+        # provider includes cwd in its token accounting. The scenario output
+        # directory already isolates each run, so keep the visible home path
+        # stable and omit invocation UUIDs from provider-visible input.
+        adapter_slot = "x"
+        env["PARITY_RUNTIME_ROOT"] = str(
+            output.parent / ".runtime" / str(scenario["scenarioId"])
+            / f"adapter-{adapter_slot}-{safe_ref}"
+        )
     return env
 
 

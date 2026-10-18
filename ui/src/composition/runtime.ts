@@ -4,9 +4,6 @@ import { generatedFrontendModules, generatedFrontendProfile } from './generated/
 import { slots, type Assembly, type Binding, type CompositionProfile, type Slot } from './contracts';
 import { registerPermissionPanels } from '../components/chat/tools/configs/permissionPanelRegistry';
 import { authenticatedFetch } from '../utils/api';
-import staffdeckSop from './modules/staffdeck-sop';
-import knowledgeCore from './modules/knowledge-core';
-import pilotdeckSop from './modules/pilotdeck-sop';
 
 let activeAssembly: Assembly | null = null;
 
@@ -160,9 +157,11 @@ export type ModuleCompositionState = {
 const staticProfile: CompositionProfile = generatedFrontendProfile as unknown as CompositionProfile;
 
 export function assembleProfile(profile: CompositionProfile, projectBindings = false): Assembly {
-  const catalog = projectBindings ? [...generatedFrontendModules, staffdeckSop, knowledgeCore, pilotdeckSop]
-    .filter((value, index, rows) => rows.findIndex(row => row.id === value.id) === index) : generatedFrontendModules;
-  return assembleFrontend(profile, catalog, resolveFrontendChoices(profile, catalog));
+  // The generated catalog is the build-time composition boundary. Runtime
+  // project bindings may change which selected modules are active, but cannot
+  // reintroduce implementations omitted from this bundle.
+  void projectBindings;
+  return assembleFrontend(profile, generatedFrontendModules, resolveFrontendChoices(profile, generatedFrontendModules));
 }
 
 export function resolveModuleCompositionState(

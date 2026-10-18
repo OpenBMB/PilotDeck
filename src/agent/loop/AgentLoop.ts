@@ -385,6 +385,8 @@ export class AgentLoop {
       sessionId: input.sessionId,
       turnId: input.turnId,
       event: status.event,
+      ...(status.kind ? { kind: status.kind } : {}),
+      ...(status.text ? { text: status.text } : {}),
       detail: status.detail,
     });
     const emitStatus = async (status: AgentStatusMessage): Promise<AgentEvent> => {

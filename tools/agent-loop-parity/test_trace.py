@@ -55,6 +55,15 @@ def subagent_trace(subagent_id: str, message_id: str, turn_id: str, followup_id:
 
 
 class SubagentTraceNormalizationTests(unittest.TestCase):
+    def test_isolated_parity_worktree_home_is_not_semantic(self) -> None:
+        native = {
+            "systemPrompt": "cwd: /tmp/run/.runtime/scenario/native-working-tree-aaa/home",
+        }
+        sidecar = {
+            "systemPrompt": "cwd: /tmp/run/.runtime/scenario/sidecar-working-tree-bbb/home",
+        }
+        self.assertEqual(canonicalize(native), canonicalize(sidecar))
+
     def test_baseline_availability_is_scenario_specific(self) -> None:
         self.assertEqual(
             baseline_not_applicable_reason({"scenarioId": "sidecar_seed_read_state", "suite": "sidecar-production"}),
@@ -928,6 +937,29 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
 
         failed = {"text": f"Continuable subagent {SECOND_SUBAGENT} settled: failed."}
         self.assertNotEqual(canonicalize(left), canonicalize(failed))
+
+    def test_gateway_state_observations_may_move_around_model_events(self) -> None:
+        def event(kind: str, sequence: int, **extra: object) -> dict[str, object]:
+            return {
+                "kind": kind,
+                "scenarioId": "state-order",
+                "q": "state",
+                "sequence": sequence,
+                **extra,
+            }
+
+        budget = event("context.budget", 0, used=10, total=100, state="ok")
+        durable = event("durable.status", 1, event="context_budget", statusKind="status", text="context_budget", agentScope="parent")
+        continued = event("agent.status", 2, event="turn_continued", detail={"reason": "next_turn"})
+        request = event("model.request", 3, agentScope="parent", attempt=1, modelView={"messages": []})
+        response = event("model.response", 4, agentScope="parent", attempt=1, modelView={"content": "done"})
+        left = [budget, durable, request, response, continued]
+        right = [continued, request, response, budget, durable]
+        self.assertEqual(compare_traces(left, right), [])
+
+        changed = dict(right[3])
+        changed["used"] = 11
+        self.assertTrue(compare_traces(left, [*right[:3], changed, right[4]]))
 
     def test_subagent_duration_normalization_preserves_report_semantics(self) -> None:
         def record(text: str, duration_ms: int) -> dict[str, object]:

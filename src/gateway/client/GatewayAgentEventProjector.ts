@@ -373,7 +373,13 @@ function projectAgentEventForTurn(
         detail: { code: event.code, message: event.message, metadata: event.metadata },
       }];
     case "agent_status":
-      return [{ type: "agent_status", event: event.event, detail: event.detail }];
+      return [{
+        type: "agent_status",
+        event: event.event,
+        ...(event.kind ? { kind: event.kind } : {}),
+        ...(event.text ? { text: event.text } : {}),
+        detail: event.detail,
+      }];
     case "turn_continued":
       return [{ type: "agent_status", event: "turn_continued", detail: { reason: event.reason } }];
     case "subagent_started":
