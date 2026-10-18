@@ -411,17 +411,13 @@ def adapter_env(scenario: dict[str, Any], mode: str, source: Path, mock: str, ou
         "PARITY_INVOCATION_ID": invocation_id,
     })
     if mode in {"native", "sidecar"}:
-        # Native and sidecar adapters run sequentially for one scenario. The
-        # gateway adapter removes this runtime root in its finally block after
-        # each invocation, so the next adapter starts with an empty store.
-        # Keep the path stable because it is included in provider-visible
-        # runtime context and therefore affects deterministic token counts.
+        # Native and sidecar adapters run sequentially for one scenario.
         safe_ref = re.sub(r"[^A-Za-z0-9_.-]+", "_", ref)
-        # Keep the visible adapter home paths identical. The deterministic
-        # provider includes cwd in its token accounting. The scenario output
-        # directory already isolates each run, so keep the visible home path
-        # stable and omit invocation UUIDs from provider-visible input.
-        adapter_slot = "x"
+        # Keep each adapter's runtime state isolated even if the other
+        # process times out before its cleanup finally block runs. The trace
+        # canonicalizer removes this harness-only home path before comparing
+        # model-visible requests and budget drift is checked separately.
+        adapter_slot = "a" if mode == "native" else "b"
         env["PARITY_RUNTIME_ROOT"] = str(
             output.parent / ".runtime" / str(scenario["scenarioId"])
             / f"adapter-{adapter_slot}-{safe_ref}"

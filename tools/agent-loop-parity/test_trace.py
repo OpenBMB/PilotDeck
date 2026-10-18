@@ -2,7 +2,13 @@
 from __future__ import annotations
 
 import json
+import sys
 import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from run import adapter_env
 
 from trace import (
     canonicalize,
@@ -55,6 +61,14 @@ def subagent_trace(subagent_id: str, message_id: str, turn_id: str, followup_id:
 
 
 class SubagentTraceNormalizationTests(unittest.TestCase):
+    def test_native_and_sidecar_runtime_roots_are_isolated(self) -> None:
+        scenario = {"scenarioId": "isolation", "q": "isolation"}
+        native = adapter_env(scenario, "native", Path("/tmp/source"), "http://mock", Path("/tmp/out/native.jsonl"), "working-tree", "native-id")
+        sidecar = adapter_env(scenario, "sidecar", Path("/tmp/source"), "http://mock", Path("/tmp/out/sidecar.jsonl"), "working-tree", "sidecar-id")
+        self.assertNotEqual(native["PARITY_RUNTIME_ROOT"], sidecar["PARITY_RUNTIME_ROOT"])
+        self.assertIn("adapter-a-working-tree", native["PARITY_RUNTIME_ROOT"])
+        self.assertIn("adapter-b-working-tree", sidecar["PARITY_RUNTIME_ROOT"])
+
     def test_isolated_parity_worktree_home_is_not_semantic(self) -> None:
         native = {
             "systemPrompt": "cwd: /tmp/run/.runtime/scenario/native-working-tree-aaa/home",
