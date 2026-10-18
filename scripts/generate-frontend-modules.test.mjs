@@ -15,11 +15,33 @@ const native = {
 };
 
 test('generates imports only for selected enabled modules', () => {
-  const source = renderGeneratedEntrypoint(native, '/tmp/generated/frontend-modules.ts');
-  assert.match(source, /pilotdeck-chat/);
-  assert.match(source, /pilotdeck-tools/);
-  assert.doesNotMatch(source, /pilotdeck-skills|staffdeck-sop|staffdeck-knowledge/);
-  assert.match(source, /"skills": \{\n\s+"enabled": false/);
+  const previous = process.env.STAFFDECK_PROJECT_BINDING_ENABLED;
+  try {
+    delete process.env.STAFFDECK_PROJECT_BINDING_ENABLED;
+    const source = renderGeneratedEntrypoint(native, '/tmp/generated/frontend-modules.ts');
+    assert.match(source, /pilotdeck-chat/);
+    assert.match(source, /pilotdeck-tools/);
+    assert.doesNotMatch(source, /pilotdeck-skills|staffdeck-sop|staffdeck-knowledge/);
+    assert.match(source, /"skills": \{\n\s+"enabled": false/);
+  } finally {
+    if (previous === undefined) delete process.env.STAFFDECK_PROJECT_BINDING_ENABLED;
+    else process.env.STAFFDECK_PROJECT_BINDING_ENABLED = previous;
+  }
+});
+
+test('includes project binding adapters only for the explicit binding build', () => {
+  const previous = process.env.STAFFDECK_PROJECT_BINDING_ENABLED;
+  try {
+    process.env.STAFFDECK_PROJECT_BINDING_ENABLED = 'true';
+    const source = renderGeneratedEntrypoint(native, '/tmp/generated/frontend-modules.ts');
+    assert.match(source, /modules\/staffdeck-sop/);
+    assert.match(source, /modules\/knowledge-core/);
+    assert.match(source, /modules\/pilotdeck-sop/);
+    assert.match(source, /generatedProjectBindingFrontendModules = \[/);
+  } finally {
+    if (previous === undefined) delete process.env.STAFFDECK_PROJECT_BINDING_ENABLED;
+    else process.env.STAFFDECK_PROJECT_BINDING_ENABLED = previous;
+  }
 });
 
 test('maps StaffDeck implementations to public frontend modules', () => {

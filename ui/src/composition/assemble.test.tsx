@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { assembleFrontend, defaultFrontendChoice } from './assemble';
-import { assembleProfile } from './runtime';
 import type { FrontendModule, Slot } from './contracts';
 
 describe('frontend assembly', () => {
@@ -29,9 +28,6 @@ describe('frontend assembly', () => {
       const assembly = assembleFrontend({ modules: bindings, frontend: { businessModules: {} } }, modules, choices);
       expect(assembly.selections.map(selection => selection.frontend.id)).toContain('pilotdeck.sop');
       expect(assembly.selections.map(selection => selection.frontend.id)).toContain('knowledge-core');
-      const projectAssembly = assembleProfile({ modules: bindings, frontend: { businessModules: {} } }, true);
-      expect(projectAssembly.selections.map(selection => selection.frontend.id)).toContain('pilotdeck.sop');
-      expect(projectAssembly.selections.map(selection => selection.frontend.id)).toContain('knowledge-core');
     }
   });
 

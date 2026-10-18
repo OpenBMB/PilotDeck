@@ -49,6 +49,8 @@ export const generatedFrontendModules = [
   module22,
 ] as const;
 
+export const generatedProjectBindingFrontendModules = [] as const;
+
 export const generatedBusinessPaths = [
   "/always-on",
   "/cron",

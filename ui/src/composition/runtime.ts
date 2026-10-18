@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { assembleFrontend, resolveFrontendChoices } from './assemble';
-import { generatedFrontendModules, generatedFrontendProfile } from './generated/frontend-modules';
+import { generatedFrontendModules, generatedFrontendProfile, generatedProjectBindingFrontendModules } from './generated/frontend-modules';
 import { slots, type Assembly, type Binding, type CompositionProfile, type Slot } from './contracts';
 import { registerPermissionPanels } from '../components/chat/tools/configs/permissionPanelRegistry';
 import { authenticatedFetch } from '../utils/api';
-import staffdeckSop from './modules/staffdeck-sop';
-import knowledgeCore from './modules/knowledge-core';
-import pilotdeckSop from './modules/pilotdeck-sop';
 
 let activeAssembly: Assembly | null = null;
 
@@ -164,7 +161,7 @@ export function assembleProfile(profile: CompositionProfile, projectBindings = f
   // was built. Keep their public adapters available for that explicit mode;
   // ordinary builds still use only the generated catalog.
   const catalog = projectBindings
-    ? [...generatedFrontendModules, staffdeckSop, knowledgeCore, pilotdeckSop]
+    ? [...generatedFrontendModules, ...generatedProjectBindingFrontendModules]
       .filter((value, index, rows) => rows.findIndex(row => row.id === value.id) === index)
     : generatedFrontendModules;
   return assembleFrontend(profile, catalog, resolveFrontendChoices(profile, catalog));
