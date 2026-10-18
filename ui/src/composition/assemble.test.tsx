@@ -29,8 +29,9 @@ describe('frontend assembly', () => {
       const assembly = assembleFrontend({ modules: bindings, frontend: { businessModules: {} } }, modules, choices);
       expect(assembly.selections.map(selection => selection.frontend.id)).toContain('pilotdeck.sop');
       expect(assembly.selections.map(selection => selection.frontend.id)).toContain('knowledge-core');
-      expect(() => assembleProfile({ modules: bindings, frontend: { businessModules: {} } }, true))
-        .toThrow('Missing frontend for enabled slot: sop');
+      const projectAssembly = assembleProfile({ modules: bindings, frontend: { businessModules: {} } }, true);
+      expect(projectAssembly.selections.map(selection => selection.frontend.id)).toContain('pilotdeck.sop');
+      expect(projectAssembly.selections.map(selection => selection.frontend.id)).toContain('knowledge-core');
     }
   });
 
