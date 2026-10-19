@@ -11,7 +11,10 @@ export type StaffDeckSopContextMode = "new_session" | "inherit";
 
 type SopRuntimeConfigBase = Readonly<{
   hostAdapter?: "pilotdeck" | "staffdeck";
-  localRuntime?: Readonly<{ enabled: boolean; python?: string; knowledgeEnabled?: boolean; versionManagementEnabled?: boolean }>;
+  localRuntime?: Readonly<{ enabled: boolean; python?: string; knowledgeEnabled?: boolean; versionManagementEnabled?: boolean;
+    dataDirectory?: string; maxConcurrency?: number; startupTimeoutMs?: number }>;
+  credentialEnv?: string;
+  approval?: Readonly<{ provider: "disabled" | "pilotdeck" }>;
   endpoint: string;
   definitionsPath: string;
   defaultSopId: string;
@@ -41,8 +44,8 @@ export type StaffDeckSopRuntimeConfig = SopRuntimeConfigBase & Readonly<{
 /** Versioned HTTP boundary between the PilotDeck host and StaffDeck SOP owner. */
 export type ProtocolSopRuntimeConfig = SopRuntimeConfigBase & Readonly<{
   implementationId: string;
-  contract: typeof STAFFDECK_SOP_CONTRACT | "sop.lifecycle/v3";
-  transport: typeof STAFFDECK_SOP_TRANSPORT | "sop-http-v3";
+  contract: typeof STAFFDECK_SOP_CONTRACT | "sop.lifecycle/v3" | "sop.lifecycle/v4";
+  transport: typeof STAFFDECK_SOP_TRANSPORT | "sop-http-v3" | "sop-http-v4";
   manifestPath: string;
 }>;
 

@@ -2160,6 +2160,7 @@ export class InProcessGateway implements Gateway {
         ? ["sdk_session_defaults" as const]
         : []),
       "supported_agents" as const,
+      ...(this.options.sopExecution ? ["sop_execution" as const] : []),
     ] as GatewayServerInfo["capabilities"];
     return {
       mode: "in_process",

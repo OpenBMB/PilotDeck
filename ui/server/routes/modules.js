@@ -174,13 +174,23 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
         return [slot, sanitized];
       }));
       const gateway = await readGatewayCapabilities(getGateway);
+      const unavailable = new Set(unavailableSlots);
+      const sop = config.modules?.sop;
+      if (sop?.enabled === true && sop.contract === 'sop.lifecycle/v4') {
+        try {
+          const response = await fetch(new URL('/healthz', sop.endpoint), { signal: AbortSignal.timeout(1000) });
+          const health = await response.json();
+          modules.sop.ready = response.ok && health.contract === 'sop.lifecycle/v4' && gateway.state === 'ready' && gateway.capabilities.includes('sop_execution');
+        } catch { modules.sop.ready = false; }
+        if (!modules.sop.ready) unavailable.add('sop');
+      }
       return res.json({
         modules,
         projectBindings: process.env.STAFFDECK_PROJECT_BINDING_ENABLED === 'true',
         gatewayCapabilities: gateway.capabilities,
         runtime: {
           gatewayState: gateway.state,
-          unavailableSlots: [...unavailableSlots],
+          unavailableSlots: [...unavailable],
         },
       });
     } catch (error) {

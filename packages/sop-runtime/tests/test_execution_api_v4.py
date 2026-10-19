@@ -13,6 +13,8 @@ class ExecutionApiTests(unittest.TestCase):
             headers = {"authorization": "Bearer host-test", "x-sop-scope": "/project"}
             with TestClient(create_app(path, "host-test")) as client:
                 self.assertEqual(client.get("/healthz").json()["contract"], "sop.lifecycle/v4")
+                self.assertEqual(client.get("/v4/ready").status_code, 401)
+                self.assertEqual(client.get("/v4/ready", headers=headers).json()["status"], "ok")
                 self.assertEqual(client.post("/v4/runs", json={}).status_code, 401)
                 definition = {"schema": "sop.definition/v4", "skill_id": "approval", "version": "1", "start_node_id": "approve",
                               "nodes": [{"node_id": "approve", "type": "approval", "assigneeUserId": "owner"}], "edges": []}

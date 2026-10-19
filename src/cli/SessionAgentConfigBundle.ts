@@ -153,7 +153,8 @@ export class SessionAgentConfigBundle {
       ...(this.options.testAgentConfigOverrides ?? {}),
       maxOutputTokens,
       runtimeContextSurface: runtime.profile.runtimeContextSurface,
-      ...(runtime.snapshot.config.modules?.sop ? { staffDeckSop: runtime.snapshot.config.modules.sop } : {}),
+      ...(runtime.snapshot.config.modules?.sop && !("contract" in runtime.snapshot.config.modules.sop && runtime.snapshot.config.modules.sop.contract === "sop.lifecycle/v4")
+        ? { staffDeckSop: runtime.snapshot.config.modules.sop } : {}),
       ...(runtime.snapshot.config.modules ? {
         agentLoopBinding: runtime.snapshot.config.modules.agentLoop,
         moduleBindings: {

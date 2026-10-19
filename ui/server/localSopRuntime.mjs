@@ -15,6 +15,7 @@ export function readLocalSopConfig(env = process.env, cwd = process.cwd()) {
   const sop = parse(readFileSync(configPath, 'utf8'))?.modules?.sop;
   const local = sop?.localRuntime;
   if (sop?.enabled !== true || local?.enabled !== true) return null;
+  if (sop.contract === 'sop.lifecycle/v4') return null; // Owned by the v4 Gateway lifecycle.
   if (sop.hostAdapter !== 'pilotdeck' || sop.contract !== 'sop.lifecycle/v3'
     || sop.implementationId !== 'portable-sop' || sop.transport !== 'sop-http-v3') {
     throw new Error('localRuntime requires the pilotdeck host and portable-sop lifecycle/v3 binding');

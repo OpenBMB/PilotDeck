@@ -20,6 +20,26 @@ const plainProfile = join(projectRoot, "products/pilotdeck-staffdeck-sop/profile
 const nativeFiveStaffDeckProfile = join(projectRoot, "products/pilotdeck-staffdeck-sop/profiles/native-five-staffdeck.yaml");
 const portableProfile = join(projectRoot, "products/pilotdeck-staffdeck-sop/profiles/portable-sop-v3.yaml");
 
+test('v4 export is self-contained without StaffDeck and does not enable a legacy SOP frontend', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sop-v4-export-'));
+  try {
+    const profile = YAML.parse(readFileSync(join(projectRoot, 'products/pilotdeck-staffdeck-sop/profiles/independent-v4-external.yaml'), 'utf8'));
+    profile.modules.knowledge = { enabled: false };
+    profile.modules.sop.deployment = { mode: 'build' };
+    const profilePath = join(root, 'profile.yaml'), output = join(root, 'output');
+    writeFileSync(profilePath, YAML.stringify(profile));
+    await runExport(profilePath, output, { PILOTDECK_REAL_MODEL_BASE_URL: 'https://example.com/v1', STAFFDECK_ROOT: '/missing/staffdeck' });
+    const compose = YAML.parse(readFileSync(join(output, 'compose.yaml'), 'utf8'));
+    assert.ok(compose.services['sop-runtime'].command.includes('staffdeck_sop_runtime.execution_api_v4:app_factory'));
+    assert.deepEqual(compose.services['sop-runtime'].volumes, ['sop-v4-data:/data']);
+    assert.equal(existsSync(join(output, 'staffdeck')), false);
+    const frontend = readFileSync(join(output, 'pilotdeck/ui/src/composition/generated/frontend-modules.ts'), 'utf8');
+    assert.doesNotMatch(frontend, /import .*modules\/(pilotdeck-sop|staffdeck-sop)/);
+    const config = loadPilotConfig({ configPath: join(output, 'config/pilotdeck.yaml'), env: { PILOTDECK_REAL_MODEL_API_KEY: 'test' } });
+    assert.equal(config.config.modules?.sop && 'contract' in config.config.modules.sop && config.config.modules.sop.contract, 'sop.lifecycle/v4');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("SOP v3 export contains only the portable package and durable definition/state mounts", async () => {
   const root = mkdtempSync(join(tmpdir(), "portable-sop-export-"));
   try {

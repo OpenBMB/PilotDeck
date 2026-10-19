@@ -1,0 +1,51 @@
+schemaVersion: 1
+agent:
+  model: provider1/replace-with-model-id
+model:
+  providers:
+    provider1:
+      protocol: openai
+      url: ${PILOTDECK_REAL_MODEL_BASE_URL}
+      apiKey: ${PILOTDECK_REAL_MODEL_API_KEY}
+      models:
+        replace-with-model-id: { capabilities: { supportsToolUse: true } }
+modules:
+  agentLoop: { enabled: true, provider: pilotdeck }
+  tools: { enabled: true, provider: pilotdeck }
+  context: { enabled: true, provider: pilotdeck }
+  skills: { enabled: true, provider: pilotdeck }
+  modelProvider: { enabled: true, provider: pilotdeck }
+  sop:
+    enabled: true
+    implementationId: portable-sop
+    hostAdapter: pilotdeck
+    contract: sop.lifecycle/v4
+    transport: sop-http-v4
+    endpoint: http://127.0.0.1:18991
+    credentialEnv: SOP_V4_HOST_TOKEN
+    approval: { provider: disabled }
+    timeoutMs: 30000
+    localRuntime:
+      enabled: true
+      python: /absolute/path/to/prepared/venv/bin/python
+      dataDirectory: /absolute/path/to/new/sop-v4-data
+      maxConcurrency: 32
+      startupTimeoutMs: 10000
+  knowledge:
+    enabled: true
+    implementationId: knowledge-core
+    contract: knowledge-core/v1
+    transport: rest-http-v1
+    endpoint: http://127.0.0.1:18891
+    pilotDeckUserId: '1'
+    namespace: local
+    spaceId: local
+    spaces: [{ id: local, name: Local knowledge }]
+    credentialEnv: PILOTDECK_KM_SERVICE_TOKEN
+    capabilitiesCredentialEnv: PILOTDECK_KM_CAPABILITY_TOKEN
+    methods: [identity, list_models, list_spaces, create_space, list_bases, create_base, list_documents, import_document, import_okf, list_document_chunks, get_job, query, resolve_citation]
+    agentMethods: [query, resolve_citation]
+    localRuntime:
+      python: /absolute/path/to/prepared/venv/bin/python
+      dataDirectory: /absolute/path/to/new/km-data
+      configFile: /absolute/path/to/km-configuration.json

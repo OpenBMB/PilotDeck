@@ -93,6 +93,7 @@ export function selectFrontendModules(profile) {
   for (const slot of SLOT_ORDER) {
     const binding = bindings[slot];
     if (binding?.enabled === false) continue;
+    if (slot === 'sop' && binding?.contract === 'sop.lifecycle/v4') continue;
     // External implementations still use the slot's public browser adapter
     // unless the profile explicitly selects a frontend module. The frontend
     // does not need to know the deployment owner's implementation id.

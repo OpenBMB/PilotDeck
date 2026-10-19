@@ -9,10 +9,10 @@ import type { SopNodeExecutor } from "./SopExecutionHost.js";
 export function createSopNodeExecutor(options: {
   createSession(call: SopCall): Promise<AgentHandle>;
   defaultModel(scope: string): { provider: string; model: string };
-  validate?(call: SopCall): void;
+  validate?(call: SopCall): void | Promise<void>;
 }): SopNodeExecutor {
   return async (call, signal) => {
-    options.validate?.(call);
+    await options.validate?.(call);
     const directory = join(call.scope, ".sop-results", call.runId, call.executionId, `${call.id}-${call.attempt}`);
     await mkdir(directory, { recursive: true });
     const materialize = async (value: unknown): Promise<unknown> => {

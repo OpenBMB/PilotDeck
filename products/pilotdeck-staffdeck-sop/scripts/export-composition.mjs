@@ -454,7 +454,7 @@ async function writeDeploymentFiles(output, profile, profilePath, assembly) {
     : '';
   await writeFile(
     join(output, ".env.example"),
-    `PILOTDECK_API_KEY=\nPILOTDECK_REAL_MODEL_API_KEY=\nPILOTDECK_REAL_MODEL_BASE_URL=\n${extraModelCredentials}${needsKnowledgeSecret ? "STAFFDECK_APP_SECRET=change-me\nSTAFFDECK_PYTHON_BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim\n" : ""}${independent.some(row => row.slot === 'knowledge') ? `${deployment.modules.knowledge.credentialEnv}=\n${deployment.modules.knowledge.capabilitiesCredentialEnv}=\n` : ''}${sop?.independent ? 'SOP_RUNTIME_PUBLISH_TOKEN=\n' : ''}PILOTDECK_PORT=3001\n`,
+    `PILOTDECK_API_KEY=\nPILOTDECK_REAL_MODEL_API_KEY=\nPILOTDECK_REAL_MODEL_BASE_URL=\n${extraModelCredentials}${needsKnowledgeSecret ? "STAFFDECK_APP_SECRET=change-me\nSTAFFDECK_PYTHON_BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim\n" : ""}${independent.some(row => row.slot === 'knowledge') ? `${deployment.modules.knowledge.credentialEnv}=\n${deployment.modules.knowledge.capabilitiesCredentialEnv}=\n` : ''}${sop?.independent ? sop.contract === 'sop.lifecycle/v4' ? `${sop.credentialEnv}=\n` : 'SOP_RUNTIME_PUBLISH_TOKEN=\n' : ''}PILOTDECK_PORT=3001\n`,
     "utf8",
   );
   const services = compose(sop, providerNoProxyHosts(profile), externalModules);

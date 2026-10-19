@@ -98,6 +98,7 @@ export class SopAgentLoop implements AgentLoopRunner {
     seedState: AgentLoopSeedState | undefined,
     private readonly options: SopAgentLoopOptions,
   ) {
+    if ("contract" in options.profile && options.profile.contract === "sop.lifecycle/v4") throw new Error("SOP v4 uses the execution host, not the legacy AgentLoop");
     config.stopOnStructuredOutput = true;
     if (options.profile.hostAdapter !== "pilotdeck") assertRequiredSopTools(options.bundle, options.profile.defaultSopId, capabilities.toolExecution.list());
     const runtime = "contract" in options.profile && options.profile.contract === "sop.lifecycle/v3"
@@ -110,8 +111,8 @@ export class SopAgentLoop implements AgentLoopRunner {
             manifestPath: options.profile.manifestPath,
             expectedManifest: {
               implementationId: options.profile.implementationId,
-              contract: options.profile.contract,
-              transport: options.profile.transport,
+              contract: options.profile.contract as "sop.lifecycle/v2" | "sop.lifecycle/v3",
+              transport: options.profile.transport as "sop-http-v2" | "sop-http-v3",
             },
           }
       : {}),

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SopExecutionClient, type SopCall } from "../../src/sop/execution/SopExecutionClient.js";
 import { SopExecutionHost } from "../../src/sop/execution/SopExecutionHost.js";
+import { createSopNodeExecutor } from "../../src/sop/execution/createSopNodeExecutor.js";
 
 test("host retries a lost submit response without executing the leaf twice", async () => {
   let effects = 0, submits = 0;
@@ -63,4 +64,30 @@ test("host shutdown aborts an active leaf and records unknown outcome without re
 test("client rejects unknown execution fields before I/O", async () => {
   const client = new SopExecutionClient("http://unused", "test");
   await assert.rejects(client.call("sop_status", "/project", { runId: "a".repeat(32), contextMode: "inherit" }), /Unknown SOP/);
+});
+
+test("client awaits asynchronous binding validation before creating a run", async () => {
+  const client = new SopExecutionClient("http://unused", "test", async () => {
+    await new Promise(resolve => setTimeout(resolve, 1));
+    throw new Error("SOP tool unavailable");
+  });
+  const paths: string[] = [];
+  client.preflight = async () => {};
+  client.request = async <T>(path: string): Promise<T> => {
+    paths.push(path);
+    return { definitions: [] } as T;
+  };
+  await assert.rejects(client.call("run_sop", "/project", { sopId: "test", version: "1", input: {} }), /SOP tool unavailable/);
+  assert.deepEqual(paths, ["/v4/preflight"]);
+});
+
+test("executor awaits binding validation before creating a node session", async () => {
+  let created = false;
+  const execute = createSopNodeExecutor({
+    async validate() { await Promise.resolve(); throw new Error("binding unavailable"); },
+    async createSession() { created = true; throw new Error("must not execute"); },
+    defaultModel: () => ({ provider: "test", model: "test" }),
+  });
+  await assert.rejects(execute({} as SopCall, new AbortController().signal), /binding unavailable/);
+  assert.equal(created, false);
 });

@@ -1,8 +1,36 @@
 # StaffDeck 解耦 KM / SOP 部署
 
-推荐使用 `native-five-independent.yaml` 导出三个独立服务。PilotDeck 负责 AgentLoop、Tools、Context、模型和会话；Knowledge Core 负责知识数据；SOP runtime 负责定义版本与生命周期。新版不复制 StaffDeck backend。
+新后端推荐使用 `independent-v4-local.yaml` 或 `independent-v4-external.yaml`；`native-five-independent.yaml` 保留 v3 部署。PilotDeck 负责 AgentLoop、Tools、Context、模型和会话；Knowledge Core 负责知识数据；SOP runtime 负责定义版本与生命周期。新版不复制 StaffDeck backend。
 
-新的批量执行、foreach、可配置输入与节点模型后端使用独立 v4 环境，见 [SOP v4 后端部署与接口](./SOP_V4_BACKEND.zh-CN.md)。以下为 KM / SOP v3 部署，不与 v4 共用数据库。
+新的批量执行、foreach、可配置输入与节点模型后端使用独立 v4 环境，见 [SOP v4 后端部署与接口](./SOP_V4_BACKEND.zh-CN.md)。下节说明 v4；其后编号章节保留 KM / SOP v3 部署，不与 v4 共用数据库。
+
+## SOP v4 与独立 KM
+
+复制 `profiles/independent-v4-external.yaml`，设置模型 ID、KM 空间及服务地址；同机 Compose 将两个模块的 `deployment.mode` 改为 `build`，不填 `localRuntime`。外部模式保留 `external`，不打包或管理对应服务。v4 不使用旧管理页面，定义通过 `/v4/definitions` 发布，执行通过 Gateway/SDK 的 `run_sop` 等工具；批量与循环能力见后端文档。
+
+```sh
+export PILOTDECK_REAL_MODEL_BASE_URL=https://model.example.com/v1
+node products/pilotdeck-staffdeck-sop/scripts/export-composition.mjs \
+  --profile /absolute/path/v4-profile.yaml \
+  --knowledge-root /absolute/path/knowledge_core --out /absolute/path/new-v4-export
+cd /absolute/path/new-v4-export
+cp .env.example .env
+chmod 600 .env
+# 填入模型 key、SOP_V4_HOST_TOKEN 和 KM 两个服务凭据。
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+```
+
+SOP v4 采用独立 `sop-v4-data:/data`，数据库 `/data/runtime.sqlite`；KM 仍使用 `knowledge-core-data`。不复用 v3 的 `sop-runtime-data`。无 StaffDeck checkout 也可导出和构建；独立 KM 源码通过 `--knowledge-root` 提供。托管服务连接内部网络，只有 PilotDeck 绑定宿主 loopback。运行期 key/token 与构建期 profile 分离，修改模块需重新导出和构建。
+
+v4 默认关闭审批，不依赖用户库；`approval: { provider: pilotdeck }` 选择 owner 登录适配器，自定义适配器由宿主注入。Compose Web 仍使用 PilotDeck 正常登录，这是宿主功能，不是 Runtime 依赖。`/healthz` 验协议，认证的 `/v4/ready` 验数据库与凭据；`/api/modules/runtime` 应显示 v4 已启用、ready 且无 unavailable slot。还需实际验收入库、真实模型查询、citation 和 SOP 调用 KM。
+
+备份前停止写入，备份 KM、SOP v4、Pilot home 及配置；禁止生产使用 `down -v`。回退到对应 PilotDeck/profile/前端与 Runtime 版本及其原数据目录，不把旧程序指向不兼容的新库。Docker 构建遇本机代理连接拒绝，可在本次 `docker compose build` 显式清空 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 及小写对应 build args；网络或首次镜像下载耗时不计入准备完成后的进程启动基准。
+
+本轮 YAML、审批适配、真实 KM、外部连接、Compose 持久化与十轮启动实测见 [v4 解耦验收](SOP_V4_DECOUPLED_ACCEPTANCE.zh-CN.md)。源码准备/启动分别执行，托管 SOP 与 KM 并行；失败日志明确到组件，清理本次进程。外部模式只验证连接，不接管进程。生产停止使用 `docker compose stop`，需要拆除容器时使用 `down` 并保留卷。
+
+## 旧 v3 部署
 
 | 服务 | 协议 | Compose 内部地址 | 数据卷 |
 | --- | --- | --- | --- |

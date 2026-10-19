@@ -13,8 +13,9 @@ export function independentBinding(slot, value) {
   const knowledge = slot === 'knowledge' && value.contract === 'knowledge-core/v1';
   const sop = slot === 'sop' && value.hostAdapter === 'pilotdeck';
   if (!knowledge && !sop) return undefined;
-  const contract = knowledge ? 'knowledge-core/v1' : 'sop.lifecycle/v3';
-  const transport = knowledge ? 'rest-http-v1' : 'sop-http-v3';
+  const v4 = sop && value.contract === 'sop.lifecycle/v4';
+  const contract = knowledge ? 'knowledge-core/v1' : v4 ? 'sop.lifecycle/v4' : 'sop.lifecycle/v3';
+  const transport = knowledge ? 'rest-http-v1' : v4 ? 'sop-http-v4' : 'sop-http-v3';
   const implementationId = knowledge ? 'knowledge-core' : 'portable-sop';
   if (value.contract !== contract || value.transport !== transport || value.implementationId !== implementationId)
     throw Error(`Independent ${slot} requires ${implementationId}, ${contract}, ${transport}`);
@@ -24,7 +25,7 @@ export function independentBinding(slot, value) {
     throw Error('Knowledge spaces must have unique IDs');
   const mode = value.deployment?.mode ?? 'build';
   if (sop && value.definitionsPath) throw Error('Native SOP exports publish definitions through management; remove definitionsPath');
-  if (sop && (typeof value.defaultSopId !== 'string' || !value.defaultSopId.trim()))
+  if (sop && !v4 && (typeof value.defaultSopId !== 'string' || !value.defaultSopId.trim()))
     throw Error('Native SOP requires defaultSopId; publish that SOP before starting a default run');
   if (value.bearer || value.apiKey) throw Error(`Use environment credentials for independent ${slot}`);
   if (!['build', 'image', 'external'].includes(mode)) throw Error(`Invalid independent ${slot} deployment mode`);
@@ -36,7 +37,7 @@ export function independentBinding(slot, value) {
   if (mode === 'image' && !value.deployment.image) throw Error(`${slot} image is required`);
   if (sop && value.localRuntime) {
     for (const key of Object.keys(value.localRuntime)) {
-      if (!['enabled', 'python', 'knowledgeEnabled', 'versionManagementEnabled'].includes(key))
+      if (!(v4 ? ['enabled', 'python', 'dataDirectory', 'maxConcurrency', 'startupTimeoutMs'] : ['enabled', 'python', 'knowledgeEnabled', 'versionManagementEnabled']).includes(key))
         throw Error(`Cannot export sop.localRuntime.${key}`);
     }
     for (const key of ['knowledgeEnabled', 'versionManagementEnabled']) {
@@ -111,7 +112,7 @@ export function rewriteIndependent(deployment) {
       value.credentialEnv ??= 'PILOTDECK_KM_SERVICE_TOKEN';
       value.capabilitiesCredentialEnv ??= 'PILOTDECK_KM_CAPABILITY_TOKEN';
     } else {
-      value.frontendModule = 'pilotdeck.sop';
+      if (binding.contract !== 'sop.lifecycle/v4') value.frontendModule = 'pilotdeck.sop';
       delete value.management;
     }
   }
@@ -121,6 +122,7 @@ export function configureIndependentCompose(compose, profile, bindings) {
   const independent = bindings.filter(row => row?.independent);
   if (!independent.length) return;
   const pd = compose.services.pilotdeck;
+  pd.healthcheck = { test: ['CMD', 'node', '-e', "Promise.all([3001,18789].map(port=>fetch('http://127.0.0.1:'+port+'/health').then(r=>{if(!r.ok)throw Error('not ready')}))).catch(()=>process.exit(1))"], interval: '2s', timeout: '3s', retries: 30 };
   pd.ports = ['127.0.0.1:${PILOTDECK_PORT:-3001}:3001'];
   pd.environment.PILOTDECK_CONFIG_PATH = '/root/.pilotdeck/pilotdeck.yaml';
   pd.environment.PILOTDECK_DISABLE_LOCAL_AUTH = '0';
@@ -152,6 +154,20 @@ export function configureIndependentCompose(compose, profile, bindings) {
       service.healthcheck.test = ['CMD', 'python', '-c', `from pathlib import Path; from urllib.request import urlopen; assert Path('/tmp/km-initialized').exists(); urlopen('http://127.0.0.1:${binding.deployment.port}/health/ready')`];
       compose.volumes['knowledge-core-data'] = {};
     } else {
+      if (binding.contract === 'sop.lifecycle/v4') {
+        const key = binding.credentialEnv;
+        if (!key || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw Error('SOP v4 requires credentialEnv');
+        pd.environment[key] = '${' + key + ':?set ' + key + ' in .env}';
+        if (!managed) continue;
+        const service = compose.services['sop-runtime'];
+        if (service.build) service.build.args = { PYTHON_BASE_IMAGE: '${SOP_PYTHON_BASE_IMAGE:-python:3.12-slim}' };
+        service.command = ['python', '-m', 'uvicorn', 'staffdeck_sop_runtime.execution_api_v4:app_factory', '--factory', '--host', '0.0.0.0', '--port', String(binding.deployment.port)];
+        service.environment = { SOP_V4_DB: '/data/runtime.sqlite', SOP_V4_HOST_TOKEN: pd.environment[key],
+          SOP_V4_MAX_CONCURRENCY: String(profile.modules.sop.localRuntime?.maxConcurrency ?? 32) };
+        service.volumes = ['sop-v4-data:/data'];
+        compose.volumes['sop-v4-data'] = {};
+        continue;
+      }
       pd.environment.SOP_RUNTIME_PUBLISH_TOKEN = '${SOP_RUNTIME_PUBLISH_TOKEN:?set SOP_RUNTIME_PUBLISH_TOKEN in .env}';
       if (!managed) continue;
       const service = compose.services['sop-runtime'];

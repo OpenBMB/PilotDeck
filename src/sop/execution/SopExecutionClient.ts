@@ -10,14 +10,15 @@ export type SopCall = {
 
 export class SopExecutionClient {
   constructor(readonly endpoint: string, private readonly token: string,
-    private readonly validateBindings?: (scope: string, definitions: SopJson[], model?: SopJson) => void) {}
+    private readonly validateBindings?: (scope: string, definitions: SopJson[], model?: SopJson) => void | Promise<void>,
+    private readonly timeoutMs = 30_000) {}
 
   async request<T = SopJson>(path: string, scope?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const response = await fetch(new URL(path, this.endpoint), {
       method: body === undefined ? "GET" : "POST",
       headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json", ...(scope ? { "x-sop-scope": scope } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: signal ?? AbortSignal.timeout(30_000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
     });
     const value = await response.json() as { error?: { code: string; message: string } };
     if (!response.ok) throw Object.assign(new Error(value.error?.message ?? `SOP HTTP ${response.status}`), { code: value.error?.code ?? "SOP_HTTP_ERROR" });
@@ -27,6 +28,7 @@ export class SopExecutionClient {
   async preflight(): Promise<void> {
     const manifest = await this.request("/healthz");
     if (manifest.contract !== "sop.lifecycle/v4") throw new Error("SOP execution requires sop.lifecycle/v4");
+    await this.request("/v4/ready");
   }
 
   async call(operation: string, scope: string, input: SopJson, signal?: AbortSignal): Promise<SopJson> {
@@ -46,7 +48,7 @@ export class SopExecutionClient {
       await this.preflight();
       const check = await this.request<{ definitions: SopJson[] }>("/v4/preflight", undefined,
         { sopId: body.sopId, version: body.version }, signal);
-      this.validateBindings?.(scope, check.definitions, body.model as SopJson | undefined);
+      await this.validateBindings?.(scope, check.definitions, body.model as SopJson | undefined);
       return this.request("/v4/runs", scope, body, signal);
     }
     if (typeof runId !== "string" || !/^[a-f0-9]{32}$/.test(runId)) throw new Error("A valid runId is required");

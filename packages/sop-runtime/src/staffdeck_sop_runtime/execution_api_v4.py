@@ -53,6 +53,12 @@ def create_app(path, token, max_concurrency=32):
             store.put(SopDefinition.from_value(data))
         return {"accepted": True}
 
+    @app.get("/v4/ready")
+    def ready():
+        with store.transaction():
+            store._connection.execute("SELECT 1").fetchone()
+        return {"status": "ok", "contract": "sop.lifecycle/v4"}
+
     @app.post("/v4/runs")
     def start(data: dict, x_sop_scope: str = Header()):
         return service.start(x_sop_scope, data)
