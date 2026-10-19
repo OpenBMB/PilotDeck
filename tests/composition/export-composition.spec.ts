@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
+import { loadPilotConfig } from '../../src/pilot/config/loadPilotConfig.js';
 
 const execFile = promisify(execFileCallback);
 const projectRoot = process.cwd();
@@ -43,6 +44,89 @@ async function runExport(profile: string, output: string, extraEnv: Record<strin
     maxBuffer: 2 * 1024 * 1024,
   });
 }
+
+test('independent services export with isolated data, credentials, frontend and no StaffDeck backend', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'independent-export-'));
+  try {
+    const source = join(root, 'km');
+    for (const file of ['pyproject.toml', 'setup.py', 'uv.lock', 'ui/package-lock.json', 'src/knowledge_core/cli.py']) {
+      mkdirSync(join(source, file, '..'), { recursive: true });
+      writeFileSync(join(source, file), 'fixture');
+    }
+    const profile = YAML.parse(readFileSync(join(projectRoot, 'products/pilotdeck-staffdeck-sop/profiles/native-five-independent.yaml'), 'utf8'));
+    const profilePath = join(root, 'profile.yaml');
+    const exportProfile = async (name: string, knowledge = true) => {
+      writeFileSync(profilePath, YAML.stringify(profile));
+      const output = join(root, name);
+      await execFile(process.execPath, [exporter, '--profile', profilePath, '--out', output,
+        ...(knowledge ? ['--knowledge-root', source] : [])], {cwd:projectRoot,
+        env:{...process.env,PILOTDECK_REAL_MODEL_BASE_URL:'https://model.example.test/v1'}});
+      return {output, compose:YAML.parse(readFileSync(join(output,'compose.yaml'),'utf8')),
+        config:YAML.parse(readFileSync(join(output,'config/pilotdeck.yaml'),'utf8'))};
+    };
+    const full = await exportProfile('full');
+    assert.deepEqual(Object.keys(full.compose.services).sort(), ['knowledge-runtime','pilotdeck','sop-runtime']);
+    assert.equal(existsSync(join(full.output,'staffdeck')),false);
+    assert.equal(existsSync(join(full.output,'modules/sop/src/staffdeck_sop_runtime/api.py')),true);
+    assert.equal(existsSync(join(full.output,'pilotdeck/apps/desktop/src/lightAppearance.ts')),true);
+    assert.equal(existsSync(join(full.output,'pilotdeck/apps/desktop/src/interfacePreferences.ts')),true);
+    assert.equal(full.config.modules.knowledge.endpoint,'http://knowledge-runtime:8787');
+    assert.equal(full.config.modules.sop.endpoint,'http://sop-runtime:8091');
+    assert.equal(full.compose.services.pilotdeck.environment.PILOTDECK_DISABLE_LOCAL_AUTH,'0');
+    assert.match(readFileSync(join(full.output,'README.md'),'utf8'),/--knowledge-root \/path\/to\/knowledge_core/);
+    assert.equal(full.config.modules.sop.localRuntime,undefined);
+    const snapshot=loadPilotConfig({configPath:join(full.output,'config/pilotdeck.yaml'),env:{
+      ...process.env,PILOT_HOME:join(root,'runtime-home'),PILOTDECK_REAL_MODEL_API_KEY:'test-key',
+      PILOTDECK_KM_SERVICE_TOKEN:'test-km',PILOTDECK_KM_CAPABILITY_TOKEN:'test-capability'}});
+    assert.equal(snapshot.config.modules?.sop?.defaultSopId,'compose_approval');
+    assert.equal(full.compose.services.pilotdeck.build.args.PILOTDECK_BUILD_PROFILE,
+      'products/pilotdeck-staffdeck-sop/profiles/exported.yaml');
+    assert.match(readFileSync(join(full.output,'modules/knowledge/Dockerfile'),'utf8'),/npm ci/);
+    assert.doesNotMatch(readFileSync(join(full.output,'pilotdeck/products/pilotdeck-staffdeck-sop/profiles/exported.yaml'),'utf8'),/apiKey|REAL_MODEL/);
+    assert.deepEqual(Object.keys(full.compose.volumes).sort(),['knowledge-core-data','pilotdeck-home','sop-runtime-data']);
+    assert.match(readFileSync(join(full.output,'pilotdeck/products/pilotdeck-staffdeck-sop/profiles/exported.yaml'),'utf8'),/pilotdeck.sop/);
+    profile.modules.sop.enabled=false;
+    assert.equal((await exportProfile('km-only')).compose.services['sop-runtime'],undefined);
+    profile.modules.sop.enabled=true;
+    profile.modules.knowledge.enabled=false;
+    assert.equal((await exportProfile('sop-only',false)).compose.services['knowledge-runtime'],undefined);
+    profile.modules.knowledge.enabled=true;
+    profile.modules.knowledge.deployment={mode:'external'};
+    profile.modules.sop.deployment={mode:'external'};
+    const external=await exportProfile('external',false);
+    assert.deepEqual(Object.keys(external.compose.services),['pilotdeck']);
+    profile.modules.knowledge.deployment={mode:'image',image:'knowledge:test'};
+    assert.equal((await exportProfile('image',false)).compose.services['knowledge-runtime'].image,'knowledge:test');
+    profile.modules.knowledge.deployment={mode:'build'};
+    await assert.rejects(exportProfile('missing',false),/knowledge-root/);
+    profile.modules.knowledge.localRuntime={python:'/host/python',modelConfig:'/host/secret.json'};
+    await assert.rejects(exportProfile('unsupported-path'),/modelConfig/);
+    delete profile.modules.knowledge.localRuntime.modelConfig;
+    profile.modules.knowledge.localRuntime.dataDirectory='/host/data';
+    const translated=await exportProfile('translated');
+    assert.equal(translated.config.modules.knowledge.localRuntime,undefined);
+    assert.doesNotMatch(readFileSync(join(translated.output,'config/pilotdeck.yaml'),'utf8'),/\/host\//);
+    const configFile=join(root,'km-config.json');
+    writeFileSync(configFile,JSON.stringify({preset:'full',modules:{publication:false}}));
+    profile.modules.knowledge.localRuntime.configFile=configFile;
+    const configured=await exportProfile('configured');
+    assert.equal(JSON.parse(readFileSync(join(configured.output,'config/knowledge.json'),'utf8')).modules.authentication,true);
+    assert.doesNotMatch(readFileSync(join(configured.output,'config/pilotdeck.yaml'),'utf8'),new RegExp(root));
+    writeFileSync(configFile,JSON.stringify({preset:'minimal'}));
+    await assert.rejects(exportProfile('disabled-spaces'),/requires the spaces module/);
+    writeFileSync(configFile,JSON.stringify({preset:'full',modules:{publication:false}}));
+    profile.modules.knowledge.bearer='inline-secret';
+    await assert.rejects(exportProfile('inline-secret'),/environment credentials/);
+    delete profile.modules.knowledge.bearer;
+    profile.modules.sop.deployment={mode:'build'};
+    profile.modules.sop.localRuntime={enabled:true,python:'/host/python',knowledgeEnabled:false};
+    const sopLocal=await exportProfile('sop-local');
+    assert.equal(sopLocal.compose.services['sop-runtime'].environment.SOP_KNOWLEDGE_ENABLED,'false');
+    assert.equal(sopLocal.config.modules.sop.localRuntime,undefined);
+    profile.modules.sop.localRuntime.dataDirectory='/host/sop';
+    await assert.rejects(exportProfile('sop-path'),/sop.localRuntime.dataDirectory/);
+  } finally {rmSync(root,{recursive:true,force:true});}
+});
 
 test("export-composition bundles StaffDeck SOP and Knowledge runtimes for native-five profile", async () => {
   const root = mkdtempSync(join(tmpdir(), "pilotdeck-composition-export-native-five-"));

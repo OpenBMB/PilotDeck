@@ -1,0 +1,97 @@
+schemaVersion: 1
+agent:
+  model: provider1/replace-with-model-id
+model:
+  providers:
+    provider1:
+      protocol: openai
+      url: ${PILOTDECK_REAL_MODEL_BASE_URL}
+      apiKey: ${PILOTDECK_REAL_MODEL_API_KEY}
+      models:
+        replace-with-model-id:
+          capabilities:
+            supportsToolUse: true
+modules:
+  agentLoop: { enabled: true, provider: pilotdeck }
+  skills: { enabled: true, provider: pilotdeck }
+  tools: { enabled: true, provider: pilotdeck }
+  context: { enabled: true, provider: pilotdeck }
+  modelProvider: { enabled: true, provider: pilotdeck }
+  knowledge:
+    enabled: true
+    implementationId: knowledge-core
+    frontendModule: knowledge-core
+    contract: knowledge-core/v1
+    transport: rest-http-v1
+    endpoint: http://knowledge-runtime:8787
+    pilotDeckUserId: '1'
+    namespace: local
+    spaceId: local
+    spaces: [{ id: local, name: Local knowledge }]
+    credentialEnv: PILOTDECK_KM_SERVICE_TOKEN
+    capabilitiesCredentialEnv: PILOTDECK_KM_CAPABILITY_TOKEN
+    agentMethods: [query]
+    methods:
+      - identity
+      - list_models
+      - list_spaces
+      - create_space
+      - list_bindings
+      - bind_base
+      - update_binding
+      - list_bases
+      - create_base
+      - get_base
+      - update_base
+      - delete_base
+      - list_versions
+      - get_branch
+      - copy_version
+      - sync_base
+      - publish_version
+      - rollback_version
+      - update_branch
+      - list_documents
+      - get_document
+      - import_document
+      - import_okf
+      - update_document
+      - delete_document
+      - list_document_buckets
+      - update_bucket
+      - list_bucket_chunks
+      - list_document_chunks
+      - update_chunk
+      - get_job
+      - list_jobs
+      - cancel_job
+      - list_okf_concepts
+      - get_okf_concept
+      - get_bucket
+      - get_chunk
+      - get_concept
+      - get_discovery
+      - upsert_okf_concept
+      - update_concept
+      - list_concepts
+      - upsert_concept
+      - export_okf
+      - lint_okf
+      - list_discoveries
+      - confirm_discovery
+      - review_discovery
+      - reject_discovery
+      - export_discovery
+      - publish_discovery
+      - query
+      - resolve_citation
+  sop:
+    enabled: true
+    implementationId: portable-sop
+    hostAdapter: pilotdeck
+    defaultSopId: compose_approval
+    contract: sop.lifecycle/v3
+    transport: sop-http-v3
+    endpoint: http://sop-runtime:8091
+    manifestPath: /healthz
+    timeoutMs: 30000
