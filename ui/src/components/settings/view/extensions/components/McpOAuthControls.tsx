@@ -34,7 +34,10 @@ export default function McpOAuthControls({ scope, name, projectPath, onComplete 
           await request('complete');
           if (!stopped) { setUrl(''); completeRef.current(); }
         }
-        if (!stopped) setStatus(data.status);
+        if (!stopped) {
+          setStatus(data.status);
+          if (data.status !== 'pending') setUrl('');
+        }
       } catch (err) { if (!stopped) setError((err as Error).message); }
       finally { inFlight = false; }
     };
@@ -60,11 +63,11 @@ export default function McpOAuthControls({ scope, name, projectPath, onComplete 
       <p role="status">{t(`mcpOAuth.${status}`, { defaultValue: status })}</p>
       {error && <p role="alert">{error}</p>}
       {status === 'authorized'
-        ? <button type="button" disabled={busy} onClick={() => void action('disconnect')}>{t('mcpOAuth.disconnect')}</button>
+        ? <button className="button secondary compact" type="button" disabled={busy} onClick={() => void action('disconnect')}>{t('mcpOAuth.disconnect')}</button>
         : status === 'pending'
-          ? <button type="button" disabled={busy} onClick={() => void action('cancel')}>{t('mcpOAuth.cancel')}</button>
-          : <button type="button" disabled={busy} onClick={() => void action('start')}>{t('mcpOAuth.start')}</button>}
-      {url && <p><a href={url} target="_blank" rel="noopener noreferrer">{t('mcpOAuth.open')}</a><br />{t('mcpOAuth.return')}</p>}
+          ? <button className="button secondary compact" type="button" disabled={busy} onClick={() => void action('cancel')}>{t('mcpOAuth.cancel')}</button>
+          : <button className="button primary compact" type="button" disabled={busy} onClick={() => void action('start')}>{t('mcpOAuth.start')}</button>}
+      {url && status === 'pending' && <p><a className="button primary compact" href={url} target="_blank" rel="noopener noreferrer">{t('mcpOAuth.open')}</a><br />{t('mcpOAuth.return')}</p>}
     </div>
   </section>;
 }

@@ -28,3 +28,21 @@ it('offers a real browser link and polls completion without window.open', async 
   expect(request.mock.calls.some(([url]) => url.endsWith('/complete'))).toBe(true);
   opened.mockRestore();
 });
+
+it('removes the expired authorization link and offers a new authorization', async () => {
+  let expired = false;
+  let started = false;
+  request.mockImplementation(async (url: string) => {
+    if (url.endsWith('/start')) started = true;
+    return { ok: true, json: async () => url.endsWith('/start')
+      ? { status: 'pending', authorizationUrl: 'https://auth.example.test/authorize' }
+      : { status: expired ? 'cancelled' : started ? 'pending' : 'needs-auth' } };
+  });
+  render(<McpOAuthControls scope="global" name="test" onComplete={vi.fn()} />);
+  await waitFor(() => expect(request).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: 'mcpOAuth.start' }));
+  await screen.findByRole('link');
+  expired = true;
+  await waitFor(() => expect(screen.queryByRole('link')).toBeNull(), { timeout: 4000 });
+  expect(screen.getByRole('button', { name: 'mcpOAuth.start' })).toBeTruthy();
+});
