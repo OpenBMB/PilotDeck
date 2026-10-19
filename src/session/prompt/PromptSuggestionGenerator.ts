@@ -48,7 +48,6 @@ export function createPromptSuggestionGenerator(
           systemPrompt: PROMPT_SUGGESTION_SYSTEM_PROMPT,
           messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
           maxOutputTokens: 160,
-          temperature: 0.2,
           metadata: {
             purpose: "prompt_suggestion_generation",
             sessionId,
