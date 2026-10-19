@@ -59,6 +59,9 @@ export function parseModulesConfig(
     }
   }
   const sop = parseSopModule(raw.sop, pilotHome, diagnostics, env);
+  if (isRecord(raw.sop) && raw.sop.enabled === false && env.PILOTDECK_SOP_V4_ENDPOINT) {
+    fatal(diagnostics, "SOP_V4_CONFIG_CONFLICT", "Disabled modules.sop conflicts with PILOTDECK_SOP_V4_ENDPOINT.", "modules.sop");
+  }
   return {
     ...(core.agentLoop ? { agentLoop: core.agentLoop } : {}),
     ...(core.skills ? { skills: core.skills } : {}),
@@ -321,7 +324,7 @@ function parseSopModule(
     );
   }
   warnUnknownKeys(value, [
-    "enabled", "provider", "implementationId", "contract", "transport", "manifestPath", "hostAdapter", "localRuntime",
+    "enabled", "provider", "implementationId", "contract", "transport", "manifestPath", "hostAdapter", "localRuntime", "credentialEnv", "approval",
     "endpoint", "definitionsPath", "defaultSopId", "discoveryEndpoint", "discoveryAgentId",
     "discoveryApiKey", "discoveryPath", "discoveryTimeoutMs", "timeoutMs", "contextMode", "deployment", "frontendModule", "capabilityBindings", "runtimeSopScope",
   ], path, diagnostics);
@@ -329,6 +332,9 @@ function parseSopModule(
   if (value.enabled !== true) {
     fatal(diagnostics, "SOP_MODULE_ENABLED_INVALID", "modules.sop.enabled must be a boolean.", `${path}.enabled`);
     return undefined;
+  }
+  if (value.contract === "sop.lifecycle/v4" || value.transport === "sop-http-v4") {
+    return parseSopV4(value, pilotHome, diagnostics);
   }
   const hasProtocolBinding = value.implementationId !== undefined || value.contract !== undefined
     || value.transport !== undefined || value.manifestPath !== undefined;
@@ -486,6 +492,48 @@ function parseSopModule(
     manifestPath,
     ...(frontendModule ? { frontendModule } : {}),
   };
+}
+
+function parseSopV4(value: Record<string, unknown>, pilotHome: string, diagnostics: PilotConfigDiagnostic[]): SopRuntimeConfig | undefined {
+  const path = "modules.sop";
+  const reject = (message: string) => { fatal(diagnostics, "SOP_V4_CONFIG_INVALID", message, path); return undefined; };
+  const allowed = ["enabled", "implementationId", "contract", "transport", "hostAdapter", "endpoint", "manifestPath",
+    "credentialEnv", "timeoutMs", "approval", "localRuntime", "deployment"];
+  if (Object.keys(value).some(key => !allowed.includes(key))) return reject("Unknown or legacy SOP v4 configuration field");
+  if (value.contract !== "sop.lifecycle/v4" || value.transport !== "sop-http-v4" || value.implementationId !== "portable-sop"
+    || (value.hostAdapter !== undefined && value.hostAdapter !== "pilotdeck")) return reject("SOP v4 requires portable-sop, sop-http-v4 and the pilotdeck host");
+  const endpoint = nonEmptyText(value.endpoint), credentialEnv = nonEmptyText(value.credentialEnv);
+  if (!endpoint || !isHttpUrl(endpoint)) return reject("SOP v4 requires an HTTP(S) endpoint");
+  if (!credentialEnv || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(credentialEnv)) return reject("SOP v4 requires a credentialEnv name");
+  if (value.manifestPath !== undefined && value.manifestPath !== "/healthz") return reject("SOP v4 manifestPath must be /healthz");
+  const timeoutMs = optionalPositiveInteger(value.timeoutMs);
+  if (value.timeoutMs !== undefined && timeoutMs === undefined) return reject("SOP v4 timeoutMs must be positive");
+  const approval = value.approval ?? { provider: "disabled" };
+  if (!isRecord(approval) || Object.keys(approval).some(key => key !== "provider")
+    || !["disabled", "pilotdeck"].includes(String(approval.provider))) return reject("Invalid SOP v4 approval provider");
+  let localRuntime;
+  if (value.localRuntime !== undefined) {
+    const local = value.localRuntime;
+    if (!isRecord(local) || typeof local.enabled !== "boolean"
+      || Object.keys(local).some(key => !["enabled", "python", "dataDirectory", "maxConcurrency", "startupTimeoutMs"].includes(key))) return reject("Invalid SOP v4 localRuntime");
+    for (const key of ["python", "dataDirectory"]) if (local[key] !== undefined && !nonEmptyText(local[key])) return reject(`Invalid localRuntime.${key}`);
+    for (const key of ["maxConcurrency", "startupTimeoutMs"]) if (local[key] !== undefined && optionalPositiveInteger(local[key]) === undefined) return reject(`Invalid localRuntime.${key}`);
+    if (local.enabled) {
+      const url = new URL(endpoint);
+      if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port || url.pathname !== "/" || url.search || url.hash || url.username || url.password)
+        return reject("Managed SOP v4 requires http://127.0.0.1:<port>");
+      if (!nonEmptyText(local.python)) return reject("Managed SOP v4 requires a prepared Python executable");
+    }
+    localRuntime = { enabled: local.enabled, ...(local.python ? { python: String(local.python) } : {}),
+      dataDirectory: resolve(pilotHome, String(local.dataDirectory ?? "sop-v4")), maxConcurrency: Number(local.maxConcurrency ?? 32),
+      startupTimeoutMs: Number(local.startupTimeoutMs ?? 10000) };
+  }
+  const deployment = parseDeployment(value.deployment, path, diagnostics);
+  return { hostAdapter: "pilotdeck", implementationId: "portable-sop", contract: "sop.lifecycle/v4", transport: "sop-http-v4",
+    endpoint, credentialEnv, manifestPath: "/healthz", approval: { provider: approval.provider as "disabled" | "pilotdeck" },
+    // These legacy fields are never consumed by the v4 execution host.
+    definitionsPath: "", defaultSopId: "", stateRoot: join(pilotHome, "sop-v4"),
+    ...(timeoutMs ? { timeoutMs } : {}), ...(localRuntime ? { localRuntime } : {}), ...(deployment ? { deployment } : {}) };
 }
 
 function parseSopContextMode(value: unknown): "new_session" | "inherit" | undefined {

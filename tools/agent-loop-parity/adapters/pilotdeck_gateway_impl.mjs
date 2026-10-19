@@ -340,19 +340,29 @@ function createTools() {
         void post("/control/cancel", { runKey }).catch(() => undefined);
       };
       context.abortSignal?.addEventListener("abort", forwardCancellation, { once: true });
-      const result = await post("/tools/execute", {
-        scenarioId: scenario.scenarioId,
-        q: scenario.q,
-        name,
-        arguments: input,
-        permissionAllowed: true,
-        delays: scenario.delays,
-        toolDelays: scenario.toolDelays,
-        faults: scenario.faults,
-        runKey,
-      }, context.abortSignal).finally(() => {
+      let result;
+      try {
+        result = await post("/tools/execute", {
+          scenarioId: scenario.scenarioId,
+          q: scenario.q,
+          name,
+          arguments: input,
+          permissionAllowed: true,
+          delays: scenario.delays,
+          toolDelays: scenario.toolDelays,
+          faults: scenario.faults,
+          runKey,
+        }, context.abortSignal);
+      } catch (error) {
+        if (!context.abortSignal?.aborted) throw error;
+        result = {
+          type: "error",
+          error: { code: "CANCELLED", message: "Deterministic tool cancellation.", retryable: false },
+          data: { sideEffectCount: 0 },
+        };
+      } finally {
         context.abortSignal?.removeEventListener("abort", forwardCancellation);
-      });
+      }
       push("tool.finish", { name, toolCallId, concurrencySafe, success: result.type === "success", error: result.error, sideEffectCount: result.data?.sideEffectCount ?? 0 });
       push("tool.result", { result: { ...result, toolCallId }, toolCallId, concurrencySafe, sideEffectCount: result.data?.sideEffectCount ?? 0 });
       if (result.type === "error") {

@@ -1,4 +1,5 @@
 import type { SessionConfigOverride } from "../always-on/runtime/SessionConfigOverrides.js";
+import { AgentLoop } from "../agent/loop/AgentLoop.js";
 import {
   createAgentSessionWithStorageAsync,
   type AgentLoopRuntimeFactory,
@@ -154,7 +155,11 @@ export class ProjectSessionFactory<Runtime extends ProjectSessionFactoryRuntime>
           : undefined,
         inputProcessor: prepared.inputProcessor,
         collectFileArtifacts: this.options.shouldCollectFileArtifacts(prepared.runtime),
-        agentLoopFactory: this.options.agentLoopFactory,
+        agentLoopFactory: context.channelKey === "sop-v4" ? input => {
+          const { staffDeckSop: _sop, ...base } = input.config;
+          const config = { ...base, stopOnStructuredOutput: true };
+          return this.options.agentLoopFactory?.({ ...input, config }) ?? new AgentLoop(config, input.capabilities, input.seedState);
+        } : this.options.agentLoopFactory,
         __agentLoopFactory: this.options.testAgentLoopFactory,
       });
       return resumed.handle;
@@ -198,7 +203,11 @@ export class ProjectSessionFactory<Runtime extends ProjectSessionFactoryRuntime>
           : undefined,
         inputProcessor: prepared.inputProcessor,
         collectFileArtifacts: this.options.shouldCollectFileArtifacts(prepared.runtime),
-        agentLoopFactory: this.options.agentLoopFactory,
+        agentLoopFactory: context.channelKey === "sop-v4" ? input => {
+          const { staffDeckSop: _sop, ...base } = input.config;
+          const config = { ...base, stopOnStructuredOutput: true };
+          return this.options.agentLoopFactory?.({ ...input, config }) ?? new AgentLoop(config, input.capabilities, input.seedState);
+        } : this.options.agentLoopFactory,
         __agentLoopFactory: this.options.testAgentLoopFactory,
       });
       return handle;
@@ -295,6 +304,15 @@ export class ProjectSessionFactory<Runtime extends ProjectSessionFactoryRuntime>
       collectFileArtifacts: this.options.shouldCollectFileArtifacts(runtime),
       onDiagnostic: this.options.onDiagnostic,
     }).compose();
+    if (context.channelKey === "sop-v4" && prepared.baseDependencies.router) {
+      const router = prepared.baseDependencies.router;
+      prepared.baseDependencies = { ...prepared.baseDependencies, router: {
+        ...router,
+        execute: (decision, request, execution) => router.execute(decision, request, { ...execution,
+          fallbackModels: [], managedModelPolicy: { allow: [`${decision.provider}/${decision.model}`], deny: [] },
+        }),
+      } };
+    }
     if (prepared.sessionExecution && this.options.registerSessionExecution) {
       try {
         const unregister = this.options.registerSessionExecution(context.sessionKey, prepared.sessionExecution);

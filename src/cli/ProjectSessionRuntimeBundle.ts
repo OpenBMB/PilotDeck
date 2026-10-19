@@ -79,6 +79,7 @@ import { SessionFileHistoryBundle } from "./SessionFileHistoryBundle.js";
 import { SessionPlanTodoBundle } from "./SessionPlanTodoBundle.js";
 import { SessionGoalBundle } from "./SessionGoalBundle.js";
 import { createKnowledgeAgentTools } from '../composition/knowledgeAgentTools.js';
+import { createRuntimeModulePorts } from '../composition/runtimePorts.js';
 import {
   SessionSubagentContinuationBundle,
   type SessionSubagentContinuationRuntime,
@@ -333,12 +334,13 @@ export class ProjectSessionRuntimeBundle {
         }
         sessionTools.register(tool);
       }
+      const externalTools = createRuntimeModulePorts({ tools: runtime.snapshot.config.modules?.tools }, context.sessionKey).tools?.list() ?? [];
       const policyBlockedTools = blockedToolNames({
         organization: this.options.organizationToolPolicy,
         managed: this.options.sdkSessionConfig?.managedTools,
         sandbox: this.options.sdkSessionConfig?.sandbox,
         explicit: context,
-        tools: sessionTools.listAll(),
+        tools: [...sessionTools.listAll(), ...externalTools],
       });
       for (const name of policyBlockedTools) sessionTools.unregister(name);
       const deferredTools = collectDeferredTools(
@@ -411,6 +413,12 @@ export class ProjectSessionRuntimeBundle {
         env: this.options.env,
         testAgentConfigOverrides: this.options.testAgentConfigOverrides,
       }).compose();
+      const toolBinding = agentConfig.moduleBindings?.tools;
+      if (isExternalModuleBinding(toolBinding)) {
+        agentConfig.moduleBindings = { ...agentConfig.moduleBindings, tools: {
+          ...toolBinding, tools: toolBinding.tools?.filter(tool => !policyBlockedTools.has(tool.name)),
+        } };
+      }
       // The project registry is shared across sessions. Shadow only this
       // session's agent definition so SDK and organization depth caps cannot
       // leak into another session's tool description.
@@ -421,6 +429,24 @@ export class ProjectSessionRuntimeBundle {
       });
       if (describedSessionAgent) {
         sessionTools.registerOrReplace(describedSessionAgent);
+      }
+      if (context.channelKey === "sop-v4") {
+        const output = sessionTools.get("structured_output");
+        if (output) sessionTools.registerOrReplace({ ...output, inputSchema: {
+          type: "object", required: ["value"], additionalProperties: false,
+          properties: { value: { type: "object", required: ["status", "reply"], additionalProperties: false,
+            properties: { status: { type: "string", enum: ["completed", "failed"] }, reply: { type: "string" },
+              handoffText: { type: "string" }, slotUpdates: { type: "object", additionalProperties: true },
+              output: {}, error: { type: "object", additionalProperties: true }, nextNodeId: { type: "string" },
+              foreach: { type: "object", required: ["concurrency"], additionalProperties: false,
+                properties: { concurrency: { type: "integer", minimum: 1 }, items: { type: "array", items: {
+                  type: "object", required: ["itemKey", "input"], additionalProperties: false,
+                  properties: { itemKey: { type: "string" }, input: { type: "object", additionalProperties: true } },
+                } } },
+              },
+            },
+          } },
+        } });
       }
       const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
         router: runtime.router,

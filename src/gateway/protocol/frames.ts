@@ -45,6 +45,7 @@ export type WsGatewayMethod =
   | "list_sessions"
   | "resume_session"
   | "sop_status"
+  | "sop_execution"
   | "sop_resume"
   | "new_session"
   | "close_session"

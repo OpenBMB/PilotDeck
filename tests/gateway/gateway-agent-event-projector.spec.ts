@@ -59,6 +59,21 @@ test("GatewayAgentEventProjector preserves durable assistant text without stream
   assert.deepEqual(projected, [{ type: "assistant_text_delta", text: "Durable SOP reply", runId: "run-1" }]);
 });
 
+test("GatewayAgentEventProjector preserves user-visible status severity and text", () => {
+  const projector = new GatewayAgentEventProjector();
+  assert.deepEqual(projector.project({
+    runId: "run-1",
+    event: {
+      type: "agent_status", sessionId: "session-1", turnId: "turn-1",
+      event: "max_budget_reached", kind: "error", text: "Budget exhausted.",
+      detail: { code: "max_budget_reached" },
+    },
+  }), [{
+    type: "agent_status", runId: "run-1", event: "max_budget_reached",
+    kind: "error", text: "Budget exhausted.", detail: { code: "max_budget_reached" },
+  }]);
+});
+
 test("InProcessGateway consumes its injected Agent event projector", async () => {
   const inputs: Array<{ type: string; runId: string }> = [];
   const projector: GatewayAgentEventProjectorPort = {

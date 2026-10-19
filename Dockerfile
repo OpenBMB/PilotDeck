@@ -19,8 +19,6 @@ COPY src/context/memory/edgeclaw-memory-core/ src/context/memory/edgeclaw-memory
 COPY ui/package.json ui/
 COPY packages/sdk/package.json packages/sdk/
 COPY ui/scripts/ ui/scripts/
-# The frontend build resolves its safe default composition profile here.
-COPY products/pilotdeck-staffdeck-sop/profiles/ products/pilotdeck-staffdeck-sop/profiles/
 
 # Install only the Web/Gateway workspaces. Shared appearance sources do not
 # require the Electron workspace or desktop dependencies in this image.
@@ -45,7 +43,11 @@ RUN cd src/context/memory/edgeclaw-memory-core && npm run build
 RUN npm run build
 
 # Build UI frontend (Vite → ui/dist/)
-RUN cd ui && npm run build
+COPY products/pilotdeck-staffdeck-sop/profiles/ products/pilotdeck-staffdeck-sop/profiles/
+ARG PILOTDECK_BUILD_PROFILE=products/pilotdeck-staffdeck-sop/profiles/native.yaml
+ARG PILOTDECK_DISABLE_LOCAL_AUTH=1
+RUN PILOTDECK_CONFIG_PATH=/build/${PILOTDECK_BUILD_PROFILE} \
+    PILOTDECK_DISABLE_LOCAL_AUTH=${PILOTDECK_DISABLE_LOCAL_AUTH} npm --prefix ui run build
 
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────

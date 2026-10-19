@@ -1,4 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { SopExecutionClient } from "../sop/execution/SopExecutionClient.js";
+import { SopExecutionHost } from "../sop/execution/SopExecutionHost.js";
+import { createSopNodeExecutor } from "../sop/execution/createSopNodeExecutor.js";
+import { createSopExecutionTools } from "../sop/execution/sopExecutionTools.js";
+import { SopInputCapture } from "../sop/execution/SopInputCapture.js";
+import { createOwnerSopApprovalAuthority, type SopApprovalAuthority } from "../sop/execution/SopApprovalAuthority.js";
+import { startLocalSopV4 } from "../sop/execution/localSopV4.js";
 import { projectBindingEnvironment, projectForStaffDeckPrincipal } from '../pilot/staffdeck/projectBinding.js';
 import {
   readFile as readFileAsync,
@@ -139,6 +146,7 @@ import {
 import { createSkillManagementPort, isDisabledModuleBinding, isExternalModuleBinding } from "../composition/index.js";
 import { createRuntimeHostCapabilityProvider } from "../composition/publicHostRuntimeAdapter.js";
 import { createNativeSopAuthorityReader } from "../composition/nativeSopAuthority.js";
+import { createKnowledgeAgentTools } from "../composition/knowledgeAgentTools.js";
 import { createSopCapabilityAuthorityPort } from "../composition/sopCapabilityAuthority.js";
 import type { PublicHostCapabilityProvider } from "../composition/nativeHostCapabilityProvider.js";
 import { createPublicApprovalBridge, type PublicApprovalBridge, type PublicApprovalSessionResolver } from "../composition/publicApprovalBridge.js";
@@ -180,6 +188,7 @@ export type CreateLocalGatewayOptions = {
   /** Read-only skills shipped with this PilotDeck build. Auto-discovered when omitted. */
   builtinSkillsRoot?: string;
   env?: Record<string, string | undefined>;
+  sopApprovalAuthority?: SopApprovalAuthority;
   /** Original session authority must provide the verified cross-host binding; no external-ID inference. */
   resolveStaffDeckApprovalSession?: PublicApprovalSessionResolver;
   /** Host-injected provider request/response audit sink. */
@@ -567,6 +576,7 @@ export function resolveBrowserUseOutputDir(input: {
 }
 
 export type CreateLocalGatewayResult = {
+  ready: Promise<void>;
   gateway: Gateway;
   sopControl: StaffDeckSopControlPlane;
   configStore: PilotConfigStore;
@@ -724,6 +734,42 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     },
   });
   const sessionExecutions = new Map<string, SessionExecutionHandle>();
+  const configStore = createPilotConfigStoreSync({ projectRoot, env });
+  const sopBinding = configStore.getSnapshot().config.modules?.sop;
+  const v4Binding = sopBinding && "contract" in sopBinding && sopBinding.contract === "sop.lifecycle/v4" ? sopBinding : undefined;
+  const endpoint = v4Binding?.endpoint ?? env.PILOTDECK_SOP_V4_ENDPOINT;
+  const token = v4Binding ? env[v4Binding.credentialEnv!] : env.SOP_V4_HOST_TOKEN;
+  if (env.PILOTDECK_SOP_V4_ENDPOINT && ((v4Binding && new URL(v4Binding.endpoint).href !== new URL(env.PILOTDECK_SOP_V4_ENDPOINT).href)
+    || (sopBinding && !v4Binding))) throw new Error("SOP v4 environment conflicts with modules.sop");
+  if (v4Binding && env.SOP_V4_HOST_TOKEN && env.SOP_V4_HOST_TOKEN !== token) throw new Error("SOP v4 credential environment conflict");
+  if (endpoint && !token) throw new Error("SOP v4 host credential is required");
+  const sopApprovalAuthority = options.sopApprovalAuthority ?? ((v4Binding?.approval?.provider === "pilotdeck" || (!v4Binding && endpoint))
+    ? createOwnerSopApprovalAuthority({ databasePath: env.DATABASE_PATH || joinPath(pilotHome, "auth.db"), jwtSecret: env.JWT_SECRET }) : undefined);
+  const sopExecutionClient = endpoint
+    ? new SopExecutionClient(endpoint, token ?? "", async (scope, definitions, model) => {
+      for (const definition of definitions) for (const node of definition.nodes as import("../sop/execution/SopExecutionClient.js").SopJson[]) {
+        await validateSopBinding(scope, node, model);
+      }
+    }, v4Binding?.timeoutMs) : undefined;
+  async function validateSopBinding(scope: string, node: import("../sop/execution/SopExecutionClient.js").SopJson, fallback?: import("../sop/execution/SopExecutionClient.js").SopJson): Promise<void> {
+    if (node.type === "approval" && !sopApprovalAuthority) throw new Error("SOP_APPROVAL_UNAVAILABLE: configure a host approval authority");
+    const runtime = registry.resolve(scope);
+    const selection = (node.model ?? fallback ?? runtime.snapshot.config.agent.model) as { provider: string; model: string };
+    registry.assertSdkModelAllowed("sop-v4-preflight", selection, scope);
+    runtime.model.getCapabilities(selection.provider, selection.model);
+    const modules = runtime.snapshot.config.modules;
+    const requestedTools = ["structured_output", ...(node.tools as string[] ?? [])];
+    const knowledgeTools = requestedTools.some(tool => tool.startsWith("knowledge_")) && isExternalModuleBinding(modules?.knowledge)
+      ? await createKnowledgeAgentTools(modules.knowledge) : [];
+    for (const tool of requestedTools) {
+      if (tool === "read_skill" && isDisabledModuleBinding(modules?.skills)) throw new Error(`SOP tool unavailable: ${tool}`);
+      const externalTool = isExternalModuleBinding(modules?.tools) && modules.tools.tools?.some(entry => entry.name === tool);
+      const knowledgeTool = knowledgeTools.some(entry => entry.name === tool);
+      if (!runtime.tools.has(tool) && !externalTool && !knowledgeTool) throw new Error(`SOP tool unavailable: ${tool}`);
+    }
+  }
+  const sopInputCapture = new SopInputCapture(pilotHome);
+  let sopExecutionHost: SopExecutionHost | undefined;
   registry = new ProjectRuntimeRegistry({
     registerSessionExecution: (sessionKey, handle) => {
       sessionExecutions.set(sessionKey, handle);
@@ -738,7 +784,8 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     elicitationTimeoutMs,
     now,
     subagentIdFactory: options.__testSubagentIdFactory,
-    extraTools: options.extraTools,
+    extraTools: [...(options.extraTools ?? []), ...(sopExecutionClient ? createSopExecutionTools(sopExecutionClient,
+      async sessionId => ({ ...await sopInputCapture.get(sessionId), history: router?.snapshotSession(sessionId)?.messages ?? [] })) : [])],
     organizationToolPolicy: organizationPolicy?.tools,
     organizationPolicy,
     sessionOverrides,
@@ -774,6 +821,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       const tenantId = projectEnv.STAFFDECK_COPY_TENANT_ID, agentId = projectEnv.STAFFDECK_COPY_TARGET_AGENT_ID;
       const pilotDeckUserId = env.STAFFDECK_COPY_PILOTDECK_USER_ID;
       const sop = runtime.snapshot.config.modules?.sop;
+      if (sop && 'contract' in sop && sop.contract === 'sop.lifecycle/v4') return undefined;
       if (sop?.hostAdapter === 'pilotdeck') {
         const ownerId = readNativeInstallationOwner(env.DATABASE_PATH || joinPath(pilotHome, "auth.db"));
         return ownerId ? { hostAdapter: 'pilotdeck' as const, ownerId, projectKey: runtime.projectRoot,
@@ -802,7 +850,6 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     defaultRuntime.snapshot.config.gateway?.memoryDiagnostics,
   );
 
-  const configStore = createPilotConfigStoreSync({ projectRoot, env });
   const stopConfigWatching = configStore.startWatching();
   bootResources.ownConfigWatcher(stopConfigWatching);
   const stopExtensionWatching = extensionWatchManager.start();
@@ -935,7 +982,10 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   const turnTelemetryContextResolver = new GatewayTurnTelemetryContextResolver();
   const manualCompactionCoordinator = new GatewayManualCompactionCoordinator({ router });
   const sopControl = new StaffDeckSopControlPlane(
-    (requestedProjectKey) => registry.resolve(requestedProjectKey).snapshot.config.modules?.sop,
+    (requestedProjectKey) => {
+      const sop = registry.resolve(requestedProjectKey).snapshot.config.modules?.sop;
+      return sop && 'contract' in sop && sop.contract === 'sop.lifecycle/v4' ? undefined : sop;
+    },
   );
   const sessionAdmission = async (projectKey: string, sessionKey: string) => {
     const storage = registry.createPersistentSessionStorage(projectKey, sessionKey);
@@ -1061,6 +1111,22 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     : undefined;
   let boundServer: { broadcastNotification(name: string, payload?: unknown): void } | undefined;
   const gateway = new InProcessGateway(router, {
+    ...(sopExecutionClient ? {
+      sopInputCapture: input => sopInputCapture.prepare({ ...input, projectRoot: input.projectRoot ?? fallbackProjectRoot }),
+      sopExecution: async (input: import("../gateway/protocol/types.js").GatewaySopExecutionInput) => {
+        const scope = resolve(input.projectKey ?? fallbackProjectRoot);
+        if (input.operation === "sop_resume_execution") {
+          if (Object.hasOwn(input.input, "subjectUserId")) throw new Error("Approval subject must be authenticated by host");
+          const authorization = input.approverAuthorization;
+          if (!authorization?.startsWith("Bearer ")) throw new Error("Approval bearer required");
+          if (!sopApprovalAuthority) throw new Error("SOP_APPROVAL_UNAVAILABLE");
+          const subject = await sopApprovalAuthority.authenticate({ bearer: authorization.slice(7), projectKey: scope });
+          if (!subject.subjectId) throw new Error("SOP_APPROVAL_SUBJECT_INVALID");
+          return sopExecutionClient.call(input.operation, scope, { ...input.input, subjectUserId: subject.subjectId });
+        }
+        return sopExecutionClient.call(input.operation, scope, input.input);
+      },
+    } : {}),
     invocationLogSink,
     storageConfigVersion: invocationStorageConfig?.storageConfigVersion,
     runRegistry,
@@ -1548,15 +1614,37 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   // build a `GatewayElicitationChannel` against this gateway's bus +
   // emit-sink (B1).
   registry.setGateway(gateway);
+  let managedSop: Awaited<ReturnType<typeof startLocalSopV4>> | undefined;
+  let ready = Promise.resolve();
+  if (sopExecutionClient) {
+    sopExecutionHost = new SopExecutionHost(sopExecutionClient, createSopNodeExecutor({
+      validate: call => validateSopBinding(call.scope, call.node, call.model),
+      createSession: call => registry.createSession({
+        sessionKey: `sop-v4:${call.runId}:${call.id}:${call.attempt}`, projectKey: call.scope, channelKey: "sop-v4",
+        allowedTools: ["structured_output", ...(call.node.tools ?? [])],
+      }),
+      defaultModel: scope => registry.resolve(scope).snapshot.config.agent.model,
+    }), error => console.warn("SOP v4 host:", error instanceof Error ? error.message : String(error)));
+    ready = (async () => {
+      if (v4Binding?.localRuntime?.enabled && env.PILOTDECK_SOP_MANAGED_EXTERNALLY !== "1") {
+        managedSop = await startLocalSopV4({ endpoint: v4Binding.endpoint, token: token!, env,
+          python: v4Binding.localRuntime.python!, dataDirectory: v4Binding.localRuntime.dataDirectory!,
+          maxConcurrency: v4Binding.localRuntime.maxConcurrency, startupTimeoutMs: v4Binding.localRuntime.startupTimeoutMs });
+      }
+      await sopExecutionHost!.start();
+    })();
+    void ready.catch(error => console.warn("SOP v4 preflight failed:", error instanceof Error ? error.message : String(error)));
+  }
   const lifecycle = bootResources.commit({ gateway });
   return {
+    ready,
     gateway,
     sopControl,
     configStore,
     registry,
     sessionDataPlane,
     telemetryObservers,
-    dispose: () => lifecycle.dispose(),
+    dispose: async () => { await ready.catch(() => {}); await sopExecutionHost?.dispose(); await managedSop?.stop(); await lifecycle.dispose(); },
     bindServer: (server) => {
       boundServer = server;
       runtimeRefresh.bindServer(server);

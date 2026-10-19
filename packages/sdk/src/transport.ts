@@ -170,7 +170,7 @@ export class GatewayTransport {
   request(method: string, params: unknown): Promise<unknown> {
     const id = randomUUID();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new PilotDeckError({ code: "timeout", message: `Gateway request timed out: ${method}`, requestId: id, retryable: true })); }, this.options.requestTimeoutMs ?? 30_000);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new PilotDeckError({ code: "timeout", message: `Gateway request timed out: ${method}`, requestId: id, retryable: true })); }, method === "sop_execution" ? Math.max(75_000, this.options.requestTimeoutMs ?? 30_000) : this.options.requestTimeoutMs ?? 30_000);
       this.pending.set(id, { resolve, reject, timer });
       try { this.send({ type: "request", id, method, params }); }
       catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error instanceof Error ? error : new Error(String(error))); }

@@ -28,7 +28,7 @@ const moduleOwnership = {
   'pilotdeck.context': ['ui/src/composition/modules/pilotdeck-context.tsx'],
   'pilotdeck.model': ['ui/src/composition/modules/pilotdeck-model.tsx'],
   'staffdeck.sop': ['ui/src/composition/modules/staffdeck-sop.tsx'],
-  'staffdeck.knowledge': ['ui/src/composition/modules/staffdeck-knowledge.tsx'],
+  'staffdeck.knowledge': ['ui/src/composition/modules/knowledge-core.tsx'],
   'fixture.knowledge-search': ['ui/src/composition/modules/fixture-knowledge-search.tsx'],
   'agent.routing': ['ui/src/composition/modules/agent-routing.tsx'],
   'agent.resident': ['ui/src/composition/modules/agent-resident.tsx'],
@@ -55,21 +55,13 @@ const moduleOwnership = {
 // slot is disabled.
 const staffdeckVendorSources = [
   'ui/src/composition/modules/staffdeck/StaffDeckLocaleBoundary.tsx',
-  'ui/src/composition/modules/staffdeck/clients.ts',
   'ui/src/composition/modules/staffdeck/staffdeck-source-translations.json',
   'ui/src/composition/modules/staffdeck/vendor/DistillPage.tsx',
-  'ui/src/composition/modules/staffdeck/vendor/DistillPageHost.tsx',
   'ui/src/composition/modules/staffdeck/vendor/FormalSopApprovalInbox.tsx',
-  'ui/src/composition/modules/staffdeck/vendor/KnowledgeGraphCanvas.css',
-  'ui/src/composition/modules/staffdeck/vendor/KnowledgeGraphCanvas.tsx',
-  'ui/src/composition/modules/staffdeck/vendor/KnowledgePage.tsx',
-  'ui/src/composition/modules/staffdeck/vendor/KnowledgePageHost.tsx',
   'ui/src/composition/modules/staffdeck/vendor/SkillsPage.tsx',
-  'ui/src/composition/modules/staffdeck/vendor/SkillsPageHost.tsx',
   'ui/src/composition/modules/staffdeck/vendor/SopVersionDetailDialog.tsx',
   'ui/src/composition/modules/staffdeck/vendor/distillFailure.ts',
   'ui/src/composition/modules/staffdeck/vendor/distillPageStyles.ts',
-  'ui/src/composition/modules/staffdeck/vendor/knowledge-host-adapter.tsx',
   'ui/src/composition/modules/staffdeck/vendor/skillFlowModel.ts',
   'ui/src/composition/modules/staffdeck/vendor/skills-host-adapter.tsx',
 ];
@@ -139,7 +131,7 @@ try {
     for (const [id, marker] of Object.entries(implementationMarkers)) {
       const expected = selectedImports.some((item) => item.includes(id.replace('.', '-')))
         || (id === 'staffdeck.sop' && selectedImports.some((item) => item.includes('staffdeck-sop')))
-        || (id === 'staffdeck.knowledge' && selectedImports.some((item) => item.includes('staffdeck-knowledge')))
+        || (id === 'staffdeck.knowledge' && selectedImports.some((item) => item.includes('knowledge-core')))
         || (id === 'fixture.knowledge-search' && selectedImports.some((item) => item.includes('fixture-knowledge-search')));
       if (!expected && emittedSource.includes(marker)) {
         throw new Error(`${name} emits the disabled or replaced implementation ${id}.`);

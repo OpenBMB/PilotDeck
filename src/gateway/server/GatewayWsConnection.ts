@@ -332,6 +332,9 @@ export class GatewayWsConnection {
       case "sop_status":
         if (!this.options.gateway.sopStatus) throw Object.assign(new Error("sop_status is unavailable."), { code: "CAPABILITY_UNAVAILABLE" });
         return this.options.gateway.sopStatus(frame.params as never);
+      case "sop_execution":
+        if (!this.options.gateway.sopExecution) throw Object.assign(new Error("SOP execution unavailable"), { code: "CAPABILITY_UNAVAILABLE" });
+        return this.options.gateway.sopExecution(frame.params as never);
       case "sop_resume":
         if (!this.options.gateway.resumeSop) throw Object.assign(new Error("sop_resume is unavailable."), { code: "CAPABILITY_UNAVAILABLE" });
         return this.options.gateway.resumeSop(frame.params as never);

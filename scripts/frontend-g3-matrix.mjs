@@ -133,8 +133,8 @@ for (const state of states) {
   else assert.doesNotMatch(source, /modules\/tools-permissions/);
   if (state.expectedSlots.includes('sop')) assert.match(source, /staffdeck-sop/);
   else assert.doesNotMatch(source, /staffdeck-sop/);
-  if (state.expectedSlots.includes('knowledge')) assert.match(source, /staffdeck-knowledge/);
-  else assert.doesNotMatch(source, /staffdeck-knowledge/);
+  if (state.expectedSlots.includes('knowledge')) assert.match(source, /knowledge-core/);
+  else assert.doesNotMatch(source, /knowledge-core/);
   for (const item of selected) {
     const expected = expectedNetworkBySlot[item.slot];
     assert.ok(expected?.every((method) => (item.binding.methods || expected).includes(method)), `${state.id}: ${item.slot} network capability`);

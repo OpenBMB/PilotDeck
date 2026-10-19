@@ -103,7 +103,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     const initialAutomation = automation.getInitialGatewayOptions();
 
     const {
-      gateway, configStore, dispose: disposeGateway,
+      gateway, configStore, dispose: disposeGateway, ready: gatewayReady,
       bindServer, isProjectBusy, updateSubsystems, getPublicHostCapabilities, getPublicApprovals,
     } = createLocalGateway({
       projectRoot,
@@ -133,9 +133,13 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
 
     await bootstrap.run(async () => {
       if (env.PILOTDECK_KM_MANAGED_BY_WEB !== '1') {
-        knowledge = await startLocalKnowledgeRuntime(snapshot.config.modules?.knowledge, { env, signal: knowledgeAbort.signal,
-          onExit: error => { console.error('[knowledge]', error.message); process.emit('SIGTERM'); },
-        });
+        const results = await Promise.allSettled([gatewayReady, (async () => {
+          knowledge = await startLocalKnowledgeRuntime(snapshot.config.modules?.knowledge, { env, signal: knowledgeAbort.signal,
+            onExit: error => { console.error('[knowledge]', error.message); process.emit('SIGTERM'); } });
+        })()]);
+        for (const result of results) if (result.status === 'rejected') throw result.reason;
+      } else {
+        await gatewayReady;
       }
       automation.attach({
         agentGateway: gateway,

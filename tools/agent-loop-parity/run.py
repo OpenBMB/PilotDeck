@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -410,7 +411,17 @@ def adapter_env(scenario: dict[str, Any], mode: str, source: Path, mock: str, ou
         "PARITY_INVOCATION_ID": invocation_id,
     })
     if mode in {"native", "sidecar"}:
-        env["PARITY_RUNTIME_ROOT"] = str(output.parent / ".runtime" / str(scenario["scenarioId"]))
+        # Native and sidecar adapters run sequentially for one scenario.
+        safe_ref = re.sub(r"[^A-Za-z0-9_.-]+", "_", ref)
+        # Keep each adapter's runtime state isolated even if the other
+        # process times out before its cleanup finally block runs. The trace
+        # canonicalizer removes this harness-only home path before comparing
+        # model-visible requests and budget drift is checked separately.
+        adapter_slot = "a" if mode == "native" else "b"
+        env["PARITY_RUNTIME_ROOT"] = str(
+            output.parent / ".runtime" / str(scenario["scenarioId"])
+            / f"adapter-{adapter_slot}-{safe_ref}"
+        )
     return env
 
 

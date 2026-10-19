@@ -2,7 +2,13 @@
 from __future__ import annotations
 
 import json
+import sys
 import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from run import adapter_env
 
 from trace import (
     canonicalize,
@@ -55,6 +61,23 @@ def subagent_trace(subagent_id: str, message_id: str, turn_id: str, followup_id:
 
 
 class SubagentTraceNormalizationTests(unittest.TestCase):
+    def test_native_and_sidecar_runtime_roots_are_isolated(self) -> None:
+        scenario = {"scenarioId": "isolation", "q": "isolation"}
+        native = adapter_env(scenario, "native", Path("/tmp/source"), "http://mock", Path("/tmp/out/native.jsonl"), "working-tree", "native-id")
+        sidecar = adapter_env(scenario, "sidecar", Path("/tmp/source"), "http://mock", Path("/tmp/out/sidecar.jsonl"), "working-tree", "sidecar-id")
+        self.assertNotEqual(native["PARITY_RUNTIME_ROOT"], sidecar["PARITY_RUNTIME_ROOT"])
+        self.assertIn("adapter-a-working-tree", native["PARITY_RUNTIME_ROOT"])
+        self.assertIn("adapter-b-working-tree", sidecar["PARITY_RUNTIME_ROOT"])
+
+    def test_isolated_parity_worktree_home_is_not_semantic(self) -> None:
+        native = {
+            "systemPrompt": "cwd: /tmp/run/.runtime/scenario/native-working-tree-aaa/home",
+        }
+        sidecar = {
+            "systemPrompt": "cwd: /tmp/run/.runtime/scenario/sidecar-working-tree-bbb/home",
+        }
+        self.assertEqual(canonicalize(native), canonicalize(sidecar))
+
     def test_baseline_availability_is_scenario_specific(self) -> None:
         self.assertEqual(
             baseline_not_applicable_reason({"scenarioId": "sidecar_seed_read_state", "suite": "sidecar-production"}),
@@ -614,6 +637,29 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
         right = [{"kind": "context.budget", "used": 20, "total": 100, "ratio": 0.2, "state": "ok"}]
         self.assertTrue(compare_traces(left, right))
 
+    def test_local_estimates_cannot_hide_constant_budget_regressions(self) -> None:
+        left = [{
+            "kind": "context.budget", "used": 10, "displayUsed": 10,
+            "budgetUsed": 10, "total": 100, "effectiveTotal": 90, "ratio": 10 / 90,
+            "breakdown": {"source": "local_estimate", "messageTokens": 10},
+        }]
+        for field in ("used", "displayUsed", "budgetUsed", "total", "effectiveTotal", "ratio", "breakdown"):
+            right = json.loads(json.dumps(left))
+            if field == "breakdown":
+                right[0][field]["messageTokens"] = 20
+            else:
+                right[0][field] += 1
+            for compare in (compare_trace_details, compare_continuable_trace_details):
+                with self.subTest(field=field, comparator=compare.__name__):
+                    self.assertTrue(compare(left, right).semantic)
+
+    def test_control_request_cannot_move_after_its_response(self) -> None:
+        request = {"kind": "model.request", "agentScope": "parent", "modelView": {
+            "messages": [{"role": "user", "content": "Todo list updated"}],
+        }}
+        response = {"kind": "model.response", "agentScope": "parent", "modelView": {"content": "done"}}
+        self.assertTrue(compare_trace_details([request, response], [response, request]).semantic)
+
     def test_each_visible_durable_event_requires_its_own_prior_write(self) -> None:
         good = [
             {"kind": "durable.status", "event": "turn_timeout"},
@@ -928,6 +974,29 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
 
         failed = {"text": f"Continuable subagent {SECOND_SUBAGENT} settled: failed."}
         self.assertNotEqual(canonicalize(left), canonicalize(failed))
+
+    def test_gateway_state_observations_may_move_around_model_events(self) -> None:
+        def event(kind: str, sequence: int, **extra: object) -> dict[str, object]:
+            return {
+                "kind": kind,
+                "scenarioId": "state-order",
+                "q": "state",
+                "sequence": sequence,
+                **extra,
+            }
+
+        budget = event("context.budget", 0, used=10, total=100, state="ok")
+        durable = event("durable.status", 1, event="context_budget", statusKind="status", text="context_budget", agentScope="parent")
+        continued = event("agent.status", 2, event="turn_continued", detail={"reason": "next_turn"})
+        request = event("model.request", 3, agentScope="parent", attempt=1, modelView={"messages": []})
+        response = event("model.response", 4, agentScope="parent", attempt=1, modelView={"content": "done"})
+        left = [budget, durable, request, response, continued]
+        right = [continued, request, response, budget, durable]
+        self.assertEqual(compare_traces(left, right), [])
+
+        changed = dict(right[3])
+        changed["used"] = 11
+        self.assertTrue(compare_traces(left, [*right[:3], changed, right[4]]))
 
     def test_subagent_duration_normalization_preserves_report_semantics(self) -> None:
         def record(text: str, duration_ms: int) -> dict[str, object]:

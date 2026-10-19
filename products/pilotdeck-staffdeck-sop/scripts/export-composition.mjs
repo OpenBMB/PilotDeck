@@ -6,9 +6,79 @@ import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { renderGeneratedEntrypoint } from "../../../scripts/generate-frontend-modules.mjs";
 import { resolveFrontendProfile } from "../../../scripts/frontend-profile.mjs";
+import { independentBinding, independentModelCredentialEnvs, prepareIndependent, rewriteIndependent, configureIndependentCompose } from './independent-services.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const pilotdeckRoot = resolve(scriptDir, "../../..");
+const independentReadme = `# Independent KM / SOP Deployment
+
+To export a new release, run from the matching PilotDeck source checkout with
+Node 22 and pnpm 10. Copy native-five-independent.yaml, set its model IDs and
+owner/space binding, then export to an empty directory:
+
+\`\`\`sh
+export PILOTDECK_REAL_MODEL_BASE_URL=https://model.example.com/v1
+node products/pilotdeck-staffdeck-sop/scripts/export-composition.mjs \\
+  --profile /path/to/km-sop.yaml \\
+  --knowledge-root /path/to/knowledge_core \\
+  --out /path/to/new-release
+\`\`\`
+
+The Knowledge source must include its UI, package-lock.json and uv.lock.
+Image/external KM modes do not require --knowledge-root. Move the complete
+export directory to the deployment host; it has no source-checkout dependency.
+Changing the model URL requires re-export so NO_PROXY includes the new host.
+
+Copy .env.example to .env (chmod 600) and fill model and service credentials.
+Generate distinct values for KM service, KM capability and SOP publication tokens.
+Never use these tokens as owner login credentials. Register the single owner in
+the Web UI on first start; the supplied profile binds Knowledge to owner ID 1.
+
+\`\`\`sh
+cp .env.example .env
+chmod 600 .env
+# Edit .env before starting. Keep the same project name across upgrades.
+docker compose -p pilotdeck-km-sop --env-file .env config --quiet
+docker compose -p pilotdeck-km-sop --env-file .env up -d --build
+docker compose -p pilotdeck-km-sop --env-file .env ps
+\`\`\`
+
+Open http://127.0.0.1:3001 (or PILOTDECK_PORT). KM/SOP stay internal.
+Build and runtime use the same module profile and normal login mode. Changing
+module selection requires re-export and rebuild. Model credentials remain runtime-only.
+
+Check PilotDeck /health and authenticated /api/modules/runtime. KM uses
+/health/ready and /api/km/config; SOP uses /healthz (v3/runtime ownership).
+Import a document, query it with a real model and resolve its citation. Publish
+an SOP in /sop with a pilotdeck:owner handoff, then resume from the logged-in
+owner chat and verify completion/retry. Health is not business acceptance.
+
+Stop writes before backup. Back up knowledge-core-data, sop-runtime-data and
+pilotdeck-home using consistent SQLite snapshots and preserve .env/config.
+Never run down -v on persistent deployments. Roll back matching host/frontend,
+KM and SOP releases and compatible databases together. Recreate containers
+without deleting volumes, then verify query/citation and SOP state persistence.
+
+\`\`\`sh
+mkdir -p backups/pre-upgrade
+docker compose -p pilotdeck-km-sop stop
+docker compose -p pilotdeck-km-sop cp knowledge-runtime:/data backups/pre-upgrade/knowledge
+docker compose -p pilotdeck-km-sop cp sop-runtime:/data backups/pre-upgrade/sop
+docker compose -p pilotdeck-km-sop cp pilotdeck:/root/.pilotdeck backups/pre-upgrade/host
+cp -R config backups/pre-upgrade/config
+cp .env backups/pre-upgrade/runtime.env
+chmod 600 backups/pre-upgrade/runtime.env
+docker compose -p pilotdeck-km-sop start
+\`\`\`
+
+For KM-only or SOP-only exports, omit backup commands for the absent service.
+For external services, back up their data in the owning deployment separately.
+The KM database is /data/knowledge.sqlite; SOP is /data/sop-runtime.sqlite.
+Do not restore an older runtime onto an incompatible upgraded database.
+
+External endpoints and prebuilt images must implement the same API and entrypoint
+contract as the independent images. They need separate release/network acceptance.
+`;
 const defaults = {
   staffdeckRoot: process.env.STAFFDECK_SOP_ROOT
     ?? process.env.STAFFDECK_ROOT
@@ -18,7 +88,7 @@ const defaults = {
 
 const options = parseArgs(process.argv.slice(2));
 if (options.help) {
-  console.log("Usage: node products/pilotdeck-staffdeck-sop/scripts/export-composition.mjs --profile /path/to/pilotdeck.yaml [--out /path/to/export] [--staffdeck-root /path/to/StaffDeck]");
+  console.log("Usage: node products/pilotdeck-staffdeck-sop/scripts/export-composition.mjs --profile /path/to/pilotdeck.yaml [--out /path/to/export] [--staffdeck-root /path/to/StaffDeck] [--knowledge-root /path/to/knowledge_core]");
   process.exit(options.help ? 0 : 2);
 }
 
@@ -36,6 +106,8 @@ await assertEmptyDirectory(output);
 await mkdir(output, { recursive: true });
 await copyPilotDeck(output);
 await writeGeneratedFrontend(output, profile);
+await prepareIndependent({ output, profile, profilePath, root: pilotdeckRoot,
+  knowledgeRoot: options.knowledgeRoot, copy: copyRequired });
 await copyStaffDeck(
   resolve(options.staffdeckRoot ?? defaults.staffdeckRoot),
   output,
@@ -58,7 +130,7 @@ function parseArgs(args) {
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--help" || argument === "-h") result.help = true;
-    else if (["--profile", "--out", "--staffdeck-root"].includes(argument)) {
+    else if (["--profile", "--out", "--staffdeck-root", "--knowledge-root"].includes(argument)) {
       const value = args[++index];
       if (!value) throw new Error(`${argument} requires a value.`);
       result[argument.slice(2).replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())] = value;
@@ -107,6 +179,8 @@ function materializeRuntimeReferences(profile) {
 }
 
 function readExternalModule(slot, value) {
+  const independent = independentBinding(slot, value);
+  if (independent) return independent;
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value) || (value.enabled !== true && value.enabled !== false)) {
     throw new Error(`modules.${slot} must be a module binding with an explicit enabled flag.`);
@@ -163,6 +237,8 @@ function readExternalModule(slot, value) {
 }
 
 function readSopBinding(value) {
+  const independent = independentBinding('sop', value);
+  if (independent) return independent;
   if (value === undefined || value === null || (isRecord(value) && value.enabled === false)) return undefined;
   if (!isRecord(value) || value.enabled !== true) {
     throw new Error("modules.sop must be disabled or enabled.");
@@ -264,8 +340,9 @@ async function assertEmptyDirectory(path) {
 async function copyPilotDeck(output) {
   const destination = join(output, "pilotdeck");
   const entries = [
-    "Dockerfile", "docker-entrypoint.sh", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json",
+    "Dockerfile", ".dockerignore", "docker-entrypoint.sh", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.json",
     "src", "scripts", "ui", "skills", "packages/sdk",
+    "apps/desktop/src/lightAppearance.ts", "apps/desktop/src/interfacePreferences.ts",
     "products/pilotdeck-staffdeck-sop/profiles/render-limited-20260928.mjs",
   ];
   for (const entry of entries) await copyRequired(join(pilotdeckRoot, entry), join(destination, entry));
@@ -342,7 +419,7 @@ async function writeDeploymentFiles(output, profile, profilePath, assembly) {
   const deployment = structuredClone(profile);
   deployment.modules = structuredClone(profile.modules);
   await materializeDeploymentSources(output, profilePath, externalModules, sop);
-  if (sop) {
+  if (sop && !sop.independent) {
     const source = isAbsolute(sop.definitionsPath)
       ? sop.definitionsPath
       : resolve(dirname(profilePath), sop.definitionsPath);
@@ -358,21 +435,32 @@ async function writeDeploymentFiles(output, profile, profilePath, assembly) {
       ...(sop.kind === "legacy" ? { endpoint: "http://sop-runtime:8091" } : {}),
       definitionsPath: "/root/.pilotdeck/sops/definition.yaml",
     };
-  } else {
+  } else if (!sop) {
     delete deployment.modules.sop;
   }
   rewriteManagedBindings(deployment.modules, externalModules, sop);
+  rewriteIndependent(deployment);
+  if (sop?.independent) delete deployment.modules.sop.definitionsPath;
   await mkdir(join(output, "config"), { recursive: true });
   await mkdir(join(output, "sops"), { recursive: true });
   await writeFile(join(output, "config", "pilotdeck.yaml"), YAML.stringify(deployment), "utf8");
+  const independent = [...externalModules, sop].filter(row => row?.independent);
+  const buildProfile = { modules: deployment.modules, ...(deployment.frontend ? { frontend: deployment.frontend } : {}) };
+  await writeFile(join(output, 'pilotdeck/products/pilotdeck-staffdeck-sop/profiles/exported.yaml'), YAML.stringify(buildProfile));
   const needsKnowledgeSecret = externalModules.some((module) => module.builtin === "staffdeck-knowledge");
+  const extraModelCredentials = independent.length
+    ? independentModelCredentialEnvs(profile).filter(key => !['PILOTDECK_API_KEY', 'PILOTDECK_REAL_MODEL_API_KEY', 'PILOTDECK_REAL_MODEL_BASE_URL', 'PILOTDECK_PORT'].includes(key))
+      .map(key => `${key}=\n`).join('')
+    : '';
   await writeFile(
     join(output, ".env.example"),
-    `PILOTDECK_API_KEY=\nPILOTDECK_REAL_MODEL_API_KEY=\nPILOTDECK_REAL_MODEL_BASE_URL=\n${needsKnowledgeSecret ? "STAFFDECK_APP_SECRET=change-me\nSTAFFDECK_PYTHON_BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim\n" : ""}PILOTDECK_PORT=3001\n`,
+    `PILOTDECK_API_KEY=\nPILOTDECK_REAL_MODEL_API_KEY=\nPILOTDECK_REAL_MODEL_BASE_URL=\n${extraModelCredentials}${needsKnowledgeSecret ? "STAFFDECK_APP_SECRET=change-me\nSTAFFDECK_PYTHON_BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim\n" : ""}${independent.some(row => row.slot === 'knowledge') ? `${deployment.modules.knowledge.credentialEnv}=\n${deployment.modules.knowledge.capabilitiesCredentialEnv}=\n` : ''}${sop?.independent ? sop.contract === 'sop.lifecycle/v4' ? `${sop.credentialEnv}=\n` : 'SOP_RUNTIME_PUBLISH_TOKEN=\n' : ''}PILOTDECK_PORT=3001\n`,
     "utf8",
   );
-  await writeFile(join(output, "compose.yaml"), YAML.stringify(compose(sop, providerNoProxyHosts(profile), externalModules)), "utf8");
-  await writeFile(join(output, "README.md"), readme(sop, externalModules), "utf8");
+  const services = compose(sop, providerNoProxyHosts(profile), externalModules);
+  configureIndependentCompose(services, profile, independent);
+  await writeFile(join(output, "compose.yaml"), YAML.stringify(services), "utf8");
+  await writeFile(join(output, "README.md"), independent.length ? independentReadme : readme(sop, externalModules), "utf8");
 }
 
 async function materializeDeploymentSources(output, profilePath, externalModules, sop) {
@@ -382,7 +470,7 @@ async function materializeDeploymentSources(output, profilePath, externalModules
   ];
   for (const entry of entries) {
     if (entry.deployment.mode !== "build") continue;
-    if (entry.deployment.context === "__staffdeck__") continue;
+    if (["__staffdeck__", "__independent__"].includes(entry.deployment.context)) continue;
     const source = resolve(dirname(profilePath), entry.deployment.context);
     await copyRequired(source, join(output, "modules", entry.slot));
   }
@@ -425,7 +513,7 @@ function compose(sop, providerHosts, externalModules) {
   const noProxy = [...sopHosts, ...externalHosts, ...managedHosts, ...providerHosts, "localhost", "127.0.0.1"]
     .filter(Boolean).join(",");
   const pilotdeck = {
-    build: { context: "./pilotdeck" }, image: "pilotdeck:exported",
+    build: { context: "./pilotdeck", args: { PILOTDECK_BUILD_PROFILE: 'products/pilotdeck-staffdeck-sop/profiles/exported.yaml' } }, image: "pilotdeck:exported",
     ports: ["${PILOTDECK_PORT:-3001}:3001"], restart: "unless-stopped",
     environment: {
       PILOT_HOME: "/root/.pilotdeck",
@@ -513,7 +601,7 @@ function deploymentService(slot, deployment) {
   }
   if (deployment.healthPath) {
     service.healthcheck = {
-      test: deployment.builtin?.startsWith("staffdeck-")
+      test: deployment.builtin?.startsWith("staffdeck-") || deployment.builtin?.startsWith('independent-')
         ? ["CMD", "python", "-c", `from urllib.request import urlopen; urlopen('http://localhost:${deployment.port}${deployment.healthPath}')`]
         : ["CMD-SHELL", `node -e "fetch('http://localhost:${deployment.port}${deployment.healthPath}').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"`],
       interval: "5s",

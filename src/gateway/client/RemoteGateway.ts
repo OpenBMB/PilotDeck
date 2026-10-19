@@ -167,6 +167,10 @@ export class RemoteGateway implements Gateway {
     return (await this.client.request("sop_status", input)) as GatewaySopStatusResult;
   }
 
+  async sopExecution(input: import("../protocol/types.js").GatewaySopExecutionInput): Promise<Record<string, unknown>> {
+    return await this.client.request("sop_execution", input) as Record<string, unknown>;
+  }
+
   async resumeSop(input: GatewaySopResumeInput): Promise<GatewaySopResumeResult> {
     return (await this.client.request("sop_resume", input)) as GatewaySopResumeResult;
   }

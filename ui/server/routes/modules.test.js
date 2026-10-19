@@ -7,6 +7,35 @@ import { describe, expect, it, vi } from 'vitest';
 import { createModuleRuntimeRouter } from './modules.js';
 
 describe('module runtime route', () => {
+  it('reports v4 readiness only when the protocol and execution host are ready', async () => {
+    let contract = 'sop.lifecycle/v4';
+    let capabilities = ['sop_execution'];
+    const upstream = http.createServer((_req, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ contract }));
+    });
+    await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
+    const app = express();
+    app.use('/api/modules', createModuleRuntimeRouter({
+      loadConfig: () => ({ modules: { sop: { enabled: true, contract: 'sop.lifecycle/v4',
+        transport: 'sop-http-v4', endpoint: `http://127.0.0.1:${upstream.address().port}` } } }),
+      getGateway: async () => ({ describeServer: async () => ({ capabilities }) }),
+    }));
+    const server = http.createServer(app);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const status = async () => (await fetch(`http://127.0.0.1:${server.address().port}/api/modules/runtime`)).json();
+    try {
+      expect((await status()).modules.sop).toMatchObject({ enabled: true, contract, ready: true });
+      capabilities = [];
+      expect((await status()).runtime.unavailableSlots).toContain('sop');
+      capabilities = ['sop_execution']; contract = 'sop.lifecycle/v3';
+      expect((await status()).modules.sop.ready).toBe(false);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+      await new Promise(resolve => upstream.close(resolve));
+    }
+  });
+
   it('negotiates instance-scoped KM queries, citations and management calls', async () => {
     const calls = [];
     let scoped = false;

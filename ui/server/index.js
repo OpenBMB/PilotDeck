@@ -3671,7 +3671,7 @@ async function startServer() {
                     ensureLocalUserWhenAuthDisabledFn: ensureLocalUserWhenAuthDisabled,
                     configureWebPushFn: configureWebPush
                 });
-                knowledgeStarting = startLocalKnowledgeRuntime(readModuleConfig()?.modules?.knowledge, {
+                knowledgeStarting = process.env.PILOTDECK_KM_MANAGED_EXTERNALLY === '1' ? Promise.resolve(undefined) : startLocalKnowledgeRuntime(readModuleConfig()?.modules?.knowledge, {
                     signal: knowledgeAbort.signal,
                     onExit: error => {
                         console.error('[knowledge]', error.message);
