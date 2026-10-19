@@ -263,3 +263,17 @@ test("catalog model aliases keep their declared provider image capability", () =
     ["text", "image"],
   );
 });
+
+test("requesty catalog provider resolves default URL, protocol and env api key", () => {
+  const config = parseModelConfig({
+    providers: {
+      requesty: {
+        models: { "openai/gpt-4o-mini": {} },
+      },
+    },
+  }, { env: { REQUESTY_API_KEY: "requesty-env-key" } });
+
+  assert.equal(config.providers.requesty.url, "https://router.requesty.ai/v1");
+  assert.equal(config.providers.requesty.protocol, "openai");
+  assert.equal(config.providers.requesty.apiKey, "requesty-env-key");
+});
