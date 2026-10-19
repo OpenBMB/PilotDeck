@@ -1,40 +1,10 @@
 # SOP v4 后端执行
 
-本入口用于全新环境，只接受 `sop.definition/v4` 和 `sop.lifecycle/v4`，不导入旧配置、旧数据库或进行中的运行。不包含前端。与 PR #660 的旧 SOP 部署使用不同进程、端口、Pilot home 和数据库。
+本文件说明 SOP v4 后端协议、输入配置、执行工具和恢复语义，只接受 `sop.definition/v4` 和 `sop.lifecycle/v4`。PilotDeck + SOP v4 + 独立 KM 的源码/Compose 部署统一见 [部署文档](DEPLOYMENT.zh-CN.md)。
 
-## 职责与启动
+## 职责与绑定
 
 Python Runtime 保存定义、流程实例、处理项、节点调用、尝试、租约和事件；PilotDeck 创建隔离 AgentSession，管理模型、工具、权限和共享工作空间。模型请求全部通过 PilotDeck。
-
-前置条件：Node 22、pnpm 10、Python >=3.11。先在仓库根目录构建：
-
-```sh
-pnpm install --frozen-lockfile
-pnpm run build
-python3 -m venv /absolute/path/sop-v4/venv
-/absolute/path/sop-v4/venv/bin/pip install -e packages/sop-runtime
-```
-
-Runtime 进程环境（所有值均为占位符）：
-
-```sh
-export SOP_V4_DB=/absolute/path/sop-v4/data/runtime.sqlite
-export SOP_V4_HOST_TOKEN='<new-host-token>'
-export SOP_V4_MAX_CONCURRENCY=32
-/absolute/path/sop-v4/venv/bin/python -m uvicorn \
-  staffdeck_sop_runtime.execution_api_v4:app_factory --factory \
-  --host 127.0.0.1 --port 18991 --workers 1
-```
-
-PilotDeck 进程环境：
-
-```sh
-export PILOT_HOME=/absolute/path/sop-v4/pilot-home
-export PILOTDECK_CONFIG_PATH=/absolute/path/sop-v4/pilotdeck.yaml
-export SOP_V4_HOST_TOKEN='<same-new-host-token>'
-node dist/src/cli/pilotdeck.js server
-```
-
 在新 `pilotdeck.yaml` 中配置模型与下列正式模块绑定；不使用旧 `contextMode`、`definitionsPath` 或 `defaultSopId`。只运行一个 PilotDeck 执行宿主；Runtime 也只运行一个 worker。外部网络部署配置可达地址、TLS 与 host token。
 
 ```yaml
@@ -55,75 +25,9 @@ modules:
 
 需要宿主管理本机 Runtime 时增加 `localRuntime: { enabled: true, python: /absolute/prepared/venv/bin/python, dataDirectory: /absolute/new/sop-v4-data, maxConcurrency: 32, startupTimeoutMs: 10000 }`。该路径只启动已安装程序，不运行 pip。未配置 `localRuntime` 时连接外部服务，退出时不停止它。编程宿主必须等待返回的 `ready`，再开放业务入口；退出调用 `dispose()`。
 
-旧 `PILOTDECK_SOP_V4_ENDPOINT` / `SOP_V4_HOST_TOKEN` 环境入口保留，兼容原来的 owner 审批方式；推荐使用 YAML。两者同时配置时 endpoint 与 token 必须一致；与 v2/v3 或显式关闭 SOP 的 profile 冲突时报错。仅在 YAML 未声明 SOP 时使用旧入口。`/api/modules/runtime` 展示 v4 协议和就绪状态；不加载旧 SOP 页面。
+使用 YAML 声明绑定，凭据通过 `credentialEnv` 指定的环境变量注入。`/api/modules/runtime` 展示 v4 协议和就绪状态；前端仅通过 Agent 工具调用 v4，不提供独立管理页面。
 
 `GET /healthz` 返回 `contract: sop.lifecycle/v4`。PilotDeck 在创建运行前检查协议、全部固定版本引用、模型绑定和工具绑定；实际调用前再次校验。模型不存在或不允许使用时失败，不切换为其他模型。
-
-## 本机源码部署与插拔验收
-
-使用 `scripts/sop-v4-source.mjs` 创建独立源码实例，Web 登录服务、Gateway 执行宿主和 Python Runtime 为三个独立进程。前置条件为上述 Node/pnpm/Python；根目录依赖必须先安装。准备器创建全新 venv 并安装当前 checkout 的 SOP package，模型配置从私有 YAML 复制到独立 Pilot home，不会输出凭据。
-
-```sh
-pnpm install --frozen-lockfile
-pnpm build
-export SOP_V4_MODEL_CONFIG=/absolute/path/private/pilotdeck.yaml
-export SOP_SOURCE_PYTHON=/absolute/path/python3.12
-node scripts/sop-v4-source.mjs prepare /absolute/path/new-source-deployment --build
-node scripts/sop-v4-source.mjs start /absolute/path/new-source-deployment
-node scripts/sop-v4-source.mjs status /absolute/path/new-source-deployment
-```
-
-部署目录必须不存在。端口自动分配并写入 `deployment.json`；`private.json`、`home/pilotdeck.yaml` 和 `home/server-token` 为私有文件，权限 0600。模型 YAML 必须包含 `agent.model` 和 `model.providers`。默认准备器启用原生五槽与正式 SOP v4 YAML，关闭 Knowledge，并选择 owner 审批。当前 native 前端构建不包含 v4 页面。
-
-同机 SOP/KM 组合使用 `profiles/independent-v4-local.yaml`，外部服务使用 `profiles/independent-v4-external.yaml`。源码准备器会重写托管服务的本地路径、端口，不读取样例中的占位路径；外部地址保留。将任一模块设为 `{ enabled: false }` 可准备 SOP-only 或 KM-only。
-
-```sh
-node scripts/sop-v4-source.mjs prepare /absolute/path/new-combined \
-  --profile products/pilotdeck-staffdeck-sop/profiles/independent-v4-local.yaml \
-  --knowledge-package /absolute/path/knowledge_core --without-web --build
-node scripts/sop-v4-source.mjs start /absolute/path/new-combined
-node scripts/accept-sop-v4-km.mjs /absolute/path/new-combined
-node scripts/accept-sop-v4-approval.mjs /absolute/path/new-combined
-node scripts/sop-v4-source.mjs stop /absolute/path/new-combined
-node scripts/benchmark-sop-v4-startup.mjs /absolute/path/new-combined
-```
-
-`--without-web` 仅运行服务与 Gateway；移除此参数可启动登录服务，`--approval-provider pilotdeck` 启用 owner 审批。`start --services-only` 只拉起 YAML 声明的托管 Runtime，供独立执行宿主连接。所有外部凭据通过环境提供，外部服务不被启动或停止。首次 prepare 安装 Python 包，start 不安装、不构建；`prepare-timing.json` 和 `startup-benchmark.json` 分别记录准备和十轮启动。组合验收目标为依赖与构建准备完成后每轮不超过 10 秒，包含协议、数据库、KM 空间初始化和 SDK 绑定检查，不包含模型响应时间。不是操作系统冷缓存或跨机器性能承诺。
-
-`prepare --build` 使用生成的实例 profile 并显式启用 Web 登录。已有实例手动重建前端时，也须同时设置 `PILOTDECK_CONFIG_PATH=/absolute/deployment/home/pilotdeck.yaml` 和 `PILOTDECK_DISABLE_LOCAL_AUTH=0`；否则 Vite 默认的免登录构建会与服务端认证不一致。
-
-带 Web 的准备默认使用 `agent.interactionProfile: interactive`，由 Gateway 将工具权限确认交给浏览器；`--without-web` 默认 `headless`。输入 profile 显式声明的 `agent.interactionProfile` 优先。浏览器报 `No interaction answerer is available` 时，检查实例 `home/pilotdeck.yaml` 是否误设为 `headless`：改为 `interactive` 后重启 Gateway/实例，让会话重新加载配置，再在页面确认本次工具请求。不要通过关闭权限检查解决。该工具调用确认与 SOP 定义内的业务审批节点是两条独立链路。
-
-`execute_code` 的 `pilotdeck_tools` helper 返回 `{content, data}`，执行 ID 应读取 `response["data"]["runId"]`。`requestId` 用于创建、取消和重试；只读查询不接受该字段。等待和结果分页示例：
-
-```python
-from pilotdeck_tools import run_sop, sop_wait, sop_result
-
-response = run_sop(requestId="unique-request", sopId="your-sop", version="1",
-                   input={"originalQuery": "your query"})
-run_id = response["data"]["runId"]
-print(sop_wait(runId=run_id, timeoutMs=60000))
-print(sop_result(runId=run_id, offset=0, limit=100))
-```
-
-`sop_result` 不指定 `limit` 时仅返回摘要和 `resultRef`；读取实际输出须显式分页。一次等待结束仍为 `running` 时可以继续等待，执行本身已持久化。
-
-托管 KM 默认启用服务认证，准备时生成独立 `knowledge-identities.json`，绑定 YAML 的 namespace 和 spaces；不访问 SD 用户库。私有模型配置用于独立 KM 本地模型调用，宿主节点仍通过 PilotDeck 模型接口运行。`knowledge-data/knowledge.sqlite` 与 SOP 数据独立，日志位于该目录的 `service.log`。无需 Web 的拓扑测试可运行 `node scripts/accept-sop-v4-topologies.mjs /absolute/stopped-combined /absolute/new-evidence /absolute/knowledge_core`；它临时启动自己的服务，覆盖 SOP-only、KM-only、外部连接及退出所有权。
-
-控制器仅监听 loopback，采用单 Gateway/Runtime，服务日志位于 `logs/`，SQLite 位于 `runtime-data/runtime.sqlite`，上传与生成文件位于 `workspace/`，会话和账号位于 `home/`。这是本机验收入口，包含 `native_probe` 测试工具；Web 使用交互配置，纯服务默认使用非交互配置。公网部署应使用正式服务管理及业务权限配置。
-
-```sh
-node scripts/accept-sop-v4-source.mjs /absolute/path/new-source-deployment
-export SOP_RUNTIME_PYTHON=/absolute/path/new-source-deployment/venv/bin/python
-node scripts/test-sop-v4-modules.mjs
-node scripts/sop-v4-source.mjs stop /absolute/path/new-source-deployment
-```
-
-真实模型脚本使用正常注册/登录与工作区注册 API，上传 12 个文本文件，由 Agent 通过 `execute_code` 决定并发并提交 SOP，再验证动态子流程、失败项重试、双模型、审批全进程重启恢复及输入隔离。注册账号记录在私有 `owner-login.json`，结果在 `acceptance-*.json`。重复运行会创建独立定义和数据，脚本会停止并重启本实例全部进程，不得指向其他部署目录。
-
-插拔脚本另启临时 Python Runtime、AgentLoop sidecar 和模块 HTTP 夹具；Gateway/SDK 在测试进程中运行。Tools、Context、Skills、Knowledge 和 Model Provider 的外部端均为独立进程协议夹具，不代表外部 StaffDeck release。AgentLoop/Tools/Context/Model Provider 为必选槽，验收替换与断开；Skills/Knowledge 可关闭。旧插拔脚本仍覆盖环境兼容入口，新组合脚本覆盖 YAML v4 与真实 KM。修改绑定后重启 Gateway/会话，不声称运行中热切换。
-
-停止后备份 `home`、`workspace`、`runtime-data`、`knowledge-data`、`knowledge-*.json`、`private.json` 和 `deployment.json`。升级使用新的源码 checkout/构建产物；回退同时恢复对应版本及原数据目录，不删除已有数据库。完整证据和边界见 [源码插拔报告](SOP_V4_SOURCE_ACCEPTANCE.zh-CN.md)。
 
 ## 定义与输入
 
@@ -212,6 +116,18 @@ print(run)
 
 单次列表提交只调用一次 `run_sop`，返回 `runId`；后续运行独立于调用工具/代码的超时。未提供输入来源时继承当前提交捕获的 query、文件引用和可显式选择的历史；每项 `files` 覆盖当前文件列表。默认并发 8，超过部署上限明确报错。
 
+Python helper 返回 `{content, data}`，读取 `response["data"]["runId"]`，不能直接从顶层取值。`requestId` 用于创建、取消和重试；只读查询不接受该字段。等待和结果分页：
+
+```python
+from pilotdeck_tools import sop_wait, sop_result
+
+run_id = run["data"]["runId"]
+print(sop_wait(runId=run_id, timeoutMs=60000))
+print(sop_result(runId=run_id, offset=0, limit=100))
+```
+
+工具 `sop_result` 不指定 `limit` 时仅返回摘要与 `resultRef`，实际输出须显式分页。等待结束仍为 `running` 时可继续等待，不会取消持久化执行。
+
 Gateway WS 方法 `sop_execution`：`{operation,input,projectKey?,approverAuthorization?}`。SDK：
 
 ```ts
@@ -252,28 +168,4 @@ SDK 事件订阅通过 Gateway 游标轮询，Runtime 原生 SSE 使用 `GET /v4
 
 验收命令与证据见 `SOP_V4_ACCEPTANCE.zh-CN.md`。Linux Compose 部署、真实登录审批跨进程恢复、SIGKILL 后账本核对有专门验收；公网生产域名、集群和外部 StaffDeck release 仍需对应环境验收。
 
-## 隔离容器部署与恢复验收
-
-`scripts/deploy-sop-v4.mjs` 将当前 `dist`、Web 登录服务源码、Python Runtime 源码复制到一个全新目录并构建镜像。需要先完成上面的 `pnpm run build`；Docker Compose v2 可用。默认使用本机已有的 `pd-independent-export-1019-pilotdeck:latest`、`pd-independent-export-1019-sop-runtime:latest` 基础镜像，其他环境必须先用现有 exporter 构建对应基础镜像，或在导出的 Dockerfile 中设置 `PILOTDECK_BASE_IMAGE` / `SOP_BASE_IMAGE`。这不是从空白机器一条命令安装所有依赖的入口。
-
-```sh
-export SOP_V4_MODEL_CONFIG=/absolute/path/private/pilotdeck.yaml
-node scripts/deploy-sop-v4.mjs /absolute/path/new-sop-v4-deployment
-node scripts/accept-sop-v4-deployment.mjs /absolute/path/new-sop-v4-deployment
-```
-
-部署目录必须不存在；脚本生成随机 host/Gateway token，私有配置和凭据权限为 0600。服务是生产模式的 Linux 容器，只有一个 Gateway 宿主和一个 Runtime worker。宿主端口为 Web `23314`、Gateway `18814`、Runtime `18914`，均只绑定 loopback。Compose 项目名固定为 `sop-v4-acceptance`，一台机器只运行这一套验收环境；先核对端口和已有同名项目。旧部署的入口脚本会接管启动命令，因此 Gateway 镜像明确清空原 entrypoint。
-
-这是后端验收部署：Web 提供现有真实注册/登录接口，没有新增 v4 前端。固定工作空间为 `/workspace`，非交互执行使用 `bypassPermissions`，业务节点仍受定义的工具白名单约束。公网生产部署需要按业务权限要求配置认证、网络和工具，不能直接将这组 loopback 端口改为公网开放。
-
-验收会真实消费已配置模型，重启该套容器，创建两项审批和一个副作用夹具运行。夹具工具在追加账本并 fsync 后故意阻塞，由脚本 SIGKILL Gateway；它不去重，任何重放都会产生第二条记录。脚本检查真实租约到期、unknown 状态、重试/过期提交拒绝，最后关闭夹具。账本代表测试副作用，不涉及外部支付、邮件或企业生产交易。
-
-验收目录保存 `evidence-*.json`、`workspace/effects.jsonl`、原始模型请求和数据库。实际登录密码在 `owner-login.json`，不输出到报告；token 和模型凭据不进入构建上下文。备份演练先停三个服务，复制 `home`、`workspace`、`runtime-data`，再启动独立 Runtime 容器打开备份，检查审批完成和 unknown 状态均保持。备份包含私有配置，应按部署目录相同级别保护。
-
-```sh
-docker compose -p sop-v4-acceptance -f /absolute/path/new-sop-v4-deployment/compose.yaml ps
-docker compose -p sop-v4-acceptance -f /absolute/path/new-sop-v4-deployment/compose.yaml stop
-docker compose -p sop-v4-acceptance -f /absolute/path/new-sop-v4-deployment/compose.yaml up -d --wait
-```
-
-停止不会删除文件数据。禁止使用 `down -v` 清理生产数据。恢复旧版本时使用旧镜像和原数据目录，保留本次 v4 目录。
+隔离容器、真实登录审批恢复与 SIGKILL 副作用夹具的历史验收见 [v4 执行验收](SOP_V4_ACCEPTANCE.zh-CN.md)。部署操作使用统一部署文档；验收脚本只用于专用测试实例。

@@ -10,6 +10,57 @@ import { independentBinding, independentModelCredentialEnvs, prepareIndependent,
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const pilotdeckRoot = resolve(scriptDir, "../../..");
+const independentV4Readme = `# PilotDeck + SOP v4 + Independent KM
+
+The current deployment guide is DEPLOYMENT.zh-CN.md beside this README.
+It covers source deployment, Compose, external services, verification and backup.
+SOP_V4_BACKEND.zh-CN.md describes execution APIs, not a separate deployment.
+No StaffDeck checkout, backend or user database is required.
+
+To export another release from the matching source checkout, copy
+profiles/independent-v4-external.yaml, set model IDs and owner/space binding,
+and set deployment.mode to build for each service managed by Compose.
+Use agent.interactionProfile: interactive for browser permission prompts.
+
+\`\`\`sh
+export PILOTDECK_REAL_MODEL_BASE_URL=https://model.example.com/v1
+node products/pilotdeck-staffdeck-sop/scripts/export-composition.mjs \\
+  --profile /path/to/v4-profile.yaml \\
+  --knowledge-root /path/to/knowledge_core \\
+  --out /path/to/new-release
+\`\`\`
+
+KM image/external mode does not require --knowledge-root. Set compatible
+endpoints and credentials separately for external services; this deployment
+does not start, stop or back them up.
+
+In this export directory, fill all placeholders in .env before startup:
+
+\`\`\`sh
+cp .env.example .env
+chmod 600 .env
+docker compose -p pilotdeck-km-sop --env-file .env config --quiet
+docker compose -p pilotdeck-km-sop --env-file .env up -d --build
+docker compose -p pilotdeck-km-sop --env-file .env ps
+\`\`\`
+
+Use distinct model/API, SOP_V4_HOST_TOKEN, KM service and capability credentials.
+Register/login at http://127.0.0.1:3001 (or PILOTDECK_PORT). Only Web is exposed
+on loopback. Build/runtime profiles and login mode must agree; changing modules
+or model URL requires re-export and rebuild. Runtime keys stay in .env.
+
+Verify authenticated /api/modules/runtime, SOP /healthz and authenticated
+/v4/ready, KM /api/km/config and /health/ready. Import/query a real document
+and resolve its citation. Publish sop.definition/v4 via /v4/definitions and
+call run_sop, sop_wait and paginated sop_result through chat/Gateway/SDK.
+There is no separate SOP v4 management page. Health is not business acceptance.
+
+Stop writes and all managed services before backing up pilotdeck-home,
+sop-v4-data (/data/runtime.sqlite), knowledge-core-data (/data/knowledge.sqlite),
+project files, config and .env. Omit absent services; back up external data in
+its owning deployment. Never use down -v on persistent deployments. Restore
+matching host/profile/frontend, runtimes and compatible databases together.
+`;
 const independentReadme = `# Independent KM / SOP Deployment
 
 To export a new release, run from the matching PilotDeck source checkout with
@@ -460,7 +511,15 @@ async function writeDeploymentFiles(output, profile, profilePath, assembly) {
   const services = compose(sop, providerNoProxyHosts(profile), externalModules);
   configureIndependentCompose(services, profile, independent);
   await writeFile(join(output, "compose.yaml"), YAML.stringify(services), "utf8");
-  await writeFile(join(output, "README.md"), independent.length ? independentReadme : readme(sop, externalModules), "utf8");
+  const currentIndependent = independent.length && (!sop || sop.contract === 'sop.lifecycle/v4');
+  if (currentIndependent) {
+    for (const name of ['DEPLOYMENT.zh-CN.md', 'SOP_V4_BACKEND.zh-CN.md',
+      'SOP_V4_DECOUPLED_ACCEPTANCE.zh-CN.md', 'SOP_V4_SOURCE_ACCEPTANCE.zh-CN.md', 'SOP_V4_ACCEPTANCE.zh-CN.md']) {
+      await copyRequired(join(pilotdeckRoot, 'products/pilotdeck-staffdeck-sop', name), join(output, name));
+    }
+  }
+  await writeFile(join(output, "README.md"), currentIndependent ? independentV4Readme
+    : independent.length ? independentReadme : readme(sop, externalModules), "utf8");
 }
 
 async function materializeDeploymentSources(output, profilePath, externalModules, sop) {

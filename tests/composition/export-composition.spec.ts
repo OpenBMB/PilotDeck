@@ -33,6 +33,12 @@ test('v4 export is self-contained without StaffDeck and does not enable a legacy
     assert.ok(compose.services['sop-runtime'].command.includes('staffdeck_sop_runtime.execution_api_v4:app_factory'));
     assert.deepEqual(compose.services['sop-runtime'].volumes, ['sop-v4-data:/data']);
     assert.equal(existsSync(join(output, 'staffdeck')), false);
+    const readme = readFileSync(join(output, 'README.md'), 'utf8');
+    assert.match(readme, /SOP v4/);
+    assert.match(readme, /sop-v4-data/);
+    assert.doesNotMatch(readme, /native-five-independent|SOP publication tokens|\/sop with/);
+    assert.match(readFileSync(join(output, 'DEPLOYMENT.zh-CN.md'), 'utf8'), /independent-v4-local.yaml/);
+    assert.equal(existsSync(join(output, 'SOP_V4_BACKEND.zh-CN.md')), true);
     const frontend = readFileSync(join(output, 'pilotdeck/ui/src/composition/generated/frontend-modules.ts'), 'utf8');
     assert.doesNotMatch(frontend, /import .*modules\/(pilotdeck-sop|staffdeck-sop)/);
     const config = loadPilotConfig({ configPath: join(output, 'config/pilotdeck.yaml'), env: { PILOTDECK_REAL_MODEL_API_KEY: 'test' } });
