@@ -54,6 +54,7 @@ test('independent services export with isolated data, credentials, frontend and 
       writeFileSync(join(source, file), 'fixture');
     }
     const profile = YAML.parse(readFileSync(join(projectRoot, 'products/pilotdeck-staffdeck-sop/profiles/native-five-independent.yaml'), 'utf8'));
+    profile.model.providers.provider1.apiKey = '${CUSTOM_MODEL_KEY}';
     const profilePath = join(root, 'profile.yaml');
     const exportProfile = async (name: string, knowledge = true) => {
       writeFileSync(profilePath, YAML.stringify(profile));
@@ -73,12 +74,16 @@ test('independent services export with isolated data, credentials, frontend and 
     assert.equal(full.config.modules.knowledge.endpoint,'http://knowledge-runtime:8787');
     assert.equal(full.config.modules.sop.endpoint,'http://sop-runtime:8091');
     assert.equal(full.compose.services.pilotdeck.environment.PILOTDECK_DISABLE_LOCAL_AUTH,'0');
+    assert.equal(full.compose.services.pilotdeck.environment.CUSTOM_MODEL_KEY, '${CUSTOM_MODEL_KEY:?set CUSTOM_MODEL_KEY in .env}');
+    assert.match(readFileSync(join(full.output, '.env.example'), 'utf8'), /^CUSTOM_MODEL_KEY=$/m);
+    assert.equal(full.compose.services['knowledge-runtime'].environment.CUSTOM_MODEL_KEY, undefined);
     assert.match(readFileSync(join(full.output,'README.md'),'utf8'),/--knowledge-root \/path\/to\/knowledge_core/);
     assert.equal(full.config.modules.sop.localRuntime,undefined);
     const snapshot=loadPilotConfig({configPath:join(full.output,'config/pilotdeck.yaml'),env:{
-      ...process.env,PILOT_HOME:join(root,'runtime-home'),PILOTDECK_REAL_MODEL_API_KEY:'test-key',
+      ...process.env,PILOT_HOME:join(root,'runtime-home'),CUSTOM_MODEL_KEY:'test-key',
       PILOTDECK_KM_SERVICE_TOKEN:'test-km',PILOTDECK_KM_CAPABILITY_TOKEN:'test-capability'}});
     assert.equal(snapshot.config.modules?.sop?.defaultSopId,'compose_approval');
+    assert.equal(snapshot.config.model.providers.provider1.apiKey, 'test-key');
     assert.equal(full.compose.services.pilotdeck.build.args.PILOTDECK_BUILD_PROFILE,
       'products/pilotdeck-staffdeck-sop/profiles/exported.yaml');
     assert.match(readFileSync(join(full.output,'modules/knowledge/Dockerfile'),'utf8'),/npm ci/);

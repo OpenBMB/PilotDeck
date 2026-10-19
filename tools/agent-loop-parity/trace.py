@@ -664,11 +664,17 @@ def compare_trace_details(left: list[dict[str, Any]], right: list[dict[str, Any]
     right_core = [record for record in right_projected if not _is_reviewed_positional_state(record)]
     semantic = _partial_order_differences(left, "left") + _partial_order_differences(right, "right")
     semantic.extend(_diff_semantic_records(left_core, right_core))
+    # A control request can move around host callbacks, but never across its
+    # own response or another request in the same actor's model exchange.
+    def model_events(records: list[dict[str, Any]], scope: Any) -> list[dict[str, Any]]:
+        return [record for record in records if record.get("agentScope") == scope
+                and record.get("kind") in {"model.request", "model.response"}]
+
+    for scope in {record.get("agentScope") for record in [*left_projected, *right_projected]}:
+        semantic.extend(_diff_semantic_records(model_events(left_projected, scope), model_events(right_projected, scope)))
     for kind in sorted(_POSITIONAL_STATE_KINDS):
         left_state = [record for record in left_projected if record.get("kind") == kind and _is_reviewed_positional_state(record)]
         right_state = [record for record in right_projected if record.get("kind") == kind and _is_reviewed_positional_state(record)]
-        if kind == "context.budget":
-            left_state, right_state = _normalize_continuable_provider_budget_drift(left_state, right_state)
         semantic.extend(_diff_semantic_records(left_state, right_state))
     format_differences = _diff_values(project_format_trace(left), project_format_trace(right))
     return Comparison(semantic=semantic, format_warnings=format_differences)
@@ -700,73 +706,6 @@ def _is_allowed_continuable_position_state(record: dict[str, Any]) -> bool:
             and record["detail"].get("reason") == "next_turn"
         )
     return False
-
-
-def _normalize_continuable_provider_budget_drift(
-    left: list[dict[str, Any]],
-    right: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Normalize only a constant token-count offset from isolated adapter homes.
-
-    The deterministic provider counts the absolute workspace path embedded in
-    runtime context. Native and sidecar use different isolated homes, so equal
-    model requests can report a constant token offset. A single changed budget,
-    changed breakdown shape, or non-constant offset remains a semantic failure.
-    """
-    if len(left) != len(right) or not left:
-        return left, right
-    if not all(
-        isinstance(record.get("breakdown"), dict)
-        and record["breakdown"].get("source") == "local_estimate"
-        for record in [*left, *right]
-    ):
-        return left, right
-    fields = ("used", "displayUsed", "budgetUsed", "total", "effectiveTotal")
-    deltas: dict[str, Any] = {}
-    for left_record, right_record in zip(left, right):
-        for field in fields:
-            if field in left_record or field in right_record:
-                if not isinstance(left_record.get(field), (int, float)) or not isinstance(right_record.get(field), (int, float)):
-                    return left, right
-                delta = right_record[field] - left_record[field]
-                if field in deltas and delta != deltas[field]:
-                    return left, right
-                deltas[field] = delta
-        left_breakdown = left_record.get("breakdown") or {}
-        right_breakdown = right_record.get("breakdown") or {}
-        if set(left_breakdown) != set(right_breakdown):
-            return left, right
-        for field in left_breakdown:
-            if not isinstance(left_breakdown[field], (int, float)) or not isinstance(right_breakdown[field], (int, float)):
-                if left_breakdown[field] != right_breakdown[field]:
-                    return left, right
-                continue
-            delta = right_breakdown[field] - left_breakdown[field]
-            key = f"breakdown.{field}"
-            if key in deltas and delta != deltas[key]:
-                return left, right
-            deltas[key] = delta
-    if not deltas or not any(value != 0 for value in deltas.values()):
-        return left, right
-    normalized_right: list[dict[str, Any]] = []
-    for record in right:
-        copy = dict(record)
-        for field in fields:
-            if field in copy and field in deltas:
-                copy[field] -= deltas[field]
-        if isinstance(copy.get("breakdown"), dict):
-            copy["breakdown"] = {
-                field: value - deltas[f"breakdown.{field}"]
-                if f"breakdown.{field}" in deltas else value
-                for field, value in copy["breakdown"].items()
-            }
-        if "ratio" in copy:
-            copy["ratio"] = None
-        if "ratio" in record:
-            left_match = left[len(normalized_right)].get("ratio")
-            copy["ratio"] = left_match
-        normalized_right.append(copy)
-    return left, normalized_right
 
 
 def compare_continuable_trace_details(
@@ -818,8 +757,6 @@ def compare_continuable_trace_details(
             record for record in right_projected
             if record.get("kind") == kind and _is_allowed_continuable_position_state(record)
         ]
-        if kind == "context.budget":
-            left_state, right_state = _normalize_continuable_provider_budget_drift(left_state, right_state)
         semantic.extend(_diff_semantic_records(left_state, right_state))
 
     format_differences = _diff_values(project_format_trace(left), project_format_trace(right))

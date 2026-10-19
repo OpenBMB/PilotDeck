@@ -1,6 +1,13 @@
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { resolve, join, isAbsolute, dirname } from 'node:path';
 
+export function independentModelCredentialEnvs(profile) {
+  return [...new Set(Object.values(profile.model?.providers ?? {}).flatMap(provider => {
+    const match = typeof provider.apiKey === 'string' && /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(provider.apiKey.trim());
+    return match ? [match[1]] : [];
+  }))];
+}
+
 export function independentBinding(slot, value) {
   if (value?.enabled !== true) return undefined;
   const knowledge = slot === 'knowledge' && value.contract === 'knowledge-core/v1';
@@ -119,6 +126,9 @@ export function configureIndependentCompose(compose, profile, bindings) {
   pd.environment.PILOTDECK_DISABLE_LOCAL_AUTH = '0';
   pd.build.args = { PILOTDECK_BUILD_PROFILE: 'products/pilotdeck-staffdeck-sop/profiles/exported.yaml', PILOTDECK_DISABLE_LOCAL_AUTH: '0' };
   pd.image = undefined;
+  for (const key of independentModelCredentialEnvs(profile)) {
+    pd.environment[key] = '${' + key + ':?set ' + key + ' in .env}';
+  }
   for (const binding of independent) {
     const managed = binding.deployment.mode !== 'external';
     if (binding.slot === 'knowledge') {

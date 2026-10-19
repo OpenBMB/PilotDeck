@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { renderGeneratedEntrypoint } from "../../../scripts/generate-frontend-modules.mjs";
 import { resolveFrontendProfile } from "../../../scripts/frontend-profile.mjs";
-import { independentBinding, prepareIndependent, rewriteIndependent, configureIndependentCompose } from './independent-services.mjs';
+import { independentBinding, independentModelCredentialEnvs, prepareIndependent, rewriteIndependent, configureIndependentCompose } from './independent-services.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const pilotdeckRoot = resolve(scriptDir, "../../..");
@@ -448,9 +448,13 @@ async function writeDeploymentFiles(output, profile, profilePath, assembly) {
   const buildProfile = { modules: deployment.modules, ...(deployment.frontend ? { frontend: deployment.frontend } : {}) };
   await writeFile(join(output, 'pilotdeck/products/pilotdeck-staffdeck-sop/profiles/exported.yaml'), YAML.stringify(buildProfile));
   const needsKnowledgeSecret = externalModules.some((module) => module.builtin === "staffdeck-knowledge");
+  const extraModelCredentials = independent.length
+    ? independentModelCredentialEnvs(profile).filter(key => !['PILOTDECK_API_KEY', 'PILOTDECK_REAL_MODEL_API_KEY', 'PILOTDECK_REAL_MODEL_BASE_URL', 'PILOTDECK_PORT'].includes(key))
+      .map(key => `${key}=\n`).join('')
+    : '';
   await writeFile(
     join(output, ".env.example"),
-    `PILOTDECK_API_KEY=\nPILOTDECK_REAL_MODEL_API_KEY=\nPILOTDECK_REAL_MODEL_BASE_URL=\n${needsKnowledgeSecret ? "STAFFDECK_APP_SECRET=change-me\nSTAFFDECK_PYTHON_BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim\n" : ""}${independent.some(row => row.slot === 'knowledge') ? `${deployment.modules.knowledge.credentialEnv}=\n${deployment.modules.knowledge.capabilitiesCredentialEnv}=\n` : ''}${sop?.independent ? 'SOP_RUNTIME_PUBLISH_TOKEN=\n' : ''}PILOTDECK_PORT=3001\n`,
+    `PILOTDECK_API_KEY=\nPILOTDECK_REAL_MODEL_API_KEY=\nPILOTDECK_REAL_MODEL_BASE_URL=\n${extraModelCredentials}${needsKnowledgeSecret ? "STAFFDECK_APP_SECRET=change-me\nSTAFFDECK_PYTHON_BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim\n" : ""}${independent.some(row => row.slot === 'knowledge') ? `${deployment.modules.knowledge.credentialEnv}=\n${deployment.modules.knowledge.capabilitiesCredentialEnv}=\n` : ''}${sop?.independent ? 'SOP_RUNTIME_PUBLISH_TOKEN=\n' : ''}PILOTDECK_PORT=3001\n`,
     "utf8",
   );
   const services = compose(sop, providerNoProxyHosts(profile), externalModules);

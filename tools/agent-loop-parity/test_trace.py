@@ -637,6 +637,29 @@ class SubagentTraceNormalizationTests(unittest.TestCase):
         right = [{"kind": "context.budget", "used": 20, "total": 100, "ratio": 0.2, "state": "ok"}]
         self.assertTrue(compare_traces(left, right))
 
+    def test_local_estimates_cannot_hide_constant_budget_regressions(self) -> None:
+        left = [{
+            "kind": "context.budget", "used": 10, "displayUsed": 10,
+            "budgetUsed": 10, "total": 100, "effectiveTotal": 90, "ratio": 10 / 90,
+            "breakdown": {"source": "local_estimate", "messageTokens": 10},
+        }]
+        for field in ("used", "displayUsed", "budgetUsed", "total", "effectiveTotal", "ratio", "breakdown"):
+            right = json.loads(json.dumps(left))
+            if field == "breakdown":
+                right[0][field]["messageTokens"] = 20
+            else:
+                right[0][field] += 1
+            for compare in (compare_trace_details, compare_continuable_trace_details):
+                with self.subTest(field=field, comparator=compare.__name__):
+                    self.assertTrue(compare(left, right).semantic)
+
+    def test_control_request_cannot_move_after_its_response(self) -> None:
+        request = {"kind": "model.request", "agentScope": "parent", "modelView": {
+            "messages": [{"role": "user", "content": "Todo list updated"}],
+        }}
+        response = {"kind": "model.response", "agentScope": "parent", "modelView": {"content": "done"}}
+        self.assertTrue(compare_trace_details([request, response], [response, request]).semantic)
+
     def test_each_visible_durable_event_requires_its_own_prior_write(self) -> None:
         good = [
             {"kind": "durable.status", "event": "turn_timeout"},
