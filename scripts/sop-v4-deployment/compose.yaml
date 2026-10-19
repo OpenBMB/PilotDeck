@@ -1,0 +1,77 @@
+services:
+  sop-runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    restart: unless-stopped
+    env_file: private.env
+    environment:
+      SOP_V4_DB: /data/runtime.sqlite
+      SOP_V4_MAX_CONCURRENCY: '32'
+    volumes:
+      - ./runtime-data:/data
+    ports:
+      - '127.0.0.1:18914:8091'
+    healthcheck:
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8091/healthz")']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    env_file: private.env
+    environment:
+      NODE_ENV: production
+      PILOT_HOME: /data
+      DATABASE_PATH: /data/auth.db
+      PILOTDECK_CONFIG_PATH: /data/pilotdeck.yaml
+      PILOTDECK_SOP_V4_ENDPOINT: http://sop-runtime:8091
+      SOP_V4_ACCEPTANCE_LEDGER: ${SOP_V4_ACCEPTANCE_LEDGER:-}
+      NO_PROXY: '*'
+      no_proxy: '*'
+    command: ['node', '/app/sop-v4-gateway.mjs']
+    volumes:
+      - ./home:/data
+      - ./workspace:/workspace
+    ports:
+      - '127.0.0.1:18814:18814'
+    depends_on:
+      sop-runtime:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'fetch("http://127.0.0.1:18814/health").then(r=>{if(!r.ok)process.exit(1)})']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  web:
+    image: sop-v4-acceptance-gateway
+    restart: unless-stopped
+    env_file: private.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      SERVER_PORT: '3314'
+      PILOT_HOME: /data
+      DATABASE_PATH: /data/auth.db
+      PILOTDECK_CONFIG_PATH: /data/pilotdeck.yaml
+      PILOTDECK_DISABLE_LOCAL_AUTH: '0'
+      PILOTDECK_GATEWAY_URL: ws://gateway:18814/ws
+      NO_PROXY: '*'
+      no_proxy: '*'
+    command: ['node', '--import', 'tsx', '/app/ui/server/index.js']
+    volumes:
+      - ./home:/data
+      - ./workspace:/workspace
+    ports:
+      - '127.0.0.1:23314:3314'
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'fetch("http://127.0.0.1:3314/health").then(r=>{if(!r.ok)process.exit(1)})']
+      interval: 5s
+      timeout: 3s
+      retries: 12

@@ -3299,6 +3299,34 @@ export function createPilotDeckClientWithTransportFactory(
   };
   return {
     connect,
+    sop: {
+      events: async function* (runId, options) {
+        let after = options?.after ?? 0;
+        while (!options?.signal?.aborted) {
+          const page = await request("sop_execution", { operation: "sop_events", input: { runId, after },
+            projectKey: options?.projectKey ?? defaults.projectKey }) as { events: Record<string, unknown>[] };
+          for (const event of page.events) {
+            if (options?.signal?.aborted) return;
+            after = Number(event.sequence);
+            yield event;
+          }
+          if (page.events.length) continue;
+          const status = await request("sop_execution", { operation: "sop_status", input: { runId, limit: 1 },
+            projectKey: options?.projectKey ?? defaults.projectKey }) as { status: string };
+          if (status.status !== "running") {
+            const tail = await request("sop_execution", { operation: "sop_events", input: { runId, after },
+              projectKey: options?.projectKey ?? defaults.projectKey }) as { events: Record<string, unknown>[] };
+            for (const event of tail.events) { after = Number(event.sequence); yield event; }
+            if (tail.events.length) continue;
+            return;
+          }
+          await new Promise<void>(resolve => setTimeout(resolve, 250));
+        }
+      },
+      call: async (operation, input, options) => await request("sop_execution", {
+        operation, input, projectKey: options?.projectKey ?? defaults.projectKey, approverAuthorization: options?.approverAuthorization,
+      }) as Record<string, unknown>,
+    },
     describeServer: async () => await request("describe_server", {}) as PilotDeckServerInfo,
     close: async () => {
       if (closed) return;

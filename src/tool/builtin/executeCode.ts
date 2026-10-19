@@ -131,6 +131,12 @@ const EXECUTE_CODE_BASE_ALLOWED_TOOLS = [
   "grep",
   "glob",
   "bash",
+  "run_sop",
+  "sop_status",
+  "sop_result",
+  "sop_wait",
+  "sop_cancel",
+  "sop_retry",
 ] as const;
 
 export type ExecuteCodeHelperToolName = (typeof EXECUTE_CODE_BASE_ALLOWED_TOOLS)[number] | "web_search";
@@ -725,8 +731,10 @@ def bash(command, timeout_ms=None, workdir=None):
         args["timeout"] = timeout_ms
     return _call("bash", args)
 ` : "";
+  const sopHelpers = ["run_sop", "sop_status", "sop_result", "sop_wait", "sop_cancel", "sop_retry"]
+    .filter(name => allowedTools.has(name)).map(name => `\ndef ${name}(**kwargs):\n    return _call("${name}", kwargs)\n`).join("");
   return `${transportHeader}
-${webSearchHelper}${webFetchHelper}${readFileHelper}${writeFileHelper}${editFileHelper}${grepHelper}${globHelper}${bashHelper}`;
+${webSearchHelper}${webFetchHelper}${readFileHelper}${writeFileHelper}${editFileHelper}${grepHelper}${globHelper}${bashHelper}${sopHelpers}`;
 }
 
 const UDS_PYTHON_TRANSPORT_HEADER = `"""Auto-generated PilotDeck execute_code RPC helpers."""

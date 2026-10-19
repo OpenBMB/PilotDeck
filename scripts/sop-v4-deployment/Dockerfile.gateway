@@ -1,0 +1,7 @@
+ARG PILOTDECK_BASE_IMAGE=pd-independent-export-1019-pilotdeck:latest
+FROM ${PILOTDECK_BASE_IMAGE}
+COPY dist /app/dist
+COPY web-server /app/ui/server
+COPY gateway.mjs /app/sop-v4-gateway.mjs
+WORKDIR /app
+ENTRYPOINT []

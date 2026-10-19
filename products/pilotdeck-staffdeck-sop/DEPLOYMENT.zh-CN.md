@@ -1,5 +1,7 @@
 # 七槽版一键部署
 
+新的批量执行、foreach、可配置输入与节点模型后端使用独立 v4 环境，见 [SOP v4 后端部署与接口](./SOP_V4_BACKEND.zh-CN.md)。以下为原七槽部署，不与 v4 共用数据库。
+
 本文说明 PilotDeck + StaffDeck 的七槽部署方式。当前交付配置包含：
 
 | Slot | 实现 | 进程 |

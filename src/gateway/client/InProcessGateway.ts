@@ -270,6 +270,8 @@ export type InProcessGatewayOptions = {
   serverInfo?: Partial<GatewayServerInfo>;
   cron?: GatewayCronController;
   sopStatus?: (input: import("../protocol/types.js").GatewaySopStatusInput) => Promise<import("../protocol/types.js").GatewaySopStatusResult>;
+  sopExecution?: (input: import("../protocol/types.js").GatewaySopExecutionInput) => Promise<Record<string, unknown>>;
+  sopInputCapture?: (input: import("../dialog/GatewayAttachmentTurnComposerPort.js").GatewayAttachmentTurnComposerInput & { sessionKey: string }) => Promise<import("../dialog/GatewayAttachmentTurnComposerPort.js").GatewayAttachmentTurnComposition>;
   resumeSop?: (input: import("../protocol/types.js").GatewaySopResumeInput) => Promise<import("../protocol/types.js").GatewaySopResumeResult>;
   /**
    * Web Phase 2 — pluggable session-history reader. Wired by
@@ -634,6 +636,11 @@ export class InProcessGateway implements Gateway {
   async sopStatus(input: import("../protocol/types.js").GatewaySopStatusInput): Promise<import("../protocol/types.js").GatewaySopStatusResult> {
     if (!this.options.sopStatus) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "StaffDeck SOP status is unavailable.");
     return this.options.sopStatus(input);
+  }
+
+  async sopExecution(input: import("../protocol/types.js").GatewaySopExecutionInput): Promise<Record<string, unknown>> {
+    if (!this.options.sopExecution) throw new DialogGatewayError("CAPABILITY_UNAVAILABLE", "SOP execution unavailable");
+    return this.options.sopExecution(input);
   }
 
   async resumeSop(input: import("../protocol/types.js").GatewaySopResumeInput): Promise<import("../protocol/types.js").GatewaySopResumeResult> {
@@ -2466,6 +2473,9 @@ export class InProcessGateway implements Gateway {
     projectRoot?: string,
     sessionKey?: string,
   ) {
+    if (this.options.sopInputCapture && sessionKey) return this.options.sopInputCapture({
+      message, attachments, projectRoot, sessionKey,
+    });
     const composer = this.options.attachmentTurnComposerForSession && sessionKey
       ? this.options.attachmentTurnComposerForSession(sessionKey) : this.attachmentTurnComposer;
     return composer.prepare({

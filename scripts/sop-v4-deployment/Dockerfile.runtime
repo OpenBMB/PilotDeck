@@ -1,0 +1,5 @@
+ARG SOP_BASE_IMAGE=pd-independent-export-1019-sop-runtime:latest
+FROM ${SOP_BASE_IMAGE}
+COPY runtime-source /opt/sop-v4
+ENV PYTHONPATH=/opt/sop-v4
+CMD ["python", "-m", "uvicorn", "staffdeck_sop_runtime.execution_api_v4:app_factory", "--factory", "--host", "0.0.0.0", "--port", "8091", "--workers", "1"]
