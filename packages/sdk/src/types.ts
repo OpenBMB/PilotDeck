@@ -1501,6 +1501,11 @@ export type PilotDeckCronStopResult = { stopped: boolean; taskId?: string; runId
 export type PilotDeckCronRunNowResult = { started: boolean; reason?: "not_found" | "already_running"; taskId?: string };
 
 export type PilotDeckClient = {
+  sop: {
+    events(runId: string, options?: { projectKey?: string; after?: number; signal?: AbortSignal }): AsyncIterable<Record<string, unknown>>;
+    call(operation: "run_sop" | "sop_status" | "sop_result" | "sop_wait" | "sop_cancel" | "sop_retry" | "sop_events" | "sop_resume_execution",
+      input: Record<string, unknown>, options?: { projectKey?: string; approverAuthorization?: string }): Promise<Record<string, unknown>>;
+  };
   /** Establishes a Gateway handshake. Repeated calls reuse the same control connection. */
   connect(): Promise<PilotDeckServerInfo>;
   describeServer(): Promise<PilotDeckServerInfo>;

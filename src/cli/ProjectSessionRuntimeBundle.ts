@@ -422,6 +422,24 @@ export class ProjectSessionRuntimeBundle {
       if (describedSessionAgent) {
         sessionTools.registerOrReplace(describedSessionAgent);
       }
+      if (context.channelKey === "sop-v4") {
+        const output = sessionTools.get("structured_output");
+        if (output) sessionTools.registerOrReplace({ ...output, inputSchema: {
+          type: "object", required: ["value"], additionalProperties: false,
+          properties: { value: { type: "object", required: ["status", "reply"], additionalProperties: false,
+            properties: { status: { type: "string", enum: ["completed", "failed"] }, reply: { type: "string" },
+              handoffText: { type: "string" }, slotUpdates: { type: "object", additionalProperties: true },
+              output: {}, error: { type: "object", additionalProperties: true }, nextNodeId: { type: "string" },
+              foreach: { type: "object", required: ["concurrency"], additionalProperties: false,
+                properties: { concurrency: { type: "integer", minimum: 1 }, items: { type: "array", items: {
+                  type: "object", required: ["itemKey", "input"], additionalProperties: false,
+                  properties: { itemKey: { type: "string" }, input: { type: "object", additionalProperties: true } },
+                } } },
+              },
+            },
+          } },
+        } });
+      }
       const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
         router: runtime.router,
         tools: { registry: sessionTools },

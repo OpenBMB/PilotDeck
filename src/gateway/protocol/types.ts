@@ -91,6 +91,13 @@ export type GatewaySopStatusInput = {
 
 export type GatewaySopStatusResult = StaffDeckSopStatusSnapshot | null;
 
+export type GatewaySopExecutionInput = {
+  projectKey?: string;
+  operation: "run_sop" | "sop_status" | "sop_result" | "sop_wait" | "sop_cancel" | "sop_retry" | "sop_events" | "sop_resume_execution";
+  input: Record<string, unknown>;
+  approverAuthorization?: string;
+};
+
 export type GatewaySopResumeInput = GatewaySopStatusInput & {
   requestId: string;
   waitId: string;
@@ -1468,6 +1475,7 @@ export interface Gateway {
   runEvents?(input: GatewayRunEventsInput): Promise<GatewayRunEventsResult>;
   runReattach?(input: GatewayRunRefInput): Promise<GatewayRunRecord | undefined>;
   sopStatus?(input: GatewaySopStatusInput): Promise<GatewaySopStatusResult>;
+  sopExecution?(input: GatewaySopExecutionInput): Promise<Record<string, unknown>>;
   resumeSop?(input: GatewaySopResumeInput): Promise<GatewaySopResumeResult>;
   steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult>;
   cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult>;

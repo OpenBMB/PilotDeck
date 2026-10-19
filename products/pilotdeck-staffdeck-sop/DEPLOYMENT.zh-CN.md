@@ -2,6 +2,8 @@
 
 推荐使用 `native-five-independent.yaml` 导出三个独立服务。PilotDeck 负责 AgentLoop、Tools、Context、模型和会话；Knowledge Core 负责知识数据；SOP runtime 负责定义版本与生命周期。新版不复制 StaffDeck backend。
 
+新的批量执行、foreach、可配置输入与节点模型后端使用独立 v4 环境，见 [SOP v4 后端部署与接口](./SOP_V4_BACKEND.zh-CN.md)。以下为 KM / SOP v3 部署，不与 v4 共用数据库。
+
 | 服务 | 协议 | Compose 内部地址 | 数据卷 |
 | --- | --- | --- | --- |
 | pilotdeck | Web / Gateway / KM capability | http://pilotdeck:3001 | pilotdeck-home |

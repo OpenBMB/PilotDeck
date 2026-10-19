@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { SopExecutionClient } from "../sop/execution/SopExecutionClient.js";
+import { SopExecutionHost } from "../sop/execution/SopExecutionHost.js";
+import { createSopNodeExecutor } from "../sop/execution/createSopNodeExecutor.js";
+import { createSopExecutionTools } from "../sop/execution/sopExecutionTools.js";
+import { SopInputCapture } from "../sop/execution/SopInputCapture.js";
 import { projectBindingEnvironment, projectForStaffDeckPrincipal } from '../pilot/staffdeck/projectBinding.js';
 import {
   readFile as readFileAsync,
@@ -724,6 +729,24 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     },
   });
   const sessionExecutions = new Map<string, SessionExecutionHandle>();
+  if (env.PILOTDECK_SOP_V4_ENDPOINT && !env.SOP_V4_HOST_TOKEN) throw new Error("SOP_V4_HOST_TOKEN is required for SOP v4");
+  const sopExecutionClient = env.PILOTDECK_SOP_V4_ENDPOINT
+    ? new SopExecutionClient(env.PILOTDECK_SOP_V4_ENDPOINT, env.SOP_V4_HOST_TOKEN ?? "", (scope, definitions, model) => {
+      for (const definition of definitions) for (const node of definition.nodes as import("../sop/execution/SopExecutionClient.js").SopJson[]) {
+        validateSopBinding(scope, node, model);
+      }
+    }) : undefined;
+  function validateSopBinding(scope: string, node: import("../sop/execution/SopExecutionClient.js").SopJson, fallback?: import("../sop/execution/SopExecutionClient.js").SopJson): void {
+    const runtime = registry.resolve(scope);
+    const selection = (node.model ?? fallback ?? runtime.snapshot.config.agent.model) as { provider: string; model: string };
+    registry.assertSdkModelAllowed("sop-v4-preflight", selection, scope);
+    runtime.model.getCapabilities(selection.provider, selection.model);
+    for (const tool of ["structured_output", ...(node.tools as string[] ?? [])]) {
+      if (!runtime.tools.has(tool)) throw new Error(`SOP tool unavailable: ${tool}`);
+    }
+  }
+  const sopInputCapture = new SopInputCapture(pilotHome);
+  let sopExecutionHost: SopExecutionHost | undefined;
   registry = new ProjectRuntimeRegistry({
     registerSessionExecution: (sessionKey, handle) => {
       sessionExecutions.set(sessionKey, handle);
@@ -738,7 +761,8 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     elicitationTimeoutMs,
     now,
     subagentIdFactory: options.__testSubagentIdFactory,
-    extraTools: options.extraTools,
+    extraTools: [...(options.extraTools ?? []), ...(sopExecutionClient ? createSopExecutionTools(sopExecutionClient,
+      async sessionId => ({ ...await sopInputCapture.get(sessionId), history: router?.snapshotSession(sessionId)?.messages ?? [] })) : [])],
     organizationToolPolicy: organizationPolicy?.tools,
     organizationPolicy,
     sessionOverrides,
@@ -1061,6 +1085,22 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     : undefined;
   let boundServer: { broadcastNotification(name: string, payload?: unknown): void } | undefined;
   const gateway = new InProcessGateway(router, {
+    ...(sopExecutionClient ? {
+      sopInputCapture: input => sopInputCapture.prepare({ ...input, projectRoot: input.projectRoot ?? fallbackProjectRoot }),
+      sopExecution: async (input: import("../gateway/protocol/types.js").GatewaySopExecutionInput) => {
+        const scope = resolve(input.projectKey ?? fallbackProjectRoot);
+        if (input.operation === "sop_resume_execution") {
+          if (Object.hasOwn(input.input, "subjectUserId")) throw new Error("Approval subject must be authenticated by host");
+          const authorization = input.approverAuthorization;
+          if (!authorization?.startsWith("Bearer ")) throw new Error("Approval bearer required");
+          nativeAuthenticator ??= import(new URL('../../ui/server/pilotdeck-approval-authority.mjs', import.meta.url).href)
+            .then(module => module.createPilotDeckApprovalAuthority({ databasePath: ownerDatabasePath, jwtSecret: env.JWT_SECRET, readOwner: readPilotDeckOwner }));
+          const subject = await (await nativeAuthenticator!).authenticate({ bearer: authorization.slice(7) });
+          return sopExecutionClient.call(input.operation, scope, { ...input.input, subjectUserId: subject.userId });
+        }
+        return sopExecutionClient.call(input.operation, scope, input.input);
+      },
+    } : {}),
     invocationLogSink,
     storageConfigVersion: invocationStorageConfig?.storageConfigVersion,
     runRegistry,
@@ -1548,6 +1588,17 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
   // build a `GatewayElicitationChannel` against this gateway's bus +
   // emit-sink (B1).
   registry.setGateway(gateway);
+  if (sopExecutionClient) {
+    sopExecutionHost = new SopExecutionHost(sopExecutionClient, createSopNodeExecutor({
+      validate: call => validateSopBinding(call.scope, call.node, call.model),
+      createSession: call => registry.createSession({
+        sessionKey: `sop-v4:${call.runId}:${call.id}:${call.attempt}`, projectKey: call.scope, channelKey: "sop-v4",
+        allowedTools: ["structured_output", ...(call.node.tools ?? [])],
+      }),
+      defaultModel: scope => registry.resolve(scope).snapshot.config.agent.model,
+    }), error => console.warn("SOP v4 host:", error instanceof Error ? error.message : String(error)));
+    void sopExecutionHost.start().catch(error => console.warn("SOP v4 preflight failed:", error instanceof Error ? error.message : String(error)));
+  }
   const lifecycle = bootResources.commit({ gateway });
   return {
     gateway,
@@ -1556,7 +1607,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     registry,
     sessionDataPlane,
     telemetryObservers,
-    dispose: () => lifecycle.dispose(),
+    dispose: async () => { await sopExecutionHost?.dispose(); await lifecycle.dispose(); },
     bindServer: (server) => {
       boundServer = server;
       runtimeRefresh.bindServer(server);
