@@ -37,7 +37,9 @@ if (action === 'prepare') {
   for (const name of ['', 'home', 'workspace', 'logs', 'runtime-data']) await mkdir(join(root, name), { recursive: true, mode: 0o700 });
   const original = YAML.parse(await readFile(process.env.SOP_V4_MODEL_CONFIG, 'utf8'));
   const template = option('--profile') ? YAML.parse(await readFile(resolve(option('--profile')), 'utf8')) : undefined;
-  const config = { ...template, schemaVersion: 1, agent: { model: original.agent.model, interactionProfile: 'headless' }, model: original.model,
+  const interactionProfile = template?.agent?.interactionProfile ?? (flags.includes('--without-web') ? 'headless' : 'interactive');
+  if (!['interactive', 'headless', 'disabled'].includes(interactionProfile)) throw Error('Invalid agent.interactionProfile');
+  const config = { ...template, schemaVersion: 1, agent: { model: original.agent.model, interactionProfile }, model: original.model,
     modules: Object.fromEntries(['agentLoop', 'tools', 'context', 'skills', 'modelProvider'].map(name => [name, { enabled: true, provider: 'pilotdeck' }])) };
   Object.assign(config.modules, template?.modules);
   const ports = { web: await port(), gateway: await port(), runtime: await port(), knowledge: await port() };
@@ -84,7 +86,10 @@ if (action === 'prepare') {
     stages.nodeBuildMs = performance.now() - nodeBegan;
     if (!flags.includes('--without-web')) {
       const webBegan = performance.now();
-      await run('pnpm', ['--dir', 'ui', 'run', 'build'], { cwd: repo });
+      await run('pnpm', ['--dir', 'ui', 'run', 'build'], { cwd: repo, env: {
+        ...cleanEnv, PILOTDECK_CONFIG_PATH: join(root, 'home/pilotdeck.yaml'),
+        PILOTDECK_FRONTEND_PROFILE: join(root, 'home/pilotdeck.yaml'), PILOTDECK_DISABLE_LOCAL_AUTH: '0',
+      } });
       stages.webBuildMs = performance.now() - webBegan;
     }
   }

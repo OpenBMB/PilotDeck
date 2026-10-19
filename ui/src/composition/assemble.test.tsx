@@ -1,8 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import { assembleFrontend, defaultFrontendChoice } from './assemble';
+import { validateRuntimeCapabilities } from './runtime';
 import type { FrontendModule, Slot } from './contracts';
 
 describe('frontend assembly', () => {
+  it('keeps chat and knowledge available with backend-only SOP v4', () => {
+    const Chat = () => null;
+    const modules: FrontendModule[] = [
+      { id: 'chat', slot: 'agentLoop', contract: 'pilotdeck.agent-loop/v1', chatSurface: Chat },
+      { id: 'tools', slot: 'tools', contract: 'pilotdeck.tools/v1' },
+      { id: 'context', slot: 'context', contract: 'pilotdeck.context/v1' },
+      { id: 'model', slot: 'modelProvider', contract: 'pilotdeck.model/v1' },
+      { id: 'knowledge', slot: 'knowledge', contract: 'knowledge-core/v1', pages: [{ id: 'knowledge', path: '/knowledge', label: 'Knowledge', component: Chat }] },
+      { id: 'legacy-sop', slot: 'sop', contract: 'sop.lifecycle/v3', approvalInbox: Chat },
+    ];
+    const assembly = assembleFrontend({ modules: {
+      skills: { enabled: false },
+      sop: { enabled: true, contract: 'sop.lifecycle/v4', hostAdapter: 'pilotdeck' },
+      knowledge: { enabled: true, contract: 'knowledge-core/v1' },
+    }, frontend: { businessModules: {} } }, modules, {
+      agentLoop: 'chat', tools: 'tools', context: 'context', modelProvider: 'model', knowledge: 'knowledge', sop: 'legacy-sop',
+    });
+    expect(assembly.bindings.sop.enabled).toBe(true);
+    expect(assembly.chatSurface).toBe(Chat);
+    expect(assembly.pages.map(page => page.path)).toContain('/knowledge');
+    expect(assembly.selections.some(selection => selection.slot === 'sop')).toBe(false);
+    expect(assembly.approvalInbox).toBeNull();
+    const runtime = { modules: assembly.bindings, gatewayCapabilities: [] };
+    expect(validateRuntimeCapabilities(assembly, runtime)).toEqual([]);
+    expect(validateRuntimeCapabilities(assembly, { ...runtime, modules: { ...runtime.modules, sop: { enabled: true, contract: 'sop.lifecycle/v3' } } })).toContain('Runtime contract differs for sop.');
+  });
+
   it('assembles native SOP and independent knowledge with compatible contracts together', () => {
     const modules: FrontendModule[] = [
       { id: 'pilotdeck.chat', slot: 'agentLoop', contract: 'pilotdeck.agent-loop/v1' },

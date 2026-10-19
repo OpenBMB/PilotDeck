@@ -66,10 +66,9 @@ modules:
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
-pnpm --dir ui run build
 export SOP_V4_MODEL_CONFIG=/absolute/path/private/pilotdeck.yaml
 export SOP_SOURCE_PYTHON=/absolute/path/python3.12
-node scripts/sop-v4-source.mjs prepare /absolute/path/new-source-deployment
+node scripts/sop-v4-source.mjs prepare /absolute/path/new-source-deployment --build
 node scripts/sop-v4-source.mjs start /absolute/path/new-source-deployment
 node scripts/sop-v4-source.mjs status /absolute/path/new-source-deployment
 ```
@@ -91,9 +90,27 @@ node scripts/benchmark-sop-v4-startup.mjs /absolute/path/new-combined
 
 `--without-web` 仅运行服务与 Gateway；移除此参数可启动登录服务，`--approval-provider pilotdeck` 启用 owner 审批。`start --services-only` 只拉起 YAML 声明的托管 Runtime，供独立执行宿主连接。所有外部凭据通过环境提供，外部服务不被启动或停止。首次 prepare 安装 Python 包，start 不安装、不构建；`prepare-timing.json` 和 `startup-benchmark.json` 分别记录准备和十轮启动。组合验收目标为依赖与构建准备完成后每轮不超过 10 秒，包含协议、数据库、KM 空间初始化和 SDK 绑定检查，不包含模型响应时间。不是操作系统冷缓存或跨机器性能承诺。
 
+`prepare --build` 使用生成的实例 profile 并显式启用 Web 登录。已有实例手动重建前端时，也须同时设置 `PILOTDECK_CONFIG_PATH=/absolute/deployment/home/pilotdeck.yaml` 和 `PILOTDECK_DISABLE_LOCAL_AUTH=0`；否则 Vite 默认的免登录构建会与服务端认证不一致。
+
+带 Web 的准备默认使用 `agent.interactionProfile: interactive`，由 Gateway 将工具权限确认交给浏览器；`--without-web` 默认 `headless`。输入 profile 显式声明的 `agent.interactionProfile` 优先。浏览器报 `No interaction answerer is available` 时，检查实例 `home/pilotdeck.yaml` 是否误设为 `headless`：改为 `interactive` 后重启 Gateway/实例，让会话重新加载配置，再在页面确认本次工具请求。不要通过关闭权限检查解决。该工具调用确认与 SOP 定义内的业务审批节点是两条独立链路。
+
+`execute_code` 的 `pilotdeck_tools` helper 返回 `{content, data}`，执行 ID 应读取 `response["data"]["runId"]`。`requestId` 用于创建、取消和重试；只读查询不接受该字段。等待和结果分页示例：
+
+```python
+from pilotdeck_tools import run_sop, sop_wait, sop_result
+
+response = run_sop(requestId="unique-request", sopId="your-sop", version="1",
+                   input={"originalQuery": "your query"})
+run_id = response["data"]["runId"]
+print(sop_wait(runId=run_id, timeoutMs=60000))
+print(sop_result(runId=run_id, offset=0, limit=100))
+```
+
+`sop_result` 不指定 `limit` 时仅返回摘要和 `resultRef`；读取实际输出须显式分页。一次等待结束仍为 `running` 时可以继续等待，执行本身已持久化。
+
 托管 KM 默认启用服务认证，准备时生成独立 `knowledge-identities.json`，绑定 YAML 的 namespace 和 spaces；不访问 SD 用户库。私有模型配置用于独立 KM 本地模型调用，宿主节点仍通过 PilotDeck 模型接口运行。`knowledge-data/knowledge.sqlite` 与 SOP 数据独立，日志位于该目录的 `service.log`。无需 Web 的拓扑测试可运行 `node scripts/accept-sop-v4-topologies.mjs /absolute/stopped-combined /absolute/new-evidence /absolute/knowledge_core`；它临时启动自己的服务，覆盖 SOP-only、KM-only、外部连接及退出所有权。
 
-控制器仅监听 loopback，采用单 Gateway/Runtime，服务日志位于 `logs/`，SQLite 位于 `runtime-data/runtime.sqlite`，上传与生成文件位于 `workspace/`，会话和账号位于 `home/`。这是本机后端验收入口，包含 `native_probe` 测试工具及非交互执行配置。公网部署应使用正式服务管理及业务权限配置。
+控制器仅监听 loopback，采用单 Gateway/Runtime，服务日志位于 `logs/`，SQLite 位于 `runtime-data/runtime.sqlite`，上传与生成文件位于 `workspace/`，会话和账号位于 `home/`。这是本机验收入口，包含 `native_probe` 测试工具；Web 使用交互配置，纯服务默认使用非交互配置。公网部署应使用正式服务管理及业务权限配置。
 
 ```sh
 node scripts/accept-sop-v4-source.mjs /absolute/path/new-source-deployment

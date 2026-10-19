@@ -79,6 +79,8 @@ export function assembleFrontend(
       continue;
     }
     const contract = binding.contract ?? slotContracts[slot];
+    // SOP v4 exposes execution tools through AgentLoop without a management UI.
+    if (slot === 'sop' && contract === 'sop.lifecycle/v4') continue;
     const portableSop = slot === 'sop' && contract === 'sop.lifecycle/v3';
     if (contract !== slotContracts[slot] && !portableSop && !(slot === 'knowledge' && contract === 'knowledge-core/v1')) throw new Error(`Unsupported backend contract: ${slot} / ${contract}`);
     const frontend = catalog.find(module => module.id === choices[slot]);

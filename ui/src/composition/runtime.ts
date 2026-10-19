@@ -109,7 +109,8 @@ export function validateRuntimeCapabilities(assembly: Assembly, runtime: Runtime
     }
     if (!expected.enabled) continue;
     const selection = assembly.selections.find((candidate) => candidate.slot === slot);
-    if (!selection) {
+    const backendOnlySop = slot === 'sop' && expected.contract === 'sop.lifecycle/v4';
+    if (!selection && !backendOnlySop) {
       errors.push(`Frontend assembly is missing enabled slot ${slot}.`);
       continue;
     }
@@ -123,7 +124,7 @@ export function validateRuntimeCapabilities(assembly: Assembly, runtime: Runtime
         errors.push(`Runtime ${field} differs for ${slot}.`);
       }
     }
-    for (const capability of selection.frontend.requiresCapabilities ?? []) {
+    for (const capability of selection?.frontend.requiresCapabilities ?? []) {
       if (expected.provider !== 'pilotdeck' && !actual.methods?.includes(capability)) {
         errors.push(`${selection.frontend.id} requires runtime capability ${capability}.`);
       }
