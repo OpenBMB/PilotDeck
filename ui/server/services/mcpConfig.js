@@ -54,7 +54,7 @@ export async function readMcpConfigFile(scope, projectPath) {
       exists: false,
       path: null,
       raw: JSON.stringify(DEFAULT_MCP_CONFIG, null, 2),
-      config: DEFAULT_MCP_CONFIG,
+      config: { mcpServers: {} },
       disabled: true,
       reason: 'Project MCP config requires a real project. Use global scope for general chat.',
     };
@@ -75,7 +75,7 @@ export async function readMcpConfigFile(scope, projectPath) {
         exists: false,
         path: filePath,
         raw: JSON.stringify(DEFAULT_MCP_CONFIG, null, 2),
-        config: DEFAULT_MCP_CONFIG,
+        config: { mcpServers: {} },
       };
     }
     throw error;
