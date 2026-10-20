@@ -4,6 +4,7 @@ import { authenticatedFetch } from '../../../../utils/api';
 import {
   CATALOG_PROVIDERS,
   findCatalogProviderByUrl,
+  preserveMiniMaxSelection,
   type CatalogProvider,
   type CatalogProviderProtocol,
 } from '../../../../shared/catalogProviders';
@@ -70,7 +71,11 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
   const [customProtocol, setCustomProtocol] = useState<CatalogProviderProtocol>('openai');
 
   const isCustomMode = selectedProvider?.id === CUSTOM_PROVIDER_ID;
-  const selectedModels = apiModels ?? selectedProvider?.models ?? [];
+  const suggestedModels = apiModels ?? selectedProvider?.models ?? [];
+  const selectedModels = preserveMiniMaxSelection(selectedModelId, selectedProvider?.id)
+    && !suggestedModels.some((model) => model.id === selectedModelId)
+    ? [{ id: selectedModelId, displayName: 'Saved model' }, ...suggestedModels]
+    : suggestedModels;
   const selectedDefaultUrl = selectedProvider?.defaultUrl ?? '';
 
   useEffect(() => {
@@ -132,7 +137,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
         setModelListStatus('idle');
         const nextModels = models.length > 0 ? models : catalogModels;
         setSelectedModelId((current) => (
-          nextModels.length > 0 && !nextModels.some((model) => model.id === current)
+          !preserveMiniMaxSelection(current, selectedProvider?.id) && nextModels.length > 0 && !nextModels.some((model) => model.id === current)
             ? nextModels[0].id
             : current
         ));
@@ -161,7 +166,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
         setModelListStatus('idle');
         const nextModels = !hasUsableApiKey(key) && models.length === 0 ? selectedProvider.models : models;
         setSelectedModelId((current) => (
-          nextModels.length > 0 && !nextModels.some((model) => model.id === current)
+          !preserveMiniMaxSelection(current, selectedProvider?.id) && nextModels.length > 0 && !nextModels.some((model) => model.id === current)
             ? nextModels[0].id
             : current
         ));
@@ -201,7 +206,7 @@ export default function LlmConfigurationStep({ onSaved }: LlmConfigurationStepPr
       setApiModels(nextModels);
       setModelListStatus('idle');
       setSelectedModelId((current) => (
-        nextModels.length > 0 && !nextModels.some((model) => model.id === current)
+        !preserveMiniMaxSelection(current, selectedProvider?.id) && nextModels.length > 0 && !nextModels.some((model) => model.id === current)
           ? nextModels[0].id
           : current
       ));

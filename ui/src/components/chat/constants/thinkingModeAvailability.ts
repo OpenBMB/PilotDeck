@@ -1,4 +1,4 @@
-import { thinkingModes, type ThinkingModeId } from './thinkingModes';
+import { thinkingModes, type ThinkingModeId } from './thinkingModes.js';
 
 export type ThinkingModelContext = {
   providerId?: string;
@@ -30,6 +30,10 @@ export function getThinkingModeAvailability(context?: ThinkingModelContext | nul
   const protocol = (context?.protocol ?? '').toLowerCase();
   const modelId = (context?.modelId ?? '').toLowerCase();
   const fingerprint = `${providerId} ${providerUrl} ${modelId}`;
+
+  if (modelId === 'minimax-m3.1-flash') {
+    return allowOnly(['low', 'medium', 'high', 'xhigh', 'max'], unsupportedReason);
+  }
 
   if (protocol === 'openai-responses' || /(^|[^a-z])openai([^a-z]|$)|api\.openai\.com/.test(`${providerId} ${providerUrl}`)) {
     if (modelId.includes('gpt-5.5-pro')) return allowOnly(['medium', 'high', 'xhigh'], unsupportedReason);

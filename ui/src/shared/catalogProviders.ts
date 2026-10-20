@@ -142,8 +142,8 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     protocol: 'openai',
     defaultUrl: 'https://api.minimax.io/v1',
     models: [
+      { id: 'MiniMax-M3.1-Flash', displayName: 'MiniMax M3.1 Flash', supportsImage: true, maxContextTokens: 1000000, maxOutputTokens: 524288 },
       { id: 'MiniMax-M3', displayName: 'MiniMax M3', supportsImage: true, maxContextTokens: 1000000 },
-      { id: 'MiniMax-M2.7', displayName: 'MiniMax M2.7', maxContextTokens: 204800 },
     ],
   },
   {
@@ -190,6 +190,29 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     ],
   },
 ];
+
+// This filters suggestions only. Saved and manually entered model IDs remain valid.
+export function filterMiniMaxModelChoices<T extends { id: string }>(models: T[], providerId?: string): T[] {
+  const direct = providerId === 'minimax';
+  const openrouter = providerId === 'openrouter';
+  if (!direct && !openrouter) return models;
+  const current = direct
+    ? ['MiniMax-M3.1-Flash', 'MiniMax-M3']
+    : ['minimax/minimax-m3.1-flash:free', 'minimax/minimax-m3'];
+  const textModel = direct ? /^(minimax-m|abab)/i : /^minimax\/(minimax-m|abab)/i;
+  const allowed = new Set(current.map((id) => id.toLowerCase()));
+  const filtered = models.filter((model) => !textModel.test(model.id) || allowed.has(model.id.toLowerCase()));
+  // Reorder only the MiniMax slots, keeping unrelated entries in place.
+  const ordered = filtered.filter((model) => allowed.has(model.id.toLowerCase()))
+    .sort((a, b) => current.map((id) => id.toLowerCase()).indexOf(a.id.toLowerCase())
+      - current.map((id) => id.toLowerCase()).indexOf(b.id.toLowerCase()));
+  let index = 0;
+  return filtered.map((model) => allowed.has(model.id.toLowerCase()) ? ordered[index++] : model);
+}
+
+export function preserveMiniMaxSelection(current: string, providerId?: string): boolean {
+  return Boolean(current) && (providerId === 'minimax' || /^minimax\//i.test(current));
+}
 
 export function findCatalogProviderById(id: string): CatalogProvider | undefined {
   return CATALOG_PROVIDERS.find((p) => p.id === id);

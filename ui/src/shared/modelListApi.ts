@@ -1,5 +1,5 @@
 import { authenticatedFetch } from '../utils/api';
-import { findCatalogProviderById, type CatalogModel, type CatalogProviderProtocol } from './catalogProviders';
+import { filterMiniMaxModelChoices, findCatalogProviderById, type CatalogModel, type CatalogProviderProtocol } from './catalogProviders';
 
 export type ApiModelListItem = Pick<CatalogModel, 'id' | 'displayName'>;
 
@@ -68,5 +68,5 @@ export async function fetchProviderModels({
     throw new Error(data?.error || 'Failed to fetch model list.');
   }
   const models = Array.isArray(data?.models) ? data.models : [];
-  return normalizeModelList(models);
+  return filterMiniMaxModelChoices(normalizeModelList(models), providerId);
 }

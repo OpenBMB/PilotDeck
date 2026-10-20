@@ -672,6 +672,27 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
     defaultUrl: "https://api.minimax.io/v1",
     apiKeyEnvVar: "MINIMAX_API_KEY",
     models: {
+      "MiniMax-M3.1-Flash": {
+        displayName: "MiniMax M3.1 Flash",
+        capabilities: {
+          supportsToolUse: true,
+          supportsStreaming: true,
+          supportsParallelToolCalls: true,
+          supportsThinking: true,
+          supportsJsonSchema: true,
+          supportsSystemPrompt: true,
+          supportsPromptCache: true,
+          maxContextTokens: 1000000,
+          maxOutputTokens: 524288,
+        },
+        multimodal: {
+          input: ["text", "image"],
+          maxImagesPerRequest: 20,
+          supportedImageMimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+          imageDetail: "auto",
+        },
+        aliases: ["minimax-m3.1-flash"],
+      },
       "MiniMax-M3": {
         displayName: "MiniMax M3",
         capabilities: {
@@ -692,24 +713,6 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
           imageDetail: "auto",
         },
         aliases: ["minimax-m3"],
-      },
-      "MiniMax-M2.7": {
-        displayName: "MiniMax M2.7",
-        capabilities: {
-          supportsToolUse: true,
-          supportsStreaming: true,
-          supportsParallelToolCalls: true,
-          supportsThinking: true,
-          supportsJsonSchema: true,
-          supportsSystemPrompt: true,
-          supportsPromptCache: true,
-          maxContextTokens: 204800,
-          maxOutputTokens: 16384,
-        },
-        multimodal: {
-          input: ["text"],
-        },
-        aliases: ["minimax-m2.7"],
       },
     },
   },

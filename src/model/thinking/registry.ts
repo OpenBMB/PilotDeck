@@ -78,6 +78,12 @@ export function resolveThinkingPlan(
     };
   }
 
+  // Resolve current MiniMax models before generic protocol adapters. In
+  // particular, Flash cannot disable thinking or use a token budget.
+  if (modelId === "minimax-m3.1-flash" || modelId === "minimax-m3") {
+    return minimaxM3Plan(mode, modelId, provider.protocol);
+  }
+
   if (provider.protocol === "openai-responses" || isOpenAIProvider(providerId, providerUrl)) {
     return openAIPlan(mode, modelId, isOpenAIProvider(providerId, providerUrl));
   }
@@ -267,6 +273,38 @@ function kimiPlan(mode: ThinkingMode, _modelId: string): ThinkingPlan {
     return { mode, enabled: false, thinkingType: "disabled", preserve: true, useOpenAICompatibleThinking: true, omitTemperature: true };
   }
   return { mode, enabled: mode !== "default", preserve: true, useOpenAICompatibleThinking: false, omitTemperature: true };
+}
+
+function minimaxM3Plan(mode: ThinkingMode, modelId: string, protocol: ProviderConfig["protocol"]): ThinkingPlan {
+  const flash = modelId === "minimax-m3.1-flash";
+  if (flash && (mode === "off" || mode === "minimal")) {
+    return {
+      mode,
+      enabled: false,
+      unsupportedReason: "MiniMax M3.1 Flash supports Default, Low, Medium, High, XHigh, and Max thinking modes.",
+    };
+  }
+  if (mode === "default") return { mode, enabled: false };
+  const effort = mode === "minimal" ? "low" : mode === "off" ? "none" : mode;
+  if (protocol === "openai-responses") {
+    return { mode, enabled: mode !== "off", effort: flash ? effort : mode === "off" ? "none" : "high", useOpenAIReasoning: true };
+  }
+  if (protocol === "anthropic") {
+    return {
+      mode,
+      enabled: mode !== "off",
+      thinkingType: mode === "off" ? "disabled" : "adaptive",
+      effort: flash ? effort : undefined,
+      useAnthropicOutputEffort: flash,
+    };
+  }
+  return {
+    mode,
+    enabled: mode !== "off",
+    thinkingType: mode === "off" ? "disabled" : "adaptive",
+    effort: flash ? effort : undefined,
+    useOpenAICompatibleThinking: true,
+  };
 }
 
 function minimaxPlan(mode: ThinkingMode): ThinkingPlan {
