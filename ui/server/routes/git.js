@@ -221,7 +221,43 @@ function normalizeRepositoryRelativeFilePath(filePath) {
     .trim();
 }
 
-function parseStatusFilePaths(statusOutput) {
+// git status --porcelain (non -z) C-quotes paths containing spaces or
+// non-ASCII bytes: they are wrapped in double quotes and escapes such as
+// \\", \\\\, \\t, \\n and \\NNN (octal byte value) are used. Octal escapes
+// encode raw bytes (the UTF-8 encoding of non-ASCII characters), so collect
+// the unescaped bytes and decode them as UTF-8 before returning the path.
+function unquoteGitPath(quotedPath) {
+  let path = quotedPath;
+  if (path.length >= 2 && path.startsWith('"') && path.endsWith('"')) {
+    path = path.slice(1, -1);
+  }
+  const bytes = [];
+  for (let i = 0; i < path.length; i += 1) {
+    const ch = path[i];
+    if (ch !== '\\') {
+      bytes.push(ch.charCodeAt(0) & 0xff);
+      continue;
+    }
+    const next = path[i + 1];
+    if (next === '\\' || next === '"' || next === 't' || next === 'n') {
+      bytes.push(next === 't' ? 0x09 : next === 'n' ? 0x0a : next.charCodeAt(0));
+      i += 1;
+    } else if (next >= '0' && next <= '7') {
+      // octal byte: up to 3 octal digits
+      let octal = next;
+      for (let j = 2; j <= 3 && i + j < path.length && path[i + j] >= '0' && path[i + j] <= '7'; j += 1) {
+        octal += path[i + j];
+      }
+      bytes.push(parseInt(octal, 8) & 0xff);
+      i += octal.length;
+    } else {
+      bytes.push(ch.charCodeAt(0));
+    }
+  }
+  return new TextDecoder('utf-8', { fatal: false }).decode(Uint8Array.from(bytes));
+}
+
+export function parseStatusFilePaths(statusOutput) {
   return statusOutput
     .split('\n')
     .map((line) => line.trimEnd())
@@ -229,7 +265,8 @@ function parseStatusFilePaths(statusOutput) {
     .map((line) => {
       const statusPath = line.substring(3);
       const renamedFilePath = statusPath.split(' -> ')[1];
-      return normalizeRepositoryRelativeFilePath(renamedFilePath || statusPath);
+      const rawPath = unquoteGitPath(renamedFilePath || statusPath.trim());
+      return normalizeRepositoryRelativeFilePath(rawPath);
     })
     .filter(Boolean);
 }
