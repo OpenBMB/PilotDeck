@@ -1,4 +1,5 @@
 import type { CatalogProviderProtocol } from "../../../../../shared/catalogProviders";
+import type { SubagentProfileConfig } from "../../../../../../../src/agent/sub/subagentProfiles.js";
 
 export type V2Provider = {
   protocol?: CatalogProviderProtocol;
@@ -18,7 +19,12 @@ export type PilotDeckConfig = {
   agent?: {
     model?: string;
     maxContextTokens?: number;
-    subagents?: { default?: string };
+    subagents?: {
+      default?: string;
+      timeoutMs?: number;
+      maxDepth?: number;
+      profiles?: Record<string, SubagentProfileConfig>;
+    };
   };
   model?: {
     providers?: Record<string, V2Provider>;

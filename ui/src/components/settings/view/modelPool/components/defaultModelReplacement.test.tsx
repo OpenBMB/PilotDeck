@@ -15,12 +15,12 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); delete window.openSettings; });
 
 const DIALOG = 'pilotDeckConfig.panels.models.deleteDialog';
 
-type Options = { router?: boolean; noAlternative?: boolean; emptyDefinition?: boolean; brokenUrl?: boolean; conflictOnce?: boolean; failApply?: boolean };
+type Options = { router?: boolean; profile?: boolean; noAlternative?: boolean; emptyDefinition?: boolean; brokenUrl?: boolean; conflictOnce?: boolean; failApply?: boolean };
 
-function setup({ router = false, noAlternative = false, emptyDefinition = false, brokenUrl = false, conflictOnce = false, failApply = false }: Options = {}) {
+function setup({ router = false, profile = false, noAlternative = false, emptyDefinition = false, brokenUrl = false, conflictOnce = false, failApply = false }: Options = {}) {
   const provider = { protocol: 'openai' as const, url: 'https://example.test/v1', apiKey: '********', models: { model: {}, spare: {} } };
   let disk: PilotDeckConfig = {
-    agent: { model: 'openai/model', subagents: { default: 'openai/model' } },
+    agent: { model: 'openai/model', subagents: { default: 'openai/model', ...(profile ? { profiles: { vision: { description: 'Read images', model: 'openai/model', enabled: false, tools: ['read_file'] } } } : {}) } },
     memory: { model: 'openai/model' } as PilotDeckConfig['memory'],
     model: { providers: {
       openai: { ...provider, url: brokenUrl ? 'aaa' : provider.url },
@@ -198,4 +198,21 @@ it.each([
   expect(open).toHaveBeenCalledWith(`${tab}?${new URLSearchParams({ reference })}`);
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(requests.every(request => request.dryRun)).toBe(true);
+});
+
+it('opens the bound profile from a deletion preview and repairs it without losing its policy', async () => {
+  const open = vi.fn();
+  window.openSettings = open;
+  const { config, requests } = setup({ profile: true });
+  const dialog = await openProviderDelete();
+  const row = dialog.getByText('common:modelUsage.subagentProfileModel').closest('li')!;
+  fireEvent.click(within(row).getByRole('button', { name: `${DIALOG}.openSettings` }));
+  expect(open).toHaveBeenCalledWith(`agent-subagents?${new URLSearchParams({ reference: 'agent.subagents.profiles.vision.model' })}`);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(requests.every(request => request.dryRun)).toBe(true);
+
+  const reopened = await openProviderDelete();
+  fireEvent.click(reopened.getByRole('button', { name: `${DIALOG}.replaceAndDelete` }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(config().agent?.subagents?.profiles?.vision).toEqual({ description: 'Read images', enabled: false, tools: ['read_file'] });
 });

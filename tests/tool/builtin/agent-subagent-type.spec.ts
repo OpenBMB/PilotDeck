@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createAgentTool } from "../../../src/tool/builtin/agent.js";
+import { buildAskModeAgentToolSchema, createAgentTool } from "../../../src/tool/builtin/agent.js";
 import type {
   PilotDeckSubagentForkApi,
   PilotDeckToolModelClient,
@@ -117,4 +117,55 @@ test("agent tool preserves unknown custom fallback subagent names", async () => 
 
   assert.equal(result.data?.subagentType, "CustomAgent");
   assert.deepEqual(requests, ["general-purpose"]);
+});
+
+test("agent tool rejects model arguments instead of forwarding them", async () => {
+  const calls: string[] = [];
+  const tool = createAgentTool();
+  await assert.rejects(
+    tool.execute(
+      {
+        description: "inspect image", prompt: "inspect", subagent_type: "explore",
+        model: "gateway/vendor/vision",
+      },
+      baseContext(createFork(calls)),
+    ),
+    (error: { code?: string; message?: string }) =>
+      error.code === "invalid_tool_input" && /profile/.test(error.message ?? ""),
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("normal and ask-mode agent schemas no longer expose a model property", () => {
+  for (const schema of [createAgentTool().inputSchema, buildAskModeAgentToolSchema().inputSchema]) {
+    const properties = schema.properties as Record<string, unknown>;
+    assert.equal("model" in properties, false);
+    assert.deepEqual(schema.required, ["description", "prompt"]);
+  }
+});
+
+test("agent tool dispatches readonly custom profiles and rejects unavailable ones", async () => {
+  const calls: string[] = [];
+  const fork = createFork(calls);
+  // Simulate the loop's mode-aware availability: only readonly enabled profiles.
+  fork.listDefinitions = () => [
+    { id: "explore", description: "builtin" },
+    { id: "vision", description: "Vision reviewer." },
+  ];
+  fork.isAllowedDefinition = (id) => ["explore", "vision"].includes(id);
+
+  const vision = await createAgentTool().execute(
+    { description: "inspect image", prompt: "inspect", subagent_type: "vision" },
+    baseContext(fork, { runMode: "ask" }),
+  );
+  assert.equal(vision.data?.subagentType, "vision");
+
+  await assert.rejects(
+    createAgentTool().execute(
+      { description: "write stuff", prompt: "write", subagent_type: "writer" },
+      baseContext(fork),
+    ),
+    { code: "invalid_tool_input" },
+  );
+  assert.deepEqual(calls, ["vision"]);
 });
