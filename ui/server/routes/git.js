@@ -116,7 +116,7 @@ async function getActualProjectPath(projectName) {
 }
 
 // Helper function to strip git diff headers
-function stripDiffHeaders(diff) {
+export function stripDiffHeaders(diff) {
   if (!diff) return '';
 
   const lines = diff.split('\n');
@@ -124,14 +124,20 @@ function stripDiffHeaders(diff) {
   let startIncluding = false;
 
   for (const line of lines) {
-    // Skip all header lines including diff --git, index, file mode, and --- / +++ file paths
-    if (line.startsWith('diff --git') ||
-        line.startsWith('index ') ||
-        line.startsWith('new file mode') ||
-        line.startsWith('deleted file mode') ||
-        line.startsWith('---') ||
-        line.startsWith('+++')) {
-      continue;
+    // Once a @@ hunk header has started, every following line is hunk content:
+    // git never emits diff --git / index / --- / +++ headers after that point,
+    // but hunk content itself can start with "-" or "+" followed by ---/+++
+    // (e.g. a deleted YAML frontmatter `---` delimiter). Apply the header
+    // prefix filter only while we are still before the first hunk.
+    if (!startIncluding) {
+      if (line.startsWith('diff --git') ||
+          line.startsWith('index ') ||
+          line.startsWith('new file mode') ||
+          line.startsWith('deleted file mode') ||
+          line.startsWith('---') ||
+          line.startsWith('+++')) {
+        continue;
+      }
     }
 
     // Start including lines from @@ hunk headers onwards
