@@ -65,6 +65,8 @@ export function parsePluginMcpServers(
         id,
         transport: "streamable_http",
         url: expandMcpString(url),
+        oauth: v.oauth && typeof v.oauth === "object" && typeof (v.oauth as { credentialId?: unknown }).credentialId === "string"
+          ? { credentialId: (v.oauth as { credentialId: string }).credentialId } : undefined,
         headers: isStringRecord(v.headers) ? expandStringRecord(v.headers as Record<string, string>) : undefined,
         callTimeoutMs: positiveFiniteNumber(v.callTimeoutMs),
         concurrencySafe: typeof v.concurrencySafe === "boolean" ? v.concurrencySafe : undefined,
