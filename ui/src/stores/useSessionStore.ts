@@ -1,4 +1,3 @@
-import { SessionTimeline, isTimelineMessage, mergeTimeline, type TimelinePosition } from './sessionTimeline';
 /**
  * Session-keyed message store.
  *
@@ -13,6 +12,7 @@ import type { SessionProvider } from '../types/app';
 import { authenticatedFetch, readAgentStatusErrorFromResponse } from '../utils/api';
 import { parseUserAttachmentNote } from '../components/chat/utils/attachmentNotes';
 import type { ChatAttachment } from '../components/chat/types/types';
+import { SessionTimeline, isTimelineMessage, mergeTimeline, subagentRoundIndex, type TimelinePosition } from './sessionTimeline';
 
 // ─── NormalizedMessage (mirrors server/adapters/types.js) ────────────────────
 
@@ -125,6 +125,8 @@ export interface NormalizedMessage {
   actualSessionId?: string;
   parentToolUseId?: string;
   subagentId?: string;
+  /** Sidechain round identity; unlike subagentId, advances on task continuation. */
+  subagentTurnId?: string;
   isSubagentDetail?: boolean;
   subagentTools?: unknown[];
   taskId?: string;
@@ -234,6 +236,21 @@ export function preserveTerminalAgentActivity(
   existing: NormalizedMessage | undefined,
   incoming: NormalizedMessage,
 ): NormalizedMessage {
+  if (existing) {
+    const previousRound = subagentRoundIndex(existing.subagentId, existing.subagentTurnId);
+    const nextRound = subagentRoundIndex(incoming.subagentId, incoming.subagentTurnId);
+    if (previousRound !== undefined && nextRound !== undefined) {
+      if (nextRound < previousRound) return existing;
+      if (nextRound > previousRound) return incoming;
+    } else if (previousRound === undefined && nextRound !== undefined && nextRound > 0) {
+      return incoming;
+    } else if (previousRound !== undefined && nextRound === undefined) {
+      // Ordinary status updates may omit round metadata. A legacy terminal
+      // replay must not end a known resumed round.
+      if (isTerminalAgentActivity(incoming)) return existing;
+      incoming = { ...incoming, subagentTurnId: existing.subagentTurnId };
+    }
+  }
   if (existing && isTerminalAgentActivity(existing) && !isTerminalAgentActivity(incoming)) {
     return existing;
   }
