@@ -1,4 +1,5 @@
 import express from 'express';
+import oauthRouter from './mcp-oauth.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -15,6 +16,7 @@ import {
 } from '../services/mcpConfig.js';
 
 const router = express.Router();
+router.use('/oauth', oauthRouter);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
