@@ -151,10 +151,10 @@ test("MiniMax chat preserves image, tool, and reasoning history at HTTP boundary
 });
 
 test("remote MiniMax suggestions filter legacy text while preserving media and custom selections", () => {
-  const entries = ["other", "MiniMax-M3", "MiniMax-M2.7", flash, "speech-02-hd"].map((id) => ({ id }));
+  const entries = ["other", "MiniMax-M3", "MiniMax-M2.7", "MiniMax-Text-01", "MiniMax-VL-01", flash, "speech-02-hd"].map((id) => ({ id }));
   assert.deepEqual(filterMiniMaxModelChoices(entries, "minimax").map((model) => model.id), ["other", flash, "MiniMax-M3", "speech-02-hd"]);
   assert.equal(filterMiniMaxModelChoices(entries, "custom"), entries);
-  const gateway = ["unrelated", "minimax/minimax-m3", "minimax/minimax-m2.7", "minimax/minimax-m3.1-flash", "minimax/minimax-m3.1-flash:free"].map((id) => ({ id }));
+  const gateway = ["unrelated", "minimax/minimax-m3", "minimax/minimax-01", "minimax/minimax-m2.7", "minimax/minimax-m3.1-flash", "minimax/minimax-m3.1-flash:free"].map((id) => ({ id }));
   assert.deepEqual(filterMiniMaxModelChoices(gateway, "openrouter").map((model) => model.id), ["unrelated", "minimax/minimax-m3.1-flash:free", "minimax/minimax-m3"]);
   assert.equal(preserveMiniMaxSelection("MiniMax-M2.7", "minimax"), true);
   assert.equal(preserveMiniMaxSelection("my-saved-model", "minimax"), true);

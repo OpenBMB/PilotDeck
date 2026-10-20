@@ -199,7 +199,9 @@ export function filterMiniMaxModelChoices<T extends { id: string }>(models: T[],
   const current = direct
     ? ['MiniMax-M3.1-Flash', 'MiniMax-M3']
     : ['minimax/minimax-m3.1-flash:free', 'minimax/minimax-m3'];
-  const textModel = direct ? /^(minimax-m|abab)/i : /^minimax\/(minimax-m|abab)/i;
+  const textModel = direct
+    ? /^(minimax-(m\d|text-|vl-|01(?:$|:))|abab)/i
+    : /^minimax\/(minimax-(m\d|text-|vl-|01(?:$|:))|abab)/i;
   const allowed = new Set(current.map((id) => id.toLowerCase()));
   const filtered = models.filter((model) => !textModel.test(model.id) || allowed.has(model.id.toLowerCase()));
   // Reorder only the MiniMax slots, keeping unrelated entries in place.
