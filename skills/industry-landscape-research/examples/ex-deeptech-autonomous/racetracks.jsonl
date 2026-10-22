@@ -1,0 +1,5 @@
+{"racetrack_id":"robotaxi","name":"L4 Robotaxi","level":"L4","scenario":"urban","geo":"global","tier":"core","note":"行业最大叙事，中美双轨"}
+{"racetrack_id":"robotruck","name":"L4 Robotruck","level":"L4","scenario":"highway","geo":"NA/CN","tier":"hot","note":"长途货运，TuSimple 折戟后行业收缩"}
+{"racetrack_id":"l2plus-mass","name":"L2++ 量产辅助","level":"L2+","scenario":"consumer","geo":"global","tier":"core","note":"现金牛业务，Mobileye/Momenta/Horizon"}
+{"racetrack_id":"av-sensor","name":"激光雷达/传感器","level":"infra","scenario":"all","geo":"global","tier":"core","note":"Luminar/Hesai/RoboSense"}
+{"racetrack_id":"av-chip","name":"自动驾驶芯片","level":"infra","scenario":"all","geo":"global","tier":"core","note":"NVIDIA Drive 主导"}

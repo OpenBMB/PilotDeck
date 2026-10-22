@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Wardley Map. X 轴 = 演化阶段（Genesis → Custom → Product → Commodity），Y 轴 = 可见性（用户近 → 远） -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 800" font-family="Inter, 'Noto Sans SC', sans-serif">
+  <defs>
+    <style>
+      .bg { fill: #0F1115; }
+      .axis { stroke: #C9A87C; stroke-width: 2; }
+      .axis-label { fill: #C9A87C; font-size: 14px; font-weight: 600; }
+      .stage-label { fill: #8B8680; font-size: 12px; font-weight: 600; text-anchor: middle; }
+      .grid-line { stroke: #2A2A2E; stroke-width: 1; stroke-dasharray: 3,5; }
+      .component { fill: #1A1C20; stroke: #C9A87C; stroke-width: 1.5; }
+      .component-label { fill: #E5E0D8; font-size: 11px; text-anchor: middle; }
+      .arrow { stroke: #4A90E2; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-label { fill: #4A90E2; font-size: 10px; font-style: italic; }
+      .link { stroke: #555; stroke-width: 1; }
+      .title { fill: #E5E0D8; font-size: 26px; font-family: 'Playfair Display', serif; }
+      .subtitle { fill: #8B8680; font-size: 13px; }
+    </style>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0,0 L 10,5 L 0,10 Z" fill="#4A90E2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1400" height="800"/>
+
+  <text class="title" x="50" y="50">{{INDUSTRY_NAME}} Wardley Map</text>
+  <text class="subtitle" x="50" y="74">演化方向（蓝色箭头）= 12-24 月预测 · 数据截止 {{AS_OF_DATE}}</text>
+
+  <!-- X 轴（演化阶段） -->
+  <line class="axis" x1="100" y1="700" x2="1300" y2="700"/>
+  <text class="axis-label" x="700" y="760" text-anchor="middle">演化（不可逆方向）→</text>
+
+  <!-- 4 阶段分隔 -->
+  <line class="grid-line" x1="400" y1="100" x2="400" y2="700"/>
+  <line class="grid-line" x1="700" y1="100" x2="700" y2="700"/>
+  <line class="grid-line" x1="1000" y1="100" x2="1000" y2="700"/>
+
+  <text class="stage-label" x="250" y="730">Genesis (创世)</text>
+  <text class="stage-label" x="550" y="730">Custom-built (定制)</text>
+  <text class="stage-label" x="850" y="730">Product (产品)</text>
+  <text class="stage-label" x="1150" y="730">Commodity (商品)</text>
+
+  <!-- Y 轴（可见性） -->
+  <line class="axis" x1="100" y1="100" x2="100" y2="700"/>
+  <text class="axis-label" x="50" y="400" text-anchor="middle" transform="rotate(-90 50 400)">用户可见 ←→ 不可见</text>
+  <text class="stage-label" x="50" y="120" text-anchor="middle">用户</text>
+  <text class="stage-label" x="50" y="700" text-anchor="middle">底层</text>
+
+  <!-- 价值链组件（示例：5 个组件 + 演化箭头） -->
+  <g id="component-user-need">
+    <rect class="component" x="850" y="100" width="120" height="32" rx="4"/>
+    <text class="component-label" x="910" y="120">{{USER_NEED}}</text>
+  </g>
+
+  <g id="component-1">
+    <rect class="component" x="780" y="200" width="120" height="32" rx="4"/>
+    <text class="component-label" x="840" y="220">{{COMPONENT_1}}</text>
+    <line class="link" x1="900" y1="200" x2="910" y2="132"/>
+  </g>
+
+  <g id="component-2">
+    <rect class="component" x="480" y="300" width="120" height="32" rx="4"/>
+    <text class="component-label" x="540" y="320">{{COMPONENT_2}}</text>
+    <line class="link" x1="600" y1="300" x2="780" y2="220"/>
+    <!-- 演化箭头：组件 2 在向右移动 -->
+    <path class="arrow" d="M 600,316 Q 700,316 780,316"/>
+    <text class="arrow-label" x="690" y="306">{{COMPONENT_2_EVOLUTION}}</text>
+  </g>
+
+  <g id="component-3">
+    <rect class="component" x="780" y="420" width="120" height="32" rx="4"/>
+    <text class="component-label" x="840" y="440">{{COMPONENT_3}}</text>
+    <line class="link" x1="840" y1="420" x2="840" y2="232"/>
+  </g>
+
+  <g id="component-4">
+    <rect class="component" x="1080" y="540" width="120" height="32" rx="4"/>
+    <text class="component-label" x="1140" y="560">{{COMPONENT_4}}</text>
+    <line class="link" x1="1140" y1="540" x2="900" y2="452"/>
+    <!-- 演化箭头：已 commodity -->
+  </g>
+
+  <g id="component-5">
+    <rect class="component" x="200" y="640" width="120" height="32" rx="4"/>
+    <text class="component-label" x="260" y="660">{{COMPONENT_5}}</text>
+    <line class="link" x1="320" y1="640" x2="540" y2="332"/>
+    <path class="arrow" d="M 320,656 Q 500,656 700,640"/>
+    <text class="arrow-label" x="500" y="640">{{COMPONENT_5_EVOLUTION}}</text>
+  </g>
+
+  <!-- 战略洞察 -->
+  <g transform="translate(50,90)">
+    <text class="subtitle">战略洞察：{{STRATEGIC_INSIGHT}}</text>
+  </g>
+</svg>
