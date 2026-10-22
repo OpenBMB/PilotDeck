@@ -140,6 +140,11 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
         "claude-sonnet-4-6",
         "claude-sonnet-4.6",
       ]),
+      "claude-sonnet-4-5-20250929": anthropicModel("Claude Sonnet 4.5", 200_000, 64_000, [
+        "claude-sonnet-4-5",
+        "claude-sonnet-4.5",
+        "claude-3-5-sonnet-20250929",
+      ]),
       "claude-haiku-4-5-20251001": anthropicModel("Claude Haiku 4.5", 200_000, 64_000, [
         "claude-haiku-4-5",
         "claude-haiku-4.5",
@@ -158,7 +163,6 @@ export const PROVIDER_CATALOG: ProviderCatalog = {
     apiKeyEnvVar: "OPENAI_API_KEY",
     models: {
       "gpt-6-astra": openaiChatModel("GPT-6 Astra", 1_050_000, 128_000),
-      "gpt-6-sol": openaiChatModel("GPT-6 Sol", 1_050_000, 128_000),
       "gpt-5.6-sol": openaiChatModel("GPT-5.6 Sol", 1_050_000, 128_000),
       "gpt-5.6-terra": openaiChatModel("GPT-5.6 Terra", 1_050_000, 128_000),
       "gpt-5.6-luna": openaiChatModel("GPT-5.6 Luna", 1_050_000, 128_000),

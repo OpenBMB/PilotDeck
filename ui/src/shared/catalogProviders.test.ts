@@ -11,9 +11,11 @@ describe('catalogProviders model lineups', () => {
     expect(ids).toContain('claude-sonnet-5-5');
     expect(ids).toContain('claude-haiku-5-5');
     expect(ids).toContain('claude-opus-4-6');
+    expect(ids).toContain('claude-sonnet-4-5-20250929');
     expect(ids).not.toContain('claude-sonnet-4-20250514');
     expect(ids).not.toContain('claude-opus-4-20250514');
     expect(anthropic?.models.find((model) => model.id === 'claude-opus-5-5')?.maxContextTokens).toBe(1_000_000);
+    expect(anthropic?.models.find((model) => model.id === 'claude-sonnet-4-5-20250929')?.maxOutputTokens).toBe(64_000);
     expect(anthropic?.models.find((model) => model.id === 'claude-haiku-4-5-20251001')?.maxOutputTokens).toBe(64_000);
   });
 
@@ -26,7 +28,9 @@ describe('catalogProviders model lineups', () => {
     expect(openai?.models.find((model) => model.id === 'gpt-4.1-mini')?.maxOutputTokens).toBe(32_768);
     expect(openai?.models.find((model) => model.id === 'o4-mini')?.maxOutputTokens).toBe(100_000);
     expect(openai?.models.some((model) => model.id === 'gpt-6.1-sol')).toBe(false);
+    expect(openai?.models.some((model) => model.id === 'gpt-6-sol')).toBe(false);
     expect(responses?.models.find((model) => model.id === 'gpt-6.1-sol')?.maxOutputTokens).toBe(128_000);
+    expect(responses?.models.some((model) => model.id === 'gpt-6-sol')).toBe(true);
     expect(responses?.models.some((model) => model.id === 'gpt-5.3-codex')).toBe(true);
   });
 

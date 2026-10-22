@@ -72,6 +72,7 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
       { id: 'claude-opus-4-5-20251101', displayName: 'Claude Opus 4.5', aliases: ['claude-opus-4-5', 'claude-opus-4.5'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 64000 },
       { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', aliases: ['claude-sonnet-5'], supportsImage: true, maxContextTokens: 1000000, maxOutputTokens: 128000 },
       { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', aliases: ['claude-sonnet-4.6'], supportsImage: true, maxContextTokens: 1000000, maxOutputTokens: 128000 },
+      { id: 'claude-sonnet-4-5-20250929', displayName: 'Claude Sonnet 4.5', aliases: ['claude-sonnet-4-5', 'claude-sonnet-4.5', 'claude-3-5-sonnet-20250929'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 64000 },
       { id: 'claude-haiku-4-5-20251001', displayName: 'Claude Haiku 4.5', aliases: ['claude-haiku-4-5', 'claude-haiku-4.5'], supportsImage: true, maxContextTokens: 200000, maxOutputTokens: 64000 },
     ],
   },
@@ -83,7 +84,6 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     apiKeyEnvVar: 'OPENAI_API_KEY',
     models: [
       { id: 'gpt-6-astra', displayName: 'GPT-6 Astra', supportsImage: true, maxContextTokens: 1050000, maxOutputTokens: 128000 },
-      { id: 'gpt-6-sol', displayName: 'GPT-6 Sol', supportsImage: true, maxContextTokens: 1050000, maxOutputTokens: 128000 },
       { id: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol', supportsImage: true, maxContextTokens: 1050000, maxOutputTokens: 128000 },
       { id: 'gpt-5.6-terra', displayName: 'GPT-5.6 Terra', supportsImage: true, maxContextTokens: 1050000, maxOutputTokens: 128000 },
       { id: 'gpt-5.6-luna', displayName: 'GPT-5.6 Luna', supportsImage: true, maxContextTokens: 1050000, maxOutputTokens: 128000 },
