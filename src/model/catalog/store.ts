@@ -15,7 +15,8 @@ type Env = Record<string, string | undefined>;
 type SourceCache = { checkedAt: number; updatedAt: number; etag?: string; models: CatalogOverlay };
 type Cache = { version: 1; sources: Partial<Record<CatalogSource, SourceCache>> };
 export type CatalogSnapshot = { catalog: ProviderCatalog; updatedAt: number | null; errors: Record<string, string> };
-const pending = new Map<string, Promise<CatalogSnapshot>>();
+type PendingRefresh = { force: boolean; promise: Promise<CatalogSnapshot> };
+const pending = new Map<string, PendingRefresh>();
 const snapshots = new Map<string, { stamp: string; cache: Cache }>();
 
 export function getCatalogCachePath(env: Env = process.env): string {
@@ -108,7 +109,10 @@ export function refreshCatalog(options: { env?: Env; force?: boolean; fetchImpl?
   const path = getCatalogCachePath(env);
   if (env.PILOTDECK_MODEL_CATALOG_NETWORK === "0") return Promise.resolve(readCatalogSnapshot(env));
   const active = pending.get(path);
-  if (active) return active;
+  if (active) {
+    if (!options.force || active.force) return active.promise;
+    return active.promise.catch(() => undefined).then(() => refreshCatalog(options));
+  }
   const operation = (async () => {
     const old = readCache(path);
     const cache: Cache = { version: 1, sources: { ...old.sources } };
@@ -146,7 +150,11 @@ export function refreshCatalog(options: { env?: Env; force?: boolean; fetchImpl?
       }
     }
     return snapshot(cache, errors);
-  })().finally(() => pending.delete(path));
-  pending.set(path, operation);
-  return operation;
+  })();
+  let tracked: Promise<CatalogSnapshot>;
+  tracked = operation.finally(() => {
+    if (pending.get(path)?.promise === tracked) pending.delete(path);
+  });
+  pending.set(path, { force: options.force === true, promise: tracked });
+  return tracked;
 }

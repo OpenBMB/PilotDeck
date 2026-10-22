@@ -2,7 +2,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { authenticatedFetch } from '../utils/api';
 import { getCatalogProviders, replaceCatalogProviders, subscribeCatalog, type CatalogProvider } from './catalogProviders';
 
-let pending: Promise<CatalogProvider[]> | undefined;
+type PendingCatalogRequest = { force: boolean; promise: Promise<CatalogProvider[]> };
+let pending: PendingCatalogRequest | undefined;
 let checkedAt = 0;
 let attemptedAt = 0;
 let lastError = '';
@@ -10,11 +11,14 @@ let lastError = '';
 export function getCatalogRefreshError(): string { return lastError; }
 
 export function refreshModelCatalog(force = false): Promise<CatalogProvider[]> {
-  if (pending) return pending;
+  if (pending) {
+    if (!force || pending.force) return pending.promise;
+    return pending.promise.catch(() => undefined).then(() => refreshModelCatalog(true));
+  }
   if (!force && Date.now() - checkedAt < 4 * 60 * 60 * 1000) return Promise.resolve(getCatalogProviders());
   if (!force && Date.now() - attemptedAt < 60_000) return Promise.resolve(getCatalogProviders());
   attemptedAt = Date.now();
-  pending = (async () => {
+  const operation = (async () => {
     const signal = AbortSignal.timeout(15_000);
     const apply = async (response: Response) => {
       if (!response.ok) throw new Error('Model catalog could not be refreshed.');
@@ -36,8 +40,13 @@ export function refreshModelCatalog(force = false): Promise<CatalogProvider[]> {
   })().catch(error => {
     lastError = error instanceof Error ? error.message : String(error);
     throw error;
-  }).finally(() => { pending = undefined; });
-  return pending;
+  });
+  let tracked: Promise<CatalogProvider[]>;
+  tracked = operation.finally(() => {
+    if (pending?.promise === tracked) pending = undefined;
+  });
+  pending = { force, promise: tracked };
+  return tracked;
 }
 
 export function useModelCatalog(): CatalogProvider[] {

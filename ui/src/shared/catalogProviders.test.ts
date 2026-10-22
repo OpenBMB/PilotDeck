@@ -35,6 +35,14 @@ describe('catalogProviders model lineups', () => {
     expect(responses?.models.some((model) => model.id === 'gpt-5.3-codex')).toBe(true);
   });
 
+  it('keeps OpenRouter batch variants selectable through OpenAI-compatible chat', () => {
+    const openrouter = findCatalogProviderById('openrouter');
+    const batch = openrouter?.models.filter((model) => model.id.endsWith(':batch')) ?? [];
+
+    expect(batch.length).toBeGreaterThan(0);
+    expect(batch.every((model) => model.protocol === 'openai')).toBe(true);
+  });
+
   it('exposes current Google models including Gemini 4', () => {
     const google = findCatalogProviderById('google');
 

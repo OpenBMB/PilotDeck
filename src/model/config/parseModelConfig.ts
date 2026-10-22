@@ -1,5 +1,5 @@
 import { readCatalogSnapshot } from "../catalog/store.js";
-import type { ProviderCatalog } from "../catalog/types.js";
+import type { CatalogProviderEntry, ProviderCatalog } from "../catalog/types.js";
 import { sanitizeProviderBody } from "../request/sanitizeProviderBody.js";
 import { parseThinkingSettings } from "../thinking/settings.js";
 import { ANTHROPIC_DEFAULT_CAPABILITIES } from "../providers/anthropic/defaults.js";
@@ -78,9 +78,7 @@ function parseProvider(providerId: string, rawProvider: unknown, catalog: Provid
   const provider = rawProvider as RawProviderConfig;
   const catalogProvider = catalog[providerId];
 
-  const protocol = isModelProtocol(provider.protocol)
-    ? provider.protocol
-    : catalogProvider?.protocol;
+  const protocol = resolveProviderProtocol(providerId, provider, catalogProvider);
   if (!protocol) {
     throw new ModelConfigError("unsupported_protocol", `Provider ${providerId} has unsupported protocol.`, {
       providerId,
@@ -130,6 +128,36 @@ function parseProvider(providerId: string, rawProvider: unknown, catalog: Provid
     retry: parseRetryConfig(provider.retry),
     models,
   };
+}
+
+function resolveProviderProtocol(
+  providerId: string,
+  provider: RawProviderConfig,
+  catalogProvider: CatalogProviderEntry | undefined,
+): ModelProtocol | undefined {
+  if (isModelProtocol(provider.protocol)) return provider.protocol;
+  if (providerId !== "openai" || !catalogProvider) return catalogProvider?.protocol;
+
+  const explicitUrl = typeof provider.url === "string" ? provider.url.trim() : "";
+  const catalogUrl = catalogProvider.defaultUrl;
+  if (!explicitUrl || canonicalProviderUrl(explicitUrl) === canonicalProviderUrl(catalogUrl)) {
+    return catalogProvider.protocol;
+  }
+
+  // A bare OpenAI provider with a custom URL is an OpenAI-compatible proxy in
+  // existing configs. Keep that legacy path on Chat Completions unless the
+  // Responses protocol is explicit.
+  return "openai";
+}
+
+function canonicalProviderUrl(value: string): string {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
 }
 
 function parseSpeedMapping(

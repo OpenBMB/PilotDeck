@@ -16,9 +16,9 @@ Set `PILOTDECK_MODEL_CATALOG_NETWORK=0` to disable public catalog requests. Prov
 
 The generator reads models.dev metadata for built-in providers and OpenRouter's public model list for OpenRouter. It normalizes token limits, input modalities, tool support, reasoning levels, prices and lifecycle status. Provider URLs, protocols and credential environment-variable names remain application-owned. Public catalog requests never include provider API keys.
 
-Selection lists show active tool-capable models, plus the local Ollama presets. Deprecated and missing models remain resolvable for existing configurations but do not appear as new suggestions. Model searches match IDs, display names and aliases. Custom endpoints can discover their own models or use manually entered IDs.
+Selection lists show active tool-capable models, plus the local Ollama presets. Deprecated and missing models remain resolvable for existing configurations but do not appear as new suggestions. OpenRouter batch variants remain selectable and use its OpenAI-compatible chat endpoint. Model searches match IDs, display names and aliases. Custom endpoints can discover their own models or use manually entered IDs.
 
-New OpenAI configurations default to the Responses API. Existing explicit `protocol: openai` configurations continue to use Chat Completions. The protocol must support the chosen model's tool-calling API; changing a catalog entry does not rewrite saved protocol choices.
+New official OpenAI configurations default to the Responses API. Existing explicit `protocol: openai` configurations continue to use Chat Completions. An `openai` provider with a custom URL also stays on Chat Completions when `protocol` is omitted; set `protocol: openai-responses` explicitly for an OpenAI-compatible proxy that implements Responses. The protocol must support the chosen model's tool-calling API; changing a catalog entry does not rewrite saved protocol choices.
 
 ## Configuration precedence
 

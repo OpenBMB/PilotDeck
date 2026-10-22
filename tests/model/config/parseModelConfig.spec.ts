@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parseModelConfig } from "../../../src/model/config/parseModelConfig.js";
+import { PROVIDER_CATALOG } from "../../../src/model/catalog/providers.js";
 
 test("catalog provider resolves api key from default env var when apiKey is omitted", () => {
   const config = parseModelConfig({
@@ -131,6 +132,56 @@ test("custom models default to thinking support and opt into speed explicitly", 
   });
   assert.equal(configured.providers.custom.models["speed-model"].capabilities.supportsThinking, false);
   assert.equal(configured.providers.custom.models["speed-model"].capabilities.supportsSpeed, true);
+});
+
+test("OpenAI uses Responses by default while custom endpoints keep Chat Completions compatibility", () => {
+  const official = parseModelConfig({
+    providers: { openai: { models: { "gpt-4.1": {} } } },
+  }, { env: { OPENAI_API_KEY: "k" }, catalog: PROVIDER_CATALOG });
+  assert.equal(official.providers.openai.protocol, "openai-responses");
+
+  const custom = parseModelConfig({
+    providers: {
+      openai: {
+        url: "https://proxy.example/v1",
+        apiKey: "proxy-key",
+        models: { "gpt-4.1": {} },
+      },
+    },
+  }, { catalog: PROVIDER_CATALOG });
+  assert.equal(custom.providers.openai.protocol, "openai");
+
+  const explicitResponses = parseModelConfig({
+    providers: {
+      openai: {
+        protocol: "openai-responses",
+        url: "https://proxy.example/v1",
+        apiKey: "proxy-key",
+        models: { "gpt-4.1": {} },
+      },
+    },
+  }, { catalog: PROVIDER_CATALOG });
+  assert.equal(explicitResponses.providers.openai.protocol, "openai-responses");
+});
+
+test("provider model overrides layer below explicit model configuration", () => {
+  const config = parseModelConfig({
+    providers: {
+      openai: {
+        protocol: "openai",
+        modelOverrides: {
+          "gpt-4.1-mini": { capabilities: { maxContextTokens: 123_456, maxOutputTokens: 8_192 } },
+        },
+        models: {
+          "gpt-4.1-mini": { capabilities: { maxOutputTokens: 4_096 } },
+        },
+      },
+    },
+  }, { env: { OPENAI_API_KEY: "k" }, catalog: PROVIDER_CATALOG });
+
+  const model = config.providers.openai.models["gpt-4.1-mini"];
+  assert.equal(model.capabilities.maxContextTokens, 123_456);
+  assert.equal(model.capabilities.maxOutputTokens, 4_096);
 });
 
 test("official openai and anthropic catalog models default to supporting speed", () => {
