@@ -21,6 +21,7 @@ function protocolCanUseCatalogCredential(
   catalogProtocol: ModelProtocol,
 ): boolean {
   if (protocol === catalogProtocol) return true;
+  if ((providerId === "openai" || providerId === "openai-responses") && (protocol === "openai" || protocol === "openai-responses")) return true;
   return providerId === "google" && protocol === "openai";
 }
 

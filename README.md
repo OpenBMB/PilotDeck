@@ -85,7 +85,7 @@ Memory generation, extraction, storage and retrieval are visible end-to-end. Whe
 
 **Smart Routing & Cost Optimization**
 
-Task difficulty is auto-detected; complex calls go to flagship models (e.g. Claude 3.5 Sonnet / GPT-4o), simple ones drop to lighter models. Through on-device / cloud co-orchestration and precise matching, token spend shrinks dramatically without sacrificing quality.
+Task difficulty is auto-detected; complex calls go to flagship models (e.g. Claude Opus 5.5 / GPT-6 Astra), simple ones drop to lighter models. Through on-device / cloud co-orchestration and precise matching, token spend shrinks dramatically without sacrificing quality.
 
 <p align="center">
   <img src="assets/router.gif" width="100%" alt="Smart routing demo"/>

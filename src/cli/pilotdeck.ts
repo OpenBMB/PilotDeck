@@ -26,6 +26,19 @@ await installGlobalProxy();
 
 async function main(argv = process.argv.slice(2)): Promise<void> {
   const command = argv[0];
+  if (command === "models") {
+    if (argv[1] !== "refresh" || argv.length > 2) {
+      console.error("Usage: pilotdeck models refresh");
+      process.exitCode = 1;
+      return;
+    }
+    const { refreshCatalog, getCatalogCachePath } = await import("../model/catalog/store.js");
+    const result = await refreshCatalog({ force: true });
+    console.log(`Model catalog: ${Object.keys(result.catalog).length} providers. Cache: ${getCatalogCachePath()}`);
+    for (const [source, error] of Object.entries(result.errors)) console.error(`${source}: ${error}`);
+    if (Object.keys(result.errors).length) process.exitCode = 1;
+    return;
+  }
   if (command === "server") {
     const projectRoot = process.cwd();
     const env = process.env;

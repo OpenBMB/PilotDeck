@@ -19,12 +19,12 @@ fi
 
 # ── Generate config from env vars if no config file is mounted ────────
 if [ ! -f "$CONFIG_FILE" ]; then
-  MODEL="${PILOTDECK_MODEL:-openrouter/deepseek/deepseek-v4-flash}"
-  LIGHT_MODEL="${PILOTDECK_LIGHT_MODEL:-openrouter/qwen/qwen3-8b}"
+  MODEL="${PILOTDECK_MODEL:-openrouter/deepseek/deepseek-v4.1-flash-1017}"
+  LIGHT_MODEL="${PILOTDECK_LIGHT_MODEL:-openrouter/qwen/qwen3.8-flash}"
   API_KEY="${PILOTDECK_API_KEY:-}"
   API_URL="${PILOTDECK_API_URL:-https://openrouter.ai/api/v1}"
 
-  # Derive provider name from model string (e.g. "openrouter/deepseek/deepseek-v4-flash" -> "openrouter")
+  # Derive provider name from model string (e.g. "openrouter/deepseek/deepseek-v4.1-flash-1017" -> "openrouter")
   PROVIDER="${MODEL%%/*}"
   LIGHT_PROVIDER="${LIGHT_MODEL%%/*}"
   # Model ID is everything after the first slash

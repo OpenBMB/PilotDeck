@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { searchCatalogModels } from '../../../../shared/modelSearch';
 import type { CatalogProviderProtocol } from '../../../../shared/catalogProviders';
 import { CUSTOM_PROVIDER_ID, MAX_ONBOARDING_MODELS, PROVIDER_LOGOS } from '../constants';
 import { uniqueModelIds } from '../llmSetupUtils';
@@ -170,11 +171,10 @@ export default function ConnectionStep({ llm, onBack, onContinue }: ConnectionSt
       (id) => !selectedIdSet.has(id) && !hiddenIdSet.has(id),
     );
   }, [extraAvailableIds, hiddenIdSet, llm.selectedModels, selectedIdSet]);
-  const filteredAvailableIds = useMemo(() => {
-    const query = modelQuery.trim().toLowerCase();
-    if (!query) return availableIds;
-    return availableIds.filter((id) => id.toLowerCase().includes(query));
-  }, [availableIds, modelQuery]);
+  const filteredAvailableIds = useMemo(() => searchCatalogModels(
+    availableIds.map(id => llm.selectedModels.find(model => model.id === id) ?? { id, displayName: id }),
+    modelQuery,
+  ).map(model => model.id), [availableIds, llm.selectedModels, modelQuery]);
 
   const modelTitle = (modelId: string) => (
     llm.selectedModels.find((model) => model.id === modelId)?.displayName || modelId

@@ -1,3 +1,5 @@
+import { searchCatalogModels } from "../../../../../shared/modelSearch";
+import { useModelCatalog, refreshModelCatalog, getCatalogRefreshError } from "../../../../../shared/useModelCatalog";
 import { parseThinkingSettings } from '../../../../../../../src/model/thinking/settings.js';
 import { useEffect, useRef, useState } from "react";
 import { useConnectionTestTasks, isTestTaskBusy } from "../hooks/useConnectionTestTasks";
@@ -97,7 +99,7 @@ function catalogModelFor(
   catalogEntry: CatalogProvider | undefined,
   modelId: string,
 ): CatalogModel | undefined {
-  return catalogEntry?.models.find((model) => model.id === modelId || model.aliases?.includes(modelId));
+  return [...(catalogEntry?.models ?? []), ...(catalogEntry?.legacyModels ?? [])].find((model) => model.id === modelId || model.aliases?.includes(modelId));
 }
 
 export default function ProviderCard({
@@ -114,6 +116,7 @@ export default function ProviderCard({
   currentDefaultModel = "",
   onRemoved,
 }: ProviderCardProps) {
+  useModelCatalog();
   const { t } = useTranslation("settings");
   const [draftProvider, setDraftProvider] = useState<V2Provider>(provider);
   const [editing, setEditing] = useState(isNew || initialEditing);
@@ -124,9 +127,7 @@ export default function ProviderCard({
   const [providerIdDraft, setProviderIdDraft] = useState(providerId);
   const [providerIdError, setProviderIdError] = useState("");
   const trimmedProviderId = providerIdDraft.trim();
-  const effectiveCatalogEntry = catalogEntry?.id === trimmedProviderId
-    ? catalogEntry
-    : findCatalogProviderById(trimmedProviderId);
+  const effectiveCatalogEntry = findCatalogProviderById(trimmedProviderId) ?? (catalogEntry?.id === trimmedProviderId ? catalogEntry : undefined);
   const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
   const protocol = draftProvider.protocol ?? effectiveCatalogEntry?.protocol ?? "openai";
   const effectiveUrl = draftProvider.url || effectiveCatalogEntry?.defaultUrl || "";
@@ -345,30 +346,43 @@ export default function ProviderCard({
     hasCompleteModelListUrl && (!modelListNeedsApiKey || draftProvider.apiKey),
   );
   const fallbackModels: ApiModelListItem[] =
-    effectiveCatalogEntry?.models.map(({ id, displayName }) => ({ id, displayName })) ?? [];
-  const candidateModels = (apiModels ?? []).filter((model) => {
-    if (draftProvider.models && model.id in draftProvider.models) return false;
-    return model.id.toLocaleLowerCase().includes(modelSearch.trim().toLocaleLowerCase());
-  });
+    effectiveCatalogEntry?.models ?? [];
+  const candidateModels = searchCatalogModels((apiModels ?? fallbackModels).filter(model => !draftProvider.models || !(model.id in draftProvider.models)), modelSearch);
+
+  const refreshSequence = useRef(0);
+  useEffect(() => {
+    refreshSequence.current += 1;
+    setApiModels(null);
+    setApiModelsStatus("idle");
+    setApiModelsError("");
+    return () => { refreshSequence.current += 1; };
+  }, [trimmedProviderId, effectiveUrl, protocol, draftProvider.apiKey]);
 
   const refreshModels = async () => {
-    if (!canFetchModels) {
-      setApiModels(fallbackModels);
-      return;
-    }
+    const sequence = ++refreshSequence.current;
     setApiModelsStatus("loading");
     setApiModelsError("");
     try {
+      if (usesOfficialEndpoint) await refreshModelCatalog(true).catch(() => undefined);
+      if (sequence !== refreshSequence.current) return;
+      if (!canFetchModels) {
+        setApiModels(findCatalogProviderById(trimmedProviderId)?.models ?? fallbackModels);
+        setApiModelsError(getCatalogRefreshError());
+        setApiModelsStatus(getCatalogRefreshError() ? "error" : "idle");
+        return;
+      }
       const models = await fetchProviderModels({
         protocol,
         baseUrl: modelListUrl,
         apiKey: draftProvider.apiKey ?? "",
         providerId: isMaskedKey ? providerId : trimmedProviderId,
       });
+      if (sequence !== refreshSequence.current) return;
       setApiModels(models);
       setApiModelsStatus("idle");
     } catch (error) {
-      setApiModels(fallbackModels);
+      if (sequence !== refreshSequence.current) return;
+      setApiModels(findCatalogProviderById(trimmedProviderId)?.models ?? fallbackModels);
       setApiModelsStatus("error");
       setApiModelsError(error instanceof Error ? error.message : String(error));
     }
@@ -627,7 +641,7 @@ export default function ProviderCard({
       {modelSettingsId && <ModelSettingsModal
         key={modelSettingsId}
         modelId={modelSettingsId}
-        initial={{ maxOutputTokens: tokenValue(modelSettingsId, 'maxOutputTokens'), maxContextTokens: tokenValue(modelSettingsId, 'maxContextTokens'), supportsImage: modelSupportsImage(modelSettingsId), thinking: (() => { try { return parseThinkingSettings(asModelRecord(draftProvider.models?.[modelSettingsId]).thinking, protocol); } catch { return undefined; } })() }}
+        initial={{ maxOutputTokens: tokenValue(modelSettingsId, 'maxOutputTokens'), maxContextTokens: tokenValue(modelSettingsId, 'maxContextTokens'), supportsImage: modelSupportsImage(modelSettingsId), thinking: (() => { try { return parseThinkingSettings(asModelRecord(draftProvider.models?.[modelSettingsId]).thinking ?? catalogModelFor(effectiveCatalogEntry, modelSettingsId)?.thinking, protocol); } catch { return undefined; } })() }}
         protocol={protocol}
         task={task}
         applyTestResult={!task || (!task.acknowledged && !handledTests.current.has(task.id))}

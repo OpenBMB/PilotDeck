@@ -1,6 +1,8 @@
 import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../../../src/pilot/config/webSearchProviders.js";
 import { getWebSearchProviderConfig, migrateWebSearchProviderConfigs, resolveWebSearchConfig } from "../../../src/pilot/config/webSearchConfig.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError } from "../../../src/tool/builtin/additionalWebSearch.js";
+import { readCatalogSnapshot, refreshCatalog } from '../../../src/model/catalog/store.js';
+import { catalogProviders } from '../../../src/model/catalog/view.js';
 import express from 'express';
 import { createConnectionTestTasks } from '../services/connectionTestTasks.js';
 import fsPromises from 'fs/promises';
@@ -69,6 +71,25 @@ async function notifyGatewayConfigReload() {
 
 const router = express.Router();
 
+router.get('/model-catalog', (_req, res) => {
+  const snapshot = readCatalogSnapshot();
+  res.json({ providers: catalogProviders(snapshot.catalog), updatedAt: snapshot.updatedAt, errors: snapshot.errors });
+});
+
+router.post('/model-catalog', async (req, res) => {
+  if (req.body?.force !== undefined && typeof req.body.force !== 'boolean') {
+    return res.status(400).json({ error: 'force must be a boolean' });
+  }
+  try {
+    const before = readCatalogSnapshot().updatedAt;
+    const snapshot = await refreshCatalog({ force: req.body?.force === true });
+    if (snapshot.updatedAt !== before) await notifyGatewayConfigReload();
+    return res.json({ providers: catalogProviders(snapshot.catalog), updatedAt: snapshot.updatedAt, errors: snapshot.errors });
+  } catch (error) {
+    return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 const MASKED_SECRET = '********';
 
 function normalizeProviderProtocol(value) {
@@ -97,7 +118,11 @@ function providerCredentialScopeMatches(providerId, provider, protocol, endpoint
   const requestedProtocol = normalizeProviderProtocol(protocol || catalog?.protocol);
   const requestedEndpoint = canonicalProviderEndpoint(endpoint || catalog?.defaultUrl);
   if (!expectedProtocol || !expectedEndpoint || !requestedProtocol || !requestedEndpoint) return false;
-  if (expectedProtocol !== requestedProtocol) return false;
+  const officialOpenAi = ['openai', 'openai-responses'].includes(providerId)
+    && expectedEndpoint === canonicalProviderEndpoint(catalog?.defaultUrl)
+    && requestedEndpoint === expectedEndpoint
+    && [expectedProtocol, requestedProtocol].every(value => ['openai', 'openai-responses'].includes(value));
+  if (expectedProtocol !== requestedProtocol && !officialOpenAi) return false;
   if (expectedEndpoint === requestedEndpoint) return true;
   if (!allowOriginMatch) return false;
   return new URL(expectedEndpoint).origin === new URL(requestedEndpoint).origin;
@@ -172,7 +197,7 @@ function catalogImageSupport(providerId, modelId) {
   const provider = String(providerId || '').trim();
   const model = String(modelId || '').trim();
   if (!provider || !model) return null;
-  const result = lookupCatalogModel(provider, model);
+  const result = lookupCatalogModel(provider, model, readCatalogSnapshot().catalog);
   if (!result.model) return null;
   return Array.isArray(result.model.multimodal?.input) && result.model.multimodal.input.includes('image');
 }
@@ -1303,6 +1328,8 @@ router.post('/test-connection', async (req, res) => {
 // exposing the API under /api/config for the settings UI.
 async function configModelConnectionTestsHandler(req, res) {
   req.allowPresetEndpointOverride = true;
+  const saved = readPilotDeckConfigFile().config?.model?.providers?.[req.body?.providerId];
+  req.body = { ...req.body, protocol: req.body?.protocol || saved?.protocol, endpoint: req.body?.endpoint || saved?.url };
   const credential = resolveProviderRequestApiKey({
     providerId: req.body?.providerId,
     submittedApiKey: req.body?.apiKey,

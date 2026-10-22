@@ -1,3 +1,4 @@
+import { PROVIDER_CATALOG as ENGINE_CATALOG } from '../../../src/model/catalog/providers.js';
 import express from 'express';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { constants as fsConstants, promises as fs } from 'fs';
@@ -26,20 +27,9 @@ const tests = new Map();
 const testRateBuckets = new Map();
 const testKeySecret = randomBytes(32);
 const ALIASES = { gemini: 'google', kimi: 'moonshot', volcengine: 'volc_ark', bailian: 'dashscope' };
-const PRESETS = {
-  anthropic: { protocol: 'anthropic', endpoint: 'https://api.anthropic.com' },
-  openai: { protocol: 'openai', endpoint: 'https://api.openai.com/v1' },
-  'openai-responses': { protocol: 'openai-responses', endpoint: 'https://api.openai.com/v1' },
-  dashscope: { protocol: 'openai', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-  deepseek: { protocol: 'openai', endpoint: 'https://api.deepseek.com/v1' },
-  google: { protocol: 'google', endpoint: 'https://generativelanguage.googleapis.com' },
-  moonshot: { protocol: 'openai', endpoint: 'https://api.moonshot.cn/v1' },
-  minimax: { protocol: 'openai', endpoint: 'https://api.minimax.io/v1' },
-  volc_ark: { protocol: 'openai', endpoint: 'https://ark.cn-beijing.volces.com/api/v3' },
-  zhipu: { protocol: 'openai', endpoint: 'https://api.z.ai/api/paas/v4' },
-  openrouter: { protocol: 'openai', endpoint: 'https://openrouter.ai/api/v1' },
-  ollama: { protocol: 'openai', endpoint: 'http://localhost:11434/v1' },
-};
+const PRESETS = Object.fromEntries(Object.entries(ENGINE_CATALOG).map(([id, provider]) => [id, {
+  protocol: provider.protocol, endpoint: provider.defaultUrl,
+}]));
 const PROVIDER_CATALOG = [
   { id: 'anthropic', displayName: 'Anthropic', logoUrl: '/onboarding/providers/anthropic.svg' },
   { id: 'openai', displayName: 'OpenAI', logoUrl: '/onboarding/providers/openai.svg' },
