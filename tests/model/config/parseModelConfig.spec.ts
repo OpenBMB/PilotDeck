@@ -137,12 +137,12 @@ test("official openai and anthropic catalog models default to supporting speed",
   const config = parseModelConfig({
     providers: {
       openai: { models: { "gpt-4o-mini": {} } },
-      anthropic: { models: { "claude-sonnet-4-5-20250929": {} } },
+      anthropic: { models: { "claude-opus-5-5": {} } },
     },
   }, { env: { OPENAI_API_KEY: "k", ANTHROPIC_API_KEY: "k" } });
 
   assert.equal(config.providers.openai.models["gpt-4o-mini"].capabilities.supportsSpeed, true);
-  assert.equal(config.providers.anthropic.models["claude-sonnet-4-5-20250929"].capabilities.supportsSpeed, true);
+  assert.equal(config.providers.anthropic.models["claude-opus-5-5"].capabilities.supportsSpeed, true);
 });
 
 test("all protocol defaults enable thinking for undeclared models", () => {

@@ -66,7 +66,7 @@ export function resolveThinkingPlan(
   }
   if (format === 'google') {
     if (off) return fail('Turning off thinking is not supported by this effort-only Gemini adapter. Uncheck both thinking options to use the server default.');
-    if (!/gemini-?3/.test(model.id)) return effort ? fail('This Gemini model has no supported thinking-level adapter. Select Default.') : { mode, enabled: false };
+    if (!/gemini-?[34]/.test(model.id)) return effort ? fail('This Gemini model has no supported thinking-level adapter. Select Default.') : { mode, enabled: false };
     if (effort && !['low', 'medium', 'high'].includes(effort)) return fail(`Gemini thinkingLevel does not support '${effort}'.`);
     return { ...plan, thinkingLevel: effort };
   }

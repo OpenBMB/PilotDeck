@@ -165,8 +165,8 @@ docker run -d --name pilotdeck \
 | Variable | Description | Default |
 |---|---|---|
 | `PILOT_HOME` | PilotDeck state directory inside the container | `/root/.pilotdeck` |
-| `PILOTDECK_MODEL` | Main model identifier, formatted as `provider/model` | `openrouter/deepseek/deepseek-v4-flash` |
-| `PILOTDECK_LIGHT_MODEL` | Lightweight routing/judge model identifier | `openrouter/qwen/qwen3-8b` |
+| `PILOTDECK_MODEL` | Main model identifier, formatted as `provider/model` | `openrouter/deepseek/deepseek-v4.1-flash-1017` |
+| `PILOTDECK_LIGHT_MODEL` | Lightweight routing/judge model identifier | `openrouter/qwen/qwen3.8-flash` |
 | `PILOTDECK_API_KEY` | API key for the main model provider; when omitted, configure it in onboarding | — |
 | `PILOTDECK_API_URL` | Base URL for the main model provider API | `https://openrouter.ai/api/v1` |
 | `PILOTDECK_LIGHT_API_KEY` | API key for a different light-model provider | Falls back to `PILOTDECK_API_KEY` |

@@ -114,7 +114,7 @@ Content-Type: application/json
 {
   "providerId": "anthropic",
   "apiKey": "sk-ant-...",
-  "models": ["claude-sonnet-4-5", "claude-haiku-4-5"],
+  "models": ["claude-sonnet-5-5", "claude-haiku-4-5"],
   "retryPolicy": {
     "maxRetries": 2,
     "maxStreamRetries": 3,
@@ -138,7 +138,7 @@ Content-Type: application/json
   "manualInputRequired": false,
   "models": [
     {
-      "modelId": "claude-sonnet-4-5",
+      "modelId": "claude-sonnet-5-5",
       "textInput": "supported",
       "imageInput": "supported",
       "error": null
@@ -312,7 +312,7 @@ type ModelConfigurationRequest = {
   "providerId": "anthropic",
   "apiKey": "sk-ant-...",
   "models": [
-    {"modelId": "claude-sonnet-4-5", "textInput": true, "imageInput": true},
+    {"modelId": "claude-sonnet-5-5", "textInput": true, "imageInput": true},
     {"modelId": "claude-haiku-4-5", "textInput": true, "imageInput": true}
   ],
   "retryPolicy": {

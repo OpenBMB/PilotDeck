@@ -68,9 +68,11 @@ test('Claude adaptive uses output effort; disabling explicitly sends disabled', 
   assert.equal(body('anthropic', 'enabled', 'provider', undefined, 'anthropic', 'claude-sonnet-4-20250514').thinking, undefined);
   assert.throws(() => body('anthropic', 'enabled', 'provider', 'high', 'anthropic', 'claude-sonnet-4-20250514'), /budget/);
 });
-test('Gemini 3 sends thinkingLevel exactly; budget-only and off requests are explicit', () => {
+test('Gemini 3 and 4 send thinkingLevel exactly; budget-only and off requests are explicit', () => {
   const actual = body('google', 'enabled', 'provider', 'high', 'google', 'gemini-3.1-pro-preview');
   assert.deepEqual(actual.config.thinkingConfig, { includeThoughts: true, thinkingLevel: 'high' });
+  const gemini4 = body('google', 'enabled', 'provider', 'high', 'google', 'gemini-4-argon');
+  assert.deepEqual(gemini4.config.thinkingConfig, { includeThoughts: true, thinkingLevel: 'high' });
   assert.equal(body('google', 'enabled', 'provider', undefined, 'google', 'gemini-2.5-flash').config.thinkingConfig, undefined);
   assert.throws(() => body('google', 'enabled', 'provider', 'xhigh', 'google', 'gemini-3.1-pro-preview'), /xhigh/);
   assert.throws(() => body('google', 'disabled'), /Turning off thinking/);
