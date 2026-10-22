@@ -16,6 +16,7 @@
   "scripts": {
     "models:update": "tsx scripts/update-model-catalog.ts",
     "models:check": "tsx scripts/update-model-catalog.ts --check",
+    "test:model-catalog": "tsx --test --test-timeout 60000 tests/model/catalog/*.spec.ts tests/model/config/parseModelConfig.spec.ts tests/model/request/thinking.spec.ts",
     "check:runtime": "node scripts/check-node-runtime.mjs",
     "install:browser": "npx @playwright/mcp install-browser chrome-for-testing",
     "install:asr": "node scripts/install-asr.mjs",
