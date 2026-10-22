@@ -1,3 +1,4 @@
+import { useModelCatalog } from "../../../../../shared/useModelCatalog";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -38,6 +39,7 @@ type PendingProvider = {
 };
 
 export default function ModelsSection({ config, onChange, onServerConfig }: ModelsSectionProps) {
+  useModelCatalog();
   const { t } = useTranslation("settings");
   const providers = useMemo(
     () => config.model?.providers ?? {},

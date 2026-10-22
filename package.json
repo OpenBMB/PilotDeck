@@ -14,6 +14,8 @@
     "pilotdeck": "./dist/src/cli/pilotdeck.js"
   },
   "scripts": {
+    "models:update": "tsx scripts/update-model-catalog.ts",
+    "models:check": "tsx scripts/update-model-catalog.ts --check",
     "check:runtime": "node scripts/check-node-runtime.mjs",
     "install:browser": "npx @playwright/mcp install-browser chrome-for-testing",
     "install:asr": "node scripts/install-asr.mjs",

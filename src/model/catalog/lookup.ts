@@ -1,4 +1,4 @@
-import type { CatalogModelEntry, CatalogProviderEntry } from "./types.js";
+import type { CatalogModelEntry, CatalogProviderEntry, ProviderCatalog } from "./types.js";
 import { PROVIDER_CATALOG } from "./providers.js";
 
 export type CatalogLookupResult = {
@@ -20,8 +20,9 @@ export type CatalogLookupResult = {
 export function lookupCatalogModel(
   providerId: string,
   modelId: string,
+  catalog: ProviderCatalog = PROVIDER_CATALOG,
 ): CatalogLookupResult {
-  const provider = PROVIDER_CATALOG[providerId];
+  const provider = catalog[providerId];
 
   // 1. Exact match on the declared provider
   if (provider?.models[modelId]) {
@@ -38,7 +39,7 @@ export function lookupCatalogModel(
   }
 
   // 3–4. Cross-provider search (exact then alias)
-  const crossResult = searchAllProviders(modelId);
+  const crossResult = searchAllProviders(modelId, catalog);
   if (crossResult) {
     return { provider: provider ?? crossResult.provider, model: crossResult.model, matchType: "cross-provider" };
   }
@@ -47,7 +48,7 @@ export function lookupCatalogModel(
   const slashIndex = modelId.indexOf("/");
   if (slashIndex >= 0) {
     const stripped = modelId.slice(slashIndex + 1);
-    const strippedResult = searchAllProviders(stripped);
+    const strippedResult = searchAllProviders(stripped, catalog);
     if (strippedResult) {
       return { provider: provider ?? strippedResult.provider, model: strippedResult.model, matchType: "cross-provider" };
     }
@@ -66,14 +67,15 @@ export function lookupCatalogProvider(providerId: string): CatalogProviderEntry 
 
 function searchAllProviders(
   modelId: string,
+  catalog: ProviderCatalog,
 ): { provider: CatalogProviderEntry; model: CatalogModelEntry } | undefined {
-  for (const catalogProvider of Object.values(PROVIDER_CATALOG)) {
+  for (const catalogProvider of Object.values(catalog)) {
     if (catalogProvider.models[modelId]) {
       return { provider: catalogProvider, model: catalogProvider.models[modelId] };
     }
   }
 
-  for (const catalogProvider of Object.values(PROVIDER_CATALOG)) {
+  for (const catalogProvider of Object.values(catalog)) {
     for (const entry of Object.values(catalogProvider.models)) {
       if (entry.aliases?.includes(modelId)) {
         return { provider: catalogProvider, model: entry };

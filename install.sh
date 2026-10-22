@@ -262,7 +262,7 @@ run_onboarding() {
 
   local pid="" protocol="" url="" model=""
   case "$choice" in
-    1) pid=openai;    protocol=openai;    url=https://api.openai.com/v1;                          model=gpt-6-astra ;;
+    1) pid=openai;    protocol=openai-responses;    url=https://api.openai.com/v1;                          model=gpt-6-astra ;;
     2) pid=anthropic; protocol=anthropic; url=https://api.anthropic.com;                          model=claude-sonnet-5-5 ;;
     3) pid=google;    protocol=google;    url=https://generativelanguage.googleapis.com;          model=gemini-4-argon ;;
     4) pid=deepseek;  protocol=openai;    url=https://api.deepseek.com/v1;                         model=deepseek-flash ;;

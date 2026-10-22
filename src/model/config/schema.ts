@@ -16,6 +16,7 @@ export type RawProviderConfig = {
   speedMapping?: unknown;
   retry?: unknown;
   models?: unknown;
+  modelOverrides?: unknown;
 };
 
 export type RawModelDefinition = {

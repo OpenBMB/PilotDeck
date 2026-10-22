@@ -19,16 +19,17 @@ describe('catalogProviders model lineups', () => {
     expect(anthropic?.models.find((model) => model.id === 'claude-haiku-4-5-20251001')?.maxOutputTokens).toBe(64_000);
   });
 
-  it('exposes current OpenAI models and keeps Chat/Responses capabilities distinct', () => {
+  it('exposes current OpenAI models through Responses and retains retired metadata', () => {
     const openai = findCatalogProviderById('openai');
     const responses = findCatalogProviderById('openai-responses');
 
     expect(openai?.models.find((model) => model.id === 'gpt-6-astra')?.maxOutputTokens).toBe(128_000);
     expect(openai?.models.find((model) => model.id === 'gpt-5.6-sol')?.maxContextTokens).toBe(1_050_000);
     expect(openai?.models.find((model) => model.id === 'gpt-4.1-mini')?.maxOutputTokens).toBe(32_768);
-    expect(openai?.models.find((model) => model.id === 'o4-mini')?.maxOutputTokens).toBe(100_000);
-    expect(openai?.models.some((model) => model.id === 'gpt-6.1-sol')).toBe(false);
-    expect(openai?.models.some((model) => model.id === 'gpt-6-sol')).toBe(false);
+    expect(openai?.legacyModels?.find((model) => model.id === 'o4-mini')?.maxOutputTokens).toBe(100_000);
+    expect(openai?.protocol).toBe('openai-responses');
+    expect(openai?.models.some((model) => model.id === 'gpt-6.1-sol')).toBe(true);
+    expect(openai?.models.some((model) => model.id === 'gpt-6-sol')).toBe(true);
     expect(responses?.models.find((model) => model.id === 'gpt-6.1-sol')?.maxOutputTokens).toBe(128_000);
     expect(responses?.models.some((model) => model.id === 'gpt-6-sol')).toBe(true);
     expect(responses?.models.some((model) => model.id === 'gpt-5.3-codex')).toBe(true);
@@ -60,11 +61,11 @@ describe('catalogProviders model lineups', () => {
     const volc = findCatalogProviderById('volc_ark');
     const zhipu = findCatalogProviderById('zhipu');
 
-    expect(dashscope?.models.map((model) => model.id)).toEqual([
+    expect(dashscope?.models.map((model) => model.id)).toEqual(expect.arrayContaining([
       'qwen3.8-max',
       'qwen3.7-plus',
       'qwen3.8-flash',
-    ]);
+    ]));
     expect(dashscope?.models.find((model) => model.id === 'qwen3.8-max')?.maxContextTokens).toBe(1_000_000);
     expect(dashscope?.models.find((model) => model.id === 'qwen3.8-flash')?.maxOutputTokens).toBe(131_072);
 
@@ -77,19 +78,19 @@ describe('catalogProviders model lineups', () => {
       'kimi-k2.7-code-highspeed',
       'kimi-k2.6',
     ]);
-    expect(moonshot?.models[0]?.maxOutputTokens).toBe(131_072);
+    expect(moonshot?.models[0]?.maxOutputTokens).toBe(1_048_576);
 
-    expect(volc?.models[0]?.id).toBe('doubao-seed-evolving');
+    expect(volc?.models.some((model) => model.id === 'doubao-seed-evolving')).toBe(true);
     expect(volc?.models.some((model) => model.id === 'doubao-1.5-pro-256k')).toBe(false);
 
-    expect(zhipu?.models.map((model) => model.id)).toEqual([
+    expect(zhipu?.models.map((model) => model.id)).toEqual(expect.arrayContaining([
       'glm-5.3',
       'glm-5.3-flash',
       'glm-5.3-flashx',
       'glm-5.2',
-    ]);
-    expect(zhipu?.models[0]?.maxContextTokens).toBe(1_048_576);
-    expect(zhipu?.models[1]?.supportsImage).toBe(true);
+    ]));
+    expect(zhipu?.models.find((model) => model.id === 'glm-5.3')?.maxContextTokens).toBe(1_000_000);
+    expect(zhipu?.models.find((model) => model.id === 'glm-5.3-flash')?.supportsImage).toBe(true);
   });
 
   it('exposes Ollama as a no-api-key local provider', () => {

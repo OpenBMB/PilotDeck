@@ -30,6 +30,9 @@ jobs:
       - name: Install Web/Gateway dependencies only
         run: pnpm install --frozen-lockfile --filter pilotdeck --filter pilotdeck-ui
 
+      - name: Validate bundled model catalog
+        run: pnpm run models:check
+
       - name: Build Gateway and Web UI
         run: pnpm run build:web
 
