@@ -51,7 +51,7 @@ export type CompactionEngineOptions = {
   model_: string;
   /** Optional summary system prompt base; the runtime always appends its summary rubric and safety constraints. */
   systemPrompt?: string;
-  /** Max output tokens for the summary call (legacy default 20_000). */
+  /** Max output tokens for the summary call. */
   maxOutputTokens?: number;
   /** Tool names whose turns should be preserved verbatim across full compaction. */
   protectedToolNames?: Iterable<string>;
@@ -65,9 +65,10 @@ export const COMPACT_SYSTEM_PROMPT_DEFAULT =
   "You are a conversation summarizer for a coding agent. Your summary will replace " +
   "the early conversation history, so it MUST preserve all information the agent " +
   "needs to continue working without repeating past steps.";
-// Keep room for the summary input inside small configured contexts such as
-// agent.maxContextTokens: 20_000.
-export const COMPACT_MAX_OUTPUT_TOKENS = 4_000;
+// Keep room for the summary input inside small configured contexts while still
+// allowing enough output for a useful summary of a large transcript.
+export const COMPACT_MAX_OUTPUT_TOKENS = 16_000;
+const COMPACT_OUTPUT_RESERVE_CONTEXT_RATIO = 0.4;
 
 const SUMMARY_MARKDOWN_HEADINGS = [
   "Objective",
@@ -194,9 +195,19 @@ export class CompactionEngine {
     const cacheReset = input.cacheReset ?? checkpointMerged;
     const stablePrefix: CanonicalMessage[] = [];
     const planningMessages = checkpoint.liveMessages;
-    const summaryOutputReserve = positiveTokenCount(input.maxOutputTokens)
+    const requestedSummaryOutputReserve = positiveTokenCount(input.maxOutputTokens)
       ?? positiveTokenCount(this.options.maxOutputTokens)
       ?? COMPACT_MAX_OUTPUT_TOKENS;
+    const summaryContextCap = positiveTokenCount(input.effectiveContextTokens);
+    const summaryOutputReserve = summaryContextCap === undefined
+      ? requestedSummaryOutputReserve
+      : Math.max(
+          1,
+          Math.min(
+            requestedSummaryOutputReserve,
+            Math.floor(summaryContextCap * COMPACT_OUTPUT_RESERVE_CONTEXT_RATIO),
+          ),
+        );
     const targetPostTokens = positiveTokenCount(input.targetPostTokens);
     const tailRatio = clamp(input.keepTailRatio ?? DEFAULT_KEEP_TAIL_RATIO, 0, 1);
     const tailTokenBudget = targetPostTokens !== undefined
@@ -265,7 +276,7 @@ export class CompactionEngine {
             input.userInstruction,
             input.signal,
             summaryAnchors,
-            input.maxOutputTokens,
+            summaryOutputReserve,
             checkpoint.previousSummaries,
           );
           summaryMessage = wrapSummaryMessage(result.message);
