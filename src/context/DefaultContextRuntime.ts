@@ -246,12 +246,24 @@ export class DefaultContextRuntime implements ContextRuntime {
         signal: input.abortSignal,
         timeoutMs: this.memoryRetrievalTimeoutMs,
       });
+      const memoryTexts: string[] = [];
       for (const block of memory.attachments) {
         for (const content of block.content) {
           if (content.type === "text" && content.text.trim().length > 0) {
-            parts.push(content.text);
+            memoryTexts.push(content.text);
           }
         }
+      }
+      // Retrieval results change every turn. Pushing them into the system
+      // prompt forks the context prefix at its first byte, so OpenAI-protocol
+      // providers can never reuse their implicit prompt cache. Attach them to
+      // the newest real user message instead — the same message-stream
+      // position `buildPostCompactMessages` already uses for post-compact
+      // memory re-injection, and the same tail-stability rule the date-update
+      // notices follow. Only fall back to the system prompt when the
+      // conversation has no real user message to attach to.
+      if (memoryTexts.length > 0 && !injectMemoryIntoLatestUserMessage(requestMessages, memoryTexts)) {
+        parts.push(memoryTexts.join("\n\n"));
       }
       for (const diagnostic of memory.diagnostics) {
         diagnostics.push({
@@ -829,6 +841,33 @@ function extractRecentUserText(messages: CanonicalMessage[]): string | undefined
     }
   }
   return undefined;
+}
+
+/**
+ * Prepend memory texts to the newest non-synthetic user message so per-turn
+ * retrieval content rides at the tail of the context while the system prompt
+ * and message history stay byte-stable across turns (prompt-cache friendly).
+ * Returns false when the conversation has no suitable user message.
+ */
+function injectMemoryIntoLatestUserMessage(messages: CanonicalMessage[], memoryTexts: string[]): boolean {
+  const memoryBlock = memoryTexts.join("\n\n") + "\n\n";
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== "user" || message.metadata?.synthetic) continue;
+    const withMemory: CanonicalMessage = {
+      ...message,
+      content: message.content.map((block): typeof block => ({ ...block })),
+    };
+    const first = withMemory.content[0];
+    if (first && first.type === "text") {
+      first.text = memoryBlock + first.text;
+    } else {
+      withMemory.content.unshift({ type: "text", text: memoryBlock });
+    }
+    messages[index] = withMemory;
+    return true;
+  }
+  return false;
 }
 
 function sameMessageSequence(left: CanonicalMessage[], right: CanonicalMessage[]): boolean {
