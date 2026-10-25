@@ -1697,12 +1697,14 @@
     color: #8a84a8;
   }
   .session-indicator-flat { width: 16px; }
+  .session-indicator[data-status="awaiting-approval"] { color: #d97706; }
   .session-indicator[data-status="unread"] .conversation-dot {
     width: 6px;
     height: 6px;
     background: var(--pd-accent, #7060e8);
   }
   .dark .session-indicator { color: #a1a1aa; }
+  .dark .session-indicator[data-status="awaiting-approval"] { color: #fbbf24; }
   .dark .session-indicator[data-status="unread"] .conversation-dot { background: #a78bfa; }
 
   .conversation-dot {

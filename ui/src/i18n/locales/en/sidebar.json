@@ -72,6 +72,7 @@
     "showMoreCount": "Show more ({{count}})",
     "showLess": "Show less",
     "processing": "Agent is running",
+    "awaitingApproval": "Waiting for approval",
     "unread": "Unread messages",
     "idle": "No unread messages",
     "forkedFrom": "Forked from {{parent}}"

@@ -20,6 +20,7 @@ import {
   Pencil,
   GitBranch,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
 import { cn } from '../../lib/utils.js';
@@ -137,7 +138,7 @@ const collectSessionsForProject = (project: Project): FlatSession[] => {
     .sort((a, b) => b.lastActivity - a.lastActivity);
 };
 
-type SessionIndicatorStatus = 'processing' | 'unread' | 'idle';
+type SessionIndicatorStatus = 'awaiting-approval' | 'processing' | 'unread' | 'idle';
 
 export type SidebarV2Props = {
   projects: Project[];
@@ -150,6 +151,7 @@ export type SidebarV2Props = {
   isMobile?: boolean;
   processingSessions?: Set<string>;
   unreadSessionIds?: Set<string>;
+  awaitingApprovalSessionIds?: Set<string>;
   onSelectProject: (project: Project) => void;
   onSelectSession: (project: Project, sessionId: string) => void;
   onStartNewSession: (project: Project) => void;
@@ -269,6 +271,7 @@ export default function SidebarV2({
   isMobile = false,
   processingSessions,
   unreadSessionIds,
+  awaitingApprovalSessionIds,
   onSelectProject,
   onSelectSession,
   onStartNewSession,
@@ -768,13 +771,17 @@ export default function SidebarV2({
         typeof sessionId === 'string' && sessionId.startsWith('new-session-');
       const indicatorStatus: SessionIndicatorStatus = isOptimisticRow
         ? 'processing'
-        : processingSessions?.has(sessionId)
-          ? 'processing'
-          : unreadSessionIds?.has(sessionId)
-            ? 'unread'
-            : 'idle';
+        : awaitingApprovalSessionIds?.has(sessionId)
+          ? 'awaiting-approval'
+          : processingSessions?.has(sessionId)
+            ? 'processing'
+            : unreadSessionIds?.has(sessionId)
+              ? 'unread'
+              : 'idle';
       const indicatorLabel =
-        indicatorStatus === 'processing'
+        indicatorStatus === 'awaiting-approval'
+          ? t('sidebar:sessions.awaitingApproval', { defaultValue: 'Waiting for approval' })
+          : indicatorStatus === 'processing'
           ? t('sidebar:sessions.processing', { defaultValue: 'Agent is running' })
           : indicatorStatus === 'unread'
             ? t('sidebar:sessions.unread', { defaultValue: 'Unread messages' })
@@ -826,7 +833,8 @@ export default function SidebarV2({
               >
                 <span className={cn('session-indicator', options.flat && 'session-indicator-flat')}
                   data-session-indicator={sessionId} data-status={indicatorStatus} aria-label={indicatorLabel} title={indicatorLabel}>
-                  {indicatorStatus === 'processing' ? <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
+                  {indicatorStatus === 'awaiting-approval' ? <TriangleAlert aria-hidden="true" className="h-3 w-3" />
+                    : indicatorStatus === 'processing' ? <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
                     : options.flat && indicatorStatus === 'idle' ? (
                       <svg aria-hidden="true" className="icon" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="16">
                         <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />

@@ -49,6 +49,11 @@ contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   },
   retryRuntime: () => ipcRenderer.invoke("pilotdeck:retry-runtime"),
   openRuntimeLog: () => ipcRenderer.invoke("pilotdeck:open-runtime-log"),
+  // Approval-waiting alerts (issue #691): the renderer raises a native toast
+  // and a taskbar flash only when the window is unfocused, and clears them
+  // once the pending approval queue drains.
+  notifyApprovalWaiting: (detail: { count: number }) => ipcRenderer.invoke("pilotdeck:approval-waiting", detail),
+  clearApprovalWaiting: () => ipcRenderer.invoke("pilotdeck:approval-clear"),
   pickFolder: () => ipcRenderer.invoke("pilotdeck:pick-folder"),
   pickFiles: (request: FilePickerRequest) => ipcRenderer.invoke('pilotdeck:pick-files', request) as Promise<FilePickerResult>,
 });
