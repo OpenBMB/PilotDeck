@@ -161,9 +161,14 @@ export function applyResultSizeLimit(
 
   const suffix = "\n[Tool output truncated: head and tail shown.]";
   const suffixBytes = Buffer.byteLength(suffix, "utf8");
-  const budget = Math.max(0, maxBytes - suffixBytes);
   const text = content.map(contentToText).join("\n");
-  const truncatedText = headTailTruncateUtf8(text, budget) + suffix;
+  // If maxBytes cannot even fit the suffix, cap the notice itself instead of
+  // appending it in full and blowing past the limit; otherwise reserve room
+  // for the suffix so head + tail + suffix stays within maxBytes.
+  const truncatedText =
+    maxBytes <= suffixBytes
+      ? truncateUtf8(suffix, maxBytes)
+      : headTailTruncateUtf8(text, maxBytes - suffixBytes) + suffix;
   const returnedBytes = Buffer.byteLength(truncatedText, "utf8");
 
   return {
