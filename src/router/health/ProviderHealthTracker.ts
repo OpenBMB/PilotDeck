@@ -61,6 +61,16 @@ export class ProviderHealthTracker {
     if (rec.window.length > this.windowSize) rec.window.shift();
     if (rec.state === "half_open" || rec.state === "degraded" || rec.state === "open") {
       rec.state = "healthy";
+      // Clear the stale open-circuit timestamp so a future `getState` cannot
+      // accidentally auto-promote a now-healthy provider back to `half_open`
+      // on its very next probe. Without this, an `open → healthy` transition
+      // via `recordSuccess` would leave `openedAt` set, and any later
+      // `recordFailure` followed by `getState` would see "openDurationMs
+      // elapsed" using the stale baseline. `half_open → healthy` (the
+      // canonical path) does not have this issue because `getState` is what
+      // promoted the state in the first place; the defensive reset is cheap
+      // and makes the invariant explicit.
+      rec.openedAt = 0;
     }
   }
 
@@ -70,10 +80,19 @@ export class ProviderHealthTracker {
     rec.window.push(false);
     if (rec.window.length > this.windowSize) rec.window.shift();
     if (rec.consecutiveFailures >= this.openThreshold) {
-      if (rec.state !== "open") {
+      // Refresh `openedAt` whenever consecutive failures re-cross (or
+      // remain past) the open threshold. Under the canonical call path the
+      // provider is already `open`, so the inner check was previously a
+      // no-op — leaving `openedAt` stale from the prior open cycle. A buggy
+      // caller that invokes `recordFailure` while the circuit is still
+      // `open` (e.g. forgotten `shouldSkip` check) would otherwise be
+      // promoted straight back to `half_open` on the next `getState`, even
+      // though we just observed another failure.
+      const wasOpen = rec.state === "open";
+      if (!wasOpen) {
         rec.state = "open";
-        rec.openedAt = Date.now();
       }
+      rec.openedAt = Date.now();
     } else if (rec.consecutiveFailures >= this.degradeThreshold) {
       if (rec.state === "healthy") {
         rec.state = "degraded";
