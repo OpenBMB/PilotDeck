@@ -78,6 +78,7 @@
     "waitingForAnswer": "Waiting for your answer",
     "waitingForApproval": "Waiting for approval",
     "processing": "Agent is running",
+    "awaitingApproval": "Waiting for approval",
     "unread": "Unread messages",
     "idle": "No unread messages",
     "forkedFrom": "Forked from {{parent}}"

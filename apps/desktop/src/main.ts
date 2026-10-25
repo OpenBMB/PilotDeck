@@ -747,6 +747,12 @@ async function createOrShowWindow(): Promise<void> {
     );
   });
   lifecycle.attachWindow(recoveryWindow);
+  // Focusing the window ends the approval-waiting episode: the user is back
+  // in the app, so the taskbar should stop flashing and the next waiting
+  // transition may raise a fresh toast.
+  recoveryWindow.on("focus", () => {
+    clearApprovalWaitingAlert();
+  });
   // Windows logoff/shutdown does not go through app's normal quit events.
   // Respect the OS session end without displaying a quit confirmation.
   recoveryWindow.on("session-end", () => {
@@ -1332,6 +1338,61 @@ const pickFiles = createFilePicker({
 ipcMain.handle('pilotdeck:pick-files', (event, request: unknown) => {
   requireUpdateSender(event);
   return pickFiles(mainWindow!, request);
+});
+
+// --- Approval-waiting system alerts (issue #691) -----------------------------
+// The renderer asks for these only when the window is unfocused, so a user
+// watching the in-app banner never gets a redundant toast. One toast per
+// waiting episode; refocusing the window ends it.
+let approvalAlertActive = false;
+
+function logApprovalAlert(message: string, error: unknown): void {
+  const line = `${new Date().toISOString()} [approval-alert] ${message} ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`;
+  void fs.promises.appendFile(path.join(app.getPath("logs"), "renderer.log"), line).catch(() => {});
+}
+
+function presentApprovalWaitingAlert(count: number): void {
+  if (approvalAlertActive) return;
+  approvalAlertActive = true;
+  const zh = readAppearance().language === "zh-CN";
+  desktopTray?.setApprovalWaiting(true);
+  try {
+    const body = count > 1
+      ? zh ? `有 ${count} 项操作等待你的授权。` : `${count} operations are waiting for your approval.`
+      : zh ? "有操作等待你的授权。" : "An operation is waiting for your approval.";
+    const notification = new Notification({ title: "PilotDeck", body, silent: false });
+    notification.on("click", () => { void createOrShowWindow(); });
+    notification.show();
+  } catch (error) {
+    logApprovalAlert("toast failed", error);
+  }
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.flashFrame(true);
+  } catch (error) {
+    logApprovalAlert("flashFrame failed", error);
+  }
+}
+
+function clearApprovalWaitingAlert(): void {
+  if (!approvalAlertActive) return;
+  approvalAlertActive = false;
+  desktopTray?.setApprovalWaiting(false);
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.flashFrame(false);
+  } catch (error) {
+    logApprovalAlert("stop flashing failed", error);
+  }
+}
+
+ipcMain.handle("pilotdeck:approval-waiting", (_event, detail: unknown) => {
+  const count = typeof (detail as { count?: unknown } | null)?.count === "number"
+    && Number.isFinite((detail as { count: number }).count)
+    ? Math.max(1, Math.floor((detail as { count: number }).count))
+    : 1;
+  presentApprovalWaitingAlert(count);
+});
+ipcMain.handle("pilotdeck:approval-clear", () => {
+  clearApprovalWaitingAlert();
 });
 
 if (process.platform === "win32") {
