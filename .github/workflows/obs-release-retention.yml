@@ -47,7 +47,7 @@ jobs:
           python3 -u .github/scripts/obs_release_retention.py "${args[@]}"
       - name: Save exact retention plan
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: obs-retention-plan
           path: retention-plan.json
