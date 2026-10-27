@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, promises as fs, realpathSync } from "node:fs";
+import { constants, promises as fs, realpathSync, type BigIntStats } from "node:fs";
 import path from "node:path";
 import type { CanonicalMessage } from "../../model/index.js";
 import { getPilotProjectChatDir } from "../../pilot/paths.js";
@@ -19,6 +19,7 @@ const overlaps = (left: string, right: string) => left === right || inside(left,
 const backgroundBusy = (workspace: string) => [...backgroundCommands].some(command => overlaps(command.workspace, workspace));
 type TrackedEdit = { before: FileVersion; after?: FileVersion; source?: FileChange["source"]; uncertain?: boolean };
 type TrackedCommand = { background: boolean; finishing?: Promise<void> };
+type CachedFile = { metadata: string; version: Extract<FileVersion, { kind: "file" }> };
 
 export class CheckpointError extends Error {
   constructor(public readonly code: string, message: string) { super(message); }
@@ -48,6 +49,10 @@ export async function getCheckpointStore(workspace: string, pilotHome: string): 
 
 /** Immutable objects and manifests. A lease spans a turn or restore, not a session. */
 export class CheckpointStore {
+  // Process-local hints, never persisted as evidence of file contents. Keep only
+  // the last completed scan; direct edits and restore conflict checks bypass it.
+  private capturedFiles = new Map<string, CachedFile>();
+  private readonly verifiedObjects = new Map<string, string>();
   constructor(public readonly workspace: string, public readonly directory: string) { this.workspace = canonicalPath(workspace); }
 
   get busy(): boolean { return backgroundBusy(this.workspace) || leases.some(lease => overlaps(lease.workspace, this.workspace)); }
@@ -70,17 +75,28 @@ export class CheckpointStore {
   }
   async putObject(content: Buffer): Promise<string> {
     const hash = digest(content), destination = this.objectPath(hash);
-    try { await this.readObject(hash); return hash; }
-    catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
+    if (await this.hasVerifiedObject(hash)) return hash;
     await fs.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
     try { await this.atomicWrite(destination, content, false); }
     catch (error) { if (!hasCode(error, "EEXIST")) throw error; }
     return hash;
   }
   async readObject(hash: string): Promise<Buffer> {
-    const content = await fs.readFile(this.objectPath(hash));
+    // Always hash actual bytes here, including at restore time. Metadata only
+    // permits reuse after this store has verified this exact object identity.
+    this.verifiedObjects.delete(hash);
+    const target = this.objectPath(hash);
+    const before = await reusableMetadata(target);
+    const content = await fs.readFile(target);
     if (digest(content) !== hash) throw new CheckpointError("CORRUPT_BACKUP", "Checkpoint content is missing or corrupt.");
+    if (before && before === await reusableMetadata(target)) this.verifiedObjects.set(hash, before);
     return content;
+  }
+  private async hasVerifiedObject(hash: string): Promise<boolean> {
+    const known = this.verifiedObjects.get(hash);
+    if (known && known === await reusableMetadata(this.objectPath(hash))) return true;
+    try { await this.readObject(hash); return true; }
+    catch (error) { if (!hasCode(error, "ENOENT")) throw error; return false; }
   }
   private async writeRecord(kind: "manifests" | "plans" | "operations" | "edits", value: { id: string }, update = false): Promise<void> {
     const destination = this.recordPath(kind, value.id);
@@ -190,12 +206,31 @@ export class CheckpointStore {
     }
     return { kind: "unprotected", reason: "File changed while its checkpoint was being captured." };
   }
-  async capture(sessionId: string, turnId: string, phase: Checkpoint["phase"], context?: CanonicalMessage[]): Promise<Checkpoint> {
+  private async captureIncremental(relative: string, next: Map<string, CachedFile>): Promise<FileVersion> {
+    // Recheck parent directories/root even on a cache hit. A cached child must
+    // never allow a replaced directory or symlink to bypass resolveFile.
+    const target = await this.resolveFile(relative);
+    const before = await reusableMetadata(target);
+    const cached = this.capturedFiles.get(relative);
+    if (before && cached?.metadata === before && await this.hasVerifiedObject(cached.version.hash)
+      && before === await reusableMetadata(target)) {
+      next.set(relative, cached);
+      return { ...cached.version };
+    }
+    const version = await this.captureFile(relative);
+    if (version.kind === "file" && before && before === await reusableMetadata(target)) {
+      next.set(relative, { metadata: before, version: { ...version } });
+    }
+    return version;
+  }
+  async capture(sessionId: string, turnId: string, phase: Checkpoint["phase"], context?: CanonicalMessage[], signal?: AbortSignal): Promise<Checkpoint> {
     const files: Record<string, FileVersion> = {};
+    const next = new Map<string, CachedFile>();
     let bytes = 0;
     const walk = async (directory: string): Promise<void> => {
       const entries = await fs.readdir(directory, { withFileTypes: true });
       for (const entry of entries) {
+        signal?.throwIfAborted();
         const target = path.join(directory, entry.name), relative = path.relative(this.workspace, target).split(path.sep).join("/");
         if (entry.name === ".git") continue; // Worktrees use a .git file instead of a directory.
         if (entry.isDirectory()) {
@@ -210,12 +245,14 @@ export class CheckpointStore {
           const info = await fs.lstat(target);
           files[relative] = { kind: "unprotected", reason: "Workspace exceeds the 256 MB checkpoint budget.", fingerprint: digest(Buffer.from(JSON.stringify([info.dev, info.ino, info.mode, info.size, info.mtimeMs, info.ctimeMs]))) }; continue;
         }
-        try { files[relative] = await this.captureFile(relative); }
+        try { files[relative] = await this.captureIncremental(relative, next); }
         catch (error) { files[relative] = { kind: "unprotected", reason: error instanceof Error ? error.message : "Cannot capture file." }; }
         if (files[relative].kind === "file") bytes += (files[relative] as Extract<FileVersion, { kind: "file" }>).size;
       }
     };
     await walk(this.workspace);
+    signal?.throwIfAborted();
+    this.capturedFiles = next;
     return { version: 1, id: randomUUID(), sessionId, turnId, workspace: this.workspace, createdAt: new Date().toISOString(), phase, status: "complete", files,
       ...(context ? { contextHash: await this.putObject(Buffer.from(JSON.stringify(context))) } : {}) };
   }
@@ -483,7 +520,10 @@ export class CheckpointStore {
       }
     }
     const objects = await fs.readdir(path.join(this.directory, "objects")).catch(error => { if (hasCode(error, "ENOENT")) return []; throw error; });
-    for (const hash of objects) if (/^[a-f0-9]{64}$/.test(hash) && !referenced.has(hash)) await fs.unlink(this.objectPath(hash));
+    for (const hash of objects) if (/^[a-f0-9]{64}$/.test(hash) && !referenced.has(hash)) {
+      this.verifiedObjects.delete(hash);
+      await fs.unlink(this.objectPath(hash));
+    }
   }
 }
 
@@ -496,7 +536,8 @@ export class WorkspaceCheckpoints {
     try {
       if (signal?.aborted) throw new CheckpointError("ABORTED", "Turn stopped before its checkpoint was captured.");
       await store.recoverInterrupted(sessionId);
-      const before = await store.capture(sessionId, turnId, "before", messages);
+      const before = await store.capture(sessionId, turnId, "before", messages, signal);
+      signal?.throwIfAborted();
       await store.save(before);
       this.active = { store, before, tracked: new Map(), pending: new Map(), commands: new Set(), closing: false, uncertainCommands: backgroundBusy(store.workspace), release };
     } catch (error) { release(); throw error; }
@@ -621,6 +662,23 @@ export class WorkspaceCheckpoints {
       return active.store.summary(after);
     } finally { this.active = undefined; active.release(); }
   }
+}
+
+/**
+ * Conservative metadata policy for process-local scan/object reuse. Require a
+ * regular file with a usable identity and sub-millisecond change time. Reject
+ * coarse/unavailable timestamps and timestamps in the current millisecond (or
+ * future), where a second edit could still share the same clock tick. Content
+ * reads remain the fallback, and public captureFile/readObject always read.
+ */
+async function reusableMetadata(target: string): Promise<string | undefined> {
+  let info: BigIntStats;
+  try { info = await fs.lstat(target, { bigint: true }); }
+  catch (error) { if (hasCode(error, "ENOENT")) return undefined; throw error; }
+  const boundary = BigInt(Date.now()) * 1_000_000n;
+  if (!info.isFile() || info.ino <= 0n || info.mtimeNs <= 0n || info.ctimeNs <= 0n
+    || info.ctimeNs % 1_000_000n === 0n || info.mtimeNs >= boundary || info.ctimeNs >= boundary) return undefined;
+  return [info.dev, info.ino, info.mode, info.nlink, info.uid, info.gid, info.size, info.mtimeNs, info.ctimeNs, info.birthtimeNs].join(":");
 }
 
 function inside(root: string, target: string): boolean { const relative = path.relative(root, target); return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative); }

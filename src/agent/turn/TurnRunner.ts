@@ -1,4 +1,4 @@
-import { agentError, normalizeAgentError } from "../protocol/errors.js";
+import { AgentRuntimeError, agentError, normalizeAgentError } from "../protocol/errors.js";
 import type { AgentEvent } from "../protocol/events.js";
 import type { AgentInput, AgentModelOverride } from "../protocol/input.js";
 import type { AgentRunMode } from "../protocol/input.js";
@@ -8,6 +8,7 @@ import type { AgentTranscriptWriter } from "../../session/transcript/TranscriptW
 import { TurnInputProcessor } from "./TurnInputProcessor.js";
 import type { CanonicalMessage, CanonicalUsage } from "../../model/index.js";
 import type { LifecycleRuntime } from "../../lifecycle/index.js";
+import { dispatchWithWorkspaceProtection } from "../../lifecycle/index.js";
 import type { PermissionMode, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentStatusMessageInput, AgentTranscriptWriterState } from "../../session/transcript/TranscriptWriter.js";
 import type { SessionMetadataStore } from "../../session/metadata/SessionMetadataStore.js";
@@ -98,12 +99,27 @@ export class TurnRunner {
 
   async *run(options: TurnRunnerOptions): AsyncGenerator<AgentEvent, TurnRunnerResult, unknown> {
     yield { type: "turn_started", sessionId: options.sessionId, turnId: options.turnId };
+    const parentSignal = options.abortSignal;
+    const controller = new AbortController();
+    const abort = () => controller.abort(parentSignal?.reason);
+    if (parentSignal?.aborted) abort();
+    else parentSignal?.addEventListener("abort", abort, { once: true });
+    options = { ...options, abortSignal: controller.signal };
+    let preparation: Promise<void> | undefined;
+    let messages = options.messages;
+    let unappliedOnFailure: AgentEvent[] = [];
+    const workspaceReady = async () => {
+      await preparation;
+      controller.signal.throwIfAborted();
+    };
     let artifactCollector: FileArtifactCollector | undefined;
     let checkpointsFinished = false;
     const finishCheckpoints = async (status: "complete" | "incomplete") => {
       if (checkpointsFinished) return;
       checkpointsFinished = true;
       try {
+        // A closed stream must not leave a late beginTurn owning a lease.
+        await preparation?.catch(() => {});
         const checkpoint = await this.turnDependencies.fileHistory?.finishTurn?.(status);
         if (checkpoint) await this.transcript.recordAgentStatusMessage?.(options.sessionId, options.turnId, {
           event: "checkpoint_recorded", kind: "status", text: "文件检查点已保存", detail: { checkpointId: checkpoint.id, files: checkpoint.changes.length, unprotected: checkpoint.unprotected },
@@ -136,6 +152,7 @@ export class TurnRunner {
       };
       let artifactsFinished = false;
       const finishArtifacts = async (result: AgentTurnResult): Promise<FileArtifact[]> => {
+        await preparation;
         await finishCheckpoints(result.type === "success" ? "complete" : "incomplete");
         if (!artifactCollector || artifactsFinished) return [];
         artifactsFinished = true;
@@ -155,7 +172,7 @@ export class TurnRunner {
       };
       const accepted = this.inputProcessor.accept(options.input);
       const allAcceptedMessages = [...accepted.messages, ...(options.syntheticMessages ?? [])];
-      const messages = [...options.messages, ...allAcceptedMessages];
+      messages = [...options.messages, ...allAcceptedMessages];
 
       try {
         await this.transcript.recordAcceptedInput(
@@ -177,31 +194,31 @@ export class TurnRunner {
       await this.persistListingPromptMetadata(options, accepted.messages);
       yield { type: "input_accepted", sessionId: options.sessionId, turnId: options.turnId, messages: accepted.messages };
 
-      try {
+      // Start immediately after durable acceptance. Context/model work can run
+      // concurrently, but tools and matching hooks must await workspaceReady.
+      preparation = (async () => {
         await this.turnDependencies.fileHistory?.beginTurn?.(options.sessionId, options.turnId, options.messages, options.abortSignal);
-      } catch (cause) {
-        const error = agentError("agent_transcript_error", "Cannot save the file checkpoint before this turn.", cause);
-        const result = this.createErrorResult(options, error);
-        await this.recordErrorResult(options, result);
-        const status = await this.recordTurnFailureStatus(options, error);
-        yield this.toAgentStatusEvent(options, status);
-        yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
-        yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
-        return { result, messages: options.messages };
-      }
-
-      // Acknowledge durable input before scanning the workspace. The baseline
-      // still completes before hooks/model/tools can mutate any files.
-      artifactCollector = this.runtimeContext.collectFileArtifacts === false
-        ? undefined
-        : await FileArtifactCollector.start({
+        controller.signal.throwIfAborted();
+        artifactCollector = this.runtimeContext.collectFileArtifacts === false
+          ? undefined
+          : await FileArtifactCollector.start({
             cwd: this.runtimeContext.cwd,
             allowedInputPaths: options.allowedReadFiles,
             now: this.now,
-          }).catch(() => undefined);
+            abortSignal: controller.signal,
+          });
+      })().catch((cause) => {
+        const error = controller.signal.aborted
+          ? cause
+          : new AgentRuntimeError("agent_transcript_error", "Cannot prepare workspace protection for this turn.", cause);
+        controller.abort(error);
+        throw error;
+      });
+      // Observe rejection immediately, even while the provider is streaming.
+      void preparation.catch(() => {});
 
       const prompt = inputToPromptText(options.input);
-      const userPromptHooks = await this.lifecycle?.dispatch({
+      const userPromptHooks = await dispatchWithWorkspaceProtection(this.lifecycle, {
         event: "UserPromptSubmit",
         baseInput: {
           sessionId: options.sessionId,
@@ -211,7 +228,7 @@ export class TurnRunner {
         payload: { prompt },
         matchQuery: "UserPromptSubmit",
         signal: options.abortSignal,
-      });
+      }, workspaceReady);
       yield { type: "user_prompt_submitted", sessionId: options.sessionId, turnId: options.turnId, prompt };
       if (userPromptHooks?.effects.some((effect) => effect.type === "block")) {
         const error = agentError("agent_unsupported_feature", "UserPromptSubmit hook blocked model execution.");
@@ -271,6 +288,7 @@ export class TurnRunner {
           permissionRules: options.permissionRules,
           modelOverride: options.modelOverride,
           abortSignal: options.abortSignal,
+          workspaceReady,
           drainSteerMessages: options.drainSteerMessages
             ? () => trackDrainedSteers(options.drainSteerMessages?.() ?? [])
             : undefined,
@@ -302,43 +320,58 @@ export class TurnRunner {
         });
         let runResult: TurnRunnerResult | undefined;
         let turnCompletedEvent: Extract<AgentEvent, { type: "turn_completed" }> | undefined;
-        while (true) {
-          const next = await generator.next();
-          if (next.done) {
-            runResult = next.value;
-            break;
+        let loopCompleted = false;
+        let loopFailed = false;
+        try {
+          while (true) {
+            const next = await generator.next();
+            if (next.done) {
+              runResult = next.value;
+              messages = runResult.messages;
+              loopCompleted = true;
+              break;
+            }
+            const event = next.value;
+            if (event.type === "tool_result") {
+              artifactCollector?.observeToolResult(event.result);
+            }
+            if (event.type === "file_artifacts") {
+              continue;
+            }
+            if (event.type === "turn_completed") {
+              turnCompletedEvent = event;
+              continue;
+            }
+            if (event.type === "turn_failed" && !hasRecordedVisibleFailureStatus) {
+              const status = await this.recordTurnFailureStatus(options, event.error);
+              hasRecordedVisibleFailureStatus = true;
+              yield this.toAgentStatusEvent(options, status);
+            }
+            yield event;
           }
-          const event = next.value;
-          if (event.type === "tool_result") {
-            artifactCollector?.observeToolResult(event.result);
+        } catch (error) {
+          loopFailed = true;
+          throw error;
+        } finally {
+          if (!loopCompleted) {
+            if (!loopFailed) controller.abort(new AgentRuntimeError("agent_aborted", "Turn stream closed."));
+            await generator.return(undefined as never).catch(() => {});
           }
-          if (event.type === "file_artifacts") {
-            continue;
-          }
-          if (event.type === "turn_completed") {
-            turnCompletedEvent = event;
-            continue;
-          }
-          if (event.type === "turn_failed" && !hasRecordedVisibleFailureStatus) {
-            const status = await this.recordTurnFailureStatus(options, event.error);
-            hasRecordedVisibleFailureStatus = true;
-            yield this.toAgentStatusEvent(options, status);
-          }
-          yield event;
         }
 
-        const unappliedSteers = closeSteerMailbox();
+        const unappliedSteers = unappliedOnFailure = [...unappliedOnFailure, ...closeSteerMailbox()];
         const artifacts = await finishArtifacts(runResult.result);
         if (artifacts.length > 0) {
           yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
         }
         for (const event of unappliedSteers) yield event;
+        unappliedOnFailure = [];
         await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
         await this.finalizeSessionMetadata(options, sessionTitle);
         if (turnCompletedEvent) yield turnCompletedEvent;
         return runResult;
       } catch (error) {
-        const unappliedSteers = closeSteerMailbox();
+        const unappliedSteers = unappliedOnFailure = [...unappliedOnFailure, ...closeSteerMailbox()];
         const normalized = normalizeAgentError(error);
         const result = this.createErrorResult(options, normalized);
         const artifacts = await finishArtifacts(result);
@@ -351,11 +384,36 @@ export class TurnRunner {
         await this.finalizeSessionMetadata(options, sessionTitle);
         yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error: normalized };
         for (const event of unappliedSteers) yield event;
+        unappliedOnFailure = [];
         yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
         return { result, messages };
       }
-    } finally {
+    } catch (cause) {
+      // Preparation can fail while a hook/model/tool is waiting, or after a
+      // model has already answered. Never publish terminal success in that case.
+      const error = controller.signal.aborted && !(cause instanceof AgentRuntimeError)
+        ? agentError("agent_aborted", cause instanceof Error ? cause.message : "Turn aborted.")
+        : normalizeAgentError(cause);
+      const result = this.createErrorResult(options, error);
+      if (parentSignal?.aborted) {
+        result.type = "aborted";
+        result.stopReason = "aborted_streaming";
+        delete result.errors;
+      }
       await finishCheckpoints("incomplete");
+      await this.recordErrorResult(options, result);
+      if (result.type !== "aborted") {
+        const status = await this.recordTurnFailureStatus(options, error);
+        yield this.toAgentStatusEvent(options, status);
+        yield { type: "turn_failed", sessionId: options.sessionId, turnId: options.turnId, error };
+      }
+      for (const event of unappliedOnFailure) yield event;
+      yield { type: "turn_completed", sessionId: options.sessionId, turnId: options.turnId, result };
+      return { result, messages };
+    } finally {
+      if (!checkpointsFinished) controller.abort(new AgentRuntimeError("agent_aborted", "Turn stream closed."));
+      await finishCheckpoints("incomplete");
+      parentSignal?.removeEventListener("abort", abort);
       options.closeSteerMailbox?.();
       artifactCollector?.dispose();
     }

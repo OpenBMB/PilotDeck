@@ -291,6 +291,8 @@ export type PilotDeckToolRuntimeContext = {
    * snapshot infrastructure).
    */
   fileHistory?: PilotDeckToolFileHistorySink;
+  /** Per-turn protection barrier; every tool awaits this before hooks or execution. */
+  workspaceReady?: () => Promise<void>;
   /**
    * Optional opaque "message id" the file-history sink uses to group
    * snapshots. Set by the agent loop per user turn (typically the user

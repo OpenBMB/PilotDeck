@@ -30,6 +30,7 @@ export type FileArtifactCollectorOptions = {
   now?: () => Date;
   /** @internal Test seam for verifying fingerprint-cache behavior. */
   hashFile?: (filePath: string) => Promise<string>;
+  abortSignal?: AbortSignal;
 };
 
 const MAX_CACHED_WORKSPACES = 8;
@@ -130,9 +131,11 @@ export class FileArtifactCollector {
   private workspaceKey: string;
   private registered = false;
   private hadConcurrentOverlap = false;
+  private readonly abortSignal?: AbortSignal;
 
   private constructor(options: FileArtifactCollectorOptions) {
     this.cwd = nativePath(path.resolve(options.cwd), false);
+    this.abortSignal = options.abortSignal;
     this.workspaceKey = this.cwd;
     this.now = options.now ?? (() => new Date());
     this.hashFile = options.hashFile ?? sha256File;
@@ -147,10 +150,11 @@ export class FileArtifactCollector {
     const collector = new FileArtifactCollector(options);
     collector.baseline.clear();
     const cachedFingerprints = readCachedWorkspaceFingerprints(collector.cwd);
-    for (const file of await collector.scanWorkspace(cachedFingerprints)) {
+    for (const file of await collector.scanWorkspace(cachedFingerprints, collector.abortSignal)) {
       collector.baseline.set(file.absolutePath, file.fingerprint);
     }
-    await collector.captureAllowedInputFingerprints(collector.baseline, cachedFingerprints);
+    await collector.captureAllowedInputFingerprints(collector.baseline, cachedFingerprints, collector.abortSignal);
+    collector.abortSignal?.throwIfAborted();
     cacheWorkspaceFingerprints(collector.cwd, collector.baseline);
     collector.register();
     return collector;
@@ -266,14 +270,17 @@ export class FileArtifactCollector {
 
   private async scanWorkspace(
     reusableFingerprints?: ReadonlyMap<string, FileFingerprint>,
+    signal?: AbortSignal,
   ): Promise<Array<{ absolutePath: string; fingerprint: FileFingerprint }>> {
     const paths: string[] = [];
     await walk(this.cwd, async (absolutePath) => {
+      signal?.throwIfAborted();
       if (!this.isAllowedArtifactPath(absolutePath)) return;
       paths.push(absolutePath);
-    });
+    }, signal);
     const files: Array<{ absolutePath: string; fingerprint: FileFingerprint }> = [];
     for (let index = 0; index < paths.length; index += 8) {
+      signal?.throwIfAborted();
       const batch = await Promise.all(
         paths.slice(index, index + 8).map(async (absolutePath) => {
           const fingerprint = await fingerprintFile(
@@ -288,14 +295,17 @@ export class FileArtifactCollector {
         if (file) files.push(file);
       }
     }
+    signal?.throwIfAborted();
     return files;
   }
 
   private async captureAllowedInputFingerprints(
     target: Map<string, FileFingerprint>,
     reusableFingerprints?: ReadonlyMap<string, FileFingerprint>,
+    signal?: AbortSignal,
   ): Promise<void> {
     for (const absolutePath of this.allowedInputPaths) {
+      signal?.throwIfAborted();
       const fingerprint = await fingerprintFile(
         absolutePath,
         reusableFingerprints?.get(absolutePath),
@@ -468,15 +478,17 @@ async function sha256File(filePath: string): Promise<string> {
   return hash.digest("hex");
 }
 
-async function walk(root: string, visit: (absolutePath: string) => Promise<void>): Promise<void> {
+async function walk(root: string, visit: (absolutePath: string) => Promise<void>, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   const directory = await opendir(root).catch(() => undefined);
   if (!directory) return;
   for await (const entry of directory) {
+    signal?.throwIfAborted();
     if (entry.isSymbolicLink()) continue;
     const absolutePath = path.join(root, entry.name);
     if (entry.isDirectory()) {
       if (EXCLUDED_DIRECTORY_NAMES.has(entry.name.toLowerCase())) continue;
-      await walk(absolutePath, visit);
+      await walk(absolutePath, visit, signal);
       continue;
     }
     if (entry.isFile()) await visit(absolutePath);

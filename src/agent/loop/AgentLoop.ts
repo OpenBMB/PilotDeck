@@ -40,6 +40,7 @@ import type { AgentPermissionDenial, AgentTurnResult } from "../protocol/result.
 import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
 import type { LifecycleDispatchResult } from "../../lifecycle/index.js";
+import { dispatchWithWorkspaceProtection } from "../../lifecycle/index.js";
 import type { PilotDeckHookEvent } from "../../extension/hooks/protocol/events.js";
 import { NullContextRuntime } from "../../context/NullContextRuntime.js";
 import { buildCachePlan } from "../../context/cache/CachePlan.js";
@@ -135,6 +136,7 @@ export type AgentLoopInput = {
   permissionRules?: Partial<PermissionRuleSet>;
   modelOverride?: import("../protocol/input.js").AgentModelOverride;
   abortSignal?: AbortSignal;
+  workspaceReady?: () => Promise<void>;
   onDurableMessage?: (message: CanonicalMessage) => void | Promise<void>;
   onAgentStatusMessage?: (status: AgentStatusMessage) => void | Promise<void>;
   onCompactPersisted?: (input: {
@@ -221,6 +223,18 @@ export class AgentLoop {
   }
 
   private async *runOrdered(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+    // Context compaction dispatches through its own engine, outside this loop's
+    // hook helper. Conservatively finish preparation when either compaction
+    // hook is configured, before any context operation can trigger that engine.
+    if (input.workspaceReady && this.dependencies.lifecycle) {
+      for (const event of ["PreCompact", "PostCompact"] as const) {
+        if (this.dependencies.lifecycle.hasHooks?.({ event, matchQuery: event,
+          baseInput: { sessionId: input.sessionId, transcriptPath: "", cwd: this.config.cwd } }) !== false) {
+          await input.workspaceReady();
+          break;
+        }
+      }
+    }
     this.clearTurnScopedTokenCaps();
     this.applyRunModeOverride(input.runMode);
     this.applyPermissionOverrides(input.permissionMode, input.permissionRules, input.basePermissionMode);
@@ -271,6 +285,7 @@ export class AgentLoop {
       const hook = this.dependencies.context?.captureTurn;
       if (!hook) return;
       try {
+        await input.workspaceReady?.();
         await hook.call(this.dependencies.context, {
           sessionId: input.sessionId,
           turnId: input.turnId,
@@ -532,10 +547,10 @@ export class AgentLoop {
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages };
       }
-      this.dispatchLifecycle(input, "PreModelRequest", {
+      await this.dispatchLifecycle(input, "PreModelRequest", {
         provider: request.provider,
         model: request.model,
-      }).catch(() => {});
+      });
       yield {
         type: "model_request_started",
         sessionId: input.sessionId,
@@ -2035,9 +2050,9 @@ export class AgentLoop {
     });
 
     if (options.emitInstructionEvents !== false) {
-      this.dispatchLifecycle(input, "InstructionsLoaded", {
+      await this.dispatchLifecycle(input, "InstructionsLoaded", {
         hasSystemPrompt: !!prepared.systemPrompt,
-      }).catch(() => {});
+      });
       this.dependencies.eventEmitter?.({
         type: "instructions_loaded",
         sessionId: input.sessionId,
@@ -2371,6 +2386,7 @@ export class AgentLoop {
       },
       elicitation: this.dependencies.elicitation,
       fileHistory: this.dependencies.fileHistory,
+      workspaceReady: input.workspaceReady,
       subagentDepth: this.config.subagentDepth ?? 0,
       subagent: this.buildSubagentForkApi(input, messages),
       modelMultimodal: this.config.modelMultimodal,
@@ -2410,6 +2426,7 @@ export class AgentLoop {
         })),
       isAllowedDefinition: (id: string) => getSubagentDefinition(id) !== undefined,
       fork: async ({ definitionId, directive, subagentId, toolCallId, abortSignal, timeoutMs }) => {
+        await input.workspaceReady?.();
         // Defer SubAgentSession import to avoid the runtime cycle (sub → loop → sub).
         const { SubAgentSession } = await import("../sub/SubAgentSession.js");
         const def = getSubagentDefinition(definitionId);
@@ -2462,6 +2479,7 @@ export class AgentLoop {
           subagentSessionId,
           subagentId,
           abortSignal: composedAbort.signal,
+          workspaceReady: input.workspaceReady,
           sidechainTranscript: sidechain
             ? {
                 recordAcceptedInput: sidechain.recordAcceptedInput.bind(sidechain),
@@ -2559,7 +2577,7 @@ export class AgentLoop {
     event: PilotDeckHookEvent,
     payload: Record<string, unknown>,
   ): Promise<LifecycleDispatchResult> {
-    return this.dependencies.lifecycle?.dispatch({
+    return dispatchWithWorkspaceProtection(this.dependencies.lifecycle, {
       event,
       baseInput: {
         sessionId: input.sessionId,
@@ -2576,13 +2594,7 @@ export class AgentLoop {
         input.sessionId,
         input.turnId,
       ),
-    }) ?? {
-      effects: [],
-      messages: [],
-      events: [],
-      blockingErrors: [],
-      nonBlockingErrors: [],
-    };
+    }, input.workspaceReady, event === "InstructionsLoaded" || event === "PreModelRequest");
   }
 
   /** Keep compaction progress live while its summary model request is pending. */
