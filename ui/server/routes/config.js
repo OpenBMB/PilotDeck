@@ -1,3 +1,6 @@
+import { discoverProviderModels, discoverOllamaModel, ModelDiscoveryError } from '../../../src/model/metadata/discovery.js';
+import { readProviderModelLimits, writeProviderModelLimits } from '../../../src/model/metadata/store.js';
+import { resolveTokenLimits } from '../../../src/model/metadata/tokenLimits.js';
 import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../../../src/pilot/config/webSearchProviders.js";
 import { getWebSearchProviderConfig, migrateWebSearchProviderConfigs, resolveWebSearchConfig } from "../../../src/pilot/config/webSearchConfig.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError } from "../../../src/tool/builtin/additionalWebSearch.js";
@@ -29,10 +32,6 @@ import {
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
-import {
-  buildProviderModelsEndpointCandidates,
-  isExpectedProviderModelsResponseShape,
-} from '../../../src/model/providerEndpoint.js';
 import { lookupCatalogProvider, PROVIDER_CATALOG } from '../../../src/model/catalog/index.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
@@ -607,40 +606,6 @@ function broadcastConfigEvent(payload) {
   process.emit('pilotdeck:config-broadcast', payload);
 }
 
-function normalizeModelListItem(item) {
-  if (!item || typeof item !== 'object') return null;
-  const rawId = typeof item.id === 'string'
-    ? item.id
-    : typeof item.name === 'string'
-      ? item.name
-      : '';
-  const id = rawId.replace(/^models\//, '').trim();
-  if (!id) return null;
-  const displayName = typeof item.display_name === 'string'
-    ? item.display_name
-    : typeof item.displayName === 'string'
-      ? item.displayName
-      : id;
-  return { id, displayName };
-}
-
-function parseModelListResponse(body) {
-  const rawModels = Array.isArray(body?.data)
-    ? body.data
-    : Array.isArray(body?.models)
-      ? body.models
-      : [];
-  const seen = new Set();
-  const models = [];
-  for (const item of rawModels) {
-    const model = normalizeModelListItem(item);
-    if (!model || seen.has(model.id)) continue;
-    seen.add(model.id);
-    models.push(model);
-  }
-  return models;
-}
-
 function isEndpointFallbackStatus(status) {
   return status === 400 || status === 404 || status === 405;
 }
@@ -676,14 +641,6 @@ async function fetchWithEndpointFallback(urls, options, isExpectedOkBody = null)
     lastResult = { url, response, responseText };
   }
   return lastResult;
-}
-
-function isExpectedModelsJsonBody(protocol, responseText) {
-  try {
-    return isExpectedProviderModelsResponseShape(protocol, responseText ? JSON.parse(responseText) : {});
-  } catch {
-    return false;
-  }
 }
 
 router.get('/', (_req, res) => {
@@ -1125,7 +1082,7 @@ router.get('/provider', (_req, res) => {
   }
 });
 
-router.post('/models', async (req, res) => {
+async function providerModelsHandler(req, res, resolveSingle = false) {
   const { providerId, providerType, baseUrl, apiKey } = req.body || {};
   if (!baseUrl) {
     return res.status(400).json({ ok: false, error: 'baseUrl is required' });
@@ -1164,45 +1121,40 @@ router.post('/models', async (req, res) => {
   const timer = setTimeout(() => controller.abort(new NetworkFetchError('network_timeout', 'Model list request timed out after 10s.')), 10_000);
 
   try {
-    const urls = buildProviderModelsEndpointCandidates({ protocol, baseUrl: normalizedBaseUrl });
-    const headers = isGoogle
-      ? (effectiveApiKey && effectiveApiKey !== '********' ? { 'x-goog-api-key': effectiveApiKey } : {})
-      : isAnthropic
-        ? {
-            ...(effectiveApiKey && effectiveApiKey !== '********' ? { 'x-api-key': effectiveApiKey } : {}),
-            'anthropic-version': '2023-06-01',
-          }
-        : (effectiveApiKey && effectiveApiKey !== '********' ? { Authorization: `Bearer ${effectiveApiKey}` } : {});
-    const { url, response, responseText } = await fetchWithEndpointFallback(
-      urls,
-      { method: 'GET', headers, signal: controller.signal },
-      (text) => isExpectedModelsJsonBody(protocol, text),
-    );
-    clearTimeout(timer);
-    if (!response.ok) {
-      let body = {};
-      try {
-        body = responseText ? JSON.parse(responseText) : {};
-      } catch { /* Use the upstream response text below. */ }
-      const message = body?.error?.message || body?.message || responseText || `HTTP ${response.status}`;
-      return res.status(response.status).json({ ok: false, error: message });
-    }
-    let body;
+    const options = { protocol, baseUrl: normalizedBaseUrl, apiKey: effectiveApiKey, providerId, signal: controller.signal, fetchImpl: fetch };
+    const scope = { providerId: String(providerId || ''), protocol, baseUrl: normalizedBaseUrl };
+    const modelId = typeof req.body?.modelId === 'string' ? req.body.modelId.trim() : '';
+    if (resolveSingle && !modelId) return res.status(400).json({ ok: false, error: 'modelId is required' });
+    let warning;
+    let models;
     try {
-      body = responseText ? JSON.parse(responseText) : {};
-    } catch {
-      return res.status(502).json({ ok: false, error: `Expected JSON from ${url}, but received non-JSON content.` });
+      models = resolveSingle && providerId === 'ollama'
+        ? [await discoverOllamaModel(options, modelId)]
+        : await discoverProviderModels(options);
+      try { writeProviderModelLimits(scope, models); } catch { warning = 'Model metadata could not be cached.'; }
+      await notifyGatewayConfigReload();
+    } catch (error) {
+      if (!resolveSingle) throw error;
+      // A failed lookup must leave settings usable and keep the last known metadata.
+      warning = 'Model metadata is unavailable; using cached or catalog limits.';
     }
-
-    res.json({ ok: true, models: parseModelListResponse(body) });
+    if (!resolveSingle) return res.json({ ok: true, models });
+    const providerLimits = models?.find(model => model.id === modelId) ?? readProviderModelLimits(scope)[modelId];
+    const catalog = lookupCatalogModel(String(providerId || ''), modelId).model?.capabilities;
+    res.json({ ok: true, limits: resolveTokenLimits({ protocol, provider: providerLimits, catalog }), ...(warning ? { warning } : {}) });
   } catch (error) {
     clearTimeout(timer);
     const message = isNetworkTimeout(error)
       ? 'Model list request timed out after 10s.'
       : error instanceof Error ? error.message : String(error);
-    res.status(500).json({ ok: false, error: message });
+    res.status(error instanceof ModelDiscoveryError ? error.status : 500).json({ ok: false, error: message });
+  } finally {
+    clearTimeout(timer);
   }
-});
+}
+
+router.post('/models', (req, res) => providerModelsHandler(req, res));
+router.post('/model-limits', (req, res) => providerModelsHandler(req, res, true));
 
 router.post('/test-connection', async (req, res) => {
   const { providerId, providerType, baseUrl, apiKey, model } = req.body || {};

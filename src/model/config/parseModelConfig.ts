@@ -1,3 +1,5 @@
+import { readProviderModelLimits } from "../metadata/store.js";
+import { resolveTokenLimits, type TokenLimits, type TokenLimitOverrides } from "../metadata/tokenLimits.js";
 import { sanitizeProviderBody } from "../request/sanitizeProviderBody.js";
 import { parseThinkingSettings } from "../thinking/settings.js";
 import { ANTHROPIC_DEFAULT_CAPABILITIES } from "../providers/anthropic/defaults.js";
@@ -99,9 +101,10 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     });
   }
 
+  const providerLimits = readProviderModelLimits({ providerId, protocol, baseUrl: rawUrl }, env);
   const models: Record<string, ModelDefinition> = {};
   for (const [modelId, rawModel] of Object.entries(provider.models)) {
-    models[modelId] = parseModelDefinition(modelId, protocol, rawModel, providerId);
+    models[modelId] = parseModelDefinition(modelId, protocol, rawModel, providerId, providerLimits[modelId]);
   }
 
   return {
@@ -189,6 +192,7 @@ function parseModelDefinition(
   protocol: ModelProtocol,
   rawModel: unknown,
   providerId: string,
+  providerLimits?: TokenLimits,
 ): ModelDefinition {
   const effectiveRaw = rawModel ?? {};
   if (!isRecord(effectiveRaw)) {
@@ -204,6 +208,8 @@ function parseModelDefinition(
     model.capabilities,
     catalogModel?.capabilities,
     providerId,
+    providerLimits,
+    parseTokenLimitOverrides(model.tokenLimitOverrides),
   );
   // Cross-provider model-name matches are useful for token/capability hints,
   // but they must not silently opt a custom model into image delivery. Aliases
@@ -234,6 +240,8 @@ function parseCapabilities(
   rawCapabilities: unknown,
   catalogCapabilities?: ModelCapabilities,
   providerId?: string,
+  providerLimits?: TokenLimits,
+  explicit?: TokenLimitOverrides,
 ): ModelCapabilities {
   const protocolDefaults =
     protocol === "anthropic"
@@ -243,15 +251,11 @@ function parseCapabilities(
         : OPENAI_DEFAULT_CAPABILITIES;
   const defaults = catalogCapabilities ?? protocolDefaults;
 
-  if (rawCapabilities === undefined) {
-    return applyOfficialSpeedDefault(defaults, providerId);
-  }
-
-  if (!isRecord(rawCapabilities)) {
+  if (rawCapabilities !== undefined && !isRecord(rawCapabilities)) {
     throw new ModelConfigError("invalid_capabilities", "Model capabilities must be an object.");
   }
 
-  const capabilities = rawCapabilities as RawCapabilities;
+  const capabilities = (rawCapabilities ?? {}) as RawCapabilities;
   const overrides: Partial<ModelCapabilities> = {};
 
   for (const key of [
@@ -274,7 +278,7 @@ function parseCapabilities(
 
   // Accept `contextWindow` as an alias for `maxContextTokens` so that
   // YAML configs using the friendlier name are not silently ignored.
-  const raw = rawCapabilities as Record<string, unknown>;
+  const raw = capabilities as Record<string, unknown>;
   if (raw.contextWindow !== undefined && capabilities.maxContextTokens === undefined) {
     overrides.maxContextTokens = readPositiveNumber(raw.contextWindow, "contextWindow");
   }
@@ -285,12 +289,23 @@ function parseCapabilities(
     }
   }
 
+  const limits = resolveTokenLimits({ protocol, user: overrides, explicit, provider: providerLimits, catalog: catalogCapabilities });
   return applyOfficialSpeedDefault({
     ...mergeCapabilities(defaults, overrides),
+    maxContextTokens: limits.maxContextTokens.value,
+    maxOutputTokens: limits.maxOutputTokens.value,
     ...(capabilities.supportsThinking !== undefined
       ? { supportsThinkingExplicit: capabilities.supportsThinking }
       : {}),
   } as ModelCapabilities, providerId, overrides.supportsSpeed);
+}
+
+function parseTokenLimitOverrides(value: unknown): TokenLimitOverrides | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || Object.values(value).some(v => typeof v !== "boolean")) {
+    throw new ModelConfigError("invalid_capabilities", "tokenLimitOverrides must contain boolean values.");
+  }
+  return value as TokenLimitOverrides;
 }
 
 function applyOfficialSpeedDefault(

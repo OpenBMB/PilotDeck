@@ -1,3 +1,4 @@
+import type { ResolvedTokenLimits } from "../../../../../../../src/model/metadata/tokenLimits.js";
 import { THINKING_EFFORTS, thinkingFormatsForProtocol, type ModelThinkingSettings, type ThinkingFormat } from '../../../../../../../src/model/thinking/settings.js';
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CircleHelp, Loader2, Plug, XCircle } from 'lucide-react';
@@ -8,6 +9,10 @@ import type { ConnectionTestTask } from '../hooks/useConnectionTestTasks';
 export type ModelSettingsPatch = { maxOutputTokens: number; maxContextTokens: number; supportsImage: boolean; thinking?: ModelThinkingSettings };
 
 type Props = {
+  tokenSources?: ResolvedTokenLimits;
+  automaticLimits?: ResolvedTokenLimits;
+  limitsLoading?: boolean;
+  limitsError?: boolean;
   modelId: string;
   protocol?: string;
   initial: ModelSettingsPatch;
@@ -21,7 +26,7 @@ type Props = {
   onClose: () => void;
 };
 
-export default function ModelSettingsModal({ modelId, protocol = 'openai', initial, task, testDisabled, applyTestResult = true, testError, onTest, onCancelTest, onSave, onClose }: Props) {
+export default function ModelSettingsModal({ tokenSources, automaticLimits, limitsLoading = false, limitsError = false, modelId, protocol = 'openai', initial, task, testDisabled, applyTestResult = true, testError, onTest, onCancelTest, onSave, onClose }: Props) {
   const { t } = useTranslation('settings');
   const label = (key: string) => t(`pilotDeckConfig.panels.models.modelSettings.${key}`);
   const [output, setOutput] = useState(String(initial.maxOutputTokens));
@@ -32,6 +37,17 @@ export default function ModelSettingsModal({ modelId, protocol = 'openai', initi
   const effectiveFormat = formats.includes(thinking.format) ? thinking.format : 'provider';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const editedTokens = useRef({ maxOutputTokens: false, maxContextTokens: false });
+  useEffect(() => {
+    if (!editedTokens.current.maxOutputTokens) setOutput(String(initial.maxOutputTokens));
+    if (!editedTokens.current.maxContextTokens) setContext(String(initial.maxContextTokens));
+  }, [initial.maxOutputTokens, initial.maxContextTokens]);
+  const resetTokens = () => {
+    if (!automaticLimits) return;
+    editedTokens.current = { maxOutputTokens: true, maxContextTokens: true };
+    setOutput(String(automaticLimits.maxOutputTokens.value));
+    setContext(String(automaticLimits.maxContextTokens.value));
+  };
   const manual = useRef(false);
   const applied = useRef<string | null>(null);
   const saveLock = useRef(false);
@@ -61,17 +77,26 @@ export default function ModelSettingsModal({ modelId, protocol = 'openai', initi
     ? label('imageNotDescribed')
     : result?.error?.message;
   const imageUnconfirmed = result?.textInput === 'supported' && result?.imageInput === 'unknown';
+  const tokenSource = (key: 'maxContextTokens' | 'maxOutputTokens', value: string) =>
+    editedTokens.current[key]
+      ? automaticLimits && Number(value) === automaticLimits[key].value ? automaticLimits[key].source : 'user'
+      : tokenSources?.[key].source;
   const inputClass = 'mt-2 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary';
-  return <ConfirmDialog title={label('title')} confirmLabel={label('save')} busy={saving} disabled={!valid || running} error={error} onCancel={onClose} onConfirm={() => void save()}>
+  return <ConfirmDialog title={label('title')} confirmLabel={label('save')} busy={saving} disabled={!valid || running || limitsLoading} error={error} onCancel={onClose} onConfirm={() => void save()}>
     <p className="mb-5 break-all text-sm font-medium text-foreground">{modelId}</p>
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <label className="text-xs font-medium">{t('pilotDeckConfig.panels.models.maxOutputTokens')}
-        <input className={inputClass} aria-label={t('pilotDeckConfig.panels.models.maxOutputTokens')} inputMode="numeric" value={output} onChange={e => setOutput(e.target.value)} disabled={saving} />
+        <input className={inputClass} aria-label={t('pilotDeckConfig.panels.models.maxOutputTokens')} inputMode="numeric" value={output} onChange={e => { editedTokens.current.maxOutputTokens = true; setOutput(e.target.value); }} disabled={saving} />
+        {tokenSources && <span className="mt-1 block text-xs text-muted-foreground">{label(`tokenSources.${tokenSource('maxOutputTokens', output)}`)}</span>}
       </label>
       <label className="text-xs font-medium">{t('pilotDeckConfig.panels.models.maxContextTokens')}
-        <input className={inputClass} aria-label={t('pilotDeckConfig.panels.models.maxContextTokens')} inputMode="numeric" value={context} onChange={e => setContext(e.target.value)} disabled={saving} />
+        <input className={inputClass} aria-label={t('pilotDeckConfig.panels.models.maxContextTokens')} inputMode="numeric" value={context} onChange={e => { editedTokens.current.maxContextTokens = true; setContext(e.target.value); }} disabled={saving} />
+        {tokenSources && <span className="mt-1 block text-xs text-muted-foreground">{label(`tokenSources.${tokenSource('maxContextTokens', context)}`)}</span>}
       </label>
     </div>
+    {limitsLoading && <p className="mt-2 text-xs text-muted-foreground" role="status">{label('limitsLoading')}</p>}
+    {limitsError && <p className="mt-2 text-xs text-muted-foreground" role="status">{label('limitsUnavailable')}</p>}
+    {automaticLimits && <button type="button" className="mt-3 text-xs text-primary" disabled={saving || limitsLoading} onClick={resetTokens}>{label('resetTokenLimits')}</button>}
     <div className="my-5 flex flex-wrap gap-x-5 gap-y-3 text-sm text-foreground">
       <label className="flex cursor-pointer items-center gap-2">
         <input type="checkbox" checked={image} disabled={saving} onChange={e => { manual.current = true; setImage(e.target.checked); }} />{label('imageInput')}

@@ -992,6 +992,10 @@
       },
       "models": {
         "modelSettings": {
+          "tokenSources": {"user": "来源：手动设置", "provider": "来源：服务商", "catalog": "来源：模型目录", "protocol": "来源：协议默认值"},
+          "resetTokenLimits": "恢复自动 Token 上限",
+          "limitsLoading": "正在查询模型 Token 上限…",
+          "limitsUnavailable": "暂时无法刷新模型上限，使用目录或协议默认值。",
           "thinkingEnabled": "思考模式",
           "thinkingDisabled": "关闭思考",
           "thinkingEfforts": "支持的推理强度",

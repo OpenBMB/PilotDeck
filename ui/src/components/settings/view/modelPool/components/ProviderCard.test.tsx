@@ -1,11 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CatalogProvider } from "../../../../../shared/catalogProviders";
+import { findCatalogProviderById, type CatalogProvider } from "../../../../../shared/catalogProviders";
 import ProviderCard from "./ProviderCard";
 
 const mocks = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
   fetchProviderModels: vi.fn(),
+  fetchModelTokenLimits: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -20,7 +21,13 @@ vi.mock("../../../../../utils/api", () => ({
 
 vi.mock("../../../../../shared/modelListApi", () => ({
   fetchProviderModels: mocks.fetchProviderModels,
+  fetchModelTokenLimits: mocks.fetchModelTokenLimits,
 }));
+
+function deepSeekLabel(id: string): string {
+  const provider = findCatalogProviderById('deepseek') as (CatalogProvider & { legacyModels?: Array<{ id: string; displayName: string; aliases?: string[] }> }) | undefined;
+  return [...(provider?.models ?? []), ...(provider?.legacyModels ?? [])].find(model => model.id === id || model.aliases?.includes(id))?.displayName ?? id;
+}
 
 const catalogEntry: CatalogProvider = {
   id: "openrouter",
@@ -32,6 +39,7 @@ const catalogEntry: CatalogProvider = {
 
 describe("ProviderCard custom model add", () => {
   beforeEach(() => {
+    mocks.fetchModelTokenLimits.mockResolvedValue(undefined);
     mocks.authenticatedFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
     mocks.fetchProviderModels.mockResolvedValue([
       { id: "anthropic/claude-fable", displayName: "Claude Fable" },
@@ -53,7 +61,7 @@ describe("ProviderCard custom model add", () => {
   });
 
   it.each(['HX API', 'my.provider', '自定义模型', `provider-${'a'.repeat(64)}`])('saves edits while retaining legacy provider ID %s', async (providerId) => {
-    const onSave = vi.fn(async () => ({ ok: true }));
+    const onSave = vi.fn(async (_id: string, _provider: any) => ({ ok: true }));
     const provider = { protocol: 'openai' as const, url: 'https://example.test/v1', apiKey: '********', models: { model: {} } };
     render(<ProviderCard providerId={providerId} initialEditing provider={provider} onSave={onSave} onRemove={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.apiKey'), { target: { value: 'replacement-key' } });
@@ -249,10 +257,50 @@ describe("ProviderCard connection badge", () => {
     fireEvent.click(screen.getByRole('button',{name:'one'}));
     fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens'),{target:{value:'8192'}});
     fireEvent.click(screen.getByRole('checkbox', {name:'pilotDeckConfig.panels.models.modelSettings.imageInput'}));
+    await waitFor(() => expect((screen.getByRole('button',{name:'pilotDeckConfig.panels.models.modelSettings.save'}) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button',{name:'pilotDeckConfig.panels.models.modelSettings.save'}));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0][1]).toMatchObject({models:{one:{capabilities:{maxOutputTokens:8192,supportsToolUse:true},multimodal:{input:['text','pdf','image'],maxPdfPages:5}},two:provider.models.two}});
     expect(mocks.authenticatedFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+
+  it.each(['deepseek-chat', 'deepseek-flash'])('uses provider metadata for %s without saving automatic values', async modelId => {
+    mocks.fetchModelTokenLimits.mockResolvedValue({ maxContextTokens: { value: 1048576, source: 'provider' }, maxOutputTokens: { value: 393216, source: 'provider' } });
+    const onSave = vi.fn(async (_id: string, _provider: any) => ({ ok: true }));
+    render(<ProviderCard providerId="deepseek" provider={{ protocol: 'openai', apiKey: 'key', models: { [modelId]: {} } }} onSave={onSave} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: name => name.startsWith(deepSeekLabel(modelId)) }));
+    await waitFor(() => expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens') as HTMLInputElement).value).toBe('393216'));
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens') as HTMLInputElement).value).toBe('1048576');
+    expect(screen.getAllByText('pilotDeckConfig.panels.models.modelSettings.tokenSources.provider')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.panels.models.modelSettings.save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const model = onSave.mock.calls[0][1].models[modelId];
+    expect(model.capabilities).toBeUndefined();
+    expect(model.tokenLimitOverrides).toBeUndefined();
+  });
+
+  it('recovers an old default pair, allows deliberate pins, then restores automatic limits', async () => {
+    mocks.fetchModelTokenLimits.mockResolvedValue({ maxContextTokens: { value: 1048576, source: 'provider' }, maxOutputTokens: { value: 393216, source: 'provider' } });
+    const onSave = vi.fn(async (_id: string, _provider: any) => ({ ok: true }));
+    const provider = { protocol: 'openai' as const, apiKey: 'key', models: { 'deepseek-chat': { capabilities: { maxContextTokens: 128000, maxOutputTokens: 32768, supportsToolUse: false } } } };
+    const props = { providerId: 'deepseek', provider, onSave, onRemove: vi.fn() };
+    const view = render(<ProviderCard {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: name => name.startsWith(deepSeekLabel('deepseek-chat')) }));
+    await waitFor(() => expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens') as HTMLInputElement).value).toBe('393216'));
+    fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens'), { target: { value: '32768' } });
+    fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens'), { target: { value: '128000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.panels.models.modelSettings.save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const saved = onSave.mock.calls[0][1];
+    expect(saved.models['deepseek-chat']).toMatchObject({ capabilities: provider.models['deepseek-chat'].capabilities, tokenLimitOverrides: { maxContextTokens: true, maxOutputTokens: true } });
+    view.rerender(<ProviderCard {...props} provider={saved} />);
+    fireEvent.click(screen.getByRole('button', { name: name => name.startsWith(deepSeekLabel('deepseek-chat')) }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'pilotDeckConfig.panels.models.modelSettings.save' }) as HTMLButtonElement).disabled).toBe(false));
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens') as HTMLInputElement).value).toBe('32768');
+    fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.panels.models.modelSettings.resetTokenLimits' }));
+    fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.panels.models.modelSettings.save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+    expect(onSave.mock.calls[1][1].models['deepseek-chat'].capabilities).toEqual({ supportsToolUse: false });
   });
 
   it('tests only the selected model, restores progress after remount and never saves on completion', async () => {
