@@ -17,7 +17,7 @@ describe('sidebar activity notifications', () => {
     expect(store.receive('alice', complete('r1'))).toBeNull();
   });
   it('stop/error clears the spinner without creating a completed reply', () => {
-    for (const terminal of [complete('r1','aborted'),{...started(),kind:'error'}, {...started(),kind:'interrupted'}]) {
+    for (const terminal of [complete('r1','aborted'), {...complete(), success:false}, {...started(),kind:'error'}, {...started(),kind:'interrupted'}]) {
       const store = createSessionActivityRegistry();
       store.receive(null, started());
       expect(store.receive(null, terminal)).toMatchObject({processing:false});

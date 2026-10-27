@@ -1,16 +1,20 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 
 export const SessionViewReadyContext = createContext<(sessionId: string | null) => void>(() => {});
-type ReadRecord = {runId: string; unread: boolean};
-type Activity = {sessionId: string; processing: boolean; completedRunId?: string};
+// Keep desktop acknowledgement on the existing run record, in the same account
+// scope. Watching a completion must not acknowledge the sidebar's unread dot.
+type ReadRecord = {runId: string; unread: boolean; desktopSeen?: boolean};
+type Activity = {sessionId: string; processing: boolean; runId?: string; completedRunId?: string};
 
 export function createSessionIndicatorStore(storageKey: string, storage: Storage | undefined) {
   let records: Record<string, ReadRecord> = Object.create(null);
   let processing = new Set<string>();
   const listeners = new Set<() => void>();
-  let snapshot = {processingSessions: processing, unreadSessionIds: new Set<string>()};
+  let snapshot = {processingSessions: processing, unreadSessionIds: new Set<string>(), desktopCompletionCount: 0};
   const publish = () => {
-    snapshot = {processingSessions: new Set(processing), unreadSessionIds: new Set(Object.keys(records).filter(id => records[id].unread))};
+    const unreadSessionIds = new Set(Object.keys(records).filter(id => records[id].unread));
+    snapshot = {processingSessions: new Set(processing), unreadSessionIds,
+      desktopCompletionCount: [...unreadSessionIds].filter(id => records[id].desktopSeen !== true).length};
     listeners.forEach(listener => listener());
   };
   const persist = () => { try { storage?.setItem(storageKey, JSON.stringify(records)); } catch { /* Private mode/storage quota. */ } };
@@ -23,7 +27,7 @@ export function createSessionIndicatorStore(storageKey: string, storage: Storage
     publish();
   };
   restore();
-  const receive = (message: any) => {
+  const receive = (message: any, watchedSessionId: string | null = null) => {
     const fullSnapshot = message?.type === 'session-activity-snapshot';
     const activities: Activity[] = fullSnapshot ? message.activities : message?.type === 'session-activity' ? [message.activity] : [];
     if (!Array.isArray(activities)) return;
@@ -37,7 +41,11 @@ export function createSessionIndicatorStore(storageKey: string, storage: Storage
       if (activity.processing) processing.add(id); else processing.delete(id);
       const completed = activity.completedRunId;
       if (typeof completed === 'string' && records[id]?.runId !== completed) {
-        records[id] = {runId: completed, unread: true};
+        // A reconnect snapshot can contain work finished while we were away.
+        // Only a live completion actually watched in the foreground is exempt.
+        records[id] = {runId: completed, unread: true,
+          ...(!fullSnapshot && !activity.processing && id === watchedSessionId &&
+            (!activity.runId || activity.runId === completed) ? {desktopSeen: true} : {})};
         recordsChanged = changed = true;
       }
     }
@@ -80,7 +88,11 @@ export function useSessionIndicators({scope, viewedSessionId, subscribe, sendMes
     const runId = id ? store.unreadRun(id) : undefined;
     pendingView.current = id && runId ? {id, runId} : null;
   }, [store, acknowledge]);
-  useEffect(() => subscribe(message => store.receive(message)), [store, subscribe]);
+  useEffect(() => subscribe(message => {
+    const watching = window.pilotdeckDesktop?.setCompletionBadge &&
+      document.visibilityState === 'visible' && document.hasFocus();
+    store.receive(message, watching ? viewRef.current : null);
+  }), [store, subscribe]);
   useEffect(() => {
     if (isConnected) sendMessage({type: 'get-session-activity'});
   }, [isConnected, sendMessage, store]);
@@ -97,5 +109,20 @@ export function useSessionIndicators({scope, viewedSessionId, subscribe, sendMes
     window.addEventListener('storage', restored);
     return () => window.removeEventListener('storage', restored);
   }, [store, key]);
+  useEffect(() => {
+    const bridge = window.pilotdeckDesktop;
+    if (!bridge?.setCompletionBadge) return;
+    const send = (count: number) => {
+      void bridge.setCompletionBadge!(count).catch(error => console.warn('Could not sync completion badge', error));
+    };
+    let lastCount = -1;
+    const sync = () => {
+      const count = store.getSnapshot().desktopCompletionCount;
+      if (count !== lastCount) { lastCount = count; send(count); }
+    };
+    sync();
+    const stop = store.subscribe(sync);
+    return () => { stop(); send(0); };
+  }, [store]);
   return {...useSyncExternalStore(store.subscribe, store.getSnapshot), markRead: store.markRead, acknowledge, selectSession};
 }

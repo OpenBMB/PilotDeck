@@ -20,6 +20,7 @@ declare global {
       resetZoom?: () => void;
       getAboutInfo?: () => Promise<DesktopAboutInfo>;
       setMenuState?: (state: DesktopMenuState) => Promise<void>;
+      setCompletionBadge?: (count: number) => Promise<void>;
       onCommand?: (callback: (command: DesktopCommand) => void) => () => void;
       getAppearance?: () => { language: "en" | "zh-CN"; themeMode: "light" | "dark" | "system"; lightAppearance?: LightAppearance; interfacePreferences?: InterfacePreferences } | null;
       setAppearance?: (value: { language?: "en" | "zh-CN"; themeMode?: "light" | "dark" | "system"; lightAppearance?: LightAppearance; interfacePreferences?: InterfacePreferences }) => Promise<void>;

@@ -43,6 +43,7 @@ ipcMain.handle('pilotdeck:delete-appearance-image', (_e, id) => {
   if (read().lightAppearance?.background.imageId !== id) fs.rmSync(appearanceImagePath(profile, id), { force: true });
 });
 ipcMain.handle('pilotdeck:menu-state', () => {});
+ipcMain.handle('pilotdeck:set-completion-badge', () => {});
 globalThis.filePickerCalls = [];
 globalThis.filePickerErrors = [];
 const pickFiles = createFilePicker({

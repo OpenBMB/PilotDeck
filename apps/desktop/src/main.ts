@@ -7,6 +7,7 @@ import { linuxCaptionAction, linuxCaptionEntries } from "./linuxCaptionMenu";
 import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
+import { installCompletionBadge } from "./completionBadge";
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
 import { createFilePicker } from './filePicker';
@@ -66,6 +67,12 @@ let runtimeStartPromise: Promise<RuntimeInfo> | null = null;
 let lastRuntimeStatus: RuntimeStatus | null = null;
 let updateOrigin: string | null = null;
 let desktopTray: ReturnType<typeof createDesktopTray> | null = null;
+
+const completionBadge = installCompletionBadge({
+  platform: process.platform, app, ipcMain, nativeImage,
+  getWindow: () => mainWindow,
+  requireSender: requireUpdateSender,
+});
 
 const APP_ID = "cn.pilotdeck.desktop";
 const EXTERNAL_NAVIGATION_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
@@ -612,6 +619,7 @@ async function createOrShowWindow(): Promise<void> {
     );
   });
   lifecycle.attachWindow(recoveryWindow);
+  completionBadge.attachWindow(recoveryWindow);
   // Windows logoff/shutdown does not go through app's normal quit events.
   // Respect the OS session end without displaying a quit confirmation.
   recoveryWindow.on("session-end", () => {

@@ -98,7 +98,7 @@ async function verify(scenario) {
 }
 (async () => {
   const scenarios = process.argv.slice(2);
-  for (const scenario of scenarios.length ? scenarios : ['normal', 'slow-quit', 'startup-quit', 'stop-failure', 'update', 'update-recovery', ...(process.platform === 'darwin' ? ['shutdown'] : [])]) {
+  for (const scenario of scenarios.length ? scenarios : ['normal', 'completion-badge', 'slow-quit', 'startup-quit', 'stop-failure', 'update', 'update-recovery', ...(process.platform === 'darwin' ? ['shutdown'] : [])]) {
     await verify(scenario);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
