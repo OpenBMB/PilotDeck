@@ -107,6 +107,9 @@ if (process.argv.includes('--tray-second-instance')) {
     // Registered after main's tray disposer and after managed process cleanup.
     assert.equal(completedAssertions, true, 'app must not exit before the checks finish');
     assert.equal(tray.isDestroyed(), true);
+    if (scenario === 'completion-badge' && process.platform === 'darwin') {
+      assert.equal(app.getBadgeCount(), 0, 'final quit clears the native Dock badge');
+    }
     if (scenario === 'slow-quit') assert.ok(slowStopChecks > 0, 'delayed cleanup was exercised');
     assert.equal(alive(runtimePid), false, 'quit must stop the real runtime process');
     for (const suffix of ['.task', '.gateway']) {
@@ -143,6 +146,35 @@ if (process.argv.includes('--tray-second-instance')) {
     assert.ok(tray && !tray.isDestroyed());
     await until(() => fs.existsSync(process.env.PILOTDECK_TRAY_TEST_PID + '.gateway'), 'gateway started');
     if (scenario === 'manual') { completedAssertions = true; return; }
+    if (scenario === 'completion-badge') {
+      const {completionBadgeBitmap} = require('./dist/completionBadge.js');
+      for (const count of [1, 12, 99]) {
+        const image = electron.nativeImage.createFromBitmap(completionBadgeBitmap(count), {width: 32, height: 32, scaleFactor: 2});
+        assert.equal(image.isEmpty(), false);
+        assert.deepEqual(image.getSize(), {width: 16, height: 16});
+        assert.ok(image.toPNG().length > 100, 'native overlay bitmap encodes as PNG');
+      }
+      const setBadge = count => window.webContents.executeJavaScript(`window.pilotdeckDesktop.setCompletionBadge(${count})`);
+      for (const [count, expected] of [[1, 1], [2, 2], [1000, 99], [0, 0]]) {
+        await setBadge(count);
+        if (process.platform === 'darwin') assert.equal(app.getBadgeCount(), expected, 'preload IPC changes the real Dock badge');
+      }
+      await setBadge(3);
+      window.close();
+      await until(() => !window.isVisible(), 'badge window hides without destruction');
+      if (process.platform === 'darwin') assert.equal(app.getBadgeCount(), 3, 'close-to-background retains the badge');
+      await window.loadURL('data:text/html,<title>Untrusted badge sender</title>');
+      if (process.platform === 'darwin') assert.equal(app.getBadgeCount(), 0, 'document replacement clears the badge');
+      assert.equal(await window.webContents.executeJavaScript(
+        'window.pilotdeckDesktop.setCompletionBadge(9).then(() => false, () => true)'), true, 'non-runtime origin cannot set a badge');
+      await window.loadURL(url);
+      await setBadge(4);
+      completedAssertions = true;
+      app.quit();
+      await until(() => dialogs.length === 1, 'badge test quit confirmation');
+      dialogs[0].resolve({response: 1});
+      return;
+    }
     if (scenario === 'slow-quit') {
       menu.items[2].click();
       await until(() => dialogs.length === 1, 'tray quit confirmation before slow cleanup');

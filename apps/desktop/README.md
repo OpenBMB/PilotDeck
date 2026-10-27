@@ -233,6 +233,35 @@ Help opens the public documentation and GitHub issues in the system browser;
 Copy Version Information includes version, OS/architecture, Electron and build
 commit, without logs or project paths. Existing close/quit safeguards still apply.
 
+### Completion badge
+
+The Dock/taskbar icon shows the number of sessions with successful completions
+waiting to be viewed, capped at 99. Opening a session clears its contribution
+after the conversation is ready. Failures and interrupted runs do not add counts.
+A live completion watched in the focused, visible desktop window is exempt from
+the badge; the sidebar still follows its existing explicit-interaction read rules.
+This exemption is stored on the existing account-scoped session/run record, so
+reloads and replayed events do not recreate a reminder. Reconnect snapshots are
+not assumed to have been watched. No second completion store or Web Push is used.
+
+macOS uses the native Dock badge (subject to OS notification permissions).
+Windows uses a generated numeric taskbar overlay; Linux uses the launcher badge
+where supported. Hiding or minimizing the window retains the count. Logout,
+renderer replacement/failure and final quit clear it; a new renderer restores it
+from the existing unread records. Browser-only sessions keep the sidebar dots.
+
+```bash
+pnpm --dir ui exec vitest run src/components/app-shell/useSessionIndicators.test.tsx server/session-activity.test.js
+pnpm --dir apps/desktop exec node --test scripts/completion-badge.test.mjs
+pnpm --filter pilotdeck-desktop compile
+# Real Electron IPC, bitmap decoding, hide/reload/quit and macOS Dock count:
+node apps/desktop/scripts/verify-desktop-lifecycle.cjs completion-badge
+```
+
+The native smoke uses a temporary profile and synthetic runtime, with no model
+requests. Windows taskbar appearance and Linux launcher support also need testing
+on those operating systems.
+
 ### Chrome verification
 
 Use Node 22, then run:

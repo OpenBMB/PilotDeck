@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("pilotdeckDesktop", {
     webFrame.setZoomLevel(0);
   },
   setMenuState: (state: DesktopMenuState) => ipcRenderer.invoke("pilotdeck:menu-state", state),
+  setCompletionBadge: (count: number) => ipcRenderer.invoke("pilotdeck:set-completion-badge", count),
   onCommand: (callback: (command: DesktopCommand) => void) => {
     const listener = (_event: IpcRendererEvent, command: DesktopCommand) => callback(command);
     ipcRenderer.on("pilotdeck:command", listener);
