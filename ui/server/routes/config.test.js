@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validatePilotDeckConfig } from '../services/pilotdeckConfig.js';
 import { rewriteModelReferences } from '../services/modelReferences.js';
 import { resolveWebSearchConfig, updateWebSearchProviderConfig } from '../../../src/pilot/config/webSearchConfig.js';
@@ -496,6 +496,38 @@ describe('config test-connection route', () => {
 });
 
 describe('config model-list route', () => {
+  beforeEach(() => {
+    const home = mkdtempSync(join(tmpdir(), 'pilotdeck-model-metadata-'));
+    tempDirs.push(home);
+    vi.stubEnv('PILOT_HOME', home);
+  });
+
+  it('shares provider limits with runtime and serves cached limits when discovery fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ data: [{ id: 'deepseek-flash', context_window: 1048576, max_output_tokens: 393216 }] })));
+    const { requestStatus, writePilotDeckConfig } = await createConfigApp();
+    const input = { providerId: 'deepseek', providerType: 'openai', baseUrl: 'https://api.deepseek.com/models', apiKey: 'dummy' };
+    const listed = await requestStatus('/api/config/models', { method: 'POST', body: JSON.stringify(input) });
+    expect(listed.body.models[0]).toMatchObject({ maxContextTokens: 1048576, maxOutputTokens: 393216 });
+    const { parseModelConfig } = await import('../../../src/model/config/parseModelConfig.js');
+    expect(parseModelConfig({ providers: { deepseek: { apiKey: 'dummy', models: { 'deepseek-flash': {} } } } }).providers.deepseek.models['deepseek-flash'].capabilities.maxContextTokens).toBe(1048576);
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    const settings = await requestStatus('/api/config/model-limits', { method: 'POST', body: JSON.stringify({ ...input, baseUrl: 'https://api.deepseek.com/v1', modelId: 'deepseek-flash' }) });
+    expect(settings.body.limits).toEqual({ maxContextTokens: { value: 1048576, source: 'provider' }, maxOutputTokens: { value: 393216, source: 'provider' } });
+    expect(settings.body.warning).toBeTruthy();
+    expect(writePilotDeckConfig).not.toHaveBeenCalled();
+  });
+
+  it('looks up only the opened Ollama model using show', async () => {
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      calls.push([String(url), init.method, JSON.parse(init.body)]);
+      return jsonResponse({ parameters: 'num_ctx 8192', model_info: { 'llama.context_length': 131072 } });
+    }));
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/model-limits', { method: 'POST', body: JSON.stringify({ providerId: 'ollama', providerType: 'openai', baseUrl: 'http://localhost:11434/v1', modelId: 'local' }) });
+    expect(response.body.limits).toEqual({ maxContextTokens: { value: 8192, source: 'provider' }, maxOutputTokens: { value: 32768, source: 'protocol' } });
+    expect(calls).toEqual([['http://localhost:11434/api/show', 'POST', { model: 'local' }]]);
+  });
   it('uses the catalog environment API key fallback', async () => {
     const authHeaders = [];
     vi.stubEnv('ANTHROPIC_API_KEY', 'sk-from-env');

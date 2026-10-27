@@ -1,3 +1,5 @@
+import { lookupCatalogModel } from '../../../../../../../src/model/catalog/lookup.js';
+import { resolveTokenLimits, tokenLimitSettingsPatch, type ResolvedTokenLimits, type TokenLimitOverrides, type TokenLimits } from '../../../../../../../src/model/metadata/tokenLimits.js';
 import { parseThinkingSettings } from '../../../../../../../src/model/thinking/settings.js';
 import { useEffect, useRef, useState } from "react";
 import { useConnectionTestTasks, isTestTaskBusy } from "../hooks/useConnectionTestTasks";
@@ -11,10 +13,8 @@ import {
   type CatalogProviderProtocol,
 } from "../../../../../shared/catalogProviders";
 import {
-  DEFAULT_MODEL_TOKEN_LIMITS,
-} from "../../../../../shared/catalogProviders";
-import {
   fetchProviderModels,
+  fetchModelTokenLimits,
   type ApiModelListItem,
 } from "../../../../../shared/modelListApi";
 import { MASK } from "../../../shared/utils/secret";
@@ -130,6 +130,10 @@ export default function ProviderCard({
   const isMaskedKey = isMaskedSecret(draftProvider.apiKey);
   const protocol = draftProvider.protocol ?? effectiveCatalogEntry?.protocol ?? "openai";
   const effectiveUrl = draftProvider.url || effectiveCatalogEntry?.defaultUrl || "";
+  const metadataBaseUrl = effectiveCatalogEntry
+    && effectiveUrl.replace(/\/+$/, '') === effectiveCatalogEntry.defaultUrl.replace(/\/+$/, '')
+      ? effectiveCatalogEntry.modelListUrl ?? effectiveUrl
+      : effectiveUrl;
   const enabledModels = Object.keys(draftProvider.models ?? {});
   const providerRequiresApiKeyInForm = trimmedProviderId === "ollama"
     ? false
@@ -143,6 +147,21 @@ export default function ProviderCard({
   const tests = useConnectionTestTasks();
   const handledTests = useRef(new Set<string>());
   const [modelSettingsId, setModelSettingsId] = useState<string | null>(null);
+  const [automaticLimits, setAutomaticLimits] = useState<ResolvedTokenLimits | undefined>();
+  const [limitsLoading, setLimitsLoading] = useState(false);
+  const [limitsError, setLimitsError] = useState(false);
+  useEffect(() => {
+    setAutomaticLimits(undefined);
+    setLimitsError(false);
+    if (!modelSettingsId || !effectiveUrl) { setLimitsLoading(false); return; }
+    const controller = new AbortController();
+    setLimitsLoading(true);
+    fetchModelTokenLimits({ protocol, baseUrl: metadataBaseUrl, apiKey: draftProvider.apiKey, providerId: trimmedProviderId, modelId: modelSettingsId }, controller.signal)
+      .then(limits => { if (!controller.signal.aborted) { setAutomaticLimits(limits); setLimitsError(Boolean(limits?.warning)); } })
+      .catch(() => { if (!controller.signal.aborted) setLimitsError(true); })
+      .finally(() => { if (!controller.signal.aborted) setLimitsLoading(false); });
+    return () => controller.abort();
+  }, [modelSettingsId, trimmedProviderId, metadataBaseUrl, protocol, draftProvider.apiKey]);
   const task = tests.tasks.find(item => item.providerId === providerId && item.modelId === modelSettingsId);
   const activeTask = tests.tasks.find(isTestTaskBusy);
   const ownBusy = tests.tasks.some(item => item.providerId === providerId && isTestTaskBusy(item));
@@ -276,7 +295,10 @@ export default function ProviderCard({
     const multimodal = asModelRecord(current.multimodal as Record<string, unknown>);
     const input = Array.isArray(multimodal.input) ? multimodal.input.filter(value => typeof value === 'string' && value !== 'image') : ['text'];
     if (values.supportsImage) input.push('image');
-    const nextModel: Record<string, unknown> = { ...current, thinking: values.thinking, capabilities: { ...readCapabilities(current), maxOutputTokens: values.maxOutputTokens, maxContextTokens: values.maxContextTokens }, multimodal: { ...multimodal, input } };
+    const patch = tokenLimitSettingsPatch({ capabilities: readCapabilities(current), values, automatic: resolvedLimits(modelId, false) });
+    const nextModel: Record<string, unknown> = { ...current, thinking: values.thinking, ...patch, multimodal: { ...multimodal, input } };
+    if (!Object.keys(patch.capabilities).length) delete nextModel.capabilities;
+    if (!Object.keys(patch.tokenLimitOverrides).length) delete nextModel.tokenLimitOverrides;
     delete nextModel.connectionTest;
     const next = { ...source, models: { ...source.models, [modelId]: nextModel } };
     if (editing) { update({ models: next.models }); return { ok: true }; }
@@ -285,13 +307,23 @@ export default function ProviderCard({
     return result;
   };
 
-  const tokenValue = (modelId: string, key: "maxOutputTokens" | "maxContextTokens") => {
-    const stored = readCapabilities(draftProvider.models?.[modelId])[key];
-    if (typeof stored === "number" && stored > 0) return stored;
-    const catalog = catalogModelFor(effectiveCatalogEntry, modelId);
-    if (typeof catalog?.[key] === "number") return catalog[key];
-    return DEFAULT_MODEL_TOKEN_LIMITS[protocol][key];
+  const resolvedLimits = (modelId: string, includeUser = true) => {
+    const model = asModelRecord(draftProvider.models?.[modelId]);
+    const capabilities = readCapabilities(model);
+    const user = { ...capabilities, maxContextTokens: capabilities.maxContextTokens ?? capabilities.contextWindow } as TokenLimits;
+    const catalog = catalogModelFor(effectiveCatalogEntry, modelId) ?? lookupCatalogModel(trimmedProviderId, modelId).model?.capabilities;
+    const providerLimits: TokenLimits = {}, catalogLimits: TokenLimits = { ...catalog };
+    if (automaticLimits) {
+      for (const key of ['maxContextTokens', 'maxOutputTokens'] as const) {
+        const limit = automaticLimits[key];
+        delete catalogLimits[key];
+        if (limit.source === 'provider') providerLimits[key] = limit.value;
+        else if (limit.source === 'catalog') catalogLimits[key] = limit.value;
+      }
+    }
+    return resolveTokenLimits({ protocol, user: includeUser ? user : undefined, explicit: model.tokenLimitOverrides as TokenLimitOverrides | undefined, provider: providerLimits, catalog: catalogLimits });
   };
+  const tokenValue = (modelId: string, key: 'maxOutputTokens' | 'maxContextTokens') => resolvedLimits(modelId)[key].value;
 
   const modelLabel = (modelId: string) =>
     catalogModelFor(effectiveCatalogEntry, modelId)?.displayName ?? modelId;
@@ -629,6 +661,10 @@ export default function ProviderCard({
         modelId={modelSettingsId}
         initial={{ maxOutputTokens: tokenValue(modelSettingsId, 'maxOutputTokens'), maxContextTokens: tokenValue(modelSettingsId, 'maxContextTokens'), supportsImage: modelSupportsImage(modelSettingsId), thinking: (() => { try { return parseThinkingSettings(asModelRecord(draftProvider.models?.[modelSettingsId]).thinking, protocol); } catch { return undefined; } })() }}
         protocol={protocol}
+        tokenSources={resolvedLimits(modelSettingsId)}
+        automaticLimits={resolvedLimits(modelSettingsId, false)}
+        limitsLoading={limitsLoading}
+        limitsError={limitsError}
         task={task}
         applyTestResult={!task || (!task.acknowledged && !handledTests.current.has(task.id))}
         testDisabled={testDisabled || !configured}

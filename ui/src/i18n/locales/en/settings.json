@@ -992,6 +992,10 @@
       },
       "models": {
         "modelSettings": {
+          "tokenSources": {"user": "Source: custom value", "provider": "Source: provider", "catalog": "Source: model catalog", "protocol": "Source: protocol default"},
+          "resetTokenLimits": "Use automatic token limits",
+          "limitsLoading": "Looking up model token limits…",
+          "limitsUnavailable": "Model limits could not be refreshed. Using the catalog or protocol fallback.",
           "thinkingEnabled": "Thinking mode",
           "thinkingDisabled": "Disable thinking",
           "thinkingEfforts": "Supported reasoning efforts",
