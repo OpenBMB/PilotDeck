@@ -812,7 +812,8 @@ agent:
     fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
     fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
 
-    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Text connection succeeded. Please confirm whether each model supports image input.' })).toBeTruthy();
+    expect(screen.getByText('Text connected; confirm image')).toBeTruthy();
     const cancelButtons = screen.getAllByRole('button', { name: 'Cancel' });
     fireEvent.click(cancelButtons[cancelButtons.length - 1]!);
     expect(await screen.findByText(/cancelled/i)).toBeTruthy();
