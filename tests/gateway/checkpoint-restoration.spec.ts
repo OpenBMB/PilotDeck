@@ -41,9 +41,19 @@ model:
       async *stream(request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
         requests.push(request);
         const text = request.messages.at(-1)?.content.filter(item => item.type === "text").map(item => item.type === "text" ? item.text : "").join("");
-        if (text === "first" || text === "second") await writeFile(join(workspace, "demo.txt"), text);
         yield { type: "request_started", provider: request.provider, model: request.model };
         yield { type: "message_start", role: "assistant" };
+        // Providers cannot mutate the workspace. Exercise the real protected
+        // command path instead of writing from the fake model request itself.
+        if (text === "first" || text === "second") {
+          const call = { id: `write-${text}`, name: "execute_code", input: {
+            code: `from pathlib import Path\nPath('demo.txt').write_text('${text}')`,
+          } };
+          yield { type: "tool_call_start", id: call.id, name: call.name };
+          yield { type: "tool_call_end", toolCall: call };
+          yield { type: "message_end", finishReason: "tool_call" };
+          return;
+        }
         yield { type: "text_delta", text: `reply ${text}` };
         yield { type: "message_end", finishReason: "stop" };
       },
@@ -57,7 +67,7 @@ model:
     home, workspace, sessionKey, requests, input,
     get gateway() { return local.gateway; },
     restart() { local.dispose(); local = createLocalGateway(options); },
-    async submit(message: string) { for await (const _event of local.gateway.submitTurn({ ...input, channelKey: "web", message })) { /* consume */ } },
+    async submit(message: string) { for await (const _event of local.gateway.submitTurn({ ...input, channelKey: "web", message, mode: "bypassPermissions", canPrompt: false })) { /* consume */ } },
     async list() { return await local.gateway.manageCheckpoints!({ ...input, action: "list" }) as { checkpoints: CheckpointSummary[]; sessionChanges: CheckpointSummary["changes"]; sessionRevision: string }; },
     async history() {
       const storage = createAgentProjectSessionStorage({ projectRoot: workspace, pilotHome: home, sessionId: sessionKey });

@@ -73,6 +73,7 @@ export type SubAgentSessionOptions = {
   maxTurns?: number;
   /** Abort signal forwarded to the child loop. */
   abortSignal?: AbortSignal;
+  workspaceReady?: () => Promise<void>;
   /**
    * Optional sidechain transcript writer for C3. When provided, each
    * AgentLoop event that produces a durable message is mirrored here. The
@@ -141,6 +142,7 @@ export class SubAgentSession {
       messages,
       maxTurns: this.options.maxTurns,
       abortSignal: this.options.abortSignal,
+      workspaceReady: this.options.workspaceReady,
     });
     while (true) {
       const next = await generator.next();

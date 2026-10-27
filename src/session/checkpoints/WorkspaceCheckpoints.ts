@@ -223,13 +223,14 @@ export class CheckpointStore {
     }
     return version;
   }
-  async capture(sessionId: string, turnId: string, phase: Checkpoint["phase"], context?: CanonicalMessage[]): Promise<Checkpoint> {
+  async capture(sessionId: string, turnId: string, phase: Checkpoint["phase"], context?: CanonicalMessage[], signal?: AbortSignal): Promise<Checkpoint> {
     const files: Record<string, FileVersion> = {};
     const next = new Map<string, CachedFile>();
     let bytes = 0;
     const walk = async (directory: string): Promise<void> => {
       const entries = await fs.readdir(directory, { withFileTypes: true });
       for (const entry of entries) {
+        signal?.throwIfAborted();
         const target = path.join(directory, entry.name), relative = path.relative(this.workspace, target).split(path.sep).join("/");
         if (entry.name === ".git") continue; // Worktrees use a .git file instead of a directory.
         if (entry.isDirectory()) {
@@ -250,6 +251,7 @@ export class CheckpointStore {
       }
     };
     await walk(this.workspace);
+    signal?.throwIfAborted();
     this.capturedFiles = next;
     return { version: 1, id: randomUUID(), sessionId, turnId, workspace: this.workspace, createdAt: new Date().toISOString(), phase, status: "complete", files,
       ...(context ? { contextHash: await this.putObject(Buffer.from(JSON.stringify(context))) } : {}) };
@@ -534,7 +536,8 @@ export class WorkspaceCheckpoints {
     try {
       if (signal?.aborted) throw new CheckpointError("ABORTED", "Turn stopped before its checkpoint was captured.");
       await store.recoverInterrupted(sessionId);
-      const before = await store.capture(sessionId, turnId, "before", messages);
+      const before = await store.capture(sessionId, turnId, "before", messages, signal);
+      signal?.throwIfAborted();
       await store.save(before);
       this.active = { store, before, tracked: new Map(), pending: new Map(), commands: new Set(), closing: false, uncertainCommands: backgroundBusy(store.workspace), release };
     } catch (error) { release(); throw error; }
