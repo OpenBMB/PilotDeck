@@ -1,3 +1,4 @@
+import { useModelCatalog } from '../../../../shared/useModelCatalog';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { authenticatedFetch } from '../../../../utils/api';
@@ -22,6 +23,7 @@ function validEndpoint(value: string) {
 }
 
 export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSetupController {
+  const catalog = useModelCatalog();
   const { t } = useTranslation('onboarding');
   const [selectedProvider, setSelectedProvider] = useState<CatalogProvider | null>(DEFAULT_PROVIDER);
   const [modelIds, setModelIds] = useState<string[]>([]);
@@ -43,7 +45,8 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
   const savingRef = useRef(false);
 
   const isCustomMode = selectedProvider?.id === CUSTOM_PROVIDER_ID;
-  const selectedModels = apiModels ?? selectedProvider?.models ?? [];
+  const currentCatalogProvider = catalog.find(p => p.id === selectedProvider?.id) ?? selectedProvider;
+  const selectedModels = apiModels ?? currentCatalogProvider?.models ?? [];
   const selectedDefaultUrl = selectedProvider?.defaultUrl ?? '';
   const effectiveUrl = customUrl.trim() || selectedProvider?.defaultUrl || '';
   const effectiveModelIds = uniqueModelIds(modelIds);
@@ -471,7 +474,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
               const existingMultimodal = existingModel.multimodal && typeof existingModel.multimodal === 'object'
                 ? existingModel.multimodal as Record<string, unknown>
                 : {};
-              const catalogModel = selectedProvider?.models.find((model) => model.id === id || model.aliases?.includes(id));
+              const catalogModel = currentCatalogProvider?.models.find((model) => model.id === id || model.aliases?.includes(id));
               const supportsImage = imageSupport[id]?.supportsImage ?? catalogModel?.supportsImage;
               return [id, {
                 ...existingModel,

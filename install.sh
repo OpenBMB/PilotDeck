@@ -262,14 +262,14 @@ run_onboarding() {
 
   local pid="" protocol="" url="" model=""
   case "$choice" in
-    1) pid=openai;    protocol=openai;    url=https://api.openai.com/v1;                          model=gpt-4o ;;
-    2) pid=anthropic; protocol=anthropic; url=https://api.anthropic.com;                          model=claude-sonnet-4.6 ;;
-    3) pid=google;    protocol=google;    url=https://generativelanguage.googleapis.com;          model=gemini-2.5-pro ;;
-    4) pid=deepseek;  protocol=openai;    url=https://api.deepseek.com/v1;                         model=deepseek-chat ;;
-    5) pid=dashscope; protocol=openai;    url=https://dashscope.aliyuncs.com/compatible-mode/v1;   model=qwen-max ;;
-    6) pid=moonshot;  protocol=openai;    url=https://api.moonshot.cn/v1;                          model=kimi-k2 ;;
-    7) pid=minimax;   protocol=openai;    url=https://api.minimaxi.com/v1;                         model=MiniMax-M2.5 ;;
-    8) pid=zhipu;     protocol=openai;    url=https://api.z.ai/api/paas/v4;                        model=glm-4.6 ;;
+    1) pid=openai;    protocol=openai-responses;    url=https://api.openai.com/v1;                          model=gpt-6-astra ;;
+    2) pid=anthropic; protocol=anthropic; url=https://api.anthropic.com;                          model=claude-sonnet-5-5 ;;
+    3) pid=google;    protocol=google;    url=https://generativelanguage.googleapis.com;          model=gemini-4-argon ;;
+    4) pid=deepseek;  protocol=openai;    url=https://api.deepseek.com/v1;                         model=deepseek-flash ;;
+    5) pid=dashscope; protocol=openai;    url=https://dashscope.aliyuncs.com/compatible-mode/v1;   model=qwen3.8-max ;;
+    6) pid=moonshot;  protocol=openai;    url=https://api.moonshot.cn/v1;                          model=kimi-k3 ;;
+    7) pid=minimax;   protocol=openai;    url=https://api.minimaxi.com/v1;                         model=MiniMax-M3.1-Flash ;;
+    8) pid=zhipu;     protocol=openai;    url=https://api.z.ai/api/paas/v4;                        model=glm-5.3 ;;
     9)
       protocol=openai
       printf "%s " "$(L "Provider id (e.g. myprovider):" "服务商 id(如 myprovider):")"

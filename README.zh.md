@@ -85,7 +85,7 @@ PilotDeck 正是围绕这些问题做的增量探索。它以 WorkSpace 为基�
 
 **智能路由与成本优化**
 
-内置任务难度识别，复杂任务调用强力模型（如 Claude 3.5 Sonnet / GPT-4o），简单任务降级至轻量模型。通过端云协同与精准匹配，大幅降低 Token 消耗。
+内置任务难度识别，复杂任务调用强力模型（如 Claude Opus 5.5 / GPT-6 Astra），简单任务降级至轻量模型。通过端云协同与精准匹配，大幅降低 Token 消耗。
 
 <p align="center">
   <img src="assets/router.gif" width="100%" alt="智能路由演示"/>

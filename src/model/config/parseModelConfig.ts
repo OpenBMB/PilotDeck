@@ -1,3 +1,5 @@
+import { readCatalogSnapshot } from "../catalog/store.js";
+import type { CatalogProviderEntry, ProviderCatalog } from "../catalog/types.js";
 import { sanitizeProviderBody } from "../request/sanitizeProviderBody.js";
 import { parseThinkingSettings } from "../thinking/settings.js";
 import { ANTHROPIC_DEFAULT_CAPABILITIES } from "../providers/anthropic/defaults.js";
@@ -18,7 +20,7 @@ import {
   isInputModality,
   type MultimodalConstraints,
 } from "../protocol/multimodal.js";
-import { lookupCatalogModel, lookupCatalogProvider } from "../catalog/index.js";
+import { lookupCatalogModel } from "../catalog/index.js";
 import { resolveApiKey, type CredentialEnv } from "./resolveCredentials.js";
 import {
   resolveCatalogProviderApiKeyEnvVar,
@@ -36,6 +38,7 @@ import {
 
 export type ParseModelConfigOptions = {
   env?: CredentialEnv;
+  catalog?: ProviderCatalog;
   onInvalidProvider?: (providerId: string, error: ModelConfigError) => void;
 };
 
@@ -51,10 +54,11 @@ export function parseModelConfig(
     throw new ModelConfigError("missing_provider", "Model config must contain at least one provider.");
   }
 
+  const catalog = options.catalog ?? readCatalogSnapshot(options.env).catalog;
   const providers: Record<string, ProviderConfig> = {};
   for (const [providerId, rawProvider] of Object.entries(rawConfig.providers)) {
     try {
-      providers[providerId] = parseProvider(providerId, rawProvider, options.env);
+      providers[providerId] = parseProvider(providerId, rawProvider, catalog, options.env);
     } catch (error) {
       if (!options.onInvalidProvider || !(error instanceof ModelConfigError)) throw error;
       options.onInvalidProvider(providerId, error);
@@ -66,17 +70,15 @@ export function parseModelConfig(
   };
 }
 
-function parseProvider(providerId: string, rawProvider: unknown, env?: CredentialEnv): ProviderConfig {
+function parseProvider(providerId: string, rawProvider: unknown, catalog: ProviderCatalog, env?: CredentialEnv): ProviderConfig {
   if (!isRecord(rawProvider)) {
     throw new ModelConfigError("invalid_provider", `Provider ${providerId} must be an object.`);
   }
 
   const provider = rawProvider as RawProviderConfig;
-  const catalogProvider = lookupCatalogProvider(providerId);
+  const catalogProvider = catalog[providerId];
 
-  const protocol = isModelProtocol(provider.protocol)
-    ? provider.protocol
-    : catalogProvider?.protocol;
+  const protocol = resolveProviderProtocol(providerId, provider, catalogProvider);
   if (!protocol) {
     throw new ModelConfigError("unsupported_protocol", `Provider ${providerId} has unsupported protocol.`, {
       providerId,
@@ -99,9 +101,14 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     });
   }
 
+  if (provider.modelOverrides !== undefined && !isRecord(provider.modelOverrides)) {
+    throw new ModelConfigError("invalid_model", `Provider ${providerId} modelOverrides must be an object.`);
+  }
   const models: Record<string, ModelDefinition> = {};
   for (const [modelId, rawModel] of Object.entries(provider.models)) {
-    models[modelId] = parseModelDefinition(modelId, protocol, rawModel, providerId);
+    const override = isRecord(provider.modelOverrides) ? provider.modelOverrides[modelId] : undefined;
+    const merged = override === undefined ? rawModel : mergeModelOverrides(override, rawModel);
+    models[modelId] = parseModelDefinition(modelId, protocol, merged, providerId, catalog);
   }
 
   return {
@@ -121,6 +128,36 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     retry: parseRetryConfig(provider.retry),
     models,
   };
+}
+
+function resolveProviderProtocol(
+  providerId: string,
+  provider: RawProviderConfig,
+  catalogProvider: CatalogProviderEntry | undefined,
+): ModelProtocol | undefined {
+  if (isModelProtocol(provider.protocol)) return provider.protocol;
+  if (providerId !== "openai" || !catalogProvider) return catalogProvider?.protocol;
+
+  const explicitUrl = typeof provider.url === "string" ? provider.url.trim() : "";
+  const catalogUrl = catalogProvider.defaultUrl;
+  if (!explicitUrl || canonicalProviderUrl(explicitUrl) === canonicalProviderUrl(catalogUrl)) {
+    return catalogProvider.protocol;
+  }
+
+  // A bare OpenAI provider with a custom URL is an OpenAI-compatible proxy in
+  // existing configs. Keep that legacy path on Chat Completions unless the
+  // Responses protocol is explicit.
+  return "openai";
+}
+
+function canonicalProviderUrl(value: string): string {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
 }
 
 function parseSpeedMapping(
@@ -184,11 +221,23 @@ function parseRetryConfig(raw: unknown): ProviderRetryConfig | undefined {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+function mergeModelOverrides(override: unknown, model: unknown): unknown {
+  if (!isRecord(override) || (model != null && !isRecord(model))) {
+    throw new ModelConfigError("invalid_model", "Model overrides and definitions must be objects.");
+  }
+  const merged = { ...override, ...(model ?? {}) };
+  for (const key of ["capabilities", "multimodal", "thinking"]) {
+    if (isRecord(override[key]) && isRecord(model) && isRecord(model[key])) merged[key] = { ...override[key], ...model[key] };
+  }
+  return merged;
+}
+
 function parseModelDefinition(
   modelId: string,
   protocol: ModelProtocol,
   rawModel: unknown,
   providerId: string,
+  catalog: ProviderCatalog,
 ): ModelDefinition {
   const effectiveRaw = rawModel ?? {};
   if (!isRecord(effectiveRaw)) {
@@ -196,7 +245,7 @@ function parseModelDefinition(
   }
 
   const model = effectiveRaw as RawModelDefinition;
-  const catalogHit = lookupCatalogModel(providerId, modelId);
+  const catalogHit = lookupCatalogModel(providerId, modelId, catalog);
   const catalogModel = catalogHit.model;
 
   const capabilities = parseCapabilities(
@@ -213,8 +262,13 @@ function parseModelDefinition(
     : undefined;
   const multimodal = parseMultimodal(model.multimodal, catalogMultimodal);
 
+  // Catalog defaults are hints; explicit model configuration always wins.
+  const nativeMatch = catalogHit.matchType === "exact" || catalogHit.matchType === "alias";
+  const catalogThinking = nativeMatch ? catalogModel?.thinking : undefined;
   let thinking;
-  try { thinking = parseThinkingSettings(model.thinking, protocol); }
+  try { thinking = parseThinkingSettings(isRecord(model.thinking) && catalogThinking
+    ? { ...catalogThinking, ...model.thinking }
+    : model.thinking ?? catalogThinking, protocol); }
   catch (error) { throw new ModelConfigError("invalid_config_value", error instanceof Error ? error.message : String(error), { providerId, modelId }); }
 
   return {

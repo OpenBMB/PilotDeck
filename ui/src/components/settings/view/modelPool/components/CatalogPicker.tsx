@@ -1,6 +1,6 @@
+import { useModelCatalog } from "../../../../../shared/useModelCatalog";
 import { useTranslation } from "react-i18next";
 import {
-  CATALOG_PROVIDERS,
   type CatalogProvider,
 } from "../../../../../shared/catalogProviders";
 import ProviderAvatar from "./ProviderAvatar";
@@ -21,10 +21,11 @@ export default function CatalogPicker({
   onCustom,
   onClose,
 }: CatalogPickerProps) {
+  const providers = useModelCatalog();
   const { t } = useTranslation("settings");
   if (!open) return null;
 
-  const available = CATALOG_PROVIDERS.filter((p) => !existingIds.has(p.id));
+  const available = providers.filter((p) => !existingIds.has(p.id));
 
   return (
     <div

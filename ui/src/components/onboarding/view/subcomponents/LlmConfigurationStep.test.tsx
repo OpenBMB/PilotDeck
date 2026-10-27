@@ -168,7 +168,7 @@ describe('LlmConfigurationStep', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /^OpenRouter$/ }));
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'anthropic/claude-sonnet-4.6' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'anthropic/claude-sonnet-5.5' })).toBeTruthy();
     });
 
     expect(screen.queryByRole('button', { name: /Test connection/i })).toBeNull();
@@ -182,22 +182,22 @@ describe('LlmConfigurationStep', () => {
       if (url === '/api/config/test-connections') {
         return {
           ok: true,
-          json: async () => connectionTestResult('anthropic/claude-sonnet-4.6', 'supported'),
+          json: async () => connectionTestResult('anthropic/claude-sonnet-5.5', 'supported'),
         };
       }
       return { ok: true, json: async () => ({}) };
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'anthropic/claude-sonnet-4.6' }));
-    const button = screen.getByRole('button', { name: 'Test connection anthropic/claude-sonnet-4.6' });
+    fireEvent.click(await screen.findByRole('button', { name: 'anthropic/claude-sonnet-5.5' }));
+    const button = screen.getByRole('button', { name: 'Test connection anthropic/claude-sonnet-5.5' });
     expect((button as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(button);
 
-    expect(await screen.findByRole('button', { name: 'Retest anthropic/claude-sonnet-4.6' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Retest anthropic/claude-sonnet-5.5' })).toBeTruthy();
     const testCall = calls.find((call) => call.url === '/api/config/test-connections');
     expect(JSON.parse(String(testCall?.init?.body))).toMatchObject({
       providerId: 'openrouter',
       apiKey: '',
-      models: ['anthropic/claude-sonnet-4.6'],
+      models: ['anthropic/claude-sonnet-5.5'],
     });
   });
 
@@ -357,12 +357,12 @@ describe('LlmConfigurationStep', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Search model ID'), { target: { value: 'flash' } });
     expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'deepseek-flash' })).toBeTruthy();
 
     fireEvent.change(screen.getByPlaceholderText('Search model ID'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Remove from available deepseek-v4-pro' }));
     expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'deepseek-flash' })).toBeTruthy();
   });
 
   it('creates a passing connection-test record and binds it when saving', async () => {

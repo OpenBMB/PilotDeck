@@ -675,7 +675,7 @@ export function buildRuntimeEnv(config) {
     env.GEMINI_MODEL = main.model;
   }
 
-  // Reasoning models (DeepSeek-R1, MiniMax-M2.7, etc.) need a generous
+  // Reasoning models (DeepSeek V4, MiniMax M3.1, etc.) need a generous
   // output token cap; honor agent.params.maxOutputTokens / max_tokens.
   const mainParams = normalized.agent?.params ?? {};
   const requestedMaxOutput = Number.parseInt(

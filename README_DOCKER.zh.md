@@ -165,8 +165,8 @@ docker run -d --name pilotdeck \
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `PILOT_HOME` | 容器内 PilotDeck 状态目录 | `/root/.pilotdeck` |
-| `PILOTDECK_MODEL` | 主模型标识，格式为 `provider/model` | `openrouter/deepseek/deepseek-v4-flash` |
-| `PILOTDECK_LIGHT_MODEL` | 路由/判别用轻量模型标识 | `openrouter/qwen/qwen3-8b` |
+| `PILOTDECK_MODEL` | 主模型标识，格式为 `provider/model` | `openrouter/deepseek/deepseek-v4.1-flash-1017` |
+| `PILOTDECK_LIGHT_MODEL` | 路由/判别用轻量模型标识 | `openrouter/qwen/qwen3.8-flash` |
 | `PILOTDECK_API_KEY` | 主模型 Provider API Key；未提供时在 onboarding 中配置 | — |
 | `PILOTDECK_API_URL` | 主模型 Provider API Base URL | `https://openrouter.ai/api/v1` |
 | `PILOTDECK_LIGHT_API_KEY` | 轻量模型使用不同 Provider 时的 API Key | 回退到 `PILOTDECK_API_KEY` |
