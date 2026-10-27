@@ -1,0 +1,765 @@
+{
+  "date": "2026-10-27",
+  "environment": {
+    "os": "macOS 26.6 (25G72)",
+    "cpu": "Apple M5",
+    "ramGiB": 32,
+    "node": "v22.23.4",
+    "arch": "arm64"
+  },
+  "baselineCommit": "5862db796e7619f37b559a46417a6c7f9415bbeb",
+  "candidateSourceSha256": "16f635e57e97fd45b0d5c878cf9e554c329b460e41373f34baad611e0b100519",
+  "method": "Same unchanged target directory for each implementation; sequential runs, separate empty temporary backup homes, 1 initial backup and 6 unchanged samples. No model/network requests. OS caches not flushed.",
+  "cases": [
+    {
+      "name": "PilotDeck working tree",
+      "baseline": {
+        "runs": 7,
+        "samples": [
+          {
+            "run": 1,
+            "case": "initial-backup",
+            "checkpointMs": 12852.51,
+            "artifactMs": 185.2407920000005,
+            "preparationMs": 13037.750792,
+            "finishCheckpointMs": 467.1066659999997,
+            "finalizationMs": 467.2411659999998,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 8,
+              "objectBytesRead": 3783
+            },
+            "finishReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2128,
+              "objectBytesRead": 22196668
+            }
+          },
+          {
+            "run": 2,
+            "case": "unchanged",
+            "checkpointMs": 450.14141700000073,
+            "artifactMs": 42.75854199999958,
+            "preparationMs": 492.8999590000003,
+            "finishCheckpointMs": 460.21037500000057,
+            "finalizationMs": 460.3054580000007,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2129,
+              "objectBytesRead": 22196670
+            },
+            "finishReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2128,
+              "objectBytesRead": 22196668
+            }
+          },
+          {
+            "run": 3,
+            "case": "unchanged",
+            "checkpointMs": 442.8389169999991,
+            "artifactMs": 41.46466700000019,
+            "preparationMs": 484.3035839999993,
+            "finishCheckpointMs": 456.5591659999991,
+            "finalizationMs": 456.6572500000002,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2129,
+              "objectBytesRead": 22196670
+            },
+            "finishReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2128,
+              "objectBytesRead": 22196668
+            }
+          },
+          {
+            "run": 4,
+            "case": "unchanged",
+            "checkpointMs": 463.6481249999997,
+            "artifactMs": 41.91583300000093,
+            "preparationMs": 505.56395800000064,
+            "finishCheckpointMs": 459.7714999999989,
+            "finalizationMs": 459.87916699999914,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2129,
+              "objectBytesRead": 22196670
+            },
+            "finishReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2128,
+              "objectBytesRead": 22196668
+            }
+          },
+          {
+            "run": 5,
+            "case": "unchanged",
+            "checkpointMs": 515.8144169999978,
+            "artifactMs": 42.591333000000304,
+            "preparationMs": 558.4057499999981,
+            "finishCheckpointMs": 467.6890830000011,
+            "finalizationMs": 467.78704199999993,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2129,
+              "objectBytesRead": 22196670
+            },
+            "finishReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2128,
+              "objectBytesRead": 22196668
+            }
+          },
+          {
+            "run": 6,
+            "case": "unchanged",
+            "checkpointMs": 457.37837500000023,
+            "artifactMs": 40.7019169999985,
+            "preparationMs": 498.08029199999874,
+            "finishCheckpointMs": 501.20029200000135,
+            "finalizationMs": 501.3622920000016,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2129,
+              "objectBytesRead": 22196670
+            },
+            "finishReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2128,
+              "objectBytesRead": 22196668
+            }
+          },
+          {
+            "run": 7,
+            "case": "unchanged",
+            "checkpointMs": 465.99208400000134,
+            "artifactMs": 40.58270799999809,
+            "preparationMs": 506.57479199999943,
+            "finishCheckpointMs": 471.03762500000084,
+            "finalizationMs": 471.1333330000016,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2129,
+              "objectBytesRead": 22196670
+            },
+            "finishReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 2128,
+              "objectBytesRead": 22196668
+            }
+          }
+        ],
+        "unchangedMedian": {
+          "checkpointMs": 460.51324999999997,
+          "artifactMs": 41.69025000000056,
+          "preparationMs": 501.8221249999997,
+          "finishCheckpointMs": 463.94972900000084
+        }
+      },
+      "candidate": {
+        "runs": 7,
+        "samples": [
+          {
+            "run": 1,
+            "case": "initial-backup",
+            "checkpointMs": 11825.139042,
+            "artifactMs": 160.47358299999905,
+            "preparationMs": 11985.612625,
+            "finishCheckpointMs": 519.2968340000007,
+            "finalizationMs": 519.4418340000011,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 2128,
+              "sourceBytesRead": 22196668,
+              "objectReads": 5,
+              "objectBytesRead": 2239
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 2115,
+              "objectBytesRead": 22190646
+            }
+          },
+          {
+            "run": 2,
+            "case": "unchanged",
+            "checkpointMs": 211.2692079999997,
+            "artifactMs": 44.38641700000153,
+            "preparationMs": 255.65562500000124,
+            "finishCheckpointMs": 236.05470799999966,
+            "finalizationMs": 236.16187499999978,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 1,
+              "objectBytesRead": 2
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 3,
+            "case": "unchanged",
+            "checkpointMs": 227.81791599999997,
+            "artifactMs": 40.74108400000114,
+            "preparationMs": 268.5590000000011,
+            "finishCheckpointMs": 236.3675000000003,
+            "finalizationMs": 236.47129099999984,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 4,
+            "case": "unchanged",
+            "checkpointMs": 227.67012500000055,
+            "artifactMs": 40.5054999999993,
+            "preparationMs": 268.17562499999985,
+            "finishCheckpointMs": 236.7049160000006,
+            "finalizationMs": 236.78850000000057,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 5,
+            "case": "unchanged",
+            "checkpointMs": 226.72791599999982,
+            "artifactMs": 45.21466700000019,
+            "preparationMs": 271.942583,
+            "finishCheckpointMs": 339.7218750000011,
+            "finalizationMs": 339.81316700000025,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 6,
+            "case": "unchanged",
+            "checkpointMs": 226.15429199999926,
+            "artifactMs": 51.02745800000048,
+            "preparationMs": 277.18174999999974,
+            "finishCheckpointMs": 258.0106250000008,
+            "finalizationMs": 258.1412500000006,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 7,
+            "case": "unchanged",
+            "checkpointMs": 284.2234160000007,
+            "artifactMs": 46.78583400000025,
+            "preparationMs": 331.009250000001,
+            "finishCheckpointMs": 237.07966599999963,
+            "finalizationMs": 237.18541600000026,
+            "changes": 0,
+            "entries": 2129,
+            "protectedFiles": 2128,
+            "protectedBytes": 22196668,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          }
+        ],
+        "unchangedMedian": {
+          "checkpointMs": 227.1990205000002,
+          "artifactMs": 44.80054200000086,
+          "preparationMs": 270.25079150000056,
+          "finishCheckpointMs": 236.8922910000001
+        }
+      }
+    },
+    {
+      "name": "Synthetic 5,352-file workspace",
+      "baseline": {
+        "runs": 7,
+        "samples": [
+          {
+            "run": 1,
+            "case": "initial-backup",
+            "checkpointMs": 31461.458083,
+            "artifactMs": 313.9021250000005,
+            "preparationMs": 31775.360208000002,
+            "finishCheckpointMs": 1133.3195000000014,
+            "finalizationMs": 1133.6247919999987,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5352,
+              "objectBytesRead": 268440264
+            }
+          },
+          {
+            "run": 2,
+            "case": "unchanged",
+            "checkpointMs": 1135.6411660000012,
+            "artifactMs": 45.49491699999635,
+            "preparationMs": 1181.1360829999976,
+            "finishCheckpointMs": 1164.6813750000001,
+            "finalizationMs": 1165.0445420000033,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5353,
+              "objectBytesRead": 268440266
+            },
+            "finishReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5352,
+              "objectBytesRead": 268440264
+            }
+          },
+          {
+            "run": 3,
+            "case": "unchanged",
+            "checkpointMs": 1160.794707999994,
+            "artifactMs": 44.661417000002984,
+            "preparationMs": 1205.456124999997,
+            "finishCheckpointMs": 1134.874708000003,
+            "finalizationMs": 1135.1465830000016,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5353,
+              "objectBytesRead": 268440266
+            },
+            "finishReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5352,
+              "objectBytesRead": 268440264
+            }
+          },
+          {
+            "run": 4,
+            "case": "unchanged",
+            "checkpointMs": 1116.0724580000024,
+            "artifactMs": 45.181541999998444,
+            "preparationMs": 1161.2540000000008,
+            "finishCheckpointMs": 1158.0897919999989,
+            "finalizationMs": 1158.3788750000022,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5353,
+              "objectBytesRead": 268440266
+            },
+            "finishReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5352,
+              "objectBytesRead": 268440264
+            }
+          },
+          {
+            "run": 5,
+            "case": "unchanged",
+            "checkpointMs": 1071.5236250000016,
+            "artifactMs": 45.38708299999416,
+            "preparationMs": 1116.9107079999958,
+            "finishCheckpointMs": 1105.9967920000054,
+            "finalizationMs": 1106.2667920000022,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5353,
+              "objectBytesRead": 268440266
+            },
+            "finishReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5352,
+              "objectBytesRead": 268440264
+            }
+          },
+          {
+            "run": 6,
+            "case": "unchanged",
+            "checkpointMs": 1214.6575420000008,
+            "artifactMs": 48.60958300000493,
+            "preparationMs": 1263.2671250000058,
+            "finishCheckpointMs": 1228.589291999997,
+            "finalizationMs": 1228.9061250000013,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5353,
+              "objectBytesRead": 268440266
+            },
+            "finishReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5352,
+              "objectBytesRead": 268440264
+            }
+          },
+          {
+            "run": 7,
+            "case": "unchanged",
+            "checkpointMs": 1082.7229579999985,
+            "artifactMs": 43.59937500000524,
+            "preparationMs": 1126.3223330000037,
+            "finishCheckpointMs": 1126.484583999998,
+            "finalizationMs": 1126.708584,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5353,
+              "objectBytesRead": 268440266
+            },
+            "finishReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 5352,
+              "objectBytesRead": 268440264
+            }
+          }
+        ],
+        "unchangedMedian": {
+          "checkpointMs": 1125.8568120000018,
+          "artifactMs": 45.284312499996304,
+          "preparationMs": 1171.1950414999992,
+          "finishCheckpointMs": 1146.482250000001
+        }
+      },
+      "candidate": {
+        "runs": 7,
+        "samples": [
+          {
+            "run": 1,
+            "case": "initial-backup",
+            "checkpointMs": 32915.755667000005,
+            "artifactMs": 304.6606249999968,
+            "preparationMs": 33220.416292,
+            "finishCheckpointMs": 882.0797499999971,
+            "finalizationMs": 882.4173749999973,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 5352,
+              "sourceBytesRead": 268440264,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 5352,
+              "objectBytesRead": 268440264
+            }
+          },
+          {
+            "run": 2,
+            "case": "unchanged",
+            "checkpointMs": 346.89162499999657,
+            "artifactMs": 43.720124999999825,
+            "preparationMs": 390.6117499999964,
+            "finishCheckpointMs": 365.3267500000002,
+            "finalizationMs": 365.57529200000135,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 1,
+              "objectBytesRead": 2
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 3,
+            "case": "unchanged",
+            "checkpointMs": 349.6298749999987,
+            "artifactMs": 43.95795799999905,
+            "preparationMs": 393.5878329999978,
+            "finishCheckpointMs": 385.9849580000009,
+            "finalizationMs": 386.2322920000006,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 4,
+            "case": "unchanged",
+            "checkpointMs": 407.76516699999775,
+            "artifactMs": 43.69462499999645,
+            "preparationMs": 451.4597919999942,
+            "finishCheckpointMs": 379.53983300000255,
+            "finalizationMs": 379.7644170000058,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 5,
+            "case": "unchanged",
+            "checkpointMs": 352.7921669999996,
+            "artifactMs": 43.83820800000103,
+            "preparationMs": 396.63037500000064,
+            "finishCheckpointMs": 385.13299999999435,
+            "finalizationMs": 385.41808299999684,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 6,
+            "case": "unchanged",
+            "checkpointMs": 356.06495800000266,
+            "artifactMs": 43.22750000000087,
+            "preparationMs": 399.29245800000353,
+            "finishCheckpointMs": 395.7279169999965,
+            "finalizationMs": 395.95620799999597,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          },
+          {
+            "run": 7,
+            "case": "unchanged",
+            "checkpointMs": 362.15437500000553,
+            "artifactMs": 42.47912499999802,
+            "preparationMs": 404.63350000000355,
+            "finishCheckpointMs": 396.29179199999635,
+            "finalizationMs": 396.54770799999824,
+            "changes": 0,
+            "entries": 5352,
+            "protectedFiles": 5352,
+            "protectedBytes": 268440264,
+            "startupReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            },
+            "finishReads": {
+              "sourceFilesRead": 0,
+              "sourceBytesRead": 0,
+              "objectReads": 0,
+              "objectBytesRead": 0
+            }
+          }
+        ],
+        "unchangedMedian": {
+          "checkpointMs": 354.42856250000114,
+          "artifactMs": 43.70737499999814,
+          "preparationMs": 397.9614165000021,
+          "finishCheckpointMs": 385.55897899999763
+        }
+      }
+    }
+  ]
+}
