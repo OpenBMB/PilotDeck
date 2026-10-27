@@ -23,7 +23,7 @@ describe('catalogProviders maxOutputTokens', () => {
     const deepseek = findCatalogProviderById('deepseek');
     const openai = findCatalogProviderById('openai');
 
-    expect(deepseek?.models.map((model) => model.id)).toEqual(['deepseek-v4-pro', 'deepseek-v4-flash']);
+    expect(deepseek?.models.map((model) => model.id)).toEqual(['deepseek-chat', 'deepseek-reasoner', 'deepseek-v4-pro', 'deepseek-v4-flash']);
     expect(deepseek?.models.find((model) => model.id === 'deepseek-v4-pro')?.maxOutputTokens).toBe(384 * 1024);
     expect(deepseek?.models.find((model) => model.id === 'deepseek-v4-flash')?.maxOutputTokens).toBe(384 * 1024);
     expect(openai?.models.find((model) => model.id === 'gpt-4.1-mini')?.maxOutputTokens).toBe(32_768);

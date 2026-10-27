@@ -20,6 +20,7 @@ export type RawProviderConfig = {
 };
 
 export type RawModelDefinition = {
+  tokenLimitOverrides?: unknown;
   thinking?: unknown;
   displayName?: unknown;
   capabilities?: unknown;
