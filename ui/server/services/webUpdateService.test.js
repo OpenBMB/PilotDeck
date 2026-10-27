@@ -10,6 +10,7 @@ const temporary = [];
 afterEach(() => { for (const root of temporary.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const git = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const write = (root, file, content) => { mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); writeFileSync(path.join(root, file), content); };
+const repositoryGitignore = () => readFileSync(new URL('../../../.gitignore', import.meta.url), 'utf8');
 const commit = (root, text) => { git(root, 'add', '.'); git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgSign=false', 'commit', '-qm', text); return git(root, 'rev-parse', 'HEAD'); };
 function artifacts(root, sha, content = 'old', clean = true) {
   for (const dir of ['dist', 'ui/dist']) {
@@ -18,13 +19,13 @@ function artifacts(root, sha, content = 'old', clean = true) {
   }
   for (const dir of ['node_modules', 'ui/node_modules']) write(root, `${dir}/marker`, content);
 }
-function fixture() {
+function fixture({ gitignore = 'node_modules/\ndist/\n' } = {}) {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-web-update-'));
   temporary.push(temp);
   const upstream = path.join(temp, 'upstream');
   mkdirSync(upstream);
   git(upstream, 'init', '-q', '-b', 'main');
-  write(upstream, '.gitignore', 'node_modules/\ndist/\n');
+  write(upstream, '.gitignore', gitignore);
   write(upstream, 'app.txt', 'old');
   const oldSha = commit(upstream, 'old');
   git(upstream, 'switch', '-qc', 'release');
@@ -51,6 +52,12 @@ describe('web deployment eligibility', () => {
     const f = fixture();
     expect(await f.create().check()).toMatchObject({ canUpdate: true, hasUpdate: true, latest: f.target });
     expect(git(f.root, 'rev-parse', 'HEAD')).toBe(f.oldSha);
+  });
+  it('treats the CLI wrapper written by install.sh as part of a clean checkout', async () => {
+    // install.sh writes $INSTALL_DIR/bin/pilotdeck inside the checkout (#566).
+    const f = fixture({ gitignore: repositoryGitignore() });
+    write(f.root, 'bin/pilotdeck', '#!/usr/bin/env bash\n');
+    expect(await f.create().check()).toMatchObject({ canUpdate: true, hasUpdate: true, latest: f.target });
   });
   it.each([
     ['development', (f) => git(f.root, 'switch', '-qc', 'feature')],
@@ -207,5 +214,14 @@ describe('build version metadata', () => {
     write(f.root, 'app.txt', 'uncommitted');
     execFileSync(process.execPath, [script, 'dist'], { cwd: f.root });
     expect(read('dist')).toMatchObject({ sourceSha: sha, clean: false });
+  });
+  it('does not mark a build as modified because of the installer CLI wrapper', () => {
+    const f = fixture({ gitignore: repositoryGitignore() });
+    mkdirSync(path.join(f.root, 'scripts'));
+    copyFileSync(new URL('../../../scripts/write-web-build-metadata.mjs', import.meta.url), path.join(f.root, 'scripts/write-web-build-metadata.mjs'));
+    const sha = commit(f.root, 'add build metadata hook');
+    write(f.root, 'bin/pilotdeck', '#!/usr/bin/env bash\n');
+    execFileSync(process.execPath, [path.join(f.root, 'scripts/write-web-build-metadata.mjs'), 'dist'], { cwd: f.root });
+    expect(JSON.parse(readFileSync(path.join(f.root, 'dist/web-build.json'), 'utf8'))).toMatchObject({ sourceSha: sha, clean: true });
   });
 });
