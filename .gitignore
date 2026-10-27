@@ -220,3 +220,6 @@ CLAUDE.md
 # Native dependencies prepared for both Web and desktop runtimes
 resources/cua-driver/
 resources/.cua-driver-download-*/
+
+# CLI wrapper written into the checkout by install.sh ($INSTALL_DIR/bin/pilotdeck)
+/bin/
