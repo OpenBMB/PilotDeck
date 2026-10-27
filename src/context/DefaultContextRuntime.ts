@@ -111,6 +111,9 @@ export class DefaultContextRuntime implements ContextRuntime {
   readonly autoCompactionPolicy?: AutoCompactionPolicy;
   private readonly cachePlanState = new Map<string, { fingerprint: string; generation: number }>();
   private readonly cacheResetSessions = new Set<string>();
+  private readonly preparedContexts = new WeakMap<ModelContext, {
+    reuse: (input: ContextPrepareInput) => Promise<ModelContext | undefined>;
+  }>();
   private readonly promptTimeState = new Map<string, {
     timestamp: number;
     messages: string[];
@@ -152,6 +155,9 @@ export class DefaultContextRuntime implements ContextRuntime {
   }
 
   async prepareForModel(input: ContextPrepareInput): Promise<ModelContext> {
+    const inputFingerprint = preparationFingerprint(input);
+    const previousCache = this.cachePlanState.get(input.sessionId);
+    const previousReset = this.cacheResetSessions.has(input.sessionId);
     const diagnostics: ContextDiagnostic[] = [];
 
     const projection = this.messageProjector.project({
@@ -223,7 +229,7 @@ export class DefaultContextRuntime implements ContextRuntime {
       messageIndex = update.index;
     }
     requestMessages.push(...projection.messages.slice(messageIndex));
-    const prompt = this.promptAssembler.assemble({
+    const promptInput = {
       cwd: input.cwd,
       provider: input.provider,
       model: input.model,
@@ -234,7 +240,8 @@ export class DefaultContextRuntime implements ContextRuntime {
       customSystemPrompt: input.customSystemPrompt,
       appendSystemPrompt: input.appendSystemPrompt,
       now: () => new Date(promptTimestamp),
-    });
+    };
+    const prompt = this.promptAssembler.assemble(promptInput);
 
     const parts = [...prompt.parts];
     if (this.memoryAttachmentBuilder) {
@@ -276,9 +283,11 @@ export class DefaultContextRuntime implements ContextRuntime {
       }
     }
 
+    let instructionFingerprint: string | undefined;
     if (this.instructionDiscovery) {
       try {
         const layers = await this.instructionDiscovery.discover();
+        instructionFingerprint = stableSerialize(layers);
         if (layers.length > 0) {
           const blocks = layers.map(l => {
             const desc = instructionScopeDescription(l.scope);
@@ -324,7 +333,7 @@ export class DefaultContextRuntime implements ContextRuntime {
       this.promptTimeState.set(input.sessionId, { timestamp: promptTimestamp, messages: messageFingerprints, dateUpdates });
     }
 
-    return {
+    let prepared: ModelContext = {
       messages: requestMessages,
       systemPrompt: joined,
       systemPromptParts: parts,
@@ -338,6 +347,57 @@ export class DefaultContextRuntime implements ContextRuntime {
       cacheBreakpoints: cachePlan?.messages,
       cachePlan,
     };
+    let expectedTime = input.previewOnly ? previousTime : this.promptTimeState.get(input.sessionId);
+    let expectedCache = input.previewOnly ? previousCache : this.cachePlanState.get(input.sessionId);
+    let expectedReset = input.previewOnly ? previousReset : this.cacheResetSessions.has(input.sessionId);
+    let committed = !input.previewOnly;
+    const stateUnchanged = () => this.promptTimeState.get(input.sessionId) === expectedTime
+      && this.cachePlanState.get(input.sessionId) === expectedCache
+      && this.cacheResetSessions.has(input.sessionId) === expectedReset
+      && this.now().toISOString().slice(0, 10) === currentDate
+      && !input.abortSignal?.aborted;
+    const record = {
+      reuse: async (currentInput: ContextPrepareInput): Promise<ModelContext | undefined> => {
+        const previewOnly = currentInput.previewOnly === true;
+        // A hypothetical full checkpoint uses the old date in a preview. Its
+        // adoption must rebuild with the refreshed date, as before #688.
+        if (!stateUnchanged() || (!committed && !previewOnly && newCheckpoint)
+          || diagnostics.some(diagnostic => diagnostic.code === "memory_provider_error")) return undefined;
+        if (this.instructionDiscovery) {
+          // Re-read rules at adoption: edits, deletions and newly added rules
+          // invalidate the snapshot, without replaying memory/history work.
+          if (instructionFingerprint === undefined) return undefined;
+          try {
+            if (stableSerialize(await this.instructionDiscovery.discover()) !== instructionFingerprint) return undefined;
+          } catch { return undefined; }
+        }
+        // Validate the adopting input after asynchronous discovery as well:
+        // it may have changed, or use a different cancellation signal.
+        if (!stateUnchanged() || currentInput.abortSignal?.aborted
+          || preparationFingerprint(currentInput) !== inputFingerprint
+          || this.promptAssembler.assemble(promptInput).joined !== prompt.joined) return undefined;
+        if (!previewOnly && !committed) {
+          const generation = this.nextCachePlanGeneration(input.sessionId, cachePlanFingerprint,
+            this.cacheResetSessions.delete(input.sessionId));
+          this.promptTimeState.set(input.sessionId, { timestamp: promptTimestamp, messages: messageFingerprints, dateUpdates });
+          prepared = { ...prepared, cachePlan: prepared.cachePlan && { ...prepared.cachePlan, generation } };
+          committed = true;
+          expectedTime = this.promptTimeState.get(input.sessionId);
+          expectedCache = this.cachePlanState.get(input.sessionId);
+          expectedReset = this.cacheResetSessions.has(input.sessionId);
+          this.preparedContexts.set(prepared, record);
+        }
+        return prepared;
+      },
+    };
+    this.preparedContexts.set(prepared, record);
+    return prepared;
+  }
+
+  async reusePreparedContext(prepared: ModelContext, input: ContextPrepareInput): Promise<ModelContext | undefined> {
+    if (input.abortSignal?.aborted) return undefined;
+    const record = this.preparedContexts.get(prepared);
+    return record?.reuse(input);
   }
 
   private nextCachePlanGeneration(sessionId: string, fingerprint: string | undefined, forceReset = false): number {
@@ -878,4 +938,9 @@ function describeTokenBudgetSnapshot(snapshot: TokenBudgetSnapshot): Record<stri
 function compactionSummarySucceeded(result: CompactionResult): boolean {
   return result.error === undefined
     && result.summaryMessage !== undefined;
+}
+
+function preparationFingerprint(input: ContextPrepareInput): string {
+  const { previewOnly: _previewOnly, abortSignal: _abortSignal, ...content } = input;
+  return createHash("sha256").update(stableSerialize(content)).digest("hex");
 }

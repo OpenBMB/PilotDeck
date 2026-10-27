@@ -91,7 +91,8 @@ test("official OpenAI Responses routes use the provider input-token endpoint", a
   assert.equal(requestedBody?.instructions, "Use the project conventions.");
   const firstInput = (requestedBody?.input as Array<{ content: Array<{ type: string }> }> | undefined)?.[0];
   assert.equal(firstInput?.content[0]?.type, "input_file");
-  assert.equal((requestedBody?.tools as Array<Record<string, unknown>>)[0]?.strict, true);
+  // Function tools intentionally use non-strict schemas in the execution serializer.
+  assert.equal((requestedBody?.tools as Array<Record<string, unknown>>)[0]?.strict, false);
   assert.equal(requestedBody?.stream, undefined);
   assert.equal(requestedBody?.max_output_tokens, undefined);
 });
@@ -257,3 +258,74 @@ function modelConfig(protocol: ModelProtocol, url: string): ModelConfig {
     },
   };
 }
+
+test("iteration-local estimates reuse unchanged input but invalidate every counted component", () => {
+  class CountingBudget extends TokenBudgetManager {
+    passes = 0;
+    override estimateMessagesTokens(messages: CanonicalMessage[]): number {
+      this.passes++;
+      return super.estimateMessagesTokens(messages);
+    }
+  }
+  const tokenBudget = new CountingBudget();
+  const accounting = new TokenAccountingRuntime({ modelConfig: { providers: {} }, tokenBudget });
+  const cache = new Map<string, number>();
+  const original = { ...request(), systemPrompt: "system", tools: [{ name: "inspect", inputSchema: { type: "object" } }] };
+  const initial = accounting.estimateRequestInput(original, cache);
+  assert.equal(accounting.estimateRequestInput(structuredClone(original), cache), initial);
+  assert.equal(accounting.estimateRequestInput({ ...original, provider: "other", model: "other", maxOutputTokens: 100 }, cache), initial);
+  assert.equal(tokenBudget.passes, 1);
+  for (const changed of [
+    { ...original, messages: [{ role: "user" as const, content: [{ type: "text" as const, text: "new history" }] }] },
+    { ...original, systemPrompt: "new instructions" },
+    { ...original, tools: [{ name: "inspect", inputSchema: { type: "object", properties: { path: { type: "string" } } } }] },
+    { ...original, messages: [{ role: "user" as const, content: [{ type: "image" as const, source: "base64" as const, data: "AA==", mimeType: "image/png" }] }] },
+  ]) {
+    const expected = accounting.estimateRequestInput(changed);
+    const before: number = tokenBudget.passes;
+    assert.equal(accounting.estimateRequestInput(changed, cache), expected);
+    assert.equal(tokenBudget.passes, before + 1);
+    assert.equal(accounting.estimateRequestInput(structuredClone(changed), cache), expected);
+    assert.equal(tokenBudget.passes, before + 1);
+  }
+  const before = tokenBudget.passes;
+  accounting.estimateRequestInput(original, new Map());
+  assert.equal(tokenBudget.passes, before + 1, "a new iteration starts with an empty estimate scope");
+});
+
+test("local reuse preserves provider counts and route-specific calibration", async () => {
+  let estimates = 0, providerCalls = 0;
+  class CountingBudget extends FixedTokenBudget {
+    override estimateMessagesTokens(messages: CanonicalMessage[]): number {
+      estimates++;
+      return super.estimateMessagesTokens(messages);
+    }
+  }
+  const tokenBudget = new CountingBudget();
+  tokenBudget.value = 20_000;
+  const config = modelConfig("anthropic", "https://api.anthropic.com");
+  config.providers["test-provider"].models["other-model"] = {
+    ...config.providers["test-provider"].models["test-model"], id: "other-model",
+  };
+  const accounting = new TokenAccountingRuntime({ modelConfig: config, tokenBudget, cacheSize: 0,
+    fetch: async () => new Response(JSON.stringify({ input_tokens: 1000 + ++providerCalls }), { status: 200 }),
+  });
+  const localEstimates = new Map<string, number>();
+  assert.equal((await accounting.countRequestInput(request(), { localEstimates })).tokens, 1001);
+  assert.equal((await accounting.countRequestInput({ ...request(), model: "other-model" }, { localEstimates })).tokens, 1002);
+  assert.equal(providerCalls, 2, "local estimates never substitute for provider counts");
+  const first = await accounting.evaluateRequestBudget(request(), { localEstimates, useProviderCount: false,
+    maxContextTokens: 100_000, reservedOutputTokens: 1000, calibration: baseline(22_000, 20_000) });
+  const second = await accounting.evaluateRequestBudget(request(), { localEstimates, useProviderCount: false,
+    maxContextTokens: 50_000, reservedOutputTokens: 5000, calibration: baseline(23_000, 20_000) });
+  assert.equal(first.tokens, 22_000);
+  assert.equal(second.tokens, 23_000);
+  assert.equal(second.reservedOutputTokens, 5000);
+  assert.equal(second.maxContextTokens, 45_000);
+  const otherRoute = await accounting.countRequestInput({ ...request(), model: "other-model" }, {
+    localEstimates, useProviderCount: false, calibration: baseline(23_000, 20_000),
+  });
+  assert.equal(otherRoute.tokens, 20_000);
+  assert.equal(otherRoute.source, "local", "a calibration from another model must not be reused");
+  assert.equal(estimates, 1);
+});
