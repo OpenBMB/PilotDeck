@@ -31,6 +31,7 @@ import {
   type SessionProvider,
 } from '../../types/app';
 import { api } from '../../utils/api';
+import { APPROVAL_WAITING_EVENT, type ApprovalWaitingDetail } from '../../utils/approvalAlert';
 import { useRejectExternalFileDropOutsideTargets } from '../../utils/externalFileDrop';
 import { resolveMarkdownFileHref } from '../chat/utils/resolveMarkdownFileHref';
 import type { SessionNavigationOptions } from '../main-content/types/types';
@@ -166,6 +167,22 @@ export default function AppShellV2() {
       for (const id of localProcessingSessions) if (!running.has(id)) markSessionAsNotProcessing(id);
     }
   }), [subscribe, localProcessingSessions, markSessionAsNotProcessing]);
+
+  // Sessions with a tool call waiting for user approval. The chat view owns
+  // the authoritative queue and broadcasts it via `pilotdeck:approval-waiting`
+  // so the badge survives navigating away from the conversation.
+  const [awaitingApprovalSessionIds, setAwaitingApprovalSessionIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<ApprovalWaitingDetail>).detail;
+      const sessionIds = Array.isArray(detail?.sessionIds)
+        ? detail.sessionIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        : [];
+      setAwaitingApprovalSessionIds(new Set(sessionIds));
+    };
+    window.addEventListener(APPROVAL_WAITING_EVENT, handler);
+    return () => window.removeEventListener(APPROVAL_WAITING_EVENT, handler);
+  }, []);
 
 
 
@@ -691,6 +708,7 @@ export default function AppShellV2() {
       isMobile={isMobile}
       processingSessions={processingSessions}
       unreadSessionIds={unreadSessionIds}
+      awaitingApprovalSessionIds={awaitingApprovalSessionIds}
       onSelectProject={handleSelectProject}
       onSelectSession={handleSelectSession}
       onStartNewSession={handleStartNewSession}

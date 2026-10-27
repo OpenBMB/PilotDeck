@@ -228,6 +228,9 @@
     "allowSaved": "允许（已保存）",
     "deny": "拒绝"
   },
+  "approvalAlert": {
+    "documentTitle": "⚠ 等待授权"
+  },
   "todo": {
     "updated": "待办列表已成功更新",
     "current": "当前待办列表"

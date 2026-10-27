@@ -228,6 +228,9 @@
     "allowSaved": "Allow (saved)",
     "deny": "Deny"
   },
+  "approvalAlert": {
+    "documentTitle": "⚠ Waiting for approval"
+  },
   "todo": {
     "updated": "Todo list has been updated successfully",
     "current": "Current Todo List"
