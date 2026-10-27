@@ -1148,3 +1148,94 @@ test("agent loop skips calibration when a same-route request was transformed", a
   const calibrations = (loop as unknown as { tokenCalibrationByRoute: Map<string, unknown> }).tokenCalibrationByRoute;
   assert.equal(calibrations.size, 0);
 });
+
+test("context overflow after emergency compaction surfaces context guidance instead of provider settings", async () => {
+  const tokenBudget = new TokenBudgetManager();
+  let modelCalls = 0;
+
+  const context: AgentRuntimeDependencies["context"] = {
+    prepareForModel: async (input) => ({
+      messages: input.messages,
+      systemPrompt: undefined,
+      systemPromptParts: [],
+      tools: input.tools,
+      diagnostics: [],
+      boundaries: [],
+    }),
+    applyToolResults: async (input) => ({ messages: input.messages, diagnostics: [] }),
+    recoverFromModelError: async () => ({ type: "give_up", reason: "test" }),
+    captureTurn: async () => undefined,
+    tryAutoCompact: async () => ({
+      type: "compacted",
+      tier: "emergency",
+      messages: [{ role: "user", content: [{ type: "text", text: "still too large" }] }],
+      snapshot: tokenBudget.snapshotFromTokens(120, 100),
+      error: "context_overflow_after_emergency_compaction",
+    }),
+  };
+
+  const router: AgentRouterRuntime = {
+    invalidateSticky: () => ({ orchestrating: false }),
+    decide: async ({ request }) => ({
+      provider: request.provider,
+      model: "model-a",
+      scenarioType: "default",
+      isSubagent: false,
+      orchestrating: false,
+      resolvedFrom: "explicit",
+      mutations: {},
+    }),
+    execute: async function* (): AsyncIterable<CanonicalModelEvent> {
+      modelCalls += 1;
+      yield { type: "message_start", role: "assistant" };
+      yield { type: "message_end", finishReason: "stop" };
+    },
+    stream: async function* (): AsyncIterable<CanonicalModelEvent> {
+      modelCalls += 1;
+      yield { type: "message_start", role: "assistant" };
+      yield { type: "message_end", finishReason: "stop" };
+    },
+    materializeRequest: (decision, request) => ({ ...request, provider: decision.provider, model: decision.model }),
+    observeUsage: () => undefined,
+  };
+
+  const loop = new AgentLoop({
+    provider: "openai",
+    model: "model-a",
+    cwd: "/workspace/project",
+    permissionMode: "bypassPermissions",
+    permissionContext: createDefaultPermissionContext({
+      cwd: "/workspace/project",
+      mode: "bypassPermissions",
+      canPrompt: false,
+      bypassAvailable: true,
+    }),
+  }, {
+    router,
+    tools: { registry: new ToolRegistry(), scheduler: { async executeAll() { return []; } } },
+    context,
+  });
+
+  const events: AgentEvent[] = [];
+  for await (const event of loop.run({
+    sessionId: "emergency-overflow",
+    turnId: "emergency-overflow-turn",
+    messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+  })) {
+    events.push(event);
+  }
+
+  const status = events.find((event) => event.type === "agent_status" && event.event === "model_request_failed") as
+    | { detail?: Record<string, unknown> }
+    | undefined;
+  assert.ok(status?.detail, "expected a model_request_failed status");
+  const detail = status.detail;
+  assert.equal(detail.code, "agent_context_recovery_failed");
+  assert.equal(detail.fixTarget, "prompt");
+  assert.deepEqual(detail.userHintI18n, { key: "chat:agentStatus.modelRequestFailed.actions.contextOverflow", params: {} });
+  assert.match(String(detail.userHint), /\/compact/);
+  assert.doesNotMatch(String(detail.userHint), /timeoutMs|API key|base URL/i);
+  assert.match(String(detail.message), /emergency compaction \(tokens=120, limit=\d+\)/);
+  assert.doesNotMatch(String(detail.message), /timeoutMs/);
+  assert.equal(modelCalls, 0);
+});
