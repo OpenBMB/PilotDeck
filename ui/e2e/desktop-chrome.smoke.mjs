@@ -213,6 +213,15 @@ try {
     await expect.poll(() => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu().getMenuItemById(id)?.enabled, id)).toBe(true);
     await app.evaluate(({ Menu }, id) => Menu.getApplicationMenu().getMenuItemById(id).click(), id);
   };
+  const closeGlobalSearch = async () => {
+    const dialog = page.locator('[data-global-search]');
+    // Visibility precedes the dialog's scheduled focus. Sending Escape before
+    // focus arrives targets the sidebar and leaves the native menu blocked.
+    await expect(dialog.getByRole('combobox')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => app.evaluate(() => global.chromeTest.state().blocked)).toBe(false);
+  };
   if (!mac) {
     const caption = page.locator('#pilotdeck-window-caption');
     await expect(caption).toHaveCSS('height', '32px');
@@ -264,8 +273,7 @@ try {
   expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('find').enabled)).toBe(true);
   await command('find');
   await expect(page.locator('[data-global-search]')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('[data-global-search]')).toHaveCount(0);
+  await closeGlobalSearch();
   await command('chat');
   await page.goto('http://127.0.0.1:5187/p/demo/c/chrome-review');
   await expect(page.locator('.workspace-actions').getByRole('button', { name: 'Search current conversation', exact: true })).toHaveCount(0);
@@ -274,10 +282,10 @@ try {
   await page.getByRole('combobox', { name: 'Search chats and files' }).fill('Native');
   await expect.poll(() => searchRequests.at(-1)?.query).toBe('Native');
   await expect(page.getByRole('option', { name: /Native search fixture/ })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await closeGlobalSearch();
   await page.keyboard.press(mac ? 'Meta+f' : 'Control+f');
   await expect(page.locator('[data-global-search]')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await closeGlobalSearch();
   await command('new-conversation');
   await expect(page).toHaveURL(/\/p\/demo$/);
   await command('toggle-sidebar');
