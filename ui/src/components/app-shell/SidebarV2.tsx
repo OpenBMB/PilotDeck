@@ -155,6 +155,7 @@ export type SidebarV2Props = {
   onSelectSession: (project: Project, sessionId: string) => void;
   onStartNewSession: (project: Project) => void;
   onStartHomeNewConversation?: () => void;
+  onOpenGlobalSearch?: () => void;
   onCreateProject: () => void;
   pendingDraftProjectName?: string | null;
   onRequestDeleteProject: (project: Project) => void;
@@ -275,6 +276,7 @@ export default function SidebarV2({
   onSelectSession,
   onStartNewSession,
   onStartHomeNewConversation,
+  onOpenGlobalSearch,
   onCreateProject,
   pendingDraftProjectName = null,
   onRequestDeleteProject,
@@ -1143,6 +1145,15 @@ export default function SidebarV2({
           </span>
         </header>
       )}
+
+      <button type="button" onClick={onOpenGlobalSearch}
+        className={cn('sidebar-global-search', isCompact && 'compact')}
+        aria-label={t('common:globalSearch.title') as string} title={t('common:globalSearch.title') as string}>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+          <circle cx="10.8" cy="10.8" r="7.5" /><path d="m16.3 16.3 4.3 4.3" />
+        </svg>
+        <span>{t('common:globalSearch.entry')}</span>
+      </button>
 
       <nav
         className={isCompact ? 'compact-actions' : 'primary-actions'}

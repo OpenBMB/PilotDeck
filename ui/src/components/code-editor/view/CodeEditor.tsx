@@ -1,7 +1,6 @@
 import { EditorView } from '@codemirror/view';
 import { unifiedMergeView } from '@codemirror/merge';
-import type { Extension } from '@codemirror/state';
-import { SearchQuery, setSearchQuery } from '@codemirror/search';
+import { EditorSelection, type Extension } from '@codemirror/state';
 import {
   useCallback,
   useEffect,
@@ -16,12 +15,14 @@ import { useCodeEditorDocument } from '../hooks/useCodeEditorDocument';
 import { useCodeEditorSettings } from '../hooks/useCodeEditorSettings';
 import { useDomFileSearch } from '../hooks/useDomFileSearch';
 import { useFileSearchShortcut } from '../hooks/useFileSearchShortcut';
+import { useGlobalSearch } from '../../global-search/GlobalSearchContext';
 import { useEditorKeyboardShortcuts } from '../hooks/useEditorKeyboardShortcuts';
 import type { CodeEditorFile } from '../types/types';
 import { createMinimapExtension, createScrollToFirstChunkExtension, getLanguageExtensions } from '../utils/editorExtensions';
 import { getEditorStyles } from '../utils/editorStyles';
 import { createEditorToolbarPanelExtension } from '../utils/editorToolbarPanel';
 import { findTextSearchMatches } from '../utils/fileSearch';
+import { setFileSearchHighlights } from '../utils/searchHighlights';
 import CodeEditorBinaryFile from './subcomponents/CodeEditorBinaryFile';
 import CodeEditorFooter from './subcomponents/CodeEditorFooter';
 import CodeEditorHeader from './subcomponents/CodeEditorHeader';
@@ -66,6 +67,8 @@ export default function CodeEditor({
   onDirtyChange,
 }: CodeEditorProps) {
   const { t } = useTranslation('codeEditor');
+  const globalSearch = useGlobalSearch();
+  const globalSearchTarget = globalSearch?.target;
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showDiff, setShowDiff] = useState(Boolean(file.diffInfo));
   const [markdownPreview, setMarkdownPreview] = useState(false);
@@ -74,6 +77,9 @@ export default function CodeEditor({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQueryState] = useState('');
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+  const [searchNavigation, setSearchNavigation] = useState<{ query: string; index: number } | null>(null);
+  const appliedSearchNavigation = useRef<typeof searchNavigation>(null);
+  const consumedGlobalRequest = useRef<string | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const markdownPreviewRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -89,6 +95,7 @@ export default function CodeEditor({
     content,
     setContent,
     loading,
+    contentReady,
     loadError,
     reload,
     saving,
@@ -128,6 +135,7 @@ export default function CodeEditor({
     setSearchOpen(false);
     setSearchQueryState('');
     setSearchMatchIndex(0);
+    setSearchNavigation(null);
   }, [file.path]);
 
   const htmlPreviewUrl = useMemo(() => {
@@ -135,10 +143,31 @@ export default function CodeEditor({
     return api.projectPreviewUrl(projectName, file.path, projectPath);
   }, [file.path, isHtmlFile, projectName, projectPath]);
 
+  // CodeMirror represents CRLF and CR as LF. Search, synchronization and the
+  // rendered buffer must share those offsets; retain raw content for saving.
+  const editorContent = useMemo(() => content.replace(/\r\n?/g, '\n'), [content]);
   const textSearchMatches = useMemo(
-    () => findTextSearchMatches(content, searchQuery),
-    [content, searchQuery],
+    () => findTextSearchMatches(editorContent, searchQuery),
+    [editorContent, searchQuery],
   );
+
+  useEffect(() => {
+    if (!isActive || !contentReady || globalSearchTarget?.kind !== 'files'
+      || globalSearchTarget.project.name !== projectName
+      || consumedGlobalRequest.current === globalSearchTarget.requestId
+      || !file.path.replace(/\\/g, '/').endsWith(globalSearchTarget.path || '\0')) return;
+    const query = globalSearchTarget.line ? globalSearchTarget.query : '';
+    const matches = findTextSearchMatches(editorContent, query);
+    const lineStart = editorContent.split('\n').slice(0, Math.max(0, (globalSearchTarget.line || 1) - 1))
+      .reduce((sum, line) => sum + line.length + 1, 0);
+    const matchIndex = matches.findIndex(match => match.from >= lineStart);
+    consumedGlobalRequest.current = globalSearchTarget.requestId;
+    setSearchQueryState(query);
+    setSearchMatchIndex(Math.max(0, matchIndex));
+    setSearchNavigation({ query, index: Math.max(0, matchIndex) });
+    setSearchOpen(false);
+    if (query) { setMarkdownPreview(false); setHtmlPreview(false); }
+  }, [globalSearchTarget, isActive, contentReady, projectName, file.path, editorContent]);
   const {
     matchCount: markdownSearchMatchCount,
     highlightStyles: markdownSearchHighlightStyles,
@@ -163,12 +192,14 @@ export default function CodeEditor({
   const handleSearchQueryChange = useCallback((query: string) => {
     setSearchQueryState(query);
     setSearchMatchIndex(0);
+    setSearchNavigation({ query, index: 0 });
   }, []);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchQueryState('');
     setSearchMatchIndex(0);
+    setSearchNavigation(null);
   }, []);
 
   const openSearch = useCallback(() => {
@@ -188,10 +219,10 @@ export default function CodeEditor({
 
   const moveSearch = useCallback((direction: -1 | 1) => {
     if (searchMatchCount === 0) return;
-    setSearchMatchIndex((current) => (
-      (current + direction + searchMatchCount) % searchMatchCount
-    ));
-  }, [searchMatchCount]);
+    const index = (searchMatchIndex + direction + searchMatchCount) % searchMatchCount;
+    setSearchMatchIndex(index);
+    setSearchNavigation({ query: searchQuery, index });
+  }, [searchMatchCount, searchMatchIndex, searchQuery]);
 
   const handleEditorViewChange = useCallback((view: EditorView | null) => {
     setEditorView(view);
@@ -206,35 +237,40 @@ export default function CodeEditor({
   useEffect(() => {
     if (!editorView || markdownPreview || htmlPreview) return;
     editorView.dispatch({
-      effects: setSearchQuery.of(new SearchQuery({
-        search: searchQuery.trim(),
-        literal: true,
-      })),
+      effects: setFileSearchHighlights.of({ matches: textSearchMatches, activeIndex: searchMatchIndex }),
     });
-  }, [editorView, htmlPreview, markdownPreview, searchQuery]);
+  }, [editorView, htmlPreview, markdownPreview, textSearchMatches, searchMatchIndex]);
 
   useEffect(() => {
     if (
       !editorView
       || markdownPreview
       || htmlPreview
-      || !searchQuery.trim()
-      || textSearchMatches.length === 0
+      || !isActive || loading
+      || !searchNavigation
+      || appliedSearchNavigation.current === searchNavigation
+      || editorView.state.doc.toString() !== editorContent
     ) {
       return;
     }
-    const match = textSearchMatches[Math.min(searchMatchIndex, textSearchMatches.length - 1)];
+    // Document changes refresh decorations above, but must never take the
+    // selection away from typing. Only explicit navigation requests select.
+    appliedSearchNavigation.current = searchNavigation;
+    const matches = findTextSearchMatches(editorContent, searchNavigation.query);
+    const match = matches[Math.min(searchNavigation.index, matches.length - 1)];
+    if (!match) return;
     editorView.dispatch({
       selection: { anchor: match.from, head: match.to },
-      effects: EditorView.scrollIntoView(match.from, { y: 'center' }),
+      effects: EditorView.scrollIntoView(EditorSelection.range(match.from, match.to), { y: 'center', x: 'center' }),
     });
   }, [
     editorView,
     htmlPreview,
     markdownPreview,
-    searchMatchIndex,
-    searchQuery,
-    textSearchMatches,
+    isActive,
+    loading,
+    editorContent,
+    searchNavigation,
   ]);
 
   const minimapExtension = useMemo(
@@ -423,7 +459,7 @@ export default function CodeEditor({
                 }
               }}
               searchOpen={searchOpen}
-              onToggleSearch={toggleSearch}
+              onToggleSearch={globalSearch ? null : toggleSearch}
               onDownload={handleDownload}
               onSave={handleSave}
               onToggleFullscreen={() => setIsFullscreen((previous) => !previous)}
@@ -476,7 +512,7 @@ export default function CodeEditor({
 
           <div className="flex-1 overflow-hidden">
             <CodeEditorSurface
-              content={content}
+              content={editorContent}
               onChange={setContent}
               markdownPreview={markdownPreview}
               isMarkdownFile={isMarkdownFile}

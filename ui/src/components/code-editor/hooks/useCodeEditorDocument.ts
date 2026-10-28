@@ -38,11 +38,13 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
   const fileDiffOldString = file.diffInfo?.old_string;
   const renamedFromPath = file.renamedFromPath;
   const loadedFilePathRef = useRef(filePath);
+  const [loadedDocument, setLoadedDocument] = useState<{ path: string; projectName: string | undefined } | null>(null);
 
   useEffect(() => {
     const previousFilePath = loadedFilePathRef.current;
     loadedFilePathRef.current = filePath;
     if (renamedFromPath === previousFilePath && previousFilePath !== filePath) {
+      setLoadedDocument({ path: filePath, projectName: fileProjectName });
       return undefined;
     }
 
@@ -97,6 +99,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
         setLoadError(message);
       } finally {
         if (!cancelled) {
+          setLoadedDocument({ path: filePath, projectName: fileProjectName });
           setLoading(false);
         }
       }
@@ -181,6 +184,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
     content,
     setContent,
     loading,
+    contentReady: !loading && !loadError && loadedDocument?.path === filePath && loadedDocument.projectName === fileProjectName,
     loadError,
     reload,
     saving,

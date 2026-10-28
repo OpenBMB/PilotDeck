@@ -534,7 +534,7 @@ export function useChatSessionState({
     canReturnToLatest,
     setPaused: setIsUserScrolledUp,
     getIsPaused,
-    pause: pauseScrollFollowing,
+    pauseAt: pauseScrollFollowing,
     scrollToBottom,
     scheduleFollow: scheduleScrollToBottom,
     scheduleInitialPosition,

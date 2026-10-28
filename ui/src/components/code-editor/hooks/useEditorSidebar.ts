@@ -8,6 +8,7 @@ import {
   isWorkspacePathAtOrBelow,
 } from '../../../utils/workspaceFileMention';
 import type { CodeEditorDiffInfo, CodeEditorFile, CodeEditorTab } from '../types/types';
+import { useGlobalSearch } from '../../global-search/GlobalSearchContext';
 
 type UseEditorSidebarOptions = {
   selectedProject: Project | null;
@@ -93,6 +94,14 @@ export const useEditorSidebar = ({
   const canGoBack = (activeEditorTab?.fileStack.length ?? 0) > 1;
   const parentFile = canGoBack ? activeEditorTab?.fileStack.at(-2) ?? null : null;
   const workspaceRoot = selectedProject?.fullPath || selectedProject?.path || '';
+  const recordFileVisit = useGlobalSearch()?.recordFileVisit;
+  useEffect(() => {
+    if (selectedProject && editingFile?.path && editingFile.projectName === selectedProject.name) {
+      recordFileVisit?.(selectedProject, editingFile.path);
+    }
+  // Record activation, including tab switches and preview links, without tying visits to project-list refreshes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingFile?.path, editingFile?.projectName, selectedProject?.name, workspaceRoot, recordFileVisit]);
 
   const handleFileOpen = useCallback(
     (filePath: string, diffInfo: CodeEditorDiffInfo | null = null) => {

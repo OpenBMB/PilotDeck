@@ -22,7 +22,6 @@ import {
   ChatHistorySearchControllerProvider,
   useChatHistorySearchController,
 } from '../chat-v2/ChatHistorySearchController';
-import ChatHistorySearchBar from '../chat-v2/ChatHistorySearchBar';
 import type { MainContentProps } from '../main-content/types/types';
 import { cn } from '../../lib/utils.js';
 import {
@@ -33,7 +32,6 @@ import {
 } from '../../lib/customNames';
 import { isImeEnterEvent } from '../../utils/ime';
 import { api } from '../../utils/api';
-import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import { isGeneralProject } from './appShellSelection';
 
 const CronV2 = lazy(() => import('../main-content-v2/CronV2'));
@@ -427,50 +425,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
           </span>
         </div>
 
-        {chatHistorySearch.isOpen && chatHistorySearch.presentation ? (
-          <div className="ml-4 w-[min(360px,36vw)] min-w-[240px] shrink">
-            <ChatHistorySearchBar
-              {...chatHistorySearch.presentation}
-              onClose={chatHistorySearch.closeSearch}
-              placement="header"
-            />
-          </div>
-        ) : null}
-
         <div className="workspace-actions ml-4 h-9 shrink-0" aria-label={t('common:uiText.tools')}>
-          <button
-            type="button"
-            aria-label={t('chatSearch.open', { defaultValue: 'Search current conversation' }) as string}
-            data-tooltip={t('chatSearch.open', { defaultValue: 'Search current conversation' }) as string}
-            aria-pressed={chatHistorySearch.isOpen}
-            disabled={!chatHistorySearch.available}
-            title={t('chatSearch.openShortcut', {
-              defaultValue: 'Search current conversation (Ctrl/⌘+F)',
-            }) as string}
-            onClick={() => {
-              setDashboardMenuOpen(false);
-              if (chatHistorySearch.isOpen) {
-                chatHistorySearch.closeSearch();
-                return;
-              }
-              if (displayActiveTab !== 'chat') setActiveTab('chat');
-              chatHistorySearch.openSearch();
-            }}
-            className={cn(
-              'icon-button tooltip tooltip-bottom',
-              chatHistorySearch.isOpen
-                ? ACTIVE_TOOL_BUTTON_CLASS
-                : chatHistorySearch.available
-                  ? ''
-                  : 'cursor-not-allowed text-neutral-300 dark:text-neutral-700',
-            )}
-          >
-            <svg aria-hidden="true" className="icon" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="18">
-              <path d="m21 21-4.34-4.34" />
-              <circle cx="11" cy="11" r="8" />
-            </svg>
-          </button>
-
           {projectFilesEnabled ? (
             <button
               type="button"
@@ -601,18 +556,9 @@ export default function MainAreaV2(props: MainAreaV2Props) {
     );
   }
 
-  const generalConversation = Boolean(
-    props.selectedProject && isGeneralProject(props.selectedProject),
-  );
-  const fileScope = props.activeTab === 'files'
-    && !generalConversation
-    && props.selectedProject?.capabilities?.files !== false;
-
   return (
-    <FindShortcutProvider activeScope={fileScope ? 'file' : 'chat'}>
-      <ChatHistorySearchControllerProvider>
-        <MainAreaV2Content {...props} />
-      </ChatHistorySearchControllerProvider>
-    </FindShortcutProvider>
+    <ChatHistorySearchControllerProvider>
+      <MainAreaV2Content {...props} />
+    </ChatHistorySearchControllerProvider>
   );
 }

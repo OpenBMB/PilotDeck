@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { useRegisterFindShortcutTarget } from '../../contexts/FindShortcutContext';
+import { useGlobalSearch } from '../global-search/GlobalSearchContext';
 import {
   buildSearchableMessages,
   clearSearchHighlights,
@@ -18,6 +19,7 @@ type UseChatHistorySearchOptions = {
   measuredItemHeights: number[];
   allMessagesLoaded: boolean;
   hasMoreMessages: boolean;
+  historyReady?: boolean;
   loadAllMessages: () => void | Promise<void>;
   sessionId: string | null;
   captureFindShortcutInModal?: boolean;
@@ -30,7 +32,7 @@ export function useChatHistorySearch({
   keyedMessages,
   measuredItemHeights,
   allMessagesLoaded,
-  hasMoreMessages,
+  historyReady = true,
   loadAllMessages,
   sessionId,
   captureFindShortcutInModal = false,
@@ -38,6 +40,10 @@ export function useChatHistorySearch({
   onNavigate,
 }: UseChatHistorySearchOptions) {
   const [isOpen, setIsOpen] = useState(false);
+  const globalSearch = useGlobalSearch();
+  const globalTarget = globalSearch?.target;
+  const consumedGlobalTarget = useRef<string | null>(null);
+  const loadingGlobalTarget = useRef<string | null>(null);
   const [query, setQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -78,9 +84,9 @@ export function useChatHistorySearch({
   }, []);
 
   const ensureAllMessagesLoaded = useCallback(async () => {
-    if (!hasMoreMessages || allMessagesLoaded) return;
+    if (allMessagesLoaded) return;
     await loadAllMessages();
-  }, [allMessagesLoaded, hasMoreMessages, loadAllMessages]);
+  }, [allMessagesLoaded, loadAllMessages]);
 
   const applySearchHighlights = useCallback((match: ChatHistorySearchMatch | null) => {
     const container = scrollContainerRef.current;
@@ -124,12 +130,44 @@ export function useChatHistorySearch({
   }, [activeMatchIndex, goToMatch]);
 
   useEffect(() => {
-    setActiveMatchIndex(0);
+    if (globalTarget?.kind === 'chats' && globalTarget.matchType === 'content' && globalTarget.sessionId === sessionId && globalTarget.query === query) {
+      const item = searchableMessages.find(candidate => candidate.text.toLowerCase().includes(globalTarget.query.toLowerCase()) && (globalTarget.entryId
+        ? candidate.message.entryId === globalTarget.entryId && candidate.message.type === globalTarget.role
+        : candidate.message.turnId === globalTarget.turnId && candidate.message.type === globalTarget.role));
+      const index = item ? matches.findIndex(match => match.messageKey === item.messageKey) : -1;
+      setActiveMatchIndex(index >= 0 ? index : 0);
+    } else setActiveMatchIndex(0);
+  // Recompute the chosen hit after changing the query; later live messages must not reset navigation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   useEffect(() => {
     closeSearch();
   }, [closeSearch, sessionId]);
+
+  useEffect(() => {
+    if (!historyReady || !globalTarget || globalTarget.kind !== 'chats' || globalTarget.sessionId !== sessionId) return;
+    if (globalTarget.matchType !== 'content') { closeSearch(); return; }
+    if (consumedGlobalTarget.current === globalTarget.requestId) return;
+    if (!allMessagesLoaded) {
+      if (loadingGlobalTarget.current !== globalTarget.requestId) {
+        loadingGlobalTarget.current = globalTarget.requestId;
+        void ensureAllMessagesLoaded().catch(() => { loadingGlobalTarget.current = null; });
+      }
+      return;
+    }
+    const item = searchableMessages.find(candidate => candidate.text.toLowerCase().includes(globalTarget.query.toLowerCase()) && (globalTarget.entryId
+      ? candidate.message.entryId === globalTarget.entryId && candidate.message.type === globalTarget.role
+      : candidate.message.turnId === globalTarget.turnId && candidate.message.type === globalTarget.role));
+    if (!item) return;
+    const targetMatches = findChatHistoryMatches(searchableMessages, globalTarget.query);
+    const index = targetMatches.findIndex(match => match.messageKey === item.messageKey);
+    if (index < 0) return;
+    consumedGlobalTarget.current = globalTarget.requestId;
+    setQuery(globalTarget.query);
+    setActiveMatchIndex(index);
+    setIsOpen(true);
+  }, [globalTarget, sessionId, historyReady, allMessagesLoaded, ensureAllMessagesLoaded, searchableMessages, closeSearch]);
 
   const openFromShortcut = useCallback(() => {
     if (isOpen) {
@@ -183,7 +221,10 @@ export function useChatHistorySearch({
       const canReveal = target && (target.matches('mark[aria-current="true"]')
         || !target.querySelector('[data-chat-search-render-pending="true"]'));
       if (canReveal) {
-        scrollSearchTargetIntoView(container, target, pending.coarseJumped ? 'auto' : 'smooth');
+        // Global navigation must settle before onNavigate captures the reading
+        // anchor; a smooth animation can be cancelled by process expansion.
+        const globalNavigation = globalTarget?.kind === 'chats' && globalTarget.matchType === 'content';
+        scrollSearchTargetIntoView(container, target, globalNavigation || pending.coarseJumped ? 'auto' : 'smooth');
         onNavigate?.(pending.match);
         pendingRevealRef.current = null;
       } else if (!target && !pending.coarseJumped) {
@@ -207,7 +248,7 @@ export function useChatHistorySearch({
       if (frame !== null) cancelAnimationFrame(frame);
       refreshHighlightsRef.current = () => {};
     };
-  }, [activeMatch, applySearchHighlights, isOpen, query, renderWindowKey, matches, measuredItemHeights, onNavigate, scrollContainerRef]);
+  }, [activeMatch, applySearchHighlights, globalTarget, isOpen, query, renderWindowKey, matches, measuredItemHeights, onNavigate, scrollContainerRef]);
 
   useEffect(() => {
     if (matches.length === 0) {
