@@ -63,7 +63,7 @@ export type PilotDeckConfig = {
     enabled?: boolean;
     timezone?: string;
     maxConcurrentRuns?: number;
-  };
+  } | null;
   tools?: {
     webSearch?: import("../../../../../../../src/pilot/config/webSearchConfig.js").WebSearchConfig;
   };

@@ -127,6 +127,7 @@ export function buildDefaultPilotDeckConfig() {
     router: { enabled: false },
     tools: { webSearch: { enabled: false } },
     alwaysOn: { projects: {} },
+    cron: { enabled: true },
     adapters: {
       feishu: { enabled: false },
       weixin: { enabled: false },
@@ -157,6 +158,8 @@ export function buildDefaultPilotDeckConfig() {
 export function normalizePilotDeckConfig(input) {
   const source = isRecord(input) ? input : {};
   const normalized = deepMerge(buildDefaultPilotDeckConfig(), source);
+  // A bare YAML `cron:` has the same defaults as an omitted section.
+  normalized.cron ??= { enabled: true };
   // Older configured sections implied enabled. Do not let new-user defaults
   // silently switch those existing features off during a read/save cycle.
   for (const key of ['memory', 'router']) {

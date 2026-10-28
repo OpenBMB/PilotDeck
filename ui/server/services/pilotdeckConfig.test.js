@@ -70,6 +70,7 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         expect(record.parseError).toBeNull();
         expect(record.config.schemaVersion).toBe(1);
         expect(record.config.webui.officePreview.service).toBe('builtin');
+        expect(record.config.cron).toEqual({ enabled: true });
     });
 
     it('reads and normalizes valid YAML', () => {
@@ -252,6 +253,22 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
 });
 
 describe('optional feature defaults', () => {
+    it.each(['', 'cron:\n', 'cron: {}\n', 'cron:\n  timezone: Asia/Shanghai\n'])('enables cron when YAML omits its switch: %j', (raw) => {
+        const configPath = useTempConfig(raw);
+        const { config } = readPilotDeckConfigFile();
+        expect(config.cron.enabled).toBe(true);
+        if (raw.includes('timezone')) expect(config.cron.timezone).toBe('Asia/Shanghai');
+        expect(normalizePilotDeckConfig(config)).toEqual(config);
+        expect(readFileSync(configPath, 'utf8')).toBe(raw);
+    });
+
+    it('preserves an explicit cron opt-out through a save and read', async () => {
+        useTempConfig(null);
+        const cron = { enabled: false, timezone: 'Asia/Shanghai', maxConcurrentRuns: 3 };
+        await writePilotDeckConfig({ ...buildDefaultPilotDeckConfig(), cron });
+        expect(readPilotDeckConfigFile().config.cron).toEqual(cron);
+    });
+
     it('keeps advanced features and message channels off for a new user', () => {
         useTempConfig(null);
         expect(readPilotDeckConfigFile().config).toMatchObject({
