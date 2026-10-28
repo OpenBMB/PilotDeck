@@ -72,6 +72,7 @@ export class SearchIndex {
     this.catalogErrors = new Map();
     this.projects = this.store.projects();
     this.catalogRoots = new Set();
+    this.canonicalRoots = new Map();
     this.queue = []; this.jobs = new Map(); this.running = 0;
     this.metrics = { catalogScans: 0, transcriptFullReads: 0, transcriptAppendReads: 0, fileReads: 0,
       indexedBytes: 0, verifiedBytes: 0, fts: this.store.fts, stages: {} };
@@ -169,17 +170,26 @@ export class SearchIndex {
   async fileCatalog(project) {
     const keep = new Set();
     const root = project.fullPath;
+    this.catalogRoots.delete(root);
+    this.canonicalRoots.delete(root);
     if (project.capabilities?.files === false || isVirtualProjectPath(root, this.pilotHome)) {
       this.store.removeMissing(project.name, 'files', keep); return;
     }
-    this.catalogRoots.delete(root);
     const canonical = await realpath(root).catch(() => null);
     const home = await realpath(this.pilotHome);
-    if (!canonical || isPathInsideOrEqual(home, canonical) || isPathInsideOrEqual(canonical, home)) {
+    this.canonicalPilotHome = home;
+    if (!canonical || isPathInsideOrEqual(home, canonical)) {
       this.store.removeMissing(project.name, 'files', keep); return;
     }
     this.catalogRoots.add(root);
+    this.canonicalRoots.set(root, canonical);
     const globs = [...EXCLUDED_DIRECTORIES].flatMap(name => ['--glob', '!**/' + name + '/**']);
+    if (isPathInsideOrEqual(canonical, home)) {
+      // A normal workspace may contain PILOT_HOME (for example ~/). Exclude
+      // only that subtree, including custom homes with glob metacharacters.
+      const relativeHome = path.relative(canonical, home).split(path.sep).join('/').replace(/[?*\[\]{}!\\]/g, '\\$&');
+      globs.push('--glob', '!/' + relativeHome + '/**');
+    }
     this.metrics.catalogScans++;
     let output;
     try { output = await this.rg(root, ['--files', '--null', '--hidden', '--no-require-git', ...globs]); }
@@ -192,7 +202,9 @@ export class SearchIndex {
     await mapConcurrent(output.split('\0').filter(Boolean), async name => {
       const relative = name.replace(/^\.\//, '').replaceAll('\\', '/');
       const absolute = path.resolve(root, relative);
-      if (!isPathInsideOrEqual(root, absolute)) return;
+      if (!isPathInsideOrEqual(root, absolute) || this.isInternalFilePath(absolute)) return;
+      const resolved = await realpath(absolute).catch(() => null);
+      if (!resolved || !isPathInsideOrEqual(canonical, resolved) || this.isInternalFilePath(resolved)) return;
       const info = await lstat(absolute).catch(() => null);
       if (!info?.isFile() || info.isSymbolicLink()) return;
       const id = stableId(project.name, 'files', relative); keep.add(id);
@@ -202,6 +214,10 @@ export class SearchIndex {
         title: path.basename(relative), session_id: null, modified: info.mtimeMs, signature: sig });
     }, 8);
     this.store.removeMissing(project.name, 'files', keep);
+  }
+  isInternalFilePath(absolute) {
+    return isPathInsideOrEqual(this.pilotHome, absolute)
+      || Boolean(this.canonicalPilotHome && isPathInsideOrEqual(this.canonicalPilotHome, absolute));
   }
   startWatchers() {
     // Native recursive directory watches use far fewer handles than one watch
@@ -240,6 +256,8 @@ export class SearchIndex {
           const relative = String(name || '');
           if (relative.split(path.sep).some(part => EXCLUDED_DIRECTORIES.has(part))) return;
           const absolute = path.resolve(root, relative);
+          const canonicalAbsolute = path.resolve(this.canonicalRoots.get(root) || root, relative);
+          if (this.isInternalFilePath(absolute) || this.isInternalFilePath(canonicalAbsolute)) return;
           for (const project of this.projects) if (this.catalogRoots.has(project.fullPath) && isPathInsideOrEqual(project.fullPath, absolute)) {
             this.invalidate(project.name, 'files', event, absolute);
           }
@@ -286,7 +304,7 @@ export class SearchIndex {
       const project = this.projects.find(item => item.name === source.project_name);
       const canonical = await realpath(source.absolute_path).catch(() => null);
       const canonicalRoot = project && await realpath(project.fullPath).catch(() => null);
-      if (!canonicalRoot || !canonical || !isPathInsideOrEqual(canonicalRoot, canonical)) {
+      if (!canonicalRoot || !canonical || !isPathInsideOrEqual(canonicalRoot, canonical) || this.isInternalFilePath(canonical)) {
         this.store.writeDocuments(source, []); return;
       }
       if (!supportedText(source.title)) { this.store.writeDocuments(source, []); return; }
@@ -379,7 +397,8 @@ export class SearchIndex {
         const info = await lstat(source.absolute_path).catch(() => null);
         const canonical = await realpath(source.absolute_path).catch(() => null);
         const canonicalRoot = await realpath(project.fullPath).catch(() => null);
-        if (!info?.isFile() || info.isSymbolicLink() || !canonical || !canonicalRoot || !isPathInsideOrEqual(canonicalRoot, canonical)) return;
+        if (!info?.isFile() || info.isSymbolicLink() || !canonical || !canonicalRoot
+          || !isPathInsideOrEqual(canonicalRoot, canonical) || this.isInternalFilePath(canonical)) return;
         try {
           const output = await this.rg(project.fullPath, ['--json', '--fixed-strings', '--ignore-case', '--max-count', '3', '--max-columns', '2000', '--', input.query, source.relative_path]);
           for (const line of output.split('\n').filter(Boolean)) {

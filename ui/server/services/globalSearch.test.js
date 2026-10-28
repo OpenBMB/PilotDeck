@@ -248,3 +248,44 @@ test('an incomplete UTF-8 JSONL tail is retried after the record finishes writin
   const complete = await search({ query: '世界', kind: 'chats' });
   assert.equal(complete.counts.chats, 1); assert.deepEqual(complete.partial, []);
 });
+
+for (const homeName of ['.pilotdeck', 'state[private]']) {
+  test(`indexes a workspace containing ${homeName} while excluding internal files and watch events`, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'pilotdeck-home-workspace-')); temporary.push(root);
+    const workspace = path.join(root, 'workspace');
+    const pilotHome = path.join(workspace, homeName);
+    const registration = path.join(pilotHome, 'projects', 'registered');
+    await mkdir(registration, { recursive: true });
+    await writeFile(path.join(registration, '.cwd'), workspace);
+    await writeFile(path.join(workspace, 'needle.txt'), 'first line\npublic needle content\n');
+    await writeFile(path.join(pilotHome, 'needle-secret.txt'), 'internal-only-secret');
+    const sibling = path.join(workspace, homeName + '-docs');
+    await mkdir(sibling); await writeFile(path.join(sibling, 'needle.txt'), 'public sibling');
+    const project = { name: 'registered', displayName: 'Home workspace', fullPath: workspace };
+    const search = createGlobalSearch({ pilotHome, listProjects: async () => [project], watch: true, refreshOnQuery: false });
+    services.push(search);
+    const result = await search({ query: 'needle', kind: 'files' });
+    assert.equal(result.counts.files, 2);
+    assert.equal(result.groups.files.find(file => file.path === 'needle.txt').line, 2);
+    assert.deepEqual(result.partial, []);
+    assert.equal((await search({ query: 'internal-only-secret', kind: 'files' })).counts.files, 0);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    await search({ query: 'needle', kind: 'files' });
+    const before = await search.metrics();
+    await appendFile(path.join(pilotHome, 'needle-secret.txt'), '\nchanged internal data');
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const cached = await search({ query: 'needle', kind: 'files' });
+    const after = await search.metrics();
+    assert.equal(after.generation, before.generation, 'internal writes must not invalidate the file catalog');
+    assert.equal(after.metrics.catalogScans, before.metrics.catalogScans);
+    assert.equal(cached.timings.cacheHit, true);
+    await writeFile(path.join(workspace, 'needle.txt'), 'normal edit');
+    const deadline = Date.now() + 5000;
+    let updated;
+    do {
+      await new Promise(resolve => setTimeout(resolve, 40));
+      updated = await search({ query: 'public needle content', kind: 'files' });
+    } while (updated.counts.files && Date.now() < deadline);
+    assert.equal(updated.counts.files, 0, 'ordinary files remain watched');
+  });
+}

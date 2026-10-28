@@ -1,6 +1,12 @@
 import { parentPort, workerData } from 'node:worker_threads';
-import { register } from 'tsx/esm/api';
-register();
+import { existsSync } from 'node:fs';
+
+// Packaged runtimes contain compiled JS and deliberately omit tsx. Match the
+// supervisor's source/runtime distinction before loading the development loader.
+if (existsSync(new URL('../../../../src/cli/pilotdeck.ts', import.meta.url))) {
+  const { register } = await import('tsx/esm/api');
+  register();
+}
 const { SearchIndex } = await import('./searchIndex.js');
 const index = new SearchIndex(workerData);
 const cancelled = new Set();

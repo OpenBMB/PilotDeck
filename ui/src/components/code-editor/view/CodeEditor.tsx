@@ -77,6 +77,9 @@ export default function CodeEditor({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQueryState] = useState('');
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+  const [searchNavigation, setSearchNavigation] = useState<{ query: string; index: number } | null>(null);
+  const appliedSearchNavigation = useRef<typeof searchNavigation>(null);
+  const consumedGlobalRequest = useRef<string | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const markdownPreviewRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -92,6 +95,7 @@ export default function CodeEditor({
     content,
     setContent,
     loading,
+    contentReady,
     loadError,
     reload,
     saving,
@@ -131,6 +135,7 @@ export default function CodeEditor({
     setSearchOpen(false);
     setSearchQueryState('');
     setSearchMatchIndex(0);
+    setSearchNavigation(null);
   }, [file.path]);
 
   const htmlPreviewUrl = useMemo(() => {
@@ -144,19 +149,22 @@ export default function CodeEditor({
   );
 
   useEffect(() => {
-    if (!isActive || loading || globalSearchTarget?.kind !== 'files'
+    if (!isActive || !contentReady || globalSearchTarget?.kind !== 'files'
       || globalSearchTarget.project.name !== projectName
+      || consumedGlobalRequest.current === globalSearchTarget.requestId
       || !file.path.replace(/\\/g, '/').endsWith(globalSearchTarget.path || '\0')) return;
     const query = globalSearchTarget.line ? globalSearchTarget.query : '';
     const matches = findTextSearchMatches(content, query);
     const lineStart = content.split('\n').slice(0, Math.max(0, (globalSearchTarget.line || 1) - 1))
       .reduce((sum, line) => sum + line.length + 1, 0);
     const matchIndex = matches.findIndex(match => match.from >= lineStart);
+    consumedGlobalRequest.current = globalSearchTarget.requestId;
     setSearchQueryState(query);
     setSearchMatchIndex(Math.max(0, matchIndex));
+    setSearchNavigation({ query, index: Math.max(0, matchIndex) });
     setSearchOpen(false);
     if (query) { setMarkdownPreview(false); setHtmlPreview(false); }
-  }, [globalSearchTarget, isActive, loading, projectName, file.path, content]);
+  }, [globalSearchTarget, isActive, contentReady, projectName, file.path, content]);
   const {
     matchCount: markdownSearchMatchCount,
     highlightStyles: markdownSearchHighlightStyles,
@@ -181,12 +189,14 @@ export default function CodeEditor({
   const handleSearchQueryChange = useCallback((query: string) => {
     setSearchQueryState(query);
     setSearchMatchIndex(0);
+    setSearchNavigation({ query, index: 0 });
   }, []);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchQueryState('');
     setSearchMatchIndex(0);
+    setSearchNavigation(null);
   }, []);
 
   const openSearch = useCallback(() => {
@@ -206,10 +216,10 @@ export default function CodeEditor({
 
   const moveSearch = useCallback((direction: -1 | 1) => {
     if (searchMatchCount === 0) return;
-    setSearchMatchIndex((current) => (
-      (current + direction + searchMatchCount) % searchMatchCount
-    ));
-  }, [searchMatchCount]);
+    const index = (searchMatchIndex + direction + searchMatchCount) % searchMatchCount;
+    setSearchMatchIndex(index);
+    setSearchNavigation({ query: searchQuery, index });
+  }, [searchMatchCount, searchMatchIndex, searchQuery]);
 
   const handleEditorViewChange = useCallback((view: EditorView | null) => {
     setEditorView(view);
@@ -233,12 +243,19 @@ export default function CodeEditor({
       !editorView
       || markdownPreview
       || htmlPreview
-      || !searchQuery.trim()
-      || textSearchMatches.length === 0
+      || !isActive || loading
+      || !searchNavigation
+      || appliedSearchNavigation.current === searchNavigation
+      || editorView.state.doc.toString() !== content
     ) {
       return;
     }
-    const match = textSearchMatches[Math.min(searchMatchIndex, textSearchMatches.length - 1)];
+    // Document changes refresh decorations above, but must never take the
+    // selection away from typing. Only explicit navigation requests select.
+    appliedSearchNavigation.current = searchNavigation;
+    const matches = findTextSearchMatches(content, searchNavigation.query);
+    const match = matches[Math.min(searchNavigation.index, matches.length - 1)];
+    if (!match) return;
     editorView.dispatch({
       selection: { anchor: match.from, head: match.to },
       effects: EditorView.scrollIntoView(EditorSelection.range(match.from, match.to), { y: 'center', x: 'center' }),
@@ -247,9 +264,10 @@ export default function CodeEditor({
     editorView,
     htmlPreview,
     markdownPreview,
-    searchMatchIndex,
-    searchQuery,
-    textSearchMatches,
+    isActive,
+    loading,
+    content,
+    searchNavigation,
   ]);
 
   const minimapExtension = useMemo(
