@@ -547,6 +547,10 @@ async function ensureRuntime(): Promise<RuntimeInfo> {
   return pending;
 }
 
+function isMainWindowForeground(): boolean {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused());
+}
+
 async function createOrShowWindow(): Promise<void> {
   if (isQuitting) return;
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -583,6 +587,15 @@ async function createOrShowWindow(): Promise<void> {
   });
 
   const recoveryWindow = mainWindow;
+  notifications.foreground(); // Clear stale OS badges when creating the main window.
+  recoveryWindow.on('focus', () => notifications.foreground());
+  const acknowledgeRestore = () => setImmediate(() => {
+    // Window managers can deliver restoration and focus in different orders.
+    // Confirm native foreground state after restore/show as well.
+    if (mainWindow === recoveryWindow && isMainWindowForeground()) notifications.foreground();
+  });
+  recoveryWindow.on('restore', acknowledgeRestore);
+  recoveryWindow.on('show', acknowledgeRestore);
   let allowInitialShow = true;
   const cancelInitialShow = () => { allowInitialShow = false; };
   recoveryWindow.once("close", cancelInitialShow);
@@ -1018,6 +1031,7 @@ function requireUpdateSender(event: Electron.IpcMainEvent | Electron.IpcMainInvo
 }
 const notifications = createDesktopNotifications({
   platform: process.platform,
+  isForeground: isMainWindowForeground,
   supported: () => Notification.isSupported(),
   read: () => { try { return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'notifications.json'), 'utf8')); } catch { return null; } },
   save: value => fs.writeFileSync(path.join(app.getPath('userData'), 'notifications.json'), JSON.stringify(value)),
@@ -1034,7 +1048,8 @@ const notifications = createDesktopNotifications({
 ipcMain.handle('pilotdeck:notification-status', event => { requireUpdateSender(event); return notifications.status(); });
 ipcMain.handle('pilotdeck:notification-preferences', (event, value) => { requireUpdateSender(event); return notifications.preferences(value); });
 ipcMain.handle('pilotdeck:notification-show', (event, value) => { requireUpdateSender(event); return notifications.show(value); });
-ipcMain.handle('pilotdeck:notification-badge', (event, value) => { requireUpdateSender(event); notifications.badge(value); });
+ipcMain.handle('pilotdeck:notification-reminder', (event, value) => { requireUpdateSender(event); return notifications.record(value); });
+ipcMain.handle('pilotdeck:notification-scope', (event, value) => { requireUpdateSender(event); notifications.setScope(value); });
 ipcMain.handle('pilotdeck:notification-settings', async event => {
   requireUpdateSender(event);
   if (process.platform === 'darwin') {

@@ -51,8 +51,11 @@ export function createSessionNotificationRegistry() {
             const timestamp = Date.parse(frame.timestamp);
             state.attentionAt = new Date(Math.max(Number.isFinite(timestamp) ? timestamp : Date.now(),
                 (Date.parse(previous?.attentionAt) || 0) + 1)).toISOString();
+            const failedInput = frame.type === 'input-queue-state'
+                ? frame.items?.find(item => ['failed', 'delivery_uncertain'].includes(item.status)) : null;
             return {
                 id: attention.id, sessionId: frame.sessionId, scope: String(userId ?? 'local'), kind: attention.kind,
+                taskId: failedInput ? failedInput.runId || failedInput.id : frame.runId || state.runId || attention.id,
                 sessionName: state.sessionName, createdAt: state.attentionAt,
                 preview: attention.kind === 'completed' ? state.preview : attention.kind === 'error'
                     ? notificationText(frame.userHint || frame.content || frame.items?.find(item => item.error)?.error)

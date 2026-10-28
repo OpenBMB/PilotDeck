@@ -6,7 +6,7 @@
     "sound": "Notification sound",
     "soundDescription": "Use the default notification sound. System sound settings also apply.",
     "badge": "Show app icon badge",
-    "badgeDescription": "Show the number of conversations with unseen reminders. Viewing a conversation clears its reminder.",
+    "badgeDescription": "Count tasks that need attention while the app is in the background. Returning to the main window clears the badge; conversation unread indicators remain separate.",
     "preview": "Show message previews",
     "previewDescription": "Include reply or question excerpts. When off, show only the conversation name and action needed.",
     "systemSettings": "System notification settings",

@@ -41,6 +41,6 @@ export function buildSystemNotification(event, preferences = {}, language = 'en'
     // Keep the required action visible even when the OS truncates a long preview.
     body: [`${label} · ${action}`, preview].filter(Boolean).join('\n'),
     silent: preferences.sound === false,
-    data: { sessionId: event.sessionId, eventId: event.id, scope: event.scope, kind: event.kind, createdAt: event.createdAt },
+    data: { sessionId: event.sessionId, eventId: event.id, scope: event.scope, kind: event.kind, createdAt: event.createdAt, taskId: event.taskId },
   };
 }

@@ -76,16 +76,16 @@ try {
   let w = await launch();
   await w.message('notification:preferences', { scope: '1', preferences: { enabled: true } });
   await w.push(event(2));
-  assert.equal((await w.snapshot()).badge, 1);
+  assert.equal((await w.snapshot()).badge, 0);
   await w.read(event(2));
   assert.equal((await w.snapshot()).badge, 0);
   await w.push(event(1));
   assert.deepEqual(await w.snapshot(), { badge: 0, shown: 1, active: 0, pending: [] });
   await w.push(event(4));
   await w.push(event(3));
-  assert.deepEqual(await w.snapshot(), { badge: 1, shown: 2, active: 1, pending: ['r4'] });
+  assert.deepEqual(await w.snapshot(), { badge: 0, shown: 2, active: 1, pending: ['r4'] });
   await w.read(event(2));
-  assert.equal((await w.snapshot()).badge, 1);
+  assert.equal((await w.snapshot()).badge, 0);
   await w.read(event(5)); // A newer live-page read also clears an older push card.
   assert.deepEqual(await w.snapshot(), { badge: 0, shown: 2, active: 0, pending: [] });
   assert.deepEqual(await w.page.evaluate(() => window.__received), ['r2', 'r4']);
@@ -94,7 +94,7 @@ try {
   await w.push(event(3));
   assert.deepEqual(await w.snapshot(), { badge: 0, shown: 0, active: 0, pending: [] });
   await w.push(event(6));
-  assert.equal((await w.snapshot()).badge, 1);
+  assert.equal((await w.snapshot()).badge, 0);
   await w.page.evaluate(() => { window.__viewed = true; });
   await w.push(event(7));
   assert.deepEqual(await w.snapshot(), { badge: 0, shown: 1, active: 0, pending: [] });
