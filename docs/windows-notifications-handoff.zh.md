@@ -1,5 +1,31 @@
 # Windows 系统通知与角标验收说明
 
+## 通知中心图标与默认开启修复
+
+- `IconUri` 现在注册随应用发布的 `resources/icons/icon.png`，类型为 `REG_EXPAND_SZ`；快捷方式仍从 EXE 取图标。之前将 EXE 写入 `IconUri`，没有给通知中心提供图片资源。
+- 新桌面配置默认开启通知。主进程和前端首次加载一致；已保存的 `enabled: false` 保留。网页仍等待用户授权，Windows 勿扰和系统通知开关继续由系统控制。
+- EXE 版不提供数字角标，Windows 设置页也隐藏了无效的数字角标开关。
+- 参考 [Microsoft WindowsAppSDK 的通知资源注册实现](https://github.com/microsoft/WindowsAppSDK/blob/main/dev/AppNotifications/AppNotificationUtility.cpp)。
+- 桌面编译、19 项桌面测试通过。Windows 11 实测快捷方式 AUMID、PNG 签名及注册表路径、原生 Toast show 事件通过；另有安装路径含空格/中文、图片缺失及用户主动关闭的回归测试。
+- 视觉工具未暴露通知中心窗口，尚未自动核验通知中心截图；Windows 10 尚未实机验证。下方 EXE 为此前构建，不包含本节增量。
+
+## 最终交付：EXE 安装包
+
+用户最终要求必须使用 EXE，接受舍弃数字角标。本分支保留 NSIS 安装方式，
+移除 APPX 目标与数字角标辅助程序。Windows 仅显示系统原生 Toast，清除旧任务栏覆盖图标，
+托盘不再合成红点；macOS/Linux 行为保留。
+
+- 安装版启动时注册当前用户的 AUMID、ToastActivatorCLSID、显示名称、图标和快捷方式。
+- 原生通知仍由 Electron Windows Toast API 渲染，并保留点击跳转会话。
+- EXE 测试版为 2026.1028.2，包含本地版本立即显示、自定义搜索网址保存及 DeepSeek Search。
+- 无需 APPX、开发者模式或导入测试证书，继续使用原有 NSIS 更新流程。
+- Windows 11 已通过原生 Toast show 事件、窗口生命周期与安装内容检查；Windows 10 尚未实机验收。
+- 最终文件：`apps/desktop/dist-electron/windows-exe-20261028/PilotDeck-2026.1028.2-win-x64-setup.exe`，313234988 字节，未使用生产签名；SHA-256 为 `824c7378f5a890e2213984521b5c48a1600c689ad0624a7f05312317d4f49805`。
+- 安装包内嵌 7z 的 20979 个文件校验通过。7za 报告的尾部数据为安装程序封装内容；未在用户系统执行安装。
+- 本机构建使用 `artifacts/build-tools` 下的干净 electron-builder。重打包入口 `rebuild-exe.cjs` 将项目安装模板准备脚本解析到同一份 builder，避免加载另一份依赖导致自定义安装流程缺失。构建日志为 `artifacts/windows-exe-rebuild.log`。
+
+下文保留此前计数机制与问题背景；关于 Windows 数字角标的验收条目不再适用于最终 EXE。
+
 ## 背景及本次计数调整
 
 反馈版本：`v2026.10.28`（安装包版本 `2026.1028.0`）。用户反馈应用内通知已开启、任务在后台完成，但没有横幅，Windows 通知设置中也找不到 PilotDeck；任务栏数字模糊，安装后出现 25。

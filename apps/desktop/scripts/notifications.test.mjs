@@ -8,7 +8,12 @@ const source = fs.readFileSync(new URL('../src/notifications.ts', import.meta.ur
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const mod = { exports: {} };
 new Function('module', 'exports', compiled)(mod, mod.exports);
-const { createDesktopNotifications, badgeBitmap, nativeNotificationOptions } = mod.exports;
+const { createDesktopNotifications, badgeBitmap, nativeNotificationOptions, normalizePreferences } = mod.exports;
+test('desktop notifications default on while preserving an explicit opt-out', () => {
+  assert.equal(normalizePreferences(undefined).enabled, true);
+  assert.equal(normalizePreferences({}).enabled, true);
+  assert.equal(normalizePreferences({ enabled: false }).enabled, false);
+});
 const payload = { id: 'r1', title: 'Report', body: 'Task completed · Click to view\nPreview', silent: false, data: { scope: '1', sessionId: 's1', eventId: 'r1', taskId: 'r1', createdAt: '2026-10-28T00:00:01Z', kind: 'completed' } };
 function setup(platform = 'darwin', bind = true) {
   const state = { created: [], badges: [], overlays: [], navigation: [], saved: null, foreground: false, now: Date.parse('2026-10-28T00:00:00Z'), tray: [] };
@@ -38,8 +43,7 @@ for (const platform of ['darwin', 'win32', 'linux']) test(`${platform}: hides ze
   controller.preferences({ enabled: false, badge: false });
   assert.equal(controller.show(payload), false);
   if (platform === 'win32') {
-    assert.ok(state.overlays.at(-2).bitmap.length === 32 * 32 * 4);
-    assert.match(state.overlays.at(-2).label, /5/);
+    assert.ok(state.overlays.every(overlay => overlay.bitmap === null));
     assert.equal(state.overlays.at(-1).bitmap, null);
   } else assert.equal(state.badges.at(-2), 5);
   assert.equal(state.tray.at(-1), 0);

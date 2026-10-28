@@ -7,8 +7,8 @@ let snapshot: NotificationPreferences | undefined;
 let nativeLoaded = false;
 function read() {
   if (!snapshot) {
-    try { snapshot = normalizeNotificationPreferences(JSON.parse(localStorage.getItem(key) || '{}')); }
-    catch { snapshot = { ...defaultNotificationPreferences }; }
+    try { snapshot = normalizeNotificationPreferences({ enabled: Boolean(window.pilotdeckDesktop), ...JSON.parse(localStorage.getItem(key) || '{}') }); }
+    catch { snapshot = { ...defaultNotificationPreferences, enabled: Boolean(window.pilotdeckDesktop) }; }
   }
   return snapshot;
 }
