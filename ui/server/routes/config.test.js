@@ -1,6 +1,6 @@
 import express from 'express';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -18,6 +18,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  vi.doUnmock('child_process');
   vi.resetModules();
   delete process.env.PILOT_HOME;
   delete process.env.PILOTDECK_CONFIG_PATH;
@@ -2363,6 +2364,64 @@ describe('config provider rename secret preservation', () => {
   });
 });
 
+describe('first-run config creation', () => {
+  it.each(['raw', 'config'])('does not create an empty config through a %s preferences save', async (shape) => {
+    const { request, configPath } = await createDiskConfigApp(null);
+    const initial = await request('/api/config');
+    expect(initial.body.exists).toBe(false);
+    const config = initial.body.config;
+    config.alwaysOn.language = 'zh-CN';
+
+    const response = await request('/api/config', {
+      method: 'PUT',
+      body: JSON.stringify(shape === 'raw' ? { raw: stringifyYaml(config) } : { config }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('MODEL_CONFIGURATION_REQUIRED');
+    expect(existsSync(configPath)).toBe(false);
+    const { getModelConfigurationState } = await import('../services/modelConfigurationState.js');
+    expect(getModelConfigurationState({ env: {} })).toMatchObject({
+      state: 'needs_configuration', reason: 'missing_config',
+    });
+  });
+
+  it('creates the file when a model is saved and still permits clearing the model pool later', async () => {
+    const { request, configPath } = await createDiskConfigApp(null);
+    const config = (await request('/api/config')).body.config;
+    config.agent.model = 'ollama/qwen3:0.6b';
+    config.model.providers.ollama = {
+      protocol: 'openai', url: 'http://localhost:11434/v1', models: { 'qwen3:0.6b': {} },
+    };
+    config.alwaysOn.language = 'zh-CN';
+
+    const saved = await request('/api/config', { method: 'PUT', body: JSON.stringify({ config }) });
+
+    expect(saved.status).toBe(200);
+    expect(parseYaml(readFileSync(configPath, 'utf8'))).toMatchObject(config);
+    const { getModelConfigurationState } = await import('../services/modelConfigurationState.js');
+    expect(getModelConfigurationState({ env: {} }).state).toBe('ready');
+
+    config.agent.model = '';
+    config.model.providers = {};
+    expect((await request('/api/config', { method: 'PUT', body: JSON.stringify({ config }) })).status).toBe(200);
+    expect(getModelConfigurationState({ env: {} }).state).toBe('empty');
+  });
+
+  it('does not create a config when asked to open a missing file', async () => {
+    const spawn = vi.fn(() => ({ unref: vi.fn() }));
+    vi.doMock('child_process', async () => ({ ...await vi.importActual('child_process'), spawn }));
+    const { request, configPath } = await createDiskConfigApp(null);
+
+    const response = await request('/api/config/open', { method: 'POST' });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ success: false, code: 'MODEL_CONFIGURATION_REQUIRED' });
+    expect(existsSync(configPath)).toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+});
+
 describe('desktop bootstrap config writes', () => {
   function bootstrapConfig() {
     return {
@@ -2665,7 +2724,7 @@ async function createDiskConfigApp(initialRaw, overrides = {}) {
   const pilotHome = mkdtempSync(join(tmpdir(), 'pilotdeck-config-route-'));
   tempDirs.push(pilotHome);
   const configPath = join(pilotHome, 'pilotdeck.yaml');
-  writeFileSync(configPath, initialRaw, 'utf8');
+  if (initialRaw !== null) writeFileSync(configPath, initialRaw, 'utf8');
 
   process.env.PILOT_HOME = pilotHome;
   process.env.PILOTDECK_CONFIG_PATH = configPath;
