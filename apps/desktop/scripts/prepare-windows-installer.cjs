@@ -24,6 +24,12 @@ async function prepareWindowsInstaller(desktopRoot = path.resolve(__dirname, '..
     `/out:${path.join(output, 'install-payload.exe')}`,
     path.join(desktopRoot, 'resources', 'installer', 'InstallPayload.cs')], { windowsHide: true, stdio: 'pipe' });
 
+  // This project-owned helper is embedded directly by NSIS, outside appOutDir,
+  // so electron-builder's executable traversal cannot sign it for us.
+  const { loadSigningConfig, signFile } = require('./windows-signing.cjs');
+  const signing = loadSigningConfig();
+  if (signing) signFile(path.join(output, 'install-payload.exe'), signing);
+
   // Use the same checksum-verified decoder toolset as the archive builder.
   const { getPath7za } = require(path.join(libRoot, 'out', 'toolsets', '7zip.js'));
   const decoder = await getPath7za();
