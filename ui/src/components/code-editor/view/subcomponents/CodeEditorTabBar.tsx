@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../../../lib/utils.js';
 import { FileTypeIcon } from '../../../file-tree/components/FileTypeIcon';
 import type { CodeEditorFile, CodeEditorTab } from '../../types/types';
+import OpenEditorTabsMenu from './OpenEditorTabsMenu';
 
 type TabMenuState = {
   tabId: string;
@@ -18,7 +19,6 @@ type CodeEditorTabBarProps = {
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
   onCloseTabs: (tabIds: string[]) => void;
-  reserveToolbarSpace?: boolean;
   labels: {
     tabList: string;
     closeTab: (fileName: string) => string;
@@ -45,20 +45,33 @@ export default function CodeEditorTabBar({
   onSelect,
   onClose,
   onCloseTabs,
-  reserveToolbarSpace = false,
   labels,
 }: CodeEditorTabBarProps) {
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
 
-  useEffect(() => {
-    tabButtonRefs.current.get(activeTabId)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'nearest',
-    });
-  }, [activeTabId]);
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    // Reveal the whole tab, including its close button, inside the actual
+    // tab viewport. Never scroll the editor or the surrounding workspace.
+    const revealActiveTab = () => {
+      const tab = tabButtonRefs.current.get(activeTabId)?.parentElement;
+      if (!tab) return;
+      const viewport = scroller.getBoundingClientRect();
+      const rect = tab.getBoundingClientRect();
+      if (rect.left < viewport.left) scroller.scrollLeft += rect.left - viewport.left;
+      else if (rect.right > viewport.right) scroller.scrollLeft += rect.right - viewport.right;
+    };
+
+    revealActiveTab();
+    const observer = new ResizeObserver(revealActiveTab);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [activeTabId, tabs.length]);
 
   useEffect(() => {
     if (!menu) return undefined;
@@ -126,7 +139,7 @@ export default function CodeEditorTabBar({
     const tab = tabs[index];
     if (!tab) return;
     onSelect(tab.id);
-    window.requestAnimationFrame(() => tabButtonRefs.current.get(tab.id)?.focus());
+    window.requestAnimationFrame(() => document.getElementById(`code-editor-tab-${tab.id}`)?.focus({ preventScroll: true }));
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -254,14 +267,12 @@ export default function CodeEditorTabBar({
 
   return (
     <>
-      <div className="relative h-10 min-w-0 flex-shrink-0">
+      <div className="relative flex h-10 min-w-0 shrink-0">
         <div
+          ref={scrollerRef}
           role="tablist"
           aria-label={labels.tabList}
-          className={cn(
-            'scrollbar-hide flex h-10 min-w-0 items-end gap-0.5 overflow-x-auto border-b border-neutral-200 bg-neutral-50 px-2 pt-1 dark:border-neutral-800 dark:bg-neutral-900/70',
-            reserveToolbarSpace && 'pr-32',
-          )}
+          className="scrollbar-hide flex h-10 min-w-0 flex-1 items-end gap-0.5 overflow-x-auto border-b border-neutral-200 bg-neutral-50 px-2 pt-1 dark:border-neutral-800 dark:bg-neutral-900/70"
         >
           {tabs.map((tab, index) => {
             const file = getTabFile(tab);
@@ -271,7 +282,7 @@ export default function CodeEditorTabBar({
               <div
                 key={tab.id}
                 className={cn(
-                  'group/tab flex h-8 min-w-[9rem] max-w-[14rem] shrink-0 items-center rounded-t-md border border-b-0 transition-colors',
+                  'group/tab flex h-8 min-w-[6rem] max-w-[14rem] flex-1 basis-[14rem] items-center rounded-t-md border border-b-0 transition-colors',
                   active
                     ? 'border-neutral-200 bg-white text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100'
                     : 'border-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800',
@@ -330,6 +341,15 @@ export default function CodeEditorTabBar({
             );
           })}
         </div>
+        {tabs.length > 1 ? (
+          <OpenEditorTabsMenu
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelect={onSelect}
+            label={labels.tabList}
+            modifiedLabel={labels.modified}
+          />
+        ) : null}
       </div>
       {menuContent}
     </>

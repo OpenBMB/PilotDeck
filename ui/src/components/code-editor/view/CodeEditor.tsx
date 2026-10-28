@@ -431,8 +431,8 @@ export default function CodeEditor({
           data-file-search-surface
           className={innerContainerClassName}
         >
-          <div className="relative flex-shrink-0">
-            {headerPrefix}
+          <div className={compactHeader ? 'relative flex min-w-0 shrink-0' : 'relative shrink-0'}>
+            {headerPrefix ? <div className="min-w-0 flex-1">{headerPrefix}</div> : null}
             <CodeEditorHeader
               file={file}
               isSidebar={isSidebar}
