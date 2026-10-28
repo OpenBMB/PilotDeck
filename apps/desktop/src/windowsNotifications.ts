@@ -9,6 +9,10 @@ export const TOAST_ACTIVATOR_CLSID = '{785E87AC-C88F-49ED-99B6-6617D2B67638}';
 /** Register the current user's identity before the first toast, including NSIS
  * all-users installs. Electron owns COM activation and native Toast rendering. */
 export async function registerWindowsNotifications(appId: string, displayName = 'PilotDeck', activatorClsid = TOAST_ACTIVATOR_CLSID): Promise<void> {
+  // electron-builder portable launches from a disposable extraction directory.
+  // Neither its executable nor its PNG may be persisted, and its shared app ID
+  // must not overwrite an installed copy's shortcut/notification registration.
+  if (process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR) return;
   // IconUri is an image asset, not an executable resource reference. The Start
   // Menu shortcut can use an EXE icon, but Notification Center needs a PNG.
   const iconPath = app.isPackaged

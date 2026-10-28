@@ -20,7 +20,7 @@ test('packaged EXE identity registers the PNG asset, stable activator and shortc
       : name === 'node:child_process' ? { execFile: (exe, args, options, callback) => {
         assert.equal(options.windowsHide, true); registry.set(args[3], { type: args[5], value: args[7] }); callback(null, '', '');
       } } : require(name);
-    new Function('module', 'exports', 'require', 'process', '__dirname', compiled)(module, module.exports, mockedRequire, { ...process, execPath: path.join(root, 'PilotDeck.exe'), resourcesPath: resources }, root);
+    new Function('module', 'exports', 'require', 'process', '__dirname', compiled)(module, module.exports, mockedRequire, { ...process, env: { SystemRoot: process.env.SystemRoot }, execPath: path.join(root, 'PilotDeck.exe'), resourcesPath: resources }, root);
     await module.exports.registerWindowsNotifications('test.pilotdeck');
     assert.deepEqual(registry.get('IconUri'), { type: 'REG_EXPAND_SZ', value: path.join(resources, 'icons/icon.png') });
     assert.equal(registry.get('CustomActivator').value, module.exports.TOAST_ACTIVATOR_CLSID);
@@ -30,3 +30,20 @@ test('packaged EXE identity registers the PNG asset, stable activator and shortc
     await assert.rejects(module.exports.registerWindowsNotifications('test.pilotdeck'), /icon is missing/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const marker of ['PORTABLE_EXECUTABLE_FILE', 'PORTABLE_EXECUTABLE_DIR']) {
+  test(`portable ${marker} leaves installed shortcuts, registry and filesystem untouched`, async () => {
+    const module = { exports: {} };
+    const unexpected = () => assert.fail('Portable notification registration must have no persistent side effects');
+    const mockedRequire = name => name === 'electron'
+      ? { app: { isPackaged: true, getPath: unexpected }, shell: { writeShortcutLink: unexpected } }
+      : name === 'node:fs' ? { existsSync: unexpected, mkdirSync: unexpected }
+      : name === 'node:child_process' ? { execFile: unexpected }
+      : require(name);
+    new Function('module', 'exports', 'require', 'process', '__dirname', compiled)(module, module.exports, mockedRequire, {
+      env: { [marker]: 'C:\\Portable\\PilotDeck portable.exe' },
+      execPath: 'C:\\Temp\\disposable\\PilotDeck.exe', resourcesPath: 'C:\\Temp\\disposable\\resources',
+    }, 'C:\\Temp\\disposable');
+    await module.exports.registerWindowsNotifications('test.pilotdeck');
+  });
+}
