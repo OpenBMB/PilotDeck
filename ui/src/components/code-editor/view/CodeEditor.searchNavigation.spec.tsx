@@ -20,7 +20,7 @@ vi.mock('../hooks/useCodeEditorSettings', () => ({ useCodeEditorSettings: () => 
 vi.mock('../utils/editorExtensions', () => ({ getLanguageExtensions: () => [], createMinimapExtension: () => [], createScrollToFirstChunkExtension: () => [] }));
 vi.mock('../utils/editorToolbarPanel', () => ({ createEditorToolbarPanelExtension: () => [] }));
 vi.mock('./subcomponents/CodeEditorHeader', () => ({ default: ({ onToggleSearch }: { onToggleSearch?: () => void }) => <button onClick={onToggleSearch}>File search</button> }));
-vi.mock('./subcomponents/CodeEditorFooter', () => ({ default: () => null }));
+vi.mock('./subcomponents/CodeEditorFooter', () => ({ default: ({ content }: { content: string }) => <output data-testid="raw-document">{content}</output> }));
 vi.mock('./subcomponents/CodeEditorBinaryFile', () => ({ default: () => null }));
 vi.mock('./subcomponents/HtmlDocumentPreview', () => ({ default: () => null }));
 vi.mock('./subcomponents/markdown/MarkdownPreview', () => ({ default: () => null }));
@@ -56,6 +56,65 @@ afterEach(() => {
 });
 
 describe('CodeEditor search navigation with a real CodeMirror editor', () => {
+  it.each([
+    { name: 'LF', breaks: ['\n'] },
+    { name: 'CRLF', breaks: ['\r\n'] },
+    { name: 'CR', breaks: ['\r'] },
+    { name: 'mixed', breaks: ['\r\n', '\n', '\r'] },
+  ])('locates and highlights $name documents in editor coordinates without changing the source buffer', async ({ breaks }) => {
+    const lines = ['first line', '', 'needle one', 'between 😀 İ', 'needle two', 'last'];
+    state.content = lines.map((line, index) => line + (index < lines.length - 1 ? breaks[index % breaks.length] : '')).join('');
+    const expected = lines.join('\n');
+    state.context = { target: target('line-break-first', 3) };
+    const onDirtyChange = vi.fn();
+    const mounted = render(<CodeEditor {...props} onDirtyChange={onDirtyChange} />);
+    await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());
+    await waitFor(() => expect(selected()).toBe('needle'));
+    expect(view().state.selection.main.from).toBe(expected.indexOf('needle'));
+    expect(view().state.doc.toString()).toBe(expected);
+    expect([...document.querySelectorAll('.cm-searchMatch')].map(node => node.textContent)).toEqual(['needle', 'needle']);
+    expect(screen.getByTestId('raw-document').textContent).toBe(state.content);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    state.context = { target: target('line-break-second', 5) };
+    mounted.rerender(<CodeEditor {...props} onDirtyChange={onDirtyChange} />);
+    await waitFor(() => expect(view().state.selection.main.from).toBe(expected.lastIndexOf('needle')));
+    expect(selected()).toBe('needle');
+  });
+
+  it('does not replay pending CRLF navigation on the first or subsequent edit', async () => {
+    state.content = 'first\r\nsecond\r\nneedle text\r\nlast';
+    state.context = { target: target('crlf-edit', 3) };
+    const mounted = render(<CodeEditor {...props} />);
+    await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());
+    act(() => view().dispatch({ selection: { anchor: view().state.doc.length } }));
+    let expected = 'first\nsecond\nneedle text\nlast';
+    for (const text of ['!', ' continued', ' typing']) {
+      expected += text;
+      act(() => view().dispatch(view().state.replaceSelection(text)));
+      await waitFor(() => expect(view().state.doc.toString()).toBe(expected));
+      expect(view().state.selection.main.empty).toBe(true);
+      expect(view().state.selection.main.head).toBe(expected.length);
+      expect(document.querySelector('.cm-searchMatch')?.textContent).toBe('needle');
+    }
+    state.context = { target: target('crlf-new-request', 3) };
+    mounted.rerender(<CodeEditor {...props} />);
+    await waitFor(() => expect(selected()).toBe('needle'));
+  });
+
+  it('uses editor offsets for standalone CRLF search and next-match navigation', async () => {
+    state.content = 'first\r\nneedle one\r\nsecond\r\nneedle two';
+    state.context = null;
+    render(<CodeEditor {...props} />);
+    await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'File search' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Find in file' }), { target: { value: 'needle' } });
+    await waitFor(() => expect(selected()).toBe('needle'));
+    expect(view().state.selection.main.from).toBe(6);
+    fireEvent.click(screen.getByRole('button', { name: 'Next match' }));
+    expect(selected()).toBe('needle');
+    expect(view().state.selection.main.from).toBe('first\nneedle one\nsecond\n'.length);
+  });
+
   it('navigates once, preserves typing and highlight updates, and accepts a new request for the same hit', async () => {
     const mounted = render(<CodeEditor {...props} />);
     await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());

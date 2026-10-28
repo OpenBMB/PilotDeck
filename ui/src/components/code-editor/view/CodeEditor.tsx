@@ -143,9 +143,12 @@ export default function CodeEditor({
     return api.projectPreviewUrl(projectName, file.path, projectPath);
   }, [file.path, isHtmlFile, projectName, projectPath]);
 
+  // CodeMirror represents CRLF and CR as LF. Search, synchronization and the
+  // rendered buffer must share those offsets; retain raw content for saving.
+  const editorContent = useMemo(() => content.replace(/\r\n?/g, '\n'), [content]);
   const textSearchMatches = useMemo(
-    () => findTextSearchMatches(content, searchQuery),
-    [content, searchQuery],
+    () => findTextSearchMatches(editorContent, searchQuery),
+    [editorContent, searchQuery],
   );
 
   useEffect(() => {
@@ -154,8 +157,8 @@ export default function CodeEditor({
       || consumedGlobalRequest.current === globalSearchTarget.requestId
       || !file.path.replace(/\\/g, '/').endsWith(globalSearchTarget.path || '\0')) return;
     const query = globalSearchTarget.line ? globalSearchTarget.query : '';
-    const matches = findTextSearchMatches(content, query);
-    const lineStart = content.split('\n').slice(0, Math.max(0, (globalSearchTarget.line || 1) - 1))
+    const matches = findTextSearchMatches(editorContent, query);
+    const lineStart = editorContent.split('\n').slice(0, Math.max(0, (globalSearchTarget.line || 1) - 1))
       .reduce((sum, line) => sum + line.length + 1, 0);
     const matchIndex = matches.findIndex(match => match.from >= lineStart);
     consumedGlobalRequest.current = globalSearchTarget.requestId;
@@ -164,7 +167,7 @@ export default function CodeEditor({
     setSearchNavigation({ query, index: Math.max(0, matchIndex) });
     setSearchOpen(false);
     if (query) { setMarkdownPreview(false); setHtmlPreview(false); }
-  }, [globalSearchTarget, isActive, contentReady, projectName, file.path, content]);
+  }, [globalSearchTarget, isActive, contentReady, projectName, file.path, editorContent]);
   const {
     matchCount: markdownSearchMatchCount,
     highlightStyles: markdownSearchHighlightStyles,
@@ -246,14 +249,14 @@ export default function CodeEditor({
       || !isActive || loading
       || !searchNavigation
       || appliedSearchNavigation.current === searchNavigation
-      || editorView.state.doc.toString() !== content
+      || editorView.state.doc.toString() !== editorContent
     ) {
       return;
     }
     // Document changes refresh decorations above, but must never take the
     // selection away from typing. Only explicit navigation requests select.
     appliedSearchNavigation.current = searchNavigation;
-    const matches = findTextSearchMatches(content, searchNavigation.query);
+    const matches = findTextSearchMatches(editorContent, searchNavigation.query);
     const match = matches[Math.min(searchNavigation.index, matches.length - 1)];
     if (!match) return;
     editorView.dispatch({
@@ -266,7 +269,7 @@ export default function CodeEditor({
     markdownPreview,
     isActive,
     loading,
-    content,
+    editorContent,
     searchNavigation,
   ]);
 
@@ -509,7 +512,7 @@ export default function CodeEditor({
 
           <div className="flex-1 overflow-hidden">
             <CodeEditorSurface
-              content={content}
+              content={editorContent}
               onChange={setContent}
               markdownPreview={markdownPreview}
               isMarkdownFile={isMarkdownFile}
