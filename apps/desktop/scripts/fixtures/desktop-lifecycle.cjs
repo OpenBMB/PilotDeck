@@ -150,6 +150,11 @@ if (process.argv.includes('--tray-second-instance')) {
     assert.ok(tray && !tray.isDestroyed());
     if (scenario === 'notification-badge') {
       await until(() => window.isFocused(), 'main window receives native focus');
+      // Windows can serve the tiny fixture UI before the separately managed
+      // gateway process starts. Wait for both children so quit verification is
+      // testing cleanup of running processes, not racing startup cancellation.
+      await until(() => ['.task', '.gateway'].every(suffix => fs.existsSync(process.env.PILOTDECK_TRAY_TEST_PID + suffix)),
+        'isolated runtime children are ready before badge assertions');
       await window.webContents.executeJavaScript("window.pilotdeckDesktop.setNotificationScope('1')");
       const reminder = (id, taskId = id, createdAt = new Date(Date.now() + 1).toISOString()) => ({
         id, title: 'Isolated task', body: 'No OS banner is sent by this fixture', silent: true,
