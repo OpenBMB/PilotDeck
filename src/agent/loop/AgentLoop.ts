@@ -369,7 +369,7 @@ export class AgentLoop {
     ): Promise<{ error: ReturnType<typeof agentError>; result: AgentTurnResult }> => {
       const error = agentError(
         "agent_context_recovery_failed",
-        compact.error ?? "context_overflow_after_emergency_compaction",
+        describeContextOverflowAfterEmergency(compact.snapshot),
         {
           code: compact.error,
           snapshot: compact.snapshot,
@@ -3332,8 +3332,12 @@ function createModelRequestFailedStatus(args: {
   modelError?: CanonicalModelError;
 }): AgentStatusMessage {
   const providerMessage = args.error.message || args.modelError?.message || "The model request failed, so this turn has stopped.";
-  const text = formatModelRequestFailureMessage(providerMessage, args.modelError);
-  const action = modelFailureAction(args.modelError);
+  // Context recovery failures have no provider error attached; without this
+  // they would fall through to the generic provider-settings advice (#678).
+  const action = !args.modelError && args.error.code === "agent_context_recovery_failed"
+    ? contextOverflowFailureAction()
+    : modelFailureAction(args.modelError);
+  const text = formatModelRequestFailureMessage(providerMessage, args.modelError, action);
   return {
     event: "model_request_failed",
     kind: "error",
@@ -3361,10 +3365,18 @@ function createModelRequestFailedStatus(args: {
   };
 }
 
-export function formatModelRequestFailureMessage(providerMessage: string, error: CanonicalModelError | undefined): string {
+export function formatModelRequestFailureMessage(
+  providerMessage: string,
+  error: CanonicalModelError | undefined,
+  action: { shortAction: string } = modelFailureAction(error),
+): string {
   const cleanMessage = providerMessage.trim() || "The model request failed.";
-  const action = modelFailureAction(error);
   return `${cleanMessage}\n\n${action.shortAction}`;
+}
+
+function describeContextOverflowAfterEmergency(snapshot: TokenBudgetSnapshot): string {
+  const limit = snapshot.effectiveContextTokens ?? snapshot.maxContextTokens;
+  return `The context is still over the input budget after emergency compaction (tokens=${snapshot.tokens}, limit=${limit}).`;
 }
 
 export function modelFailureAction(error: CanonicalModelError | undefined): {
@@ -3410,8 +3422,7 @@ export function modelFailureAction(error: CanonicalModelError | undefined): {
     || error.code === "context_overflow"
     || error.code === "context_overflow_after_emergency_compaction"
   ) {
-    const hint = "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.";
-    return modelFailureActionResult(hint, "prompt", "contextOverflow");
+    return contextOverflowFailureAction();
   }
   if (error.code === "payload_too_large" || error.code === "request_too_large") {
     const hint = "Reduce attachments/context size, run /compact, or start a new session before retrying.";
@@ -3432,6 +3443,11 @@ export function modelFailureAction(error: CanonicalModelError | undefined): {
 
   const hint = `Check Settings → Model Provider for base URL/API key/model and timeoutMs. If settings look correct, check local network/proxy and provider API status/logs.`;
   return modelFailureActionResult(hint, "settings", "settingsDefault");
+}
+
+function contextOverflowFailureAction(): ReturnType<typeof modelFailureActionResult> {
+  const hint = "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.";
+  return modelFailureActionResult(hint, "prompt", "contextOverflow");
 }
 
 function modelFailureActionResult(
