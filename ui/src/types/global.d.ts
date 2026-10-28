@@ -20,7 +20,8 @@ declare global {
       getNotificationStatus?: () => Promise<DesktopNotificationStatus & { preferences: NotificationPreferences }>;
       setNotificationPreferences?: (value: NotificationPreferences) => Promise<NotificationPreferences>;
       showNotification?: (value: SystemNotification) => Promise<boolean>;
-      setNotificationBadge?: (count: number) => Promise<void>;
+      recordTaskReminder?: (value: SystemNotification) => Promise<boolean>;
+      setNotificationScope?: (scope: string | null) => Promise<void>;
       openNotificationSettings?: () => Promise<boolean>;
       onNotificationNavigate?: (callback: (data: SystemNotification['data']) => void) => () => void;
       getZoomFactor?: () => number;

@@ -5,6 +5,16 @@ import { buildSystemNotification, notificationText } from '../shared/notificatio
 
 const frame = (kind, fields = {}) => ({ id: 'frame', sessionId: 's1', runId: 'r1', kind, ...fields });
 describe('session notification events', () => {
+  it('correlates approvals, questions and completion with one task, including queued failures', () => {
+    const registry = createSessionNotificationRegistry();
+    const question = registry.receive(1, frame('permission_request', { requestId: 'q1', toolName: 'AskUserQuestion' }));
+    const approval = registry.receive(1, frame('permission_request', { requestId: 'p1', toolName: 'shell' }));
+    const complete = registry.receive(1, frame('complete', { finishReason: 'completed' }));
+    expect([question.taskId, approval.taskId, complete.taskId]).toEqual(['r1', 'r1', 'r1']);
+    expect(buildSystemNotification(question).data.taskId).toBe('r1');
+    expect(registry.receive(1, { type: 'input-queue-state', sessionId: 's1', items: [{ id: 'input-2', runId: 'r2', status: 'failed' }] }).taskId).toBe('r2');
+    expect(registry.receive(1, { type: 'input-queue-state', sessionId: 's1', items: [{ id: 'input-3', status: 'delivery_uncertain' }] }).taskId).toBe('input-3');
+  });
   it('orders distinct reminders with tied, missing or backward source timestamps', () => {
     const registry = createSessionNotificationRegistry();
     const times = ['2026-10-27T03:00:00Z', '2026-10-27T03:00:00Z', '2026-10-27T02:00:00Z', 'invalid'];

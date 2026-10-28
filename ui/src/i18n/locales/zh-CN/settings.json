@@ -6,7 +6,7 @@
     "sound": "通知提示音",
     "soundDescription": "使用系统默认提示音，声音同时受系统设置影响。",
     "badge": "显示应用图标角标",
-    "badgeDescription": "显示有未查看提醒的对话数量，查看后自动减少。",
+    "badgeDescription": "显示本次后台期间收到提醒的任务数，返回主窗口后清零。会话未读状态单独保留。",
     "preview": "显示消息预览",
     "previewDescription": "在通知中显示回复或问题摘要。关闭后仍显示对话名称和操作提示。",
     "systemSettings": "系统通知设置",

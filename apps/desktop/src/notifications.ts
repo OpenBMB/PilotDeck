@@ -18,9 +18,11 @@ export function validateNotification(value: unknown): SystemNotification {
   if (!item || typeof item.id !== 'string' || item.id.length > 512 ||
       typeof item.title !== 'string' || typeof item.body !== 'string' ||
       typeof item.data?.sessionId !== 'string' || !item.data.sessionId || item.data.sessionId.length > 512 ||
-      typeof item.data?.scope !== 'string') throw new Error('Invalid notification');
+      typeof item.data?.scope !== 'string' ||
+      (item.data.taskId !== undefined && (typeof item.data.taskId !== 'string' || !item.data.taskId || item.data.taskId.length > 512))) throw new Error('Invalid notification');
   return { id: item.id, title: item.title.slice(0, 80), body: item.body.slice(0, 400), silent: item.silent === true,
-    data: { sessionId: item.data.sessionId, eventId: item.id, scope: item.data.scope, kind: item.data.kind } };
+    data: { sessionId: item.data.sessionId, eventId: item.id, scope: item.data.scope, kind: item.data.kind,
+      taskId: item.data.taskId, createdAt: item.data.createdAt } };
 }
 
 /** A small bitmap avoids an SVG renderer or a new native dependency on Windows. */
@@ -52,6 +54,7 @@ export function badgeBitmap(count: number): Buffer {
 type NativeNotification = Pick<import('electron').Notification, 'on' | 'show' | 'close'>;
 export function createDesktopNotifications(options: {
   platform: string; supported: () => boolean; read: () => unknown; save: (preferences: NotificationPreferences) => void;
+  isForeground: () => boolean; now?: () => number;
   create: (payload: SystemNotification) => NativeNotification;
   setBadge: (count: number) => unknown; setOverlay: (bitmap: Buffer | null, label: string) => void;
   setTrayBadge?: (count: number) => void;
@@ -59,38 +62,81 @@ export function createDesktopNotifications(options: {
 }) {
   let preferences = normalizePreferences(options.read());
   const seen = new Set<string>();
+  const reminded = new Set<string>();
   const active = new Map<string, NativeNotification>();
+  // Ephemeral application awareness, independent of persistent conversation unread dots.
+  const backgroundTasks = new Set<string>();
+  const now = options.now || Date.now;
+  let acknowledgedAt = now();
+  let scope: string | null = null;
   let lastSound = 0;
-  let count = 0;
-  function badge(value: unknown) {
-    count = typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? Math.min(value, 9999) : 0;
-    const displayed = preferences.badge ? count : 0;
+  function refreshBadge() {
+    const displayed = preferences.badge ? backgroundTasks.size : 0;
     options.setTrayBadge?.(displayed);
-    if (options.platform === 'win32') options.setOverlay(displayed ? badgeBitmap(displayed) : null, displayed ? `${displayed} conversations need attention` : '');
+    if (options.platform === 'win32') options.setOverlay(displayed ? badgeBitmap(displayed) : null, displayed ? `${displayed} background tasks need attention` : '');
     else options.setBadge(displayed);
   }
+  function foreground() {
+    acknowledgedAt = now();
+    backgroundTasks.clear();
+    refreshBadge();
+  }
+  function current(payload: SystemNotification) {
+    const createdAt = Date.parse(payload.data.createdAt || '');
+    // A delayed event from before startup/focus must not restore an old badge.
+    return payload.data.scope === scope && Number.isFinite(createdAt) && createdAt >= acknowledgedAt;
+  }
+  function record(payload: SystemNotification) {
+    if (!current(payload)) return false;
+    const key = JSON.stringify([scope, payload.data.sessionId, payload.id]);
+    if (reminded.has(key)) return false;
+    reminded.add(key);
+    if (reminded.size > 4096) reminded.delete(reminded.values().next().value!);
+    if (!options.isForeground() && Number.isFinite(Date.parse(payload.data.createdAt || ''))) {
+      const task = JSON.stringify([scope, payload.data.sessionId, payload.data.taskId || payload.id]);
+      if (backgroundTasks.size < 9999) backgroundTasks.add(task);
+      refreshBadge();
+    }
+    return true;
+  }
   return {
+    foreground,
+    record(value: unknown) { return record(validateNotification(value)); },
+    setScope(value: unknown) {
+      if (value !== null && (typeof value !== 'string' || !value || value.length > 512)) throw new Error('Invalid notification scope');
+      if (value === scope) return;
+      const changingAccount = scope !== null;
+      scope = value as string | null;
+      // First binding uses the process/focus baseline already established. An
+      // event can arrive with that first binding and must not be lost to IPC latency.
+      if (changingAccount || value === null) foreground();
+      else refreshBadge();
+      active.forEach(item => item.close());
+      active.clear();
+    },
     status: () => ({ supported: options.supported(), permission: 'unknown' as const, preferences }),
     preferences(value: unknown) {
       const next = normalizePreferences(value);
       options.save(next);
       preferences = next;
-      badge(count);
+      refreshBadge();
       if (!preferences.enabled) { active.forEach(item => item.close()); active.clear(); }
       return preferences;
     },
-    badge,
     show(value: unknown) {
-      if (!preferences.enabled || !options.supported()) return false;
       const payload = validateNotification(value);
+      if (!current(payload)) return false;
+      record(payload);
       if (!preferences.preview) payload.body = payload.body.split('\n')[0];
       const key = JSON.stringify([payload.data.scope, payload.data.sessionId, payload.id]);
       if (seen.has(key)) return false;
       seen.add(key);
       if (seen.size > 4096) seen.delete(seen.values().next().value!);
-      const now = Date.now();
-      payload.silent = !preferences.sound || payload.silent || now - lastSound < 2000;
-      if (!payload.silent) lastSound = now;
+      // Badge preference is independent of banners and OS notification support.
+      if (!preferences.enabled || !options.supported()) return false;
+      const timestamp = now();
+      payload.silent = !preferences.sound || payload.silent || timestamp - lastSound < 2000;
+      if (!payload.silent) lastSound = timestamp;
       const sessionKey = JSON.stringify([payload.data.scope, payload.data.sessionId]);
       active.get(sessionKey)?.close();
       const notification = options.create(payload);

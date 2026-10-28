@@ -115,7 +115,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            dbus-x11 desktop-file-utils fonts-noto-cjk weston x11-utils xauth xvfb
+            dbus-x11 desktop-file-utils fonts-noto-cjk openbox weston x11-utils xauth xvfb
 
       - name: Install DEB and exercise bundled native modules
         env:
@@ -128,6 +128,9 @@ jobs:
 
       - name: Smoke installed app under X11
         run: bash apps/desktop/scripts/run-linux-display-smoke.sh x11
+
+      - name: Verify task badges and native foreground acknowledgement
+        run: bash apps/desktop/scripts/run-linux-badge-smoke.sh
 
       - name: Smoke installed app under Wayland
         run: bash apps/desktop/scripts/run-linux-display-smoke.sh wayland

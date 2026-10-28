@@ -1,4 +1,4 @@
-import type { NotificationPreferences, SystemNotification } from '../../shared/notifications';
+import type { SystemNotification } from '../../shared/notifications';
 
 export async function notificationWorkerMessage(type: string, value: unknown) {
   if (window.pilotdeckDesktop || !('serviceWorker' in navigator)) return undefined;
@@ -29,12 +29,10 @@ export async function showSystemNotification(payload: SystemNotification) {
   return true;
 }
 
-const originalTitle = typeof document === 'undefined' ? 'PilotDeck' : document.title;
-export async function setSystemBadge(count: number, preferences: NotificationPreferences) {
-  const value = preferences.badge ? count : 0;
-  if (window.pilotdeckDesktop?.setNotificationBadge) return window.pilotdeckDesktop.setNotificationBadge(value);
-  document.title = value ? `(${value}) ${originalTitle}` : originalTitle;
-  const badge = navigator as Navigator & { setAppBadge?: (count: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
-  if (value) await badge.setAppBadge?.(value);
-  else await badge.clearAppBadge?.();
+/** Web/PWA has no global counter. Clear badges left by an older deployment. */
+export async function clearWebNotificationBadge() {
+  if (window.pilotdeckDesktop) return;
+  document.title = 'PilotDeck';
+  const badge = navigator as Navigator & { clearAppBadge?: () => Promise<void> };
+  await badge.clearAppBadge?.();
 }

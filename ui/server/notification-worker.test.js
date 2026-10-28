@@ -82,12 +82,25 @@ function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, 
 const event = (id, minute, scope = '1') => ({ id, sessionId: 's1', scope, kind: 'completed', createdAt: `2026-10-27T03:0${minute}:00Z` });
 const record = event => ({ id: event.id, sessionId: event.sessionId, createdAt: event.createdAt });
 
+it('clears a legacy PWA badge while preserving pending conversation unread records', async () => {
+  const surfaces = { shown: [], forwarded: [], badge: 25, visible: false };
+  const pending = Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`old-${i}`, { ...record(event('old', 1)), sessionId: `old-${i}` }]));
+  const w = worker({ value: { seen: [], pending, scope: '1', preferences: { enabled: true }, lastSound: 0 } }, surfaces);
+  await w.preferences();
+  expect(surfaces.badge).toBe(0);
+  expect(await w.pending()).toHaveLength(25);
+  expect(surfaces.shown).toHaveLength(0);
+  await w.push(event('fresh', 3));
+  expect(surfaces.badge).toBe(0);
+  expect(surfaces.shown).toHaveLength(1);
+});
+
 it('keeps an already-read conversation clear when an older push arrives after a worker restart', async () => {
   let w = worker();
   await w.preferences();
   const newer = event('r2', 2);
   await w.push(newer);
-  expect(w.surfaces.badge).toBe(1);
+  expect(w.surfaces.badge).toBe(0);
   await w.read([record(newer)]);
   expect(w.surfaces.badge).toBe(0);
   expect(w.surfaces.shown[0].close).toHaveBeenCalledOnce();
@@ -98,7 +111,7 @@ it('keeps an already-read conversation clear when an older push arrives after a 
   expect(w.surfaces.shown).toHaveLength(1);
   expect(w.surfaces.forwarded).toHaveLength(1);
   await w.push(event('r3', 3));
-  expect(w.surfaces.badge).toBe(1);
+  expect(w.surfaces.badge).toBe(0);
   expect(w.surfaces.shown).toHaveLength(2);
 });
 it('preserves newer pending events and lets newer read progress clear an older, different event ID', async () => {
@@ -123,7 +136,7 @@ it('does not let a late read acknowledgement clear a newer pending event', async
   await w.push(event('r3', 3));
   await w.read([record(event('r1', 1))]);
   expect(await w.pending()).toEqual([record(event('r3', 3))]);
-  expect(w.surfaces.badge).toBe(1);
+  expect(w.surfaces.badge).toBe(0);
   expect(w.surfaces.shown[0].closed).toBe(false);
 });
 it('persists foreground read progress without showing a notification', async () => {

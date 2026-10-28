@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { buildSystemNotification, type SessionNotification } from '../../shared/notifications';
-import { notificationWorkerMessage, setSystemBadge, showSystemNotification } from '../lib/systemNotifications';
+import { clearWebNotificationBadge, notificationWorkerMessage, showSystemNotification } from '../lib/systemNotifications';
 import { useNotificationPreferences, getNotificationPreferences } from './useNotificationPreferences';
 import { syncWebPush } from './useWebPush';
 
@@ -28,10 +28,14 @@ export function useSystemNotifications({ store, viewedSessionId, scope, subscrib
   namesRef.current = sessionNames;
   const serverScope = useRef<string | null>(null);
   const connectedOnce = useRef(false);
+  const activeTasks = useRef(new Map<string, string>());
   const seen = useRef(new Set<string>());
   useEffect(() => {
     try { seen.current = new Set(JSON.parse(localStorage.getItem(`pilotdeck-notified-v1:${scope}`) || '[]')); }
     catch { seen.current = new Set(); }
+  }, [scope]);
+  useEffect(() => {
+    void clearWebNotificationBadge().catch(() => {});
   }, [scope]);
   useEffect(() => {
     serverScope.current = null;
@@ -49,18 +53,29 @@ export function useSystemNotifications({ store, viewedSessionId, scope, subscrib
       if (!event || typeof event.id !== 'string' || !event.sessionId) return;
       store.receive({ type: 'session-attention', activity: { sessionId: event.sessionId, attentionId: event.id, attentionAt: event.createdAt } });
       const duplicate = remember(event);
+      const prefs = getNotificationPreferences();
+      const payload = buildSystemNotification({ ...event, sessionName: namesRef.current?.[event.sessionId] || event.sessionName }, prefs, languageRef.current);
+      // Application awareness is independent of which conversation is unread,
+      // banner preferences, and the renderer's idea of native window focus.
+      if (!duplicate) void window.pilotdeckDesktop?.recordTaskReminder?.(payload).catch(() => {});
       const record = store.readRecords()[event.sessionId];
       // The store may reject an out-of-order event or already have read it from
       // the activity stream. Neither case should display another notification.
       if (record?.runId !== event.id || !record.unread) return;
       if (viewing(event.sessionId)) { store.markRead(event.sessionId, event.id); return; }
-      const prefs = getNotificationPreferences();
-      if (!duplicate && prefs.enabled) void showSystemNotification(buildSystemNotification({ ...event, sessionName: namesRef.current?.[event.sessionId] || event.sessionName }, prefs, languageRef.current)).catch(error => console.warn('Notification delivery failed:', error));
+      if (!duplicate && prefs.enabled) void showSystemNotification(payload).catch(error => console.warn('Notification delivery failed:', error));
     };
     const unsubscribe = subscribe(message => {
       store.receive(message);
+      if (message.type === 'session-activity-snapshot') activeTasks.current.clear();
+      const activities = message.type === 'session-activity-snapshot' ? message.activities : message.type === 'session-activity' ? [message.activity] : [];
+      if (Array.isArray(activities)) for (const activity of activities) {
+        if (activity?.processing && typeof activity.runId === 'string') activeTasks.current.set(activity.sessionId, activity.runId);
+        else if (activity?.processing === false) activeTasks.current.delete(activity.sessionId);
+      }
       if (message.type === 'session-activity-snapshot' && typeof message.scope === 'string') {
         serverScope.current = message.scope;
+        void window.pilotdeckDesktop?.setNotificationScope?.(message.scope).catch(() => {});
         void notificationWorkerMessage('notification:preferences', { preferences: getNotificationPreferences(), scope: message.scope })
           .then(() => notificationWorkerMessage('notification:read', { scope: message.scope,
             records: Object.entries(store.readRecords()).filter(([, value]) => !value.unread).map(([sessionId, value]) => ({ sessionId, id: value.runId, createdAt: value.attentionAt })) }))
@@ -70,7 +85,12 @@ export function useSystemNotifications({ store, viewedSessionId, scope, subscrib
             acknowledgeVisible();
           }).catch(() => {});
       }
-      if (message.type === 'session-notification') { serverScope.current = message.notification.scope; receive(message.notification); }
+      if (message.type === 'session-notification') {
+        if (serverScope.current && message.notification.scope !== serverScope.current) return;
+        serverScope.current = message.notification.scope;
+        void window.pilotdeckDesktop?.setNotificationScope?.(message.notification.scope).catch(() => {});
+        receive(message.notification);
+      }
       // A foreground conversation is already being read.
       if (message.type === 'session-activity') acknowledgeVisible();
     });
@@ -90,8 +110,6 @@ export function useSystemNotifications({ store, viewedSessionId, scope, subscrib
   }, [store, scope, subscribe]);
   useEffect(() => {
     const sync = () => {
-      const snapshot = store.getSnapshot();
-      void setSystemBadge(snapshot.unreadSessionIds.size, preferences).catch(() => { /* Unsupported shell or browser. */ });
       if (serverScope.current) void notificationWorkerMessage('notification:read', { scope: serverScope.current,
         records: Object.entries(store.readRecords()).filter(([, value]) => !value.unread).map(([sessionId, value]) => ({ sessionId, id: value.runId, createdAt: value.attentionAt })) });
     };
@@ -122,9 +140,13 @@ export function useSystemNotifications({ store, viewedSessionId, scope, subscrib
       for (const sessionId of store.getSnapshot().processingSessions) {
         const id = `disconnected:${now}`;
         store.receive({ type: 'session-attention', activity: { sessionId, attentionId: id, attentionAt: now } });
-        if (sessionId === viewRef.current && document.visibilityState === 'visible' && document.hasFocus()) { store.markRead(sessionId, id); continue; }
         const prefs = getNotificationPreferences();
-        if (prefs.enabled) void showSystemNotification(buildSystemNotification({ id, sessionId, sessionName: namesRef.current?.[sessionId], scope: serverScope.current || scope, kind: 'disconnected', createdAt: now }, prefs, languageRef.current)).catch(() => {});
+        const payload = buildSystemNotification({ id, sessionId,
+          taskId: activeTasks.current.get(sessionId) || sessionId, sessionName: namesRef.current?.[sessionId],
+          scope: serverScope.current || scope, kind: 'disconnected', createdAt: now }, prefs, languageRef.current);
+        void window.pilotdeckDesktop?.recordTaskReminder?.(payload).catch(() => {});
+        if (sessionId === viewRef.current && document.visibilityState === 'visible' && document.hasFocus()) { store.markRead(sessionId, id); continue; }
+        if (prefs.enabled) void showSystemNotification(payload).catch(() => {});
       }
     }, 15000);
     return () => window.clearTimeout(timer);
@@ -132,5 +154,4 @@ export function useSystemNotifications({ store, viewedSessionId, scope, subscrib
   useEffect(() => {
     if (viewedSessionId && document.visibilityState === 'visible' && document.hasFocus()) store.markRead(viewedSessionId);
   }, [viewedSessionId, store]);
-  useEffect(() => () => { void setSystemBadge(0, getNotificationPreferences()).catch(() => {}); }, [scope]);
 }

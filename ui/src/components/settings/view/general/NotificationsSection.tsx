@@ -25,7 +25,7 @@ export default function NotificationsSection() {
         <SettingsToggle checked={preferences.enabled} disabled={busy || (!status.supported && !preferences.enabled)} showSuccessToast={false}
           ariaLabel={t('systemNotifications.enabled')} onChange={value => { void run(() => enable(value)); }} />
       </GeneralSettingRow>
-      {(['sound', 'badge', 'preview'] as const).map(key => <GeneralSettingRow key={key}
+      {(desktop ? ['sound', 'badge', 'preview'] as const : ['sound', 'preview'] as const).map(key => <GeneralSettingRow key={key}
         title={t(`systemNotifications.${key}`)} detail={t(`systemNotifications.${key}Description`)}>
         <SettingsToggle checked={preferences[key]} disabled={busy || (key !== 'badge' && !preferences.enabled)}
           showSuccessToast={false} ariaLabel={t(`systemNotifications.${key}`)}

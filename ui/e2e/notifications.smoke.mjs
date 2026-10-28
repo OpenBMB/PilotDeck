@@ -3,6 +3,7 @@ import { chromium, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import { buildSystemNotification } from '../shared/notifications.js';
 const artifacts = '/tmp/pilotdeck-notifications-qa';
+const origin = process.env.PILOTDECK_SMOKE_URL || 'http://127.0.0.1:5187';
 await fs.mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome' });
 const context = await browser.newContext({ permissions: ['notifications'], viewport: { width: 1440, height: 1000 } });
@@ -36,13 +37,13 @@ const mockApi = async route => {
 await page.route('**/api/**', mockApi);
 await page.addInitScript(() => { localStorage.setItem('userLanguage', 'zh-CN'); if (!localStorage.getItem('themeMode')) localStorage.setItem('themeMode', 'light'); });
 try {
-  await page.goto('http://127.0.0.1:5187/settings/general');
+  await page.goto(`${origin}/settings/general`);
   const card = page.getByRole('article', { name: '通知', exact: true });
   await expect(card).toBeVisible({ timeout: 25000 });
-  await expect(card.getByRole('switch')).toHaveCount(4);
+  await expect(card.getByRole('switch')).toHaveCount(3);
   await expect(card.getByRole('button', { name: /测试/ })).toHaveCount(0);
   await expect(card.getByRole('switch', { name: '通知提示音', exact: true })).toBeDisabled();
-  await expect(card.getByRole('switch', { name: '显示应用图标角标', exact: true })).toBeEnabled();
+  await expect(card.getByRole('switch', { name: '显示应用图标角标', exact: true })).toHaveCount(0);
   await page.evaluate(() => navigator.serviceWorker.ready);
   const worker = context.serviceWorkers()[0];
   await worker.evaluate(() => {
@@ -55,7 +56,7 @@ try {
   const notification = { id: 'r1', sessionId: 's1', scope: '1', kind: 'completed', sessionName: 'Report', preview: 'Report is ready', createdAt: new Date().toISOString() };
   socket.send(JSON.stringify({ type: 'session-notification', notification }));
   await expect.poll(() => worker.evaluate(() => self.__notifications.length)).toBe(1);
-  await expect(page).toHaveTitle(/^\(1\)/);
+  await expect(page).toHaveTitle('PilotDeck');
   // A Web Push copy of the same event must not display a second notification.
   await worker.evaluate(async payload => { await showNotificationOnce(payload); }, buildSystemNotification(notification, {}, 'zh-CN'));
   expect(await worker.evaluate(() => self.__notifications.length)).toBe(1);
@@ -66,12 +67,12 @@ try {
   const displayed = await worker.evaluate(() => self.__notifications.at(-1));
   expect(displayed.body).not.toContain('Sensitive question');
   expect(displayed.body).toContain('请回答后继续');
-  await expect(page).toHaveTitle(/^\(1\)/);
+  await expect(page).toHaveTitle('PilotDeck');
   await card.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${artifacts}/settings-web-light.png`, fullPage: true });
-  await page.goto('http://127.0.0.1:5187/settings/appearance');
+  await page.goto(`${origin}/settings/appearance`);
   await page.locator('[data-mode=dark]').click();
-  await page.goto('http://127.0.0.1:5187/settings/general');
+  await page.goto(`${origin}/settings/general`);
   await page.getByRole('article', { name: '通知', exact: true }).scrollIntoViewIfNeeded();
   await expect(page.locator('html')).toHaveClass(/dark/);
   await page.screenshot({ path: `${artifacts}/settings-web-dark.png`, fullPage: true });
@@ -79,7 +80,7 @@ try {
   expect(await worker.evaluate(() => notificationState(state => Object.keys(state.pending).length))).toBe(1);
   await page.reload();
   await expect(page.getByRole('article', { name: '通知', exact: true })).toBeVisible();
-  await expect(page).toHaveTitle(/^\(1\)/);
+  await expect(page).toHaveTitle('PilotDeck');
   // Click routing focuses the existing page and navigates to the right conversation.
   await worker.evaluate(async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -87,7 +88,7 @@ try {
   });
   await expect(page).toHaveURL(/\/session\/s1$/);
   expect(errors).toEqual([]);
-  console.log('Browser settings, live delivery, persistent deduplication, previews, conversation counts and click routing passed.');
+  console.log('Browser settings, notifications, persistent unread indicators, previews, stable title and click routing passed.');
   for (const platform of ['darwin', 'win32', 'linux']) {
     const nativeContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
     await nativeContext.addInitScript(platform => {
@@ -95,6 +96,7 @@ try {
       localStorage.setItem('userLanguage', 'zh-CN');
       window.__notifications = [];
       window.__badge = 0;
+      window.__tasks = new Set();
       window.__settingsOpened = 0;
       window.__preferences = { enabled: false, sound: true, preview: true, badge: true };
       window.pilotdeckDesktop = {
@@ -102,9 +104,10 @@ try {
         getNotificationStatus: async () => ({ supported: true, permission: 'unknown', preferences: window.__preferences }),
         setNotificationPreferences: async value => { window.__preferences = value; return value; },
         showNotification: async value => { window.__notifications.push(value); return true; },
-        setNotificationBadge: async count => { window.__badge = count; },
+        setNotificationScope: async () => {},
+        recordTaskReminder: async value => { window.__tasks.add(JSON.stringify([value.data.scope, value.data.sessionId, value.data.taskId || value.id])); window.__badge = window.__preferences.badge ? window.__tasks.size : 0; return true; },
         openNotificationSettings: async () => { window.__settingsOpened++; return true; },
-        onNotificationNavigate: callback => { window.__navigateNotification = callback; return () => {}; },
+        onNotificationNavigate: callback => { window.__navigateNotification = data => { window.__badge = 0; window.__tasks.clear(); callback(data); }; return () => {}; },
       };
     }, platform);
     const nativePage = await nativeContext.newPage();
@@ -113,7 +116,7 @@ try {
     await nativePage.routeWebSocket('**/ws**', ws => { nativeSocket = ws; ws.onMessage(raw => {
       if (JSON.parse(raw).type === 'get-session-activity') ws.send(JSON.stringify({ type: 'session-activity-snapshot', scope: '1', activities: [] }));
     }); });
-    await nativePage.goto('http://127.0.0.1:5187/settings/general');
+    await nativePage.goto(`${origin}/settings/general`);
     const nativeCard = nativePage.getByRole('article', { name: '通知', exact: true });
     await expect(nativeCard).toBeVisible();
     await nativeCard.getByRole('button', { name: '前往系统设置', exact: true }).click();

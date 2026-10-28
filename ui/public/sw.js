@@ -87,7 +87,7 @@ self.addEventListener('activate', event => {
           .filter(name => name !== CACHE_NAME)
           .map(name => caches.delete(name))
       )
-    )
+    ).then(() => updateNotificationBadge())
   );
   self.clients.claim();
 });
@@ -124,12 +124,11 @@ function serializeNotifications(action) {
   notificationQueue = result;
   return result;
 }
-async function updateNotificationBadge(state) {
-  if (!('setAppBadge' in self.navigator)) return;
-  const count = state.preferences?.badge === false ? 0 : Object.keys(state.pending).length;
+async function updateNotificationBadge() {
+  // Pending conversations still restore sidebar unread dots, but web/PWA never
+  // publishes a global count. Also remove badges from earlier worker versions.
   try {
-    if (count) await self.navigator.setAppBadge(count);
-    else await self.navigator.clearAppBadge();
+    await self.navigator.clearAppBadge?.();
   } catch { /* Badging is optional in browsers and desktop environments. */ }
 }
 async function isConversationVisible(data) {

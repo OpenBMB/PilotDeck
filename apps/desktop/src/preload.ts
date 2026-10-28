@@ -20,7 +20,8 @@ contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   getNotificationStatus: () => ipcRenderer.invoke('pilotdeck:notification-status'),
   setNotificationPreferences: (value: NotificationPreferences) => ipcRenderer.invoke('pilotdeck:notification-preferences', value),
   showNotification: (value: SystemNotification) => ipcRenderer.invoke('pilotdeck:notification-show', value),
-  setNotificationBadge: (count: number) => ipcRenderer.invoke('pilotdeck:notification-badge', count),
+  recordTaskReminder: (value: SystemNotification) => ipcRenderer.invoke('pilotdeck:notification-reminder', value),
+  setNotificationScope: (scope: string | null) => ipcRenderer.invoke('pilotdeck:notification-scope', scope),
   openNotificationSettings: () => ipcRenderer.invoke('pilotdeck:notification-settings'),
   onNotificationNavigate: (callback: (data: SystemNotification['data']) => void) => {
     const listener = (_event: IpcRendererEvent, data: SystemNotification['data']) => callback(data);
