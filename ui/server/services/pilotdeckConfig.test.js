@@ -20,6 +20,7 @@ import {
     buildRuntimeEnv,
     configRevision,
     normalizePilotDeckConfig,
+    maskSecrets,
     readPilotDeckConfigFile,
     resolveConfiguredProviderApiKey,
     resolveModel,
@@ -31,6 +32,22 @@ import {
 } from './pilotdeckConfig.js';
 
 const tempDirs = [];
+
+it('keeps search template references editable without exposing literal secrets or unrelated credentials', () => {
+    const result = maskSecrets({ apiKey: '{{apiKey}}', tools: { webSearch: { providers: { custom: {
+        apiKey: 'actual-secret', customProvider: {
+            headers: { Authorization: 'Bearer {{apiKey}}', 'X-API-Key': 'literal-secret' },
+            requestBody: { auth: [{ api_key: '{{apiKey}}' }], apiKey: 'prefix-secret{{query}}' },
+        },
+    } } } } });
+    expect(result.apiKey).toBe('********');
+    const custom = result.tools.webSearch.providers.custom;
+    expect(custom.apiKey).toBe('********');
+    expect(custom.customProvider.headers.Authorization).toBe('Bearer {{apiKey}}');
+    expect(custom.customProvider.headers['X-API-Key']).toBe('********');
+    expect(custom.customProvider.requestBody.auth[0].api_key).toBe('{{apiKey}}');
+    expect(custom.customProvider.requestBody.apiKey).toBe('********');
+});
 
 afterEach(() => {
     vi.unstubAllEnvs();

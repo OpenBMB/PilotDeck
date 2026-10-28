@@ -569,15 +569,21 @@ function isSecretKey(key) {
   return SECRET_EXACT_KEYS.has(key) || SECRET_KEY_RE.test(key);
 }
 
-export function maskSecrets(value) {
-  if (Array.isArray(value)) return value.map(maskSecrets);
+export function maskSecrets(value, fieldPath = []) {
+  if (Array.isArray(value)) return value.map(child => maskSecrets(child, fieldPath));
   if (!isRecord(value)) return value;
   const output = {};
   for (const [key, child] of Object.entries(value)) {
-    if (isSecretKey(key) && typeof child === 'string' && child.trim()) {
+    // Search templates contain references, not credentials. Keep only the exact
+    // supported reference syntax visible. Compound templates may also contain
+    // literal credentials; save/probe routes restore them only in the same scope.
+    const templateReference = fieldPath.includes('customProvider')
+      && fieldPath.some(field => ['headers', 'queryParams', 'requestBody'].includes(field))
+      && typeof child === 'string' && /^(?:Bearer )?\{\{\s*(?:apiKey|query|limit|gl)\s*\}\}$/.test(child);
+    if (isSecretKey(key) && typeof child === 'string' && child.trim() && !templateReference) {
       output[key] = MASK;
     } else {
-      output[key] = maskSecrets(child);
+      output[key] = maskSecrets(child, [...fieldPath, key]);
     }
   }
   return output;

@@ -1,0 +1,11 @@
+.custom-search-editor { border: 0; border-top: 1px solid var(--border-color, #8884); margin: 20px 0 0; padding: 20px 0 0; min-width: 0; }
+.custom-search-editor legend, .custom-search-editor h4 { font-weight: 600; }
+.custom-search-editor p { font-size: 13px; opacity: .8; margin: 8px 0 14px; }
+.custom-search-editor label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; margin-bottom: 14px; min-width: 0; }
+.custom-search-editor input, .custom-search-editor select, .custom-search-editor textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border-color, #8886); border-radius: 6px; padding: 8px; color: inherit; background: var(--bg-primary, transparent); }
+.custom-search-editor textarea, .custom-search-editor pre { font-family: monospace; font-size: 12px; resize: vertical; }
+.custom-search-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.custom-search-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.custom-search-editor pre { overflow: auto; max-height: 320px; padding: 12px; border: 1px solid #8884; border-radius: 6px; }
+.custom-search-editor [role=alert] { color: #dc2626; }
+@media (max-width: 600px) { .custom-search-grid { grid-template-columns: 1fr; } }

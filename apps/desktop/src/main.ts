@@ -1,3 +1,4 @@
+import { registerWindowsNotifications, TOAST_ACTIVATOR_CLSID } from './windowsNotifications';
 import { installRendererRecovery } from "./rendererRecovery";
 import { commandEnabled, emptyMenuState, normalizeMenuState, type DesktopCommand } from "./desktopCommands";
 import { isRendererEditingShortcut, windowChromeOptions, windowPalette, WINDOWS_CAPTION_HEIGHT } from "./windowChrome";
@@ -1294,6 +1295,7 @@ ipcMain.handle('pilotdeck:pick-files', (event, request: unknown) => {
 
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
+  app.setToastActivatorCLSID(TOAST_ACTIVATOR_CLSID);
 }
 
 const lifecycle = createDesktopLifecycle({
@@ -1333,6 +1335,9 @@ if (!ownsInstance) {
   });
   app.whenReady()
     .then(async () => {
+      if (process.platform === "win32" && app.isPackaged) {
+        await registerWindowsNotifications(APP_ID).catch(error => console.warn("Windows notification registration failed", error));
+      }
       if (process.platform === "win32" || process.platform === "darwin" || process.platform === "linux") {
         desktopTray = createDesktopTray({
           platform: process.platform,
@@ -1356,7 +1361,7 @@ if (!ownsInstance) {
             return new Tray(iconPath);
           },
           buildMenu: items => Menu.buildFromTemplate(items),
-          ...(process.platform !== 'darwin' ? { notificationImage: (count: number) => {
+          ...(process.platform === 'linux' ? { notificationImage: (count: number) => {
             const base = nativeImage.createFromPath(resolveAppIcon()!).resize({ width: 32, height: 32 });
             if (!count) return base;
             const bitmap = base.toBitmap();

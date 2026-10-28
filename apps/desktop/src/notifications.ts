@@ -1,6 +1,6 @@
 import type { SystemNotification, NotificationPreferences } from '../../../ui/shared/notifications';
 
-const defaults: NotificationPreferences = { enabled: false, sound: true, badge: true, preview: true };
+const defaults: NotificationPreferences = { enabled: true, sound: true, badge: true, preview: true };
 export function nativeNotificationOptions(platform: string, payload: SystemNotification): import('electron').NotificationConstructorOptions {
   return {
     title: payload.title, body: payload.body, silent: payload.silent,
@@ -73,7 +73,8 @@ export function createDesktopNotifications(options: {
   function refreshBadge() {
     const displayed = preferences.badge ? backgroundTasks.size : 0;
     options.setTrayBadge?.(displayed);
-    if (options.platform === 'win32') options.setOverlay(displayed ? badgeBitmap(displayed) : null, displayed ? `${displayed} background tasks need attention` : '');
+    // Windows uses native Toasts; clear the old hand-drawn taskbar overlay.
+    if (options.platform === 'win32') options.setOverlay(null, '');
     else options.setBadge(displayed);
   }
   function foreground() {

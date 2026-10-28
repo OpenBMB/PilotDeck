@@ -16,6 +16,7 @@ export default function NotificationsSection() {
     try { await operation(); } catch { setError(true); } finally { setBusy(false); }
   };
   const desktop = Boolean(window.pilotdeckDesktop);
+  const badgeSupported = desktop && window.pilotdeckDesktop?.platform !== 'win32';
   const permissionKey = !status.supported ? desktop ? 'unsupportedDesktop' : 'unsupported' : status.permission === 'denied' ? 'denied'
     : desktop ? 'systemControlled' : status.permission === 'granted' ? 'granted' : 'notGranted';
   return <section className="general-section">
@@ -25,7 +26,7 @@ export default function NotificationsSection() {
         <SettingsToggle checked={preferences.enabled} disabled={busy || (!status.supported && !preferences.enabled)} showSuccessToast={false}
           ariaLabel={t('systemNotifications.enabled')} onChange={value => { void run(() => enable(value)); }} />
       </GeneralSettingRow>
-      {(desktop ? ['sound', 'badge', 'preview'] as const : ['sound', 'preview'] as const).map(key => <GeneralSettingRow key={key}
+      {(badgeSupported ? ['sound', 'badge', 'preview'] as const : ['sound', 'preview'] as const).map(key => <GeneralSettingRow key={key}
         title={t(`systemNotifications.${key}`)} detail={t(`systemNotifications.${key}Description`)}>
         <SettingsToggle checked={preferences[key]} disabled={busy || (key !== 'badge' && !preferences.enabled)}
           showSuccessToast={false} ariaLabel={t(`systemNotifications.${key}`)}

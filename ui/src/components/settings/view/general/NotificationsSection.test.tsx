@@ -30,8 +30,8 @@ it('requests permission only on enable, handles denial, and hides desktop-only b
   await screen.findByText('systemNotifications.browserHelp');
   expect(screen.queryByRole('button', { name: /test notification/i })).toBeNull();
 });
-it('retains the independent badge setting in desktop clients', async () => {
-  window.pilotdeckDesktop = { platform: 'win32', getNotificationStatus: async () => ({ supported: true, permission: 'unknown',
+it('retains the independent badge setting on supported desktop platforms', async () => {
+  window.pilotdeckDesktop = { platform: 'darwin', getNotificationStatus: async () => ({ supported: true, permission: 'unknown',
     preferences: { enabled: false, sound: true, badge: true, preview: true } }),
     setNotificationPreferences: async value => value,
   } as NonNullable<Window['pilotdeckDesktop']>;
@@ -39,4 +39,9 @@ it('retains the independent badge setting in desktop clients', async () => {
   const badge = await screen.findByRole('switch', { name: 'systemNotifications.badge' });
   await waitFor(() => expect(badge.getAttribute('aria-checked')).toBe('true'));
   expect(badge.hasAttribute('disabled')).toBe(false);
+});
+it('hides the unsupported numeric badge setting on Windows EXE installs', () => {
+  window.pilotdeckDesktop = { platform: 'win32' } as NonNullable<Window['pilotdeckDesktop']>;
+  render(<NotificationsSection />);
+  expect(screen.queryByRole('switch', { name: 'systemNotifications.badge' })).toBeNull();
 });
