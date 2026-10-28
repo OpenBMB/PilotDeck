@@ -547,6 +547,10 @@ async function ensureRuntime(): Promise<RuntimeInfo> {
   return pending;
 }
 
+function isMainWindowForeground(): boolean {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused());
+}
+
 async function createOrShowWindow(): Promise<void> {
   if (isQuitting) return;
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -585,6 +589,13 @@ async function createOrShowWindow(): Promise<void> {
   const recoveryWindow = mainWindow;
   notifications.foreground(); // Clear stale OS badges when creating the main window.
   recoveryWindow.on('focus', () => notifications.foreground());
+  const acknowledgeRestore = () => setImmediate(() => {
+    // Window managers can deliver restoration and focus in different orders.
+    // Confirm native foreground state after restore/show as well.
+    if (mainWindow === recoveryWindow && isMainWindowForeground()) notifications.foreground();
+  });
+  recoveryWindow.on('restore', acknowledgeRestore);
+  recoveryWindow.on('show', acknowledgeRestore);
   let allowInitialShow = true;
   const cancelInitialShow = () => { allowInitialShow = false; };
   recoveryWindow.once("close", cancelInitialShow);
@@ -1020,7 +1031,7 @@ function requireUpdateSender(event: Electron.IpcMainEvent | Electron.IpcMainInvo
 }
 const notifications = createDesktopNotifications({
   platform: process.platform,
-  isForeground: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused()),
+  isForeground: isMainWindowForeground,
   supported: () => Notification.isSupported(),
   read: () => { try { return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'notifications.json'), 'utf8')); } catch { return null; } },
   save: value => fs.writeFileSync(path.join(app.getPath('userData'), 'notifications.json'), JSON.stringify(value)),

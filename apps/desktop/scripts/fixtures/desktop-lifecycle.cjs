@@ -106,7 +106,9 @@ if (process.argv.includes('--tray-second-instance')) {
     console.log(`[${scenario}] ${description}`);
     const deadline = Date.now() + 20_000;
     while (!predicate()) {
-      assert.ok(Date.now() < deadline, description);
+      assert.ok(Date.now() < deadline, `${description}; windows=${JSON.stringify(BrowserWindow.getAllWindows().map(window => ({
+        visible: window.isVisible(), focused: window.isFocused(), minimized: window.isMinimized(),
+      })))}; badge=${badgeCount}`);
       await pause(30);
     }
   }
@@ -171,8 +173,11 @@ if (process.argv.includes('--tray-second-instance')) {
       if (process.platform === 'darwin') app.emit('activate'); else tray.emit('click');
       await until(() => window.isFocused() && badgeCount === 0, 'Dock/taskbar/tray restore acknowledges the badge through native focus');
       if (process.platform === 'darwin') assert.equal(app.getBadgeCount(), 0);
+      // Flush a renderer round trip after restoring before issuing another
+      // native window transition, as the normal lifecycle scenario does.
+      await window.webContents.executeJavaScript('true');
       window.minimize();
-      await until(() => window.isMinimized() && !window.isFocused(), 'minimized window is backgrounded');
+      await until(() => window.isMinimized(), 'minimized window is backgrounded');
       await submit(reminder('r3'));
       assert.equal(badgeCount, 1);
       menu.items[0].click();

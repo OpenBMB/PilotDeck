@@ -21,7 +21,7 @@
 1. `ui/server/session-notifications.js` 将 `taskId` 与 `createdAt` 放入提醒。审批、提问和完成使用同一个执行任务 ID；队列发送失败使用对应的任务／输入 ID。
 2. `ui/src/hooks/useSystemNotifications.ts` 仅对实时提醒调用 `recordTaskReminder`。历史活动快照仅恢复会话状态，不提交应用计数。横幅仍通过 `showNotification` 投递。
 3. `apps/desktop/src/preload.ts` 暴露两个独立 IPC：`pilotdeck:notification-reminder` 和 `pilotdeck:notification-show`；账号上下文通过 `pilotdeck:notification-scope` 设置。
-4. `apps/desktop/src/notifications.ts` 在主进程中按账号、会话、任务去重，并以进程启动／前台确认时间拦截旧事件。计数不持久化。`main.ts` 使用主窗口原生 `focus` 事件清零。
+4. `apps/desktop/src/notifications.ts` 在主进程中按账号、会话、任务去重，并以进程启动／前台确认时间拦截旧事件。计数不持久化。`main.ts` 使用主窗口原生 `focus` 事件清零，并在 `show`／`restore` 后复核前台状态，兼容窗口恢复与焦点事件的不同顺序。
 5. Windows 任务栏使用 `BrowserWindow.setOverlayIcon`；托盘数字由 `desktopTray` 接收。两者应同时清零。旧的 renderer `setNotificationBadge(count)` 接口已移除，避免历史未读覆盖新计数。
 
 ## Windows 同事需要核查或修复的部分
