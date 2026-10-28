@@ -3,14 +3,16 @@ import type { WebSearchCustomProviderConfig } from './webSearchConfig.js';
 const own = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const variables = ['query', 'limit', 'gl', 'apiKey'];
-const token = /\{\{\s*([^{}]*?)\s*\}\}/g;
+// Trim the captured name after matching: overlapping whitespace quantifiers
+// make malformed templates take polynomial time to reject.
+const token = /\{\{([^{}]*)\}\}/g;
 const forbidden = ['__proto__', 'prototype', 'constructor'];
 
 /** JSON values are substituted before serialization, never evaluated as code. */
 function render(value: unknown, vars: Record<string, string | number>, depth = 0): unknown {
   if (depth > 20) throw new Error('Search template nesting exceeds 20 levels.');
   if (typeof value === 'string') {
-    const exact = /^\{\{\s*(\w+)\s*\}\}$/.exec(value);
+    const exact = /^\{\{([^{}]*)\}\}$/.exec(value);
     const get = (key: string) => {
       if (!variables.includes(key.trim())) throw new Error(`Unknown search variable: ${key}`);
       return vars[key.trim()];
@@ -78,7 +80,7 @@ export function customSearchRequest(endpoint: string, config: WebSearchCustomPro
   const headers = new Headers({ Accept: 'application/json' });
   for (const [key, value] of Object.entries(render(config.headers ?? {}, vars) as Record<string, string>)) headers.set(key, String(value));
   for (const [key, value] of Object.entries(render(config.queryParams ?? {}, vars) as Record<string, unknown>)) url.searchParams.set(key, String(value));
-  const body = render(config.requestBody ?? {}, vars) as Record<string, unknown>;
+  const body: Record<string, unknown> = Object.assign(Object.create(null), render(config.requestBody ?? {}, vars));
   // Explicit templates describe the complete request; legacy settings keep their old defaults.
   if (config.queryParams === undefined && config.requestBody === undefined) {
     const queryParam = config.queryParam?.trim() || 'query';

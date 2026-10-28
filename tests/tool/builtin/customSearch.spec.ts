@@ -10,6 +10,26 @@ const query = '中文 "\\\n& x=1 {{apiKey}}';
 const input = { query, limit: 8, gl: 'cn', apiKey: 'secret+/?' };
 const endpoint = 'https://example.test/search?fixed=yes';
 const context = { env: {}, cwd: '/', projectRoot: '/' } as any;
+
+test('malformed whitespace templates are rejected in bounded time and spaced variables retain their types', () => {
+  const started = performance.now();
+  for (const suffix of ['', '}}']) {
+    assert.throws(() => validateCustomSearch({ requestBody: { q: '{{{{' + ' '.repeat(30000) + suffix } }), /Unclosed/);
+  }
+  assert.ok(performance.now() - started < 1000, 'malformed templates must not cause excessive backtracking');
+  const request = customSearchRequest(endpoint, { requestBody: { count: '{{  limit  }}', q: 'Find {{ query }}' } }, input);
+  assert.deepEqual(JSON.parse(request.init.body!), { count: 8, q: `Find ${query}` });
+});
+
+test('legacy dynamic body fields reject prototype keys and retain ordinary field names', () => {
+  for (const key of ['__proto__', 'constructor', 'prototype']) {
+    assert.throws(() => customSearchRequest(endpoint, { queryParam: key }, input), /Invalid query parameter/);
+    assert.throws(() => customSearchRequest(endpoint, { auth: 'bodyApiKey', apiKeyParam: key }, input), /Invalid API key parameter/);
+  }
+  const request = customSearchRequest(endpoint, { queryParam: 'q', auth: 'bodyApiKey', apiKeyParam: 'key' }, input);
+  assert.deepEqual(JSON.parse(request.init.body!), { q: query, gl: 'cn', key: input.apiKey });
+  assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, 'q'), false);
+});
 test('templates safely interpolate nested JSON, preserve number/boolean types and never recursively interpret queries', () => {
   const request = customSearchRequest(endpoint, { auth: 'headerApiKey', apiKeyParam: 'X-Key', requestBody: {
     messages: [{ role: 'user', content: '{{query}}' }], count: '{{limit}}', flag: true, prompt: 'Find: {{query}}', token: '{{apiKey}}',
