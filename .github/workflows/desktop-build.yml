@@ -17,6 +17,11 @@ on:
         required: false
         default: false
         type: boolean
+      require_windows_signing:
+        description: Require Certum cloud signing credentials in windows-signing
+        required: false
+        default: false
+        type: boolean
     secrets:
       MACOS_DEVELOPER_ID_APPLICATION_P12_BASE64:
         required: false
@@ -43,6 +48,11 @@ on:
         type: string
       require_macos_signing:
         description: Require production macOS signing and notarization credentials
+        required: false
+        default: false
+        type: boolean
+      require_windows_signing:
+        description: Require production Windows cloud signing (main only)
         required: false
         default: false
         type: boolean
@@ -77,3 +87,4 @@ jobs:
     with:
       release_date: ${{ inputs.release_date }}
       revision: ${{ inputs.revision || '0' }}
+      require_windows_signing: ${{ inputs.require_windows_signing }}
