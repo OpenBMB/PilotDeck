@@ -82,7 +82,7 @@ jobs:
           python3 -u .github/scripts/release_to_obs.py 2>&1 | tee production-sync.log
       - name: Save synchronization evidence and original latest pointer
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: obs-production-sync
           path: |
