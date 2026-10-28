@@ -1,5 +1,6 @@
+// @vitest-environment node
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import express from 'express';
 import { createSearchRouter } from './search.js';
 import { emptyResults } from '../services/search/searchCommon.js';

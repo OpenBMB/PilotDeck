@@ -1,5 +1,6 @@
+// @vitest-environment node
 import assert from 'node:assert/strict';
-import { afterEach, test } from 'node:test';
+import { afterEach, test } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, appendFile, symlink, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';

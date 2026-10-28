@@ -1,5 +1,6 @@
+// @vitest-environment node
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { ByteLru } from './searchCommon.js';
 
 test('byte LRU touches reads, evicts least recently used entries, and declines oversized entries', () => {

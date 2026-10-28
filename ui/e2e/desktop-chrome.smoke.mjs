@@ -37,10 +37,19 @@ try {
   ];
   let completedOnboarding = true;
   const missing = new Set();
+  const searchRequests = [];
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     let body = {};
     if (url.pathname === '/api/projects') body = projects;
+    else if (url.pathname === '/api/search/global') {
+      searchRequests.push(route.request().postDataJSON());
+      body = {
+        groups: { chats: [{ id: 'chat:demo:chrome-review', kind: 'chats', project: projects[1],
+          title: 'Native title review', sessionId: 'chrome-review', snippet: 'Native search fixture' }], files: [] },
+        counts: { chats: 1, files: 0 }, hasMore: { chats: false, files: false }, partial: [],
+      };
+    }
     else if (url.pathname.includes('onboarding-status')) body = { hasCompletedOnboarding: completedOnboarding };
     else if (url.pathname === '/api/settings/permissions') body = { success: true, permissions: { skipPermissions: false, allowedTools: [], deniedTools: [] } };
     else if (url.pathname.includes('/messages')) body = { messages: [], hasMore: false, total: 0 };
@@ -251,12 +260,23 @@ try {
   await page.goto('http://127.0.0.1:5187/p/demo');
   await expect.poll(() => app.evaluate(() => global.chromeTest.state().hasProject)).toBe(true);
   await page.locator('.workspace-actions').getByRole('button', { name: 'Files', exact: true }).click();
-  await expect.poll(() => app.evaluate(() => global.chromeTest.state().canFind)).toBe(false);
-  expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('find').enabled)).toBe(false);
+  await expect.poll(() => app.evaluate(() => global.chromeTest.state().canFind)).toBe(true);
+  expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('find').enabled)).toBe(true);
+  await command('find');
+  await expect(page.locator('[data-global-search]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-global-search]')).toHaveCount(0);
   await command('chat');
   await page.goto('http://127.0.0.1:5187/p/demo/c/chrome-review');
-  await page.locator('.workspace-actions').getByRole('button', { name: 'Search current conversation', exact: true }).click();
-  await expect(page.locator('[data-chat-history-search]')).toBeVisible();
+  await expect(page.locator('.workspace-actions').getByRole('button', { name: 'Search current conversation', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Search PilotDeck', exact: true }).click();
+  await expect(page.locator('[data-global-search]')).toBeVisible();
+  await page.getByRole('combobox', { name: 'Search chats and files' }).fill('Native');
+  await expect.poll(() => searchRequests.at(-1)?.query).toBe('Native');
+  await expect(page.getByRole('option', { name: /Native search fixture/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press(mac ? 'Meta+f' : 'Control+f');
+  await expect(page.locator('[data-global-search]')).toBeVisible();
   await page.keyboard.press('Escape');
   await command('new-conversation');
   await expect(page).toHaveURL(/\/p\/demo$/);
