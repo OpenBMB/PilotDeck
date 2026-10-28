@@ -1,7 +1,6 @@
 import { EditorView } from '@codemirror/view';
 import { unifiedMergeView } from '@codemirror/merge';
-import type { Extension } from '@codemirror/state';
-import { SearchQuery, setSearchQuery } from '@codemirror/search';
+import { EditorSelection, type Extension } from '@codemirror/state';
 import {
   useCallback,
   useEffect,
@@ -16,12 +15,14 @@ import { useCodeEditorDocument } from '../hooks/useCodeEditorDocument';
 import { useCodeEditorSettings } from '../hooks/useCodeEditorSettings';
 import { useDomFileSearch } from '../hooks/useDomFileSearch';
 import { useFileSearchShortcut } from '../hooks/useFileSearchShortcut';
+import { useGlobalSearch } from '../../global-search/GlobalSearchContext';
 import { useEditorKeyboardShortcuts } from '../hooks/useEditorKeyboardShortcuts';
 import type { CodeEditorFile } from '../types/types';
 import { createMinimapExtension, createScrollToFirstChunkExtension, getLanguageExtensions } from '../utils/editorExtensions';
 import { getEditorStyles } from '../utils/editorStyles';
 import { createEditorToolbarPanelExtension } from '../utils/editorToolbarPanel';
 import { findTextSearchMatches } from '../utils/fileSearch';
+import { setFileSearchHighlights } from '../utils/searchHighlights';
 import CodeEditorBinaryFile from './subcomponents/CodeEditorBinaryFile';
 import CodeEditorFooter from './subcomponents/CodeEditorFooter';
 import CodeEditorHeader from './subcomponents/CodeEditorHeader';
@@ -66,6 +67,8 @@ export default function CodeEditor({
   onDirtyChange,
 }: CodeEditorProps) {
   const { t } = useTranslation('codeEditor');
+  const globalSearch = useGlobalSearch();
+  const globalSearchTarget = globalSearch?.target;
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showDiff, setShowDiff] = useState(Boolean(file.diffInfo));
   const [markdownPreview, setMarkdownPreview] = useState(false);
@@ -139,6 +142,21 @@ export default function CodeEditor({
     () => findTextSearchMatches(content, searchQuery),
     [content, searchQuery],
   );
+
+  useEffect(() => {
+    if (!isActive || loading || globalSearchTarget?.kind !== 'files'
+      || globalSearchTarget.project.name !== projectName
+      || !file.path.replace(/\\/g, '/').endsWith(globalSearchTarget.path || '\0')) return;
+    const query = globalSearchTarget.line ? globalSearchTarget.query : '';
+    const matches = findTextSearchMatches(content, query);
+    const lineStart = content.split('\n').slice(0, Math.max(0, (globalSearchTarget.line || 1) - 1))
+      .reduce((sum, line) => sum + line.length + 1, 0);
+    const matchIndex = matches.findIndex(match => match.from >= lineStart);
+    setSearchQueryState(query);
+    setSearchMatchIndex(Math.max(0, matchIndex));
+    setSearchOpen(false);
+    if (query) { setMarkdownPreview(false); setHtmlPreview(false); }
+  }, [globalSearchTarget, isActive, loading, projectName, file.path, content]);
   const {
     matchCount: markdownSearchMatchCount,
     highlightStyles: markdownSearchHighlightStyles,
@@ -206,12 +224,9 @@ export default function CodeEditor({
   useEffect(() => {
     if (!editorView || markdownPreview || htmlPreview) return;
     editorView.dispatch({
-      effects: setSearchQuery.of(new SearchQuery({
-        search: searchQuery.trim(),
-        literal: true,
-      })),
+      effects: setFileSearchHighlights.of({ matches: textSearchMatches, activeIndex: searchMatchIndex }),
     });
-  }, [editorView, htmlPreview, markdownPreview, searchQuery]);
+  }, [editorView, htmlPreview, markdownPreview, textSearchMatches, searchMatchIndex]);
 
   useEffect(() => {
     if (
@@ -226,7 +241,7 @@ export default function CodeEditor({
     const match = textSearchMatches[Math.min(searchMatchIndex, textSearchMatches.length - 1)];
     editorView.dispatch({
       selection: { anchor: match.from, head: match.to },
-      effects: EditorView.scrollIntoView(match.from, { y: 'center' }),
+      effects: EditorView.scrollIntoView(EditorSelection.range(match.from, match.to), { y: 'center', x: 'center' }),
     });
   }, [
     editorView,
@@ -423,7 +438,7 @@ export default function CodeEditor({
                 }
               }}
               searchOpen={searchOpen}
-              onToggleSearch={toggleSearch}
+              onToggleSearch={globalSearch ? null : toggleSearch}
               onDownload={handleDownload}
               onSave={handleSave}
               onToggleFullscreen={() => setIsFullscreen((previous) => !previous)}

@@ -49,6 +49,7 @@ assertRequiredPilotDeckEnv();
 console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 
 import express from 'express';
+import searchRoutes from './routes/search.js';
 import { rateLimit } from 'express-rate-limit';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcrypt';
@@ -587,6 +588,9 @@ app.get('/api/projects/files', authenticateToken, async (req, res) => {
 
 // Projects API Routes (protected)
 app.use('/api/projects', authenticateToken, projectsRoutes);
+app.use('/api/search', authenticateToken, searchRoutes);
+// Populate the independent search index without holding up server readiness.
+void searchRoutes.warm().catch(error => console.warn('[Search] Index warm-up:', error.message));
 
 // Git API Routes (protected)
 app.use('/api/git', authenticateToken, gitRoutes);
@@ -3731,6 +3735,7 @@ async function startServer() {
 
             shutdownPromise = (async () => {
                 try {
+                    await searchRoutes.close();
                     await computerUse.stop().catch(error => console.error('[computer-use] Shutdown:', error.message));
                     stopMemoryScheduler();
                     closeMemoryServices();

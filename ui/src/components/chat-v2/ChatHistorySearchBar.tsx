@@ -114,16 +114,16 @@ export default function ChatHistorySearchBar({
   return (
     <div
       className={cn(
-        'pointer-events-auto flex items-center gap-1 border border-neutral-200 bg-white px-2 dark:border-neutral-700 dark:bg-neutral-900',
+        'pointer-events-auto flex items-center gap-2 border border-slate-200 bg-white px-2.5 dark:border-neutral-700 dark:bg-neutral-900',
         placement === 'header'
-          ? 'h-9 w-full max-w-[360px] rounded-md'
-          : 'absolute right-4 top-4 z-20 w-[min(100%,320px)] rounded-lg bg-white/95 py-1.5 shadow-lg backdrop-blur-sm dark:bg-neutral-900/95',
+          ? 'h-[42px] w-full max-w-[420px] rounded-[10px]'
+          : 'absolute right-4 top-4 z-20 h-[42px] w-[min(calc(100%_-_32px),360px)] rounded-[10px] bg-white/95 shadow-sm backdrop-blur-sm dark:bg-neutral-900/95',
       )}
       data-chat-history-search
       role="search"
       aria-label={t('chatSearch.ariaLabel', { defaultValue: 'Search in conversation' }) as string}
     >
-      <Search className="h-4 w-4 shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
+      <Search className="h-5 w-5 shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
       <input
         ref={setInputElement}
         type="search"
@@ -133,13 +133,13 @@ export default function ChatHistorySearchBar({
         onCompositionEnd={handleCompositionEnd}
         onKeyDown={handleKeyDown}
         placeholder={t('chatSearch.placeholder', { defaultValue: 'Search in chat…' }) as string}
-        className="min-w-0 flex-1 bg-transparent text-[13px] text-neutral-900 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
+        className="min-w-0 flex-1 bg-transparent text-[15px] leading-[22px] text-neutral-900 outline-none placeholder:text-[13px] placeholder:text-neutral-400 dark:text-neutral-100"
         autoComplete="off"
         spellCheck={false}
         aria-label={t('chatSearch.placeholder', { defaultValue: 'Search in chat…' }) as string}
       />
       {hasQuery ? (
-        <span className="shrink-0 px-1 text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
+        <span className="shrink-0 px-1 text-[14px] tabular-nums text-neutral-500 dark:text-neutral-400">
           {matchLabel}
         </span>
       ) : null}

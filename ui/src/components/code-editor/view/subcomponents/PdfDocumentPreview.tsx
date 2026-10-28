@@ -1,3 +1,4 @@
+import { useGlobalSearch } from '../../../global-search/GlobalSearchContext';
 import { createElement, useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -739,6 +740,7 @@ export default function PdfDocumentPreview({
   onToggleFullscreen = null,
 }: PdfDocumentPreviewProps) {
   const { t } = useTranslation('codeEditor');
+  const globalSearch = useGlobalSearch();
   const inputId = useId();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -1634,6 +1636,7 @@ export default function PdfDocumentPreview({
           </>
         ) : null}
         <ToolbarSeparator />
+        {!globalSearch ? <>
         <ToolbarButton
           title={t('pdfToolbar.search')}
           active={searchOpen}
@@ -1649,6 +1652,7 @@ export default function PdfDocumentPreview({
           {renderToolbarIcon(Search)}
         </ToolbarButton>
         <ToolbarSeparator />
+        </> : null}
         <ContentReferenceMenu
           capabilities={referenceCapabilities}
           activeMode={referenceMode}

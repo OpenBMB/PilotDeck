@@ -59,12 +59,13 @@ export function useScrollFollow({
     if (node) metricsRef.current = { top: node.scrollTop, height: node.scrollHeight, viewport: node.clientHeight };
   }, [containerRef]);
 
-  const captureAnchor = useCallback(() => {
+  const captureAnchor = useCallback((messageKey?: string) => {
     const node = containerRef.current;
     if (!node || !contentSelector) return;
     const top = node.getBoundingClientRect().top;
-    const row = Array.from(node.querySelectorAll<HTMLElement>('[data-message-key]'))
-      .find((item) => item.getBoundingClientRect().bottom > top);
+    const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-message-key]'));
+    const row = (typeof messageKey === 'string' ? rows.find(item => item.dataset.messageKey === messageKey) : undefined)
+      ?? rows.find(item => item.getBoundingClientRect().bottom > top);
     anchorRef.current = row ? { key: row.dataset.messageKey!, offset: row.getBoundingClientRect().top - top } : null;
     if (row) node.dataset.readingAnchorKey = row.dataset.messageKey;
     else delete node.dataset.readingAnchorKey;
@@ -158,6 +159,12 @@ export function useScrollFollow({
   const scheduleInitialPosition = useCallback(() => queuePosition(true), [queuePosition]);
   const getIsPaused = useCallback(() => pausedRef.current, []);
   const pause = useCallback(() => setPaused(true), [setPaused]);
+  const pauseAt = useCallback((messageKey?: string) => {
+    setPaused(true);
+    // A search hit may be nested deep inside one expanded process row. Keep
+    // that message steady while the process above it finishes measuring.
+    if (messageKey) captureAnchor(messageKey);
+  }, [setPaused, captureAnchor]);
 
   const resumeOwnViewport = useCallback(() => {
     cancelFollow();
@@ -311,5 +318,5 @@ export function useScrollFollow({
     publish();
   });
 
-  return { isPaused, canReturnToLatest, hasOverflow, setPaused, getIsPaused, pause, scrollToBottom, scheduleFollow, scheduleInitialPosition, cancelFollow, captureAnchor, getReadingAnchor, restoreReadingAnchor };
+  return { isPaused, canReturnToLatest, hasOverflow, setPaused, getIsPaused, pause, pauseAt, scrollToBottom, scheduleFollow, scheduleInitialPosition, cancelFollow, captureAnchor, getReadingAnchor, restoreReadingAnchor };
 }

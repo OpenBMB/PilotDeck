@@ -38,6 +38,8 @@ import { getSettingsPathFromTab } from '../settings/navigation';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
+import GlobalSearchDialog from '../global-search/GlobalSearchDialog';
+import { GlobalSearchProvider, useGlobalSearch, type GlobalSearchResult } from '../global-search/GlobalSearchContext';
 import { useWorkspaceUpload } from '../main-content-v2/useWorkspaceUpload';
 import {
   chooseDefaultProject,
@@ -67,6 +69,12 @@ const SettingsComponent = Settings as unknown as (props: TypedSettingsProps) => 
 // auth, and project plumbing keep working unchanged — V2 just reorganizes the
 // outer chrome (sidebar + breadcrumb header per prototype/shadcn.html).
 export default function AppShellV2() {
+  const { user } = useAuth();
+  return <GlobalSearchProvider userKey={String(user?.id ?? user?.username ?? 'local')}><AppShellContent /></GlobalSearchProvider>;
+}
+
+function AppShellContent() {
+  const globalSearch = useGlobalSearch();
   useRejectExternalFileDropOutsideTargets();
   const navigate = useNavigate();
   const [skillConversationRequest, setSkillConversationRequest] =
@@ -636,7 +644,7 @@ export default function AppShellV2() {
       selectedProject, selectedSession, projectNameParam, projects: sidebarSharedProps.projects,
     })),
     hasProject: Boolean(selectedProject && selectedProject.capabilities?.files !== false && selectedProject.kind !== 'general' && selectedProject.name !== 'general'),
-    canFind: !isSettingsRoute,
+    canFind: true,
     sidebarVisible: desktopSidebarOpen && !isSettingsRoute,
     integrateMacCaption: desktopSidebarOpen && !isMobile && !isSettingsRoute && isConnected,
     execute: command => {
@@ -707,6 +715,7 @@ export default function AppShellV2() {
       onSelectSession={handleSelectSession}
       onStartNewSession={handleStartNewSession}
       onStartHomeNewConversation={handleHomeNewConversation}
+      onOpenGlobalSearch={globalSearch?.open}
       onCreateProject={handleOpenNewProject}
       pendingDraftProjectName={draftSessionProjectName}
 	      onRequestDeleteProject={handleRequestDeleteProject}
@@ -829,6 +838,18 @@ export default function AppShellV2() {
         </SkillConversationContext.Provider>
       </main>
       </div>
+
+      <GlobalSearchDialog projects={sidebarSharedProps.projects} onSelect={(result: GlobalSearchResult, query) => {
+        const project = sidebarSharedProps.projects.find(item => item.name === result.project.name) || result.project;
+        if (result.kind === 'files') {
+          handleSelectProject(project);
+          setActiveTab('files');
+        } else if (result.sessionId) {
+          handleSelectSession(project, result.sessionId, { id: result.sessionId, title: result.title, summary: result.title });
+        }
+        setSidebarOpen(false);
+        globalSearch?.reveal(result, query);
+      }} />
 
       {showNewProject
         ? ReactDOM.createPortal(

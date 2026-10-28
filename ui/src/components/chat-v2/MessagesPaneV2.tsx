@@ -51,7 +51,7 @@ type MessagesPaneV2Props = {
   scrollContainerRef: RefObject<HTMLDivElement>;
   showReturnToLatest?: boolean;
   onResumeScroll?: () => void;
-  onPauseScroll?: () => void;
+  onPauseScroll?: (messageKey?: string) => void;
   isLoadingSessionMessages: boolean;
   sessionLoadError?: string | null;
   onRetrySessionLoad?: () => void;
@@ -1207,13 +1207,14 @@ function MessagesPaneV2({
     ));
   }, [keyedMessageItems, messageWindowScope, getMessageKey]);
 
-  const revealSearchTrace = useCallback((match: { messageIndex: number }) => {
-    onPauseScroll?.();
+  const revealSearchTrace = useCallback((match: { messageIndex: number; messageKey: string }) => {
+    onPauseScroll?.(match.messageKey);
     const trace = keyedMessageItems[match.messageIndex]?.turnTrace;
     if (trace) handleProcessExpandedChange(`${messageWindowScope}:${trace.id}`, true);
   }, [onPauseScroll, keyedMessageItems, messageWindowScope, handleProcessExpandedChange]);
   const chatHistorySearch = useChatHistorySearch({
     scrollContainerRef,
+    historyReady: !isLoadingSessionMessages,
     keyedMessages: keyedMessagesForSearch,
     measuredItemHeights,
     allMessagesLoaded,
