@@ -50,6 +50,7 @@ import {
   SCHEDULED_TASKS_PATH,
   SETTINGS_PATH,
   SKILLS_PATH,
+  useSettingsRouteMatch,
 } from './appRoutes';
 
 type TypedSettingsProps = {
@@ -89,10 +90,9 @@ function AppShellContent() {
   const matchLegacySession = useMatch('/session/:sessionId');
   const matchScheduledTasks = useMatch(SCHEDULED_TASKS_PATH);
   const matchSkills = useMatch(SKILLS_PATH);
-  const matchSettingsIndex = useMatch({ path: SETTINGS_PATH, end: true });
-  const matchSettingsSection = useMatch(`${SETTINGS_PATH}/:section`);
-  const isSettingsRoute = Boolean(matchSettingsIndex || matchSettingsSection);
-  const settingsSection = matchSettingsSection?.params.section;
+  const settingsRouteMatch = useSettingsRouteMatch();
+  const isSettingsRoute = Boolean(settingsRouteMatch);
+  const settingsSection = settingsRouteMatch?.params.section;
   const dedicatedTab = matchSkills
     ? 'skills' as const
     : matchScheduledTasks

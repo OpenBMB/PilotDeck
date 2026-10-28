@@ -9,7 +9,6 @@ import { spawn } from 'child_process';
 import { prepareBackgroundSpawnOptions } from '../utils/processSpawn.js';
 import { parse as parseYaml } from 'yaml';
 import {
-  buildDefaultPilotDeckConfig,
   configRevision,
   getPilotDeckConfigPath,
   hasUnresolvedMaskedSecrets,
@@ -802,7 +801,7 @@ router.post('/model-removal', async (req, res) => {
       broadcastConfigEvent({ source: 'ui-save', ...response, timestamp: new Date().toISOString() });
       return res.json({ ...response, removal: publicRemovalPlan(plan, revision) });
     } catch (error) {
-      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML', 'MODEL_CONFIGURATION_REQUIRED'].includes(error?.code)) {
         return res.status(error.statusCode || 409).json({ code: error.code, message: error.message, error: error.message });
       }
       if (error?.validation) {
@@ -1027,7 +1026,7 @@ router.put('/', async (req, res) => {
     broadcastConfigEvent({ source: 'ui-save', ...response, timestamp: new Date().toISOString() });
     res.json(response);
     } catch (error) {
-      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML', 'MODEL_CONFIGURATION_REQUIRED'].includes(error?.code)) {
         return res.status(error.statusCode || 409).json({
           error: error.message,
           code: error.code,
@@ -1545,13 +1544,15 @@ function readPath(value, pathValue) {
 router.post('/open', async (_req, res) => {
   const configPath = getPilotDeckConfigPath();
   try {
-    await fsPromises.mkdir(path.dirname(configPath), { recursive: true });
     try {
       await fsPromises.access(configPath);
-    } catch {
-      await writePilotDeckConfig(buildDefaultPilotDeckConfig(), {
-        expectedRevision: configRevision(''),
-        onWriteCommitted: suppressNextWatchEvent,
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      return res.status(409).json({
+        success: false,
+        code: 'MODEL_CONFIGURATION_REQUIRED',
+        error: 'Save a model configuration before opening the configuration file.',
+        path: configPath,
       });
     }
 

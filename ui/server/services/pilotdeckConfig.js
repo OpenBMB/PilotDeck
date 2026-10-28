@@ -932,6 +932,18 @@ async function resolveConfigWritePath(configPath) {
   }
 }
 
+function requireInitialModelConfiguration(raw) {
+  const validation = validatePilotDeckConfig(parseYaml(raw));
+  const modelRef = normalizeString(process.env.PILOT_AGENT_MODEL) || validation.config.agent.model;
+  const selected = resolveModel(validation.config, modelRef, { allowMissing: true });
+  if (!validation.valid || !selected || isBootstrapPlaceholderProvider(selected.providerId, selected.provider)) {
+    throw configFileError(
+      'MODEL_CONFIGURATION_REQUIRED',
+      'Save a model configuration before creating the configuration file.',
+    );
+  }
+}
+
 async function atomicWritePilotDeckYaml(raw, {
   expectedRevision,
   beforeWrite,
@@ -973,8 +985,11 @@ async function atomicWritePilotDeckYaml(raw, {
     try {
       currentRaw = fs.readFileSync(writePath, 'utf8');
     } catch (error) {
-      if (error?.code === 'ENOENT') currentRaw = '';
-      else throw error;
+      if (error?.code !== 'ENOENT') throw error;
+      // An existing empty pool remains supported, but preferences/background
+      // writes must not create one and accidentally finish first-run setup.
+      requireInitialModelConfiguration(raw);
+      currentRaw = '';
     }
     if (expectedRevision && configRevision(currentRaw) !== expectedRevision) {
       throw configFileError(

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
   fetchProviderModels: vi.fn(),
   fetchRemoteDefaultModels: vi.fn(),
+  language: 'en',
 }));
 
 const connectionTestResult = (modelId: string, imageInput: 'supported' | 'unsupported' | 'unknown' = 'unsupported') => ({
@@ -32,7 +33,7 @@ vi.mock('react-i18next', async () => {
   return {
     useTranslation: () => ({
       t: lookupTranslation,
-      i18n: { language: 'en', changeLanguage: vi.fn() },
+      i18n: { language: mocks.language, changeLanguage: vi.fn() },
     }),
   };
 });
@@ -48,6 +49,7 @@ vi.mock('../../../../shared/modelListApi', () => ({
 
 describe('LlmConfigurationStep', () => {
   beforeEach(() => {
+    mocks.language = 'en';
     mocks.authenticatedFetch.mockImplementation(async (url: string) => {
       if (url === '/api/config/provider') {
         return { ok: true, json: async () => ({ exists: false, provider: null, environmentCredentialProviderIds: ['openrouter', 'deepseek', 'moonshot'] }) };
@@ -417,7 +419,8 @@ describe('LlmConfigurationStep', () => {
     });
   });
 
-  it('saves a complete custom model without a connection test', async () => {
+  it.each(['en', 'zh-CN'])('saves a complete custom model with the selected %s language without a connection test', async (language) => {
+    mocks.language = language;
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const onSaved = vi.fn();
     mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -444,9 +447,13 @@ describe('LlmConfigurationStep', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
     const body = JSON.parse(String(saveCall?.init?.body));
-    const saved = parseYaml(body.raw) as { model: { providers: Record<string, { models: Record<string, unknown> }> } };
+    const saved = parseYaml(body.raw) as {
+      model: { providers: Record<string, { models: Record<string, unknown> }> };
+      alwaysOn: { language: string };
+    };
     expect(body.modelTestBindings).toBeUndefined();
     expect(saved.model.providers.modelbest.models['gpt-5.6-luna']).toEqual({});
+    expect(saved.alwaysOn.language).toBe(language);
     expect(calls.some((call) => call.url === '/api/config/test-connections')).toBe(false);
   });
 

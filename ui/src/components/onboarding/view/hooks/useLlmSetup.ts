@@ -22,7 +22,7 @@ function validEndpoint(value: string) {
 }
 
 export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSetupController {
-  const { t } = useTranslation('onboarding');
+  const { t, i18n } = useTranslation('onboarding');
   const [selectedProvider, setSelectedProvider] = useState<CatalogProvider | null>(DEFAULT_PROVIDER);
   const [modelIds, setModelIds] = useState<string[]>([]);
   const [apiKey, setApiKey] = useState('');
@@ -489,6 +489,12 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       }
       (existingConfig.agent as Record<string, unknown>).model = `${providerId}/${modelId}`;
 
+      // Language changes stay local until this first model configuration save.
+      existingConfig.alwaysOn = {
+        ...(existingConfig.alwaysOn as Record<string, unknown> | undefined),
+        language: i18n.language === 'zh-CN' ? 'zh-CN' : 'en',
+      };
+
       delete existingConfig.models;
       delete existingConfig.agents;
       delete existingConfig.version;
@@ -535,7 +541,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
       savingRef.current = false;
       setSaving(false);
     }
-  }, [apiKey, canContinue, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, modelImageSupport, modelTests, onSaved, selectedProvider]);
+  }, [apiKey, canContinue, effectiveModelId, effectiveModelIds, effectiveProtocol, effectiveProviderId, effectiveUrl, i18n, modelImageSupport, modelTests, onSaved, selectedProvider]);
 
   return {
     selectedProvider,

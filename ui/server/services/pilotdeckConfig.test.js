@@ -1,4 +1,5 @@
 import {
+    existsSync,
     lstatSync,
     mkdirSync,
     mkdtempSync,
@@ -49,6 +50,35 @@ function useTempConfig(contents, filename = 'pilotdeck.yaml') {
     process.env.PILOTDECK_CONFIG_PATH = configPath;
     return configPath;
 }
+
+describe('first-run background config writes', () => {
+    it('does not create a partial config for a background preferences update', async () => {
+        const configPath = useTempConfig(null);
+
+        await expect(updatePilotDeckConfig((config) => {
+            config.alwaysOn = { language: 'zh-CN' };
+        }, { paths: [['alwaysOn', 'language']], settleMs: 0 })).rejects.toMatchObject({
+            code: 'MODEL_CONFIGURATION_REQUIRED',
+        });
+
+        expect(existsSync(configPath)).toBe(false);
+        expect(readdirSync(dirname(configPath))).toEqual([]);
+    });
+
+    it('does not create a bootstrap placeholder config', async () => {
+        const configPath = useTempConfig(null);
+
+        await expect(writePilotDeckConfig({
+            agent: { model: '_placeholder/_placeholder' },
+            model: { providers: { _placeholder: {
+                protocol: 'openai', url: 'https://example.invalid/v1',
+                apiKey: 'PLACEHOLDER_RUN_ONBOARDING_TO_REPLACE', models: { _placeholder: {} },
+            } } },
+        })).rejects.toMatchObject({ code: 'MODEL_CONFIGURATION_REQUIRED' });
+
+        expect(existsSync(configPath)).toBe(false);
+    });
+});
 
 describe('readPilotDeckConfigFile fallback behavior', () => {
     it('uses built-in Office preview by default', () => {
@@ -263,7 +293,7 @@ describe('optional feature defaults', () => {
     });
 
     it('preserves an explicit cron opt-out through a save and read', async () => {
-        useTempConfig(null);
+        useTempConfig('schemaVersion: 1\n');
         const cron = { enabled: false, timezone: 'Asia/Shanghai', maxConcurrentRuns: 3 };
         await writePilotDeckConfig({ ...buildDefaultPilotDeckConfig(), cron });
         expect(readPilotDeckConfigFile().config.cron).toEqual(cron);
@@ -812,9 +842,7 @@ describe('validatePilotDeckConfig gateway validation', () => {
     });
 
     it('keeps the bootstrap provider when an unrelated setting is saved before onboarding', async () => {
-        useTempConfig(null);
-
-        const result = await writePilotDeckConfig({
+        const config = {
             agent: { model: '_placeholder/_placeholder' },
             model: {
                 providers: {
@@ -827,7 +855,10 @@ describe('validatePilotDeckConfig gateway validation', () => {
                 },
             },
             tools: { webSearch: { enabled: false } },
-        });
+        };
+        useTempConfig(JSON.stringify(config));
+
+        const result = await writePilotDeckConfig(config);
 
         expect(result.config.agent.model).toBe('_placeholder/_placeholder');
         expect(result.config.model.providers).toHaveProperty('_placeholder');
@@ -835,9 +866,7 @@ describe('validatePilotDeckConfig gateway validation', () => {
     });
 
     it('keeps the bootstrap provider while a real provider is configured but not selected', async () => {
-        useTempConfig(null);
-
-        const result = await writePilotDeckConfig({
+        const config = {
             agent: { model: '_placeholder/_placeholder' },
             model: {
                 providers: {
@@ -854,7 +883,10 @@ describe('validatePilotDeckConfig gateway validation', () => {
                     },
                 },
             },
-        });
+        };
+        useTempConfig(JSON.stringify(config));
+
+        const result = await writePilotDeckConfig(config);
 
         expect(result.config.model.providers).toHaveProperty('_placeholder');
         expect(result.config.model.providers).toHaveProperty('ollama');
