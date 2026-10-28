@@ -575,7 +575,8 @@ export function maskSecrets(value, fieldPath = []) {
   const output = {};
   for (const [key, child] of Object.entries(value)) {
     // Search templates contain references, not credentials. Keep only the exact
-    // supported reference syntax visible so reopening the editor is lossless.
+    // supported reference syntax visible. Compound templates may also contain
+    // literal credentials; save/probe routes restore them only in the same scope.
     const templateReference = fieldPath.includes('customProvider')
       && fieldPath.some(field => ['headers', 'queryParams', 'requestBody'].includes(field))
       && typeof child === 'string' && /^(?:Bearer )?\{\{\s*(?:apiKey|query|limit|gl)\s*\}\}$/.test(child);

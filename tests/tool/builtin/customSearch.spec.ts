@@ -4,12 +4,17 @@ import { createServer } from 'node:http';
 import { customSearchRequest, customSearchResults, validateCustomSearch } from '../../../src/pilot/config/customSearch.js';
 import { customSearchPreset, CUSTOM_SEARCH_PRESETS } from '../../../src/pilot/config/customSearchPresets.js';
 import { createWebSearchTool } from '../../../src/tool/builtin/webSearch.js';
-import { additionalSearchRequest } from '../../../src/tool/builtin/additionalWebSearch.js';
+import { additionalSearchRequest, redactSearchError } from '../../../src/tool/builtin/additionalWebSearch.js';
 
 const query = '中文 "\\\n& x=1 {{apiKey}}';
 const input = { query, limit: 8, gl: 'cn', apiKey: 'secret+/?' };
 const endpoint = 'https://example.test/search?fixed=yes';
 const context = { env: {}, cwd: '/', projectRoot: '/' } as any;
+
+test('redacts every restored credential before truncating upstream errors', () => {
+  const message = 'x'.repeat(495) + 'private-second-key';
+  assert.equal(redactSearchError(message, ['first-key', 'private-second-key']), ('x'.repeat(495) + '[redacted]').slice(0, 500));
+});
 
 test('malformed whitespace templates are rejected in bounded time and spaced variables retain their types', () => {
   const started = performance.now();

@@ -74,9 +74,9 @@ export function additionalSearchResults(provider: AdditionalSearchProvider, raw:
 }
 
 /** Query-authenticated APIs can include the full request URL in network errors. */
-export function redactSearchError(value: unknown, apiKey: string): string {
+export function redactSearchError(value: unknown, apiKey: string | string[]): string {
   let message = value instanceof Error ? value.message : String(value);
-  for (const secret of [apiKey, encodeURIComponent(apiKey), new URLSearchParams({ key: apiKey }).toString().slice(4)]) {
+  for (const secret of (Array.isArray(apiKey) ? apiKey : [apiKey]).flatMap(key => [key, encodeURIComponent(key), new URLSearchParams({ key }).toString().slice(4)])) {
     if (secret) message = message.split(secret).join("[redacted]");
   }
   return message.slice(0, 500);

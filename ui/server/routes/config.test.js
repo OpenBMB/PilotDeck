@@ -2833,6 +2833,88 @@ it('connection probe uses templates, header authentication and real response map
   expect(calls).toHaveLength(2);
 });
 
+it.each(['********', 'replacement-key'])('restores masked search templates after reload while preserving a %s API key', async requestedKey => {
+  const calls = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+    calls.push({ url: String(url), init });
+    return jsonResponse({ results: [{ url: 'https://example.test/result', title: 'Found' }] });
+  }));
+  const settings = { endpoint: 'https://example.test/search', apiKey: 'saved-key', customProvider: {
+    auth: 'none', method: 'POST',
+    headers: { 'X-Access-Token': 'Token {{ apiKey }}', 'X-Secret': 'literal-secret' },
+    queryParams: { token: 'v1:{{apiKey}}:{{query}}' },
+    requestBody: { credentials: [{ api_key: '{{query}}/{{apiKey}}/{{limit}}' }] },
+  } };
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+    provider: 'custom', providers: { custom: settings },
+  } } }));
+  const loaded = (await request('/api/config')).body.config;
+  const masked = loaded.tools.webSearch.providers.custom;
+  expect(masked.customProvider.headers['X-Access-Token']).toBe('********');
+  expect(masked.customProvider.headers['X-Secret']).toBe('********');
+  expect(JSON.stringify(loaded)).not.toContain('literal-secret');
+  expect((await request('/api/config', { method: 'PUT', body: JSON.stringify({ config: loaded }) })).status).toBe(200);
+  const reloaded = (await request('/api/config')).body.config.tools.webSearch.providers.custom;
+  const result = await request('/api/config/test-web-search', { method: 'POST', body: JSON.stringify({ ...reloaded, provider: 'custom', apiKey: requestedKey }) });
+  expect(result.body).toMatchObject({ ok: true, organicCount: 1 });
+  const key = requestedKey === '********' ? 'saved-key' : requestedKey;
+  expect(new Headers(calls[0].init.headers).get('X-Access-Token')).toBe(`Token ${key}`);
+  expect(new Headers(calls[0].init.headers).get('X-Secret')).toBe('literal-secret');
+  expect(new URL(calls[0].url).searchParams.get('token')).toBe(`v1:${key}:hello`);
+  expect(JSON.parse(calls[0].init.body)).toEqual({ credentials: [{ api_key: `hello/${key}/3` }] });
+  expect(parseYaml(readFileSync(configPath, 'utf8')).tools.webSearch.providers.custom).toEqual(settings);
+});
+
+it.each(['literal-secret+/', 'literal-secret+/{{query}}'])('restores masked search credential %s without a separate API key and redacts echoed errors', async template => {
+  const rendered = template.replace('{{query}}', 'hello');
+  const fetchMock = vi.fn(async (_url, init) => {
+    expect(new Headers(init.headers).get('X-Access-Token')).toBe(rendered);
+    return jsonResponse({ error: `Denied ${rendered} or ${encodeURIComponent(rendered)}` }, { ok: false, status: 401 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const { request } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+    provider: 'custom', endpoint: 'https://example.test/search',
+    customProvider: { auth: 'none', headers: { 'X-Access-Token': template } },
+  } } }));
+  const loaded = (await request('/api/config')).body.config.tools.webSearch;
+  const result = await request('/api/config/test-web-search', { method: 'POST', body: JSON.stringify(loaded) });
+  expect(result.body.ok).toBe(false);
+  expect(result.body.error).toContain('[redacted]');
+  expect(JSON.stringify(result.body)).not.toContain('literal-secret');
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it('rejects masked search templates when credential scope changes or their original field is missing', async () => {
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+    provider: 'custom', providers: { custom: { endpoint: 'https://example.test/search', apiKey: 'saved-key',
+      customProvider: { auth: 'none', method: 'POST', headers: { 'X-Access-Token': 'Token {{apiKey}}' } },
+    } },
+  } } }));
+  const original = readFileSync(configPath, 'utf8');
+  const loaded = (await request('/api/config')).body.config.tools.webSearch.providers.custom;
+  for (const mutate of [
+    value => { value.endpoint = 'https://other.example/search'; },
+    value => { value.customProvider.auth = 'bearer'; },
+    value => { value.customProvider.method = 'GET'; },
+    value => { value.customProvider.apiKeyParam = 'another-key'; },
+    value => { value.customProvider.headers = { 'X-Different-Token': '********' }; },
+    value => { value.customProvider.requestBody = { nested: [{ api_key: '********' }] }; },
+  ]) {
+    const next = { ...structuredClone(loaded), provider: 'custom', apiKey: 'explicit-new-key' };
+    mutate(next);
+    const result = await request('/api/config/test-web-search', { method: 'POST', body: JSON.stringify(next) });
+    expect(result.status).toBe(400);
+    expect(result.body.ok).toBe(false);
+    const save = await request('/api/config', { method: 'PUT', body: JSON.stringify({ config: {
+      tools: { webSearch: { provider: 'custom', providers: { custom: next } } },
+    } }) });
+    expect(save.status).toBe(400);
+    expect(readFileSync(configPath, 'utf8')).toBe(original);
+  }
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 it('rejects invalid custom templates on save without modifying the YAML', async () => {
   const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: { enabled: false } } }));
   const before = readFileSync(configPath, 'utf8');

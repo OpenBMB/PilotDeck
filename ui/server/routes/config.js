@@ -285,11 +285,11 @@ function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
   const previousWebSearch = previousConfig?.tools?.webSearch;
 
   const entries = [];
-  if (nextWebSearch?.apiKey === MASKED_SECRET) {
+  if (nextWebSearch?.apiKey === MASKED_SECRET || containsMaskedValue(nextWebSearch?.customProvider)) {
     entries.push([nextWebSearch, previousWebSearch ?? {}]);
   }
   for (const [provider, settings] of Object.entries(nextWebSearch?.providers ?? {})) {
-    if (!isWebSearchProvider(provider) || settings?.apiKey !== MASKED_SECRET) continue;
+    if (!isWebSearchProvider(provider) || (settings?.apiKey !== MASKED_SECRET && !containsMaskedValue(settings?.customProvider))) continue;
     entries.push([
       { ...settings, provider },
       { ...getWebSearchProviderConfig(previousWebSearch ?? {}, provider), provider },
@@ -297,7 +297,7 @@ function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
   }
   for (const [next, previous] of entries) {
     const previousKey = typeof previous.apiKey === 'string' ? previous.apiKey.trim() : '';
-    if (!previousKey || previousKey === MASKED_SECRET) {
+    if (next.apiKey === MASKED_SECRET && (!previousKey || previousKey === MASKED_SECRET)) {
       return 'Saved Web Search API key is unavailable. Enter the API key again.';
     }
     if (!webSearchCredentialScopeMatches(next, previous)) {
@@ -333,6 +333,23 @@ function containsMaskedValue(value) {
   if (Array.isArray(value)) return value.some(containsMaskedValue);
   if (!isRecord(value)) return false;
   return Object.values(value).some(containsMaskedValue);
+}
+
+// Only call after checking credential scope. Restore each masked field from
+// its original path, and retain its value for redacting upstream error echoes.
+function restoreMaskedSearchValues(next, previous, secrets) {
+  if (next === MASKED_SECRET) {
+    if (typeof previous !== 'string' || previous === MASKED_SECRET) {
+      throw new Error('Saved search template field is unavailable. Enter it again.');
+    }
+    secrets.push(previous);
+    return previous;
+  }
+  if (Array.isArray(next)) return next.map((item, index) => restoreMaskedSearchValues(item, Array.isArray(previous) ? previous[index] : undefined, secrets));
+  if (!isRecord(next)) return next;
+  return Object.fromEntries(Object.entries(next).map(([key, child]) => [key,
+    restoreMaskedSearchValues(child, isRecord(previous) && Object.hasOwn(previous, key) ? previous[key] : undefined, secrets),
+  ]));
 }
 
 function modelProviderCredentialScope(providerId, provider) {
@@ -1336,12 +1353,14 @@ router.post('/test-web-search', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Unsupported SerpAPI search engine.' });
   }
   const selectedProvider = normalizeWebSearchProvider(provider);
-  const custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
+  let custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
   const customAuth = normalizeWebSearchCustomAuth(custom.auth);
   const requestedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
   const trimmedEndpoint = typeof endpoint === 'string' ? endpoint.trim() : '';
+  const maskedTemplate = selectedProvider === 'custom' && containsMaskedValue(custom);
+  const restoredSecrets = [];
   let trimmedKey = requestedKey === MASKED_SECRET ? '' : requestedKey;
-  if (requestedKey === MASKED_SECRET) {
+  if (requestedKey === MASKED_SECRET || maskedTemplate) {
     try {
       const record = readPilotDeckConfigFile();
       const savedWebSearch = {
@@ -1355,22 +1374,34 @@ router.post('/test-web-search', async (req, res) => {
         endpoint: trimmedEndpoint,
         customProvider: custom,
       };
+      if (maskedTemplate) {
+        if (!webSearchCredentialScopeMatches(requestedWebSearch, savedWebSearch)) {
+          return res.status(400).json({ ok: false, error: 'Enter masked search template fields again after changing the provider, endpoint, or authentication settings.' });
+        }
+        custom = restoreMaskedSearchValues(custom, savedWebSearch.customProvider, restoredSecrets);
+      }
       if (
+        requestedKey === MASKED_SECRET &&
         typeof savedKey === 'string' &&
         savedKey.trim() !== MASKED_SECRET &&
         webSearchCredentialScopeMatches(requestedWebSearch, savedWebSearch)
       ) {
         trimmedKey = savedKey.trim();
       } else if (
-        (typeof savedKey === 'string' && savedKey.trim() !== MASKED_SECRET)
-        || (typeof activeKey === 'string' && activeKey.trim() && activeKey.trim() !== MASKED_SECRET)
+        requestedKey === MASKED_SECRET && (
+          (typeof savedKey === 'string' && savedKey.trim() !== MASKED_SECRET)
+          || (typeof activeKey === 'string' && activeKey.trim() && activeKey.trim() !== MASKED_SECRET)
+        )
       ) {
         return res.status(400).json({
           ok: false,
           error: 'Enter the Web Search API key again after changing the provider, endpoint, or authentication settings.',
         });
       }
-    } catch { /* fall through to validation below */ }
+    } catch {
+      if (maskedTemplate) return res.status(400).json({ ok: false, error: 'Saved search template fields are unavailable. Enter them again.' });
+      // Missing saved API keys are rejected by validation below.
+    }
   }
   if (!trimmedKey && !(selectedProvider === 'custom' && customAuth === 'none')) {
     return res.status(400).json({ ok: false, error: 'API key is required.' });
@@ -1379,6 +1410,10 @@ router.post('/test-web-search', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Custom provider endpoint is required.' });
   }
   const effectiveEndpoint = normalizeWebSearchEndpoint(selectedProvider, trimmedEndpoint);
+  // A masked template can mix literal credentials with variables. Redact its
+  // literal parts too, since the upstream response may echo the rendered value.
+  const probeSecrets = [...restoredSecrets.flatMap(value => [value, ...value.split(/\{\{[^{}]*\}\}/g)]), trimmedKey];
+  const redactProbeError = value => redactSearchError(value, probeSecrets);
 
   let requestUrl;
   let requestInit;
@@ -1451,7 +1486,7 @@ router.post('/test-web-search', async (req, res) => {
         };
     }
   } catch (error) {
-    return res.status(400).json({ ok: false, error: redactSearchError(error, trimmedKey) });
+    return res.status(400).json({ ok: false, error: redactProbeError(error) });
   }
 
   const timeout = 15_000;
@@ -1482,7 +1517,7 @@ router.post('/test-web-search', async (req, res) => {
     const hasApiError = (typeof raw?.error === 'string' && raw.error.trim())
       || (isRecord(raw?.error) && Object.keys(raw.error).length > 0);
     if (!response.ok || hasApiError) {
-      return res.json({ ok: false, error: redactSearchError(formatWebSearchApiError(response, raw), trimmedKey), latencyMs });
+      return res.json({ ok: false, error: redactProbeError(formatWebSearchApiError(response, raw)), latencyMs });
     }
     if (isAdditionalSearchProvider(selectedProvider)) {
       const organic = additionalSearchResults(selectedProvider, raw, 3);
@@ -1493,7 +1528,7 @@ router.post('/test-web-search', async (req, res) => {
       return res.json({ ok: true, latencyMs, organicCount: organic.length });
     }
     if (raw && typeof raw.code === 'number' && raw.code !== 0) {
-      return res.json({ ok: false, error: redactSearchError(formatWebSearchApiError(response, raw), trimmedKey), latencyMs });
+      return res.json({ ok: false, error: redactProbeError(formatWebSearchApiError(response, raw)), latencyMs });
     }
 
     const organic = selectedProvider === 'tavily'
@@ -1510,7 +1545,7 @@ router.post('/test-web-search', async (req, res) => {
     if (isNetworkTimeout(err)) {
       return res.json({ ok: false, error: `Connection timed out after ${timeout / 1000}s.` });
     }
-    return res.json({ ok: false, error: redactSearchError(err, trimmedKey) });
+    return res.json({ ok: false, error: redactProbeError(err) });
   }
 });
 
