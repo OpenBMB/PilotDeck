@@ -5,9 +5,16 @@ import CodeEditorTabBar from './CodeEditorTabBar';
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    disconnect() {}
+  });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('CodeEditorTabBar', () => {
   const tabs = [{
@@ -47,7 +54,7 @@ describe('CodeEditorTabBar', () => {
     modified: 'Modified',
   };
 
-  it('exposes the full local path and reserves space for workspace actions', () => {
+  it('exposes the full local path', () => {
     render(
       <CodeEditorTabBar
         tabs={[tabs[0]]}
@@ -55,7 +62,6 @@ describe('CodeEditorTabBar', () => {
         onSelect={vi.fn()}
         onClose={vi.fn()}
         onCloseTabs={vi.fn()}
-        reserveToolbarSpace
         labels={labels}
       />,
     );
@@ -64,8 +70,40 @@ describe('CodeEditorTabBar', () => {
       name: 'index.html — /workspace/hundouluo/index.html',
     });
     expect(tab.getAttribute('title')).toBe('/workspace/hundouluo/index.html');
-    expect(screen.getByRole('tablist', { name: 'Open files' }).className).toContain('pr-32');
     expect(screen.queryByRole('button', { name: 'More tab actions' })).toBeNull();
+  });
+
+  it('makes every open file selectable from the file list', async () => {
+    const onSelect = vi.fn();
+    render(
+      <CodeEditorTabBar
+        tabs={tabs}
+        activeTabId="editor-tab-1"
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        onCloseTabs={vi.fn()}
+        labels={labels}
+      />,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Open files' });
+    fireEvent.click(trigger);
+    const selected = screen.getByRole('menuitemradio', { name: /styles.css/ });
+    await waitFor(() => expect(document.activeElement).toBe(selected));
+    expect(selected.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(3);
+    fireEvent.keyDown(selected, { key: 'End' });
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /README.md/ }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /index.html/ }));
+    expect(onSelect).toHaveBeenCalledWith('editor-tab-0');
+    expect(screen.queryByRole('menu')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('tab', { name: /index.html/ })));
+
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /styles.css/ })));
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('closes all tabs from the tab context menu', () => {
