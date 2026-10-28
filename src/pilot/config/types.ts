@@ -132,7 +132,7 @@ export type PilotGatewayConfig = {
 };
 
 export type PilotWebSearchProvider = import("./webSearchProviders.js").WebSearchProvider;
-export type PilotWebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "none";
+export type PilotWebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "headerApiKey" | "none";
 export type PilotWebSearchCustomMethod = "GET" | "POST";
 
 export type PilotWebSearchCustomProviderConfig = import("./webSearchConfig.js").WebSearchCustomProviderConfig;

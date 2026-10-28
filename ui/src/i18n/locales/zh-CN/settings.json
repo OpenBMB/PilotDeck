@@ -1367,7 +1367,7 @@
         "provider": {
           "label": "搜索提供商",
           "description": "选择智能体当前使用的搜索服务。",
-          "glm": "GLM / Z.AI Web Search",
+          "deepseek": "DeepSeek Search",          "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
           "custom": "自定义",
           "serper": "Serper (Google)",
@@ -1400,7 +1400,7 @@
         },
         "endpoint": {
           "label": "连接地址",
-          "description": "自定义搜索服务的 HTTP(S) 请求地址。",
+          "description": "自定义搜索服务的 HTTP(S) 请求地址。 修改网址会清除原有 API Key，请为新地址重新填写密钥。",
           "placeholder": "https://example.com/search"
         },
         "custom": {
@@ -1906,5 +1906,42 @@
     "since": "从 {{date}} 开始记录，此前未记录的用量不包含在内。",
     "empty": "暂无用量记录，完成一次对话后，用量将显示在这里。",
     "updated": "更新于 {{time}} · 每 30 秒自动刷新"
+  },
+  "customSearch": {
+    "title": "自定义请求与响应",
+    "description": "模型调用 web_search(query, gl)，这里负责将参数转换成你的 API 请求，并把响应映射为搜索结果。请先保存此配置，再测试连接。",
+    "preset": "从提供商示例开始",
+    "choosePreset": "选择请求示例",
+    "endpoint": "请求网址",
+    "name": "提供商名称",
+    "method": "请求方法",
+    "auth": "鉴权方式",
+    "authOptions": {
+      "bearer": "Bearer 令牌",
+      "headerApiKey": "请求头 API Key",
+      "bodyApiKey": "请求体 API Key",
+      "queryApiKey": "查询参数 API Key",
+      "none": "无需鉴权"
+    },
+    "apiKeyParam": "API Key 字段／请求头名称",
+    "queryParam": "旧版查询字段",
+    "variables": "支持变量：{{query}}（搜索词）、{{limit}}（数量）、{{gl}}（国家，默认 us）、{{apiKey}}（已保存的密钥）。在 JSON 值中引用变量，独立的 {{limit}} 会保留数字类型。密钥请填入 API Key 配置项，不要写进模板。",
+    "legacy": "查询参数和请求体都留空时，使用旧版查询字段；显式填写 JSON 对象则完全按模板发送。GET 使用查询参数，不能带请求体。修改网址或鉴权后需重新填写 API Key。",
+    "headers": "请求头（JSON）",
+    "queryParams": "查询参数（JSON）",
+    "bodyEncoding": "请求体编码",
+    "requestBody": "请求体（JSON 模板）",
+    "mapping": "响应字段映射",
+    "paths": "路径支持点号及数组下标，例如 data.results、links[0].url；根数组用 $。结果路径留空时识别常见列表，各字段留空时使用下方占位默认值。列表或网址映射错误会在连接测试中报错。",
+    "resultsPath": "结果列表路径",
+    "titleField": "标题字段",
+    "urlField": "网址字段",
+    "snippetField": "摘要字段",
+    "sourceField": "来源字段",
+    "publishedAtField": "发布时间字段",
+    "testQuery": "预览搜索词",
+    "preview": "预览请求",
+    "save": "保存请求配置",
+    "invalidJson": "JSON 格式错误"
   }
 }

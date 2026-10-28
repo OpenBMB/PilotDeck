@@ -1,3 +1,6 @@
+import { customSearchRequest, customSearchResults } from "../../pilot/config/customSearch.js";
+import type { WebSearchCustomProviderConfig } from "../../pilot/config/webSearchConfig.js";
+export type { WebSearchCustomProviderConfig } from "../../pilot/config/webSearchConfig.js";
 import type { PermissionResult } from "../../permission/index.js";
 import { WEB_SEARCH_ENDPOINTS, type SerpApiEngine, type WebSearchProvider } from "../../pilot/config/webSearchProviders.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError, type AdditionalSearchProvider } from "./additionalWebSearch.js";
@@ -16,22 +19,8 @@ import type {
  * request/response shapes stay behind this adapter.
  */
 export type { WebSearchProvider };
-export type WebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "none";
+export type WebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "headerApiKey" | "none";
 export type WebSearchCustomMethod = "GET" | "POST";
-
-export type WebSearchCustomProviderConfig = {
-  name?: string;
-  auth?: WebSearchCustomAuth;
-  method?: WebSearchCustomMethod;
-  queryParam?: string;
-  apiKeyParam?: string;
-  resultsPath?: string;
-  titleField?: string;
-  urlField?: string;
-  snippetField?: string;
-  sourceField?: string;
-  publishedAtField?: string;
-};
 
 export type CreateWebSearchToolOptions = {
   provider?: WebSearchProvider;
@@ -97,7 +86,8 @@ export function createWebSearchTool(
 - Use this tool when API/SDK/framework usage is unknown, version-sensitive, or likely changed since training. Search with package/service name, version, framework, and the specific method/option/error.
 
 Usage notes:
-  - Configure \`tools.webSearch.provider\` as \`glm\`, \`tavily\`, \`serper\`, \`brave\`, \`baidu\`, \`bocha\`, \`exa\`, \`serpapi\`, or \`custom\` in \`pilotdeck.yaml\`
+  - Configure \`tools.webSearch.provider\` as \`deepseek\`, \`glm\`, \`tavily\`, \`serper\`, \`brave\`, \`baidu\`, \`bocha\`, \`exa\`, \`serpapi\`, or \`custom\` in \`pilotdeck.yaml\`
+  - Custom HTTP templates and response mappings are applied automatically; pass query/gl normally and never supply credentials in tool arguments
   - Requires \`tools.webSearch.apiKey\`, the provider API key environment variable, or \`CUSTOM_WEB_SEARCH_API_KEY\` unless custom auth is \`none\`
   - The optional \`gl\` parameter is forwarded only by providers that support localization
   - This tool is read-only and does not modify files`,
@@ -273,6 +263,7 @@ function resolveProvider(
     ["BOCHA_API_KEY", "bocha"],
     ["EXA_API_KEY", "exa"],
     ["SERPAPI_API_KEY", "serpapi"],
+    ["DEEPSEEK_API_KEY", "deepseek"],
   ];
   for (const [name, provider] of envProviders) {
     if (readEnv(context, name)) return provider;
@@ -296,6 +287,7 @@ function resolveApiKey(
   if (provider === "baidu") return readEnv(context, "BAIDU_WEB_SEARCH_API_KEY");
   if (provider === "bocha") return readEnv(context, "BOCHA_API_KEY");
   if (provider === "exa") return readEnv(context, "EXA_API_KEY");
+  if (provider === "deepseek") return readEnv(context, "DEEPSEEK_API_KEY");
   if (provider === "serpapi") return readEnv(context, "SERPAPI_API_KEY");
   return readEnv(context, "GLM_WEB_SEARCH_API_KEY") ?? readEnv(context, "ZAI_API_KEY");
 }
@@ -329,22 +321,8 @@ async function performAdditionalSearch(args: {
   } finally { clearTimeout(timeout); detachAbort?.(); }
 }
 
-function normalizeCustomProviderConfig(
-  config: WebSearchCustomProviderConfig | undefined,
-): Required<WebSearchCustomProviderConfig> {
-  return {
-    auth: config?.auth ?? "bearer",
-    name: config?.name?.trim() || "custom",
-    method: config?.method ?? "POST",
-    queryParam: config?.queryParam?.trim() || "query",
-    apiKeyParam: config?.apiKeyParam?.trim() || "api_key",
-    resultsPath: config?.resultsPath?.trim() || "",
-    titleField: config?.titleField?.trim() || "title",
-    urlField: config?.urlField?.trim() || "url",
-    snippetField: config?.snippetField?.trim() || "snippet",
-    sourceField: config?.sourceField?.trim() || "source",
-    publishedAtField: config?.publishedAtField?.trim() || "publishedAt",
-  };
+function normalizeCustomProviderConfig(config: WebSearchCustomProviderConfig | undefined): WebSearchCustomProviderConfig {
+  return { ...config, auth: config?.auth ?? "bearer", method: config?.method ?? "POST" };
 }
 
 function readEnv(context: PilotDeckToolRuntimeContext, name: string): string | undefined {
@@ -702,7 +680,7 @@ type PerformCustomSearchInput = {
   fetchImpl: typeof fetch;
   timeoutMs: number;
   organicLimit: number;
-  custom: Required<WebSearchCustomProviderConfig>;
+  custom: WebSearchCustomProviderConfig;
 };
 
 async function performCustomSearch(
@@ -717,57 +695,23 @@ async function performCustomSearch(
     );
   }
 
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("unsupported protocol");
-  } catch {
-    throw new PilotDeckToolRuntimeError(
-      "invalid_tool_input",
-      `web_search custom provider endpoint is not a valid URL: ${endpoint}`,
-    );
-  }
-  const headers: Record<string, string> = { Accept: "application/json" };
-  const body: Record<string, unknown> = {};
-  const method = custom.method;
-
-  if (method === "GET") {
-    url.searchParams.set(custom.queryParam, query);
-    if (input.gl?.trim()) url.searchParams.set("gl", input.gl.trim());
-  } else {
-    headers["Content-Type"] = "application/json";
-    body[custom.queryParam] = query;
-    if (input.gl?.trim()) body.gl = input.gl.trim();
-  }
-
-  if (custom.auth === "bearer" && apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
-  } else if (custom.auth === "queryApiKey" && apiKey) {
-    url.searchParams.set(custom.apiKeyParam, apiKey);
-  } else if (custom.auth === "bodyApiKey" && apiKey) {
-    if (method === "GET") {
-      url.searchParams.set(custom.apiKeyParam, apiKey);
-    } else {
-      body[custom.apiKeyParam] = apiKey;
-    }
-  }
-
+  let request;
+  try { request = customSearchRequest(endpoint, custom, { query, gl: input.gl, limit: organicLimit, apiKey: apiKey ?? "" }); }
+  catch (error) { throw new PilotDeckToolRuntimeError("invalid_tool_input", redactSearchError(error, apiKey ?? "")); }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const detachAbort = forwardAbort(context.abortSignal, controller);
 
   let response: Response;
   try {
-    response = await networkFetch(url.toString(), {
-      method,
-      headers,
-      ...(method === "POST" ? { body: JSON.stringify(body) } : {}),
+    response = await networkFetch(request.url, {
+      ...request.init,
       signal: controller.signal,
     }, {
       timeoutMs,
       signal: controller.signal,
       fetchImpl,
-      retry: { maxRetries: 2, baseDelayMs: 500, maxDelayMs: 5_000, retryOnPost: method === "POST" },
+      retry: { maxRetries: 2, baseDelayMs: 500, maxDelayMs: 5_000, retryOnPost: request.init.method === "POST" },
     });
   } catch (error) {
     if (isLocalTimeout(error, controller.signal, context.abortSignal)) {
@@ -778,7 +722,7 @@ async function performCustomSearch(
     }
     throw new PilotDeckToolRuntimeError(
       "tool_execution_failed",
-      `web_search (custom) request failed: ${error instanceof Error ? error.message : String(error)}`,
+      `web_search (custom) request failed: ${redactSearchError(error, apiKey ?? "")}`,
     );
   } finally {
     clearTimeout(timeout);
@@ -789,28 +733,13 @@ async function performCustomSearch(
     const detail = await response.text().catch(() => response.statusText);
     throw new PilotDeckToolRuntimeError(
       "tool_execution_failed",
-      `Custom web search error (${response.status}): ${truncate(detail, 500)}`,
+      `Custom web search error (${response.status}): ${redactSearchError(detail, apiKey ?? "")}`,
     );
   }
 
-  const raw = (await response.json()) as Record<string, unknown>;
-  if (typeof raw.error === "string" && raw.error.length > 0) {
-    throw new PilotDeckToolRuntimeError(
-      "tool_execution_failed",
-      `Custom web search error: ${raw.error}`,
-    );
-  }
-  const proxyCode = raw.code;
-  if (typeof proxyCode === "number" && proxyCode !== 0) {
-    const message = typeof raw.msg === "string" ? raw.msg : "search provider error";
-    throw new PilotDeckToolRuntimeError(
-      "tool_execution_failed",
-      `Custom web search error code=${proxyCode}: ${message}`,
-    );
-  }
-
-  const resultValue = custom.resultsPath ? readPath(raw, custom.resultsPath) : extractResultItems(raw);
-  const organic = parseMappedResults(resultValue, organicLimit, custom);
+  let organic: WebSearchOrganicResult[];
+  try { organic = customSearchResults(await response.json(), custom, organicLimit); }
+  catch (error) { throw new PilotDeckToolRuntimeError("tool_execution_failed", redactSearchError(error, apiKey ?? "")); }
   const output: WebSearchOutput = { query, organic };
 
   return {
@@ -850,21 +779,6 @@ function parseGlmResults(value: unknown, limit: number): WebSearchOrganicResult[
     snippet: readString(entry.snippet) ?? readString(entry.summary) ?? readString(entry.content) ?? readString(entry.description) ?? readString(entry.text),
     source: readString(entry.source) ?? readString(entry.site) ?? readString(entry.media),
     publishedAt: readString(entry.publishedAt) ?? readString(entry.published_at) ?? readString(entry.publish_date) ?? readString(entry.date),
-  }));
-}
-
-function parseMappedResults(
-  value: unknown,
-  limit: number,
-  mapping: Required<WebSearchCustomProviderConfig>,
-): WebSearchOrganicResult[] {
-  if (!Array.isArray(value)) return [];
-  return (value as Array<Record<string, unknown>>).slice(0, limit).map((entry) => ({
-    title: readString(readPath(entry, mapping.titleField)),
-    link: readString(readPath(entry, mapping.urlField)),
-    snippet: readString(readPath(entry, mapping.snippetField)),
-    source: readString(readPath(entry, mapping.sourceField)),
-    publishedAt: readString(readPath(entry, mapping.publishedAtField)),
   }));
 }
 

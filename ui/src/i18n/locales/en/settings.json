@@ -1367,7 +1367,7 @@
         "provider": {
           "label": "Search provider",
           "description": "Choose the search service currently used by the agent.",
-          "glm": "GLM / Z.AI Web Search",
+          "deepseek": "DeepSeek Search",          "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
           "custom": "Custom",
           "serper": "Serper (Google)",
@@ -1400,7 +1400,7 @@
         },
         "endpoint": {
           "label": "Endpoint",
-          "description": "HTTP(S) request URL for the custom search service.",
+          "description": "HTTP(S) request URL for the custom search service. Changing the URL clears the saved API key. Enter the key again for the new address.",
           "placeholder": "https://example.com/search"
         },
         "custom": {
@@ -1913,5 +1913,42 @@
     "since": "Recorded since {{date}}. Earlier unrecorded usage is not included.",
     "empty": "No usage yet. Usage will appear here after your first conversation.",
     "updated": "Updated {{time}} · refreshes every 30 seconds"
+  },
+  "customSearch": {
+    "title": "Custom request and response",
+    "description": "The model calls web_search(query, gl). These settings translate that call into your API request and map its response back to search results. Save this configuration before testing the connection.",
+    "preset": "Start from a provider",
+    "choosePreset": "Choose a request example",
+    "endpoint": "Request URL",
+    "name": "Provider name",
+    "method": "Request method",
+    "auth": "Authentication",
+    "authOptions": {
+      "bearer": "Bearer token",
+      "headerApiKey": "API key in header",
+      "bodyApiKey": "API key in body",
+      "queryApiKey": "API key in query",
+      "none": "No authentication"
+    },
+    "apiKeyParam": "API key field / header name",
+    "queryParam": "Legacy query field",
+    "variables": "Variables: {{query}} (search text), {{limit}} (number), {{gl}} (country, defaults to us), {{apiKey}} (saved secret). Use variables in JSON values; a standalone {{limit}} keeps its numeric type. Store secrets in the API key field, not in templates.",
+    "legacy": "Leaving both query parameters and body blank keeps the legacy query field. An explicit JSON object defines the entire request. GET uses query parameters and cannot have a body. Changing URL or authentication requires re-entering the API key.",
+    "headers": "Request headers (JSON)",
+    "queryParams": "Query parameters (JSON)",
+    "bodyEncoding": "Body encoding",
+    "requestBody": "Request body (JSON template)",
+    "mapping": "Response mapping",
+    "paths": "Paths use dotted fields and array indexes, e.g. data.results or links[0].url. Use $ for a root array. Blank result path detects common lists; blank item fields use the placeholders below. Wrong lists or URL mappings fail the connection test.",
+    "resultsPath": "Results list path",
+    "titleField": "Title field",
+    "urlField": "URL field",
+    "snippetField": "Snippet field",
+    "sourceField": "Source field",
+    "publishedAtField": "Publication date field",
+    "testQuery": "Preview query",
+    "preview": "Preview request",
+    "save": "Save request configuration",
+    "invalidJson": "Invalid JSON"
   }
 }

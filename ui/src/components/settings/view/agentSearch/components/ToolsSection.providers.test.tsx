@@ -26,7 +26,7 @@ it.each(["en", "zh-CN"])("shows readable provider/engine labels in %s and tests 
   await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("SerpAPI"));
   fireEvent.keyDown(help, { key: "Escape" });
   expect(screen.queryByRole("tooltip")).toBe(null);
-  expect(provider.querySelectorAll("option")).toHaveLength(9);
+  expect(provider.querySelectorAll("option")).toHaveLength(10);
   for (const option of provider.querySelectorAll("option")) expect(option.textContent).not.toContain("pilotDeckConfig.");
   expect(screen.getByRole("option", { name: "Serper (Google)" })).toBeTruthy();
   expect(screen.getByRole("option", { name: "Brave Search" })).toBeTruthy();
@@ -86,4 +86,26 @@ it("keeps separately edited keys after switching, toggling and remounting", asyn
   select("glm");
   expect(key().value).toBe("glm-updated");
   expect(saved.tools?.webSearch?.providers?.tavily?.apiKey).toBe("tavily-saved");
+});
+
+it("saves a changed custom URL without forwarding its masked key and survives remount", async () => {
+  const i18n = createInstance();
+  await i18n.init({ lng: "en", resources: { en: { settings: en } }, defaultNS: "settings" });
+  let saved: PilotDeckConfig = { tools: { webSearch: { enabled: true, provider: "custom", providers: {
+    custom: { endpoint: "https://old.example/search", apiKey: "********", customProvider: { auth: "bearer", method: "POST" } },
+    glm: { apiKey: "********" },
+  } } } };
+  function Harness() {
+    const [config, setConfig] = useState(saved);
+    return <Provider i18n={i18n}><ToolsSection config={config} onChange={next => { saved = next; setConfig(next); }} /></Provider>;
+  }
+  const view = render(<Harness />);
+  fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+  fireEvent.change(document.getElementById("search-endpoint")!, { target: { value: " https://new.example/search " } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(saved.tools?.webSearch?.providers?.custom).toMatchObject({ endpoint: "https://new.example/search" });
+  expect(saved.tools?.webSearch?.providers?.custom?.apiKey).toBeUndefined();
+  expect(saved.tools?.webSearch?.providers?.glm?.apiKey).toBe("********");
+  view.unmount(); render(<Harness />);
+  expect((document.getElementById("search-endpoint") as HTMLInputElement).value).toBe("https://new.example/search");
 });

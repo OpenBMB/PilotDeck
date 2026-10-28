@@ -2,10 +2,14 @@ import type { SerpApiEngine, WebSearchProvider } from "./webSearchProviders.js";
 
 export type WebSearchCustomProviderConfig = {
   name?: string;
-  auth?: "bearer" | "bodyApiKey" | "queryApiKey" | "none";
+  auth?: "bearer" | "bodyApiKey" | "queryApiKey" | "headerApiKey" | "none";
   method?: "GET" | "POST";
   queryParam?: string;
   apiKeyParam?: string;
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string | number | boolean>;
+  bodyEncoding?: "json" | "form";
+  requestBody?: Record<string, unknown>;
   resultsPath?: string;
   titleField?: string;
   urlField?: string;

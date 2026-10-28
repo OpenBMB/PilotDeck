@@ -1,10 +1,11 @@
 /** Provider IDs are shared by YAML validation, the tool and settings. */
-export const WEB_SEARCH_PROVIDERS = ["glm", "tavily", "serper", "brave", "baidu", "bocha", "exa", "serpapi", "custom"] as const;
+export const WEB_SEARCH_PROVIDERS = ["deepseek", "glm", "tavily", "serper", "brave", "baidu", "bocha", "exa", "serpapi", "custom"] as const;
 export type WebSearchProvider = typeof WEB_SEARCH_PROVIDERS[number];
 export const SERPAPI_ENGINES = ["google", "bing", "baidu", "duckduckgo", "yahoo", "yandex"] as const;
 export type SerpApiEngine = typeof SERPAPI_ENGINES[number];
 
 export const WEB_SEARCH_ENDPOINTS: Record<Exclude<WebSearchProvider, "custom">, string> = {
+  deepseek: "https://api.deepseek.com/v1/tools/search",
   glm: "https://api.z.ai/api/paas/v4/web_search",
   tavily: "https://api.tavily.com/search",
   serper: "https://google.serper.dev/search",
@@ -15,6 +16,7 @@ export const WEB_SEARCH_ENDPOINTS: Record<Exclude<WebSearchProvider, "custom">, 
   serpapi: "https://serpapi.com/search.json",
 };
 export const WEB_SEARCH_DOCS: Record<Exclude<WebSearchProvider, "custom">, string> = {
+  deepseek: "https://api-docs.deepseek.com/guides/search/",
   glm: "https://docs.z.ai/api-reference/tools/web-search",
   tavily: "https://docs.tavily.com/documentation/api-reference/endpoint/search",
   serper: "https://serper.dev/",

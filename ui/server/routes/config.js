@@ -1,3 +1,4 @@
+import { customSearchRequest, customSearchResults } from "../../../src/pilot/config/customSearch.js";
 import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../../../src/pilot/config/webSearchProviders.js";
 import { getWebSearchProviderConfig, migrateWebSearchProviderConfigs, resolveWebSearchConfig } from "../../../src/pilot/config/webSearchConfig.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError } from "../../../src/tool/builtin/additionalWebSearch.js";
@@ -223,7 +224,7 @@ function normalizeWebSearchProvider(provider) {
 }
 
 function normalizeWebSearchCustomAuth(auth) {
-  return auth === 'bodyApiKey' || auth === 'queryApiKey' || auth === 'none' ? auth : 'bearer';
+  return auth === 'bodyApiKey' || auth === 'queryApiKey' || auth === 'headerApiKey' || auth === 'none' ? auth : 'bearer';
 }
 
 function normalizeWebSearchEndpoint(provider, endpoint) {
@@ -1337,10 +1338,6 @@ router.post('/test-web-search', async (req, res) => {
   const selectedProvider = normalizeWebSearchProvider(provider);
   const custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
   const customAuth = normalizeWebSearchCustomAuth(custom.auth);
-  const customMethod = custom.method === 'GET' ? 'GET' : 'POST';
-  const queryParam = typeof custom.queryParam === 'string' && custom.queryParam.trim() ? custom.queryParam.trim() : 'query';
-  const apiKeyParam = typeof custom.apiKeyParam === 'string' && custom.apiKeyParam.trim() ? custom.apiKeyParam.trim() : 'api_key';
-  const resultsPath = typeof custom.resultsPath === 'string' ? custom.resultsPath.trim() : '';
   const requestedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
   const trimmedEndpoint = typeof endpoint === 'string' ? endpoint.trim() : '';
   let trimmedKey = requestedKey === MASKED_SECRET ? '' : requestedKey;
@@ -1433,28 +1430,9 @@ router.post('/test-web-search', async (req, res) => {
         },
       };
     } else if (selectedProvider === 'custom') {
-      const headers = { Accept: 'application/json' };
-      const body = {};
-      if (customMethod === 'GET') {
-        url.searchParams.set(queryParam, 'hello');
-      } else {
-        headers['Content-Type'] = 'application/json';
-        body[queryParam] = 'hello';
-      }
-      if (customAuth === 'bearer' && trimmedKey) {
-        headers.Authorization = `Bearer ${trimmedKey}`;
-      } else if (customAuth === 'queryApiKey' && trimmedKey) {
-        url.searchParams.set(apiKeyParam, trimmedKey);
-      } else if (customAuth === 'bodyApiKey' && trimmedKey) {
-        if (customMethod === 'GET') url.searchParams.set(apiKeyParam, trimmedKey);
-        else body[apiKeyParam] = trimmedKey;
-      }
-      requestUrl = url.toString();
-      requestInit = {
-        method: customMethod,
-        headers,
-        ...(customMethod === 'POST' ? { body: JSON.stringify(body) } : {}),
-      };
+      const request = customSearchRequest(effectiveEndpoint, custom, { query: 'hello', limit: 3, apiKey: trimmedKey });
+      requestUrl = request.url;
+      requestInit = request.init;
     } else {
       requestUrl = effectiveEndpoint;
       requestInit = {
@@ -1472,8 +1450,8 @@ router.post('/test-web-search', async (req, res) => {
           }),
         };
     }
-  } catch {
-    return res.status(400).json({ ok: false, error: `Invalid endpoint URL: ${effectiveEndpoint}` });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: redactSearchError(error, trimmedKey) });
   }
 
   const timeout = 15_000;
@@ -1510,6 +1488,10 @@ router.post('/test-web-search', async (req, res) => {
       const organic = additionalSearchResults(selectedProvider, raw, 3);
       return res.json({ ok: true, latencyMs, organicCount: organic.length });
     }
+    if (selectedProvider === 'custom') {
+      const organic = customSearchResults(raw, custom, 3);
+      return res.json({ ok: true, latencyMs, organicCount: organic.length });
+    }
     if (raw && typeof raw.code === 'number' && raw.code !== 0) {
       return res.json({ ok: false, error: redactSearchError(formatWebSearchApiError(response, raw), trimmedKey), latencyMs });
     }
@@ -1520,8 +1502,6 @@ router.post('/test-web-search', async (req, res) => {
         ? raw?.organic
         : selectedProvider === 'brave'
           ? raw?.web?.results
-      : selectedProvider === 'custom' && resultsPath
-        ? readPath(raw, resultsPath)
         : (raw?.search_result ?? raw?.results ?? raw?.items ?? raw?.data);
     const organicCount = Array.isArray(organic) ? organic.length : 0;
     return res.json({ ok: true, latencyMs, organicCount });
@@ -1533,13 +1513,6 @@ router.post('/test-web-search', async (req, res) => {
     return res.json({ ok: false, error: redactSearchError(err, trimmedKey) });
   }
 });
-
-function readPath(value, pathValue) {
-  return pathValue.split('.').reduce((current, segment) => {
-    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
-    return current[segment];
-  }, value);
-}
 
 router.post('/open', async (_req, res) => {
   const configPath = getPilotDeckConfigPath();

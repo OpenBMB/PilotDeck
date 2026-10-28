@@ -1,5 +1,6 @@
 import { isWebSearchProvider, SERPAPI_ENGINES, type SerpApiEngine } from "./webSearchProviders.js";
 import { isRecord } from "../../model/config/schema.js";
+import { validateCustomSearch } from "./customSearch.js";
 import type {
   PilotConfigDiagnostic,
   PilotToolsConfig,
@@ -290,7 +291,7 @@ function parseCustomProvider(
   const result: NonNullable<PilotWebSearchConfig["customProvider"]> = {};
   const auth = parseEnumField<PilotWebSearchCustomAuth>(
     raw.auth,
-    ["bearer", "bodyApiKey", "queryApiKey", "none"],
+    ["bearer", "bodyApiKey", "queryApiKey", "headerApiKey", "none"],
     `${path}.auth`,
     "TOOLS_WEB_SEARCH_CUSTOM_AUTH_INVALID",
     diagnostics,
@@ -323,8 +324,17 @@ function parseCustomProvider(
     }
   }
 
+  for (const field of ['headers', 'queryParams', 'requestBody', 'bodyEncoding'] as const) {
+    if (raw[field] !== undefined) Object.assign(result, { [field]: raw[field] });
+  }
+  try { validateCustomSearch(result); }
+  catch (error) {
+    diagnostics.push({ code: 'TOOLS_WEB_SEARCH_CUSTOM_TEMPLATE_INVALID', severity: 'fatal',
+      message: `${path}: ${error instanceof Error ? error.message : String(error)}`, path, recoverable: false });
+  }
   for (const key of Object.keys(raw)) {
     if (
+      !['headers', 'queryParams', 'requestBody', 'bodyEncoding'].includes(key) &&
       key !== "auth" &&
       key !== "name" &&
       key !== "method" &&
