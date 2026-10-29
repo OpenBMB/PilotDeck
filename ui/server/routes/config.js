@@ -36,8 +36,8 @@ import {
 } from '../../../src/model/providerEndpoint.js';
 import { lookupCatalogProvider, PROVIDER_CATALOG } from '../../../src/model/catalog/index.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
-import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
+import { resolveCatalogImageSupport } from '../services/modelConnectionCapabilities.js';
 import {
   configuredModelIds,
   findModelReferences,
@@ -167,15 +167,6 @@ function resolveProviderRequestApiKey({
     };
   }
   return { apiKey: environmentApiKey };
-}
-
-function catalogImageSupport(providerId, modelId) {
-  const provider = String(providerId || '').trim();
-  const model = String(modelId || '').trim();
-  if (!provider || !model) return null;
-  const result = lookupCatalogModel(provider, model);
-  if (!result.model) return null;
-  return Array.isArray(result.model.multimodal?.input) && result.model.multimodal.input.includes('image');
 }
 
 function imageSupportResultFromCatalog(supported) {
@@ -1285,7 +1276,7 @@ router.post('/test-connection', async (req, res) => {
         imageCheckSource: null,
       });
     }
-    const catalogSupport = catalogImageSupport(normalizedProviderId, model);
+    const catalogSupport = resolveCatalogImageSupport({ providerId: normalizedProviderId, protocol, endpoint: probe.endpointUrl || normalizedBaseUrl, modelId: model });
     if (catalogSupport !== null) {
       const imageSupport = imageSupportResultFromCatalog(catalogSupport);
       return res.json({

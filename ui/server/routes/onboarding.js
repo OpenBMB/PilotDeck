@@ -6,6 +6,7 @@ import { configRevision, readPilotDeckConfigFile, withPilotDeckConfigWrite, writ
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
+import { resolveCatalogImageSupport } from '../services/modelConnectionCapabilities.js';
 
 const router = express.Router();
 const TEST_TTL_MS = 10 * 60 * 1000;
@@ -304,6 +305,10 @@ export function prepareConnectionTest(body, userId, allowPresetEndpointOverride 
         }
         if (!textProbe.ok) {
           results.push({ modelId, textInput: 'unsupported', imageInput: 'unknown', error: { code: textProbe.code || 'TEXT_TEST_FAILED', message: textProbe.error, modelId } });
+          continue;
+        }
+        if (resolveCatalogImageSupport({ ...provider, endpoint: textProbe.endpointUrl || provider.endpoint, modelId }) === false) {
+          results.push({ modelId, textInput: 'supported', imageInput: 'unsupported', error: null });
           continue;
         }
         let imageProbe;
