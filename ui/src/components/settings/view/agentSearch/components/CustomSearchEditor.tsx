@@ -3,7 +3,6 @@ import { Braces, ChevronDown, Eye, ListFilter, Save, Settings2 } from 'lucide-re
 import { useTranslation } from 'react-i18next';
 import type { WebSearchCustomProviderConfig } from '../../../../../../../src/pilot/config/webSearchConfig.js';
 import { customSearchRequest, validateCustomSearch } from '../../../../../../../src/pilot/config/customSearch.js';
-import { CUSTOM_SEARCH_PRESETS, customSearchPreset } from '../../../../../../../src/pilot/config/customSearchPresets.js';
 import './CustomSearchEditor.css';
 
 export default function CustomSearchEditor({ value, endpoint, disabled, onSave }: {
@@ -49,12 +48,6 @@ export default function CustomSearchEditor({ value, endpoint, disabled, onSave }
     <section className="custom-search-section">
       <h4><Settings2 aria-hidden="true" />{label('basicsTitle')}</h4>
       <div className="custom-search-grid">
-        <label className="custom-search-wide"><span>{label('preset')}</span><div className="custom-search-select"><select defaultValue="" onChange={event => {
-          const id = event.target.value as typeof CUSTOM_SEARCH_PRESETS[number];
-          if (!CUSTOM_SEARCH_PRESETS.includes(id)) return;
-          const preset = customSearchPreset(id); setDraft(preset.customProvider); if (preset.endpoint) setUrl(preset.endpoint);
-          setHeaders(jsonText(preset.customProvider.headers)); setParams(jsonText(preset.customProvider.queryParams)); setBody(jsonText(preset.customProvider.requestBody)); setError(''); setPreview('');
-        }}><option value="">{label('choosePreset')}</option>{CUSTOM_SEARCH_PRESETS.map(id => <option key={id} value={id}>{id === 'searxng' ? 'SearXNG' : id === 'openwebui' ? label('openWebUIPreset') : t('pilotDeckConfig.panels.tools.provider.' + id)}</option>)}</select><ChevronDown aria-hidden="true" /></div></label>
         {field('name', label('namePlaceholder'))}
         <label><span>{label('endpoint')}</span><input type="url" value={url} onChange={event => setUrl(event.target.value)} /></label>
         <label><span>{label('method')}</span><div className="custom-search-select"><select value={draft.method ?? 'POST'} onChange={event => change({ method: event.target.value as 'GET' | 'POST' })}><option>GET</option><option>POST</option></select><ChevronDown aria-hidden="true" /></div></label>

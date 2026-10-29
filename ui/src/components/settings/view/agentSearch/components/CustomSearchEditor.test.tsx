@@ -19,12 +19,13 @@ it.each(['en', 'zh-CN'])('edits, validates, previews and persists custom templat
     return <Provider i18n={i18n}><ToolsSection config={config} onChange={next => { saved = next; setConfig(next); }} /></Provider>;
   }
   const view = render(<Harness />);
-  fireEvent.change(screen.getByLabelText(labels.preset), { target: { value: 'baidu' } });
+  fireEvent.change(screen.getByLabelText(labels.endpoint), { target: { value: 'https://custom.example.test/search' } });
+  fireEvent.change(screen.getByLabelText(labels.requestBody), { target: { value: '{"messages":[{"content":"{{query}}"}],"count":"{{limit}}"}' } });
   fireEvent.change(screen.getByLabelText(labels.testQuery), { target: { value: '中文 "quoted" & text' } });
   fireEvent.click(screen.getByRole('button', { name: labels.preview }));
   const preview = JSON.parse(screen.getByLabelText(labels.preview).textContent!);
   expect(JSON.parse(preview.init.body).messages[0].content).toBe('中文 "quoted" & text');
-  expect(JSON.parse(preview.init.body).resource_type_filter[0].top_k).toBe(3);
+  expect(JSON.parse(preview.init.body).count).toBe(3);
   expect(JSON.stringify(preview)).not.toContain('********');
   fireEvent.change(screen.getByLabelText(labels.requestBody), { target: { value: '{invalid' } });
   fireEvent.click(screen.getByRole('button', { name: labels.save }));
