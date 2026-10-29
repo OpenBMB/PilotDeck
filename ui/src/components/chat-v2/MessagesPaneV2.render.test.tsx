@@ -1692,6 +1692,18 @@ it('shows a provisional send without writing a duplicate transcript message on a
 
 
 describe('uploaded image preview lifecycle', () => {
+  it('keeps all same-name thumbnails mounted through canonical confirmation without duplicate preview downloads', async () => {
+    const attachments = ['YQ==', 'Yg==', 'Yw=='].map((bytes, index) => ({ name: 'image.png', path: 'image.png', uploadId: 'multi-render', attachmentId: String(index), mimeType: 'image/png', previewData: `data:image/png;base64,${bytes}` }));
+    const user: ChatMessage = { id: 'local', renderKey: 'stable-user', type: 'user', content: 'Compare', timestamp: new Date(), attachments };
+    const view = renderPane({ messages: [user], isAssistantWorking: true });
+    const original = screen.getAllByRole('img');
+    expect(original).toHaveLength(3);
+    const fetch = vi.spyOn(api, 'authenticatedFetch');
+    view.rerender(createPaneElement({ messages: [{ ...user, id: 'persisted', attachments: attachments.map(attachmentDisplayMetadata), images: attachments.map(attachment => ({ name: '', data: attachment.previewData })) }] }));
+    expect(screen.getAllByRole('img')).toEqual(original);
+    expect(fetch).not.toHaveBeenCalled();
+    fetch.mockRestore();
+  });
   it.each([false, true])('renders metadata-only uploads during generation and once after history (cold cache=%s)', async cold => {
     const preview = 'data:image/png;base64,cHJldmlldy1ieXRlcw==';
     const attachment = { name: 'upload.png', uploadId: `render-${cold}`, attachmentId: 'image', mimeType: 'image/png', previewData: preview };

@@ -291,6 +291,9 @@ function normalizeRealtimeText(value?: string): string {
 function getUserAttachmentIdentity(
   attachment: NonNullable<NormalizedMessage['attachments']>[number],
 ): string {
+  if (attachment.uploadId && attachment.attachmentId) {
+    return JSON.stringify(['upload', attachment.uploadId, attachment.attachmentId]);
+  }
   const kind = attachment.kind || 'file';
   const path = attachment.path || attachment.filePath || attachment.name;
 
@@ -1335,6 +1338,9 @@ export function upsertRealtimeMessages(
   const indexByKey = new Map(updated.map((message, index) => [getUpsertKey(message), index]));
   for (let message of incoming) {
     message = normalizeCompactionMessage(message);
+    if (isUnconfirmedUserMessage(message) && !message.renderKey) {
+      message = { ...message, renderKey: message.id };
+    }
     if (message.kind === 'tool_result' && message.toolId && message.resultPath) {
       const existingToolResultIndex = findLatestToolResultIndex(updated, message.toolId);
       if (existingToolResultIndex >= 0) {
@@ -1419,6 +1425,7 @@ export function inheritMessageRenderKeys(previous: NormalizedMessage[], next: No
     const match = candidates.find((candidate) => {
       if (!candidate.renderKey || used.has(candidate.renderKey)) return false;
       if (candidate.id === message.id) return true;
+      if (findConfirmedUserMessageDuplicateIndex(candidate, [message]) === 0) return true;
       const turn = getMessageTurnId(candidate);
       if (!turn || turn !== getMessageTurnId(message)) return false;
       if (candidate.blockId || message.blockId) return candidate.blockId === message.blockId;
