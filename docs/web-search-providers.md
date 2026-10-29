@@ -77,10 +77,10 @@ parameters, JSON or form bodies and response-field mappings. Save the request
 configuration before running Test connection. Preview request renders locally
 with a placeholder key and makes no network call.
 
-Start with one of the nine built-in provider examples, SearXNG or the Open WebUI
-external-search contract, then adjust it to the server's documentation. SerpAPI's
-example uses Google; change `engine` and the query field for another engine.
-Examples are editable starting points, not an API compatibility guarantee.
+Configure the method, authentication, fields, and response mapping according to
+the provider's documentation. The preview shows JSON bodies as expanded objects;
+the adapter serializes the body once when sending the HTTP request. Form bodies
+remain URL-encoded strings in the preview, and GET requests have no body.
 
 Templates are JSON objects. Variables are supported in **values**:
 

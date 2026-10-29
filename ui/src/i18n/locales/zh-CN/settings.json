@@ -1945,6 +1945,7 @@
     "publishedAtField": "发布时间字段",
     "testQuery": "预览搜索词",
     "preview": "预览请求",
+    "previewHint": "JSON 请求体展开显示，发送时仅序列化一次。预览使用占位密钥，不会发送请求。",
     "save": "保存请求配置",
     "invalidJson": "JSON 格式错误"
   }

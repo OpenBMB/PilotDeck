@@ -33,7 +33,15 @@ export default function CustomSearchEditor({ value, endpoint, disabled, onSave }
       const request = customSearchRequest(url, config, { query, gl: 'us', limit: 3, apiKey: '[API_KEY]' });
       setError('');
       if (save) { onSave(config, url.trim()); setPreview(''); }
-      else setPreview(JSON.stringify(request, null, 2));
+      else {
+        const body = request.init.body;
+        // Present HTTP content rather than a JSON-encoded Fetch RequestInit.
+        // The actual adapter keeps the serialized body used on the wire.
+        setPreview(JSON.stringify({
+          method: request.init.method, url: request.url, headers: request.init.headers,
+          ...(body === undefined ? {} : { body: new Headers(request.init.headers).get('content-type') === 'application/json' ? JSON.parse(body) : body }),
+        }, null, 2));
+      }
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); setPreview(''); }
   };
   const field = (key: 'name' | 'queryParam' | 'apiKeyParam' | 'resultsPath' | 'titleField' | 'urlField' | 'snippetField' | 'sourceField' | 'publishedAtField', placeholder: string) => <label key={key}><span>{label(key)}</span>
@@ -83,7 +91,10 @@ export default function CustomSearchEditor({ value, endpoint, disabled, onSave }
         </div>
       </div>
       {error && <p className="custom-search-error" role="alert">{error}</p>}
-      {preview && <pre aria-label={label('preview')}>{preview}</pre>}
+      {preview && <>
+        <p>{label('previewHint')}</p>
+        <pre aria-label={label('preview')}>{preview}</pre>
+      </>}
     </section>
   </fieldset>;
 }

@@ -1952,6 +1952,7 @@
     "publishedAtField": "Publication date field",
     "testQuery": "Preview query",
     "preview": "Preview request",
+    "previewHint": "JSON bodies are expanded for readability and serialized once when sent. Preview uses a placeholder key and sends no request.",
     "save": "Save request configuration",
     "invalidJson": "Invalid JSON"
   }
