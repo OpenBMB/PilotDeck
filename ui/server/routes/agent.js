@@ -50,12 +50,14 @@ const validateExternalApiKey = (req, res, next) => {
   }
 
   const user = apiKeysDb.validateApiKey(apiKey);
-
-  if (!user) {
+  // The credential lookup returns a database principal, never a credential.
+  // Limit downstream attribution/rate keys to the positive integer account ID.
+  const userId = Number(user?.id);
+  if (!user || !Number.isSafeInteger(userId) || userId <= 0) {
     return res.status(401).json({ error: 'Invalid or inactive API key' });
   }
 
-  req.user = user;
+  req.user = { id: userId, username: user.username };
   return withAuthenticatedRequest(req, res, next).catch(next);
 };
 

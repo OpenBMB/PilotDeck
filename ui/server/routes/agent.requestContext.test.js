@@ -5,11 +5,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const mocks = vi.hoisted(() => ({ platform: false, calls: new Map() }));
+const mocks = vi.hoisted(() => ({ platform: false, calls: new Map(), invalidPrincipal: undefined }));
 vi.mock('../constants/config.js', () => ({ get IS_PLATFORM() { return mocks.platform; } }));
 vi.mock('../database/db.js', () => ({
   userDb: { getFirstUser: () => ({ id: 'platform-user' }) },
-  apiKeysDb: { validateApiKey: key => ['key-alice', 'key-bob'].includes(key) ? { id: key.slice(4) } : null },
+  apiKeysDb: { validateApiKey: key => key === 'invalid-principal' ? { id: mocks.invalidPrincipal } : ['key-alice', 'key-bob'].includes(key) ? { id: key === 'key-alice' ? 1 : 2 } : null },
   githubTokensDb: {},
 }));
 vi.mock('../projects.js', () => ({ addProjectManually: async path => ({ path }) }));
@@ -55,7 +55,7 @@ it('attributes concurrent API key users independently and preserves the response
     expect(response.status).toBe(200);
     expect((await response.json()).success).toBe(true);
     const headers = mocks.calls.get(user);
-    expect(headers['x-pilotdeck-user-id']).toBe(anonymousRequestId('user', user));
+    expect(headers['x-pilotdeck-user-id']).toBe(anonymousRequestId('user', user === 'alice' ? '1' : '2'));
     expect(headers['x-pilotdeck-user-id']).toBe(response.headers.get('x-pilotdeck-user-id'));
     expect(headers['x-pilotdeck-parent-request-id']).toBe(requestId);
     expect(headers['x-pilotdeck-parent-request-id']).toBe(response.headers.get('x-pilotdeck-request-id'));
@@ -67,7 +67,7 @@ it('attributes concurrent API key users independently and preserves the response
 });
 it('initializes query-key and platform authentication contexts', async () => {
   expect((await send('query', {}, '?apiKey=key-alice')).status).toBe(200);
-  expect(mocks.calls.get('query')['x-pilotdeck-user-id']).toBe(anonymousRequestId('user', 'alice'));
+  expect(mocks.calls.get('query')['x-pilotdeck-user-id']).toBe(anonymousRequestId('user', '1'));
   mocks.platform = true;
   expect((await send('platform')).status).toBe(200);
   expect(mocks.calls.get('platform')['x-pilotdeck-user-id']).toBe(anonymousRequestId('user', 'platform-user'));
@@ -84,9 +84,17 @@ it.each(['basic', 'off'])('preserves %s privacy mode for API key authentication'
   expect(mocks.calls.get(mode)['x-pilotdeck-user-id']).toBeUndefined();
 });
 
+it.each([undefined, null, 'credential-shaped-value', 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid authenticated database IDs before attribution/dispatch (%s)', async id => {
+  mocks.invalidPrincipal = id;
+  const response = await send('invalid-principal', { 'x-api-key': 'invalid-principal' });
+  expect(response.status).toBe(401);
+  expect(response.headers.get('x-pilotdeck-user-id')).toBe(anonymousRequestId('user', 'local-profile'));
+  expect(mocks.calls.size).toBe(0);
+});
+
 it('limits external model tasks before project/model work while keeping another account available', async () => {
-  requestLimiters.model.resetKey('user:alice');
-  requestLimiters.model.resetKey('user:bob');
+  requestLimiters.model.resetKey('user:1');
+  requestLimiters.model.resetKey('user:2');
   for (let i = 0; i < 30; i++) expect((await send(`model-${i}`, { 'x-api-key': 'key-alice' })).status).toBe(200);
   const blocked = await send('blocked-model', { 'x-api-key': 'key-alice' });
   expect(blocked.status).toBe(429);
