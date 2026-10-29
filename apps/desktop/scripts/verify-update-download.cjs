@@ -28,14 +28,23 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   const body = Buffer.alloc(4 * 1024 * 1024, 0x61);
   const sha512 = createHash('sha512').update(body).digest('base64');
   const manifest = { version: '2026.1002.0', files: [{ url: 'update-linux-arm64.deb', size: body.length, sha512 }] };
-  let payloadRequests = 0, openPayloads = 0;
+  let payloadRequests = 0, openPayloads = 0, feedRequests = 0;
   server = http.createServer((request, response) => {
     if (request.url === '/stalled') return;
+    if (request.url === '/html') { response.writeHead(200, { 'Content-Type': 'text/html' }); response.end('<html>gateway error</html>'); return; }
+    if (request.url === '/wrong-size') { response.writeHead(200, { 'Content-Length': 5 }); response.end('error'); return; }
+    if (request.url === '/bad-range') { response.writeHead(206, { 'Content-Range': 'bytes 0-3/999' }); response.end('oops'); return; }
+    if (request.url === '/no-range' && request.headers.range) { response.writeHead(416); response.end(); return; }
+    if (request.url === '/range') {
+      response.writeHead(206, { 'Content-Range': `bytes 0-262143/${body.length}`, 'Content-Length': 262144 });
+      response.end(body.subarray(0, 262144)); return;
+    }
     if (request.url.startsWith('/bad/') && !request.url.includes('.yml')) { response.writeHead(503); response.end(); return; }
-    if (request.url.split('?')[0].endsWith('.yml')) { response.end(JSON.stringify(manifest)); return; }
+    if (request.url.split('?')[0].endsWith('.yml')) { feedRequests++; response.end(JSON.stringify(manifest)); return; }
     if (request.url === '/redirect') { response.writeHead(302, { Location: '/update-linux-arm64.deb' }); response.end(); return; }
     if (request.url === '/broken') { response.writeHead(200, { 'Content-Length': body.length }); response.write(body.subarray(0, 65536)); setTimeout(() => response.destroy(), 100); return; }
-    payloadRequests++; openPayloads++;
+    if (!request.headers.range) payloadRequests++;
+    openPayloads++;
     const chunked = request.url.startsWith('/chunked/');
     response.writeHead(200, { ...(chunked ? {} : { 'Content-Length': body.length }), 'Content-Type': 'application/octet-stream' });
     let offset = 0;
@@ -56,6 +65,12 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   const network = createUpdateNetwork({ setProxy: async () => {}, closeAllConnections: async () => {}, clearAuthCache: async () => {} }, () => undefined, {});
   // This fixture ignores Range: sampling must still abort the response early.
   assert.ok(await network.probe(`${base}/redirect`) > 0);
+  for (const route of ['/html', '/wrong-size', '/bad-range', '/broken']) {
+    await assert.rejects(network.probe(`${base}${route}`, undefined, body.length));
+  }
+  for (const route of ['/range', '/no-range', '/chunked/probe']) {
+    assert.ok(await network.probe(`${base}${route}`, undefined, body.length) > 0);
+  }
   await until(() => openPayloads === 0);
   const abortProbe = new AbortController();
   const probing = network.probe(`${base}/redirect`, abortProbe.signal);
@@ -138,13 +153,16 @@ const timeout = setTimeout(() => { console.error('Download integration test time
     sha256: createHash('sha256').update(body).digest('hex'), platform: 'linux', arch: 'arm64' };
   const controllerOptions = { updater, repository: 'fixture/PilotDeck', platform: 'linux', arch: 'arm64',
     version: adapter.version, packaged: true, downloadControl: transport,
-    latestRelease: async () => ({ version: manifest.version, tagName: 'v2026.10.02', assets: [releaseAsset, { ...releaseAsset, name: 'latest-linux-arm64.yml' }] }),
+    downloadAvailable: async (_release, asset, signal) => Number.isFinite(await network.probe(`${base}/${asset.name}`, signal, asset.size)),
+    latestRelease: async () => ({ version: manifest.version, tagName: 'v2026.10.02', assets: [releaseAsset] }),
     downloadBases: async () => [`${base}/bad/`, `${base}/`], compareVersions: () => -1,
     prepareToInstall: async () => {}, recoverRuntime: async () => {} };
   const controller = createUpdateController(controllerOptions);
+  const legacyFeedRequests = feedRequests;
   controller.start(); await controller.wait();
   assert.equal(controller.status().state, 'installing');
   assert.equal(installed, 1);
+  assert.equal(feedRequests, legacyFeedRequests, 'JSON updater requested a legacy YAML feed');
   // Exercise an actual chunked payload for longer than the watchdog window.
   // electron-updater emits no progress events without Content-Length, but the
   // transport is continuously receiving 128 KiB/s and must not switch routes.
@@ -167,8 +185,9 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   assert.equal(payloadRequests - previousPayloadRequests, 1, 'Healthy chunked transfer triggered a retry');
   assert.equal(chunkedController.status().state, 'installing');
   assert.equal(installed, 2);
+  assert.equal(feedRequests, legacyFeedRequests, 'JSON fallback requested a legacy YAML feed');
   console.log('Real updater: chunked payload without Content-Length passed the 30-second watchdog with zero progress events, no retry and a verified install.');
-  console.log('Real updater: bounded redirected probes and cancellation; failed payload switches provider, rechecks the feed, verifies the file and installs exactly once.');
+  console.log('Real updater: bounded probes reject gateway pages and wrong sizes, support Range rejection, redirects and cancellation; JSON-only fallback installs exactly once without fetching YML.');
   console.log('Real updater: pause freezes file bytes, resume uses one request and validates checksums; redirects, paused cancellation/cache cleanup, restart, network failure and checksum failure passed.');
 })().then(() => finish(0), error => { console.error(error); return finish(1); });
 async function finish(code) {

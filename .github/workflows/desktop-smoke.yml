@@ -104,7 +104,7 @@ jobs:
 
       - name: Test desktop updater network
         # Requires electron-updater, intentionally absent from the Web-only job.
-        run: pnpm --dir ui exec vitest run server/services/desktopUpdateNetwork.test.ts server/services/desktopUpdates.spec.ts server/services/desktopAutoUpdate.test.ts
+        run: pnpm --dir ui exec vitest run server/services/desktopUpdateNetwork.test.ts server/services/desktopUpdates.spec.ts server/services/desktopAutoUpdate.test.ts server/services/jsonReleaseProvider.test.ts
 
   # PRs exercise the same native packages and updater feeds as releases.
   linux:

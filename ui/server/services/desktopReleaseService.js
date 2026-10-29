@@ -46,6 +46,22 @@ export function createDesktopReleaseService({ repository: value, currentVersion,
     return validateReleaseManifest(manifest, repository);
   }
   return {
+    async downloadAvailable(release, asset, signal) {
+      signal?.throwIfAborted();
+      if (!RELEASE_TAG.test(release.tagName || '') || !/^[\w.-]+$/.test(asset.name || '')
+          || !Number.isSafeInteger(asset.size) || asset.size <= 0) return false;
+      const stop = new AbortController();
+      const bounded = AbortSignal.any([stop.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
+      try {
+        await Promise.any(orderedSources().map(async source => {
+          const elapsed = await probe(`${source.base(release.tagName)}${encodeURIComponent(asset.name)}`, bounded, asset.size);
+          if (!Number.isFinite(elapsed) || elapsed < 0) throw new Error('invalidProbe');
+        }));
+        signal?.throwIfAborted();
+        return true;
+      } catch { return false; }
+      finally { stop.abort(); }
+    },
     async latestRelease() {
       // Both official routes start immediately, regardless of locale or the
       // remembered route. Compare versions in a bounded collection window.
@@ -84,7 +100,7 @@ export function createDesktopReleaseService({ repository: value, currentVersion,
         const ranked = await Promise.all(orderedSources().map(async source => {
           const url = source.base(release.tagName);
           try {
-            const elapsed = await probe(`${url}${encodeURIComponent(asset.name)}`, probeSignal);
+            const elapsed = await probe(`${url}${encodeURIComponent(asset.name)}`, probeSignal, asset.size);
             if (!Number.isFinite(elapsed) || elapsed < 0) throw new Error('invalidProbe');
             // A short grace period compares close competitors without waiting
             // five seconds for an unusable route. Preserve a recent success

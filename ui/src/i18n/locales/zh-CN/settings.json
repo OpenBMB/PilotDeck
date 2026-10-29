@@ -192,6 +192,7 @@
         "reasons": {
           "installing": "正在应用更新，客户端将自动重新打开，请稍候。",
           "noCompatibleInstaller": "该版本缺少当前系统或架构的自动更新文件，暂时无法更新。",
+          "downloadUnavailable": "发现新版本，但下载暂不可用，请稍后重新检查。",
           "checkFailed": "暂时无法检查更新，请检查网络后点击“重新检查”重试。",
           "development": "开发模式不支持自动安装更新。",
           "upToDate": "当前版本无需更新，不会自动降级。",

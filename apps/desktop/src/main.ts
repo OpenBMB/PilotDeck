@@ -1017,6 +1017,7 @@ function getUpdateController() {
     prepareNetwork: network.prepare,
     latestRelease: releaseService.latestRelease,
     downloadBases: releaseService.downloadBases,
+    downloadAvailable: releaseService.downloadAvailable,
     downloadSucceeded: releaseService.downloadSucceeded,
     downloadFailed: releaseService.downloadFailed,
     compareVersions: releases.compareVersions,

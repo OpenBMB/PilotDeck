@@ -36,7 +36,7 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
   const executor = executorFactory(login);
   const probeExecutor = new ElectronHttpExecutor(login);
   return {
-    probe: (url: string, signal?: AbortSignal) => probeUpdateDownload(probeExecutor, url, signal),
+    probe: (url: string, signal?: AbortSignal, expectedSize?: number) => probeUpdateDownload(probeExecutor, url, signal, expectedSize),
     async prepare() {
       const config = resolveUpdateProxy(readConfig(), env);
       const key = JSON.stringify(config);
@@ -72,7 +72,15 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
 
 // Read at most 256 KiB, even when a server ignores Range. Abort the transport
 // after sampling; never buffer an installer merely to measure its speed.
-export function probeUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal?: AbortSignal): Promise<number> {
+export async function probeUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal?: AbortSignal, expectedSize?: number): Promise<number> {
+  try { return await sampleUpdateDownload(executor, url, signal, expectedSize, true); }
+  catch (error) {
+    if (!(error instanceof Error) || error.message !== "probeRangeUnsupported") throw error;
+    return sampleUpdateDownload(executor, url, signal, expectedSize, false);
+  }
+}
+
+function sampleUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal: AbortSignal | undefined, expectedSize: number | undefined, useRange: boolean): Promise<number> {
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted();
     const started = Date.now();
@@ -95,8 +103,16 @@ export function probeUpdateDownload(executor: Pick<ElectronHttpExecutor, "create
       const target = new URL(url);
       request = executor.createRequest({ protocol: target.protocol, hostname: target.hostname,
         port: target.port || undefined, path: `${target.pathname}${target.search}`, redirect: "follow",
-        headers: { Range: "bytes=0-262143", "Cache-Control": "no-cache", "User-Agent": "PilotDeck-Updater" } }, response => {
+        headers: { ...(useRange ? { Range: "bytes=0-262143" } : {}), "Cache-Control": "no-cache", "User-Agent": "PilotDeck-Updater" } }, response => {
+        if (useRange && [400, 405, 416].includes(response.statusCode)) { finish(new Error("probeRangeUnsupported")); return; }
         if (response.statusCode !== 200 && response.statusCode !== 206) { finish(new Error("probeFailed")); return; }
+        const type = String(response.headers['content-type'] || '');
+        const length = response.statusCode === 206 ? String(response.headers['content-range'] || '').match(/^bytes 0-\d+\/(\d+)$/)?.[1]
+          : response.headers['content-length'];
+        if (/text\/|json|xml/i.test(type) || (response.statusCode === 206 && !length)
+          || (expectedSize !== undefined && length !== undefined && Number(length) !== expectedSize)) {
+          finish(new Error("invalidProbePayload")); return;
+        }
         response.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes >= 262144) finish(); });
         response.on("end", () => finish(bytes ? undefined : new Error("emptyProbe")));
         response.on("error", finish);
