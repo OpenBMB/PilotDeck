@@ -5,8 +5,31 @@ import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runRepositoryOperation } from "../../src/session/checkpoints/repositoryOperation.js";
+import { repositoryFileFingerprint, runRepositoryOperation } from "../../src/session/checkpoints/repositoryOperation.js";
 const execute = promisify(execFile);
+
+test("staging refuses a changed review version and compatibility Git actions preserve branch and discard behavior", async t => {
+  const workspace = await mkdtemp(join(tmpdir(), "pilotdeck-git-compat-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const git = async (...args: string[]) => (await execute("git", args, { cwd: workspace })).stdout.trim();
+  await runRepositoryOperation(workspace, { operation: "init" });
+  await git("config", "user.name", "Checkpoint QA"); await git("config", "user.email", "qa@example.test");
+  await writeFile(join(workspace, "a.txt"), "reviewed");
+  const old = await repositoryFileFingerprint(workspace, "a.txt");
+  await writeFile(join(workspace, "a.txt"), "changed");
+  await assert.rejects(runRepositoryOperation(workspace, { operation: "stage", files: ["a.txt"], expectedFiles: { "a.txt": old } }), { code: "FILES_CHANGED" });
+  assert.equal(await git("ls-files"), "");
+  await runRepositoryOperation(workspace, { operation: "legacy", legacyAction: "initial-commit" });
+  const originalBranch = await git("branch", "--show-current");
+  await runRepositoryOperation(workspace, { operation: "legacy", legacyAction: "create-branch", branch: "qa/compat" });
+  assert.equal(await git("branch", "--show-current"), "qa/compat");
+  await writeFile(join(workspace, "a.txt"), "discard me");
+  await runRepositoryOperation(workspace, { operation: "legacy", legacyAction: "discard", files: ["a.txt"] });
+  assert.equal(await readFile(join(workspace, "a.txt"), "utf8"), "changed");
+  await runRepositoryOperation(workspace, { operation: "legacy", legacyAction: "checkout", branch: originalBranch });
+  await runRepositoryOperation(workspace, { operation: "legacy", legacyAction: "delete-branch", branch: "qa/compat" });
+  assert.equal(await git("branch", "--show-current"), originalBranch);
+});
 
 test("Git operations honor the real index, literal filenames, unborn branches, stale staging and first push", async t => {
   const base = await mkdtemp(join(tmpdir(), "pilotdeck-git-")), workspace = join(base, "repo"), remote = join(base, "remote.git");

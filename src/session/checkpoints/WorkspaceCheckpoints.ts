@@ -4,21 +4,33 @@ import path from "node:path";
 import type { CanonicalMessage } from "../../model/index.js";
 import { getPilotProjectChatDir } from "../../pilot/paths.js";
 import { buildStructuredPatch } from "../../tool/builtin/filesystem/structuredPatch.js";
+import { resolveRealWritePath } from "../../tool/builtin/filesystem/pathSafety.js";
+import { acquireWorkspaceOperation, canonicalWorkspacePath, hasWorkspaceTurn, operationContext, registerWorkspaceTurn, workspaceOperationState } from "./WorkspaceCoordinator.js";
 
 import type { FileVersion, FileChange, Checkpoint, CheckpointSummary, RestorePlan, RestoreOperation, CheckpointRequest } from "./types.js";
 export type { FileVersion, FileChange, Checkpoint, CheckpointSummary, RestorePlan, RestoreOperation, CheckpointRequest } from "./types.js";
 
-const EXCLUDED = new Set([".git", ".pilotdeck", "node_modules", ".venv", "venv", "dist", "build", "coverage", ".next", ".cache", "__pycache__"]);
+const EXCLUDED = new Set([".git", ".pilotdeck", ".tmp", "node_modules", ".venv", "venv", "dist", "build", "coverage", ".next", ".cache", "__pycache__"]);
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_WORKSPACE_BYTES = 256 * 1024 * 1024;
 const ABSENT: FileVersion = { kind: "absent" };
 const stores = new Map<string, Promise<CheckpointStore>>();
-const leases: Array<{ workspace: string; done: Promise<void> }> = [];
-const backgroundCommands = new Set<{ workspace: string }>();
-const overlaps = (left: string, right: string) => left === right || inside(left, right) || inside(right, left);
-const backgroundBusy = (workspace: string) => [...backgroundCommands].some(command => overlaps(command.workspace, workspace));
-type TrackedEdit = { before: FileVersion; after?: FileVersion; source?: FileChange["source"]; uncertain?: boolean };
-type TrackedCommand = { background: boolean; finishing?: Promise<void> };
+const storageActivity = new Map<string, { pins: number; gc?: Promise<void> }>();
+type TrackedEdit = { before: FileVersion; after?: FileVersion; source?: FileChange["source"]; uncertain?: boolean; beforeRevision?: string; afterRevision?: string; workspaceRevision?: string; segments?: FileChange[] };
+type EditRecord = TrackedEdit & { id: string; beforeId: string; path: string; sessionId?: string; turnId?: string; parentOperationId?: string; createdAt?: string };
+
+function mergeTrackedEdit(tracked: Map<string, TrackedEdit>, relative: string, edit: TrackedEdit): void {
+  const previous = tracked.get(relative);
+  const interrupted = previous && (!sameOnDisk(previous.after ?? ABSENT, edit.before)
+    || (previous.afterRevision !== undefined && previous.afterRevision !== edit.beforeRevision) || previous.workspaceRevision !== edit.workspaceRevision);
+  if (!previous) { tracked.set(relative, edit); return; }
+  if (previous?.uncertain || edit.uncertain || interrupted) {
+    const segment = (value: TrackedEdit): FileChange => ({ path: relative, before: value.before, after: value.after ?? ABSENT,
+      source: value.source ?? "file_tool", added: 0, removed: 0, beforeRevision: value.beforeRevision, afterRevision: value.afterRevision });
+    tracked.set(relative, { ...edit, uncertain: true, segments: [...(previous?.segments ?? (previous ? [segment(previous)] : [])), ...(edit.segments ?? [segment(edit)])] });
+  } else tracked.set(relative, { ...edit, before: previous?.before ?? edit.before, beforeRevision: previous?.beforeRevision ?? edit.beforeRevision,
+    source: previous?.source === "file_tool" || edit.source === "file_tool" ? "file_tool" : edit.source });
+}
 
 export class CheckpointError extends Error {
   constructor(public readonly code: string, message: string) { super(message); }
@@ -46,19 +58,54 @@ export async function getCheckpointStore(workspace: string, pilotHome: string): 
   return pending;
 }
 
-/** Immutable objects and manifests. A lease spans a turn or restore, not a session. */
+/** Immutable objects and manifests. Directory leases protect mutations, never agent turns. */
 export class CheckpointStore {
   constructor(public readonly workspace: string, public readonly directory: string) { this.workspace = canonicalPath(workspace); }
 
-  get busy(): boolean { return backgroundBusy(this.workspace) || leases.some(lease => overlaps(lease.workspace, this.workspace)); }
-  async acquire(): Promise<() => void> {
-    const previous = leases.filter(lease => overlaps(lease.workspace, this.workspace));
-    let release!: () => void;
-    const lease = { workspace: this.workspace, done: new Promise<void>(resolve => { release = resolve; }) };
-    leases.push(lease);
-    await Promise.all(previous.map(item => item.done));
+  get busy(): boolean { return workspaceOperationState(this.workspace).busy; }
+  get busyReason(): string | undefined { return workspaceOperationState(this.workspace).reason; }
+  async pin(): Promise<() => void> {
+    let state = storageActivity.get(this.directory);
+    if (!state) { state = { pins: 0 }; storageActivity.set(this.directory, state); }
+    state.pins++;
+    await state.gc?.catch(() => {});
     let released = false;
-    return () => { if (!released) { released = true; leases.splice(leases.indexOf(lease), 1); release(); } };
+    return () => { if (!released) { released = true; state!.pins--; } };
+  }
+  acquire(signal?: AbortSignal): Promise<() => void> { return acquireWorkspaceOperation(this.workspace, { signal }); }
+  async withExclusive<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const owner = operationContext.getStore()?.owner ?? {};
+    const release = await acquireWorkspaceOperation(this.workspace, { owner, signal });
+    const unpin = await this.pin();
+    try { return await operationContext.run({ owner }, task); } finally { unpin(); release(); }
+  }
+  private headPath(relative: string): string {
+    return path.join(path.dirname(this.directory), "file-heads", `${digest(Buffer.from(canonicalPath(path.join(this.workspace, relative))))}.json`);
+  }
+  async revision(relative: string): Promise<string> {
+    try { return (JSON.parse(await fs.readFile(this.headPath(relative), "utf8")) as { revision: string }).revision; }
+    catch (error) { if (hasCode(error, "ENOENT")) return ""; throw error; }
+  }
+  async advance(relative: string, revision: string = randomUUID()): Promise<string> {
+    const destination = this.headPath(relative);
+    await fs.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
+    await this.atomicWrite(destination, Buffer.from(JSON.stringify({ revision })), true);
+    return revision;
+  }
+  async scopeRevision(): Promise<string> {
+    const revisions: string[] = [];
+    for (let scope = this.workspace;; scope = path.dirname(scope)) {
+      const file = path.join(path.dirname(this.directory), "file-heads", `scope-${digest(Buffer.from(scope))}.json`);
+      try { revisions.push(await fs.readFile(file, "utf8")); }
+      catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
+      if (path.dirname(scope) === scope) break;
+    }
+    return revisions.join(":");
+  }
+  async invalidateWorkspace(): Promise<void> {
+    const file = path.join(path.dirname(this.directory), "file-heads", `scope-${digest(Buffer.from(this.workspace))}.json`);
+    await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+    await this.atomicWrite(file, Buffer.from(randomUUID()), true);
   }
   private recordPath(kind: "manifests" | "plans" | "operations" | "edits", id: string): string {
     if (!/^[a-f0-9-]{36}$/.test(id)) throw new CheckpointError("INVALID_ID", "Invalid checkpoint identifier.");
@@ -186,7 +233,8 @@ export class CheckpointStore {
       try { after = await fs.lstat(target); } catch (error) { if (hasCode(error, "ENOENT")) continue; throw error; }
       if (before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) continue;
       const hash = save ? await this.putObject(content) : digest(content);
-      return { kind: "file", hash, size: content.length, mode: before.mode & 0o777, binary: content.includes(0) };
+      return { kind: "file", hash, size: content.length, mode: before.mode & 0o777, binary: content.includes(0),
+        fingerprint: digest(Buffer.from(JSON.stringify([before.dev, before.ino, before.size, before.mode, before.mtimeMs, before.ctimeMs]))) };
     }
     return { kind: "unprotected", reason: "File changed while its checkpoint was being captured." };
   }
@@ -219,7 +267,7 @@ export class CheckpointStore {
     return { version: 1, id: randomUUID(), sessionId, turnId, workspace: this.workspace, createdAt: new Date().toISOString(), phase, status: "complete", files,
       ...(context ? { contextHash: await this.putObject(Buffer.from(JSON.stringify(context))) } : {}) };
   }
-  async save(checkpoint: Checkpoint): Promise<void> { await this.writeRecord("manifests", checkpoint); }
+  async save(checkpoint: Checkpoint, update = false): Promise<void> { await this.writeRecord("manifests", checkpoint, update); }
   async list(sessionId: string): Promise<Checkpoint[]> {
     const directory = path.join(this.directory, "manifests");
     const names = await fs.readdir(directory).catch(error => { if (hasCode(error, "ENOENT")) return []; throw error; });
@@ -230,12 +278,13 @@ export class CheckpointStore {
       if (checkpoint.version === 1 && checkpoint.sessionId === sessionId && checkpoint.workspace === this.workspace) records.push(checkpoint);
     }
     const aliases = await this.fileAliases(records.flatMap(record => (record.changes ?? []).map(change => change.path)));
-    return (await Promise.all(records.map(record => this.normalizeCheckpoint(record, aliases)))).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    const superseded = new Set(records.flatMap(record => record.supersedesId ? [record.supersedesId] : []));
+    return (await Promise.all(records.filter(record => !superseded.has(record.id)).map(record => this.normalizeCheckpoint(record, aliases)))).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   }
   summary(checkpoint: Checkpoint): CheckpointSummary {
     const { files, contextHash: _context, changes, ...rest } = checkpoint;
-    return { ...rest, unprotected: new Set([...Object.keys(files).filter(relative => files[relative].kind === "unprotected"), ...(changes ?? []).filter(change => change.uncertain).map(change => change.path)]).size,
-      changes: (changes ?? []).map(({ before, after, ...change }) => ({ ...change,
+    return { ...rest, unprotected: new Set([...Object.keys(files).filter(relative => files[relative].kind === "unprotected"), ...(changes ?? []).filter(change => change.uncertain || change.before.kind === "unprotected" || change.after.kind === "unprotected").map(change => change.path)]).size,
+      changes: (changes ?? []).map(({ before, after, segments: _segments, ...change }) => ({ ...change,
         operation: before.kind === "absent" ? "created" : after.kind === "absent" ? "deleted" : "updated",
         restorable: !change.uncertain && before.kind !== "unprotected" && after.kind !== "unprotected",
         binary: (before.kind === "file" && before.binary) || (after.kind === "file" && after.binary) })) };
@@ -247,14 +296,14 @@ export class CheckpointStore {
     after = { ...after, files: normalizeFiles(after.files) };
     tracked = new Map([...tracked].map(([relative, edit]) => [aliases.get(relative) ?? relative, edit]));
     const changes: FileChange[] = [];
-    for (const relative of new Set([...Object.keys(before.files), ...Object.keys(after.files), ...tracked.keys()])) {
+    for (const relative of new Set(before.journalVersion === 2 ? tracked.keys() : [...Object.keys(before.files), ...Object.keys(after.files), ...tracked.keys()])) {
       const tool = tracked.get(relative);
       // A tool preimage can be an intermediate version after an earlier command.
       // Missing entries in a scanned directory mean absent at the turn boundary;
       // excluded work directories instead depend on their explicit edit journal.
-      const left = before.files[relative] ?? (scannedPath(relative) ? ABSENT : tool?.before ?? ABSENT);
+      const left = before.journalVersion === 2 ? tool?.before ?? ABSENT : before.files[relative] ?? (scannedPath(relative) ? ABSENT : tool?.before ?? ABSENT);
       const right = tool?.after ?? after.files[relative] ?? ABSENT;
-      if (same(left, right)) continue;
+      if (same(left, right) && (!tool?.uncertain || (tool.source === "observed" && !tool.segments?.length))) continue;
       let added = 0, removed = 0;
       if (left.kind !== "unprotected" && right.kind !== "unprotected" && !(left.kind === "file" && left.binary) && !(right.kind === "file" && right.binary)) {
         const oldText = left.kind === "file" ? (await this.readObject(left.hash)).toString("utf8") : null;
@@ -265,7 +314,17 @@ export class CheckpointStore {
           }
         }
       }
-      changes.push({ path: relative, before: left, after: right, source: tool?.after ? tool.source ?? "file_tool" : "observed", added, removed, ...(tool?.uncertain ? { uncertain: true } : {}) });
+      if (tool?.segments?.length) {
+        added = 0; removed = 0;
+        for (const segment of tool.segments) {
+          const stats = await this.changes({ ...before, journalVersion: undefined, files: { [relative]: segment.before } }, { ...after, journalVersion: undefined, files: { [relative]: segment.after } });
+          added += stats[0]?.added ?? 0; removed += stats[0]?.removed ?? 0;
+        }
+      }
+      changes.push({ path: relative, before: left, after: right, source: tool?.after ? tool.source ?? "file_tool" : "observed", added, removed,
+        ...(tool?.uncertain ? { uncertain: true } : {}), ...(tool?.beforeRevision !== undefined ? { beforeRevision: tool.beforeRevision } : {}),
+        ...(tool?.afterRevision !== undefined ? { afterRevision: tool.afterRevision } : {}), ...(tool?.segments ? { segments: tool.segments } : {}) });
+      if (tool?.workspaceRevision !== undefined) changes[changes.length - 1].workspaceRevision = tool.workspaceRevision;
     }
     return changes.sort((a, b) => a.path.localeCompare(b.path));
   }
@@ -281,7 +340,7 @@ export class CheckpointStore {
     for (const operation of await this.operations(checkpoint.sessionId)) {
       if (operation.createdAt < cutoff) continue;
       const applied = operation.files.filter(file => operation.applied.includes(file.path));
-      events.push({ createdAt: operation.createdAt, changes: applied.map(file => ({ path: file.path, before: file.expected, after: file.target, source: file.source, added: 0, removed: 0 })) });
+      events.push({ createdAt: operation.createdAt, changes: applied.map(file => ({ path: file.path, before: file.expected, after: file.result ?? file.target, source: file.source, added: 0, removed: 0, beforeRevision: file.expectedRevision, afterRevision: file.resultRevision, workspaceRevision: operation.workspaceRevision })) });
     }
     events.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const aliases = await this.fileAliases(events.flatMap(event => event.changes.map(change => change.path)));
@@ -289,13 +348,15 @@ export class CheckpointStore {
     for (const record of events) for (const raw of record.changes) {
       const change = { ...raw, path: aliases.get(raw.path) ?? raw.path };
       const earlier = cumulative.get(change.path);
-      if (earlier && !same(earlier.after, change.before)) {
-        cumulative.set(change.path, { ...change, before: { kind: "unprotected", reason: "Another edit occurred between these turns. Restore turns individually." } });
-      } else cumulative.set(change.path, { ...change, before: earlier?.before ?? change.before, ...((earlier?.uncertain || change.uncertain) ? { uncertain: true } : {}) });
+      if (earlier && (!same(earlier.after, change.before) || (earlier.afterRevision !== undefined && change.beforeRevision !== undefined && earlier.afterRevision !== change.beforeRevision)
+        || (earlier.workspaceRevision !== undefined && change.workspaceRevision !== undefined && earlier.workspaceRevision !== change.workspaceRevision))) {
+        cumulative.set(change.path, { ...change, uncertain: true, segments: [...(earlier.segments ?? [earlier]), ...(change.segments ?? [change])] });
+      } else cumulative.set(change.path, { ...change, before: earlier?.before ?? change.before, beforeRevision: earlier?.beforeRevision ?? change.beforeRevision,
+        ...((earlier?.uncertain || change.uncertain) ? { uncertain: true, segments: [...(earlier?.segments ?? (earlier ? [earlier] : [])), ...(change.segments ?? [change])] } : {}) });
     }
-    const combined = [...cumulative.values()].filter(change => !same(change.before, change.after));
-    const left = { ...checkpoint, files: Object.fromEntries(combined.map(change => [change.path, change.before])) };
-    const right = { ...checkpoint, files: Object.fromEntries(combined.map(change => [change.path, change.after])) };
+    const combined = [...cumulative.values()].filter(change => change.uncertain || !same(change.before, change.after));
+    const left = { ...checkpoint, journalVersion: undefined, files: Object.fromEntries(combined.map(change => [change.path, change.before])) };
+    const right = { ...checkpoint, journalVersion: undefined, files: Object.fromEntries(combined.map(change => [change.path, change.after])) };
     const stats = await this.changes(left, right);
     return combined.map(change => ({ ...change, added: stats.find(item => item.path === change.path)?.added ?? 0, removed: stats.find(item => item.path === change.path)?.removed ?? 0 }));
   }
@@ -307,23 +368,36 @@ export class CheckpointStore {
     if (!change) throw new CheckpointError("FILE_NOT_RECORDED", "File is not part of this checkpoint.");
     const text = async (version: FileVersion) => version.kind === "file" && !version.binary && version.size <= 500_000 ? (await this.readObject(version.hash)).toString("utf8") : null;
     const oldContent = change.before.kind === "absent" ? "" : await text(change.before), newContent = change.after.kind === "absent" ? "" : await text(change.after);
-    return { ...change, oldContent, newContent, hunks: oldContent !== null && newContent !== null ? buildStructuredPatch(change.before.kind === "absent" ? null : oldContent, newContent) : null };
+    const segments = change.segments ? await Promise.all(change.segments.map(async item => ({ ...item,
+      oldContent: item.before.kind === "absent" ? "" : await text(item.before), newContent: item.after.kind === "absent" ? "" : await text(item.after),
+      hunks: (item.before.kind === "absent" || await text(item.before) !== null) && (item.after.kind === "absent" || await text(item.after) !== null)
+        ? buildStructuredPatch(item.before.kind === "absent" ? null : await text(item.before), item.after.kind === "absent" ? "" : (await text(item.after))!) : null }))) : undefined;
+    return { ...change, segments, oldContent, newContent, hunks: oldContent !== null && newContent !== null ? buildStructuredPatch(change.before.kind === "absent" ? null : oldContent, newContent) : null };
   }
   async preview(sessionId: string, checkpointId: string, scope: CheckpointRequest["scope"] = "turn", mode: RestorePlan["mode"] = "files", context: Pick<RestorePlan, "contextBeforeHash" | "visibleSequences" | "visibleBeforeSequences"> = {}, activeTurns?: Set<string>): Promise<RestorePlan> {
     if (!["turn", "session", "since"].includes(scope) || !["files", "both", "conversation"].includes(mode)) throw new CheckpointError("INVALID_ACTION", "Invalid restore options.");
     const checkpoint = await this.readCheckpoint(checkpointId, sessionId);
     const before = checkpoint.beforeId ? await this.readCheckpoint(checkpoint.beforeId, sessionId) : checkpoint;
     const first = scope === "session" ? (await this.list(sessionId)).find(item => item.phase === "before" && (!activeTurns || activeTurns.has(item.turnId))) : before;
-    const plan: RestorePlan = { id: randomUUID(), sessionId, checkpointId, createdAt: new Date().toISOString(), mode, scope, files: [], contextHash: first?.contextHash, ...context };
+    const plan: RestorePlan = { id: randomUUID(), sessionId, checkpointId, createdAt: new Date().toISOString(), mode, scope, files: [], contextHash: first?.contextHash, workspaceRevision: await this.scopeRevision(), ...context };
     for (const change of await this.selectChanges(checkpoint, scope, activeTurns)) {
       const current = await this.captureFile(change.path, false);
+      const revision = await this.revision(change.path);
       plan.files.push({ path: change.path, expected: current, target: change.before, source: change.source,
-        status: change.uncertain || change.before.kind === "unprotected" || change.after.kind === "unprotected" || current.kind === "unprotected" ? "unprotected" : same(current, change.before) ? "unchanged" : same(current, change.after) ? "ready" : "conflict" });
+        expectedRevision: revision,
+        status: change.uncertain || change.before.kind === "unprotected" || change.after.kind === "unprotected" || current.kind === "unprotected" ? "unprotected" : same(current, change.before) ? "unchanged"
+          : sameOnDisk(current, change.after) && (change.afterRevision === undefined || change.afterRevision === revision)
+            && (change.workspaceRevision === undefined || change.workspaceRevision === plan.workspaceRevision) ? "ready" : "conflict" });
     }
     await this.writeRecord("plans", plan);
     return plan;
   }
   async restore(sessionId: string, planId: string, selectedPaths?: string[]): Promise<RestoreOperation> {
+    if ((await this.readPlan(sessionId, planId)).mode !== "conversation") return this.withExclusive(() => this.restoreUnlocked(sessionId, planId, selectedPaths));
+    const unpin = await this.pin();
+    try { return await this.restoreUnlocked(sessionId, planId, selectedPaths); } finally { unpin(); }
+  }
+  private async restoreUnlocked(sessionId: string, planId: string, selectedPaths?: string[]): Promise<RestoreOperation> {
     const plan = await this.readPlan(sessionId, planId);
     if (plan.sessionId !== sessionId) throw new CheckpointError("CHECKPOINT_MISMATCH", "Restore belongs to another conversation.");
     const operationPath = this.recordPath("operations", plan.id);
@@ -334,14 +408,17 @@ export class CheckpointStore {
     }
     catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
     if (Date.now() - Date.parse(plan.createdAt) > 15 * 60_000) throw new CheckpointError("STALE_PLAN", "Restore preview expired. Review the current files again.");
+    if (plan.mode !== "conversation" && plan.workspaceRevision !== undefined && plan.workspaceRevision !== await this.scopeRevision()) throw new CheckpointError("STALE_PLAN", "The project branch changed after the preview. Review it again.");
     const selected = selectedPaths ? new Set(await Promise.all(selectedPaths.map(relative => this.normalizeFilePath(relative)))) : undefined;
     const chosen = plan.mode === "conversation" ? [] : plan.files.filter(file => file.status === "ready" && (!selected || selected.has(file.path)));
     for (const file of chosen) {
-      if (!same(await this.captureFile(file.path, false), file.expected)) throw new CheckpointError("STALE_PLAN", `${file.path} changed after the preview. Review it again.`);
+      if (!sameOnDisk(await this.captureFile(file.path, false), file.expected) || (file.expectedRevision !== undefined && file.expectedRevision !== await this.revision(file.path))) throw new CheckpointError("STALE_PLAN", `${file.path} changed after the preview. Review it again.`);
       if (file.target.kind === "file") await this.readObject(file.target.hash);
     }
     if (plan.mode !== "files" && !plan.contextHash) throw new CheckpointError("CONTEXT_UNAVAILABLE", "This checkpoint has no saved conversation context.");
-    const before = await this.capture(sessionId, "restore", "before_restore");
+    const before: Checkpoint = plan.mode === "conversation"
+      ? { version: 1, id: randomUUID(), sessionId, turnId: "restore", workspace: this.workspace, createdAt: new Date().toISOString(), phase: "before_restore", status: "complete", files: {} }
+      : await this.capture(sessionId, "restore", "before_restore");
     before.contextHash = plan.contextBeforeHash;
     await this.save(before);
     const operation: RestoreOperation = { ...plan, createdAt: new Date().toISOString(), beforeId: before.id, status: "prepared", applied: [], skipped: plan.files.filter(file => !chosen.includes(file)).map(file => file.path) };
@@ -351,10 +428,12 @@ export class CheckpointStore {
     await this.writeRecord("operations", operation, true);
     try {
       for (const file of chosen) {
-        if (!same(await this.captureFile(file.path, false), file.expected)) throw new CheckpointError("STALE_PLAN", `${file.path} changed during restore.`);
+        if (!sameOnDisk(await this.captureFile(file.path, false), file.expected) || (file.expectedRevision !== undefined && file.expectedRevision !== await this.revision(file.path))) throw new CheckpointError("STALE_PLAN", `${file.path} changed during restore.`);
         operation.pendingPath = file.path;
         await this.writeRecord("operations", operation, true);
         await this.applyFile(file.path, file.target);
+        file.result = await this.captureFile(file.path);
+        file.resultRevision = await this.advance(file.path);
         operation.applied.push(file.path);
         delete operation.pendingPath;
         await this.writeRecord("operations", operation, true);
@@ -401,7 +480,7 @@ export class CheckpointStore {
     const operation = JSON.parse(await fs.readFile(this.recordPath("operations", operationId), "utf8")) as RestoreOperation;
     if (operation.sessionId !== sessionId) throw new CheckpointError("CHECKPOINT_MISMATCH", "Restore belongs to another conversation.");
     const before = await this.readCheckpoint(operation.beforeId, sessionId);
-    const plan: RestorePlan = { id: randomUUID(), checkpointId: before.id, sessionId, createdAt: new Date().toISOString(), mode: operation.mode, files: [], contextHash: operation.contextBeforeHash, visibleSequences: operation.visibleBeforeSequences, undoOf: operation.id, ...context };
+    const plan: RestorePlan = { id: randomUUID(), checkpointId: before.id, sessionId, createdAt: new Date().toISOString(), mode: operation.mode, files: [], contextHash: operation.contextBeforeHash, visibleSequences: operation.visibleBeforeSequences, undoOf: operation.id, workspaceRevision: await this.scopeRevision(), ...context };
     const affected = new Set(operation.applied);
     if (operation.pendingPath) {
       const pending = operation.files.find(file => file.path === operation.pendingPath);
@@ -410,8 +489,11 @@ export class CheckpointStore {
     for (const relative of affected) {
       const original = operation.files.find(file => file.path === relative)!;
       const current = await this.captureFile(relative, false);
+      const revision = await this.revision(relative);
       plan.files.push({ path: relative, expected: current, target: original.expected, source: original.source,
-        status: same(current, original.target) ? "ready" : same(current, original.expected) ? "unchanged" : "conflict" });
+        expectedRevision: revision,
+        status: same(current, original.expected) ? "unchanged" : sameOnDisk(current, original.result ?? original.target) && (original.resultRevision === undefined || original.resultRevision === revision)
+          && (operation.workspaceRevision === undefined || operation.workspaceRevision === plan.workspaceRevision) ? "ready" : "conflict" });
     }
     await this.writeRecord("plans", plan);
     return plan;
@@ -425,27 +507,46 @@ export class CheckpointStore {
     }
     return records.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
-  async saveEdit(edit: TrackedEdit & { id: string; beforeId: string; path: string }, update = false): Promise<void> {
+  async saveEdit(edit: EditRecord, update = false): Promise<void> {
     await this.writeRecord("edits", edit, update);
   }
   /** Caller owns the lease. Unknown post-crash edits remain reviewable but cannot be overwritten. */
   async recoverInterrupted(sessionId: string): Promise<void> {
-    const records = await this.list(sessionId), completed = new Set(records.map(record => record.beforeId));
-    const orphan = records.filter(record => record.phase === "before" && !completed.has(record.id)).at(-1);
-    if (!orphan || records.some(record => record.phase === "after" && record.createdAt > orphan.createdAt)) return;
+    const records = await this.list(sessionId), completed = new Set(records.filter(record => record.phase === "after").map(record => record.beforeId));
+    const orphan = records.filter(record => record.phase === "before").at(-1);
+    if (!orphan || completed.has(orphan.id)) return;
+    if (hasWorkspaceTurn(this.workspace, sessionId, orphan.turnId)) return;
     const names = await fs.readdir(path.join(this.directory, "edits")).catch(error => { if (hasCode(error, "ENOENT")) return []; throw error; });
     const tracked = new Map<string, TrackedEdit>();
-    for (const name of names.filter(value => value.endsWith(".json"))) {
-      const edit = JSON.parse(await fs.readFile(path.join(this.directory, "edits", name), "utf8")) as TrackedEdit & { beforeId: string; path: string };
-      if (edit.beforeId === orphan.id && edit.after) tracked.set(edit.path, edit);
+    const edits = await Promise.all(names.filter(value => value.endsWith(".json")).map(async name => JSON.parse(await fs.readFile(path.join(this.directory, "edits", name), "utf8")) as EditRecord));
+    const completedCommands = new Set(records.filter(record => record.phase === "command" && record.status === "complete").map(record => record.id));
+    for (const edit of edits.sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""))) {
+      if (edit.beforeId === orphan.id && !(edit.parentOperationId && completedCommands.has(edit.parentOperationId))) {
+        if (!edit.after) { edit.after = await this.captureFile(edit.path); edit.uncertain = true; }
+        mergeTrackedEdit(tracked, edit.path, edit);
+      }
     }
     const after = await this.capture(sessionId, orphan.turnId, "after");
     after.beforeId = orphan.id; after.status = "incomplete";
+    after.journalVersion = orphan.journalVersion;
+    for (const command of records.filter(record => record.phase === "command" && record.beforeId === orphan.id && record.status === "incomplete")) {
+      for (const change of await this.changes(command, after)) tracked.set(change.path, { ...change, uncertain: true });
+    }
     after.changes = (await this.changes(orphan, after, tracked)).map(change => ({ ...change, ...(!tracked.get(change.path)?.after ? { uncertain: true } : {}) }));
     await this.save(after);
   }
   /** Keep 100 rounds and completed restores per conversation, then collect unused blobs. Caller owns the lease. */
   async prune(retain = 100): Promise<void> {
+    // Objects may have been written but not published in their manifest yet.
+    if (hasWorkspaceTurn(this.workspace) || this.busy) return;
+    let state = storageActivity.get(this.directory);
+    if (!state) { state = { pins: 0 }; storageActivity.set(this.directory, state); }
+    if (state.pins || state.gc) return;
+    const gc = this.pruneUnpinned(retain);
+    state.gc = gc;
+    try { await gc; } finally { if (state.gc === gc) state.gc = undefined; }
+  }
+  private async pruneUnpinned(retain: number): Promise<void> {
     const readRecords = async (kind: "manifests" | "plans" | "operations" | "edits") => {
       const names = await fs.readdir(path.join(this.directory, kind)).catch(error => { if (hasCode(error, "ENOENT")) return []; throw error; });
       return Promise.all(names.filter(name => name.endsWith(".json")).map(async name => ({ name, record: JSON.parse(await fs.readFile(path.join(this.directory, kind, name), "utf8")) as Checkpoint & RestoreOperation })));
@@ -454,19 +555,32 @@ export class CheckpointStore {
     const keep = new Set<string>(), retainedOperations = new Set<string>();
     const sessions = new Set(manifests.map(item => item.record.sessionId));
     for (const sessionId of sessions) {
-      const rounds = manifests.filter(item => item.record.sessionId === sessionId && item.record.phase === "after").sort((a, b) => b.record.createdAt.localeCompare(a.record.createdAt)).slice(0, retain);
+      const superseded = new Set(manifests.flatMap(item => item.record.supersedesId ? [item.record.supersedesId] : []));
+      const rounds = manifests.filter(item => item.record.sessionId === sessionId && item.record.phase === "after" && !superseded.has(item.record.id)).sort((a, b) => b.record.createdAt.localeCompare(a.record.createdAt)).slice(0, retain);
       for (const { record } of rounds) { keep.add(record.id); if (record.beforeId) keep.add(record.beforeId); }
       const restored = operations.filter(item => item.record.sessionId === sessionId).sort((a, b) => b.record.createdAt.localeCompare(a.record.createdAt));
       for (const { record } of restored.filter((item, index) => item.record.status !== "complete" || index < retain)) {
         retainedOperations.add(record.id); keep.add(record.beforeId); keep.add(record.checkpointId);
       }
-      const completedBefore = new Set(manifests.map(item => item.record.beforeId));
+      const completedBefore = new Set(manifests.filter(item => item.record.phase === "after").map(item => item.record.beforeId));
       for (const { record } of manifests.filter(item => item.record.sessionId === sessionId && item.record.phase === "before" && !completedBefore.has(item.record.id)).slice(-retain)) keep.add(record.id);
     }
     const retainedPlans = plans.filter(item => Date.now() - Date.parse(item.record.createdAt) <= 15 * 60_000);
     for (const { record } of retainedPlans) keep.add(record.checkpointId);
-    // A retained old checkpoint still needs its before manifest.
-    for (const { record } of manifests) if (keep.has(record.id) && record.beforeId) keep.add(record.beforeId);
+    // Preserve supersession links, command baselines for crash recovery, and
+    // before manifests even when a retained preview refers to an older result.
+    let expanded = true;
+    while (expanded) {
+      const size = keep.size;
+      for (const { record } of manifests) {
+        if (keep.has(record.id)) {
+          if (record.beforeId) keep.add(record.beforeId);
+          if (record.supersedesId) keep.add(record.supersedesId);
+        }
+        if (record.phase === "command" && record.beforeId && keep.has(record.beforeId)) keep.add(record.id);
+      }
+      expanded = keep.size !== size;
+    }
     const referenced = new Set<string>();
     const visit = (value: unknown): void => {
       if (Array.isArray(value)) { value.forEach(visit); return; }
@@ -487,139 +601,200 @@ export class CheckpointStore {
   }
 }
 
-/** One instance per session; child-agent writes use their parent's active lease. */
+type ActiveHistory = {
+  store: CheckpointStore; before: Checkpoint; tracked: Map<string, TrackedEdit>;
+  pending: Map<string, EditRecord>; commands: Set<CommandFrame>; closing: boolean;
+  status: "complete" | "incomplete"; releaseTurn: () => void; lastCheckpoint?: string;
+  publishing: Promise<unknown>; unpin: () => void;
+};
+type CommandFrame = {
+  history: WorkspaceCheckpoints; active: ActiveHistory; owner: object; id: string;
+  before: Checkpoint; revisions: Map<string, string>; baselines: Map<string, { before: FileVersion; revision: string }>;
+  parent?: CommandFrame; release: () => void; finishing?: Promise<void>; background: boolean; unpin: () => void;
+  workspaceRevision: string;
+  tracked: Map<string, TrackedEdit>;
+};
+
+/** Session-owned journals; only actual mutations acquire filesystem leases. */
 export class WorkspaceCheckpoints {
-  private active?: { store: CheckpointStore; before: Checkpoint; tracked: Map<string, TrackedEdit & { id: string }>; pending: Map<string, Promise<void>>; commands: Set<TrackedCommand>; closing: boolean; uncertainCommands: boolean; release: () => void };
+  private active?: ActiveHistory;
   constructor(private readonly workspace: string, private readonly pilotHome: string) {}
-  async beginTurn(sessionId: string, turnId: string, messages: CanonicalMessage[], signal?: AbortSignal): Promise<void> {
-    const store = await getCheckpointStore(this.workspace, this.pilotHome), release = await store.acquire();
-    try {
-      if (signal?.aborted) throw new CheckpointError("ABORTED", "Turn stopped before its checkpoint was captured.");
-      await store.recoverInterrupted(sessionId);
-      const before = await store.capture(sessionId, turnId, "before", messages);
-      await store.save(before);
-      this.active = { store, before, tracked: new Map(), pending: new Map(), commands: new Set(), closing: false, uncertainCommands: backgroundBusy(store.workspace), release };
-    } catch (error) { release(); throw error; }
+  private frame(): CommandFrame | undefined {
+    const frame = operationContext.getStore()?.command as CommandFrame | undefined;
+    return frame?.history === this ? frame : undefined;
   }
-  async trackEdit(filePath: string, _turnId: string): Promise<void> {
-    const active = this.active;
-    const relative = await this.relativePath(filePath);
-    if (!active || !relative) return;
-    const previous = active.tracked.get(relative);
-    if (previous) {
-      // Direct Python writes may precede nested file tools inside an execution.
-      // The enclosing command already checks its initial version and captures
-      // its final one; an intermediate version is not an external edit.
-      if (![...active.commands].some(command => !command.background) && previous.after && !same(previous.after, await active.store.captureFile(relative, false))) {
-        previous.uncertain = true;
-        await active.store.saveEdit({ ...previous, path: relative, beforeId: active.before.id }, true);
+  private current(): ActiveHistory | undefined { return this.frame()?.active ?? this.active; }
+  async readVersion(filePath: string): Promise<string | undefined> {
+    const active = this.current(), relative = await this.relativePath(filePath, active);
+    return active && relative ? `${await active.store.scopeRevision()}/${await active.store.revision(relative)}` : undefined;
+  }
+  async beginTurn(sessionId: string, turnId: string, messages: CanonicalMessage[], signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) throw new CheckpointError("ABORTED", "Turn stopped before its checkpoint was captured.");
+    const store = await getCheckpointStore(this.workspace, this.pilotHome);
+    const releaseTurn = registerWorkspaceTurn(store.workspace, sessionId, turnId);
+    const unpin = await store.pin();
+    try {
+      await store.recoverInterrupted(sessionId);
+      const before: Checkpoint = { version: 1, journalVersion: 2, id: randomUUID(), sessionId, turnId, workspace: store.workspace,
+        createdAt: new Date().toISOString(), phase: "before", status: "complete", files: {}, contextHash: await store.putObject(Buffer.from(JSON.stringify(messages))) };
+      await store.save(before);
+      this.active = { store, before, tracked: new Map(), pending: new Map(), commands: new Set(), closing: false, status: "complete", releaseTurn, unpin, publishing: Promise.resolve() };
+    } catch (error) { unpin(); releaseTurn(); throw error; }
+  }
+  async runEdit<T>(filePath: string, task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const owner = operationContext.getStore()?.owner ?? {};
+    const release = await acquireWorkspaceOperation(resolveRealWritePath(filePath) ?? filePath, { kind: "file", owner, signal, label: "正在写入项目文件" });
+    try { return await operationContext.run({ ...operationContext.getStore(), owner }, task); }
+    catch (error) {
+      // A failed tool may have written bytes before its journal commit failed.
+      // Keep that outcome reviewable, but never advertise it as safe to undo.
+      const active = this.current(), relative = await this.relativePath(filePath, active);
+      const edit = relative ? active?.pending.get(relative) : undefined;
+      if (active && relative && edit) {
+        try {
+          edit.after = await active.store.captureFile(relative); edit.uncertain = true;
+          await active.store.saveEdit(edit, true);
+          active.pending.delete(relative);
+          mergeTrackedEdit(this.frame()?.tracked ?? active.tracked, relative, edit);
+        } catch { /* The prepared record remains available for crash recovery. */ }
       }
-      return;
+      throw error;
     }
-    const existing = active.pending.get(relative);
-    if (existing) return existing;
-    const capture = (async () => {
-      const before = await active.store.captureFile(relative);
-      if (before.kind === "unprotected") throw new CheckpointError("BACKUP_UNAVAILABLE", `Cannot protect ${relative}: ${before.reason}`);
-      const edit = { id: randomUUID(), before };
-      await active.store.saveEdit({ ...edit, path: relative, beforeId: active.before.id });
-      active.tracked.set(relative, edit);
-    })();
-    active.pending.set(relative, capture);
-    try { await capture; } finally { active.pending.delete(relative); }
+    finally { release(); }
+  }
+  async runCommand<T>(task: () => Promise<T>, options: { signal?: AbortSignal } = {}): Promise<T> {
+    const frame = await this.startCommand(options);
+    if (!frame) return task();
+    try { return await operationContext.run({ owner: frame.owner, command: frame }, task); }
+    finally { await this.finishCommand(frame); }
+  }
+  async trackEdit(filePath: string, _turnId: string, options: { allowUnprotected?: boolean } = {}): Promise<void> {
+    const active = this.current(), relative = await this.relativePath(filePath, active);
+    if (!active || !relative) return;
+    const before = await active.store.captureFile(relative);
+    if (before.kind === "unprotected" && !options.allowUnprotected) throw new CheckpointError("BACKUP_UNAVAILABLE", `Cannot protect ${relative}: ${before.reason}`);
+    const revision = await active.store.revision(relative), frame = this.frame();
+    if (frame && !frame.baselines.has(relative)) frame.baselines.set(relative, { before, revision });
+    const edit: EditRecord = { id: randomUUID(), before, beforeRevision: revision, beforeId: active.before.id, path: relative,
+      workspaceRevision: await active.store.scopeRevision(),
+      sessionId: active.before.sessionId, turnId: active.before.turnId, createdAt: new Date().toISOString(), ...(frame ? { parentOperationId: frame.id } : {}) };
+    await active.store.saveEdit(edit);
+    active.pending.set(relative, edit);
   }
   async recordEdit(filePath: string, _turnId: string, writtenContent?: string): Promise<void> {
-    const active = this.active;
-    const relative = await this.relativePath(filePath);
+    const active = this.current(), relative = await this.relativePath(filePath, active);
     if (!active || !relative) return;
-    const tracked = active.tracked.get(relative);
-    if (tracked) {
-      tracked.after = await active.store.captureFile(relative);
-      if (writtenContent !== undefined) {
-        const content = Buffer.from(writtenContent);
-        tracked.after = content.length > MAX_FILE_BYTES ? { kind: "unprotected", reason: "File exceeds the 10 MB checkpoint limit." } : {
-          kind: "file", hash: await active.store.putObject(content), size: content.length, binary: content.includes(0),
-          mode: tracked.after.kind === "file" ? tracked.after.mode : tracked.before.kind === "file" ? tracked.before.mode : 0o644,
-        };
-      }
-      await active.store.saveEdit({ ...tracked, path: relative, beforeId: active.before.id }, true);
+    const edit = active.pending.get(relative);
+    if (!edit) return;
+    edit.after = await active.store.captureFile(relative);
+    if (writtenContent !== undefined) {
+      const content = Buffer.from(writtenContent), disk = edit.after;
+      edit.after = content.length > MAX_FILE_BYTES ? { kind: "unprotected", reason: "File exceeds the 10 MB checkpoint limit." } : {
+        kind: "file", hash: await active.store.putObject(content), size: content.length, binary: content.includes(0),
+        mode: disk.kind === "file" ? disk.mode : edit.before.kind === "file" ? edit.before.mode : 0o644,
+        ...(disk.kind === "file" && disk.hash === digest(content) ? { fingerprint: disk.fingerprint } : {}) };
     }
+    edit.source = "file_tool"; edit.afterRevision = edit.id;
+    await active.store.saveEdit(edit, true);
+    await active.store.advance(relative, edit.id);
+    active.pending.delete(relative);
+    mergeTrackedEdit(this.frame()?.tracked ?? active.tracked, relative, edit);
   }
-  async trackCommand(options: { background?: boolean } = {}): Promise<() => Promise<void>> {
-    const active = this.active;
-    if (!active || active.closing) return async () => {};
-    const capture = async () => {
-      const snapshot = await active.store.capture(active.before.sessionId, active.before.turnId, "after");
-      // Also protect already-recorded work files inside excluded directories.
-      for (const relative of active.tracked.keys()) if (!scannedPath(relative)) snapshot.files[relative] = await active.store.captureFile(relative);
-      return snapshot;
-    };
-    const before = await capture();
-    // Check discontinuities at entry, before nested tools change the journal.
-    if (![...active.commands].some(command => !command.background)) {
-      for (const [relative, previous] of active.tracked) if (previous.after && !same(previous.after, before.files[relative] ?? ABSENT)) {
-        previous.uncertain = true;
-        await active.store.saveEdit({ ...previous, path: relative, beforeId: active.before.id }, true);
-      }
-    }
-    const command: TrackedCommand = { background: options.background === true };
-    active.commands.add(command);
-    const background = command.background ? { workspace: active.store.workspace } : undefined;
-    if (background) backgroundCommands.add(background);
-    return () => command.finishing ??= (async () => {
+  private merge(active: ActiveHistory, relative: string, edit: TrackedEdit): void {
+    mergeTrackedEdit(active.tracked, relative, edit);
+  }
+  async trackCommand(options: { background?: boolean; signal?: AbortSignal } = {}): Promise<() => Promise<void>> {
+    const frame = await this.startCommand(options);
+    return frame ? () => this.finishCommand(frame) : async () => {};
+  }
+  private async startCommand(options: { background?: boolean; signal?: AbortSignal }): Promise<CommandFrame | undefined> {
+    const active = this.current();
+    if (!active) return;
+    const owner = operationContext.getStore()?.owner ?? {};
+    const release = await acquireWorkspaceOperation(active.store.workspace, { owner, signal: options.signal,
+      label: options.background ? "等待后台写任务结束" : "等待项目命令执行完成" });
+    const unpin = await active.store.pin();
+    try {
+      const before = await active.store.capture(active.before.sessionId, active.before.turnId, "command");
+      before.beforeId = active.before.id;
+      before.status = "incomplete";
+      for (const relative of active.tracked.keys()) if (!scannedPath(relative)) before.files[relative] = await active.store.captureFile(relative);
+      const revisions = new Map<string, string>();
+      for (const relative of Object.keys(before.files)) revisions.set(relative, await active.store.revision(relative));
+      await active.store.save(before);
+      const frame: CommandFrame = { history: this, active, owner, id: before.id, before, revisions, baselines: new Map(), tracked: new Map(), parent: this.frame(), release, unpin, background: !!options.background, workspaceRevision: await active.store.scopeRevision() };
+      active.commands.add(frame);
+      return frame;
+    } catch (error) { unpin(); release(); throw error; }
+  }
+  private finishCommand(frame: CommandFrame): Promise<void> {
+    return frame.finishing ??= (async () => {
+      const active = frame.active;
       try {
-        // A late task must never rewrite the saved turn or a newer turn's log.
-        if (this.active !== active || active.closing) return;
-        const after = await capture();
-        for (const relative of new Set([...Object.keys(before.files), ...Object.keys(after.files), ...active.tracked.keys()])) {
-          const left = before.files[relative] ?? ABSENT, right = after.files[relative] ?? ABSENT;
-          const previous = active.tracked.get(relative);
-          // Nested tools can record an intermediate version even when this
-          // execution returns to its entry state. Reconcile that postimage,
-          // including paths created and deleted entirely within the execution.
-          if (same(left, right) && (!previous?.after || same(previous.after, right))) continue;
-          const edit = { id: previous?.id ?? randomUUID(), before: previous?.before ?? left, after: right, source: previous?.source ?? "observed" as const,
-            ...(previous?.uncertain ? { uncertain: true } : {}) };
-          await active.store.saveEdit({ ...edit, path: relative, beforeId: active.before.id }, !!previous);
-          active.tracked.set(relative, edit);
+        const after = await active.store.capture(active.before.sessionId, active.before.turnId, "after");
+        for (const relative of new Set([...active.tracked.keys(), ...frame.baselines.keys()])) if (!scannedPath(relative)) after.files[relative] = await active.store.captureFile(relative);
+        const aliases = new Map<string, string>();
+        for (const relative of new Set([...Object.keys(frame.before.files), ...Object.keys(after.files), ...frame.baselines.keys()])) aliases.set(relative, await active.store.normalizeFilePath(relative));
+        const normalize = <T>(entries: Iterable<[string, T]>) => new Map([...entries].map(([relative, value]) => [aliases.get(relative) ?? relative, value]));
+        const beforeFiles = normalize(Object.entries(frame.before.files)), afterFiles = normalize(Object.entries(after.files));
+        const revisions = normalize(frame.revisions), baselines = normalize(frame.baselines), tracked = normalize(frame.tracked);
+        for (const relative of new Set(aliases.values())) {
+          const left = beforeFiles.get(relative) ?? baselines.get(relative)?.before ?? ABSENT, right = afterFiles.get(relative) ?? ABSENT;
+          const beforeRevision = revisions.get(relative) ?? baselines.get(relative)?.revision ?? "";
+          if (sameOnDisk(left, right) && !frame.baselines.has(relative) && beforeRevision === await active.store.revision(relative)) continue;
+          const owned = tracked.get(relative);
+          const attributable = owned && !owned.uncertain && sameOnDisk(left, owned.before) && sameOnDisk(right, owned.after ?? ABSENT)
+            && beforeRevision === owned.beforeRevision && owned.afterRevision === await active.store.revision(relative)
+            && frame.workspaceRevision === owned.workspaceRevision;
+          const edit: EditRecord = { id: randomUUID(), beforeId: active.before.id, path: relative, before: left, after: right, beforeRevision,
+            workspaceRevision: frame.workspaceRevision,
+            source: attributable ? "file_tool" : "observed", createdAt: new Date().toISOString(), sessionId: active.before.sessionId, turnId: active.before.turnId,
+            ...(frame.parent ? { parentOperationId: frame.parent.id } : {}), ...(!attributable || active.closing ? { uncertain: true } : {}) };
+          edit.afterRevision = edit.id;
+          await active.store.saveEdit(edit); await active.store.advance(relative, edit.id);
+          if (!attributable && same(left, right)) continue;
+          if (frame.parent) {
+            if (!frame.parent.baselines.has(relative)) frame.parent.baselines.set(relative, { before: left, revision: beforeRevision });
+            mergeTrackedEdit(frame.parent.tracked, relative, edit);
+          } else this.merge(active, relative, edit);
         }
-      } catch (error) {
-        active.uncertainCommands = true;
-        throw error;
-      } finally {
-        active.commands.delete(command);
-        if (background) backgroundCommands.delete(background);
-      }
+        frame.before.status = "complete";
+        await active.store.save(frame.before, true);
+        if (active.closing) await this.publish(active);
+      } finally { active.commands.delete(frame); frame.unpin(); frame.release(); }
     })();
   }
-  private async relativePath(filePath: string): Promise<string | undefined> {
-    const target = path.resolve(filePath), root = this.active?.store.workspace;
-    if (!root) return;
-    const alias = path.resolve(this.workspace);
+  private async relativePath(filePath: string, active = this.current()): Promise<string | undefined> {
+    if (!active) return;
+    const target = resolveRealWritePath(filePath) ?? path.resolve(filePath), root = active.store.workspace, alias = path.resolve(this.workspace);
     const base = inside(root, target) ? root : inside(alias, target) ? alias : undefined;
-    return base ? this.active!.store.normalizeFilePath(path.relative(base, target).split(path.sep).join("/")) : undefined;
+    return base ? active.store.normalizeFilePath(path.relative(base, target).split(path.sep).join("/")) : undefined;
+  }
+  private async publish(active: ActiveHistory): Promise<CheckpointSummary> {
+    const publishing = active.publishing.then(async () => {
+      const after: Checkpoint = { ...active.before, id: randomUUID(), phase: "after", createdAt: new Date().toISOString(), contextHash: undefined,
+        beforeId: active.before.id, status: active.status, files: {}, ...(active.lastCheckpoint ? { supersedesId: active.lastCheckpoint } : {}) };
+      const pending = [...active.commands].some(frame => !frame.finishing);
+      const tracked = pending ? new Map([...active.tracked].map(([relative, edit]) => [relative, { ...edit, uncertain: true }])) : active.tracked;
+      after.changes = await active.store.changes(active.before, after, tracked);
+      await active.store.save(after); active.lastCheckpoint = after.id;
+      return active.store.summary(after);
+    });
+    active.publishing = publishing.catch(() => {});
+    return publishing;
   }
   async finishTurn(status: "complete" | "incomplete"): Promise<CheckpointSummary | undefined> {
     const active = this.active;
     if (!active) return;
-    active.closing = true;
-    // Flush finalizations already in progress without waiting for long-running
-    // services. Unfinished/cross-turn writers remain visible but unrestorable.
-    const uncertainCommands = active.uncertainCommands || [...active.commands].some(command => !command.finishing);
-    try {
-      await Promise.allSettled([...active.commands].flatMap(command => command.finishing ? [command.finishing] : []));
-      const after = await active.store.capture(active.before.sessionId, active.before.turnId, "after");
-      for (const relative of active.tracked.keys()) if (!scannedPath(relative)) after.files[relative] = await active.store.captureFile(relative);
-      after.beforeId = active.before.id;
-      after.status = status;
-      const uncertain = uncertainCommands || active.uncertainCommands;
-      const tracked = uncertain ? new Map([...active.tracked].map(([relative, edit]) => [relative, { ...edit, after: after.files[relative] ?? ABSENT }])) : active.tracked;
-      after.changes = (await active.store.changes(active.before, after, tracked)).map(change => uncertain ? { ...change, uncertain: true } : change);
-      await active.store.save(after);
-      // Cleanup cannot make an otherwise durable checkpoint fail.
+    await Promise.allSettled([...active.commands].flatMap(frame => frame.finishing ? [frame.finishing] : []));
+    active.closing = true; active.status = status;
+    try { return await this.publish(active); }
+    finally {
+      if (this.active === active) this.active = undefined;
+      active.releaseTurn();
+      active.unpin();
       await active.store.prune().catch(() => {});
-      return active.store.summary(after);
-    } finally { this.active = undefined; active.release(); }
+    }
   }
 }
 
@@ -632,3 +807,5 @@ function digest(content: Buffer): string { return createHash("sha256").update(co
 function hasCode(error: unknown, code: string): boolean { return !!error && typeof error === "object" && "code" in error && error.code === code; }
 function same(left: FileVersion, right: FileVersion): boolean { return left.kind === right.kind && (left.kind === "absent" || (left.kind === "file" && right.kind === "file" && left.hash === right.hash && left.mode === right.mode) || (left.kind === "unprotected" && right.kind === "unprotected" && !!left.fingerprint && left.fingerprint === right.fingerprint)); }
 function scannedPath(relative: string): boolean { const segments = relative.split("/"); return !segments.slice(0, -1).some(segment => EXCLUDED.has(segment)) && segments.at(-1) !== ".git" && !segments.at(-1)?.startsWith(".pilotdeck-restore-"); }
+
+function sameOnDisk(left: FileVersion, right: FileVersion): boolean { return same(left, right) && (left.kind !== "file" || right.kind !== "file" || !right.fingerprint || left.fingerprint === right.fingerprint); }

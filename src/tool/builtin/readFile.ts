@@ -168,7 +168,8 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
       const readState = context.readFileState ?? (context.readFileState = new Map());
       const dedupKey = buildReadStateKey(resolved.absolutePath, kind, input.offset, input.limit, input.pages);
       const previous = readState.get(dedupKey);
-      if (previous && previous.mtimeMs === Math.floor(fileStat.mtimeMs)) {
+      const managedRevision = await context.fileHistory?.readVersion?.(resolved.absolutePath);
+      if (previous && previous.mtimeMs === Math.floor(fileStat.mtimeMs) && previous.managedRevision === managedRevision) {
         return {
           content: [{ type: "text", text: FILE_UNCHANGED_STUB }],
           data: {
@@ -216,6 +217,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
         }
         const compressed = preparedImage.image;
         readState.set(dedupKey, {
+          managedRevision,
           mtimeMs: Math.floor(fileStat.mtimeMs),
           kind,
           offset: input.offset,
@@ -291,6 +293,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
             };
           }
           readState.set(dedupKey, {
+          managedRevision,
             mtimeMs: Math.floor(fileStat.mtimeMs),
             kind,
             offset: input.offset,
@@ -351,6 +354,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
           );
           if (rendered.ok) {
             readState.set(dedupKey, {
+          managedRevision,
               mtimeMs: Math.floor(fileStat.mtimeMs),
               kind,
               offset: input.offset,
@@ -393,6 +397,7 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
 
         // Model supports PDF and file is small enough: send as document block
         readState.set(dedupKey, {
+          managedRevision,
           mtimeMs: Math.floor(fileStat.mtimeMs),
           kind,
           offset: input.offset,
@@ -435,13 +440,14 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
         const numbered = renderNumberedLines(ranged.lines, ranged.startLine);
         ensureTokenBudget(numbered, resolved.relativePath);
         readState.set(dedupKey, {
+          managedRevision,
           mtimeMs: Math.floor(fileStat.mtimeMs),
           kind,
           offset: input.offset,
           limit: input.limit,
           pages: input.pages,
         });
-        recordWriteSnapshot(
+        await recordWriteSnapshot(
           context,
           resolved.absolutePath,
           await readFile(resolved.absolutePath, { encoding: "utf8", signal: context.abortSignal }),
@@ -498,18 +504,19 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
         text += renderToolResultRefReadMoreNotice(resolved.relativePath, ranged.endLine + 1, ranged.lineCount);
       }
       readState.set(dedupKey, {
+          managedRevision,
         mtimeMs: ranged.mtimeMs,
         kind,
         offset: input.offset,
         limit: input.limit,
         pages: input.pages,
       });
-      recordWriteSnapshot(
+      await recordWriteSnapshot(
         context,
         resolved.absolutePath,
         ranged.fullContent ?? ranged.content,
         ranged.mtimeMs,
-        { offset: input.offset, limit: input.limit ?? (ranged.fullContent === undefined ? ranged.lineCount : undefined) },
+        { offset: input.offset, limit: input.limit ?? (ranged.fullContent === undefined ? ranged.lineCount : undefined), fullHash: ranged.fullContent !== undefined },
       );
       return {
         content: [{ type: "text", text }],

@@ -386,10 +386,10 @@ export const api = {
   },
   pilotDeckConfig: () =>
     authenticatedFetch('/api/config'),
-  saveFile: (projectName, filePath, content) =>
+  saveFile: (projectName, filePath, content, expectedHash, expectedContent) =>
     authenticatedFetch(`/api/projects/${projectName}/file`, {
       method: 'PUT',
-      body: JSON.stringify({ filePath, content }),
+      body: JSON.stringify({ filePath, content, expectedHash, expectedContent }),
     }),
   getFiles: (projectName, options = {}) =>
     authenticatedFetch(`/api/projects/${projectName}/files`, options),

@@ -1525,7 +1525,7 @@ app.get('/api/projects/:projectName/file', authenticateToken, requireRealProject
         }
 
         const content = await fsPromises.readFile(resolved, 'utf8');
-        res.json({ content, path: resolved });
+        res.json({ content, path: resolved, hash: crypto.createHash('sha256').update(content).digest('hex') });
     } catch (error) {
         console.error('Error reading file:', error);
         if (error.code === 'ENOENT') {
@@ -1900,6 +1900,17 @@ app.get('/api/projects/:projectName/download', authenticateToken, requireRealPro
     }
 });
 
+async function mutateWorkspaceFile(projectRoot, fileOperation, signal) {
+    const gateway = await getPilotDeckGateway();
+    const requestId = crypto.randomUUID();
+    const input = { projectKey: projectRoot, sessionKey: 'filesystem:user', action: 'filesystem', fileOperation: { ...fileOperation, requestId } };
+    const cancel = () => { void gateway.manageCheckpoints({ ...input, fileOperation: { ...input.fileOperation, cancel: true } }).catch(() => {}); };
+    if (signal?.aborted) throw Object.assign(new Error('Upload cancelled.'), { code: 'UPLOAD_CANCELLED' });
+    signal?.addEventListener('abort', cancel, { once: true });
+    try { return await gateway.manageCheckpoints(input); }
+    finally { signal?.removeEventListener('abort', cancel); }
+}
+
 // Save file content endpoint
 app.put('/api/projects/:projectName/file', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
@@ -1930,15 +1941,16 @@ app.put('/api/projects/:projectName/file', authenticateToken, requireRealProject
         }
 
         // Write the new content
-        await fsPromises.writeFile(resolved, content, 'utf8');
+        const result = await mutateWorkspaceFile(projectRoot, { operation: 'save', path: resolved, content, expectedHash: req.body.expectedHash, expectedContent: req.body.expectedContent });
 
         res.json({
             success: true,
             path: resolved,
-            message: 'File saved successfully'
+            message: 'File saved successfully', hash: result.hash
         });
     } catch (error) {
         console.error('Error saving file:', error);
+        if (/FILE_CHANGED|文件已被修改/.test(error.message)) return res.status(409).json({ error: '文件已被修改，请重新读取后再保存。' });
         if (error.code === 'ENOENT') {
             res.status(404).json({ error: 'File or directory not found' });
         } else if (error.code === 'EACCES') {
@@ -2061,19 +2073,7 @@ app.post('/api/projects/:projectName/files/create', authenticateToken, requireRe
             // Doesn't exist, which is what we want
         }
 
-        // Create file or directory
-        if (type === 'directory') {
-            await fsPromises.mkdir(resolvedPath, { recursive: false });
-        } else {
-            // Ensure parent directory exists
-            const parentDir = path.dirname(resolvedPath);
-            try {
-                await fsPromises.access(parentDir);
-            } catch {
-                await fsPromises.mkdir(parentDir, { recursive: true });
-            }
-            await fsPromises.writeFile(resolvedPath, '', 'utf8');
-        }
+        await mutateWorkspaceFile(projectRoot, { operation: type === 'directory' ? 'mkdir' : 'create', path: resolvedPath });
 
         res.json({
             success: true,
@@ -2148,7 +2148,7 @@ app.put('/api/projects/:projectName/files/rename', authenticateToken, requireRea
         }
 
         // Rename
-        await fsPromises.rename(resolvedOldPath, resolvedNewPath);
+        await mutateWorkspaceFile(projectRoot, { operation: 'rename', path: resolvedOldPath, newPath: resolvedNewPath });
 
         res.json({
             success: true,
@@ -2209,12 +2209,7 @@ app.delete('/api/projects/:projectName/files', authenticateToken, requireRealPro
             return res.status(403).json({ error: 'Cannot delete project root directory' });
         }
 
-        // Delete based on type
-        if (stats.isDirectory()) {
-            await fsPromises.rm(resolvedPath, { recursive: true, force: true });
-        } else {
-            await fsPromises.unlink(resolvedPath);
-        }
+        await mutateWorkspaceFile(projectRoot, { operation: 'delete', path: resolvedPath });
 
         res.json({
             success: true,
@@ -2236,7 +2231,7 @@ app.delete('/api/projects/:projectName/files', authenticateToken, requireRealPro
     }
 });
 
-const uploadFilesHandler = createWorkspaceFileUploadHandler({ resolveProject: extractProjectDirectory });
+const uploadFilesHandler = createWorkspaceFileUploadHandler({ resolveProject: extractProjectDirectory, publish: (root, source, destination, signal) => mutateWorkspaceFile(root, { operation: 'upload', path: destination, stagedPath: source }, signal) });
 
 app.post('/api/projects/:projectName/files/upload/check', authenticateToken, requireRealProjectFilesystem,
     createWorkspaceUploadCheckHandler({ resolveProject: extractProjectDirectory }));

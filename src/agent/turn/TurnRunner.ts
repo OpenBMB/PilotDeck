@@ -99,12 +99,14 @@ export class TurnRunner {
   async *run(options: TurnRunnerOptions): AsyncGenerator<AgentEvent, TurnRunnerResult, unknown> {
     yield { type: "turn_started", sessionId: options.sessionId, turnId: options.turnId };
     let artifactCollector: FileArtifactCollector | undefined;
+    let ownedPaths: string[] | undefined;
     let checkpointsFinished = false;
     const finishCheckpoints = async (status: "complete" | "incomplete") => {
       if (checkpointsFinished) return;
       checkpointsFinished = true;
       try {
         const checkpoint = await this.turnDependencies.fileHistory?.finishTurn?.(status);
+        if (checkpoint) ownedPaths = checkpoint.changes.map(change => change.path);
         if (checkpoint) await this.transcript.recordAgentStatusMessage?.(options.sessionId, options.turnId, {
           event: "checkpoint_recorded", kind: "status", text: "文件检查点已保存", detail: { checkpointId: checkpoint.id, files: checkpoint.changes.length, unprotected: checkpoint.unprotected },
         });
@@ -141,6 +143,7 @@ export class TurnRunner {
         artifactsFinished = true;
         const artifacts = await artifactCollector.finish(
           result.type === "success" ? "complete" : "incomplete",
+          ownedPaths,
         ).catch(() => []);
         if (artifacts.length > 0) {
           await Promise.resolve(

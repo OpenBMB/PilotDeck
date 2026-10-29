@@ -4,6 +4,8 @@ import express from 'express';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { runWorkspaceFileOperation } from '../../../src/session/checkpoints/workspaceFileOperation.js';
 import { createProjectFilesystemMiddleware } from './projectFilesystem.js';
 import { isPathInsideOrEqual } from '../utils/pathSafety.js';
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from '../services/workspaceFileUpload.js';
@@ -17,14 +19,15 @@ function mountReportedHandlers(app, authenticateToken, requireRealProjectFilesys
         const start = source.indexOf(`app.${method}('/api/projects/:projectName/${suffix}',`);
         const end = source.indexOf('\n});', start) + '\n});'.length;
         expect(start).toBeGreaterThan(-1);
-        const register = new Function('app', 'authenticateToken', 'requireRealProjectFilesystem', 'fsPromises', 'path', 'isPathInsideOrEqual', 'resolvePathInProject', 'validatePathInProject', 'mime', 'streamFileWithRange', source.slice(start, end));
+        const register = new Function('app', 'authenticateToken', 'requireRealProjectFilesystem', 'fsPromises', 'path', 'isPathInsideOrEqual', 'resolvePathInProject', 'validatePathInProject', 'mime', 'streamFileWithRange', 'crypto', 'mutateWorkspaceFile', source.slice(start, end));
         const helper = name => {
             const start = source.indexOf(`function ${name}(`);
             const end = source.indexOf('\n}', start) + 2;
             return new Function('path', 'isPathInsideOrEqual', `${source.slice(start, end)}; return ${name};`)(path, isPathInsideOrEqual);
         };
         register(app, authenticateToken, requireRealProjectFilesystem, fs, path, isPathInsideOrEqual, helper('resolvePathInProject'), helper('validatePathInProject'),
-            { lookup: () => 'application/octet-stream' }, async (_req, res, target) => res.send(await fs.readFile(target)));
+            { lookup: () => 'application/octet-stream' }, async (_req, res, target) => res.send(await fs.readFile(target)), crypto,
+            (projectRoot, operation) => runWorkspaceFileOperation(projectRoot, home, operation));
     }
 }
 
@@ -39,7 +42,7 @@ beforeEach(async () => {
     await fs.writeFile(path.join(home, 'server-token'), 'fake-server-token');
     await fs.writeFile(path.join(workspace, 'normal.txt'), 'normal');
     const app = express();
-    app.use(express.json());
+    app.use(express.json({ limit: '50mb' }));
     const authenticateToken = (req, res, next) => req.headers.authorization === 'Bearer test' ? next() : res.sendStatus(401);
     env = { PILOT_HOME: home };
     const guard = createProjectFilesystemMiddleware({ env });
@@ -159,6 +162,26 @@ describe('reported project root injection', () => {
         await fs.mkdir(path.join(home, 'projects/demo'));
         await fs.writeFile(path.join(home, 'projects/demo/.cwd'), path.join(root, 'missing'));
         expect((await request('demo', '/file?filePath=normal.txt')).status).toBe(404);
+    });
+
+    it('round-trips an 11 MB CSV over the save route while rejecting stale content', async () => {
+        const original = 'a'.repeat(11 * 1024 * 1024), updated = original.slice(0, -1) + 'b';
+        await fs.writeFile(path.join(workspace, 'large.csv'), original);
+        const loaded = await (await request('demo', '/file?filePath=large.csv')).json();
+        expect(loaded.hash).toBe(crypto.createHash('sha256').update(original).digest('hex'));
+        expect((await request('demo', '/file', 'PUT', { filePath: 'large.csv', content: updated, expectedHash: loaded.hash })).status).toBe(200);
+        expect(await fs.readFile(path.join(workspace, 'large.csv'), 'utf8')).toBe(updated);
+        expect((await request('demo', '/file', 'PUT', { filePath: 'large.csv', content: original, expectedHash: loaded.hash })).status).toBe(409);
+        expect(await fs.readFile(path.join(workspace, 'large.csv'), 'utf8')).toBe(updated);
+    });
+
+    it('saves through a file symlink without replacing it', async () => {
+        const alias = path.join(workspace, 'alias.txt');
+        await fs.symlink(path.join(workspace, 'normal.txt'), alias, 'file');
+        const loaded = await (await request('demo', '/file?filePath=alias.txt')).json();
+        expect((await request('demo', '/file', 'PUT', { filePath: 'alias.txt', content: 'linked edit', expectedHash: loaded.hash })).status).toBe(200);
+        expect((await fs.lstat(alias)).isSymbolicLink()).toBe(true);
+        expect(await fs.readFile(path.join(workspace, 'normal.txt'), 'utf8')).toBe('linked edit');
     });
 
     it('wires every project file route to the guard and uses only its resolved root', () => {
