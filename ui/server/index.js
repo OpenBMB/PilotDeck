@@ -3673,6 +3673,7 @@ async function startServer() {
                 // that self-reference SERVER_PORT (e.g. routes/taskmaster.js) hit
                 // the right port after a fallback.
                 process.env.SERVER_PORT = String(boundPort);
+                runtimeCoordination.publishServerReady(boundPort);
                 runtimeCoordination.publishConfigurationState();
                 {
                     const appInstallPath = path.join(__dirname, '..');
