@@ -5,7 +5,8 @@ import { isCronConfigEnabled } from "./cron";
 
 describe("isCronConfigEnabled", () => {
   it.each([
-    { label: "missing cron section", config: {}, expected: false },
+    { label: "missing cron section", config: {}, expected: true },
+    { label: "null cron section", config: { cron: null }, expected: true },
     { label: "cron section without enabled", config: { cron: {} }, expected: true },
     { label: "explicitly enabled cron section", config: { cron: { enabled: true } }, expected: true },
     { label: "explicitly disabled cron section", config: { cron: { enabled: false } }, expected: false },

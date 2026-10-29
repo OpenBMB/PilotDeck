@@ -1,0 +1,106 @@
+name: OBS Sync Debug (Isolated)
+
+on:
+  push:
+    branches: [codex/obs-sync-debug]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: obs-sync-debug
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      live_ready: ${{ steps.config.outputs.live_ready }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate isolated diagnostics
+        run: python3 -m unittest discover -s .github/scripts -p 'test_obs*.py'
+      - name: Freeze latest formal release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > resolved-release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('resolved-release.json').read_text())
+          if release.get('draft') or release.get('prerelease') or not release.get('assets'):
+              raise SystemExit('No formal release assets')
+          print(f"Resolved {release['tag_name']}: {len(release['assets'])} assets")
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: resolved-debug-release
+          path: resolved-release.json
+          retention-days: 7
+      - name: Check live test configuration
+        id: config
+        env:
+          ENABLED: ${{ vars.OBS_DEBUG_ENABLED }}
+        run: |
+          if [[ "$ENABLED" == true ]]; then
+            echo 'live_ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'live_ready=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Live OBS diagnostics disabled: configure the debug Environment before setting OBS_DEBUG_ENABLED=true.'
+            echo 'Live OBS test NOT RUN. Debug Environment configuration required.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  live:
+    needs: tests
+    if: needs.tests.outputs.live_ready == 'true'
+    environment: obs-release-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: resolved-debug-release
+      - name: Download pinned assets and install AWS CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          release = json.loads(Path('resolved-release.json').read_text())
+          subprocess.run(['gh', 'release', 'download', release['tag_name'], '--dir', 'release-assets'], check=True)
+          PY
+          python3 -m venv "$RUNNER_TEMP/obs-cli"
+          "$RUNNER_TEMP/obs-cli/bin/pip" install 'awscli>=1.36,<2'
+          PATH="$RUNNER_TEMP/obs-cli/bin:$PATH" python3 -m unittest discover -s .github/scripts -p 'test_obs*.py'
+          echo "$RUNNER_TEMP/obs-cli/bin" >> "$GITHUB_PATH"
+      - name: Isolated upload, readback and same-path repeat
+        env:
+          OBS_DEBUG_BEARER_TOKEN: ${{ secrets.OBS_DEBUG_BEARER_TOKEN }}
+          OBS_DEBUG_ROUTE: ${{ vars.OBS_DEBUG_ROUTE }}
+        run: |
+          set -euo pipefail
+          python3 -u .github/scripts/obs_sync_debug.py 2>&1 | tee diagnostic.log
+      - name: Save non-sensitive diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: obs-debug-log
+          path: diagnostic.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Diagnostic result
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          printf 'Isolated OBS diagnostic result: %s\nNo production latest pointer is published.\n' "$RESULT" >> "$GITHUB_STEP_SUMMARY"

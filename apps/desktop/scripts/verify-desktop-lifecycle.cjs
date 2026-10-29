@@ -7,7 +7,9 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const ts = require('typescript');
 
-if (!['win32', 'darwin'].includes(process.platform)) throw new Error('Run this check on Windows or macOS.');
+if (!['win32', 'darwin'].includes(process.platform) && !(process.platform === 'linux' && process.argv.slice(2).length && process.argv.slice(2).every(arg => arg === 'notification-badge'))) {
+  throw new Error('Run lifecycle checks on Windows/macOS, or notification-badge under a Linux display server.');
+}
 async function verify(scenario) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-tray-test-'));
   try {
@@ -57,9 +59,14 @@ async function verify(scenario) {
       fs.writeFileSync(process.env.PILOTDECK_TRAY_TEST_PID + '.gateway', String(process.pid));
       net.createServer(socket => socket.end()).listen(Number(process.env.PILOTDECK_GATEWAY_PORT), '127.0.0.1');
     `);
-    fs.mkdirSync(path.join(runtime, 'ui', 'server', 'services'), { recursive: true });
-    fs.writeFileSync(path.join(runtime, 'ui', 'server', 'services', 'releaseService.js'),
-      'export const normalizeRepository = value => value; export const compareVersions = () => 0;');
+    const services = path.join(runtime, 'ui', 'server', 'services');
+    fs.mkdirSync(services, { recursive: true });
+    // Update status initializes the real desktop release service, even without
+    // checking the network. Include its shared manifest validator as production
+    // packaging does, rather than an incomplete releaseService stub.
+    for (const file of ['releaseService.js', 'desktopReleaseService.js']) {
+      fs.copyFileSync(path.resolve(desktop, '../../ui/server/services', file), path.join(services, file));
+    }
     const env = {
       ...process.env,
       PILOTDECK_TRAY_TEST_UPDATER: path.dirname(require.resolve('electron-updater/package.json')),
@@ -77,7 +84,7 @@ async function verify(scenario) {
     // This is the GUI under test, not a background helper. STARTUPINFO/SW_HIDE
     // from windowsHide can suppress its first native ShowWindow call, including
     // an explicit tray restore after closing a show:false startup window.
-    const result = spawnSync(require('electron'), [root], { env, windowsHide: false, encoding: 'utf8', timeout: scenario === 'manual' ? 300_000 : 120_000, killSignal: 'SIGKILL' });
+    const result = spawnSync(require('electron'), [root, ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])], { env, windowsHide: false, encoding: 'utf8', timeout: scenario === 'manual' ? 300_000 : 120_000, killSignal: 'SIGKILL' });
     const step = path.join(root, 'step');
     assert.equal(result.status, 0, `${scenario}: ${fs.existsSync(step) ? fs.readFileSync(step, 'utf8') : 'before first checkpoint'}\n${result.error || ''}\n${result.stdout}\n${result.stderr}`);
     assert.ok(fs.existsSync(path.join(root, 'passed')), 'real app reached graceful shutdown');
@@ -98,7 +105,7 @@ async function verify(scenario) {
 }
 (async () => {
   const scenarios = process.argv.slice(2);
-  for (const scenario of scenarios.length ? scenarios : ['normal', 'slow-quit', 'startup-quit', 'stop-failure', 'update', 'update-recovery', ...(process.platform === 'darwin' ? ['shutdown'] : [])]) {
+  for (const scenario of scenarios.length ? scenarios : ['normal', 'notification-badge', 'slow-quit', 'startup-quit', 'stop-failure', 'update', 'update-recovery', ...(process.platform === 'darwin' ? ['shutdown'] : [])]) {
     await verify(scenario);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

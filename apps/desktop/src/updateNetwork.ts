@@ -1,4 +1,4 @@
-import type { Session, AuthInfo } from "electron";
+import type { Session, AuthInfo, ClientRequest } from "electron";
 import { CancellationToken } from "electron-updater";
 import { ElectronHttpExecutor } from "electron-updater/out/electronHttpExecutor";
 
@@ -34,7 +34,9 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
   // net.fetch does not handle proxy authentication challenges. Reuse the
   // updater's net.request transport, session and redirect/auth behavior for GETs.
   const executor = executorFactory(login);
+  const probeExecutor = new ElectronHttpExecutor(login);
   return {
+    probe: (url: string, signal?: AbortSignal) => probeUpdateDownload(probeExecutor, url, signal),
     async prepare() {
       const config = resolveUpdateProxy(readConfig(), env);
       const key = JSON.stringify(config);
@@ -66,4 +68,42 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
     credentialsFor,
     login,
   };
+}
+
+// Read at most 256 KiB, even when a server ignores Range. Abort the transport
+// after sampling; never buffer an installer merely to measure its speed.
+export function probeUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal?: AbortSignal): Promise<number> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
+    const started = Date.now();
+    let request: ClientRequest | undefined;
+    let settled = false;
+    let bytes = 0;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      request?.abort();
+      if (error) reject(error);
+      else resolve(Math.max(1, Date.now() - started));
+    };
+    const abort = () => finish(new Error("cancelled"));
+    const timer = setTimeout(() => finish(new Error("probeTimeout")), 5000);
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      const target = new URL(url);
+      request = executor.createRequest({ protocol: target.protocol, hostname: target.hostname,
+        port: target.port || undefined, path: `${target.pathname}${target.search}`, redirect: "follow",
+        headers: { Range: "bytes=0-262143", "Cache-Control": "no-cache", "User-Agent": "PilotDeck-Updater" } }, response => {
+        if (response.statusCode !== 200 && response.statusCode !== 206) { finish(new Error("probeFailed")); return; }
+        response.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes >= 262144) finish(); });
+        response.on("end", () => finish(bytes ? undefined : new Error("emptyProbe")));
+        response.on("error", finish);
+        response.on("aborted", () => finish(new Error("probeAborted")));
+      });
+      request.on("error", finish);
+      request.end();
+    } catch (error) { finish(error instanceof Error ? error : new Error("probeFailed")); }
+  });
 }

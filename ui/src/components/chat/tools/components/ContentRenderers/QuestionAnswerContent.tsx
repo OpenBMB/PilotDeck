@@ -5,6 +5,7 @@ import type { Question } from '../../../types/types';
 interface QuestionAnswerContentProps {
   questions: unknown;
   answers: unknown;
+  resolved?: boolean;
   className?: string;
 }
 
@@ -76,6 +77,7 @@ function formatInvalidPayload(value: unknown) {
 export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
   questions,
   answers,
+  resolved = false,
   className = '',
 }) => {
   const { t } = useTranslation('common');
@@ -169,7 +171,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
                   </div>
                 )}
 
-                {!isExpanded && skipped && hasAnyAnswer && (
+                {!isExpanded && skipped && resolved && (
                   <span className="mt-1 inline-block text-[10px] italic text-gray-400 dark:text-gray-500">{t('common:uiText.skipped')}</span>
                 )}
               </div>
@@ -242,7 +244,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
                     </div>
                   ))}
 
-                  {skipped && hasAnyAnswer && (
+                  {skipped && resolved && (
                     <div className="px-2.5 py-1 text-[11px] italic text-gray-400 dark:text-gray-500">{t('common:uiText.noAnswer')}</div>
                   )}
                 </div>
@@ -252,8 +254,8 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
         );
       })}
 
-      {!hasAnyAnswer && total === 1 && (
-        <div className="text-[11px] italic text-gray-400 dark:text-gray-500">{t('common:uiText.skipped')}</div>
+      {!resolved && !hasAnyAnswer && (
+        <div className="text-[11px] text-amber-600 dark:text-amber-400">{t('common:uiText.waitingForAnswer')}</div>
       )}
     </div>
   );

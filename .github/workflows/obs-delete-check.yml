@@ -1,0 +1,52 @@
+name: OBS Deletion Acceptance (Opt-in)
+
+on:
+  push:
+    branches: [codex/obs-sync-debug]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-to-obs
+  cancel-in-progress: false
+
+jobs:
+  delete-check:
+    if: >-
+      github.ref == 'refs/heads/codex/obs-sync-debug' &&
+      (github.event_name == 'workflow_dispatch' || vars.OBS_DELETE_CHECK_ENABLED == 'true')
+    environment: obs-release-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Test retention and deletion checks
+        run: python3 -m unittest discover -s .github/scripts -p 'test_obs*retention*.py'
+      - name: Install AWS CLI
+        run: |
+          python3 -m venv "$RUNNER_TEMP/obs-cli"
+          "$RUNNER_TEMP/obs-cli/bin/pip" install 'awscli>=1.36,<2'
+          echo "$RUNNER_TEMP/obs-cli/bin" >> "$GITHUB_PATH"
+      - name: Verify real batch deletion of two test objects
+        env:
+          OBS_CREDENTIALS_BEARER_TOKEN: ${{ secrets.OBS_DEBUG_BEARER_TOKEN }}
+        run: python3 -u .github/scripts/obs_retention_delete_check.py
+      - name: Plan production retention without deleting release assets
+        if: ${{ !cancelled() }}
+        env:
+          OBS_CREDENTIALS_BEARER_TOKEN: ${{ secrets.OBS_DEBUG_BEARER_TOKEN }}
+        run: python3 -u .github/scripts/obs_release_retention.py
+      - name: Save deletion evidence and exact retention plan
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: obs-retention-acceptance
+          path: |
+            retention-delete-check.json
+            retention-plan.json
+          if-no-files-found: warn
+          retention-days: 30

@@ -938,6 +938,7 @@ function ChatInterfaceV2({
           inlineThinking={inlineThinking}
           setInput={setInput}
           isAssistantWorking={isLoading}
+          pendingPermissionRequests={pendingPermissionRequests}
           sessionRuntimeState={sessionRuntimeState}
           activeRunId={activeRunId}
           workingStatus={claudeStatus || pilotDeckStatus}

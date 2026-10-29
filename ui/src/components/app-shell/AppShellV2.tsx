@@ -38,6 +38,8 @@ import { getSettingsPathFromTab } from '../settings/navigation';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import SidebarV2 from './SidebarV2';
 import MainAreaV2 from './MainAreaV2';
+import GlobalSearchDialog from '../global-search/GlobalSearchDialog';
+import { GlobalSearchProvider, useGlobalSearch, type GlobalSearchResult } from '../global-search/GlobalSearchContext';
 import { useWorkspaceUpload } from '../main-content-v2/useWorkspaceUpload';
 import {
   chooseDefaultProject,
@@ -48,6 +50,7 @@ import {
   SCHEDULED_TASKS_PATH,
   SETTINGS_PATH,
   SKILLS_PATH,
+  useSettingsRouteMatch,
 } from './appRoutes';
 
 type TypedSettingsProps = {
@@ -67,6 +70,12 @@ const SettingsComponent = Settings as unknown as (props: TypedSettingsProps) => 
 // auth, and project plumbing keep working unchanged — V2 just reorganizes the
 // outer chrome (sidebar + breadcrumb header per prototype/shadcn.html).
 export default function AppShellV2() {
+  const { user } = useAuth();
+  return <GlobalSearchProvider userKey={String(user?.id ?? user?.username ?? 'local')}><AppShellContent /></GlobalSearchProvider>;
+}
+
+function AppShellContent() {
+  const globalSearch = useGlobalSearch();
   useRejectExternalFileDropOutsideTargets();
   const navigate = useNavigate();
   const [skillConversationRequest, setSkillConversationRequest] =
@@ -81,10 +90,9 @@ export default function AppShellV2() {
   const matchLegacySession = useMatch('/session/:sessionId');
   const matchScheduledTasks = useMatch(SCHEDULED_TASKS_PATH);
   const matchSkills = useMatch(SKILLS_PATH);
-  const matchSettingsIndex = useMatch({ path: SETTINGS_PATH, end: true });
-  const matchSettingsSection = useMatch(`${SETTINGS_PATH}/:section`);
-  const isSettingsRoute = Boolean(matchSettingsIndex || matchSettingsSection);
-  const settingsSection = matchSettingsSection?.params.section;
+  const settingsRouteMatch = useSettingsRouteMatch();
+  const isSettingsRoute = Boolean(settingsRouteMatch);
+  const settingsSection = settingsRouteMatch?.params.section;
   const dedicatedTab = matchSkills
     ? 'skills' as const
     : matchScheduledTasks
@@ -152,10 +160,13 @@ export default function AppShellV2() {
   const workspaceUpload = useWorkspaceUpload(selectedProject?.name);
   const workspaceTab = activeTab === 'cron' || activeTab === 'skills' ? 'chat' : activeTab;
   const shellActiveTab = dedicatedTab ?? workspaceTab;
-  const { processingSessions: remoteProcessingSessions, unreadSessionIds, markRead, acknowledge, selectSession: acknowledgeNavigation } = useSessionIndicators({
+  const notificationSessionNames = useMemo(() => Object.fromEntries(sidebarSharedProps.projects.flatMap(project =>
+    (project.sessions ?? []).map(session => [session.id, sessionDisplayTitle(session)]))), [sidebarSharedProps.projects]);
+  const { processingSessions: remoteProcessingSessions, waitingSessions, unreadSessionIds, markRead, acknowledge, selectSession: acknowledgeNavigation } = useSessionIndicators({
     scope: String(user?.id ?? 'local'),
     viewedSessionId: !isSettingsRoute && shellActiveTab === 'chat' && selectedSession?.id === readySessionId ? readySessionId : null,
     subscribe, sendMessage, isConnected,
+    sessionNames: notificationSessionNames,
   });
   // Composer callbacks cover the interval before the server sees a new send.
   const processingSessions = useMemo(() => new Set([...localProcessingSessions, ...remoteProcessingSessions]), [localProcessingSessions, remoteProcessingSessions]);
@@ -318,13 +329,14 @@ export default function AppShellV2() {
   }, [switchProject]);
 
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    if (typeof navigator === 'undefined') {
       return undefined;
     }
 
     const handleServiceWorkerMessage = (event: MessageEvent) => {
       const message = event.data;
       if (!message || message.type !== 'notification:navigate') return;
+      if (user?.id !== undefined && message.scope && String(user.id) !== message.scope) return;
 
       // Provider hint from notifications is no longer stored; all sessions
       // go through the unified pilotdeck gateway.
@@ -334,17 +346,24 @@ export default function AppShellV2() {
       void refreshProjectsSilently();
 
       if (typeof message.sessionId === 'string' && message.sessionId) {
-        navigate(`/session/${message.sessionId}`);
+        acknowledgeNavigation(message.sessionId);
+        navigate(`/session/${encodeURIComponent(message.sessionId)}`);
         return;
       }
       navigate('/');
     };
 
-    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    const handleNativeNavigation = (data: any) => handleServiceWorkerMessage({ data: { ...data, type: 'notification:navigate' } } as MessageEvent);
+    const handleBrowserNavigation = (event: Event) => handleNativeNavigation((event as CustomEvent).detail);
+    const unsubscribeNative = window.pilotdeckDesktop?.onNotificationNavigate?.(handleNativeNavigation);
+    window.addEventListener('pilotdeck:notification-navigate', handleBrowserNavigation);
+    navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage);
     return () => {
-      navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+      unsubscribeNative?.();
+      window.removeEventListener('pilotdeck:notification-navigate', handleBrowserNavigation);
+      navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage);
     };
-  }, [navigate, refreshProjectsSilently, setActiveTab, setSidebarOpen]);
+  }, [navigate, refreshProjectsSilently, setActiveTab, setSidebarOpen, acknowledgeNavigation, user?.id]);
 
   useEffect(() => {
     const isReconnect = isConnected && !wasConnectedRef.current;
@@ -625,7 +644,7 @@ export default function AppShellV2() {
       selectedProject, selectedSession, projectNameParam, projects: sidebarSharedProps.projects,
     })),
     hasProject: Boolean(selectedProject && selectedProject.capabilities?.files !== false && selectedProject.kind !== 'general' && selectedProject.name !== 'general'),
-    canFind: !isSettingsRoute,
+    canFind: true,
     sidebarVisible: desktopSidebarOpen && !isSettingsRoute,
     integrateMacCaption: desktopSidebarOpen && !isMobile && !isSettingsRoute && isConnected,
     execute: command => {
@@ -690,11 +709,13 @@ export default function AppShellV2() {
       onRetryLoad={sidebarSharedProps.onRetryLoad}
       isMobile={isMobile}
       processingSessions={processingSessions}
+      waitingSessions={waitingSessions}
       unreadSessionIds={unreadSessionIds}
       onSelectProject={handleSelectProject}
       onSelectSession={handleSelectSession}
       onStartNewSession={handleStartNewSession}
       onStartHomeNewConversation={handleHomeNewConversation}
+      onOpenGlobalSearch={globalSearch?.open}
       onCreateProject={handleOpenNewProject}
       pendingDraftProjectName={draftSessionProjectName}
 	      onRequestDeleteProject={handleRequestDeleteProject}
@@ -787,6 +808,7 @@ export default function AppShellV2() {
             onSessionNotProcessing={markSessionAsNotProcessing}
             onSessionActivityBump={handleSessionActivityBump}
             processingSessions={processingSessions}
+            waitingSessions={waitingSessions}
             unreadSessionIds={unreadSessionIds}
             onReplaceTemporarySession={handleReplaceTemporarySession}
             onNavigateToSession={(sid: string) => {
@@ -816,6 +838,18 @@ export default function AppShellV2() {
         </SkillConversationContext.Provider>
       </main>
       </div>
+
+      <GlobalSearchDialog projects={sidebarSharedProps.projects} onSelect={(result: GlobalSearchResult, query) => {
+        const project = sidebarSharedProps.projects.find(item => item.name === result.project.name) || result.project;
+        if (result.kind === 'files') {
+          handleSelectProject(project);
+          setActiveTab('files');
+        } else if (result.sessionId) {
+          handleSelectSession(project, result.sessionId, { id: result.sessionId, title: result.title, summary: result.title });
+        }
+        setSidebarOpen(false);
+        globalSearch?.reveal(result, query);
+      }} />
 
       {showNewProject
         ? ReactDOM.createPortal(

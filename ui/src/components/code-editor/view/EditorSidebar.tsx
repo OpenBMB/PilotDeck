@@ -164,7 +164,6 @@ export default function EditorSidebar({
         closeAll: t('tabs.closeAll'),
         modified: t('tabs.modified'),
       }}
-      reserveToolbarSpace={workspaceMode}
     />
   );
 

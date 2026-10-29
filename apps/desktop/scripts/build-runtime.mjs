@@ -597,6 +597,15 @@ function verifyRuntime(root, label = "runtime", runtimeArch = targetRuntimeArch)
   verifyRuntimeModuleImport(resolve(runtimeRoot, "dist", "src", "cli", "pilotdeck.js"), label, runtimeArch);
   verifyRuntimeModuleImport(resolve(runtimeRoot, "ui", "server", "services", "spreadsheetPreview.js"), label, runtimeArch);
   verifyRuntimeModuleImport(resolve(runtimeRoot, "ui", "server", "services", "standaloneComputerUse.js"), label, runtimeArch);
+  const searchCheck = spawnRuntimeNodeSync(
+    [resolve(desktopRoot, "scripts", "verify-global-search.mjs"), runtimeRoot],
+    { cwd: runtimeRoot, encoding: "utf8", timeout: 30_000, env: withBundledNodeEnv() },
+    runtimeArch,
+  );
+  if (searchCheck.status !== 0) {
+    throw new Error(`Desktop ${label} global search check failed: ${searchCheck.error?.message || searchCheck.stderr || searchCheck.stdout}`);
+  }
+  console.log(searchCheck.stdout.trim());
 
   console.log(`[desktop] staged ${label} ready: ${runtimeRoot}`);
   console.log(`[desktop] staged ${label} size: ${formatBytes(directorySize(runtimeRoot))}`);

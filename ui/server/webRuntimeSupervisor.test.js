@@ -2,13 +2,15 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
-import { resolveLaunchConfigPath } from '../../scripts/dev-launcher.mjs';
-import {
+// Native loading preserves the CLI shebang; Vitest's Windows VM transform does not.
+const { resolveLaunchConfigPath } = createRequire(import.meta.url)('../../scripts/dev-launcher.mjs');
+const {
   createRuntimeSupervisor,
   getRuntimeCommands,
   normalizeSupervisorMode,
-} from './webRuntimeSupervisor.js';
+} = createRequire(import.meta.url)('./webRuntimeSupervisor.js');
 
 function createFakeChild() {
   const child = new EventEmitter();
@@ -85,9 +87,16 @@ describe('web runtime supervisor', () => {
     expect(built.supervisor.children.has('gateway')).toBe(false);
 
     const dev = createHarness({ mode: 'dev' });
-    expect(dev.spawnImpl).toHaveBeenCalledTimes(2);
+    expect(dev.spawnImpl).toHaveBeenCalledTimes(1);
     expect(dev.supervisor.children.has('server')).toBe(true);
+    expect(dev.supervisor.children.has('client')).toBe(false);
+    dev.supervisor.children.get('server').emit('message', { type: 'pilotdeck:server-ready', port: 0 });
+    expect(dev.spawnImpl).toHaveBeenCalledTimes(1);
+    dev.supervisor.children.get('server').emit('message', { type: 'pilotdeck:server-ready', port: 3002 });
     expect(dev.supervisor.children.has('client')).toBe(true);
+    expect(dev.spawnImpl.mock.calls[1][2].env.SERVER_PORT).toBe('3002');
+    dev.supervisor.children.get('server').emit('message', { type: 'pilotdeck:server-ready', port: 3002 });
+    expect(dev.spawnImpl).toHaveBeenCalledTimes(2);
   });
 
   it('passes one absolute config path to the UI server and Gateway', () => {
@@ -127,8 +136,8 @@ describe('web runtime supervisor', () => {
     expect(supervisor.children.has('gateway')).toBe(false);
   });
 
-  it('starts Gateway once after ready configuration and reports readiness', async () => {
-    const { supervisor, spawnImpl } = createHarness();
+  it.each([80, 18789])('starts Gateway once and reports readiness on port %i', async port => {
+    const { supervisor, spawnImpl } = createHarness({ env: { PILOTDECK_GATEWAY_PORT: String(port) } });
     const server = supervisor.children.get('server');
     server.emit('message', {
       type: 'pilotdeck:configuration-state',
@@ -140,12 +149,53 @@ describe('web runtime supervisor', () => {
     });
 
     expect(spawnImpl).toHaveBeenCalledTimes(2);
+    expect(spawnImpl.mock.calls[1][2].stdio).toContain('ipc');
+    supervisor.children.get('gateway').emit('message', { type: 'pilotdeck:gateway-ready', port });
     await vi.waitFor(() => {
       expect(server.send).toHaveBeenLastCalledWith({
         type: 'pilotdeck:gateway-state',
         state: 'ready',
       });
     });
+  });
+
+  it('does not treat an occupied port as readiness before its own Gateway starts', async () => {
+    const { supervisor } = createHarness();
+    const server = supervisor.children.get('server');
+    server.emit('message', { type: 'pilotdeck:configuration-state', configuration: { state: 'ready' } });
+    await Promise.resolve();
+    expect(server.send).toHaveBeenLastCalledWith({ type: 'pilotdeck:gateway-state', state: 'starting' });
+    const gateway = supervisor.children.get('gateway');
+    gateway.emit('message', { type: 'pilotdeck:gateway-ready', port: 18790 });
+    expect(server.send).toHaveBeenLastCalledWith({ type: 'pilotdeck:gateway-state', state: 'starting' });
+    gateway.emit('close', 1, null);
+    gateway.emit('message', { type: 'pilotdeck:gateway-ready', port: 18789 });
+    expect(server.send).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'error' }));
+    expect(server.send.mock.calls.some(([message]) => message.state === 'ready')).toBe(false);
+  });
+
+  it('waits for the port check as well as the child readiness message', async () => {
+    let finishPort;
+    const { supervisor } = createHarness({ waitForPortImpl: () => new Promise(resolve => { finishPort = resolve; }) });
+    const server = supervisor.children.get('server');
+    server.emit('message', { type: 'pilotdeck:configuration-state', configuration: { state: 'ready' } });
+    supervisor.children.get('gateway').emit('message', { type: 'pilotdeck:gateway-ready', port: 18789 });
+    expect(server.send).toHaveBeenLastCalledWith({ type: 'pilotdeck:gateway-state', state: 'starting' });
+    finishPort();
+    await vi.waitFor(() => expect(server.send).toHaveBeenLastCalledWith({ type: 'pilotdeck:gateway-state', state: 'ready' }));
+  });
+
+  it('times out if an occupied port is open but the managed Gateway never reports ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const { supervisor } = createHarness();
+      const server = supervisor.children.get('server');
+      server.emit('message', { type: 'pilotdeck:configuration-state', configuration: { state: 'ready' } });
+      const gateway = supervisor.children.get('gateway');
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(gateway.kill).toHaveBeenCalled();
+      expect(server.send).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'error', error: expect.stringContaining('Timed out') }));
+    } finally { vi.useRealTimers(); }
   });
 
   it('keeps the UI server alive when Gateway exits', () => {
@@ -258,10 +308,13 @@ describe('web runtime supervisor', () => {
       requestExists: true,
     });
     const server = supervisor.children.get('server');
+    server.emit('message', { type: 'pilotdeck:server-ready', port: 3002 });
     server.emit('close', 42, null);
 
     expect(spawnImpl).toHaveBeenCalledTimes(2);
-    await vi.waitFor(() => expect(spawnImpl).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(spawnImpl).toHaveBeenCalledTimes(3));
+    supervisor.children.get('server').emit('message', { type: 'pilotdeck:server-ready', port: 3003 });
+    expect(spawnImpl).toHaveBeenCalledTimes(4);
     expect(exit).not.toHaveBeenCalled();
     expect(supervisor.children.has('server')).toBe(true);
     expect(supervisor.children.has('client')).toBe(true);
@@ -271,7 +324,7 @@ describe('web runtime supervisor', () => {
     const processLike = createFakeProcess();
     const children = [createFakeChild(), createFakeChild()];
     const exit = vi.fn();
-    createRuntimeSupervisor({
+    const supervisor = createRuntimeSupervisor({
       mode: 'dev',
       spawnImpl: vi.fn(() => children.shift()),
       waitForPortImpl: vi.fn(async () => undefined),
@@ -280,7 +333,9 @@ describe('web runtime supervisor', () => {
       exit,
       log: vi.fn(),
       error: vi.fn(),
-    }).run();
+    });
+    supervisor.run();
+    supervisor.children.get('server').emit('message', { type: 'pilotdeck:server-ready', port: 3002 });
 
     processLike.emitSignal('SIGINT');
 

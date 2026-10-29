@@ -1,4 +1,27 @@
 {
+  "systemNotifications": {
+    "title": "通知",
+    "enabled": "启用系统通知",
+    "description": "在任务完成、需要审批、需要回答问题或任务无法继续时提醒。",
+    "sound": "通知提示音",
+    "soundDescription": "使用系统默认提示音，声音同时受系统设置影响。",
+    "badge": "显示应用图标角标",
+    "badgeDescription": "显示本次后台期间收到提醒的任务数，返回主窗口后清零。会话未读状态单独保留。",
+    "preview": "显示消息预览",
+    "previewDescription": "在通知中显示回复或问题摘要。关闭后仍显示对话名称和操作提示。",
+    "systemSettings": "系统通知设置",
+    "openSettings": "前往系统设置",
+    "showHelp": "查看设置方法",
+    "systemControlled": "消息横幅和声音由系统控制，请在系统设置中允许 PilotDeck 发送通知。",
+    "granted": "浏览器已允许通知。横幅和声音仍受系统设置影响。",
+    "denied": "通知权限已关闭，请在系统或浏览器设置中重新允许。",
+    "notGranted": "开启系统通知时，请允许浏览器发送通知。",
+    "unsupported": "当前环境不支持系统通知。网页请使用 HTTPS 或本机地址访问。",
+    "unsupportedDesktop": "当前桌面环境暂不支持系统通知，仍可在对话列表中查看提醒。",
+    "browserHelp": "点击浏览器地址栏左侧的网站设置图标，允许此网站发送通知；如仍未显示，请在系统通知设置中允许当前浏览器。",
+    "desktopHelp": "请打开系统设置中的“通知”，找到 PilotDeck 并允许通知。Linux 的入口因桌面环境而异。",
+    "saveError": "未能保存通知设置，请重试。"
+  },
   "openModelSettings": "打开模型设置",
   "title": "设置",
   "tabs": {
@@ -1344,7 +1367,7 @@
         "provider": {
           "label": "搜索提供商",
           "description": "选择智能体当前使用的搜索服务。",
-          "glm": "GLM / Z.AI Web Search",
+          "deepseek": "DeepSeek Search",          "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
           "custom": "自定义",
           "serper": "Serper (Google)",
@@ -1377,7 +1400,7 @@
         },
         "endpoint": {
           "label": "连接地址",
-          "description": "自定义搜索服务的 HTTP(S) 请求地址。",
+          "description": "自定义搜索服务的 HTTP(S) 请求地址。 修改网址会清除原有 API Key，请为新地址重新填写密钥。",
           "placeholder": "https://example.com/search"
         },
         "custom": {
@@ -1897,5 +1920,47 @@
   "disconnect": "解除 OAuth 授权",
   "cancel": "取消授权",
   "localDisconnect": "本地凭证已移除，但未确认远端撤销。如有需要，请在服务方撤销授权。"
-}
+},
+  "customSearch": {
+    "basicsTitle": "基础配置",
+    "requestTitle": "请求模板",
+    "previewTitle": "预览与保存",
+    "variablesHelp": "变量与请求规则说明",
+    "namePlaceholder": "自定义搜索",
+    "formEncoding": "URL 编码表单",
+    "title": "自定义请求与响应",
+    "description": "模型调用 web_search(query, gl)，这里负责将参数转换成你的 API 请求，并把响应映射为搜索结果。请先保存此配置，再测试连接。",
+    "endpoint": "请求网址",
+    "name": "提供商名称",
+    "method": "请求方法",
+    "auth": "鉴权方式",
+    "authOptions": {
+      "bearer": "Bearer 令牌",
+      "headerApiKey": "请求头 API Key",
+      "bodyApiKey": "请求体 API Key",
+      "queryApiKey": "查询参数 API Key",
+      "none": "无需鉴权"
+    },
+    "apiKeyParam": "API Key 字段／请求头名称",
+    "queryParam": "旧版查询字段",
+    "variables": "支持变量：{{query}}（搜索词）、{{limit}}（数量）、{{gl}}（国家，默认 us）、{{apiKey}}（已保存的密钥）。在 JSON 值中引用变量，独立的 {{limit}} 会保留数字类型。密钥请填入 API Key 配置项，不要写进模板。",
+    "legacy": "查询参数和请求体都留空时，使用旧版查询字段；显式填写 JSON 对象则完全按模板发送。GET 使用查询参数，不能带请求体。修改网址或鉴权后需重新填写 API Key。",
+    "headers": "请求头（JSON）",
+    "queryParams": "查询参数（JSON）",
+    "bodyEncoding": "请求体编码",
+    "requestBody": "请求体（JSON 模板）",
+    "mapping": "响应字段映射",
+    "paths": "路径支持点号及数组下标，例如 data.results、links[0].url；根数组用 $。结果路径留空时识别常见列表，各字段留空时使用下方占位默认值。列表或网址映射错误会在连接测试中报错。",
+    "resultsPath": "结果列表路径",
+    "titleField": "标题字段",
+    "urlField": "网址字段",
+    "snippetField": "摘要字段",
+    "sourceField": "来源字段",
+    "publishedAtField": "发布时间字段",
+    "testQuery": "预览搜索词",
+    "preview": "预览请求",
+    "previewHint": "JSON 请求体展开显示，发送时仅序列化一次。预览使用占位密钥，不会发送请求。",
+    "save": "保存请求配置",
+    "invalidJson": "JSON 格式错误"
+  }
 }

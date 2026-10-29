@@ -294,6 +294,7 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
           <QuestionAnswerContent
             questions={contentProps.questions || []}
             answers={contentProps.answers || {}}
+            resolved={toolResult !== undefined && toolResult !== null}
           />
         );
         break;

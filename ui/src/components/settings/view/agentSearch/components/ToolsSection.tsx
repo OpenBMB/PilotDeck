@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import CustomSearchEditor from './CustomSearchEditor';
 import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isOptionalFeatureEnabled } from "../../../../../../../src/pilot/config/optionalFeature.js";
@@ -314,6 +315,8 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
       ...ws,
       provider: "custom",
       endpoint: value,
+      // Saved credentials belong to their endpoint; re-enter the key for a new URL.
+      ...(value !== endpoint.trim() ? { apiKey: undefined } : {}),
       customProvider: {
         ...ws.customProvider,
         auth: ws.customProvider?.auth ?? "bearer",
@@ -621,6 +624,13 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
           </div>
         </div>
 
+        {provider === 'custom' && <CustomSearchEditor key={JSON.stringify([endpoint, ws.customProvider])}
+          value={ws.customProvider ?? {}} endpoint={endpoint} disabled={!enabled}
+          onSave={(customProvider, nextEndpoint) => {
+            const scope = (value: typeof customProvider) => JSON.stringify([value.auth ?? 'bearer', value.method ?? 'POST', value.apiKeyParam?.trim() || 'api_key']);
+            updateWebSearch({ ...ws, endpoint: nextEndpoint, customProvider,
+              ...(nextEndpoint !== endpoint || scope(customProvider) !== scope(ws.customProvider ?? {}) ? { apiKey: undefined } : {}) });
+          }} />}
         <footer className="search-test-footer">
           <div className="test-row search-test-row">
             {testStatus === "success" ? (

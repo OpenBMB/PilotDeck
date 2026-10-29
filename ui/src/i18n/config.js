@@ -127,8 +127,11 @@ i18n.on('languageChanged', (lng) => {
 function syncAlwaysOnLanguage(lng) {
   const alwaysOnLang = lng === 'zh-CN' ? 'zh-CN' : 'en';
   authenticatedFetch('/api/config')
-    .then((r) => r.json())
+    .then((r) => r.ok ? r.json() : null)
     .then((data) => {
+      // The API also returns default YAML before the first model is saved.
+      // Keep language preferences local until a real config file exists.
+      if (data?.exists !== true) return;
       const raw = typeof data?.raw === 'string' ? data.raw : '';
       if (!raw) return;
       let parsed;

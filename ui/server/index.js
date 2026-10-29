@@ -1,9 +1,11 @@
 #!/usr/bin/env node
+// Configure paths before evaluating services with persistent storage.
+import { assertRequiredPilotDeckEnv } from './load-env.js';
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from './services/workspaceFileUpload.js';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
+import { createSessionNotificationRegistry } from './session-notifications.js';
+import { notifySessionAttention } from './services/notification-orchestrator.js';
 import '../../scripts/check-node-runtime.mjs';
-// Load environment variables before other imports execute
-import { assertRequiredPilotDeckEnv } from './load-env.js';
 // Install global fetch proxy (PILOTDECK_PROXY / HTTPS_PROXY) before any network calls
 import { installGlobalProxy } from './utils/proxy.js';
 installGlobalProxy();
@@ -47,6 +49,7 @@ assertRequiredPilotDeckEnv();
 console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 
 import express from 'express';
+import searchRoutes from './routes/search.js';
 import { rateLimit } from 'express-rate-limit';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcrypt';
@@ -186,12 +189,26 @@ let projectsWatchers = [];
 let projectUpdateScheduler = null;
 const connectedClients = new Set();
 const sessionActivityRegistry = createSessionActivityRegistry();
+const sessionNotificationRegistry = createSessionNotificationRegistry();
 function broadcastSessionActivity(frame, userId) {
-    const activity = sessionActivityRegistry.receive(userId, frame);
-    if (!activity) return;
-    const payload = JSON.stringify({type: 'session-activity', activity});
+    const notification = sessionNotificationRegistry.receive(userId, frame);
+    const activity = sessionActivityRegistry.receive(userId, notification ? { ...frame, timestamp: notification.createdAt } : frame);
+    if (notification) {
+        try { notification.sessionName = sessionNamesDb.getName(notification.sessionId, 'pilotdeck') || notification.sessionName; }
+        catch { /* A notification lookup must not interrupt the chat stream. */ }
+    }
+    if (!activity && !notification) return;
+    const payload = activity ? JSON.stringify({type: 'session-activity', activity}) : null;
+    const reminder = notification ? JSON.stringify({type: 'session-notification', notification}) : null;
     for (const client of connectedClients) {
-        if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) client.send(payload);
+        if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) {
+            if (payload) client.send(payload);
+            if (reminder) client.send(reminder);
+        }
+    }
+    if (notification) {
+        try { notifySessionAttention(userId, notification); }
+        catch (error) { console.warn('Notification delivery unavailable:', error.message); }
     }
 }
 const sessionWatchRegistry = createSessionWatchRegistry();
@@ -244,6 +261,8 @@ function broadcastChatFrame(frame, originWs, userId) {
 function broadcastToSessionWatchers(sessionId, frame, userId, excludeWs = null) {
     const normalizedSessionId = normalizeSessionId(sessionId);
     if (!normalizedSessionId) return;
+    // Responses also update sidebar state in windows that are not watching this chat.
+    if (frame.kind === 'permission_cancelled' && userId !== undefined) broadcastSessionActivity(frame, userId);
     const payload = JSON.stringify(frame);
     const watchers = sessionWatchRegistry.getWatchers(normalizedSessionId);
     watchers.forEach((client) => {
@@ -569,6 +588,9 @@ app.get('/api/projects/files', authenticateToken, async (req, res) => {
 
 // Projects API Routes (protected)
 app.use('/api/projects', authenticateToken, projectsRoutes);
+app.use('/api/search', authenticateToken, searchRoutes);
+// Populate the independent search index without holding up server readiness.
+void searchRoutes.warm().catch(error => console.warn('[Search] Index warm-up:', error.message));
 
 // Git API Routes (protected)
 app.use('/api/git', authenticateToken, gitRoutes);
@@ -946,6 +968,8 @@ app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, 
         });
         sessionNamesDb.deleteName(sessionId, 'pilotdeck');
         const userId = req.user?.id ?? req.user?.userId ?? null;
+        sessionActivityRegistry.remove(userId, sessionId);
+        sessionNotificationRegistry.remove(userId, sessionId);
         const payload = JSON.stringify({ type: 'session-deleted', projectName, sessionId });
         connectedClients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) client.send(payload);
@@ -2354,7 +2378,7 @@ function handleChatConnection(ws, request) {
 
             if (data.type === 'ping') return;
             if (data.type === 'get-session-activity') {
-                writer.send({type: 'session-activity-snapshot', activities: sessionActivityRegistry.snapshot(userId)});
+                writer.send({type: 'session-activity-snapshot', scope: String(userId ?? 'local'), activities: sessionActivityRegistry.snapshot(userId)});
                 return;
             }
             const requestSessionId = normalizeSessionId(data.sessionId);
@@ -3649,6 +3673,7 @@ async function startServer() {
                 // that self-reference SERVER_PORT (e.g. routes/taskmaster.js) hit
                 // the right port after a fallback.
                 process.env.SERVER_PORT = String(boundPort);
+                runtimeCoordination.publishServerReady(boundPort);
                 runtimeCoordination.publishConfigurationState();
                 {
                     const appInstallPath = path.join(__dirname, '..');
@@ -3711,6 +3736,7 @@ async function startServer() {
 
             shutdownPromise = (async () => {
                 try {
+                    await searchRoutes.close();
                     await computerUse.stop().catch(error => console.error('[computer-use] Shutdown:', error.message));
                     stopMemoryScheduler();
                     closeMemoryServices();

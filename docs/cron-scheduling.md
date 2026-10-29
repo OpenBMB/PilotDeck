@@ -1,5 +1,26 @@
 # Cron scheduling and the version 3 upgrade
 
+## Runtime configuration
+
+Cron is enabled by default while `pilotdeck server` is running. Omitting the
+`cron` section, leaving it empty (`cron:` or `cron: {}`), or omitting
+`cron.enabled` keeps the runtime enabled. After initial model setup, users can
+create scheduled tasks from the UI or ask an agent to create them without
+enabling an additional switch.
+
+To disable scheduling and the agent's Cron tools, set:
+
+```yaml
+cron:
+  enabled: false
+```
+
+The default timezone is `UTC`, the maximum concurrent runs is `1`, and the run
+timeout is `60` minutes. Cron configuration changes are applied through the
+server's configuration hot reload.
+
+## Schedule expressions
+
 Recurring schedules use five numeric fields: `minute hour day-of-month month
 day-of-week`. Sunday is `0` or `7`. Times are interpreted in the task's timezone.
 

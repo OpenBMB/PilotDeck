@@ -1,0 +1,62 @@
+name: Windows Signing Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-certum-signing
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    if: ${{ github.repository == 'OpenBMB/PilotDeck' && github.ref == 'refs/heads/main' }}
+    runs-on: windows-latest
+    environment: windows-signing
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+
+      - name: Prepare pinned cloud client and Microsoft verifier
+        shell: pwsh
+        run: ./apps/desktop/scripts/setup-cloud-signing.ps1
+
+      - name: Compile the project installer helper as a signing fixture
+        shell: pwsh
+        run: |
+          $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          $fixture = Join-Path $env:RUNNER_TEMP 'pilotdeck-signing-check.exe'
+          & $compiler /nologo /optimize+ /target:exe /platform:anycpu "/out:$fixture" apps/desktop/resources/installer/InstallPayload.cs
+          if ($LASTEXITCODE -ne 0) { throw 'Signing fixture compilation failed.' }
+
+      - name: Sign and verify certificate identity and trusted timestamp
+        shell: pwsh
+        env:
+          PILOTDECK_WINDOWS_SIGNING: required
+          PILOTDECK_WINDOWS_SIGNING_PROVIDER: ssign
+          PILOTDECK_WINDOWS_CERT_SHA1: ${{ vars.WINDOWS_CERT_SHA1 }}
+          PILOTDECK_WINDOWS_PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/pilotdeck-signing-session
+        run: |
+          if (-not $env:CERTUM_EMAIL -or -not $env:CERTUM_OTP) { throw 'Configure the windows-signing environment secrets first.' }
+          node apps/desktop/scripts/windows-signing.cjs sign (Join-Path $env:RUNNER_TEMP 'pilotdeck-signing-check.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Cloud signature verification failed.' }
+
+      - name: Remove temporary authentication session
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $sessionRoot = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'pilotdeck-signing-session'))
+          $expectedParent = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/')
+          if ([IO.Path]::GetDirectoryName($sessionRoot) -ne $expectedParent) { throw 'Unexpected signing cache location.' }
+          if (Test-Path -LiteralPath $sessionRoot) { Remove-Item -LiteralPath $sessionRoot -Recurse -Force }

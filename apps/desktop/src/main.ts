@@ -1,3 +1,4 @@
+import { registerWindowsNotifications, TOAST_ACTIVATOR_CLSID } from './windowsNotifications';
 import { installRendererRecovery } from "./rendererRecovery";
 import { commandEnabled, emptyMenuState, normalizeMenuState, type DesktopCommand } from "./desktopCommands";
 import { isRendererEditingShortcut, windowChromeOptions, windowPalette, WINDOWS_CAPTION_HEIGHT } from "./windowChrome";
@@ -7,11 +8,12 @@ import { linuxCaptionAction, linuxCaptionEntries } from "./linuxCaptionMenu";
 import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
+import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } from './notifications';
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
 import { createFilePicker } from './filePicker';
 import { ComputerUseController } from './computerUse';
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen, Notification } from "electron";
 import { DebUpdater, MacUpdater, NsisUpdater, RpmUpdater } from "electron-updater";
 import { installUpdateDownloadControl } from "./updateDownload";
 import { createUpdateController } from "./updates";
@@ -546,6 +548,10 @@ async function ensureRuntime(): Promise<RuntimeInfo> {
   return pending;
 }
 
+function isMainWindowForeground(): boolean {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused());
+}
+
 async function createOrShowWindow(): Promise<void> {
   if (isQuitting) return;
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -582,6 +588,15 @@ async function createOrShowWindow(): Promise<void> {
   });
 
   const recoveryWindow = mainWindow;
+  notifications.foreground(); // Clear stale OS badges when creating the main window.
+  recoveryWindow.on('focus', () => notifications.foreground());
+  const acknowledgeRestore = () => setImmediate(() => {
+    // Window managers can deliver restoration and focus in different orders.
+    // Confirm native foreground state after restore/show as well.
+    if (mainWindow === recoveryWindow && isMainWindowForeground()) notifications.foreground();
+  });
+  recoveryWindow.on('restore', acknowledgeRestore);
+  recoveryWindow.on('show', acknowledgeRestore);
   let allowInitialShow = true;
   const cancelInitialShow = () => { allowInitialShow = false; };
   recoveryWindow.once("close", cancelInitialShow);
@@ -985,11 +1000,25 @@ function getUpdateController() {
   });
   updater.on("login", network.login);
   const downloadControl = installUpdateDownloadControl(updater);
+  const { createDesktopReleaseService } = require(path.join(resolveRuntimeRoot(), "ui/server/services/desktopReleaseService.js"));
+  const routeCache = path.join(app.getPath("userData"), "update-route.json");
+  const releaseService = createDesktopReleaseService({ repository, currentVersion: app.getVersion(), fetchImpl: network.fetch, probe: network.probe,
+    routeStore: {
+      read: () => JSON.parse(fs.readFileSync(routeCache, "utf8")),
+      write: (record: unknown) => {
+        fs.writeFileSync(`${routeCache}.tmp`, JSON.stringify(record), "utf8");
+        fs.renameSync(`${routeCache}.tmp`, routeCache);
+      },
+    },
+  });
   updateController = createUpdateController({
     updater, downloadControl, repository, platform: process.platform, arch: process.arch,
     version: app.getVersion(), packaged: app.isPackaged, linuxPackageType,
     prepareNetwork: network.prepare,
-    latestRelease: () => releases.getLatestRelease({ repository, fetchImpl: network.fetch }),
+    latestRelease: releaseService.latestRelease,
+    downloadBases: releaseService.downloadBases,
+    downloadSucceeded: releaseService.downloadSucceeded,
+    downloadFailed: releaseService.downloadFailed,
     compareVersions: releases.compareVersions,
     prepareToInstall: async () => {
       isQuitting = true;
@@ -1015,6 +1044,45 @@ function requireUpdateSender(event: Electron.IpcMainEvent | Electron.IpcMainInvo
   const url = new URL(frame.url);
   if (!updateOrigin || url.origin !== updateOrigin) throw new Error("Invalid update origin");
 }
+const notifications = createDesktopNotifications({
+  platform: process.platform,
+  isForeground: isMainWindowForeground,
+  supported: () => Notification.isSupported(),
+  read: () => { try { return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'notifications.json'), 'utf8')); } catch { return null; } },
+  save: value => fs.writeFileSync(path.join(app.getPath('userData'), 'notifications.json'), JSON.stringify(value)),
+  create: payload => new Notification(nativeNotificationOptions(process.platform, payload)),
+  setBadge: count => app.setBadgeCount(count),
+  setTrayBadge: count => desktopTray?.setNotificationCount(count),
+  setOverlay: (bitmap, label) => mainWindow?.setOverlayIcon(bitmap ? nativeImage.createFromBitmap(bitmap, { width: 32, height: 32 }) : null, label),
+  navigate: async data => {
+    await restoreMainWindow();
+    mainWindow?.webContents.send('pilotdeck:notification-navigate', data);
+  },
+  report: error => console.warn('Desktop notification:', error),
+});
+ipcMain.handle('pilotdeck:notification-status', event => { requireUpdateSender(event); return notifications.status(); });
+ipcMain.handle('pilotdeck:notification-preferences', (event, value) => { requireUpdateSender(event); return notifications.preferences(value); });
+ipcMain.handle('pilotdeck:notification-show', (event, value) => { requireUpdateSender(event); return notifications.show(value); });
+ipcMain.handle('pilotdeck:notification-reminder', (event, value) => { requireUpdateSender(event); return notifications.record(value); });
+ipcMain.handle('pilotdeck:notification-scope', (event, value) => { requireUpdateSender(event); notifications.setScope(value); });
+ipcMain.handle('pilotdeck:notification-settings', async event => {
+  requireUpdateSender(event);
+  if (process.platform === 'darwin') {
+    try { await shell.openExternal(`x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=${APP_ID}`); }
+    catch { await shell.openExternal('x-apple.systempreferences:com.apple.preference.notifications'); }
+    return true;
+  }
+  if (process.platform === 'win32') { await shell.openExternal('ms-settings:notifications'); return true; }
+  if (process.platform === 'linux') {
+    const kde = /kde/i.test(process.env.XDG_CURRENT_DESKTOP || '');
+    return new Promise<boolean>(resolve => {
+      const child = spawn(kde ? 'systemsettings' : 'gnome-control-center', [kde ? 'kcm_notifications' : 'notifications'], { stdio: 'ignore', detached: true });
+      child.on('error', () => resolve(false));
+      child.on('spawn', () => { child.unref(); resolve(true); });
+    });
+  }
+  return false;
+});
 for (const [channel, action] of Object.entries({
   "pilotdeck:about-info": () => desktopAboutInfo(desktopAboutContext()),
   "pilotdeck:update-check": () => getUpdateController().check(),
@@ -1241,6 +1309,7 @@ ipcMain.handle('pilotdeck:pick-files', (event, request: unknown) => {
 
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
+  app.setToastActivatorCLSID(TOAST_ACTIVATOR_CLSID);
 }
 
 const lifecycle = createDesktopLifecycle({
@@ -1280,6 +1349,9 @@ if (!ownsInstance) {
   });
   app.whenReady()
     .then(async () => {
+      if (process.platform === "win32" && app.isPackaged) {
+        await registerWindowsNotifications(APP_ID).catch(error => console.warn("Windows notification registration failed", error));
+      }
       if (process.platform === "win32" || process.platform === "darwin" || process.platform === "linux") {
         desktopTray = createDesktopTray({
           platform: process.platform,
@@ -1303,6 +1375,20 @@ if (!ownsInstance) {
             return new Tray(iconPath);
           },
           buildMenu: items => Menu.buildFromTemplate(items),
+          ...(process.platform === 'linux' ? { notificationImage: (count: number) => {
+            const base = nativeImage.createFromPath(resolveAppIcon()!).resize({ width: 32, height: 32 });
+            if (!count) return base;
+            const bitmap = base.toBitmap();
+            const badge = nativeImage.createFromBitmap(badgeBitmap(count), { width: 32, height: 32 }).resize({ width: 20, height: 20 }).toBitmap();
+            for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) {
+              const source = (y * 20 + x) * 4;
+              const target = (y * 32 + x + 12) * 4;
+              const alpha = badge[source + 3] / 255;
+              for (let channel = 0; channel < 3; channel++) bitmap[target + channel] = Math.round(badge[source + channel] * alpha + bitmap[target + channel] * (1 - alpha));
+              bitmap[target + 3] = Math.max(bitmap[target + 3], badge[source + 3]);
+            }
+            return nativeImage.createFromBitmap(bitmap, { width: 32, height: 32 });
+          } } : {}),
           isChinese: () => readAppearance().language === "zh-CN",
           open: lifecycle.open,
           requestQuit: lifecycle.requestQuit,

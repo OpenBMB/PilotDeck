@@ -10,6 +10,12 @@ function createProcessLike({ supervised = true } = {}) {
 }
 
 describe('runtime coordination', () => {
+  it('reports the actual listening port for the development proxy', () => {
+    const processLike = createProcessLike();
+    const coordination = createRuntimeCoordination({ processLike, env: { PILOTDECK_RUNTIME_SUPERVISED: '1' } });
+    expect(coordination.publishServerReady(41234)).toBe(true);
+    expect(processLike.send).toHaveBeenCalledWith({ type: 'pilotdeck:server-ready', port: 41234 });
+  });
   it('publishes model configuration state to a supervisor', () => {
     const processLike = createProcessLike();
     const configuration = { state: 'ready', modelRef: 'openai/gpt-5' };

@@ -107,7 +107,7 @@ export function ProcessLiveStatus({
   };
   const Icon = getStepIcon(step);
   const title = step.title || step.toolName || 'Working';
-  const isRunning = step.state !== 'failed' && step.state !== 'completed' && step.state !== 'cancelled';
+  const isRunning = !['failed', 'completed', 'cancelled', 'waiting'].includes(step.state || '');
   const hasDetails = Boolean(children);
   const statusContent = (
     <>

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useSettingsRouteMatch } from '../../app-shell/appRoutes';
 import { useAuth } from '../context/AuthContext';
 import Onboarding from '../../onboarding/view/Onboarding';
 import AuthLoadingScreen from './AuthLoadingScreen';
@@ -13,7 +13,7 @@ type ProtectedRouteProps = {
 };
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { pathname } = useLocation();
+  const settingsRouteMatch = useSettingsRouteMatch();
   const {
     user,
     isLoading,
@@ -38,7 +38,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // Settings must remain reachable to repair an invalid model configuration.
   // Authentication above still applies when the Gateway cannot run.
-  if (pathname === '/settings' || pathname.startsWith('/settings/')) return <>{children}</>;
+  if (settingsRouteMatch) return <>{children}</>;
 
   if (modelConfiguration.state === 'loading') {
     return <AuthLoadingScreen />;

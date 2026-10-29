@@ -552,7 +552,7 @@ function getPlanModeViolation(
   if (toolName === "write_file" || toolName === "edit_file") {
     const filePath = readStringProperty(input, "file_path") ?? readStringProperty(input, "filePath");
     if (!isPlanMarkdownPath(filePath, context)) {
-      return buildPlanModeViolationMessage(toolName);
+      return buildPlanModeViolationMessage(toolName, context.planDirectory?.path);
     }
   }
 

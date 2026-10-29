@@ -100,8 +100,21 @@ updates retain their supported Git deployment policy in [Web updates](web-update
 
 ## Desktop updates
 
-The client reads `release.json` from the GitHub Release explicitly marked
-**Latest** in its packaged repository (or `PILOTDECK_UPDATE_REPOSITORY` override).
+The desktop client discovers releases through the official Huawei OBS bucket
+and GitHub repository only. Both requests start immediately, in every region;
+public third-party proxies are not used. Each route has an 8-second discovery
+deadline. After finding an update newer than the installed version, the client
+allows 1.2 seconds for peers and chooses the highest valid version received.
+If the first response is equal to or older than the installed version, it waits
+for the other route's deadline before reporting no update, so a fast stale
+mirror does not hide an available update. An unreachable source may still contain
+a newer version, which a later check can discover. If neither route succeeds,
+both receive one more attempt before the check fails.
+
+OBS uses the website's `PilotDeck/latest.json` pointer, then the immutable
+`PilotDeck/<tag>/release.json`; pointer URLs are never trusted as download hosts.
+GitHub uses the release explicitly marked **Latest**. Fork builds
+and `PILOTDECK_UPDATE_REPOSITORY` overrides never query the official OBS bucket.
 The release workflow marks each completed release Latest. The client validates
 the manifest's tag, numeric version, repository, source commit format, asset
 names, sizes and checksums. That version is compared numerically
@@ -131,7 +144,7 @@ blockmaps and differential updates are not required.
 
 **Update and restart** is one explicit user action. The Electron main process
 uses the shared release discovery module, then pins electron-updater's generic
-feed to that exact GitHub Release tag. It checks the feed version, file names,
+feed to that exact release tag across every route. It checks the feed version, file names,
 architecture, sizes and SHA-512 hashes against `release.json` before downloading.
 Electron-updater verifies the downloaded payload; the client also verifies its
 SHA-256 before stopping the gateway and Web server. Finally it invokes the
@@ -152,6 +165,46 @@ Release checks, manifests, update feeds and payload downloads share the
 Loopback traffic always bypasses the proxy for the local Mac updater. Proxy
 settings refresh before checking and remain fixed during an active update.
 Without an application or environment proxy, Electron uses system proxy settings.
+
+Before downloading, the client samples up to 256 KiB of the selected installer
+from both routes concurrently, with a 5-second deadline and no disk writes.
+After the first successful sample, it gives the competitor 150 ms to finish,
+then aborts outstanding sampling instead of waiting for the slow route's timeout.
+It also aborts the sample if a host ignores Range. Elapsed sample time determines
+order. A remembered successful route gets a 100 ms preference when speeds are
+similar; without history an exact tie prefers OBS. Failed or unfinished probes
+remain fallbacks because some servers reject Range.
+There is no IP geolocation or language-based region assumption: actual network
+conditions, including the configured proxy, determine the choice each time.
+
+Only a fully downloaded and verified package records route success. The client
+atomically saves the repository, official route ID and success timestamp in
+`update-route.json` under Electron's user-data directory. This preference survives
+restarts for seven days, contains no credentials or remote-supplied URLs, and is
+discarded on that route's download/feed/verification failure. Cancellation does
+not record success or penalize a route. Unknown IDs, different repositories,
+expired/future timestamps and unreadable caches are ignored; inability to save
+the cache never prevents updating. Every download still samples both routes so
+network changes, travel or a different VPN can override the previous preference.
+
+Feed requests have a 15-second deadline, including redirects and response bodies.
+Feed, network and checksum failures advance to the next route. After trying all
+routes, one final round retries them. Thirty seconds without progress triggers
+a switch; the first round also switches below 32 KiB/s sustained throughput.
+The final round accepts slow progress so slow local connectivity still works.
+The watchdog counts actual payload bytes in the download transport, independently
+of progress events or Content-Length, so healthy chunked responses are not cancelled.
+Pausing suspends this watchdog and prevents switching until Resume; cancellation
+stops probing/downloading and never starts another route or installs. Switching
+restarts the payload and its progress from zero; bytes from different routes are
+not combined. Every attempt validates against the originally selected manifest.
+Installation is invoked only after a complete verified download.
+
+Routing is internal. The update UI retains its existing check/download/pause/
+verify/install states, byte counts and speed; it shows no source names, mirror
+selector, URLs or raw network errors. Manifest hashes detect corruption and
+inconsistent packages. Existing native installer signature policy remains in
+effect. Web/CLI source-deployment discovery and installation are unchanged.
 
 The updater is a production dependency inside `app.asar`. CI loads it and its
 transitive dependencies using the packaged Electron executable, and checks that
@@ -247,8 +300,13 @@ check with the installed development Electron binary:
 ```sh
 pnpm --filter pilotdeck-desktop compile
 pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-network.cjs
+pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-download.cjs
 node apps/desktop/scripts/verify-installer.cjs
 ```
+
+The download check also runs in Windows CI. It uses local HTTP fixtures to test
+pause/resume, cancellation, retry and a chunked transfer lasting more than 30 seconds
+without Content-Length or upstream progress events; installation is stubbed.
 
 The network check requires OpenSSL and uses a temporary local HTTPS origin and
 proxy, without contacting GitHub or installing anything. It covers both config

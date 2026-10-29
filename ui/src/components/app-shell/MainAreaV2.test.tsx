@@ -2,10 +2,13 @@
 import { useState } from 'react';
 import type { ComponentProps } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
 import MainAreaV2 from './MainAreaV2';
 import type { ReviewOpenRequest } from '../chat-review/ChatReviewContext';
+import GlobalSearchDialog from '../global-search/GlobalSearchDialog';
+import { GlobalSearchProvider, type GlobalSearchResult } from '../global-search/GlobalSearchContext';
+import { api } from '../../utils/api';
 
 vi.mock('../main-content/view/MainContent', async () => {
   const React = await import('react');
@@ -70,6 +73,11 @@ vi.mock('../main-content/view/MainContent', async () => {
 vi.mock('../../utils/api', () => ({
   api: {
     alwaysOnDashboardEvents: vi.fn(async () => new Response(JSON.stringify({ events: [] }))),
+    globalSearch: vi.fn(async ({ query }: { query: string }) => new Response(JSON.stringify({
+      groups: { chats: [1, 2].map(index => ({ id: 'hit-' + index, kind: 'chats', project,
+        sessionId: 'session-' + index, title: 'Matched chat ' + index, snippet: query })), files: [] },
+      counts: { chats: 2, files: 0 }, hasMore: { chats: false, files: false }, partial: [],
+    }))),
   },
 }));
 
@@ -91,10 +99,12 @@ function Harness({
   initialTab = 'chat',
   withSession = false,
   selectedProject = project,
+  onSearchSelect = vi.fn(),
 }: {
   initialTab?: AppTab;
   withSession?: boolean;
   selectedProject?: Project;
+  onSearchSelect?: (result: GlobalSearchResult, query: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>(initialTab);
   const props = {
@@ -105,8 +115,15 @@ function Harness({
     setActiveTab,
   } as unknown as ComponentProps<typeof MainAreaV2>;
 
-  return <MainAreaV2 {...props} />;
+  return <GlobalSearchProvider><MainAreaV2 {...props} />
+    <GlobalSearchDialog projects={[project]} onSelect={onSearchSelect} />
+  </GlobalSearchProvider>;
 }
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+});
 
 afterEach(() => {
   cleanup();
@@ -165,47 +182,31 @@ describe('MainAreaV2 dashboard switcher', () => {
     expect(localStorage.getItem('pilotdeck:customSessionTitles')).toBeNull();
   });
 
-  it('places an available chat search button before Files and keeps its state in sync', async () => {
+  it('keeps header search absent and opens global search without leaving Files', () => {
     render(<Harness initialTab="files" withSession />);
 
     const tools = screen.getByLabelText('common:uiText.tools');
-    const searchButton = within(tools).getByRole('button', { name: 'Search current conversation' });
     const filesButton = within(tools).getByRole('button', { name: 'tabs.files' });
     const toolButtons = within(tools).getAllByRole('button');
-
-    expect(toolButtons[0]).toBe(searchButton);
-    expect(toolButtons[1]).toBe(filesButton);
-    expect(searchButton.getAttribute('aria-pressed')).toBe('false');
-
-    fireEvent.click(searchButton);
-    expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('chat');
-    expect(screen.getByTestId('main-content').getAttribute('data-search-open')).toBe('true');
-    expect(searchButton.getAttribute('aria-pressed')).toBe('true');
-    expect(searchButton.className).toContain('bg-blue-100');
-    expect(searchButton.className).toContain('text-blue-700');
-    expect(searchButton.className).not.toContain('shadow');
-
-    const headerSearch = within(screen.getByRole('banner')).getByRole('search');
-    expect(headerSearch.className).not.toContain('absolute');
-    expect(headerSearch.className).not.toContain('shadow');
-    expect(within(headerSearch).getAllByRole('button')).toHaveLength(2);
-    expect(screen.getByTitle('Searchable chat').textContent).toBe('Searchable chat');
-    fireEvent.click(searchButton);
-    await waitFor(() => expect(searchButton.getAttribute('aria-pressed')).toBe('false'));
-
-    fireEvent.click(searchButton);
-    fireEvent.click(filesButton);
+    expect(toolButtons[0]).toBe(filesButton);
+    expect(within(tools).queryByRole('button', { name: 'Search current conversation' })).toBeNull();
+    fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
     expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('files');
-    expect(screen.getByTestId('main-content').getAttribute('data-search-open')).toBe('false');
-    expect(searchButton.getAttribute('aria-pressed')).toBe('false');
+    expect(within(screen.getByRole('banner')).queryByRole('search')).toBeNull();
+    expect(screen.getByTitle('Searchable chat').textContent).toBe('Searchable chat');
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByTestId('main-content').getAttribute('data-active-tab')).toBe('files');
   });
 
-  it('disables chat search while no conversation is mounted', () => {
+  it('makes global search available without a mounted conversation', () => {
     render(<Harness />);
-
-    expect(
-      (screen.getByRole('button', { name: 'Search current conversation' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    fireEvent.keyDown(document, { key: 'f', metaKey: true });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('combobox')).toBeTruthy();
+    expect(api.globalSearch).not.toHaveBeenCalled();
   });
 
   it('does not leave Files when an embedded chat search opens', () => {
@@ -217,32 +218,30 @@ describe('MainAreaV2 dashboard switcher', () => {
     expect(screen.getByTestId('main-content').getAttribute('data-search-open')).toBe('true');
   });
 
-  it('preserves Chinese IME composition through the header search controller', async () => {
+  it('preserves Chinese composition and keyboard navigation in global search', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_000);
-    render(<Harness withSession />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Search current conversation' }));
-    const input = screen.getByRole('searchbox') as HTMLInputElement;
+    const onSearchSelect = vi.fn();
+    render(<Harness withSession onSearchSelect={onSearchSelect} />);
+    fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+    const input = screen.getByRole('combobox') as HTMLInputElement;
 
     fireEvent.compositionStart(input);
     fireEvent.change(input, { target: { value: 'wos' } });
     expect(input.value).toBe('wos');
-    expect(screen.getByTestId('main-content').getAttribute('data-search-query')).toBe('');
+    expect(api.globalSearch).not.toHaveBeenCalled();
 
     fireEvent.change(input, { target: { value: '我是' } });
     fireEvent.compositionEnd(input);
 
-    await waitFor(() => {
-      expect(input.value).toBe('我是');
-      expect(screen.getByTestId('main-content').getAttribute('data-search-query')).toBe('我是');
-    });
-
     fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, which: 13 });
-    expect(screen.getByTestId('main-content').getAttribute('data-search-index')).toBe('0');
-
+    expect(onSearchSelect).not.toHaveBeenCalled();
+    await waitFor(() => expect(api.globalSearch).toHaveBeenCalledWith(expect.objectContaining({ query: '我是' }), expect.anything()));
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(2));
+    expect(input.value).toBe('我是');
     now.mockReturnValue(1_200);
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, which: 13 });
-    expect(screen.getByTestId('main-content').getAttribute('data-search-index')).toBe('1');
+    expect(onSearchSelect).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'session-2' }), '我是');
   });
 
   it('keeps chat implicit and toggles the Files workbench from its button', () => {

@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     endpoint TEXT NOT NULL UNIQUE,
     keys_p256dh TEXT NOT NULL,
     keys_auth TEXT NOT NULL,
+    preferences_json TEXT NOT NULL DEFAULT '{}',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
