@@ -48,6 +48,8 @@ import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type {
   CompactionResult,
   ContextRecoveryDecision,
+  ContextPrepareInput,
+  ModelContext,
   ContextSupplementalToolResultMessage,
   TokenCalibrationBaseline,
   TokenBudgetSnapshot,
@@ -78,6 +80,7 @@ import {
 const TOOL_EVENT_PUMP_INTERVAL_MS = 500;
 const SUBAGENT_STATUS_HEARTBEAT_MS = 2_000;
 const EMPTY_LENGTH_OUTPUT_RETRY_FLOOR = 4_096;
+type ModelRequestPreparation = { context?: ModelContext; materializedMessages?: CanonicalMessage[] };
 const CIRCUIT_BREAKER_GRACE_PROMPT = [
   "Your last several tool calls all failed input validation with the same error.",
   "This may indicate a tool-side issue rather than a problem with your approach.",
@@ -473,6 +476,9 @@ export class AgentLoop {
       }
 
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
+      // A new scope for every model attempt, including retries and tool cycles.
+      const preparation: ModelRequestPreparation = {};
+      const localEstimates = new Map<string, number>();
       const ctx = this.dependencies.context;
       const preRoutingMaxContextTokens = this.preRoutingMaxContextTokens();
       if (ctx?.tryAutoCompact) {
@@ -485,6 +491,8 @@ export class AgentLoop {
             abortSignal: input.abortSignal,
             reservedOutputTokens,
             budgetEvaluator: this.createBudgetEvaluator(input, {
+              preparation,
+              localEstimates,
               maxContextTokens: preRoutingMaxContextTokens,
               reservedOutputTokens,
             }),
@@ -518,7 +526,7 @@ export class AgentLoop {
         yield* this.drainEventBuffer();
       }
 
-      let request = await this.createModelRequest(messages, input);
+      let request = await this.createModelRequest(messages, input, { preparation });
       if (input.abortSignal?.aborted) {
         const result = this.createTurnResult(input, {
           type: "aborted",
@@ -592,6 +600,9 @@ export class AgentLoop {
               budgetEvaluator: this.createBudgetEvaluator(input, {
                 decision,
                 baseRequest: request,
+                baseMessages: messages,
+                preparation,
+                localEstimates,
                 maxContextTokens: routedMaxCtx,
                 reservedOutputTokens,
               }),
@@ -599,7 +610,7 @@ export class AgentLoop {
             if (recompact.type === "compacted") {
               messages = recompact.messages;
               this.tokenCalibrationByRoute.clear();
-              request = await this.createModelRequest(messages, input);
+              request = await this.createModelRequest(messages, input, { preparation });
               request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
               await this.persistCompactSnapshot(input, recompact);
               yield {
@@ -651,7 +662,7 @@ export class AgentLoop {
       const calibrationRequest = this.dependencies.router.materializeRequest
         ? this.dependencies.router.materializeRequest(decision, request)
         : { ...request, provider: decision.provider, model: decision.model };
-      const requestInputEstimate = this.dependencies.tokenAccounting?.estimateRequestInput?.(calibrationRequest);
+      const requestInputEstimate = this.dependencies.tokenAccounting?.estimateRequestInput?.(calibrationRequest, localEstimates);
       const calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
       const assembler = createModelMessageAssemblerState(randomUUID());
       let executedRequest: { provider: string; model: string; fingerprint?: string } | undefined;
@@ -1993,9 +2004,9 @@ export class AgentLoop {
   private async createModelRequest(
     messages: CanonicalMessage[],
     input: AgentLoopInput,
-    options: { emitInstructionEvents?: boolean; previewOnly?: boolean } = {},
+    options: { emitInstructionEvents?: boolean; previewOnly?: boolean; preparation?: ModelRequestPreparation } = {},
   ): Promise<CanonicalModelRequest> {
-    const contextRuntime = this.dependencies.context ?? new NullContextRuntime();
+    const contextRuntime: AgentContextRuntime = this.dependencies.context ?? new NullContextRuntime();
     const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
     const canPrompt = input.canPrompt ?? this.config.permissionContext.canPrompt;
     const promptBlockedToolNames = canPrompt
@@ -2019,7 +2030,7 @@ export class AgentLoop {
     }
     const requestProvider = input.modelOverride?.provider ?? this.config.provider;
     const requestModel = input.modelOverride?.model ?? this.config.model;
-    const prepared = await contextRuntime.prepareForModel({
+    const contextInput: ContextPrepareInput = {
       previewOnly: options.previewOnly,
       sessionId: input.sessionId,
       turnId: input.turnId,
@@ -2031,13 +2042,16 @@ export class AgentLoop {
       permissionMode: this.config.permissionMode,
       runMode: this.config.runMode ?? "agent",
       additionalWorkingDirectories: this.config.permissionContext.additionalWorkingDirectories,
-      messages: cloneMessages(requestMessages),
+      messages: requestMessages,
       tools,
       maxMessages: this.config.maxContextMessages,
       customSystemPrompt: this.config.systemPrompt,
       appendSystemPrompt: planTodo?.buildPromptAddendum(),
       abortSignal: input.abortSignal,
-    });
+    };
+    const reusable = options.preparation?.context;
+    const adopted = reusable && await contextRuntime.reusePreparedContext?.(reusable, contextInput);
+    const prepared = adopted || await contextRuntime.prepareForModel({ ...contextInput, messages: cloneMessages(requestMessages) });
 
     if (options.emitInstructionEvents !== false) {
       this.dispatchLifecycle(input, "InstructionsLoaded", {
@@ -2051,7 +2065,17 @@ export class AgentLoop {
       });
     }
 
-    const materialized = await materializeMediaReferences(prepared.messages);
+    // Text-only request bodies can be reused too. File-backed media must still
+    // be read after InstructionsLoaded, which may have changed those files.
+    const reusedMessages = adopted && !prepared.messages.some(message => message.content.some(block => block.type === "media_reference"))
+      ? options.preparation?.materializedMessages : undefined;
+    const materialized = reusedMessages
+      ? { messages: reusedMessages, diagnostics: [] }
+      : await materializeMediaReferences(prepared.messages);
+    if (options.preparation) {
+      options.preparation.context = prepared;
+      options.preparation.materializedMessages = materialized.messages;
+    }
     for (const diagnostic of materialized.diagnostics) {
       // eslint-disable-next-line no-console
       console.warn(
@@ -2098,6 +2122,9 @@ export class AgentLoop {
     options: {
       decision?: import("../../router/index.js").RouterDecision;
       baseRequest?: CanonicalModelRequest;
+      baseMessages?: CanonicalMessage[];
+      preparation?: ModelRequestPreparation;
+      localEstimates?: Map<string, number>;
       maxContextTokens?: number;
       reservedOutputTokens: number;
     },
@@ -2107,10 +2134,15 @@ export class AgentLoop {
     if (!tokenAccounting || !maxContextTokens) {
       return undefined;
     }
+    const baseMessagesFingerprint = options.baseMessages && JSON.stringify(options.baseMessages);
     return async (candidateMessages) => {
-      let candidateRequest = await this.createModelRequest(candidateMessages, input, {
+      // The initial post-routing probe must measure the actual prepared request.
+      // Only hypothetical compacted histories need another context preparation.
+      const unchangedBase = options.baseRequest && baseMessagesFingerprint === JSON.stringify(candidateMessages);
+      let candidateRequest = unchangedBase ? options.baseRequest! : await this.createModelRequest(candidateMessages, input, {
         emitInstructionEvents: false,
         previewOnly: true,
+        preparation: options.preparation,
       });
       if (options.decision && options.baseRequest) {
         const patchedBase = { ...options.baseRequest, messages: candidateRequest.messages };
@@ -2130,6 +2162,7 @@ export class AgentLoop {
             };
       }
       const snapshot = await tokenAccounting.evaluateRequestBudget(candidateRequest, {
+        localEstimates: options.localEstimates,
         maxContextTokens,
         reservedOutputTokens: options.reservedOutputTokens,
         signal: input.abortSignal,

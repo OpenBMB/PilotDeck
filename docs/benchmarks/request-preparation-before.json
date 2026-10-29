@@ -1,0 +1,839 @@
+{
+  "node": "v22.23.4",
+  "platform": "darwin",
+  "arch": "arm64",
+  "implementationRoot": "/tmp/pilotdeck-688-review-main-5862",
+  "runs": 25,
+  "discardedWarmups": 1,
+  "corpus": "built-in deterministic fixture",
+  "results": [
+    {
+      "characters": 6000,
+      "routed": false,
+      "medianPreExecutionMs": 3.9828749999999786,
+      "samples": [
+        {
+          "tokens": 3845,
+          "preExecutionMs": 19.85420800000003,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 6.175915999999972,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.453665999999998,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.848583000000019,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.397416999999962,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.7743339999999534,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.107500000000016,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.551333,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.282083,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.288000000000011,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.7807920000000195,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.9068750000000136,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.6416249999999764,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.084124999999972,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.672708000000057,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.961999999999989,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.58037499999989,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.99837500000001,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.604832999999985,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.9673749999999472,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.5631250000000136,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.83395900000005,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.560542000000055,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 4.024000000000001,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 3845,
+          "preExecutionMs": 3.5612499999999727,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        }
+      ]
+    },
+    {
+      "characters": 90000,
+      "routed": false,
+      "medianPreExecutionMs": 16.417395499999998,
+      "samples": [
+        {
+          "tokens": 20894,
+          "preExecutionMs": 17.041375000000016,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.277458000000024,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.25379099999998,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.265292000000045,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.252707999999984,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.153625000000034,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.13874999999996,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.120083000000022,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.243499999999926,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.246708000000012,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.547833999999966,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 17.222583999999983,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 17.178750000000036,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 17.62295800000004,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.52137499999992,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.427583000000027,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.40720799999997,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.639125000000035,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.448666000000003,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.39608300000009,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.467499999999973,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.67704100000003,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.378165999999965,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.56712499999992,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 16.565624999999955,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        }
+      ]
+    },
+    {
+      "characters": 700000,
+      "routed": false,
+      "medianPreExecutionMs": 105.3384165,
+      "samples": [
+        {
+          "tokens": 144726,
+          "preExecutionMs": 106.48412499999984,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 106.2383339999999,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 106.1047500000002,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.50712500000009,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.74733399999991,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 104.79575,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 104.53045900000006,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 106.33224999999993,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.1109590000001,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 104.07370900000001,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 104.83712500000001,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.13633299999992,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.221,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.24912499999982,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.21775000000025,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.42770800000017,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 105.45912499999986,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 104.6700420000002,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 106.49075000000039,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 106.00120800000013,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 104.9985829999996,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 106.74341700000014,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 106.16462499999989,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 104.60266700000011,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        },
+        {
+          "tokens": 144726,
+          "preExecutionMs": 107.47712499999989,
+          "contextPreparations": 2,
+          "localTokenizations": 2,
+          "memoryRetrievals": 2,
+          "instructionDiscoveries": 2
+        }
+      ]
+    },
+    {
+      "characters": 90000,
+      "routed": true,
+      "medianPreExecutionMs": 24.267291500000056,
+      "samples": [
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.969959000000017,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.11704200000031,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.38712499999974,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.459249999999884,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 25.36870799999997,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.230667000000267,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.05745799999977,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.00420899999972,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.15654100000029,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.303915999999845,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.039082999999664,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.466791999999714,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.430917000000136,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.213124999999764,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.16574999999966,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.64520799999991,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.174875000000156,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.478791999999885,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.35183300000017,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.378707999999733,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 23.80354200000056,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 23.748125000000073,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.335250000000087,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.21600000000035,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        },
+        {
+          "tokens": 20894,
+          "preExecutionMs": 24.497166000000107,
+          "contextPreparations": 3,
+          "localTokenizations": 3,
+          "memoryRetrievals": 3,
+          "instructionDiscoveries": 3
+        }
+      ]
+    }
+  ]
+}
