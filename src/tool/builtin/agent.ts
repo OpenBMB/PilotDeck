@@ -80,6 +80,12 @@ export type AgentToolInput = {
   subagent_type?: string;
   /** @deprecated camelCase alias retained for backwards compatibility. */
   subagentType?: string;
+  /**
+   * Optional task id returned as `task_id` by a previous agent call. When
+   * present, the same child subagent continues with its prior durable
+   * context and only the new `prompt` is appended.
+   */
+  task_id?: string;
 };
 
 export type AgentToolOutput = {
@@ -90,6 +96,11 @@ export type AgentToolOutput = {
   turns?: number;
   durationMs?: number;
   parsed?: Record<string, string>;
+  /**
+   * Stable task id of the child (the subagent UUID). Pass it back as
+   * `task_id` to continue this child with its prior context.
+   */
+  taskId?: string;
 };
 
 export type CreateAgentToolOptions = {
@@ -110,6 +121,54 @@ const DEFAULT_PROVIDER_FALLBACK = "pilotdeck";
 const DEFAULT_MODEL_FALLBACK = "moonshotai/kimi-k2.6";
 const DEFAULT_SUBAGENT_TIMEOUT_MS = 60 * 60_000;
 const PUBLIC_SUBAGENT_TYPES = ["general-purpose", "explore", "plan"] as const;
+
+/**
+ * In-flight task_id continuations. Tool-scope (deliberately not agent
+ * module) so the tool stays independent of agent internals. Guard is
+ * acquired synchronously before the tool's first await and released in
+ * `finally`, so simultaneous continuations of the same task fail fast
+ * without any provider call.
+ */
+const activeTaskContinuations = new Set<string>();
+
+function normalizeTaskId(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw new PilotDeckToolRuntimeError("invalid_tool_input", "task_id must be a string returned by an earlier agent call.");
+  }
+  const trimmed = value.trim();
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(trimmed)) {
+    throw new PilotDeckToolRuntimeError("invalid_tool_input", "task_id must be a non-empty task identifier returned by an earlier agent call.");
+  }
+  return trimmed;
+}
+
+function acquireContinuationGuard(taskId: string, key: string): void {
+  if (activeTaskContinuations.has(key)) {
+    throw new PilotDeckToolRuntimeError(
+      "tool_execution_failed",
+      `Subagent task ${taskId} is already being continued; simultaneous continuation of the same task is not supported.`,
+      { errorCode: "subagent_task_busy" },
+    );
+  }
+  activeTaskContinuations.add(key);
+}
+
+/**
+ * Structural mapping for continuation failures raised by the runtime: any
+ * error carrying a `subagent_task_*` code is surfaced with that code
+ * preserved (keeps the tool layer free of agent-module imports).
+ */
+function mapContinuationError(error: unknown): PilotDeckToolRuntimeError | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code !== "string" || !code.startsWith("subagent_task_")) return undefined;
+  return new PilotDeckToolRuntimeError(
+    code === "subagent_task_unsupported" ? "unsupported_tool" : "invalid_tool_input",
+    error.message,
+    { errorCode: code },
+  );
+}
 
 export function createAgentTool(
   options: CreateAgentToolOptions = {},
@@ -145,6 +204,13 @@ export function createAgentTool(
           type: "string",
           description: "Deprecated legacy alias for subagent_type. Prefer subagent_type.",
         },
+        task_id: {
+          type: "string",
+          minLength: 1,
+          maxLength: 256,
+          description:
+            "Optional task id returned as `task_id` by a previous agent call. When present, the same child subagent continues with its prior context: its earlier user/assistant/tool history is restored and only the new `prompt` is added. Omit `subagent_type` to reuse the task's saved identity, or pass the matching type (a conflicting type fails).",
+        },
       },
     },
     maxResultBytes: 200_000,
@@ -164,21 +230,37 @@ export function createAgentTool(
         input.subagent_type ?? input.subagentType,
       );
       const directive = input.prompt;
+      const taskId = normalizeTaskId(input.task_id);
 
       // Full fork path (C2): preferred when AgentLoop wired the fork API.
       if (context.subagent) {
-        let requestedType = explicit ?? "general-purpose";
-        if ((context.permissionContext?.mode === "plan" || context.runMode === "ask") && requestedType === "general-purpose") {
-          requestedType = "explore";
+        if (taskId && !context.subagent.supportsContinuation) {
+          throw new PilotDeckToolRuntimeError(
+            "unsupported_tool",
+            "This subagent runtime does not support task_id continuation. Start a new agent call instead.",
+            { errorCode: "subagent_task_unsupported" },
+          );
         }
         return runFullFork({
           input,
           context,
-          requestedType,
+          explicit,
+          taskId,
           directive,
           fork: context.subagent,
         });
       }
+
+      // Legacy stand-alone runtime has no sidechain persistence; never
+      // silently start a new child when the caller asked for a continuation.
+      if (taskId) {
+        throw new PilotDeckToolRuntimeError(
+          "unsupported_tool",
+          "task_id continuation requires the full-fork subagent runtime; the legacy single-shot agent runtime does not support it. Start a new agent call instead.",
+          { errorCode: "subagent_task_unsupported" },
+        );
+      }
+
       let requestedType = explicit ?? "general-purpose";
       if ((context.permissionContext?.mode === "plan" || context.runMode === "ask") && requestedType === "general-purpose") {
         requestedType = "explore";
@@ -220,15 +302,17 @@ function buildAgentToolDescription(): string {
     "- `description`: a short 3-5 word label for the task.",
     "- `prompt`: the full directive for the subagent. Write it like a complete briefing: include the goal, relevant context, constraints, and what good output looks like.",
     "- `subagent_type` (optional): choose a built-in preset. If omitted, `general-purpose` is used.",
+    "- `task_id` (optional): pass the `task_id` from an earlier agent result to CONTINUE that same child subagent with its prior context; only the new `prompt` is added. Omit `subagent_type` when continuing so the task's saved identity is reused.",
     "",
     "Available built-in subagent types:",
     publicTypes,
     "",
-    "The subagent returns one structured report with these sections: `Scope`, `Result`, `Key files`, `Files changed`, and `Issues`.",
+    "The subagent returns one structured report with these sections: `Scope`, `Result`, `Key files`, `Files changed`, and `Issues`. The result also carries a `task_id` you can pass back later to follow up with the same child.",
     "",
     "Runtime behavior:",
     "- Multiple independent agent calls in one assistant message may run concurrently; batch sibling investigations when their scopes do not depend on each other.",
     "- Inside the AgentLoop, this runs a real forked subagent with its own scoped tool loop.",
+    "- A `task_id` continuation restores the child's prior user/assistant/tool history and reuses its identity, provider, and model; current permission mode and tool restrictions of the parent always apply.",
     "- In stand-alone runtimes and some tests, it falls back to a single model call that preserves the same high-level subagent intent.",
   ].join("\n");
 }
@@ -255,11 +339,12 @@ export function buildAskModeAgentToolSchema(): {
     "- `description`: a short 3-5 word label for the task.",
     "- `prompt`: the full directive for the subagent. Include goal, context, constraints, and what good output looks like. The subagent can only read and search; it cannot modify files.",
     "- `subagent_type` (optional): 'explore', 'plan', or 'verify'. Defaults to 'explore'.",
+    "- `task_id` (optional): pass the `task_id` from an earlier agent result to continue that same child subagent with its prior context; only the new `prompt` is added. Omit `subagent_type` when continuing so the task's saved identity is reused.",
     "",
     "Available subagent types:",
     typeLines,
     "",
-    "The subagent returns one structured report with these sections: `Scope`, `Result`, `Key files`, `Files changed`, and `Issues`.",
+    "The subagent returns one structured report with these sections: `Scope`, `Result`, `Key files`, `Files changed`, and `Issues`. The result also carries a `task_id` you can pass back later to follow up with the same child.",
   ].join("\n");
 
   const inputSchema: Record<string, unknown> = {
@@ -284,6 +369,13 @@ export function buildAskModeAgentToolSchema(): {
       subagentType: {
         type: "string",
         description: "Deprecated legacy alias for subagent_type. Prefer subagent_type.",
+      },
+      task_id: {
+        type: "string",
+        minLength: 1,
+        maxLength: 256,
+        description:
+          "Optional task id returned as `task_id` by a previous agent call. When present, the same child subagent continues with its prior context and only the new `prompt` is added. Omit `subagent_type` to reuse the task's saved identity.",
       },
     },
   };
@@ -316,85 +408,123 @@ function normalizeRequestedSubagentType(value: string | undefined): string | und
 async function runFullFork(args: {
   input: AgentToolInput;
   context: PilotDeckToolRuntimeContext;
-  requestedType: string;
+  /** Explicitly requested subagent type, already normalized. */
+  explicit: string | undefined;
+  /** task id of a previous child — when set, continue it instead of forking. */
+  taskId: string | undefined;
   directive: string;
   fork: PilotDeckSubagentForkApi;
 }): Promise<PilotDeckToolExecutionOutput<AgentToolOutput>> {
-  const { input, context, requestedType, directive, fork } = args;
+  const { input, context, explicit, taskId, directive, fork } = args;
+  const guardKey = taskId ? JSON.stringify([context.cwd, context.sessionId, taskId]) : undefined;
 
-  if (!fork.isAllowedDefinition(requestedType)) {
-    const allowed = fork.listDefinitions().map((d) => d.id).join(", ");
-    throw new PilotDeckToolRuntimeError(
-      "invalid_tool_input",
-      `Unknown subagent_type "${requestedType}". Available: ${allowed}.`,
-    );
+  // Busy guard: acquired synchronously BEFORE the first await so two
+  // simultaneous continuations of the same task cannot interleave — the
+  // loser fails with `subagent_task_busy` without any provider call.
+  // Released in `finally` on every path (success, error, cancel).
+  if (taskId && guardKey) {
+    acquireContinuationGuard(taskId, guardKey);
   }
-  const currentDepth = context.subagentDepth ?? fork.depth ?? 0;
-  if (currentDepth >= fork.maxSubagentDepth) {
-    throw new PilotDeckToolRuntimeError(
-      "tool_execution_failed",
-      `subagent_depth_exceeded (depth=${currentDepth}, max=${fork.maxSubagentDepth}); nested fork rejected.`,
-      { errorCode: "subagent_depth_exceeded" },
-    );
-  }
-  const subagentId = randomUUID();
-  const timeoutMs = context.subagentTimeoutMs ?? DEFAULT_SUBAGENT_TIMEOUT_MS;
-  let report;
   try {
-    report = await fork.fork({
-      definitionId: requestedType,
-      directive,
-      subagentId,
-      toolCallId: context.currentToolCallId,
-      abortSignal: context.abortSignal,
-      timeoutMs,
-    });
-  } catch (error) {
+    let requestedType: string | undefined;
+    if (taskId) {
+      // Continuation: the saved task identity decides the definition unless
+      // the caller explicitly names one; the runtime rejects conflicts.
+      requestedType = explicit;
+    } else {
+      requestedType = explicit ?? "general-purpose";
+      if ((context.permissionContext?.mode === "plan" || context.runMode === "ask") && requestedType === "general-purpose") {
+        requestedType = "explore";
+      }
+      if (!fork.isAllowedDefinition(requestedType)) {
+        const allowed = fork.listDefinitions().map((d) => d.id).join(", ");
+        throw new PilotDeckToolRuntimeError(
+          "invalid_tool_input",
+          `Unknown subagent_type "${requestedType}". Available: ${allowed}.`,
+        );
+      }
+    }
+    const currentDepth = context.subagentDepth ?? fork.depth ?? 0;
+    if (currentDepth >= fork.maxSubagentDepth) {
+      throw new PilotDeckToolRuntimeError(
+        "tool_execution_failed",
+        `subagent_depth_exceeded (depth=${currentDepth}, max=${fork.maxSubagentDepth}); nested fork rejected.`,
+        { errorCode: "subagent_depth_exceeded" },
+      );
+    }
+    const subagentId = randomUUID();
+    const timeoutMs = context.subagentTimeoutMs ?? DEFAULT_SUBAGENT_TIMEOUT_MS;
+    let report;
+    try {
+      report = await fork.fork({
+        definitionId: requestedType,
+        directive,
+        subagentId,
+        taskId,
+        toolCallId: context.currentToolCallId,
+        abortSignal: context.abortSignal,
+        timeoutMs,
+      });
+    } catch (error) {
+      const continuationError = mapContinuationError(error);
+      if (continuationError) {
+        throw continuationError;
+      }
+      if (context.abortSignal?.aborted) {
+        throw new PilotDeckToolRuntimeError(
+          "tool_aborted",
+          "agent subagent aborted before completion.",
+        );
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new PilotDeckToolRuntimeError(
+        "tool_execution_failed",
+        `agent subagent failed: ${message}`,
+        { errorCode: "subagent_execution_failed" },
+      );
+    }
     if (context.abortSignal?.aborted) {
       throw new PilotDeckToolRuntimeError(
         "tool_aborted",
         "agent subagent aborted before completion.",
       );
     }
-    const message = error instanceof Error ? error.message : String(error);
-    throw new PilotDeckToolRuntimeError(
-      "tool_execution_failed",
-      `agent subagent failed: ${message}`,
-      { errorCode: "subagent_execution_failed" },
-    );
-  }
-  if (context.abortSignal?.aborted) {
-    throw new PilotDeckToolRuntimeError(
-      "tool_aborted",
-      "agent subagent aborted before completion.",
-    );
-  }
-  const output: AgentToolOutput = {
-    subagentType: requestedType,
-    description: input.description,
-    text: report.markdown,
-    usage: report.usage,
-    turns: report.turns,
-    durationMs: report.durationMs,
-    parsed: report.parsed,
-  };
-  return {
-    content: [
-      {
-        type: "text",
-        text: `[${requestedType}] ${input.description}\n\n${report.markdown}`,
-      },
-      { type: "json", value: output },
-    ],
-    data: output,
-    metadata: {
-      subagent: requestedType,
-      subagentId,
-      forkMode: "full",
+    const usedTaskId = report.subagentId ?? taskId ?? subagentId;
+    const resumableTaskId = fork.supportsContinuation ? usedTaskId : undefined;
+    const effectiveType = report.definitionId ?? requestedType ?? "general-purpose";
+    const output: AgentToolOutput = {
+      subagentType: effectiveType,
+      description: input.description,
+      text: report.markdown,
+      usage: report.usage,
       turns: report.turns,
       durationMs: report.durationMs,
-    },
-  };
+      parsed: report.parsed,
+      ...(resumableTaskId ? { taskId: resumableTaskId } : {}),
+    };
+    return {
+      content: [
+        {
+          type: "text",
+          text: `[${effectiveType}] ${input.description}${resumableTaskId ? `\ntask_id: ${resumableTaskId}` : ""}\n\n${report.markdown}`,
+        },
+        { type: "json", value: output },
+      ],
+      data: output,
+      metadata: {
+        subagent: effectiveType,
+        subagentId: usedTaskId,
+        ...(taskId ? { continuedTaskId: taskId } : {}),
+        forkMode: taskId ? "full-continuation" : "full",
+        turns: report.turns,
+        durationMs: report.durationMs,
+      },
+    };
+  } finally {
+    if (guardKey) {
+      activeTaskContinuations.delete(guardKey);
+    }
+  }
 }
 
 async function runFallback(args: {
