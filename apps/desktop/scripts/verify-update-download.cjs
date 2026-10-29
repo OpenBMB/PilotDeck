@@ -20,7 +20,7 @@ async function until(predicate) {
 }
 
 let directory, server;
-const timeout = setTimeout(() => { console.error('Download integration test timed out'); app.exit(1); }, 60000);
+const timeout = setTimeout(() => { console.error('Download integration test timed out'); app.exit(1); }, 120000);
 (async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-update-download-'));
   app.setPath('userData', directory);
@@ -36,12 +36,13 @@ const timeout = setTimeout(() => { console.error('Download integration test time
     if (request.url === '/redirect') { response.writeHead(302, { Location: '/update-linux-arm64.deb' }); response.end(); return; }
     if (request.url === '/broken') { response.writeHead(200, { 'Content-Length': body.length }); response.write(body.subarray(0, 65536)); setTimeout(() => response.destroy(), 100); return; }
     payloadRequests++; openPayloads++;
-    response.writeHead(200, { 'Content-Length': body.length, 'Content-Type': 'application/octet-stream' });
+    const chunked = request.url.startsWith('/chunked/');
+    response.writeHead(200, { ...(chunked ? {} : { 'Content-Length': body.length }), 'Content-Type': 'application/octet-stream' });
     let offset = 0;
     const timer = setInterval(() => {
       if (offset >= body.length) { clearInterval(timer); response.end(); return; }
       response.write(body.subarray(offset, offset + 65536)); offset += 65536;
-    }, 35);
+    }, chunked ? 500 : 35);
     response.on('close', () => { clearInterval(timer); openPayloads--; });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -135,14 +136,38 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   updater.quitAndInstall = () => { installed++; };
   const releaseAsset = { name: manifest.files[0].url, size: body.length, sha512,
     sha256: createHash('sha256').update(body).digest('hex'), platform: 'linux', arch: 'arm64' };
-  const controller = createUpdateController({ updater, repository: 'fixture/PilotDeck', platform: 'linux', arch: 'arm64',
+  const controllerOptions = { updater, repository: 'fixture/PilotDeck', platform: 'linux', arch: 'arm64',
     version: adapter.version, packaged: true, downloadControl: transport,
     latestRelease: async () => ({ version: manifest.version, tagName: 'v2026.10.02', assets: [releaseAsset, { ...releaseAsset, name: 'latest-linux-arm64.yml' }] }),
     downloadBases: async () => [`${base}/bad/`, `${base}/`], compareVersions: () => -1,
-    prepareToInstall: async () => {}, recoverRuntime: async () => {} });
+    prepareToInstall: async () => {}, recoverRuntime: async () => {} };
+  const controller = createUpdateController(controllerOptions);
   controller.start(); await controller.wait();
   assert.equal(controller.status().state, 'installing');
   assert.equal(installed, 1);
+  // Exercise an actual chunked payload for longer than the watchdog window.
+  // electron-updater emits no progress events without Content-Length, but the
+  // transport is continuously receiving 128 KiB/s and must not switch routes.
+  await fs.rm(pending, { recursive: true, force: true });
+  const chunkedUpdater = new DebUpdater(null, adapter);
+  chunkedUpdater._testOnlyOptions = { platform: 'linux' };
+  chunkedUpdater.logger = updater.logger;
+  chunkedUpdater.quitAndInstall = () => { installed++; };
+  const chunkedTransport = installUpdateDownloadControl(chunkedUpdater);
+  const chunkedProgress = [];
+  chunkedUpdater.on('download-progress', value => chunkedProgress.push(value));
+  const chunkedController = createUpdateController({ ...controllerOptions, updater: chunkedUpdater, downloadControl: chunkedTransport,
+    downloadBases: async () => [`${base}/chunked/`, `${base}/`] });
+  const previousPayloadRequests = payloadRequests;
+  const chunkedStarted = Date.now();
+  chunkedController.start(); await chunkedController.wait();
+  assert.ok(Date.now() - chunkedStarted > 30000, 'Chunked transfer did not cross the watchdog window');
+  assert.equal(chunkedProgress.length, 0, 'Fixture unexpectedly emitted upstream download-progress');
+  assert.equal(chunkedTransport.receivedBytes(), body.length);
+  assert.equal(payloadRequests - previousPayloadRequests, 1, 'Healthy chunked transfer triggered a retry');
+  assert.equal(chunkedController.status().state, 'installing');
+  assert.equal(installed, 2);
+  console.log('Real updater: chunked payload without Content-Length passed the 30-second watchdog with zero progress events, no retry and a verified install.');
   console.log('Real updater: bounded redirected probes and cancellation; failed payload switches provider, rechecks the feed, verifies the file and installs exactly once.');
   console.log('Real updater: pause freezes file bytes, resume uses one request and validates checksums; redirects, paused cancellation/cache cleanup, restart, network failure and checksum failure passed.');
 })().then(() => finish(0), error => { console.error(error); return finish(1); });

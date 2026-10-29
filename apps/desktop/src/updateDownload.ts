@@ -7,8 +7,9 @@ import { ElectronHttpExecutor } from "electron-updater/out/electronHttpExecutor"
 // pipeline. Buffered bytes stay bounded; resuming keeps the same file and hash.
 class DownloadGate extends Transform {
   private pending: { chunk: Buffer; callback: TransformCallback } | null = null;
-  constructor(private readonly paused: () => boolean) { super(); }
+  constructor(private readonly paused: () => boolean, private readonly received: (bytes: number) => void) { super(); }
   override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+    this.received(chunk.length);
     if (this.paused()) this.pending = { chunk, callback };
     else callback(null, chunk);
   }
@@ -28,6 +29,7 @@ class DownloadGate extends Transform {
 export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
   private paused = false;
   private downloading = false;
+  private received = 0;
   private readonly requests = new Set<ClientRequest>();
   private readonly gates = new Set<DownloadGate>();
   private readonly metadataTokens = new Set<CancellationToken>();
@@ -48,6 +50,10 @@ export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
   }
 
   cancel() { for (const token of this.metadataTokens) token.cancel(); }
+
+  // Monotonic across attempts: callers take a fresh baseline for each download.
+  // Count payload chunks even without Content-Length/download-progress events.
+  receivedBytes() { return this.received; }
 
   pause() { this.paused = true; }
   resume() {
@@ -81,7 +87,7 @@ export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
     // expose only EventEmitter methods.
     const request = super.createRequest(options, (response: IncomingMessage & Readable) => {
       if (!this.downloading || response.statusCode >= 300) { callback(response); return; }
-      const gate = new DownloadGate(() => this.paused);
+      const gate = new DownloadGate(() => this.paused, bytes => { this.received += bytes; });
       Object.assign(gate, { statusCode: response.statusCode, statusMessage: response.statusMessage, headers: response.headers });
       this.gates.add(gate);
       gate.once("close", () => this.gates.delete(gate));

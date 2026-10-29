@@ -192,6 +192,8 @@ Feed, network and checksum failures advance to the next route. After trying all
 routes, one final round retries them. Thirty seconds without progress triggers
 a switch; the first round also switches below 32 KiB/s sustained throughput.
 The final round accepts slow progress so slow local connectivity still works.
+The watchdog counts actual payload bytes in the download transport, independently
+of progress events or Content-Length, so healthy chunked responses are not cancelled.
 Pausing suspends this watchdog and prevents switching until Resume; cancellation
 stops probing/downloading and never starts another route or installs. Switching
 restarts the payload and its progress from zero; bytes from different routes are
@@ -298,8 +300,13 @@ check with the installed development Electron binary:
 ```sh
 pnpm --filter pilotdeck-desktop compile
 pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-network.cjs
+pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-download.cjs
 node apps/desktop/scripts/verify-installer.cjs
 ```
+
+The download check also runs in Windows CI. It uses local HTTP fixtures to test
+pause/resume, cancellation, retry and a chunked transfer lasting more than 30 seconds
+without Content-Length or upstream progress events; installation is stubbed.
 
 The network check requires OpenSSL and uses a temporary local HTTPS origin and
 proxy, without contacting GitHub or installing anything. It covers both config

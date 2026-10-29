@@ -67,7 +67,7 @@ export function createUpdateController(options: {
   prepareToInstall: () => Promise<void>;
   recoverRuntime: () => Promise<void>;
   verifyFile?: typeof verifyDownloadedFile;
-  downloadControl?: { pause: () => void; resume: () => void; cancel?: () => void };
+  downloadControl?: { pause: () => void; resume: () => void; cancel?: () => void; receivedBytes?: () => number };
 }) {
   const { updater } = options;
   updater.autoDownload = false;
@@ -207,12 +207,16 @@ export function createUpdateController(options: {
     // A connection can stay open without making useful progress. Treat a
     // 30-second window below 32 KiB/s as a reason to try another route. On the
     // final round accept slow progress, so a slow local network can still update.
-    let windowStarted = Date.now(), windowBytes = 0;
+    // Upstream emits download-progress only with Content-Length. Use actual
+    // transport bytes, never UI progress, to detect chunked download stalls.
+    let windowStarted = Date.now(), windowBytes = options.downloadControl?.receivedBytes?.() ?? 0;
     const watchdog = setInterval(() => {
       const now = Date.now();
-      if (state.state !== "downloading") { windowStarted = now; windowBytes = state.transferred || 0; return; }
+      const transferred = options.downloadControl?.receivedBytes?.();
+      // Adapters without transport telemetry cannot establish a stall safely.
+      if (transferred === undefined) return;
+      if (state.state !== "downloading") { windowStarted = now; windowBytes = transferred; return; }
       if (now - windowStarted < 30_000) return;
-      const transferred = state.transferred || 0;
       const bytes = transferred - windowBytes;
       if (bytes <= 0 || (allowSlowSwitch && bytes * 1000 / (now - windowStarted) < 32 * 1024)) result.cancellationToken?.cancel();
       windowStarted = now; windowBytes = transferred;

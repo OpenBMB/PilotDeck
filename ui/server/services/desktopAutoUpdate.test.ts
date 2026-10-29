@@ -173,12 +173,14 @@ describe('automatic update lifecycle', () => {
   it('cancels a stalled route and retries, excluding paused time', async () => {
     vi.useFakeTimers();
     try {
-      const { controller, updater, cancel } = setup({ downloadBases: async () => bases });
+      const downloadControl = { pause: vi.fn(), resume: vi.fn(), receivedBytes: () => 999999 };
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases, downloadControl });
       updater.downloadUpdate.mockImplementationOnce(() => new Promise((_, reject) => {
         cancel.mockImplementationOnce(() => reject(new Error('cancelled')));
       }));
       controller.start(); await vi.advanceTimersByTimeAsync(0);
       expect(controller.status().state).toBe('downloading');
+      updater.emit('download-progress', { transferred: 5000000, percent: 99 });
       controller.pause(); await vi.advanceTimersByTimeAsync(60000);
       expect(cancel).not.toHaveBeenCalled();
       controller.resume(); await vi.advanceTimersByTimeAsync(31000);
@@ -191,16 +193,51 @@ describe('automatic update lifecycle', () => {
   it('allows continuing slow progress on the final round', async () => {
     vi.useFakeTimers();
     try {
-      const { controller, updater, cancel } = setup({ downloadBases: async () => bases.slice(0, 2) });
+      let received = 5000000;
+      const downloadControl = { pause: vi.fn(), resume: vi.fn(), receivedBytes: () => received };
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases.slice(0, 2), downloadControl });
       let resolve!: (files: string[]) => void;
       updater.downloadUpdate.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'))
         .mockImplementationOnce(() => new Promise(done => { resolve = done; }));
       controller.start(); await vi.advanceTimersByTimeAsync(0);
       expect(updater.setFeedURL).toHaveBeenCalledTimes(3);
       for (let i = 1; i <= 6; i++) {
-        updater.emit('download-progress', { transferred: i, total: 100, percent: i });
+        received++;
         await vi.advanceTimersByTimeAsync(10000);
       }
+      expect(cancel).not.toHaveBeenCalled();
+      expect(controller.status().transferred).toBe(0);
+      resolve(['/tmp/file']); await controller.wait();
+      expect(controller.status().state).toBe('installing');
+    } finally { vi.useRealTimers(); }
+  });
+  it('does not cancel healthy chunked downloads with no UI progress events', async () => {
+    vi.useFakeTimers();
+    try {
+      let received = 12345678;
+      const downloadControl = { pause: vi.fn(), resume: vi.fn(), receivedBytes: () => received };
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases, downloadControl });
+      let resolve!: (files: string[]) => void;
+      updater.downloadUpdate.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+      controller.start(); await vi.advanceTimersByTimeAsync(0);
+      for (let i = 0; i < 9; i++) {
+        received += 1024 * 1024;
+        await vi.advanceTimersByTimeAsync(10000);
+      }
+      expect(controller.status()).toMatchObject({ state: 'downloading', transferred: 0 });
+      expect(cancel).not.toHaveBeenCalled();
+      expect(updater.setFeedURL).toHaveBeenCalledTimes(1);
+      resolve(['/tmp/file']); await controller.wait();
+      expect(controller.status().state).toBe('installing');
+    } finally { vi.useRealTimers(); }
+  });
+  it('does not infer stalls when an adapter has no transport telemetry', async () => {
+    vi.useFakeTimers();
+    try {
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases });
+      let resolve!: (files: string[]) => void;
+      updater.downloadUpdate.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+      controller.start(); await vi.advanceTimersByTimeAsync(90000);
       expect(cancel).not.toHaveBeenCalled();
       resolve(['/tmp/file']); await controller.wait();
       expect(controller.status().state).toBe('installing');
