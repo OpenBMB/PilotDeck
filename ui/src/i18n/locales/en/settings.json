@@ -1915,6 +1915,13 @@
     "updated": "Updated {{time}} · refreshes every 30 seconds"
   },
   "customSearch": {
+    "basicsTitle": "Basic configuration",
+    "requestTitle": "Request template",
+    "previewTitle": "Preview and save",
+    "variablesHelp": "Variables and request rules",
+    "namePlaceholder": "Custom search",
+    "formEncoding": "Form URL encoded",
+    "openWebUIPreset": "Open WebUI external search",
     "title": "Custom request and response",
     "description": "The model calls web_search(query, gl). These settings translate that call into your API request and map its response back to search results. Save this configuration before testing the connection.",
     "preset": "Start from a provider",
