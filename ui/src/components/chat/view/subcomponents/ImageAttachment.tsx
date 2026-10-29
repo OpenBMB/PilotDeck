@@ -1,6 +1,6 @@
-import { attachmentPreviewKind } from '../../utils/attachmentPreviewKind';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { attachmentPreviewKind } from '../../utils/attachmentPreviewKind';
 
 const MIME_FRIENDLY_LABELS: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
@@ -72,7 +72,9 @@ const ImageAttachment = ({
         aria-label={t('attachmentPreview.open', { name: file.name })}
         className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
       {isImage ? (
-        <img src={preview} alt={file.name} className="h-20 w-20 rounded object-cover" />
+        // Thumbnails only accept browser-created object URLs, never arbitrary
+        // data/document URLs. Keep this boundary explicit at the rendering sink.
+        <img src={preview?.startsWith('blob:') ? preview : undefined} alt={file.name} className="h-20 w-20 rounded object-cover" />
       ) : (
         <div className="flex h-20 w-44 items-center gap-2 rounded border border-neutral-200 bg-white p-2 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">

@@ -66,7 +66,21 @@ try {
   await page.screenshot({ path: path.join(artifacts, 'mobile-preview.png') });
   await page.keyboard.press('Escape');
   await page.screenshot({ path: path.join(artifacts, 'mobile-rail.png') });
+
+  // Local SVGs are displayed as images, never as active documents. Exercise the
+  // File -> object URL -> thumbnail/preview path reported by CodeQL in Chrome.
+  const hostileName = '"><img data-injected="true" onerror="window.__attachmentScriptRan=true">.svg';
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" onload="window.__attachmentScriptRan=true"><script>window.__attachmentScriptRan=true</script><rect width="32" height="32" fill="red"/></svg>';
+  await page.getByLabel('Pick files').setInputFiles([{ name: hostileName, mimeType: 'image/svg+xml', buffer: Buffer.from(svg) }]);
+  const thumbnail = page.getByRole('button', { name: '预览 ' + hostileName, exact: true });
+  await expect.poll(() => thumbnail.locator('img').evaluate(image => image.naturalWidth)).toBe(32);
+  await thumbnail.click();
+  await expect.poll(() => page.getByRole('dialog').locator('img').evaluate(image => image.naturalWidth)).toBe(32);
+  expect(await page.evaluate(() => Boolean(window.__attachmentScriptRan))).toBe(false);
+  await expect(page.locator('[data-injected]')).toHaveCount(0);
+  await page.keyboard.press('Escape');
   expect(errors).toEqual([]);
+  console.log('PASS HTML-like filenames and SVG script/event payloads stay inert in thumbnails and previews');
   console.log('PASS image navigation, sent grid, document previews, fallback, worksheet switch and mobile rail');
   console.log('Screenshots:', artifacts);
 } finally {
