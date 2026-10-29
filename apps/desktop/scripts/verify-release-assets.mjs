@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { describeReleaseAsset, compatibilityFeeds } from '../../../ui/shared/releaseArtifacts.js';
 
 export function verifyReleaseAssets(directory) {
   const manifest = JSON.parse(readFileSync(join(directory, 'release.json'), 'utf8'));
@@ -19,6 +21,24 @@ export function verifyReleaseAssets(directory) {
   const payloadNames = [...expected.map(([name]) => name), ...['x64', 'arm64'].map(arch => `${prefix}-mac-${arch}.dmg`)];
   const requiredNames = [...payloadNames, ...expected.map(([, feed]) => feed)];
   const checksums = readFileSync(join(directory, 'SHA256SUMS.txt'), 'utf8');
+  assert.equal(new Set(manifest.assets.map(a => a.name)).size, manifest.assets.length, 'Duplicate manifest asset');
+  for (const asset of manifest.assets) {
+    assert.match(asset.name, /^[\w-][\w.-]*$/);
+    const bytes = readFileSync(join(directory, asset.name));
+    assert.equal(bytes.length, asset.size, `Incorrect size: ${asset.name}`);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), asset.sha256, `Incorrect SHA256: ${asset.name}`);
+    assert.equal(createHash('sha512').update(bytes).digest('base64'), asset.sha512, `Incorrect SHA512: ${asset.name}`);
+    if (manifest.artifactSchemaVersion === 1) {
+      const expected = describeReleaseAsset(asset.name);
+      for (const key of ['platform', 'arch', 'format', 'roles']) assert.deepEqual(asset[key], expected[key], `Incorrect ${key}: ${asset.name}`);
+    }
+  }
+  assert.deepEqual(readdirSync(directory).sort(), [...manifest.assets.map(a => a.name), 'release.json', 'SHA256SUMS.txt'].sort(), 'Unexpected release files');
+  if (manifest.artifactSchemaVersion === 1) {
+    for (const feed of compatibilityFeeds(manifest)) {
+      assert.equal(readFileSync(join(directory, feed.name), 'utf8'), feed.text, `Compatibility feed differs from JSON: ${feed.name}`);
+    }
+  }
   for (const name of requiredNames) {
     const asset = manifest.assets.find(asset => asset.name === name);
     assert.ok(asset && asset.size > 0, `Missing release asset: ${name}`);

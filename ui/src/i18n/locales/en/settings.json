@@ -192,6 +192,7 @@
         "reasons": {
           "installing": "Applying the update. The client will reopen automatically. Please wait.",
           "noCompatibleInstaller": "This release is missing automatic update files for this system or architecture.",
+          "downloadUnavailable": "A new version is available, but its download is temporarily unavailable. Please check again shortly.",
           "checkFailed": "Unable to check for updates. Check your connection and click Check again to retry.",
           "development": "Automatic installation is unavailable in development mode.",
           "upToDate": "No update is needed. Automatic downgrades are disabled.",

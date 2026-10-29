@@ -67,6 +67,8 @@ async function verify(scenario) {
     for (const file of ['releaseService.js', 'desktopReleaseService.js']) {
       fs.copyFileSync(path.resolve(desktop, '../../ui/server/services', file), path.join(services, file));
     }
+    fs.mkdirSync(path.join(runtime, 'ui', 'shared'), { recursive: true });
+    fs.copyFileSync(path.resolve(desktop, '../../ui/shared/releaseArtifacts.js'), path.join(runtime, 'ui', 'shared', 'releaseArtifacts.js'));
     const env = {
       ...process.env,
       PILOTDECK_TRAY_TEST_UPDATER: path.dirname(require.resolve('electron-updater/package.json')),

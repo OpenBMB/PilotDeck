@@ -1002,7 +1002,7 @@ function getUpdateController() {
   const downloadControl = installUpdateDownloadControl(updater);
   const { createDesktopReleaseService } = require(path.join(resolveRuntimeRoot(), "ui/server/services/desktopReleaseService.js"));
   const routeCache = path.join(app.getPath("userData"), "update-route.json");
-  const releaseService = createDesktopReleaseService({ repository, currentVersion: app.getVersion(), fetchImpl: network.fetch, probe: network.probe,
+  const releaseService = createDesktopReleaseService({ repository, currentVersion: app.getVersion(), fetchImpl: network.fetch, probe: network.probe, checkDownload: network.checkDownload,
     routeStore: {
       read: () => JSON.parse(fs.readFileSync(routeCache, "utf8")),
       write: (record: unknown) => {
@@ -1017,6 +1017,7 @@ function getUpdateController() {
     prepareNetwork: network.prepare,
     latestRelease: releaseService.latestRelease,
     downloadBases: releaseService.downloadBases,
+    downloadAvailable: releaseService.downloadAvailable,
     downloadSucceeded: releaseService.downloadSucceeded,
     downloadFailed: releaseService.downloadFailed,
     compareVersions: releases.compareVersions,

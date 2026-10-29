@@ -57,7 +57,9 @@ test('accepts all 10 installers and 8 feeds without changing existing filenames'
   finally { f.cleanup(); }
 });
 
-for (const name of ['PilotDeck-2026.1004.0-win-arm64-setup.exe', 'PilotDeck-2026.1004.0-linux-arm64.rpm', 'PilotDeck-2026.1004.0-linux-x64.rpm', 'latest-arm64.yml']) {
+for (const name of ['PilotDeck-2026.1004.0-win-arm64-setup.exe', 'PilotDeck-2026.1004.0-linux-arm64.rpm', 'PilotDeck-2026.1004.0-linux-x64.rpm',
+  'latest-arm64.yml', 'latest-x64.yml', 'latest-arm64-mac.yml', 'latest-x64-mac.yml',
+  'latest-linux.yml', 'latest-linux-arm64.yml', 'latest-rpm-linux.yml', 'latest-rpm-linux-arm64.yml']) {
   test(`refuses publication when ${name} is absent`, () => {
     const f = fixture();
     try {
@@ -88,6 +90,6 @@ test('refuses a stale installer even when the current packages are present', () 
   const f = fixture();
   try {
     writeFileSync(join(f.directory, 'PilotDeck-2026.1003.0-win-x64-setup.exe'), 'stale');
-    assert.throws(() => verifyReleaseAssets(f.directory), /Unexpected installer/);
+    assert.throws(() => verifyReleaseAssets(f.directory), /Unexpected (installer|release files)/);
   } finally { f.cleanup(); }
 });

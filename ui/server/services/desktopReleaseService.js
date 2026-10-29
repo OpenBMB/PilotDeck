@@ -4,7 +4,7 @@ import { RELEASE_REPOSITORY, RELEASE_TAG, normalizeRepository, compareVersions, 
 export const OBS_BASE = 'https://n00069-minicpm-5-0.obs.cn-north-4.myhuaweicloud.com/PilotDeck/';
 const ROUTE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
-export function createDesktopReleaseService({ repository: value, currentVersion, fetchImpl = fetch, probe,
+export function createDesktopReleaseService({ repository: value, currentVersion, fetchImpl = fetch, probe, checkDownload,
   routeStore, now = Date.now, settleMs = 1200, probeSettleMs = 150, timeoutMs = 8000 } = {}) {
   const repository = normalizeRepository(value);
   const github = `https://github.com/${repository}/releases/`;
@@ -46,6 +46,23 @@ export function createDesktopReleaseService({ repository: value, currentVersion,
     return validateReleaseManifest(manifest, repository);
   }
   return {
+    async downloadAvailable(release, asset, signal) {
+      signal?.throwIfAborted();
+      if (!RELEASE_TAG.test(release.tagName || '') || !/^[\w.-]+$/.test(asset.name || '')
+          || !Number.isSafeInteger(asset.size) || asset.size <= 0) return false;
+      const stop = new AbortController();
+      const bounded = AbortSignal.any([stop.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
+      try {
+        await Promise.any(orderedSources().map(async source => {
+          // Availability checks only require valid initial payload data. A slow
+          // speed sample must never prevent trying the real download.
+          await checkDownload(`${source.base(release.tagName)}${encodeURIComponent(asset.name)}`, bounded, asset.size);
+        }));
+        signal?.throwIfAborted();
+        return true;
+      } catch { return false; }
+      finally { stop.abort(); }
+    },
     async latestRelease() {
       // Both official routes start immediately, regardless of locale or the
       // remembered route. Compare versions in a bounded collection window.
@@ -84,7 +101,7 @@ export function createDesktopReleaseService({ repository: value, currentVersion,
         const ranked = await Promise.all(orderedSources().map(async source => {
           const url = source.base(release.tagName);
           try {
-            const elapsed = await probe(`${url}${encodeURIComponent(asset.name)}`, probeSignal);
+            const elapsed = await probe(`${url}${encodeURIComponent(asset.name)}`, probeSignal, asset.size);
             if (!Number.isFinite(elapsed) || elapsed < 0) throw new Error('invalidProbe');
             // A short grace period compares close competitors without waiting
             // five seconds for an unusable route. Preserve a recent success

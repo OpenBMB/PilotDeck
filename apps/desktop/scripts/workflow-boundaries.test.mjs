@@ -7,6 +7,31 @@ import { runInNewContext } from 'node:vm';
 const { parse } = createRequire(new URL('../../../package.json', import.meta.url))('yaml');
 const workflow = name => parse(readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), 'utf8'));
 
+test('OBS publication follows the exact completed release and retains manual repair', () => {
+  const release = workflow('release');
+  const sync = release.jobs['sync-obs'];
+  assert.equal(sync.needs, 'release');
+  assert.equal(sync.uses, './.github/workflows/release-to-obs.yml');
+  assert.equal(sync.with.release_tag, '${{ needs.release.outputs.release_tag }}');
+  assert.equal(release.jobs.release.outputs.release_tag, '${{ steps.metadata.outputs.release_tag }}');
+  const obs = workflow('release-to-obs');
+  assert.equal(obs.on.workflow_call.inputs.release_tag.required, true);
+  assert.ok(Object.hasOwn(obs.on, 'workflow_dispatch'));
+  assert.equal(obs.concurrency['cancel-in-progress'], false);
+  const condition = obs.jobs.sync.if;
+  const evaluate = context => runInNewContext(condition, context);
+  const upstream = { repository: 'OpenBMB/PilotDeck', ref: 'refs/heads/main', event_name: 'schedule' };
+  assert.equal(evaluate({ github: upstream, inputs: { release_tag: 'v2026.10.29' }, vars: {} }), true);
+  assert.equal(evaluate({ github: upstream, inputs: { release_tag: '' }, vars: {} }), false);
+  assert.equal(evaluate({ github: { ...upstream, ref: 'refs/pull/1/merge', event_name: 'pull_request' }, inputs: { release_tag: '' }, vars: {} }), false);
+  assert.equal(evaluate({ github: { ...upstream, repository: 'fork/PilotDeck' }, inputs: { release_tag: 'v2026.10.29' }, vars: {} }), false);
+  const steps = obs.jobs.sync.steps;
+  const verify = steps.findIndex(s => s.run?.includes('verify-release-assets.mjs'));
+  const publish = steps.findIndex(s => s.run?.includes('release_to_obs.py'));
+  assert.ok(verify >= 0 && publish > verify);
+  assert.ok(steps.some(s => s.run?.includes('releases/tags/$RELEASE_TAG')));
+});
+
 test('Linux manual acceptance selects native ARM64 while shared builds default to both architectures', () => {
   const linux = workflow('desktop-linux');
   assert.equal(linux.on.workflow_dispatch.inputs.architecture.default, 'arm64');

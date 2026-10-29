@@ -10,6 +10,37 @@ const make = options => createDesktopReleaseService({ settleMs: 20, probeSettleM
 afterEach(() => vi.useRealTimers());
 
 describe('desktop release routing', () => {
+  it('requires an accessible payload, not just a newer manifest, and recovers after mirror sync', async () => {
+    let ready = false;
+    const checkDownload = vi.fn(async (url, _signal, size) => {
+      expect(size).toBe(42);
+      if (!ready || !url.startsWith(OBS_BASE)) throw new Error('404 or blocked');
+      return 5;
+    });
+    const service = make({ checkDownload });
+    const release = { tagName: manifest.tag };
+    expect(await service.downloadAvailable(release, manifest.assets[0])).toBe(false);
+    ready = true;
+    expect(await service.downloadAvailable(release, manifest.assets[0])).toBe(true);
+    expect(checkDownload.mock.calls.every(([url]) => url.includes(`/${manifest.tag}/installer.exe`))).toBe(true);
+  });
+  it('does not wait for a stalled mirror after the other serves the exact payload', async () => {
+    let aborted = false;
+    const service = make({ checkDownload: (url, signal) => url.startsWith(OBS_BASE)
+      ? new Promise((_, reject) => signal.addEventListener('abort', () => { aborted = true; reject(signal.reason); }, { once: true }))
+      : Promise.resolve(1) });
+    expect(await service.downloadAvailable({ tagName: manifest.tag }, manifest.assets[0])).toBe(true);
+    expect(aborted).toBe(true);
+  });
+  it('bounds stalled availability checks and responds to cancellation', async () => {
+    const checkDownload = (_url, signal) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    const service = make({ checkDownload, timeoutMs: 20 });
+    expect(await service.downloadAvailable({ tagName: manifest.tag }, manifest.assets[0])).toBe(false);
+    const controller = new AbortController();
+    const checking = service.downloadAvailable({ tagName: manifest.tag }, manifest.assets[0], controller.signal);
+    controller.abort();
+    expect(await checking).toBe(false);
+  });
   it('checks OBS first and reads its immutable manifest instead of trusting website URLs', async () => {
     const fetchImpl = vi.fn(async url => response(url.endsWith('latest.json')
       ? { tag: manifest.tag, assets: [{ url: 'https://untrusted.invalid/' }] } : manifest));

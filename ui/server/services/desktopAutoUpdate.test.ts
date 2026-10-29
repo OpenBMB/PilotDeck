@@ -24,15 +24,15 @@ function setup(overrides: Record<string, unknown> = {}) {
   const verifyFile = vi.fn();
   const latestRelease = vi.fn(async () => release);
   const controller = createUpdateController({ updater: updater as unknown as Parameters<typeof createUpdateController>[0]["updater"], repository: 'OpenBMB/PilotDeck', platform: 'darwin', arch: 'arm64',
-    version: '2026.907.0', packaged: true, compareVersions, latestRelease, prepareToInstall, recoverRuntime, verifyFile, ...overrides });
+    version: '2026.907.0', packaged: true, compareVersions, latestRelease, downloadAvailable: async () => true, prepareToInstall, recoverRuntime, verifyFile, ...overrides });
   return { controller, updater, cancel, release, latestRelease, prepareToInstall, recoverRuntime, verifyFile };
 }
 describe('automatic update policy', () => {
-  it.each([['darwin', 'arm64'], ['darwin', 'x64'], ['win32', 'x64'], ['win32', 'arm64']])('requires the exact %s %s payload and feed', (platform, arch) => {
+  it.each([['darwin', 'arm64'], ['darwin', 'x64'], ['win32', 'x64'], ['win32', 'arm64']])('requires the exact %s %s payload without requiring a legacy feed', (platform, arch) => {
     const release = releaseFor(platform, arch);
     expect(selectUpdateAssets(release, platform, arch)?.asset).toEqual(asset(platform, arch));
     expect(selectUpdateAssets(release, platform, 'other')).toBeNull();
-    expect(selectUpdateAssets({ ...release, assets: release.assets.slice(0, 1) }, platform, arch)).toBeNull();
+    expect(selectUpdateAssets({ ...release, assets: release.assets.slice(0, 1) }, platform, arch)?.asset).toEqual(asset(platform, arch));
   });
   it.each(['x64', 'arm64'])('keeps Windows %s updates on their own architecture feed', async (arch) => {
     const own = releaseFor('win32', arch);
@@ -47,7 +47,7 @@ describe('automatic update policy', () => {
     const { controller, updater } = setup({ platform: 'win32', arch, latestRelease: async () => release });
     updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: info, cancellationToken: { cancel: vi.fn() } });
     controller.start(); await controller.wait();
-    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ channel: `latest-${arch}` }));
+    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ provider: 'custom', updateInfo: expect.objectContaining({ files: info.files }) }));
     expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
     expect(updater.autoRunAppAfterInstall).toBe(false);
     expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
@@ -71,7 +71,7 @@ describe('automatic update policy', () => {
       const { controller, updater } = setup({ platform: 'linux', arch, linuxPackageType: type, latestRelease: async () => release });
       updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: { version: release.version, files: [{ url: expected.name, sha512: expected.sha512, size: expected.size }] }, cancellationToken: { cancel: vi.fn() } });
       controller.start(); await controller.wait();
-      expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ channel: type === 'rpm' ? 'latest-rpm' : 'latest' }));
+      expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ provider: 'custom', updateInfo: expect.objectContaining({ files: [{ url: expected.name, sha512: expected.sha512, size: expected.size }] }) }));
       expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
     }
     expect(selectUpdateAssets(release, 'linux', arch, 'unknown')).toBeNull();
@@ -94,6 +94,31 @@ describe('automatic update policy', () => {
   });
 });
 describe('automatic update lifecycle', () => {
+  it('keeps the new version visible while unavailable and rechecks readiness before starting', async () => {
+    const downloadAvailable = vi.fn().mockResolvedValue(false);
+    const { controller, updater, release } = setup({ downloadAvailable });
+    expect(await controller.check()).toMatchObject({ latest: release, hasUpdate: true, canDownload: false, reason: 'downloadUnavailable', checkUnavailable: false });
+    controller.start(); await controller.wait();
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(controller.status()).toMatchObject({ state: 'failed', reason: 'downloadUnavailable' });
+    downloadAvailable.mockResolvedValue(true);
+    expect(await controller.check()).toMatchObject({ canDownload: true, reason: null });
+    downloadAvailable.mockResolvedValue(false);
+    controller.start(); await controller.wait();
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    downloadAvailable.mockResolvedValue(true);
+    controller.start(); await controller.wait();
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+  it('cancels an in-flight readiness check without starting a download', async () => {
+    const downloadAvailable = vi.fn((_release, _asset, signal) => new Promise<boolean>(resolve => signal.addEventListener('abort', () => resolve(false), { once: true })));
+    const { controller, updater } = setup({ downloadAvailable });
+    controller.start();
+    await vi.waitFor(() => expect(downloadAvailable).toHaveBeenCalled());
+    controller.cancel(); await controller.wait();
+    expect(controller.status().state).toBe('cancelled');
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+  });
   const bases = ['https://preferred.invalid/release/', 'https://origin.invalid/release/'];
   it('remembers the route only after verification and before preparing installation', async () => {
     const downloadSucceeded = vi.fn(), downloadFailed = vi.fn();
@@ -299,7 +324,7 @@ describe('automatic update lifecycle', () => {
     const { controller, updater, prepareToInstall, verifyFile } = setup();
     expect(controller.start().state).toBe('checking'); await controller.wait();
     expect(controller.status().state).toBe('installing');
-    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://github.com/OpenBMB/PilotDeck/releases/download/v2026.09.07-r2/', channel: 'latest-arm64' }));
+    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://github.com/OpenBMB/PilotDeck/releases/download/v2026.09.07-r2/', provider: 'custom' }));
     expect(verifyFile.mock.invocationCallOrder[0]).toBeLessThan(prepareToInstall.mock.invocationCallOrder[0]);
     expect(prepareToInstall.mock.invocationCallOrder[0]).toBeLessThan(updater.quitAndInstall.mock.invocationCallOrder[0]);
     expect(updater.quitAndInstall).toHaveBeenCalledWith(true, true);

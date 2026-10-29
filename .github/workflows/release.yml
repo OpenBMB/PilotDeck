@@ -92,6 +92,8 @@ jobs:
       require_windows_signing: ${{ vars.PILOTDECK_WINDOWS_SIGNING_ENABLED == 'true' }}
 
   release:
+    outputs:
+      release_tag: ${{ steps.metadata.outputs.release_tag }}
     permissions:
       contents: write
     needs: [detect, linux, macos, windows]
@@ -132,6 +134,9 @@ jobs:
       - name: Verify complete cross-platform release and updater feeds
         run: node apps/desktop/scripts/verify-release-assets.mjs release-assets
 
+      - name: Generate installer download links
+        run: node apps/desktop/scripts/create-release-notes.mjs release-assets > release-notes.md
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -143,7 +148,17 @@ jobs:
             --target "$SOURCE_SHA" \
             --title "$RELEASE_TAG" \
             --latest \
+            --notes-file release-notes.md \
             --generate-notes
+
+  sync-obs:
+    name: Verify and publish the same release to OBS
+    needs: release
+    if: ${{ github.repository == 'OpenBMB/PilotDeck' }}
+    uses: ./.github/workflows/release-to-obs.yml
+    with:
+      release_tag: ${{ needs.release.outputs.release_tag }}
+    secrets: inherit
 
   skipped:
     needs: detect
