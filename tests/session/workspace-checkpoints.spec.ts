@@ -15,6 +15,12 @@ async function shellEdit(f: Awaited<ReturnType<typeof fixture>>, mutate: () => P
   });
 }
 
+async function recordedEdit(f: Awaited<ReturnType<typeof fixture>>, name: string, mutate: () => Promise<void>) {
+  return f.history.runEdit(f.file(name), async () => {
+    await f.history.trackEdit(f.file(name), "turn"); await mutate(); await f.history.recordEdit(f.file(name), "turn");
+  });
+}
+
 async function fixture(t: test.TestContext) {
   const base = await mkdtemp(join(tmpdir(), "pilotdeck-checkpoints-"));
   const workspace = join(base, "workspace"), home = join(base, "home");
@@ -24,7 +30,7 @@ async function fixture(t: test.TestContext) {
   return { workspace, home, history, store, file: (name: string) => join(workspace, name) };
 }
 
-test("ordinary folders capture tool edits, shell additions/deletions and binary data; restore can itself be undone", async t => {
+test("ordinary folders capture recorded additions/deletions and binary data; restore can itself be undone", async t => {
   const f = await fixture(t);
   await writeFile(f.file("edited.txt"), "original\n");
   await writeFile(f.file("deleted.txt"), "keep me\n");
@@ -38,9 +44,9 @@ test("ordinary folders capture tool edits, shell additions/deletions and binary 
   await f.history.trackEdit(f.file("edited.txt"), "turn");
   await writeFile(f.file("edited.txt"), "second\n");
   await f.history.recordEdit(f.file("edited.txt"), "turn");
-  await writeFile(f.file("created.txt"), "new\n");
-  await unlink(f.file("deleted.txt"));
-  await writeFile(f.file("binary.bin"), Buffer.from([0, 3, 4]));
+  await recordedEdit(f, "created.txt", () => writeFile(f.file("created.txt"), "new\n"));
+  await recordedEdit(f, "deleted.txt", () => unlink(f.file("deleted.txt")));
+  await recordedEdit(f, "binary.bin", () => writeFile(f.file("binary.bin"), Buffer.from([0, 3, 4])));
   const summary = (await f.history.finishTurn("complete"))!;
   assert.equal(summary.changes.length, 4);
   assert.equal(summary.changes.find(file => file.path === "edited.txt")?.source, "file_tool");
@@ -112,7 +118,7 @@ test("file-tool paths follow actual filesystem casing and restore each physical 
   assert.equal(aliasStore, f.store);
 });
 
-test("mixed shell and file-tool edits preserve the entire turn boundary, including newly created files", async t => {
+test("mixed shell and file-tool edits retain separate operations without unsafe whole-file undo", async t => {
   for (const order of ["shell-tool", "tool-shell"]) for (const created of [false, true]) {
     const f = await fixture(t);
     if (!created) await writeFile(f.file("a.txt"), "A");
@@ -124,12 +130,10 @@ test("mixed shell and file-tool edits preserve the entire turn boundary, includi
     if (order === "tool-shell") await shellEdit(f, () => writeFile(f.file("a.txt"), "C"));
     const checkpoint = (await f.history.finishTurn("complete"))!;
     const diff = await f.store.diff("session", checkpoint.id, "a.txt");
-    assert.equal(diff.oldContent, created ? "" : "A"); assert.equal(diff.newContent, "C");
-    const plan = await f.store.preview("session", checkpoint.id); assert.equal(plan.files[0].status, "ready");
+    assert.equal(diff.segments![0].oldContent, created ? "" : "A"); assert.equal(diff.newContent, "C");
+    const plan = await f.store.preview("session", checkpoint.id); assert.equal(plan.files[0].status, "unprotected");
     const operation = await f.store.restore("session", plan.id);
-    if (created) await assert.rejects(readFile(f.file("a.txt")), { code: "ENOENT" });
-    else assert.equal(await readFile(f.file("a.txt"), "utf8"), "A");
-    await f.store.restore("session", (await f.store.undoPreview("session", operation.id)).id);
+    assert.deepEqual(operation.applied, []);
     assert.equal(await readFile(f.file("a.txt"), "utf8"), "C");
   }
 });
@@ -147,7 +151,7 @@ test("commands record failed mutations and preserve external edits between or af
   await shellEdit(g, () => writeFile(g.file("a.txt"), "B")); await writeFile(g.file("a.txt"), "manual");
   const recorded = (await g.history.finishTurn("complete"))!;
   assert.equal((await g.store.diff("session", recorded.id, "a.txt")).newContent, "B");
-  assert.equal((await g.store.preview("session", recorded.id)).files[0].status, "conflict");
+  assert.equal((await g.store.preview("session", recorded.id)).files[0].status, "unprotected");
 });
 
 test("unchanged unprotected files do not become changes; symlink and oversized-file mutations remain visible", async t => {
@@ -158,9 +162,11 @@ test("unchanged unprotected files do not become changes; symlink and oversized-f
   await f.history.beginTurn("session", "turn", []);
   assert.equal((await f.history.finishTurn("complete"))!.changes.length, 0);
   await f.history.beginTurn("session", "turn2", []);
-  await writeFile(f.file("large.bin"), Buffer.alloc(10 * 1024 * 1024 + 2));
-  await unlink(f.file("link")); await mkdir(join(f.home, "other"));
-  await symlink(join(f.home, "other"), f.file("link"), process.platform === "win32" ? "junction" : "dir");
+  await shellEdit(f, async () => {
+    await writeFile(f.file("large.bin"), Buffer.alloc(10 * 1024 * 1024 + 2));
+    await unlink(f.file("link")); await mkdir(join(f.home, "other"));
+    await symlink(join(f.home, "other"), f.file("link"), process.platform === "win32" ? "junction" : "dir");
+  });
   const changes = (await f.history.finishTurn("complete"))!.changes;
   assert.deepEqual(changes.map(change => change.path), ["large.bin", "link"]);
   assert.ok(changes.every(change => !change.restorable));
@@ -199,13 +205,16 @@ test("case-only shell renames are compared by filesystem identity", async t => {
   await writeFile(f.file("Report.txt"), "before\n");
   if (!await readFile(f.file("report.txt")).then(() => true, () => false)) return t.skip("Case-sensitive renames are separate created/deleted files.");
   await f.history.beginTurn("session", "turn", []);
-  await rename(f.file("Report.txt"), f.file("report.txt"));
-  await writeFile(f.file("report.txt"), "after\n");
+  await shellEdit(f, async () => {
+    await rename(f.file("Report.txt"), f.file("report.txt"));
+    await writeFile(f.file("report.txt"), "after\n");
+  });
   const checkpoint = (await f.history.finishTurn("complete"))!;
   assert.equal(checkpoint.changes.length, 1);
+  assert.equal((await f.store.preview("session", checkpoint.id)).files[0].status, "unprotected");
   const operation = await f.store.restore("session", (await f.store.preview("session", checkpoint.id)).id);
   assert.equal(operation.status, "complete");
-  assert.equal(await readFile(f.file("report.txt"), "utf8"), "before\n");
+  assert.equal(await readFile(f.file("report.txt"), "utf8"), "after\n");
 });
 
 test("recorded internal work files remain part of whole-turn restore and undo, while runtime data stays intact", async t => {
@@ -221,7 +230,7 @@ test("recorded internal work files remain part of whole-turn restore and undo, w
     await writeFile(f.file(name), content);
     await f.history.recordEdit(f.file(name), "turn");
   }
-  await writeFile(f.file("report.pptx"), Buffer.from([0, 3, 4]));
+  await recordedEdit(f, "report.pptx", () => writeFile(f.file("report.pptx"), Buffer.from([0, 3, 4])));
   const checkpoint = (await f.history.finishTurn("complete"))!;
   assert.deepEqual(checkpoint.changes.map(file => file.path).sort(), [".pilotdeck/work/new.py", ".pilotdeck/work/patch.py", "report.pptx"]);
   const plan = await f.store.preview("session", checkpoint.id);
@@ -244,7 +253,8 @@ test("conflicts preserve later edits and a stale preview fails before any file i
   const f = await fixture(t);
   await writeFile(f.file("a.txt"), "before"); await writeFile(f.file("b.txt"), "before");
   await f.history.beginTurn("session", "turn", []);
-  await writeFile(f.file("a.txt"), "agent"); await writeFile(f.file("b.txt"), "agent");
+  await recordedEdit(f, "a.txt", () => writeFile(f.file("a.txt"), "agent"));
+  await recordedEdit(f, "b.txt", () => writeFile(f.file("b.txt"), "agent"));
   const checkpoint = (await f.history.finishTurn("complete"))!;
   await writeFile(f.file("a.txt"), "manual edit");
   const plan = await f.store.preview("session", checkpoint.id);
@@ -282,9 +292,10 @@ test("symbolic links, replaced directories, oversized files and cross-session re
   }
   await f.history.beginTurn("session", "turn", []);
   await assert.rejects(f.history.trackEdit(f.file("large.bin"), "turn"), { code: "BACKUP_UNAVAILABLE" });
-  await writeFile(f.file("nested/a.txt"), "agent");
+  await recordedEdit(f, "nested/a.txt", () => writeFile(f.file("nested/a.txt"), "agent"));
+  await shellEdit(f, () => writeFile(f.file("large.bin"), Buffer.alloc(10 * 1024 * 1024 + 2)));
   const checkpoint = (await f.history.finishTurn("incomplete"))!;
-  assert.equal(checkpoint.status, "incomplete"); assert.ok(checkpoint.unprotected >= (fileSymlink ? 2 : 1));
+  assert.equal(checkpoint.status, "incomplete"); assert.ok(checkpoint.unprotected >= 1);
   await assert.rejects(f.store.preview("other-session", checkpoint.id), { code: "CHECKPOINT_MISMATCH" });
   const plan = await f.store.preview("session", checkpoint.id);
   await rm(f.file("nested"), { recursive: true }); await symlink(f.home, f.file("nested"), process.platform === "win32" ? "junction" : "dir");
@@ -295,7 +306,7 @@ test("symbolic links, replaced directories, oversized files and cross-session re
 test("undo recovers a file applied before a process exited without recording its completed write", async t => {
   const f = await fixture(t);
   await writeFile(f.file("a.txt"), "before");
-  await f.history.beginTurn("session", "turn", []); await writeFile(f.file("a.txt"), "after");
+  await f.history.beginTurn("session", "turn", []); await recordedEdit(f, "a.txt", () => writeFile(f.file("a.txt"), "after"));
   const checkpoint = (await f.history.finishTurn("complete"))!;
   const plan = await f.store.preview("session", checkpoint.id);
   const operation = await f.store.restore("session", plan.id);
@@ -346,8 +357,8 @@ test("interrupted Agent turns recover durable file-tool edits and protect edits 
 test("session comparison follows physical edits even when a conversation branch is hidden", async t => {
   const f = await fixture(t);
   await writeFile(f.file("a.txt"), "one\n");
-  await f.history.beginTurn("session", "one", []); await writeFile(f.file("a.txt"), "two\n"); await f.history.finishTurn("complete");
-  await f.history.beginTurn("session", "two", []); await writeFile(f.file("a.txt"), "three\n");
+  await f.history.beginTurn("session", "one", []); await recordedEdit(f, "a.txt", () => writeFile(f.file("a.txt"), "two\n")); await f.history.finishTurn("complete");
+  await f.history.beginTurn("session", "two", []); await recordedEdit(f, "a.txt", () => writeFile(f.file("a.txt"), "three\n"));
   const checkpoint = (await f.history.finishTurn("complete"))!;
   const latest = await f.store.readCheckpoint(checkpoint.id, "session");
   const full = await f.store.diff("session", latest.id, "a.txt", "session");

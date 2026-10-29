@@ -14,18 +14,20 @@ export function getWriteSnapshot(
   return context.writeSnapshots?.get(absolutePath);
 }
 
-export function recordWriteSnapshot(
+export async function recordWriteSnapshot(
   context: PilotDeckToolRuntimeContext,
   absolutePath: string,
   content: string,
   mtimeMs: number,
-  range?: { offset?: number; limit?: number },
-): void {
+  range?: { offset?: number; limit?: number; fullHash?: boolean },
+): Promise<void> {
   context.writeSnapshots ??= new Map();
   context.writeSnapshots.set(absolutePath, {
     absolutePath,
     mtimeMs: Math.floor(mtimeMs),
     contentHash: hashText(content),
+    managedRevision: await context.fileHistory?.readVersion?.(absolutePath),
+    fullHash: range?.fullHash ?? true,
     offset: range?.offset,
     limit: range?.limit,
   });
@@ -71,12 +73,15 @@ export async function validateWriteSnapshotFresh(
     );
   }
 
+  if (snapshot.managedRevision !== undefined && snapshot.managedRevision !== await context.fileHistory?.readVersion?.(absolutePath)) {
+    throw new PilotDeckToolRuntimeError("invalid_tool_input", "File has changed since the last read. Read it again before writing to it.");
+  }
   const normalizedMtime = Math.floor(fileStat.mtimeMs);
   if (normalizedMtime === snapshot.mtimeMs) {
     return { exists: true };
   }
 
-  const isFullRead = snapshot.offset === undefined && snapshot.limit === undefined;
+  const isFullRead = snapshot.fullHash ?? (snapshot.offset === undefined && snapshot.limit === undefined);
   if (isFullRead) {
     const previousContent = await readTextFile(absolutePath);
     const currentHash = hashText(previousContent);
@@ -123,9 +128,12 @@ export async function ensureWriteSnapshotFresh(
     );
   }
 
+  if (snapshot.managedRevision !== undefined && snapshot.managedRevision !== await context.fileHistory?.readVersion?.(absolutePath)) {
+    throw new PilotDeckToolRuntimeError("invalid_tool_input", "File has changed since the last read. Read it again before writing to it.");
+  }
   const normalizedMtime = Math.floor(fileStat.mtimeMs);
   const previousContent = await readTextFile(absolutePath);
-  const isFullRead = snapshot.offset === undefined && snapshot.limit === undefined;
+  const isFullRead = snapshot.fullHash ?? (snapshot.offset === undefined && snapshot.limit === undefined);
 
   if (normalizedMtime !== snapshot.mtimeMs) {
     if (isFullRead) {

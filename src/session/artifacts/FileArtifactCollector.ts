@@ -173,7 +173,7 @@ export class FileArtifactCollector {
     }
   }
 
-  async finish(status: FileArtifactStatus): Promise<FileArtifact[]> {
+  async finish(status: FileArtifactStatus, ownedPaths?: string[]): Promise<FileArtifact[]> {
     try {
       const candidates = new Map<string, ArtifactCandidate>(this.explicitCandidates);
       // A whole-workspace diff cannot identify which overlapping turn caused a
@@ -215,7 +215,10 @@ export class FileArtifactCollector {
       }
 
       const artifacts: FileArtifact[] = [];
+      const owned = ownedPaths === undefined ? undefined : new Set(ownedPaths.map(relative => nativePath(path.resolve(this.cwd, relative))));
+      for (const absolutePath of owned ?? []) if (!candidates.has(absolutePath)) candidates.set(absolutePath, { absolutePath, source: "workspace_diff" });
       for (const candidate of candidates.values()) {
+        if (owned && !owned.has(candidate.absolutePath)) continue;
         const artifact = await this.materialize(candidate, status);
         if (artifact) artifacts.push(artifact);
       }

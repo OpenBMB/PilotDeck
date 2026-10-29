@@ -190,7 +190,7 @@ export function createTaskCreateTool(
     isDestructive: () => true,
     execute: async (input, context): Promise<PilotDeckToolExecutionOutput<TaskCreateOutput>> => {
       const rt = ensureRuntime(runtime);
-      const finishCommand = await context.fileHistory?.trackCommand?.({ background: true });
+      const finishCommand = await context.fileHistory?.trackCommand?.({ background: true, signal: context.abortSignal });
       let task: PilotDeckBackgroundBashTask;
       try {
         task = await rt.start({

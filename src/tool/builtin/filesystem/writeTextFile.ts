@@ -1,4 +1,5 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { PilotDeckToolRuntimeError } from "../../protocol/errors.js";
 
@@ -26,7 +27,12 @@ export async function writeTextFile(
   }
 
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, content, "utf8");
+  const temporary = path.join(path.dirname(filePath), `.pilotdeck-restore-${randomUUID()}`);
+  try {
+    await writeFile(temporary, content, { flag: "wx", mode: existing?.mode ?? 0o644 });
+    if (existing) await rename(temporary, filePath);
+    else await link(temporary, filePath);
+  } finally { await unlink(temporary).catch(() => {}); }
   return existing ? "overwritten" : "created";
 }
 

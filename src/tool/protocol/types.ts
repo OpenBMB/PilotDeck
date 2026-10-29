@@ -27,7 +27,10 @@ export type PilotDeckToolFileHistorySink = {
   trackEdit(filePath: string, messageId: string): Promise<void>;
   recordEdit?(filePath: string, messageId: string, writtenContent?: string): Promise<void>;
   /** Capture an execution through completion, including failed or background commands. */
-  trackCommand?(options?: { background?: boolean }): Promise<() => Promise<void>>;
+  trackCommand?(options?: { background?: boolean; signal?: AbortSignal }): Promise<() => Promise<void>>;
+  runEdit?<T>(filePath: string, task: () => Promise<T>, signal?: AbortSignal): Promise<T>;
+  runCommand?<T>(task: () => Promise<T>, options?: { signal?: AbortSignal }): Promise<T>;
+  readVersion?(filePath: string): Promise<string | undefined>;
   beginTurn?(sessionId: string, turnId: string, messages: import("../../model/index.js").CanonicalMessage[], signal?: AbortSignal): Promise<void>;
   finishTurn?(status: "complete" | "incomplete"): Promise<import("../../session/checkpoints/WorkspaceCheckpoints.js").CheckpointSummary | undefined>;
 };
@@ -92,6 +95,7 @@ export type PilotDeckToolResultContent =
 
 export type PilotDeckReadFileStateEntry = {
   mtimeMs: number;
+  managedRevision?: string;
   kind: "text" | "image" | "pdf" | "notebook";
   offset?: number;
   limit?: number;
@@ -104,6 +108,8 @@ export type PilotDeckWriteSnapshotEntry = {
   absolutePath: string;
   mtimeMs: number;
   contentHash: string;
+  managedRevision?: string;
+  fullHash?: boolean;
   /** Set when the snapshot was seeded by a ranged read (offset/limit). */
   offset?: number;
   /** Set when the snapshot was seeded by a ranged read (offset/limit). */

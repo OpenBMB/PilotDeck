@@ -98,7 +98,7 @@ export async function publishWorkspaceFile(source, destination, signal, io = fs)
   }
 }
 
-export function createWorkspaceFileUploadHandler({ resolveProject, getLimits = readUploadLimits }) {
+export function createWorkspaceFileUploadHandler({ resolveProject, getLimits = readUploadLimits, publish }) {
   const active = new Map();
   return async (req, res) => {
     let root;
@@ -173,7 +173,7 @@ export function createWorkspaceFileUploadHandler({ resolveProject, getLimits = r
           throw uploadError('UPLOAD_INTEGRITY_MISMATCH', 'Received file sizes do not match the upload.', 422);
         }
       }
-      for (const name of names) {
+      for (const name of publish ? [] : names) {
         await ensureDirectory(root, path.posix.dirname(path.posix.join(target, name)) === '.' ? '' : path.posix.dirname(path.posix.join(target, name)));
       }
       const saved = [];
@@ -186,11 +186,12 @@ export function createWorkspaceFileUploadHandler({ resolveProject, getLimits = r
         const destination = path.join(root, relative);
         try {
           // Recheck parents immediately before publishing the staged file.
-          await ensureDirectory(root, path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative));
-          await publishWorkspaceFile(file.path, destination, controller.signal);
+          if (!publish) await ensureDirectory(root, path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative));
+          if (publish) await publish(root, file.path, destination, controller.signal);
+          else await publishWorkspaceFile(file.path, destination, controller.signal);
           saved.push({ name, path: destination, size: file.size, mimeType: file.mimetype });
         } catch (error) {
-          errors.push(error.code === 'EEXIST'
+          errors.push((error.code === 'EEXIST' || /EEXIST|FILE_EXISTS/.test(error.message))
             ? { name, code: 'UPLOAD_FILE_EXISTS', message: 'Destination already exists. Rename the file before uploading.' }
             : { name, code: error.code || 'UPLOAD_SAVE_FAILED', message: error.message });
         }

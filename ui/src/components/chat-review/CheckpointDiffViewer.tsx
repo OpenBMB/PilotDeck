@@ -10,7 +10,8 @@ import { markdown } from '@codemirror/lang-markdown';
 import type { FileChange } from '../../../../src/session/checkpoints/types';
 import './checkpoint-diff.css';
 
-export type CheckpointDiff = FileChange & {
+export type CheckpointDiff = Omit<FileChange, 'segments'> & {
+  segments?: CheckpointDiff[];
   oldContent: string | null;
   newContent: string | null;
   hunks: Array<{ oldStart: number; oldLines: number; newStart: number; newLines: number; lines: Array<{ type: 'context' | 'add' | 'delete'; text: string }> }> | null;
@@ -50,7 +51,26 @@ export function numberedDiffLines(diff: Pick<CheckpointDiff, 'hunks'>) {
   });
 }
 
-export default function CheckpointDiffViewer({ diff, versionLabel = '本轮保存的版本' }: { diff: CheckpointDiff; versionLabel?: string }) {
+export default function CheckpointDiffViewer({ diff, versionLabel }: { diff: CheckpointDiff; versionLabel?: string }) {
+  const [segment, setSegment] = useState(0);
+  if (!diff.segments?.length) return <div className="flex min-h-0 flex-1 flex-col">
+    {diff.uncertain && diff.source === 'observed' && <div role="status" className="shrink-0 border-b border-neutral-200 px-3 py-2 text-xs text-amber-700 dark:border-neutral-800 dark:text-amber-400">这些变化由目录比较发现，无法确认全部归属，仅供查看，不能自动撤销。</div>}
+    <SingleCheckpointDiff diff={diff} versionLabel={versionLabel} />
+  </div>;
+  const index = Math.min(segment, diff.segments.length - 1);
+  const observed = diff.segments.some(item => item.source === 'observed');
+  return <div className="flex min-h-0 flex-1 flex-col">
+    <div role="status" className="shrink-0 border-b border-neutral-200 px-3 py-2 text-xs text-amber-700 dark:border-neutral-800 dark:text-amber-400">
+      {observed ? '该文件包含无法确认归属的目录变化，按记录分别展示，无法自动撤销整个文件。' : '该文件包含交错修改，按本会话的操作分别展示，无法自动撤销整个文件。'}
+      <select aria-label={observed ? '查看记录的文件变化' : '查看本会话文件操作'} value={index} onChange={event => setSegment(Number(event.target.value))} className="ml-2 rounded border bg-transparent p-1">
+        {diff.segments.map((_, position) => <option key={position} value={position}>操作 {position + 1} / {diff.segments!.length}</option>)}
+      </select>
+    </div>
+    <SingleCheckpointDiff key={index} diff={diff.segments[index]} versionLabel={`${diff.segments[index].source === 'observed' ? '目录观察' : '本会话操作'} ${index + 1}`} />
+  </div>;
+}
+
+function SingleCheckpointDiff({ diff, versionLabel = '本轮保存的版本' }: { diff: CheckpointDiff; versionLabel?: string }) {
   const [wrap, setWrap] = useState(false), [limit, setLimit] = useState(1000);
   const lines = useMemo(() => numberedDiffLines(diff), [diff]);
   const oldLines = useMemo(() => highlightedLines(diff.oldContent, diff.path), [diff.oldContent, diff.path]);

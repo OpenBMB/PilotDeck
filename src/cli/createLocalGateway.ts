@@ -1,3 +1,5 @@
+import { acquireWorkspaceOperation, operationContext } from "../session/checkpoints/WorkspaceCoordinator.js";
+import { runWorkspaceFileOperation } from "../session/checkpoints/workspaceFileOperation.js";
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
 import { isOptionalFeatureEnabled } from "../pilot/config/optionalFeature.js";
 import { resolveWebSearchConfig } from "../pilot/config/webSearchConfig.js";
@@ -34,7 +36,7 @@ import {
 } from "../context/index.js";
 import { WorkspaceCheckpoints, getCheckpointStore, CheckpointError } from "../session/checkpoints/WorkspaceCheckpoints.js";
 import { activeTranscriptEntries } from "../session/transcript/CompactSnapshot.js";
-import { runRepositoryOperation, repositoryRoot } from "../session/checkpoints/repositoryOperation.js";
+import { runRepositoryOperation, repositoryRoot, repositoryCommonDirectory } from "../session/checkpoints/repositoryOperation.js";
 import type { AgentSubagentTranscriptHooks } from "../agent/runtime/AgentRuntimeDependencies.js";
 import { createPlanTodoStateManager } from "../agent/runtime/PlanTodoState.js";
 import { HookRuntime, PluginRuntime } from "../extension/index.js";
@@ -399,9 +401,10 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     cron: options.cron,
     skillManager,
     async manageCheckpoints(input) {
-      if (!input.sessionKey?.trim() || !["list", "diff", "preview", "restore", "undo", "git"].includes(input.action)) throw new CheckpointError("INVALID_ACTION", "A conversation and valid checkpoint action are required.");
+      if (!input.sessionKey?.trim() || !["list", "diff", "preview", "restore", "undo", "git", "filesystem"].includes(input.action)) throw new CheckpointError("INVALID_ACTION", "A conversation and valid checkpoint action are required.");
       const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
       const store = await getCheckpointStore(projectKey, pilotHome);
+      if (input.action === "filesystem") return runWorkspaceFileOperation(projectKey, pilotHome, input.fileOperation);
       if (input.action === "list" || input.action === "diff") {
         if (!store.busy && !router.hasActiveTurn(input.sessionKey)) {
           const release = await store.acquire();
@@ -419,22 +422,29 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
           sessionChanges: latest ? store.summary({ ...latest, changes: sessionChanges }).changes : [],
           sessionRevision: createHash("sha256").update(JSON.stringify(sessionChanges)).digest("hex"),
           operations: (await store.operations(input.sessionKey)).map(({ id, status, applied, skipped, createdAt, mode, checkpointId, undoOf }) => ({ id, status, applied, skipped, createdAt, mode, checkpointId, undoOf })),
-          busy: store.busy,
+          busy: store.busy, busyReason: store.busyReason,
         };
       }
-      if (store.busy || router.hasActiveTurn(input.sessionKey)) throw new CheckpointError("WORKSPACE_BUSY", "The directory is being modified. Stop active turns and background tasks before restoring files or operating Git.");
+      const requestedMode = input.mode ?? (input.action === "restore" && input.planId ? (await store.readPlan(input.sessionKey, input.planId)).mode
+        : input.action === "undo" ? (await store.operations(input.sessionKey)).find(item => item.id === input.operationId)?.mode : undefined);
+      const conversationOnly = requestedMode === "conversation";
+      if ((!conversationOnly && store.busy) || (input.action !== "git" && router.hasActiveTurn(input.sessionKey))) throw new CheckpointError("WORKSPACE_BUSY", store.busyReason ?? "The conversation is running. Stop this turn before restoring its history.");
       if (input.action === "git") {
         const root = input.repositoryOperation?.operation === "init" ? projectKey : await repositoryRoot(projectKey);
         const repositoryStore = await getCheckpointStore(root, pilotHome);
         if (repositoryStore.busy) throw new CheckpointError("WORKSPACE_BUSY", "The repository is being modified. Stop active turns and background tasks before operating Git.");
-        const release = await repositoryStore.acquire();
-        try { return await runRepositoryOperation(projectKey, input.repositoryOperation!); }
-        finally { release(); }
+        return repositoryStore.withExclusive(async () => {
+          const common = input.repositoryOperation?.operation === "init" ? undefined : await repositoryCommonDirectory(root);
+          const release = common ? await acquireWorkspaceOperation(common, { owner: operationContext.getStore()?.owner }) : () => {};
+          const action = input.repositoryOperation;
+          const invalidates = action?.operation === "checkout" || (action?.operation === "legacy" && ["checkout", "create-branch", "pull", "discard", "delete-untracked"].includes(action.legacyAction ?? ""));
+          try { return await runRepositoryOperation(projectKey, action!); }
+          finally { try { if (invalidates) await repositoryStore.invalidateWorkspace(); } finally { release(); } }
+        });
       }
       const runId = `checkpoint:${randomUUID()}`;
       if (!router.beginTurn(input.sessionKey, runId)) throw new CheckpointError("WORKSPACE_BUSY", "The conversation is busy.");
-      const release = await store.acquire();
-      try {
+      const perform = async () => {
         await router.close(input.sessionKey);
         const storage = createAgentProjectSessionStorage({ projectRoot: projectKey, pilotHome, sessionId: input.sessionKey, now });
         const { entries, diagnostics } = await readTranscript(storage.transcriptPath);
@@ -474,7 +484,12 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
           await storage.transcript.recordAgentStatusMessage(input.sessionKey, runId, { event: "files_restored", kind: "status", text: operation.mode === "conversation" ? "对话已回退，文件保持不变" : `已恢复 ${operation.applied.length} 个文件，保留 ${operation.skipped.length} 个文件`, detail: { operationId: operation.id, files: operation.applied, skipped: operation.skipped } });
         }
         return operation;
-      } finally { release(); router.endTurn(input.sessionKey, runId); }
+      };
+      try {
+        if (!conversationOnly) return await store.withExclusive(perform);
+        const unpin = await store.pin();
+        try { return await perform(); } finally { unpin(); }
+      } finally { router.endTurn(input.sessionKey, runId); }
     },
     async commandsList(input) {
       const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);

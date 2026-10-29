@@ -51,7 +51,7 @@ async function fixture(t: test.TestContext, initialFiles: Record<string, string>
   return { workspace, home, history, store, context, file, toolWrite };
 }
 
-test("nested tools returning to execution entry reconcile final contents and deleted temporary paths", async t => {
+test("unattributed writes after nested tools are visible but cannot overwrite files through undo", async t => {
   const internal = ".pilotdeck/work/a.txt";
   const f = await fixture(t, { [internal]: "A" });
   await f.toolWrite("B");
@@ -75,10 +75,9 @@ for name in ['temporary.txt', '.pilotdeck/work/temporary.txt']:
     assert.equal(diff.oldContent, "A"); assert.equal(diff.newContent, "B");
   }
   const plan = await f.store.preview("session", checkpoint.id);
-  assert.ok(plan.files.every(file => file.status === "ready"));
+  assert.ok(plan.files.every(file => file.status === "conflict"), JSON.stringify(plan.files));
   const restored = await f.store.restore("session", plan.id);
-  for (const relative of ["a.txt", internal]) assert.equal(await readFile(join(f.workspace, relative), "utf8"), "A");
-  await f.store.restore("session", (await f.store.undoPreview("session", restored.id)).id);
+  assert.deepEqual(restored.applied, []);
   for (const relative of ["a.txt", internal]) assert.equal(await readFile(join(f.workspace, relative), "utf8"), "B");
   for (const relative of ["temporary.txt", ".pilotdeck/work/temporary.txt"]) {
     await assert.rejects(readFile(join(f.workspace, relative)), { code: "ENOENT" });
@@ -163,7 +162,8 @@ for (const mode of ["file", "python", "task"] as const) for (const order of ["pa
     if (order === "parent-child") await f.toolWrite("B");
     await runChild(f, mode);
     if (order === "child-parent") await f.toolWrite("B");
-    await assertRestorable(f, order === "parent-child" ? "C" : "B");
+    if (mode === "file") await assertRestorable(f, order === "parent-child" ? "C" : "B");
+    else await assertUnattributed(f, order === "parent-child" ? "C" : "B");
   });
 }
 
@@ -174,7 +174,7 @@ test("child file tools protect internal work files excluded from the turn scan",
   const diff = await f.store.diff("session", checkpoint.id, internal);
   assert.equal(diff.oldContent, "A"); assert.equal(diff.newContent, "C");
   const plan = await f.store.preview("session", checkpoint.id);
-  assert.equal(plan.files.length, 2); assert.ok(plan.files.every(file => file.status === "ready"));
+  assert.equal(plan.files.length, 2); assert.ok(plan.files.every(file => file.status === "ready"), JSON.stringify(plan.files));
   const restored = await f.store.restore("session", plan.id);
   assert.equal(await readFile(join(f.workspace, internal), "utf8"), "A");
   await f.store.restore("session", (await f.store.undoPreview("session", restored.id)).id);
@@ -193,8 +193,24 @@ async function assertRestorable(f: Awaited<ReturnType<typeof fixture>>, expected
   assert.equal(await readFile(f.file, "utf8"), expected);
 }
 
+async function assertUnattributed(f: Awaited<ReturnType<typeof fixture>>, expected: string) {
+  const checkpoint = (await f.history.finishTurn("complete"))!;
+  assert.equal((await f.store.diff("session", checkpoint.id, "a.txt")).newContent, expected);
+  const plan = await f.store.preview("session", checkpoint.id);
+  assert.equal(plan.files[0].status, "unprotected");
+  assert.deepEqual((await f.store.restore("session", plan.id)).applied, []);
+  assert.equal(await readFile(f.file, "utf8"), expected);
+}
+
+test("execute_code with a complete nested file-tool chain remains safely restorable", async t => {
+  const f = await fixture(t); await f.toolWrite("B");
+  const result = await createExecuteCodeTool().execute({ code: "from pilotdeck_tools import read_file, write_file\nread_file('a.txt')\nwrite_file('a.txt', 'C')" }, f.context);
+  assert.equal(result.data!.status, "success", result.data!.error);
+  await assertRestorable(f, "C");
+});
+
 for (const order of ["python-tool", "tool-python", "nested-tools", "failed-python"]) {
-  test(`execute_code ${order} preserves the entire turn and supports restore/undo`, async t => {
+  test(`execute_code ${order} retains observed changes without automatic undo`, async t => {
     const f = await fixture(t);
     if (order !== "python-tool") await f.toolWrite("B");
     const code = "from pathlib import Path\nPath('a.txt').write_text('C')\n" +
@@ -203,7 +219,7 @@ for (const order of ["python-tool", "tool-python", "nested-tools", "failed-pytho
     const result = await createExecuteCodeTool().execute({ code, timeout_seconds: 10 }, f.context);
     assert.equal(result.data!.status, order === "failed-python" ? "error" : "success", result.data!.error);
     if (order === "python-tool") await f.toolWrite("D");
-    await assertRestorable(f, order === "nested-tools" ? "E" : order === "python-tool" ? "D" : "C");
+    await assertUnattributed(f, order === "nested-tools" ? "E" : order === "python-tool" ? "D" : "C");
   });
 }
 
@@ -215,7 +231,7 @@ test("Python execution preserves manual edits before and after its tracked write
     if (timing === "after") await writeFile(f.file, "manual");
     const checkpoint = (await f.history.finishTurn("complete"))!;
     const plan = await f.store.preview("session", checkpoint.id);
-    assert.equal(plan.files[0].status, timing === "before" ? "unprotected" : "conflict");
+    assert.equal(plan.files[0].status, "unprotected");
     await f.store.restore("session", plan.id);
     assert.equal(await readFile(f.file, "utf8"), timing === "after" ? "manual" : "C");
   }
@@ -234,7 +250,7 @@ for (const order of ["task-tool", "tool-task", "failed-task"]) {
     const result = await createTaskWaitTool(runtime).execute({ taskId: task.data!.taskId, timeoutMs: 10_000 }, f.context);
     assert.equal(result.data!.status, order === "failed-task" ? "failed" : "completed");
     if (order === "task-tool") await f.toolWrite("D");
-    await assertRestorable(f, order === "task-tool" ? "D" : "C");
+    await assertUnattributed(f, order === "task-tool" ? "D" : "C");
   });
 }
 
@@ -258,8 +274,10 @@ test("cross-turn background completion cannot rewrite old checkpoints or a new t
   assert.equal(f.store.busy, false);
   assert.equal((await f.store.diff("session", first.id, "a.txt")).newContent, "B");
   assert.equal((await f.store.preview("session", first.id)).files[0].status, "unprotected");
-  assert.equal((await f.store.diff("session", second.id, "a.txt")).newContent, "C");
-  assert.equal(second.changes[0].restorable, false);
+  assert.deepEqual(second.changes, []);
+  const late = (await f.store.list("session")).find(record => record.phase === "after" && record.turnId === "turn")!;
+  assert.equal((await f.store.diff("session", late.id, "a.txt")).newContent, "C");
+  assert.equal(f.store.summary(late).changes[0].restorable, false);
   await f.history.beginTurn("session", "last", []); await f.toolWrite("D");
   const third = (await f.history.finishTurn("complete"))!;
   assert.equal((await f.store.preview("session", third.id)).files[0].status, "ready");
@@ -270,5 +288,5 @@ test("turn completion flushes a task finalization already capturing its postimag
   const child = new ControlledChild(), runtime = new BackgroundTaskRuntime({ spawn: (() => child) as never });
   await createTaskCreateTool(runtime).execute({ command: "controlled writer" }, f.context);
   await writeFile(f.file, "C"); child.finish();
-  await assertRestorable(f, "C");
+  await assertUnattributed(f, "C");
 });
