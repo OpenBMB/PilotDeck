@@ -80,7 +80,8 @@ export default function AttachmentPreview({ files, initialFile, onClose }: {
   }, []);
 
   if (!file) return null;
-  return createPortal(<div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/75 p-3 sm:p-8"
+  // The chat's capture-phase Escape handler yields to registered modal overlays.
+  return createPortal(<div data-modal-overlay className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/75 p-3 sm:p-8"
     onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('attachmentPreview.title')}
       className="flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white text-neutral-900 shadow-2xl dark:bg-neutral-900 dark:text-neutral-100"

@@ -71,6 +71,7 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
 
   return createPortal(
     <div
+      data-modal-overlay
       role="dialog"
       aria-modal="true"
       aria-label={active?.name || t('common:uiText.imagePreview')}
