@@ -59,9 +59,14 @@ async function verify(scenario) {
       fs.writeFileSync(process.env.PILOTDECK_TRAY_TEST_PID + '.gateway', String(process.pid));
       net.createServer(socket => socket.end()).listen(Number(process.env.PILOTDECK_GATEWAY_PORT), '127.0.0.1');
     `);
-    fs.mkdirSync(path.join(runtime, 'ui', 'server', 'services'), { recursive: true });
-    fs.writeFileSync(path.join(runtime, 'ui', 'server', 'services', 'releaseService.js'),
-      'export const normalizeRepository = value => value; export const compareVersions = () => 0;');
+    const services = path.join(runtime, 'ui', 'server', 'services');
+    fs.mkdirSync(services, { recursive: true });
+    // Update status initializes the real desktop release service, even without
+    // checking the network. Include its shared manifest validator as production
+    // packaging does, rather than an incomplete releaseService stub.
+    for (const file of ['releaseService.js', 'desktopReleaseService.js']) {
+      fs.copyFileSync(path.resolve(desktop, '../../ui/server/services', file), path.join(services, file));
+    }
     const env = {
       ...process.env,
       PILOTDECK_TRAY_TEST_UPDATER: path.dirname(require.resolve('electron-updater/package.json')),
