@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { attachmentPreviewKind } from '../../utils/attachmentPreviewKind';
 import { useAttachmentImagePreview } from '../../hooks/useAttachmentImagePreview';
+import './attachmentPreview.css';
 
 const TEXT_LIMIT = 256 * 1024;
 const DOCUMENT_LIMIT = 20 * 1024 * 1024;
@@ -87,10 +88,10 @@ export default function AttachmentPreview({ files, initialFile, onClose }: {
 
   if (!file) return null;
   // The chat's capture-phase Escape handler yields to registered modal overlays.
-  return createPortal(<div data-modal-overlay className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/75 p-3 sm:p-8"
+  return createPortal(<div data-modal-overlay className="attachment-preview-viewport z-[2147483647] flex items-center justify-center bg-black/75 p-3 sm:p-8"
     onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('attachmentPreview.title')}
-      className="flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white text-neutral-900 shadow-2xl dark:bg-neutral-900 dark:text-neutral-100"
+      className="flex h-[85vh] max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white text-neutral-900 shadow-2xl dark:bg-neutral-900 dark:text-neutral-100"
       onKeyDown={event => {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
         // Media controls and PDF viewers keep their own arrow-key behavior.
@@ -104,7 +105,7 @@ export default function AttachmentPreview({ files, initialFile, onClose }: {
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
         }
       }}>
-      <header className="flex items-center gap-3 border-b border-neutral-200 p-3 dark:border-neutral-700">
+      <header className="flex shrink-0 items-center gap-3 border-b border-neutral-200 p-3 dark:border-neutral-700">
         <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium" title={file.name}>{file.name}</div>
           <div className="text-xs text-neutral-500">{(file.size / 1024).toFixed(1)} KB · {index + 1} / {files.length}</div></div>
         {resource?.file === file && <a href={resource.downloadUrl} download={file.name} className="rounded p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800" aria-label={t('attachmentPreview.download')}><Download size={18} /></a>}

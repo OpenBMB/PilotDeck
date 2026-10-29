@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import './attachmentPreview.css';
 
 export interface LightboxImage {
   data: string;
@@ -75,7 +76,7 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
       role="dialog"
       aria-modal="true"
       aria-label={active?.name || t('common:uiText.imagePreview')}
-      className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/85 backdrop-blur-sm"
+      className="attachment-preview-viewport z-[2147483647] flex items-center justify-center bg-black/85 px-16 pb-4 pt-16 backdrop-blur-sm"
       onClick={onClose}
     >
       <button
@@ -125,17 +126,17 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
       ) : null}
 
       <figure
-        className="flex max-h-[92vh] max-w-[92vw] flex-col items-center gap-2"
+        className="flex max-h-full min-h-0 max-w-full flex-col items-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
         <img
           key={active.data}
           src={active.data}
           alt={active.name || t('common:uiText.imagePreview')}
-          className="max-h-[88vh] max-w-[92vw] rounded-md object-contain shadow-2xl"
+          className="max-h-full min-h-0 max-w-full rounded-md object-contain shadow-2xl"
         />
         {active.name || images.length > 1 ? (
-          <figcaption className="flex items-center gap-2 text-xs text-white/80">
+          <figcaption className="flex max-w-full shrink-0 items-center gap-2 text-xs text-white/80">
             {active.name ? <span className="truncate">{active.name}</span> : null}
             {images.length > 1 ? (
               <span className="rounded-full bg-white/15 px-2 py-0.5 tabular-nums">
