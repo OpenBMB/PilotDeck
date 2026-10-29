@@ -35,6 +35,9 @@ export function createRuntimeCoordination({
   };
 
   return {
+    publishServerReady(port) {
+      return send({ type: 'pilotdeck:server-ready', port });
+    },
     getGatewayState() {
       return { ...gateway };
     },

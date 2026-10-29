@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { WEB_SEARCH_PROVIDERS } from '../../../src/pilot/config/webSearchProviders.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   evaluateModelConfigurationState,
@@ -55,6 +56,17 @@ function useTempConfig(contents) {
 }
 
 describe('model configuration state', () => {
+  it.each(WEB_SEARCH_PROVIDERS)('keeps the model ready after reloading an unconfigured %s search provider', provider => {
+    const config = { ...configuredModel(), schemaVersion: 1, tools: { webSearch: {
+      enabled: true, provider, providers: { [provider]: {} },
+    } } };
+    const path = useTempConfig(JSON.stringify(config));
+    const before = readFileSync(path, 'utf8');
+    expect(getModelConfigurationState({ env: {} })).toMatchObject({ state: 'ready', modelRef: 'custom/model-a' });
+    expect(getModelConfigurationState({ env: {} })).toMatchObject({ state: 'ready', modelRef: 'custom/model-a' });
+    expect(readFileSync(path, 'utf8')).toBe(before);
+  });
+
   it('distinguishes a saved empty pool from onboarding and restores readiness after adding a model', () => {
     const config = configuredModel();
     config.schemaVersion = 1;

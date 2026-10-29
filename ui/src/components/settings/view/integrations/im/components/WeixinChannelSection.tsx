@@ -15,6 +15,7 @@ import { cn } from "../../../../../../lib/utils";
 import { showSettingsSuccess } from "../../../../shared/SettingsSuccessToast";
 import type { RefreshGatewayStatus } from "../hooks/useGatewayStatus";
 import type { GatewayStatus } from "../types";
+import ChannelSetupChoice from "./ChannelSetupChoice";
 
 type WeixinChannelSectionProps = {
   status: GatewayStatus["weixin"];
@@ -307,16 +308,17 @@ export default function WeixinChannelSection({
       {expanded ? (
         <div className="integration-channel-detail">
           {phase === "idle" && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={startQRLogin}>
-                <QrCode className="mr-1.5 h-3 w-3" />
-                {status.enabled ? t("gateway.weixin.relogin") : t("gateway.weixin.qrLogin")}
-              </Button>
+            <div>
+              <div className="integration-setup-choices integration-setup-choices-single">
+                <ChannelSetupChoice icon={<QrCode size={22} />}
+                  title={status.enabled ? t("gateway.weixin.relogin") : t("gateway.weixin.qrLogin")}
+                  description={t("gateway.weixin.summary")} onClick={startQRLogin} />
+              </div>
               {status.enabled && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-red-500 hover:text-red-600"
+                  className="mt-3 text-red-500 hover:text-red-600"
                   onClick={handleDisable}
                 >
                   {t("gateway.disable")}

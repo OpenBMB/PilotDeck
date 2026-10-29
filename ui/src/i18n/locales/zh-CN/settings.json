@@ -1908,10 +1908,14 @@
     "updated": "更新于 {{time}} · 每 30 秒自动刷新"
   },
   "customSearch": {
+    "basicsTitle": "基础配置",
+    "requestTitle": "请求模板",
+    "previewTitle": "预览与保存",
+    "variablesHelp": "变量与请求规则说明",
+    "namePlaceholder": "自定义搜索",
+    "formEncoding": "URL 编码表单",
     "title": "自定义请求与响应",
     "description": "模型调用 web_search(query, gl)，这里负责将参数转换成你的 API 请求，并把响应映射为搜索结果。请先保存此配置，再测试连接。",
-    "preset": "从提供商示例开始",
-    "choosePreset": "选择请求示例",
     "endpoint": "请求网址",
     "name": "提供商名称",
     "method": "请求方法",
@@ -1941,6 +1945,7 @@
     "publishedAtField": "发布时间字段",
     "testQuery": "预览搜索词",
     "preview": "预览请求",
+    "previewHint": "JSON 请求体展开显示，发送时仅序列化一次。预览使用占位密钥，不会发送请求。",
     "save": "保存请求配置",
     "invalidJson": "JSON 格式错误"
   }

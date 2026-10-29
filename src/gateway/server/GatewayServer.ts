@@ -25,6 +25,8 @@ export type GatewayServerOptions = {
 };
 
 export type GatewayServer = {
+  /** Actual bound port, including default HTTP ports and ephemeral allocation. */
+  port: number;
   url: string;
   wsUrl: string;
   token: string;
@@ -55,6 +57,7 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : options.port ?? 18789;
   return {
+    port,
     url: `http://${host}:${port}`,
     wsUrl: `ws://${host}:${port}/ws`,
     token: auth.token,

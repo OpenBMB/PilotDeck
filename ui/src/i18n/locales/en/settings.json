@@ -1915,10 +1915,14 @@
     "updated": "Updated {{time}} · refreshes every 30 seconds"
   },
   "customSearch": {
+    "basicsTitle": "Basic configuration",
+    "requestTitle": "Request template",
+    "previewTitle": "Preview and save",
+    "variablesHelp": "Variables and request rules",
+    "namePlaceholder": "Custom search",
+    "formEncoding": "Form URL encoded",
     "title": "Custom request and response",
     "description": "The model calls web_search(query, gl). These settings translate that call into your API request and map its response back to search results. Save this configuration before testing the connection.",
-    "preset": "Start from a provider",
-    "choosePreset": "Choose a request example",
     "endpoint": "Request URL",
     "name": "Provider name",
     "method": "Request method",
@@ -1948,6 +1952,7 @@
     "publishedAtField": "Publication date field",
     "testQuery": "Preview query",
     "preview": "Preview request",
+    "previewHint": "JSON bodies are expanded for readability and serialized once when sent. Preview uses a placeholder key and sends no request.",
     "save": "Save request configuration",
     "invalidJson": "Invalid JSON"
   }
