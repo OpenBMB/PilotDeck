@@ -136,8 +136,8 @@ describe('web runtime supervisor', () => {
     expect(supervisor.children.has('gateway')).toBe(false);
   });
 
-  it('starts Gateway once after ready configuration and reports readiness', async () => {
-    const { supervisor, spawnImpl } = createHarness();
+  it.each([80, 18789])('starts Gateway once and reports readiness on port %i', async port => {
+    const { supervisor, spawnImpl } = createHarness({ env: { PILOTDECK_GATEWAY_PORT: String(port) } });
     const server = supervisor.children.get('server');
     server.emit('message', {
       type: 'pilotdeck:configuration-state',
@@ -150,7 +150,7 @@ describe('web runtime supervisor', () => {
 
     expect(spawnImpl).toHaveBeenCalledTimes(2);
     expect(spawnImpl.mock.calls[1][2].stdio).toContain('ipc');
-    supervisor.children.get('gateway').emit('message', { type: 'pilotdeck:gateway-ready', port: 18789 });
+    supervisor.children.get('gateway').emit('message', { type: 'pilotdeck:gateway-ready', port });
     await vi.waitFor(() => {
       expect(server.send).toHaveBeenLastCalledWith({
         type: 'pilotdeck:gateway-state',

@@ -457,7 +457,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     console.log(`PilotDeck server listening: ${server.url}`);
     console.log(`WebSocket: ${server.wsUrl}`);
     if (process.send && process.connected) {
-      process.send({ type: 'pilotdeck:gateway-ready', port: Number(new URL(server.url).port) }, () => {});
+      process.send({ type: 'pilotdeck:gateway-ready', port: server.port }, () => {});
     }
     if (server.tokenPath) {
       console.log(`Token: ${server.tokenPath}`);
