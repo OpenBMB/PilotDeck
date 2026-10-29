@@ -50,6 +50,7 @@ console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 
 import express from 'express';
 import { authenticatedRequestContext, createRequestContextMiddleware } from './middleware/requestContext.js';
+import { requestLimiters } from './middleware/rateLimits.js';
 import searchRoutes from './routes/search.js';
 import { rateLimit } from 'express-rate-limit';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -511,7 +512,9 @@ const wss = new WebSocketServer({
 // Make WebSocket server available to routes
 app.locals.wss = wss;
 
-app.use(cors({ exposedHeaders: ['X-Refreshed-Token', 'x-pilotdeck-request-id', 'x-pilotdeck-version', 'x-pilotdeck-user-id', 'x-pilotdeck-project-id', 'x-pilotdeck-session-id', 'x-pilotdeck-request-headers-mode'] }));
+app.use(cors({ exposedHeaders: ['X-Refreshed-Token', 'x-pilotdeck-request-id', 'x-pilotdeck-version', 'x-pilotdeck-user-id', 'x-pilotdeck-project-id', 'x-pilotdeck-session-id', 'x-pilotdeck-request-headers-mode', 'Retry-After', 'RateLimit', 'RateLimit-Policy'] }));
+app.use('/api', requestLimiters.ingress);
+app.use('/memory-dashboard', requestLimiters.ingress);
 app.use(express.json({
     limit: '50mb',
     type: (req) => {
@@ -759,7 +762,7 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
 
 app.patch('/api/always-on/cron-jobs/:taskId', authenticateToken, createCronUpdateHandler({ getGateway: getPilotDeckGateway }));
 
-app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, async (req, res) => {
+app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, requestLimiters.model, async (req, res) => {
     try {
         const gateway = await getPilotDeckGateway();
         const result = await gateway.cronRunNow({

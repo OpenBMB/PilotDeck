@@ -10,6 +10,7 @@ import { runChatViaGateway } from '../pilotdeck-bridge.js';
 import { Octokit } from '@octokit/rest';
 import { IS_PLATFORM } from '../constants/config.js';
 import { withAuthenticatedRequest } from '../middleware/requestContext.js';
+import { requestLimiters } from '../middleware/rateLimits.js';
 
 const router = express.Router();
 
@@ -826,7 +827,7 @@ class ResponseCollector {
  *     "cleanup": false
  *   }
  */
-router.post('/', validateExternalApiKey, async (req, res) => {
+router.post('/', validateExternalApiKey, requestLimiters.model, async (req, res) => {
   const { githubUrl, projectPath, message, provider = 'pilotdeck', model, githubToken, branchName, sessionId } = req.body;
 
   // Parse stream and cleanup as booleans (handle string "true"/"false" from curl)

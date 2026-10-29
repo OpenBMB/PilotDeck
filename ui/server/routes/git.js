@@ -4,6 +4,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { extractProjectDirectory } from '../projects.js';
 import { runChatViaGateway, getPilotDeckGateway } from '../pilotdeck-bridge.js';
+import { requestLimiters } from '../middleware/rateLimits.js';
 import { parseGitStatus, gitStatusError } from '../utils/gitStatus.js';
 import { isPathInsideOrEqual } from '../utils/pathSafety.js';
 import { ensurePilotProjectGitIgnore } from '../utils/pilotPaths.js';
@@ -868,7 +869,7 @@ router.get('/commit-diff', async (req, res) => {
 });
 
 // Generate commit message based on staged changes using AI
-router.post('/generate-commit-message', async (req, res) => {
+router.post('/generate-commit-message', requestLimiters.model, async (req, res) => {
   const { project, files, provider = 'pilotdeck' } = req.body;
 
   if (!project || !files || files.length === 0) {

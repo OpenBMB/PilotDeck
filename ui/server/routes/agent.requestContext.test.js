@@ -20,6 +20,7 @@ vi.mock('../pilotdeck-bridge.js', () => ({ runChatViaGateway: async message => {
 import agentRouter from './agent.js';
 import { createRequestContextMiddleware } from '../middleware/requestContext.js';
 import { anonymousRequestId, requestContextHeaders } from '../../../src/network/requestContext.js';
+import { requestLimiters } from '../middleware/rateLimits.js';
 
 const home = mkdtempSync(join(tmpdir(), 'pilotdeck-agent-context-'));
 const saved = { home: process.env.PILOT_HOME, mode: process.env.PILOTDECK_REQUEST_HEADERS };
@@ -27,6 +28,7 @@ let server; let url;
 beforeAll(async () => {
   process.env.PILOT_HOME = home;
   const app = express();
+  app.use(requestLimiters.ingress);
   app.use(express.json());
   app.use(createRequestContextMiddleware());
   app.use('/api/agent', agentRouter);
@@ -80,4 +82,15 @@ it.each(['basic', 'off'])('preserves %s privacy mode for API key authentication'
   expect(response.status).toBe(200);
   expect(response.headers.has('x-pilotdeck-user-id')).toBe(false);
   expect(mocks.calls.get(mode)['x-pilotdeck-user-id']).toBeUndefined();
+});
+
+it('limits external model tasks before project/model work while keeping another account available', async () => {
+  requestLimiters.model.resetKey('user:alice');
+  requestLimiters.model.resetKey('user:bob');
+  for (let i = 0; i < 30; i++) expect((await send(`model-${i}`, { 'x-api-key': 'key-alice' })).status).toBe(200);
+  const blocked = await send('blocked-model', { 'x-api-key': 'key-alice' });
+  expect(blocked.status).toBe(429);
+  expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0);
+  expect(mocks.calls.has('blocked-model')).toBe(false);
+  expect((await send('other-model', { 'x-api-key': 'key-bob' })).status).toBe(200);
 });
