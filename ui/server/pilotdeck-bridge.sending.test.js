@@ -15,6 +15,7 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { createRequestContextMiddleware, withAuthenticatedRequest } from './middleware/requestContext.js';
 import { anonymousRequestId, withRequestContext } from '../../src/network/requestContext.js';
+import { requestLimiters } from './middleware/rateLimits.js';
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const item = id => ({ id, runId: id, command: 'fixture', displayText: id, options: { projectPath: '/tmp/sending-project' } });
 
@@ -30,6 +31,7 @@ it('serializes authenticated HTTP attribution before crossing the gateway bounda
         },
     };
     const app = express();
+    app.use(requestLimiters.ingress);
     app.use(express.json());
     app.use(createRequestContextMiddleware());
     app.use((req, res, next) => {

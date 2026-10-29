@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createRequestContextMiddleware, withAuthenticatedRequest, authenticatedRequestContext } from './requestContext';
 import { currentRequestContext, requestContextHeaders } from '../../../src/network/requestContext';
+import { requestLimiters } from './rateLimits.js';
 
 const home = mkdtempSync(join(tmpdir(), 'pilotdeck-web-headers-'));
 const oldHome = process.env.PILOT_HOME;
@@ -13,6 +14,7 @@ let server; let url;
 beforeAll(async () => {
   process.env.PILOT_HOME = home;
   const app = express();
+  app.use(requestLimiters.ingress);
   app.use(express.json());
   app.use(createRequestContextMiddleware(async name => name === 'registered-project' ? '/private/customer' : undefined));
   app.use((req, res, next) => { req.user = { id: req.headers['test-auth-user'] || 1 }; withAuthenticatedRequest(req, res, next); });

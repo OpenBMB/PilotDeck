@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { requestLimiters } from './rateLimits.js';
 import {
   anonymousRequestId, currentRequestContext, requestContextHeaders,
   safeHeaderValue, withRequestContext,
@@ -66,5 +67,5 @@ export async function withAuthenticatedRequest(req, res, next) {
   // Mount-level and route-level authentication may both run on one request.
   // Keep the original correlation ID as input to every subsequent pass.
   req.requestContext = { ...context, requestId: context.parentRequestId };
-  return withRequestContext(context, next);
+  return withRequestContext(context, () => requestLimiters.user(req, res, next));
 }
