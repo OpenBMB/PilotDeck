@@ -1672,6 +1672,7 @@ export async function runChatViaGateway(
             mode: resolvedMode,
             runId,
             ...(Array.isArray(options?.uploadedAttachments) ? { uploadedAttachments: options.uploadedAttachments } : {}),
+            ...(options?.requestContext ? { requestContext: options.requestContext } : {}),
             ...(options?.modelOverride ? { modelOverride: options.modelOverride } : {}),
             ...(options?.modelSelection ? { modelSelection: options.modelSelection } : {}),
             ...(basePermissionMode ? { basePermissionMode } : {}),

@@ -528,7 +528,7 @@ describe('config model-list route', () => {
     const authHeaders = [];
     vi.stubEnv('DEEPSEEK_API_KEY', 'deepseek-from-env');
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
-      authHeaders.push(init?.headers?.Authorization);
+      authHeaders.push(new Headers(init?.headers).get('authorization'));
       return jsonResponse({ data: [{ id: 'deepseek-chat' }] });
     }));
 
@@ -551,7 +551,7 @@ describe('config model-list route', () => {
     const authHeaders = [];
     vi.stubEnv('OPENAI_API_KEY', 'responses-from-env');
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
-      authHeaders.push(init?.headers?.Authorization);
+      authHeaders.push(new Headers(init?.headers).get('authorization'));
       return jsonResponse({ data: [{ id: 'gpt-4.1' }] });
     }));
 

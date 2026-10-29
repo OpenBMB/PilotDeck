@@ -1,5 +1,16 @@
 import { postFormDataWithProgress } from './uploadFormData';
 import { IS_PLATFORM } from "../constants/config";
+import { clientRequestHeaders, rememberRequestUser, requestAuthToken } from './requestContext';
+
+const firstPartyFetch = (url, options = {}) => {
+  const dispatchedToken = requestAuthToken();
+  const headers = new Headers(clientRequestHeaders(url, options.body));
+  new Headers(options.headers).forEach((value, name) => headers.set(name, value));
+  return fetch(url, { ...options, headers: Object.fromEntries(headers) }).then(response => {
+    rememberRequestUser(url, response, options.body, dispatchedToken);
+    return response;
+  });
+};
 
 const normalizePathForUrl = (value) => String(value || '').replace(/\\/g, '/');
 
@@ -51,15 +62,14 @@ export const authenticatedFetch = (url, options = {}) => {
     defaultHeaders['Authorization'] = `Bearer ${token}`;
   }
 
-  return fetch(url, {
+  const mergedHeaders = new Headers(defaultHeaders);
+  new Headers(fetchOptions.headers).forEach((value, name) => mergedHeaders.set(name, value));
+  return firstPartyFetch(url, {
     ...fetchOptions,
-    headers: {
-      ...defaultHeaders,
-      ...fetchOptions.headers,
-    },
+    headers: mergedHeaders,
   }).then((response) => {
     const refreshedToken = response.headers.get('X-Refreshed-Token');
-    if (refreshedToken) {
+    if (refreshedToken && token === requestAuthToken()) {
       localStorage.setItem('auth-token', refreshedToken);
     }
     if (!suppressServerErrorToast && response.status >= 500) {
@@ -157,13 +167,13 @@ function defaultWebHttpUserHint(status) {
 export const api = {
   // Auth endpoints (no token required)
   auth: {
-    status: () => fetch('/api/auth/status'),
-    login: (username, password) => fetch('/api/auth/login', {
+    status: () => firstPartyFetch('/api/auth/status'),
+    login: (username, password) => firstPartyFetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }),
-    register: (username, password) => fetch('/api/auth/register', {
+    register: (username, password) => firstPartyFetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),

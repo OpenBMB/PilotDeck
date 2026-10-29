@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { userDb, appConfigDb } from '../database/db.js';
 import { IS_PLATFORM, DISABLE_LOCAL_AUTH } from '../constants/config.js';
+import { withAuthenticatedRequest } from './requestContext.js';
 
 // Use env var if set, otherwise auto-generate a unique secret per installation
 const JWT_SECRET = process.env.JWT_SECRET || appConfigDb.getOrCreateJwtSecret();
@@ -49,7 +50,7 @@ const authenticateToken = async (req, res, next) => {
         return res.status(500).json({ error: 'No user found in database (restart server after DB init)' });
       }
       req.user = user;
-      return next();
+      return await withAuthenticatedRequest(req, res, next);
     } catch (error) {
       console.error('Auth bypass mode error:', error);
       return res.status(500).json({ error: 'Failed to fetch user' });
@@ -94,7 +95,7 @@ const authenticateToken = async (req, res, next) => {
     }
 
     req.user = user;
-    next();
+    return await withAuthenticatedRequest(req, res, next);
   } catch (error) {
     console.error('Token verification error:', error);
     return res.status(403).json({ error: 'Invalid token' });

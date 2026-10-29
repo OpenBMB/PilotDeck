@@ -13,6 +13,23 @@ import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedIn
 import { rm } from 'node:fs/promises';
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const item = id => ({ id, runId: id, command: 'fixture', displayText: id, options: { projectPath: '/tmp/sending-project' } });
+
+it('preserves per-message attribution through delayed queue dispatch', async () => {
+    const calls = [];
+    mock.gateway = {
+        getActiveTurnSnapshot: async () => ({ active: false, events: [] }),
+        async *submitTurn(input) {
+            calls.push(input.requestContext);
+            yield { type: 'input_accepted', runId: input.runId };
+            yield { type: 'turn_completed', runId: input.runId, finishReason: 'completed', usage: {} };
+        },
+    };
+    const requestContext = { userId: 'a'.repeat(32), deviceId: 'device-a', parentRequestId: 'request-a' };
+    const queued = item('context');
+    queued.options.requestContext = requestContext;
+    await enqueueInputViaGateway('web:context-queue', queued, { send() {} });
+    await vi.waitFor(() => expect(calls).toEqual([requestContext]));
+});
 afterAll(async () => {
     if (mock.previousHome === undefined) delete process.env.PILOT_HOME;
     else process.env.PILOT_HOME = mock.previousHome;

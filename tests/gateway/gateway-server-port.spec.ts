@@ -22,7 +22,9 @@ test('exposes the actual ephemeral port rather than the requested zero', async (
   try {
     assert.ok(server.port > 0);
     assert.equal(server.port, Number(new URL(server.url).port));
-    const health = await fetch(`${server.url}/health`);
+    const health = await fetch(`${server.url}/health`, { headers: { 'x-pilotdeck-request-id': 'test-request' } });
     assert.equal(health.status, 200);
+    assert.equal(health.headers.get('x-pilotdeck-request-id'), 'test-request');
+    assert.ok(health.headers.get('x-pilotdeck-version'));
   } finally { await server.close(); }
 });

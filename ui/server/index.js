@@ -49,6 +49,7 @@ assertRequiredPilotDeckEnv();
 console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 
 import express from 'express';
+import { authenticatedRequestContext, createRequestContextMiddleware } from './middleware/requestContext.js';
 import searchRoutes from './routes/search.js';
 import { rateLimit } from 'express-rate-limit';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -510,7 +511,7 @@ const wss = new WebSocketServer({
 // Make WebSocket server available to routes
 app.locals.wss = wss;
 
-app.use(cors({ exposedHeaders: ['X-Refreshed-Token'] }));
+app.use(cors({ exposedHeaders: ['X-Refreshed-Token', 'x-pilotdeck-request-id', 'x-pilotdeck-version', 'x-pilotdeck-user-id', 'x-pilotdeck-project-id', 'x-pilotdeck-session-id', 'x-pilotdeck-request-headers-mode'] }));
 app.use(express.json({
     limit: '50mb',
     type: (req) => {
@@ -523,6 +524,7 @@ app.use(express.json({
     }
 }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/api', createRequestContextMiddleware(extractProjectDirectory));
 
 // Public health check endpoint (no authentication required)
 app.get('/health', (req, res) => {
@@ -2375,6 +2377,15 @@ function handleChatConnection(ws, request) {
     ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
+
+            // Browser WebSockets cannot set custom HTTP headers. Carry the same
+            // diagnostic context per frame; derive user identity from authenticated ws.
+            const requestContext = authenticatedRequestContext(userId, data.requestContext);
+            if (data.type?.endsWith('-command')) {
+                data.options = { ...data.options, requestContext };
+            } else if (data.type === 'queue-input') {
+                data.item = { ...data.item, options: { ...data.item?.options, requestContext } };
+            }
 
             if (data.type === 'ping') return;
             if (data.type === 'get-session-activity') {
