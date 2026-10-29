@@ -147,6 +147,10 @@ jobs:
           pnpm --filter pilotdeck-desktop run compile
           if ($LASTEXITCODE -ne 0) { throw 'Desktop compile failed.' }
 
+      - name: Verify updater transport and chunked downloads
+        timeout-minutes: 3
+        run: pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-download.cjs
+
       - name: Build signed Windows ${{ matrix.arch }} installer
         if: ${{ inputs.require_windows_signing }}
         env:

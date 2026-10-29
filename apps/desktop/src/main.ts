@@ -1000,11 +1000,25 @@ function getUpdateController() {
   });
   updater.on("login", network.login);
   const downloadControl = installUpdateDownloadControl(updater);
+  const { createDesktopReleaseService } = require(path.join(resolveRuntimeRoot(), "ui/server/services/desktopReleaseService.js"));
+  const routeCache = path.join(app.getPath("userData"), "update-route.json");
+  const releaseService = createDesktopReleaseService({ repository, currentVersion: app.getVersion(), fetchImpl: network.fetch, probe: network.probe,
+    routeStore: {
+      read: () => JSON.parse(fs.readFileSync(routeCache, "utf8")),
+      write: (record: unknown) => {
+        fs.writeFileSync(`${routeCache}.tmp`, JSON.stringify(record), "utf8");
+        fs.renameSync(`${routeCache}.tmp`, routeCache);
+      },
+    },
+  });
   updateController = createUpdateController({
     updater, downloadControl, repository, platform: process.platform, arch: process.arch,
     version: app.getVersion(), packaged: app.isPackaged, linuxPackageType,
     prepareNetwork: network.prepare,
-    latestRelease: () => releases.getLatestRelease({ repository, fetchImpl: network.fetch }),
+    latestRelease: releaseService.latestRelease,
+    downloadBases: releaseService.downloadBases,
+    downloadSucceeded: releaseService.downloadSucceeded,
+    downloadFailed: releaseService.downloadFailed,
     compareVersions: releases.compareVersions,
     prepareToInstall: async () => {
       isQuitting = true;
