@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { createOptimisticUserFrames } from './pilotdeck-message.js';
 
 describe('sibling optimistic user frames', () => {
+  it('echoes all display-only uploads without changing model inputs', () => {
+    const attachments = ['a', 'b', 'c'].map(attachmentId => ({ name: 'image.png', uploadId: 'u', attachmentId }));
+    const [frame] = createOptimisticUserFrames({ sessionId: 's', userVisibleInput: 'compare',
+      options: { runId: 'r', attachments: [], displayAttachments: attachments } });
+    expect(frame.attachments).toEqual(attachments);
+    expect(frame.images).toBeUndefined();
+  });
   it('preserves the command run id, images, and attachments', () => {
     const [userFrame, statusFrame] = createOptimisticUserFrames({
       sessionId: 'web:session-1',
