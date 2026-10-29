@@ -9,6 +9,7 @@ import { addProjectManually } from '../projects.js';
 import { runChatViaGateway } from '../pilotdeck-bridge.js';
 import { Octokit } from '@octokit/rest';
 import { IS_PLATFORM } from '../constants/config.js';
+import { withAuthenticatedRequest } from '../middleware/requestContext.js';
 
 const router = express.Router();
 
@@ -33,7 +34,7 @@ const validateExternalApiKey = (req, res, next) => {
         return res.status(500).json({ error: 'Platform mode: No user found in database' });
       }
       req.user = user;
-      return next();
+      return withAuthenticatedRequest(req, res, next).catch(next);
     } catch (error) {
       console.error('Platform mode error:', error);
       return res.status(500).json({ error: 'Platform mode: Failed to fetch user' });
@@ -54,7 +55,7 @@ const validateExternalApiKey = (req, res, next) => {
   }
 
   req.user = user;
-  next();
+  return withAuthenticatedRequest(req, res, next).catch(next);
 };
 
 /**
