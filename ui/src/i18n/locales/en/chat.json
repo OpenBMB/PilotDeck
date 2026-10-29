@@ -1,4 +1,22 @@
 {
+  "attachmentPreview": {
+    "sheetTruncated": "Spreadsheet preview shows up to 200 rows and 50 columns per sheet. Download for the complete workbook.",
+    "tooLarge": "Document preview supports files up to 20 MB. Download to open this file.",
+    "title": "Attachment preview",
+    "open": "Preview {{name}}",
+    "close": "Close preview",
+    "download": "Download file",
+    "previous": "Previous attachment",
+    "next": "Next attachment",
+    "scrollPrevious": "Scroll attachments left",
+    "scrollNext": "Scroll attachments right",
+    "count_one": "{{count}} attachment",
+    "count_other": "{{count}} attachments",
+    "unsupported": "Preview is not available for this file. Download it to open in another app.",
+    "failed": "This file could not be previewed. You can still download it.",
+    "truncated": "Showing the first 256 KB. Download to read the complete file.",
+    "loading": "Loading preview…"
+  },
   "copyBlock": {
     "plainText": "Plain text",
     "wrap": "Wrap code",

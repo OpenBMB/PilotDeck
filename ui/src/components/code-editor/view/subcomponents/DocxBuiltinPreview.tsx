@@ -19,6 +19,7 @@ type DocxBuiltinPreviewProps = {
   projectName?: string;
   fileName: string;
   filePath: string;
+  allowReferences?: boolean;
   downloadUrl?: string | null;
   downloadName?: string;
   isFullscreen?: boolean;
@@ -68,6 +69,7 @@ function findOutlineItems(root: HTMLElement): OutlineItem[] {
 }
 
 export default function DocxBuiltinPreview({
+  allowReferences = true,
   blob,
   projectName,
   fileName,
@@ -168,7 +170,7 @@ export default function DocxBuiltinPreview({
   }, [searchMatchCount]);
 
   const updateSelectionAction = useCallback(() => {
-    if (referenceMode === 'region') return;
+    if (!allowReferences || referenceMode === 'region') return;
     const root = viewerRef.current;
     const scroll = scrollRef.current;
     const selection = window.getSelection();
@@ -235,7 +237,7 @@ export default function DocxBuiltinPreview({
       top: Math.max(12, rangeRect.top - scrollRect.top + scroll.scrollTop - 42),
       reference,
     });
-  }, [blob.size, fileName, filePath, outline, projectName, referenceMode]);
+  }, [allowReferences, blob.size, fileName, filePath, outline, projectName, referenceMode]);
 
   useEffect(() => {
     const schedule = () => {
@@ -350,7 +352,7 @@ export default function DocxBuiltinPreview({
         onToggleFullscreen={onToggleFullscreen}
         downloadUrl={downloadUrl}
         downloadName={downloadName}
-        referenceCapabilities={capabilities}
+        referenceCapabilities={allowReferences ? capabilities : undefined}
         referenceMode={referenceMode}
         onSelectReferenceMode={(mode) => {
           if (mode === 'region') {

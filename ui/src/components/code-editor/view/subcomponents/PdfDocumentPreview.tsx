@@ -49,6 +49,7 @@ type PdfDocumentPreviewProps = {
   projectName?: string;
   fileName: string;
   filePath: string;
+  allowReferences?: boolean;
   source: DocumentSelectionSource;
   /** Distinguishes multiple PDF views backed by the same source file. */
   viewKey?: string;
@@ -722,6 +723,7 @@ function PdfPage({
 }
 
 export default function PdfDocumentPreview({
+  allowReferences = true,
   blob,
   url,
   projectName,
@@ -1218,6 +1220,7 @@ export default function PdfDocumentPreview({
   }, []);
 
   const updateSelectionAction = useCallback(() => {
+    if (!allowReferences) return;
     const viewer = viewerRef.current;
     const selection = window.getSelection();
     if (!viewer || !selection || selection.isCollapsed || selection.rangeCount === 0) {
@@ -1299,7 +1302,7 @@ export default function PdfDocumentPreview({
     const left = Math.max(12, Math.min(viewer.clientWidth - 190, rect.left - viewerRect.left + viewer.scrollLeft + rect.width / 2 - 80));
     const top = Math.max(12, rect.top - viewerRect.top + viewer.scrollTop - 42);
     setSelectionAction({ top, left, reference });
-  }, [blob, fileName, filePath, projectName, source]);
+  }, [allowReferences, blob, fileName, filePath, projectName, source]);
 
   const cancelScheduledSelectionAction = useCallback(() => {
     if (selectionActionTimerRef.current !== null) {
@@ -1653,13 +1656,13 @@ export default function PdfDocumentPreview({
         </ToolbarButton>
         <ToolbarSeparator />
         </> : null}
-        <ContentReferenceMenu
+        {allowReferences && <ContentReferenceMenu
           capabilities={referenceCapabilities}
           activeMode={referenceMode}
           onSelectMode={handleReferenceMode}
           onCancelMode={() => setReferenceMode(null)}
           compact
-        />
+        />}
         {(onRefresh || onToggleFullscreen || downloadUrl) ? <ToolbarSeparator /> : null}
         {onRefresh ? (
           <ToolbarButton

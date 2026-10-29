@@ -21,6 +21,7 @@ type PptxBuiltinPreviewProps = {
   projectName?: string;
   fileName: string;
   filePath: string;
+  allowReferences?: boolean;
   downloadUrl?: string | null;
   downloadName?: string;
   isFullscreen?: boolean;
@@ -82,6 +83,7 @@ function PptxThumbnail({
 }
 
 export default function PptxBuiltinPreview({
+  allowReferences = true,
   blob,
   projectName,
   fileName,
@@ -325,7 +327,7 @@ export default function PptxBuiltinPreview({
         onToggleFullscreen={onToggleFullscreen}
         downloadUrl={downloadUrl}
         downloadName={downloadName}
-        referenceCapabilities={capabilities}
+        referenceCapabilities={allowReferences ? capabilities : undefined}
         referenceMode={referenceMode}
         onSelectReferenceMode={(mode) => setReferenceMode(mode === 'region' ? mode : null)}
         onCancelReferenceMode={() => setReferenceMode(null)}

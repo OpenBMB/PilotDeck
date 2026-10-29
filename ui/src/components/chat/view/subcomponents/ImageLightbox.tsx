@@ -67,7 +67,7 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
   if (typeof document === 'undefined') return null;
   if (images.length === 0) return null;
 
-  const active = images[activeIndex];
+  const active = images[Math.min(activeIndex, images.length - 1)];
 
   return createPortal(
     <div

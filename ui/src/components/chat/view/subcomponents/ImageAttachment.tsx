@@ -1,3 +1,4 @@
+import { attachmentPreviewKind } from '../../utils/attachmentPreviewKind';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -35,6 +36,7 @@ interface ImageAttachmentProps {
   file: File;
   onRemove: () => void;
   onRetry?: () => void;
+  onPreview?: () => void;
   uploadProgress?: number;
   error?: string;
 }
@@ -43,12 +45,13 @@ const ImageAttachment = ({
   file,
   onRemove,
   onRetry,
+  onPreview,
   uploadProgress,
   error,
 }: ImageAttachmentProps) => {
   const { t } = useTranslation('chat');
   const [preview, setPreview] = useState<string | undefined>(undefined);
-  const isImage = file.type.startsWith('image/');
+  const isImage = attachmentPreviewKind(file) === 'image';
   
   useEffect(() => {
     if (!isImage) {
@@ -65,6 +68,9 @@ const ImageAttachment = ({
 
   return (
     <div className="group relative">
+      <button type="button" onClick={onPreview} disabled={!onPreview}
+        aria-label={t('attachmentPreview.open', { name: file.name })}
+        className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
       {isImage ? (
         <img src={preview} alt={file.name} className="h-20 w-20 rounded object-cover" />
       ) : (
@@ -83,8 +89,9 @@ const ImageAttachment = ({
           </div>
         </div>
       )}
+      </button>
       {showProgressOverlay ? (
-        <div className="absolute inset-x-0 bottom-0 overflow-hidden rounded-b bg-black/55 px-2 pb-1.5 pt-1 text-white">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 overflow-hidden rounded-b bg-black/55 px-2 pb-1.5 pt-1 text-white">
           <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
             <span>{t('input.uploading', { defaultValue: 'Uploading…' })}</span>
             <span className="tabular-nums">{Math.round(uploadProgress)}%</span>
@@ -99,7 +106,7 @@ const ImageAttachment = ({
       ) : null}
       {isUploadComplete ? (
         <div
-          className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm"
+          className="pointer-events-none absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm"
           title={t('input.uploadComplete', { defaultValue: 'Upload complete' })}
           aria-label={t('input.uploadComplete', { defaultValue: 'Upload complete' })}
         >
@@ -109,7 +116,7 @@ const ImageAttachment = ({
         </div>
       ) : null}
       {error ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded bg-red-600/85 px-2 text-center text-white">
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 rounded bg-red-600/85 px-2 text-center text-white">
           <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -118,7 +125,7 @@ const ImageAttachment = ({
             <button
               type="button"
               onClick={onRetry}
-              className="rounded bg-white/95 px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-white"
+              className="pointer-events-auto rounded bg-white/95 px-2 py-1 text-[10px] font-medium text-red-700 hover:bg-white"
             >
               {t('input.retryUpload', { defaultValue: 'Retry' })}
             </button>

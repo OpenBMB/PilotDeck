@@ -1,4 +1,21 @@
 {
+  "attachmentPreview": {
+    "sheetTruncated": "表格预览每张工作表最多显示 200 行、50 列，完整内容请下载查看。",
+    "tooLarge": "文档预览支持 20 MB 以内的文件，请下载后打开此文件。",
+    "title": "附件预览",
+    "open": "预览 {{name}}",
+    "close": "关闭预览",
+    "download": "下载文件",
+    "previous": "上一个附件",
+    "next": "下一个附件",
+    "scrollPrevious": "向左滚动附件",
+    "scrollNext": "向右滚动附件",
+    "count": "{{count}} 个附件",
+    "unsupported": "此文件暂不支持预览，可下载后用其他应用打开。",
+    "failed": "无法预览此文件，仍可下载后打开。",
+    "truncated": "仅显示前 256 KB，下载可查看完整内容。",
+    "loading": "正在加载预览…"
+  },
   "copyBlock": {
     "plainText": "纯文本",
     "wrap": "代码自动换行",
