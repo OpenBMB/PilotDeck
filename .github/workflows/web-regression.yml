@@ -38,12 +38,13 @@ jobs:
         # and streamSmoother's fake-timer spec is independently flaky. Keep the
         # rest of the Web suite as the merge gate until those baseline tests are
         # repaired in their own change.
-        # Desktop Smoke runs both updater suites with desktop dependencies.
+        # Desktop Smoke runs native updater suites with desktop dependencies.
         run: >-
           pnpm --dir ui exec vitest run
           --exclude 'e2e/**'
           --exclude 'src/components/chat/hooks/streamSmoother.test.ts'
           --exclude 'server/services/desktopUpdateNetwork.test.ts'
+          --exclude 'server/services/desktopUpdateAvailability.test.ts'
           --exclude 'server/services/desktopUpdates.spec.ts'
           --exclude 'server/services/desktopAutoUpdate.test.ts'
           --exclude 'server/services/jsonReleaseProvider.test.ts'
