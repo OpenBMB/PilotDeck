@@ -37,6 +37,7 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
   const probeExecutor = new ElectronHttpExecutor(login);
   return {
     probe: (url: string, signal?: AbortSignal, expectedSize?: number) => probeUpdateDownload(probeExecutor, url, signal, expectedSize),
+    checkDownload: (url: string, signal?: AbortSignal, expectedSize?: number) => checkUpdateDownload(probeExecutor, url, signal, expectedSize),
     async prepare() {
       const config = resolveUpdateProxy(readConfig(), env);
       const key = JSON.stringify(config);
@@ -73,14 +74,24 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
 // Read at most 256 KiB, even when a server ignores Range. Abort the transport
 // after sampling; never buffer an installer merely to measure its speed.
 export async function probeUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal?: AbortSignal, expectedSize?: number): Promise<number> {
-  try { return await sampleUpdateDownload(executor, url, signal, expectedSize, true); }
+  return readUpdateSample(executor, url, signal, expectedSize, 262144);
+}
+
+// Reachability is not a throughput requirement. Valid headers plus the first
+// payload byte suffice; the actual download still verifies its full hashes.
+export async function checkUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal?: AbortSignal, expectedSize?: number): Promise<void> {
+  await readUpdateSample(executor, url, signal, expectedSize, 1);
+}
+
+async function readUpdateSample(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal: AbortSignal | undefined, expectedSize: number | undefined, sampleBytes: number): Promise<number> {
+  try { return await sampleUpdateDownload(executor, url, signal, expectedSize, true, sampleBytes); }
   catch (error) {
     if (!(error instanceof Error) || error.message !== "probeRangeUnsupported") throw error;
-    return sampleUpdateDownload(executor, url, signal, expectedSize, false);
+    return sampleUpdateDownload(executor, url, signal, expectedSize, false, sampleBytes);
   }
 }
 
-function sampleUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal: AbortSignal | undefined, expectedSize: number | undefined, useRange: boolean): Promise<number> {
+function sampleUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal: AbortSignal | undefined, expectedSize: number | undefined, useRange: boolean, sampleBytes: number): Promise<number> {
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted();
     const started = Date.now();
@@ -103,7 +114,7 @@ function sampleUpdateDownload(executor: Pick<ElectronHttpExecutor, "createReques
       const target = new URL(url);
       request = executor.createRequest({ protocol: target.protocol, hostname: target.hostname,
         port: target.port || undefined, path: `${target.pathname}${target.search}`, redirect: "follow",
-        headers: { ...(useRange ? { Range: "bytes=0-262143" } : {}), "Cache-Control": "no-cache", "User-Agent": "PilotDeck-Updater" } }, response => {
+        headers: { ...(useRange ? { Range: `bytes=0-${sampleBytes - 1}` } : {}), "Cache-Control": "no-cache", "User-Agent": "PilotDeck-Updater" } }, response => {
         if (useRange && [400, 405, 416].includes(response.statusCode)) { finish(new Error("probeRangeUnsupported")); return; }
         if (response.statusCode !== 200 && response.statusCode !== 206) { finish(new Error("probeFailed")); return; }
         const type = String(response.headers['content-type'] || '');
@@ -113,7 +124,7 @@ function sampleUpdateDownload(executor: Pick<ElectronHttpExecutor, "createReques
           || (expectedSize !== undefined && length !== undefined && Number(length) !== expectedSize)) {
           finish(new Error("invalidProbePayload")); return;
         }
-        response.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes >= 262144) finish(); });
+        response.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes >= sampleBytes) finish(); });
         response.on("end", () => finish(bytes ? undefined : new Error("emptyProbe")));
         response.on("error", finish);
         response.on("aborted", () => finish(new Error("probeAborted")));

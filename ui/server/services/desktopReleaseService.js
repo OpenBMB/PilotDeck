@@ -4,7 +4,7 @@ import { RELEASE_REPOSITORY, RELEASE_TAG, normalizeRepository, compareVersions, 
 export const OBS_BASE = 'https://n00069-minicpm-5-0.obs.cn-north-4.myhuaweicloud.com/PilotDeck/';
 const ROUTE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
-export function createDesktopReleaseService({ repository: value, currentVersion, fetchImpl = fetch, probe,
+export function createDesktopReleaseService({ repository: value, currentVersion, fetchImpl = fetch, probe, checkDownload,
   routeStore, now = Date.now, settleMs = 1200, probeSettleMs = 150, timeoutMs = 8000 } = {}) {
   const repository = normalizeRepository(value);
   const github = `https://github.com/${repository}/releases/`;
@@ -54,8 +54,9 @@ export function createDesktopReleaseService({ repository: value, currentVersion,
       const bounded = AbortSignal.any([stop.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
       try {
         await Promise.any(orderedSources().map(async source => {
-          const elapsed = await probe(`${source.base(release.tagName)}${encodeURIComponent(asset.name)}`, bounded, asset.size);
-          if (!Number.isFinite(elapsed) || elapsed < 0) throw new Error('invalidProbe');
+          // Availability checks only require valid initial payload data. A slow
+          // speed sample must never prevent trying the real download.
+          await checkDownload(`${source.base(release.tagName)}${encodeURIComponent(asset.name)}`, bounded, asset.size);
         }));
         signal?.throwIfAborted();
         return true;
