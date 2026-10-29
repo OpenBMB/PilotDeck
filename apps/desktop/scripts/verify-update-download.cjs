@@ -7,6 +7,7 @@ const fs = require('node:fs/promises');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { app } = require('electron');
 const { DebUpdater, CancellationToken } = require('electron-updater');
 const { installUpdateDownloadControl, PausableUpdateHttpExecutor } = require('../dist/updateDownload.js');
@@ -29,8 +30,10 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   const sha512 = createHash('sha512').update(body).digest('base64');
   const manifest = { version: '2026.1002.0', files: [{ url: 'update-linux-arm64.deb', size: body.length, sha512 }] };
   let payloadRequests = 0, openPayloads = 0, feedRequests = 0;
+  const slowSources = new Set();
   server = http.createServer((request, response) => {
     if (request.url === '/stalled') return;
+    if (request.url === '/empty') { response.writeHead(200); response.end(); return; }
     if (request.url === '/html') { response.writeHead(200, { 'Content-Type': 'text/html' }); response.end('<html>gateway error</html>'); return; }
     if (request.url === '/wrong-size') { response.writeHead(200, { 'Content-Length': 5 }); response.end('error'); return; }
     if (request.url === '/bad-range') { response.writeHead(206, { 'Content-Range': 'bytes 0-3/999' }); response.end('oops'); return; }
@@ -46,12 +49,15 @@ const timeout = setTimeout(() => { console.error('Download integration test time
     if (!request.headers.range) payloadRequests++;
     openPayloads++;
     const chunked = request.url.startsWith('/chunked/');
+    const slow = request.url.startsWith('/slow-');
+    if (slow) slowSources.add(request.url);
+    const chunkSize = slow ? 32768 : 65536;
     response.writeHead(200, { ...(chunked ? {} : { 'Content-Length': body.length }), 'Content-Type': 'application/octet-stream' });
     let offset = 0;
     const timer = setInterval(() => {
       if (offset >= body.length) { clearInterval(timer); response.end(); return; }
-      response.write(body.subarray(offset, offset + 65536)); offset += 65536;
-    }, chunked ? 500 : 35);
+      response.write(body.subarray(offset, offset + chunkSize)); offset += chunkSize;
+    }, slow ? 1000 : chunked ? 500 : 35);
     response.on('close', () => { clearInterval(timer); openPayloads--; });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -70,7 +76,20 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   }
   for (const route of ['/range', '/no-range', '/chunked/probe']) {
     assert.ok(await network.probe(`${base}${route}`, undefined, body.length) > 0);
+    await network.checkDownload(`${base}${route}`, undefined, body.length);
   }
+  for (const route of ['/html', '/wrong-size', '/bad-range', '/empty']) {
+    await assert.rejects(network.checkDownload(`${base}${route}`, undefined, body.length));
+  }
+  const { createDesktopReleaseService } = await import(pathToFileURL(path.resolve(__dirname, '../../../ui/server/services/desktopReleaseService.js')).href);
+  const slowService = createDesktopReleaseService({
+    checkDownload: (url, signal, size) => network.checkDownload(`${base}/slow-${url.startsWith('https://github.com/') ? 'github' : 'obs'}`, signal, size),
+    probe: () => { throw new Error('Availability must not invoke speed sampling'); },
+  });
+  assert.equal(await slowService.downloadAvailable({ tagName: 'v2026.10.02' }, { name: 'installer.exe', size: body.length }), true);
+  assert.deepEqual([...slowSources].sort(), ['/slow-github', '/slow-obs']);
+  await Promise.all(['/slow-obs', '/slow-github'].map(route => assert.rejects(network.probe(`${base}${route}`, undefined, body.length), /probeTimeout/)));
+  console.log('Real Electron: both 32 KiB/s mirrors are available even though their 256 KiB speed samples time out.');
   await until(() => openPayloads === 0);
   const abortProbe = new AbortController();
   const probing = network.probe(`${base}/redirect`, abortProbe.signal);
@@ -153,7 +172,7 @@ const timeout = setTimeout(() => { console.error('Download integration test time
     sha256: createHash('sha256').update(body).digest('hex'), platform: 'linux', arch: 'arm64' };
   const controllerOptions = { updater, repository: 'fixture/PilotDeck', platform: 'linux', arch: 'arm64',
     version: adapter.version, packaged: true, downloadControl: transport,
-    downloadAvailable: async (_release, asset, signal) => Number.isFinite(await network.probe(`${base}/${asset.name}`, signal, asset.size)),
+    downloadAvailable: slowService.downloadAvailable,
     latestRelease: async () => ({ version: manifest.version, tagName: 'v2026.10.02', assets: [releaseAsset] }),
     downloadBases: async () => [`${base}/bad/`, `${base}/`], compareVersions: () => -1,
     prepareToInstall: async () => {}, recoverRuntime: async () => {} };
