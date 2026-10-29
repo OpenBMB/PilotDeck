@@ -78,7 +78,7 @@ export function createSessionTitleGenerator(
             turnId,
           },
         },
-        { signal: combinedSignal },
+        { signal: combinedSignal, requestContext: { sessionId, turnId, purpose: "session-title" } },
       );
 
       return parseGeneratedTitle(response.content);

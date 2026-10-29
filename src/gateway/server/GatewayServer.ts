@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { requestContextHeaders, safeHeaderValue, withRequestContext } from "../../network/requestContext.js";
 import type { Gateway } from "../protocol/types.js";
 import { createWebSocketAcceptValue, TextWebSocketConnection } from "./websocket.js";
 import { GatewayWsConnection } from "./GatewayWsConnection.js";
@@ -47,7 +49,11 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
   const connections = new Set<GatewayWsConnection>();
 
   const server = createServer((request, response) => {
-    void handleHttpRequest(request, response, options, auth.token);
+    const requestId = safeHeaderValue(request.headers["x-pilotdeck-request-id"]) ?? randomUUID();
+    withRequestContext({ parentRequestId: requestId, purpose: "gateway-api" }, () => {
+      for (const [name, value] of Object.entries(requestContextHeaders({}, { requestId, userAgent: false }))) response.setHeader(name, value);
+      void handleHttpRequest(request, response, options, auth.token);
+    });
   });
   server.on("upgrade", (request, socket) =>
     handleUpgrade(request, socket, options, auth.token, connections),

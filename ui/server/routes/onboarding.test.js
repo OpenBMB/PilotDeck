@@ -396,11 +396,11 @@ describe('onboarding routes', () => {
     expect(response).toMatchObject({ status: 409, body: { code: 'GIT_CLONE_FAILED' } });
     expect(cloneGitHubRepository).toHaveBeenCalledWith(
       'https://github.com/openbmb/PilotDeck.git',
-      expect.stringMatching(/^\/tmp\/onboarding-workspace\/\.PilotDeck\.pilotdeck-clone-/),
+      expect.stringMatching(/^[\\/]tmp[\\/]onboarding-workspace[\\/]\.PilotDeck\.pilotdeck-clone-/),
       null,
       expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: 300000 }),
     );
-    expect(rm).toHaveBeenCalledWith(expect.stringMatching(/^\/tmp\/onboarding-workspace\/\.PilotDeck\.pilotdeck-clone-/), { recursive: true, force: true });
+    expect(rm).toHaveBeenCalledWith(expect.stringMatching(/^[\\/]tmp[\\/]onboarding-workspace[\\/]\.PilotDeck\.pilotdeck-clone-/), { recursive: true, force: true });
     mkdir.mockRestore();
     access.mockRestore();
     rm.mockRestore();

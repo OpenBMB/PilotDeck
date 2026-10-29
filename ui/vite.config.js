@@ -1,4 +1,5 @@
 import path from 'path'
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
@@ -53,6 +54,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     define: {
+      'import.meta.env.VITE_PILOTDECK_VERSION': JSON.stringify(env.PILOTDECK_VERSION || JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version),
+      'import.meta.env.VITE_PILOTDECK_REQUEST_HEADERS': JSON.stringify(env.PILOTDECK_REQUEST_HEADERS || 'full'),
       'import.meta.env.VITE_DISABLE_LOCAL_AUTH': JSON.stringify(disableLocalAuth ? 'true' : 'false'),
     },
     plugins: [react(), {

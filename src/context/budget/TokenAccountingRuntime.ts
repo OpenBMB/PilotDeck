@@ -237,7 +237,7 @@ export class TokenAccountingRuntime {
     try {
       const response = await this.transport(joinUrl(options.useOriginBase ? providerOriginUrl(provider.url) : provider.url, path), {
         method: "POST",
-        headers: buildProviderHeaders(provider),
+        headers: buildProviderHeaders(provider, undefined, { purpose: "token-count" }),
         body: JSON.stringify(body),
         signal: controller.signal,
       });

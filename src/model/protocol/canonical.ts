@@ -341,6 +341,8 @@ export type ProviderConfig = {
   apiKey: string;
   timeoutMs?: number;
   headers: Record<string, string>;
+  /** Automatic attribution headers. Global PILOTDECK_REQUEST_HEADERS=off always wins. */
+  requestHeadersMode?: import("../../network/requestContext.js").RequestHeadersMode;
   /** Arbitrary fields merged into every request body (e.g. OpenRouter provider preferences). */
   extraBody?: Record<string, unknown>;
   /** Explicit native mapping for the normalized model speed preference. */

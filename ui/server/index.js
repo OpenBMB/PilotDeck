@@ -49,6 +49,8 @@ assertRequiredPilotDeckEnv();
 console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 
 import express from 'express';
+import { authenticatedRequestContext, createRequestContextMiddleware } from './middleware/requestContext.js';
+import { requestLimiters } from './middleware/rateLimits.js';
 import searchRoutes from './routes/search.js';
 import { rateLimit } from 'express-rate-limit';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -510,7 +512,11 @@ const wss = new WebSocketServer({
 // Make WebSocket server available to routes
 app.locals.wss = wss;
 
-app.use(cors({ exposedHeaders: ['X-Refreshed-Token'] }));
+app.use(cors({ exposedHeaders: ['X-Refreshed-Token', 'x-pilotdeck-request-id', 'x-pilotdeck-version', 'x-pilotdeck-user-id', 'x-pilotdeck-project-id', 'x-pilotdeck-session-id', 'x-pilotdeck-request-headers-mode', 'Retry-After', 'RateLimit', 'RateLimit-Policy'] }));
+app.use('/api', requestLimiters.ingress);
+// Keep the dashboard's guard and protected routes in one mounted chain.
+const memoryDashboardRouter = express.Router();
+app.use('/memory-dashboard', requestLimiters.ingress, memoryDashboardRouter);
 app.use(express.json({
     limit: '50mb',
     type: (req) => {
@@ -523,6 +529,7 @@ app.use(express.json({
     }
 }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/api', createRequestContextMiddleware(extractProjectDirectory));
 
 // Public health check endpoint (no authentication required)
 app.get('/health', (req, res) => {
@@ -757,7 +764,7 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
 
 app.patch('/api/always-on/cron-jobs/:taskId', authenticateToken, createCronUpdateHandler({ getGateway: getPilotDeckGateway }));
 
-app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, async (req, res) => {
+app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, requestLimiters.model, async (req, res) => {
     try {
         const gateway = await getPilotDeckGateway();
         const result = await gateway.cronRunNow({
@@ -855,7 +862,7 @@ app.put('/api/ccr/config', authenticateToken, (_req, res) => {
     });
 });
 
-app.get('/memory-dashboard', authenticateToken, (req, res) => {
+memoryDashboardRouter.get('/', authenticateToken, (req, res) => {
     const indexPath = path.join(MEMORY_DASHBOARD_DIR, 'index.html');
     if (!fs.existsSync(indexPath)) {
         res.status(404).type('text/plain').send('Memory dashboard assets not bundled.');
@@ -864,7 +871,7 @@ app.get('/memory-dashboard', authenticateToken, (req, res) => {
     res.sendFile(indexPath);
 });
 
-app.use('/memory-dashboard', authenticateToken, express.static(MEMORY_DASHBOARD_DIR, {
+memoryDashboardRouter.use(authenticateToken, express.static(MEMORY_DASHBOARD_DIR, {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.html')) {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -879,7 +886,7 @@ app.use('/memory-dashboard', authenticateToken, express.static(MEMORY_DASHBOARD_
 // through to the SPA wildcard below and return the PilotDeck shell index.html,
 // which the MemoryPanel iframe then renders — recursively nesting the entire
 // app inside itself (see bug: "嵌套显示 + general memory 多次出现").
-app.use('/memory-dashboard', (_req, res) => {
+memoryDashboardRouter.use((_req, res) => {
     res.status(404).type('text/plain').send('Not found in memory-dashboard.');
 });
 
@@ -2370,6 +2377,15 @@ function handleChatConnection(ws, request) {
     ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
+
+            // Browser WebSockets cannot set custom HTTP headers. Carry the same
+            // diagnostic context per frame; derive user identity from authenticated ws.
+            const requestContext = authenticatedRequestContext(userId, data.requestContext);
+            if (data.type?.endsWith('-command')) {
+                data.options = { ...data.options, requestContext };
+            } else if (data.type === 'queue-input') {
+                data.item = { ...data.item, options: { ...data.item?.options, requestContext } };
+            }
 
             if (data.type === 'ping') return;
             if (data.type === 'get-session-activity') {

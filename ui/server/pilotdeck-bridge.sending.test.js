@@ -11,8 +11,73 @@ const mock = await vi.hoisted(async () => {
 vi.mock('./services/gatewayConnectionCache.js', () => ({ createGatewayConnectionCache: () => ({ get: async () => mock.gateway, invalidate: () => {} }) }));
 import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedInputForStorage, runChatViaGateway } from './pilotdeck-bridge.js';
 import { rm } from 'node:fs/promises';
+import express from 'express';
+import { randomUUID } from 'node:crypto';
+import { createRequestContextMiddleware, withAuthenticatedRequest } from './middleware/requestContext.js';
+import { anonymousRequestId, withRequestContext } from '../../src/network/requestContext.js';
+import { requestLimiters } from './middleware/rateLimits.js';
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const item = id => ({ id, runId: id, command: 'fixture', displayText: id, options: { projectPath: '/tmp/sending-project' } });
+
+it('serializes authenticated HTTP attribution before crossing the gateway boundary', async () => {
+    const calls = [];
+    const gateway = {
+        async *submitTurn(input) {
+            // JSON serialization models the separate gateway process: only explicit
+            // wire fields survive, regardless of the caller's AsyncLocalStorage.
+            calls.push(JSON.parse(JSON.stringify(input)));
+            yield { type: 'input_accepted', runId: input.runId };
+            yield { type: 'turn_completed', runId: input.runId, finishReason: 'completed', usage: {} };
+        },
+    };
+    const app = express();
+    app.use(requestLimiters.ingress);
+    app.use(express.json());
+    app.use(createRequestContextMiddleware());
+    app.use((req, res, next) => {
+        req.user = { id: req.headers['test-auth-user'] };
+        return withAuthenticatedRequest(req, res, next);
+    });
+    app.post('/generate', async (req, res) => {
+        await runChatViaGateway('Generate a commit message', { projectPath: '/tmp/http-project', runId: req.body.runId },
+            { send() {} }, 'pilotdeck', { getGateway: async () => { await new Promise(r => setTimeout(r, 5)); return gateway; } });
+        res.end();
+    });
+    const server = await new Promise(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });
+    const requests = ['alice', 'bob'].map(user => ({ user, runId: randomUUID(), requestId: randomUUID(), deviceId: randomUUID() }));
+    try {
+        await Promise.all(requests.map(async request => {
+            const response = await fetch(`http://127.0.0.1:${server.address().port}/generate`, { method: 'POST', headers: {
+                'content-type': 'application/json', 'test-auth-user': request.user,
+                'x-pilotdeck-user-id': 'f'.repeat(32), 'x-pilotdeck-request-id': request.requestId,
+                'x-pilotdeck-device-id': request.deviceId, 'x-pilotdeck-version': '2026.10.29',
+            }, body: JSON.stringify({ runId: request.runId, requestContext: { userId: 'attacker' } }) });
+            expect(response.status).toBe(200);
+        }));
+        for (const request of requests) expect(calls.find(call => call.runId === request.runId)?.requestContext).toEqual({
+            userId: anonymousRequestId('user', request.user), deviceId: request.deviceId,
+            clientVersion: '2026.10.29', parentRequestId: request.requestId,
+        });
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+it('preserves per-message attribution through delayed queue dispatch', async () => {
+    const calls = [];
+    mock.gateway = {
+        getActiveTurnSnapshot: async () => ({ active: false, events: [] }),
+        async *submitTurn(input) {
+            calls.push(input.requestContext);
+            yield { type: 'input_accepted', runId: input.runId };
+            yield { type: 'turn_completed', runId: input.runId, finishReason: 'completed', usage: {} };
+        },
+    };
+    const requestContext = { userId: 'a'.repeat(32), deviceId: 'device-a', parentRequestId: 'request-a' };
+    const queued = item('context');
+    queued.options.requestContext = requestContext;
+    await withRequestContext({ userId: 'b'.repeat(32), parentRequestId: 'unrelated-request', clientVersion: 'unrelated-version' },
+        () => enqueueInputViaGateway('web:context-queue', queued, { send() {} }));
+    await vi.waitFor(() => expect(calls).toEqual([requestContext]));
+});
 afterAll(async () => {
     if (mock.previousHome === undefined) delete process.env.PILOT_HOME;
     else process.env.PILOT_HOME = mock.previousHome;

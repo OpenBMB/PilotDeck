@@ -3,6 +3,7 @@ import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../.
 import { getWebSearchProviderConfig, migrateWebSearchProviderConfigs, resolveWebSearchConfig } from "../../../src/pilot/config/webSearchConfig.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError } from "../../../src/tool/builtin/additionalWebSearch.js";
 import express from 'express';
+import { mergeRequestHeaders, requestContextHeaders } from '../../../src/network/requestContext.js';
 import { createConnectionTestTasks } from '../services/connectionTestTasks.js';
 import fsPromises from 'fs/promises';
 import path from 'path';
@@ -669,7 +670,7 @@ function isNetworkTimeout(error) {
 async function fetchWithEndpointFallback(urls, options, isExpectedOkBody = null) {
   let lastResult = null;
   for (const url of urls) {
-    const response = await networkFetch(url, options, {
+    const response = await networkFetch(url, { ...options, headers: mergeRequestHeaders(requestContextHeaders({ purpose: 'model-discovery' }), options.headers) }, {
       signal: options?.signal,
       fetchImpl: fetch,
       retry: {
