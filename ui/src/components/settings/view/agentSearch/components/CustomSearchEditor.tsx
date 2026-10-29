@@ -57,7 +57,7 @@ export default function CustomSearchEditor({ value, endpoint, disabled, onSave }
       <h4><Settings2 aria-hidden="true" />{label('basicsTitle')}</h4>
       <div className="custom-search-grid">
         {field('name', label('namePlaceholder'))}
-        <label><span>{label('endpoint')}</span><input type="url" value={url} onChange={event => setUrl(event.target.value)} /></label>
+        <label><span>{label('endpoint')}</span><input type="url" value={url} placeholder={t('pilotDeckConfig.panels.tools.endpoint.placeholder')} onChange={event => setUrl(event.target.value)} /></label>
         <label><span>{label('method')}</span><div className="custom-search-select"><select value={draft.method ?? 'POST'} onChange={event => change({ method: event.target.value as 'GET' | 'POST' })}><option>GET</option><option>POST</option></select><ChevronDown aria-hidden="true" /></div></label>
         <label><span>{label('auth')}</span><div className="custom-search-select"><select value={draft.auth ?? 'bearer'} onChange={event => change({ auth: event.target.value as WebSearchCustomProviderConfig['auth'] })}>{['bearer', 'headerApiKey', 'bodyApiKey', 'queryApiKey', 'none'].map(auth => <option key={auth} value={auth}>{label('authOptions.' + auth)}</option>)}</select><ChevronDown aria-hidden="true" /></div></label>
         {field('apiKeyParam', 'api_key')}{field('queryParam', 'query')}
