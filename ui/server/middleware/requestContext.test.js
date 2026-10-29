@@ -16,6 +16,16 @@ beforeAll(async () => {
   app.use(express.json());
   app.use(createRequestContextMiddleware(async name => name === 'registered-project' ? '/private/customer' : undefined));
   app.use((req, res, next) => { req.user = { id: req.headers['test-auth-user'] || 1 }; withAuthenticatedRequest(req, res, next); });
+  // Match mount-level plus route-level authentication used by /api/projects.
+  app.use('/api/projects', (req, res, next) => {
+    res.locals.firstContext = { ...req.requestContext };
+    withAuthenticatedRequest(req, res, next);
+  });
+  app.get('/api/projects', withAuthenticatedRequest, async (req, res) => {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    res.json({ firstContext: res.locals.firstContext, context: req.requestContext,
+      modelHeaders: requestContextHeaders({ purpose: 'model-probe' }) });
+  });
   app.all('/api/test', async (_req, res) => {
     await new Promise(resolve => setTimeout(resolve, 5));
     res.json({ context: currentRequestContext(), modelHeaders: requestContextHeaders({ purpose: 'model-probe' }) });
@@ -30,6 +40,29 @@ afterAll(async () => {
   rmSync(home, { recursive: true, force: true });
 });
 describe('server attribution boundary', () => {
+  it.each(['provided', 'missing', 'invalid'])('keeps repeated authentication idempotent with a %s request ID', async mode => {
+    const requestId = randomUUID();
+    const deviceId = randomUUID();
+    const sessionId = randomUUID();
+    const response = await fetch(`${url.replace('/api/test', '/api/projects')}?sessionId=${sessionId}&projectName=registered-project`, { headers: {
+      ...(mode === 'missing' ? {} : { 'x-pilotdeck-request-id': mode === 'provided' ? requestId : 'invalid value' }),
+      'x-pilotdeck-device-id': deviceId, 'x-pilotdeck-version': '2026.10.29',
+    } });
+    expect(response.status).toBe(200);
+    const correlation = response.headers.get('x-pilotdeck-request-id');
+    expect(correlation).toMatch(/^[a-f0-9-]{36}$/);
+    if (mode === 'provided') expect(correlation).toBe(requestId);
+    const { firstContext, context, modelHeaders } = await response.json();
+    expect(context).toEqual(firstContext);
+    expect(context.requestId).toBe(correlation);
+    expect(context.parentRequestId).toBe(correlation);
+    expect(modelHeaders['x-pilotdeck-parent-request-id']).toBe(correlation);
+    expect(modelHeaders['x-pilotdeck-user-id']).toBe(response.headers.get('x-pilotdeck-user-id'));
+    expect(modelHeaders['x-pilotdeck-project-id']).toBe(response.headers.get('x-pilotdeck-project-id'));
+    expect(modelHeaders['x-pilotdeck-device-id']).toBe(deviceId);
+    expect(modelHeaders['x-pilotdeck-session-id']).toBe(sessionId);
+    expect(modelHeaders['x-pilotdeck-client-version']).toBe('2026.10.29');
+  });
   it('resolves registered project names to the same opaque ID as direct paths', async () => {
     const named = await fetch(`${url}?projectName=registered-project`);
     const direct = await fetch(`${url}?projectPath=/private/customer`);

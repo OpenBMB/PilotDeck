@@ -63,6 +63,8 @@ export async function withAuthenticatedRequest(req, res, next) {
     const projectId = requestContextHeaders(context, { userAgent: false })['x-pilotdeck-project-id'];
     if (projectId) res.setHeader('x-pilotdeck-project-id', projectId);
   }
-  req.requestContext = context;
+  // Mount-level and route-level authentication may both run on one request.
+  // Keep the original correlation ID as input to every subsequent pass.
+  req.requestContext = { ...context, requestId: context.parentRequestId };
   return withRequestContext(context, next);
 }
