@@ -514,7 +514,9 @@ app.locals.wss = wss;
 
 app.use(cors({ exposedHeaders: ['X-Refreshed-Token', 'x-pilotdeck-request-id', 'x-pilotdeck-version', 'x-pilotdeck-user-id', 'x-pilotdeck-project-id', 'x-pilotdeck-session-id', 'x-pilotdeck-request-headers-mode', 'Retry-After', 'RateLimit', 'RateLimit-Policy'] }));
 app.use('/api', requestLimiters.ingress);
-app.use('/memory-dashboard', requestLimiters.ingress);
+// Keep the dashboard's guard and protected routes in one mounted chain.
+const memoryDashboardRouter = express.Router();
+app.use('/memory-dashboard', requestLimiters.ingress, memoryDashboardRouter);
 app.use(express.json({
     limit: '50mb',
     type: (req) => {
@@ -860,7 +862,7 @@ app.put('/api/ccr/config', authenticateToken, (_req, res) => {
     });
 });
 
-app.get('/memory-dashboard', authenticateToken, (req, res) => {
+memoryDashboardRouter.get('/', authenticateToken, (req, res) => {
     const indexPath = path.join(MEMORY_DASHBOARD_DIR, 'index.html');
     if (!fs.existsSync(indexPath)) {
         res.status(404).type('text/plain').send('Memory dashboard assets not bundled.');
@@ -869,7 +871,7 @@ app.get('/memory-dashboard', authenticateToken, (req, res) => {
     res.sendFile(indexPath);
 });
 
-app.use('/memory-dashboard', authenticateToken, express.static(MEMORY_DASHBOARD_DIR, {
+memoryDashboardRouter.use(authenticateToken, express.static(MEMORY_DASHBOARD_DIR, {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.html')) {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -884,7 +886,7 @@ app.use('/memory-dashboard', authenticateToken, express.static(MEMORY_DASHBOARD_
 // through to the SPA wildcard below and return the PilotDeck shell index.html,
 // which the MemoryPanel iframe then renders — recursively nesting the entire
 // app inside itself (see bug: "嵌套显示 + general memory 多次出现").
-app.use('/memory-dashboard', (_req, res) => {
+memoryDashboardRouter.use((_req, res) => {
     res.status(404).type('text/plain').send('Not found in memory-dashboard.');
 });
 
