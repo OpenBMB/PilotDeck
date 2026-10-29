@@ -124,28 +124,40 @@ largest existing revision for the date plus one, including manually skipped
 revisions, and rejects a manually requested version below any published version. Historical `desktop-v` tags
 and filename-based version guessing are not supported.
 
-Automatic update selection requires an exact platform and running-client architecture:
+`release.json` is the canonical release configuration. Its `schemaVersion` remains
+`1` for installed clients; additive `artifactSchemaVersion: 1`, `format` and
+`roles` fields distinguish initial installers (`install`), updater payloads
+(`update`) and generated legacy metadata (`compatibility`). Older JSON manifests
+without these fields remain readable. The release job hashes payloads first,
+derives all eight YML feeds from those records, then records the feeds' hashes in
+the same JSON and checksum file. Builder-generated feeds are replaced, not merged
+as a second source of release metadata.
+
+Automatic update selection requires an exact platform and running-client architecture.
+New clients read JSON directly; the feed column documents compatibility for older clients:
 
 | Client | Update payload | Feed |
 | --- | --- | --- |
 | macOS arm64 | arm64 ZIP | `latest-arm64-mac.yml` |
 | macOS x64 (including Rosetta) | x64 ZIP | `latest-x64-mac.yml` |
 | Windows x64 | x64 setup EXE | `latest-x64.yml` |
+| Windows arm64 | arm64 setup EXE | `latest-arm64.yml` |
 | Ubuntu x64 | x64 DEB | `latest-linux.yml` |
 | Ubuntu arm64 | arm64 DEB | `latest-linux-arm64.yml` |
 | RHEL-family x64 | x64 RPM | `latest-rpm-linux.yml` |
 | RHEL-family arm64 | arm64 RPM | `latest-rpm-linux-arm64.yml` |
 
-DMGs remain available for initial Mac installation. Each Mac build produces its
-own feed, renamed before artifact upload so the matrix jobs cannot overwrite one
-another's metadata. Each feed contains only its own architecture. CI verifies all
-five feeds, both ZIPs and both DEBs before publishing. Full downloads are used initially;
-blockmaps and differential updates are not required.
+The release download table and OBS website pointer list DMGs for Mac users.
+ZIPs remain in the full release assets for native automatic updates, including
+old clients; GitHub's raw Assets list still exposes them. CI verifies all ten
+payloads and eight generated feeds before publication and again before OBS sync.
+Full downloads are used; blockmaps and differential updates are not required.
 
 **Update and restart** is one explicit user action. The Electron main process
-uses the shared release discovery module, then pins electron-updater's generic
-feed to that exact release tag across every route. It checks the feed version, file names,
-architecture, sizes and SHA-512 hashes against `release.json` before downloading.
+uses the shared release discovery module, then gives electron-updater a custom
+provider containing the exact selected JSON payload and release tag. New clients
+never fetch a YML update feed. The same version, file name, architecture, size and
+SHA-512 hash stay pinned across every route and retry.
 Electron-updater verifies the downloaded payload; the client also verifies its
 SHA-256 before stopping the gateway and Web server. Finally it invokes the
 updater to install and relaunch the application. macOS performs native signature
@@ -158,7 +170,7 @@ updates automatically on quit.
 Before installation, runtime shutdown confirms that managed descendants exited;
 a failed stop aborts installation and retains process records for recovery.
 
-Release checks, manifests, update feeds and payload downloads share the
+Release checks, manifests and payload downloads share the
 `electron-updater` network session. It reads the user's `proxy.url` and
 `proxy.noProxy`; proxy environment variables (`PILOTDECK_PROXY`, `https_proxy`,
 `HTTPS_PROXY`, `http_proxy`, `HTTP_PROXY`, in that order) take precedence.
@@ -166,16 +178,39 @@ Loopback traffic always bypasses the proxy for the local Mac updater. Proxy
 settings refresh before checking and remain fixed during an active update.
 Without an application or environment proxy, Electron uses system proxy settings.
 
+Before offering an update, the client samples the selected payload on both
+routes, stopping as soon as one works. If neither works within eight seconds,
+the new version stays visible with a temporary-unavailability message and a
+Check again action. Starting an update rechecks readiness. HTML/error responses,
+empty bodies and known size mismatches are rejected. This is a reachability
+check, not a guarantee against a later outage; full-download hashes remain required.
+
 Before downloading, the client samples up to 256 KiB of the selected installer
-from both routes concurrently, with a 5-second deadline and no disk writes.
+from both routes concurrently, with a 5-second deadline per request and no disk writes.
 After the first successful sample, it gives the competitor 150 ms to finish,
 then aborts outstanding sampling instead of waiting for the slow route's timeout.
 It also aborts the sample if a host ignores Range. Elapsed sample time determines
 order. A remembered successful route gets a 100 ms preference when speeds are
 similar; without history an exact tie prefers OBS. Failed or unfinished probes
-remain fallbacks because some servers reject Range.
+remain fallbacks for transient network failures. A server rejecting Range with
+400/405/416 gets one bounded plain GET attempt; it still stops after 256 KiB.
 There is no IP geolocation or language-based region assumption: actual network
 conditions, including the configured proxy, determine the choice each time.
+
+Daily Release calls the reusable OBS synchronization workflow immediately after
+GitHub publication, passing the exact tag rather than rediscovering Latest.
+Manual and scheduled repair runs remain available. OBS uploads and verifies all
+assets (including YML and ZIP), then promotes `latest.json` last. A delayed older
+job cannot move the pointer backwards; conflicting bytes under an existing tag
+require a new revision. GitHub can become visible before OBS finishes; clients
+fall back to GitHub for that same version. Sync failure leaves the old OBS pointer
+intact unless publication itself failed ambiguously, in which case the saved
+pointer and readback evidence support manual recovery.
+
+Keep generating YML while supported installed clients need it. Once those clients
+are retired, remove compatibility generation and its publication gate together;
+new clients require no protocol change. The builder's local `app-update.yml`
+is library/cache configuration, not a second remote release manifest, and stays.
 
 Only a fully downloaded and verified package records route success. The client
 atomically saves the repository, official route ID and success timestamp in

@@ -1,21 +1,36 @@
 # Production OBS release synchronization
 
-Only main can use the obs-release Environment. Manual dispatch publishes the
+Only main can use the obs-release Environment. Daily Release invokes this reusable
+workflow immediately after GitHub publication and passes its exact release tag.
+This does not depend on a `release.published` event from `GITHUB_TOKEN`.
+Manual dispatch publishes the
 latest formal release resolved at run start. Daily 03:30 Beijing scheduling
 requires repository variable OBS_SYNC_ENABLED=true, initially false. Keep
 OBS_RETENTION_ENABLED and OBS_DELETE_CHECK_ENABLED false; deletion permission
 is not required to upload assets or overwrite the latest pointer.
 
 All assets are locally verified before broker credentials are requested. The
-production entry reuses the tested AWS runner, virtual-host settings and seekable
+gate requires ten payloads and all eight compatibility YML files. New releases
+derive YML from `release.json`; old releases remain valid if their files and
+checksums agree. Every asset, including ZIP, YML, JSON and checksums, is mirrored.
+Missing YML aborts before credentials or upload; it is never silently omitted.
+The production entry reuses the tested AWS runner, virtual-host settings and seekable
 temporary-file readback. Operations remain serial, with a five-minute per-object
 limit and one shared min(50 minutes, credential expiry minus two minutes) budget.
 All object names, sizes and full content must pass before latest publication.
 No delete operations are used. Branch push/PR CI only runs credential-free tests;
 it cannot enter the production job or publish a pointer.
 
+Runs serialize with repair jobs. A delayed older tag cannot replace a newer
+pointer. Existing version objects must already match the pinned release bytes;
+identical partial uploads can resume, but conflicting content requires a new
+release revision. GitHub is visible while OBS synchronizes. Desktop download
+readiness checks and same-version fallback handle that interval.
+
 PilotDeck/latest.json keeps the website contract: tag, published_at and assets
-with name, size and public OBS url. The prior pointer is backed up before writes;
+with name, size and public OBS url. It lists user installers only: DMG, EXE, DEB
+and RPM. ZIPs remain in the version directory and full `release.json` for updates.
+The prior pointer is backed up before writes;
 the new JSON is written with application/json and no-store then read back.
 resolved-release.json, previous-latest.json, published-latest.json and logs are
 retained in the obs-production-sync artifact for 30 days. Logs never include
