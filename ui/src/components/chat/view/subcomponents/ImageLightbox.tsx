@@ -76,23 +76,9 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
       role="dialog"
       aria-modal="true"
       aria-label={active?.name || t('common:uiText.imagePreview')}
-      className="attachment-preview-viewport z-[2147483647] flex items-center justify-center bg-black/85 px-16 pb-4 pt-16 backdrop-blur-sm"
+      className="attachment-preview-viewport z-[2147483647] flex items-center justify-center bg-black/85 px-16 py-4 backdrop-blur-sm"
       onClick={onClose}
     >
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
-        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white shadow-sm transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-        aria-label={t('common:uiText.closePreview')}
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-
       {images.length > 1 ? (
         <button
           type="button"

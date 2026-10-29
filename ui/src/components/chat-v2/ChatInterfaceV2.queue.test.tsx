@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AttachmentPreview from '../chat/view/subcomponents/AttachmentPreview';
@@ -148,7 +148,7 @@ describe('ChatInterfaceV2 queue integration', () => {
     }
     const view = render(<Harness />);
     const dialog = screen.getByRole('dialog');
-    fireEvent.keyDown(within(dialog).getAllByRole('button')[0], { key: 'Escape' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(close).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(queueMocks.handleAbortSession).not.toHaveBeenCalled();

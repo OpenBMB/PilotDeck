@@ -35,14 +35,16 @@ try {
     const check = async (closeLabel, inset) => {
       const overlay = page.locator('[data-modal-overlay]');
       await expect.poll(async () => Math.round((await overlay.boundingBox()).y)).toBe(Math.round(inset));
-      const close = page.getByRole('dialog').getByRole('button', { name: closeLabel, exact: true });
-      const bounds = await close.boundingBox();
-      expect(bounds.y).toBeGreaterThanOrEqual(inset + 8);
-      expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize().height);
-      expect(await close.evaluate(button => {
-        const box = button.getBoundingClientRect();
-        return button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
-      })).toBe(true);
+      const close = page.getByRole('dialog').getByRole('button', { name: '关闭预览', exact: true });
+      if (closeLabel) {
+        const bounds = await close.boundingBox();
+        expect(bounds.y).toBeGreaterThanOrEqual(inset + 8);
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize().height);
+        expect(await close.evaluate(button => {
+          const box = button.getBoundingClientRect();
+          return button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+        })).toBe(true);
+      } else await expect(close).toHaveCount(0);
       await expect.poll(() => page.getByRole('dialog').locator('img').evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
       const image = await page.getByRole('dialog').locator('img').boundingBox();
       expect(image.y).toBeGreaterThanOrEqual(inset);
@@ -67,17 +69,22 @@ try {
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.getByText('Send test message', { exact: true }).click();
       await page.getByRole('button', { name: 'Preview image-0.png', exact: true }).click();
-      await check('关闭预览', inset);
+      await check(null, inset);
+      await page.getByRole('dialog').locator('img').click();
+      await expect(page.getByRole('dialog')).toBeVisible();
       await page.getByRole('button', { name: '下一张图片', exact: true }).click();
       await expect(page.getByRole('dialog')).toContainText('2 / 2');
-      await check('关闭预览', inset);
+      await check(null, inset);
       if (platform !== 'web') {
         await setFullscreen(true);
-        await check('关闭预览', 0);
+        await check(null, 0);
         await setFullscreen(false);
-        await check('关闭预览', inset);
+        await check(null, inset);
       }
-      await page.getByRole('button', { name: '关闭预览', exact: true }).click();
+      await page.locator('[data-modal-overlay]').click({ position: { x: 8, y: 8 } });
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Preview image-0.png', exact: true }).click();
+      await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).toHaveCount(0);
       console.log(`PASS ${platform} ${viewport.width}x${viewport.height}: draft/sent controls, image bounds and fullscreen transitions`);
     }
