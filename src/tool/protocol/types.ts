@@ -24,7 +24,7 @@ import type { PilotDeckToolInputSchema, PilotDeckToolValidationResult } from "./
  * missing sink and proceed without backups.
  */
 export type PilotDeckToolFileHistorySink = {
-  trackEdit(filePath: string, messageId: string): Promise<void>;
+  trackEdit(filePath: string, messageId: string, options?: { allowUnprotected?: boolean }): Promise<void>;
   recordEdit?(filePath: string, messageId: string, writtenContent?: string): Promise<void>;
   /** Capture an execution through completion, including failed or background commands. */
   trackCommand?(options?: { background?: boolean; signal?: AbortSignal }): Promise<() => Promise<void>>;

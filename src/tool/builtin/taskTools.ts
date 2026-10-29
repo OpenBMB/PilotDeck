@@ -29,6 +29,7 @@ export type TaskCreateInput = {
   command: string;
   agentId?: string;
   kind?: PilotDeckBackgroundTaskKind;
+  lifecycle?: "service" | "finite";
 };
 
 export type TaskCreateOutput = {
@@ -163,7 +164,7 @@ export function createTaskCreateTool(
     name: "task_create",
     aliases: ["TaskCreate"],
     description:
-      "Spawn a shell command as a detached background task. Returns immediately with a taskId; it does not automatically push completion output back into the model context. For long-running tasks that should finish, call task_wait immediately after task_create so the final output returns to the current context. Use task_output only for progress checks, not manual sleep polling. Use task_stop for long-lived services/watchers.",
+      "Spawn a shell command as a detached background task. Returns immediately with a taskId; it does not automatically push completion output back into the model context. Set lifecycle='finite' for builds, conversions and other bounded write tasks, then call task_wait immediately; their writes hold a project mutation lease until completion. Use lifecycle='service' (the default) for development servers/watchers: these do not hold a project lease or attribute directory changes to the launching turn. Use task_stop to stop services and task_output only for progress checks.",
     kind: "shell",
     inputSchema: {
       type: "object",
@@ -183,6 +184,11 @@ export function createTaskCreateTool(
           enum: ["bash", "monitor"],
           description: "Task kind: 'bash' (default) or 'monitor'.",
         },
+        lifecycle: {
+          type: "string",
+          enum: ["service", "finite"],
+          description: "service (default) for detached servers/watchers without a lifetime write lock; finite for bounded write tasks coordinated until completion.",
+        },
       },
     },
     isReadOnly: () => false,
@@ -190,7 +196,8 @@ export function createTaskCreateTool(
     isDestructive: () => true,
     execute: async (input, context): Promise<PilotDeckToolExecutionOutput<TaskCreateOutput>> => {
       const rt = ensureRuntime(runtime);
-      const finishCommand = await context.fileHistory?.trackCommand?.({ background: true, signal: context.abortSignal });
+      const finishCommand = input.lifecycle === "finite"
+        ? await context.fileHistory?.trackCommand?.({ background: true, signal: context.abortSignal }) : undefined;
       let task: PilotDeckBackgroundBashTask;
       try {
         task = await rt.start({

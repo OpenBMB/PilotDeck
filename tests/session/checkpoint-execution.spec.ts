@@ -127,7 +127,7 @@ async function runChild(f: Awaited<ReturnType<typeof fixture>>, mode: "file" | "
     () => ({ name: "read_file", input: { file_path } }),
     () => ({ name: "write_file", input: { file_path, content: "C" } }),
   ]) : mode === "python" ? [() => ({ name: "execute_code", input: { code: "from pathlib import Path\nPath('a.txt').write_text('C')" } })] : [
-    () => ({ name: "task_create", input: { command: nodeCommand("require('node:fs').writeFileSync('a.txt','C');") } }),
+    () => ({ name: "task_create", input: { lifecycle: "finite", command: nodeCommand("require('node:fs').writeFileSync('a.txt','C');") } }),
     () => ({ name: "task_wait", input: { taskId, timeoutMs: 10_000 } }),
   ];
   let step = 0;
@@ -246,7 +246,7 @@ for (const order of ["task-tool", "tool-task", "failed-task"]) {
   test(`background ${order} captures completion before task_wait returns`, async t => {
     const f = await fixture(t), runtime = new BackgroundTaskRuntime();
     if (order !== "task-tool") await f.toolWrite("B");
-    const task = await createTaskCreateTool(runtime).execute({ command: nodeCommand("require('node:fs').writeFileSync('a.txt','C');" + (order === "failed-task" ? "process.exitCode=1;" : "")) }, f.context);
+    const task = await createTaskCreateTool(runtime).execute({ lifecycle: "finite", command: nodeCommand("require('node:fs').writeFileSync('a.txt','C');" + (order === "failed-task" ? "process.exitCode=1;" : "")) }, f.context);
     const result = await createTaskWaitTool(runtime).execute({ taskId: task.data!.taskId, timeoutMs: 10_000 }, f.context);
     assert.equal(result.data!.status, order === "failed-task" ? "failed" : "completed");
     if (order === "task-tool") await f.toolWrite("D");
@@ -263,7 +263,7 @@ class ControlledChild extends EventEmitter {
 test("cross-turn background completion cannot rewrite old checkpoints or a new turn's journal", async t => {
   const f = await fixture(t); await f.toolWrite("B");
   const child = new ControlledChild(), runtime = new BackgroundTaskRuntime({ spawn: (() => child) as never });
-  const task = await createTaskCreateTool(runtime).execute({ command: "controlled writer" }, f.context);
+  const task = await createTaskCreateTool(runtime).execute({ lifecycle: "finite", command: "controlled writer" }, f.context);
   const first = (await f.history.finishTurn("complete"))!;
   assert.equal(first.changes[0].restorable, false); assert.equal(f.store.busy, true);
   const newHistory = new WorkspaceCheckpoints(f.workspace, f.home);
@@ -286,7 +286,7 @@ test("cross-turn background completion cannot rewrite old checkpoints or a new t
 test("turn completion flushes a task finalization already capturing its postimage", async t => {
   const f = await fixture(t); await f.toolWrite("B");
   const child = new ControlledChild(), runtime = new BackgroundTaskRuntime({ spawn: (() => child) as never });
-  await createTaskCreateTool(runtime).execute({ command: "controlled writer" }, f.context);
+  await createTaskCreateTool(runtime).execute({ lifecycle: "finite", command: "controlled writer" }, f.context);
   await writeFile(f.file, "C"); child.finish();
   await assertUnattributed(f, "C");
 });

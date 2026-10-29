@@ -1,5 +1,6 @@
 import type { PilotDeckToolRuntimeContext } from "../../protocol/types.js";
 import { acquireWorkspaceOperation, operationContext, workspaceOperationState } from "../../../session/checkpoints/WorkspaceCoordinator.js";
+import { resolveRealWritePath } from "./pathSafety.js";
 
 function reportWait(context: PilotDeckToolRuntimeContext, scope: string): void {
   if (operationContext.getStore()?.command) return;
@@ -15,7 +16,7 @@ export async function withFileMutation<T>(context: PilotDeckToolRuntimeContext, 
   reportWait(context, filePath);
   if (context.fileHistory?.runEdit) return context.fileHistory.runEdit(filePath, task, context.abortSignal);
   const owner = operationContext.getStore()?.owner ?? {};
-  const release = await acquireWorkspaceOperation(filePath, { kind: "file", owner, signal: context.abortSignal });
+  const release = await acquireWorkspaceOperation(resolveRealWritePath(filePath) ?? filePath, { kind: "file", owner, signal: context.abortSignal });
   try { return await operationContext.run({ ...operationContext.getStore(), owner }, task); } finally { release(); }
 }
 

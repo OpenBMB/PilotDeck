@@ -69,7 +69,7 @@ model:
     home, workspace, sessionKey, requests, input,
     get gateway() { return local.gateway; },
     restart() { local.dispose(); local = createLocalGateway(options); },
-    async submit(message: string) { for await (const _event of local.gateway.submitTurn({ ...input, channelKey: "web", message })) { /* consume */ } },
+    async submit(message: string) { for await (const _event of local.gateway.submitTurn({ ...input, channelKey: "web", mode: "bypassPermissions", message })) { /* consume */ } },
     async list() { return await local.gateway.manageCheckpoints!({ ...input, action: "list" }) as { checkpoints: CheckpointSummary[]; sessionChanges: CheckpointSummary["changes"]; sessionRevision: string }; },
     async history() {
       const storage = createAgentProjectSessionStorage({ projectRoot: workspace, pilotHome: home, sessionId: sessionKey });

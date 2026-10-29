@@ -4,6 +4,7 @@ import path from "node:path";
 import type { CanonicalMessage } from "../../model/index.js";
 import { getPilotProjectChatDir } from "../../pilot/paths.js";
 import { buildStructuredPatch } from "../../tool/builtin/filesystem/structuredPatch.js";
+import { resolveRealWritePath } from "../../tool/builtin/filesystem/pathSafety.js";
 import { acquireWorkspaceOperation, canonicalWorkspacePath, hasWorkspaceTurn, operationContext, registerWorkspaceTurn, workspaceOperationState } from "./WorkspaceCoordinator.js";
 
 import type { FileVersion, FileChange, Checkpoint, CheckpointSummary, RestorePlan, RestoreOperation, CheckpointRequest } from "./types.js";
@@ -642,7 +643,7 @@ export class WorkspaceCheckpoints {
   }
   async runEdit<T>(filePath: string, task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const owner = operationContext.getStore()?.owner ?? {};
-    const release = await acquireWorkspaceOperation(filePath, { kind: "file", owner, signal, label: "正在写入项目文件" });
+    const release = await acquireWorkspaceOperation(resolveRealWritePath(filePath) ?? filePath, { kind: "file", owner, signal, label: "正在写入项目文件" });
     try { return await operationContext.run({ ...operationContext.getStore(), owner }, task); }
     catch (error) {
       // A failed tool may have written bytes before its journal commit failed.
@@ -667,11 +668,11 @@ export class WorkspaceCheckpoints {
     try { return await operationContext.run({ owner: frame.owner, command: frame }, task); }
     finally { await this.finishCommand(frame); }
   }
-  async trackEdit(filePath: string, _turnId: string): Promise<void> {
+  async trackEdit(filePath: string, _turnId: string, options: { allowUnprotected?: boolean } = {}): Promise<void> {
     const active = this.current(), relative = await this.relativePath(filePath, active);
     if (!active || !relative) return;
     const before = await active.store.captureFile(relative);
-    if (before.kind === "unprotected") throw new CheckpointError("BACKUP_UNAVAILABLE", `Cannot protect ${relative}: ${before.reason}`);
+    if (before.kind === "unprotected" && !options.allowUnprotected) throw new CheckpointError("BACKUP_UNAVAILABLE", `Cannot protect ${relative}: ${before.reason}`);
     const revision = await active.store.revision(relative), frame = this.frame();
     if (frame && !frame.baselines.has(relative)) frame.baselines.set(relative, { before, revision });
     const edit: EditRecord = { id: randomUUID(), before, beforeRevision: revision, beforeId: active.before.id, path: relative,
@@ -765,7 +766,7 @@ export class WorkspaceCheckpoints {
   }
   private async relativePath(filePath: string, active = this.current()): Promise<string | undefined> {
     if (!active) return;
-    const target = path.resolve(filePath), root = active.store.workspace, alias = path.resolve(this.workspace);
+    const target = resolveRealWritePath(filePath) ?? path.resolve(filePath), root = active.store.workspace, alias = path.resolve(this.workspace);
     const base = inside(root, target) ? root : inside(alias, target) ? alias : undefined;
     return base ? active.store.normalizeFilePath(path.relative(base, target).split(path.sep).join("/")) : undefined;
   }

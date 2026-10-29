@@ -3,6 +3,8 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { CheckpointError, getCheckpointStore, WorkspaceCheckpoints } from "./WorkspaceCheckpoints.js";
 import type { CheckpointRequest } from "./types.js";
+import { writeTextFile } from "../../tool/builtin/filesystem/writeTextFile.js";
+import { canonicalWorkspacePath } from "./WorkspaceCoordinator.js";
 const requests = new Map<string, AbortController>();
 
 /** All Web file mutations execute in the Gateway, alongside agent operations. */
@@ -24,7 +26,10 @@ export async function runWorkspaceFileOperation(root: string, pilotHome: string,
   if (requests.has(requestKey)) throw new CheckpointError("DUPLICATE_REQUEST", "File request already running.");
   const relative = (value: string) => {
     if (typeof value !== "string" || !value || value.includes("\0")) throw new CheckpointError("INVALID_PATH", "Invalid project file path.");
-    return path.isAbsolute(value) ? path.relative(store.workspace, value).split(path.sep).join("/") : value;
+    // Canonicalize parent aliases (/var on macOS, registered workspace aliases)
+    // without following the final file symlink that save/rename/delete operate on.
+    return path.isAbsolute(value) ? path.relative(store.workspace,
+      path.join(canonicalWorkspacePath(path.dirname(value)), path.basename(value))).split(path.sep).join("/") : value;
   };
   const name = await store.normalizeFilePath(relative(input.path));
   const target = await store.resolveFile(name);
@@ -45,17 +50,14 @@ export async function runWorkspaceFileOperation(root: string, pilotHome: string,
       controller.signal.throwIfAborted();
       await store.resolveFile(name);
       const info = await fs.lstat(target).catch(error => { if (error.code === "ENOENT") return undefined; throw error; });
-      if (fileMutation) await history.trackEdit(target, turnId);
+      if (fileMutation && input.operation !== "save") await history.trackEdit(target, turnId, { allowUnprotected: true });
       if (input.operation === "save") {
         if (typeof input.content !== "string") throw new CheckpointError("INVALID_CONTENT", "File content is required.");
-        const before = await store.captureFile(name, false);
         const expected = input.expectedHash ?? (input.expectedContent === undefined ? undefined : createHash("sha256").update(input.expectedContent).digest("hex"));
-        if (expected !== undefined && (before.kind !== "file" || before.hash !== expected)) throw new CheckpointError("FILE_CHANGED", "文件已被修改，请重新读取后再保存。");
-        const temporary = path.join(path.dirname(target), `.pilotdeck-restore-${randomUUID()}`);
-        try {
-          await fs.writeFile(temporary, input.content, { flag: "wx", mode: info?.mode ?? 0o644 });
-          if (info) await fs.rename(temporary, target); else await fs.link(temporary, target);
-        } finally { await fs.unlink(temporary).catch(() => {}); }
+        const currentHash = expected === undefined ? undefined : await fs.readFile(target).then(content => createHash("sha256").update(content).digest("hex"), error => { if (error.code === "ENOENT") return undefined; throw error; });
+        if (expected !== undefined && currentHash !== expected) throw new CheckpointError("FILE_CHANGED", "文件已被修改，请重新读取后再保存。");
+        await history.trackEdit(target, turnId, { allowUnprotected: true });
+        await writeTextFile(target, input.content, { allowOverwrite: !!info });
       } else if (input.operation === "create") {
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.writeFile(target, "", { flag: "wx" });
@@ -76,7 +78,7 @@ export async function runWorkspaceFileOperation(root: string, pilotHome: string,
         await fs.mkdir(path.dirname(target), { recursive: true });
         // A temporary sibling keeps publication atomic even across filesystems.
         const temporary = path.join(path.dirname(target), `.pilotdeck-restore-${randomUUID()}`);
-        try { await fs.copyFile(source, temporary, constants.COPYFILE_EXCL); await fs.link(temporary, target); }
+        try { await fs.copyFile(source, temporary, constants.COPYFILE_EXCL); controller.signal.throwIfAborted(); await fs.link(temporary, target); }
         finally { await fs.unlink(temporary).catch(() => {}); }
       }
       if (fileMutation) await history.recordEdit(target, turnId, input.operation === "save" ? input.content : undefined);

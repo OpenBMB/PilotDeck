@@ -47,7 +47,12 @@ export async function runLegacyRepositoryOperation(root: string, input: Reposito
     else throw new CheckpointError("INVALID_FILES", "No changes to discard.");
   } else if (["fetch", "pull", "push", "publish"].includes(action ?? "")) {
     const current = (await git(["symbolic-ref", "--short", "HEAD"])).stdout.trim();
-    const configuredRemote = await git(["config", "--get", `branch.${current}.remote`]).then(value => value.stdout.trim(), () => "origin");
+    let configuredRemote = await git(["config", "--get", `branch.${current}.remote`]).then(value => value.stdout.trim(), () => "");
+    if (!configuredRemote) {
+      const remotes = (await git(["remote"])).stdout.trim().split(/\r?\n/).filter(Boolean);
+      configuredRemote = remotes.includes("origin") ? "origin" : remotes[0];
+      if (!configuredRemote) throw new CheckpointError("NO_REMOTE", "Configure a remote repository before publishing.");
+    }
     const ref = await git(["config", "--get", `branch.${current}.merge`]).then(value => value.stdout.trim().replace(/^refs\/heads\//, ""), () => current);
     if (configuredRemote.startsWith("-") || ref.startsWith("-")) throw new CheckpointError("INVALID_REMOTE", "Invalid remote.");
     if (action === "fetch") result = await git(["fetch", "--", configuredRemote]);
