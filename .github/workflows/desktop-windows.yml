@@ -13,9 +13,32 @@ on:
         required: false
         default: "0"
         type: string
+      require_windows_signing:
+        description: Sign with Certum cloud credentials from the windows-signing environment
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      release_date:
+        description: Optional YYYY-MM-DD release date
+        required: false
+        type: string
+      revision:
+        description: Zero-based same-day build revision
+        default: "0"
+        type: string
+      require_windows_signing:
+        description: Require Certum cloud signing (main branch only)
+        default: true
+        type: boolean
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ inputs.require_windows_signing && 'windows-certum-signing' || format('windows-build-{0}-{1}', github.run_id, github.run_attempt) }}
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -26,6 +49,8 @@ jobs:
     name: ${{ matrix.arch }}
     strategy:
       fail-fast: false
+      # A Certum TOTP can only be consumed once; serialize the two cloud logins.
+      max-parallel: ${{ inputs.require_windows_signing && 1 || 2 }}
       matrix:
         include:
           - arch: x64
@@ -35,13 +60,27 @@ jobs:
             runner: windows-11-arm
             unpacked_dir: win-arm64-unpacked
     runs-on: ${{ matrix.runner }}
+    environment: ${{ inputs.require_windows_signing && 'windows-signing' || '' }}
     timeout-minutes: 60
     env:
       PILOTDECK_DESKTOP_NODE_ARCH: ${{ matrix.arch }}
       PILOTDECK_RELEASE_DATE: ${{ inputs.release_date }}
       PILOTDECK_RELEASE_REVISION: ${{ inputs.revision }}
       PILOTDECK_COMMIT_SHA: ${{ github.sha }}
+      PILOTDECK_WINDOWS_SIGNING: off
     steps:
+      - name: Restrict signing to trusted main-branch releases
+        if: ${{ inputs.require_windows_signing }}
+        shell: pwsh
+        env:
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_REF: ${{ github.ref }}
+          SOURCE_EVENT: ${{ github.event_name }}
+        run: |
+          if ($env:SOURCE_REPOSITORY -ne 'OpenBMB/PilotDeck' -or $env:SOURCE_REF -ne 'refs/heads/main' -or $env:SOURCE_EVENT -notin @('schedule', 'workflow_dispatch', 'push')) {
+            throw 'Production code signing is only allowed for trusted main-branch runs.'
+          }
+
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
@@ -71,6 +110,9 @@ jobs:
       - name: Verify Windows tray and quit confirmation
         run: node --test apps/desktop/scripts/desktop-lifecycle.test.mjs
 
+      - name: Verify Windows signing policy
+        run: node --test apps/desktop/scripts/windows-signing.test.mjs
+
       - name: Verify tray lifecycle in Electron with an isolated runtime
         run: node apps/desktop/scripts/verify-windows-tray.cjs
 
@@ -88,10 +130,59 @@ jobs:
 
       - name: Disable Windows signing
         shell: pwsh
-        run: '"CSC_IDENTITY_AUTO_DISCOVERY=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append'
+        run: |
+          "CSC_IDENTITY_AUTO_DISCOVERY=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PILOTDECK_WINDOWS_SIGNING=off" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare pinned Certum cloud signing tool
+        if: ${{ inputs.require_windows_signing }}
+        shell: pwsh
+        run: ./apps/desktop/scripts/setup-cloud-signing.ps1
+
+      - name: Build Windows runtime and desktop sources
+        shell: pwsh
+        run: |
+          pnpm --filter pilotdeck-desktop run build:runtime
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime build failed.' }
+          pnpm --filter pilotdeck-desktop run compile
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop compile failed.' }
+
+      - name: Verify updater transport and chunked downloads
+        timeout-minutes: 3
+        run: pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-download.cjs
+
+      - name: Build signed Windows ${{ matrix.arch }} installer
+        if: ${{ inputs.require_windows_signing }}
+        env:
+          PILOTDECK_WINDOWS_SIGNING: required
+          PILOTDECK_WINDOWS_SIGNING_PROVIDER: ssign
+          PILOTDECK_WINDOWS_CERT_SHA1: ${{ vars.WINDOWS_CERT_SHA1 }}
+          PILOTDECK_WINDOWS_PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/pilotdeck-signing-session
+        shell: pwsh
+        run: |
+          if (-not $env:CERTUM_EMAIL -or -not $env:CERTUM_OTP) { throw 'Set CERTUM_EMAIL and CERTUM_OTP in the windows-signing environment.' }
+          if (-not $env:PILOTDECK_WINDOWS_CERT_SHA1 -or -not $env:PILOTDECK_WINDOWS_PUBLISHER) { throw 'Set WINDOWS_CERT_SHA1 and WINDOWS_PUBLISHER in the windows-signing environment.' }
+          pnpm --dir apps/desktop exec electron-builder --config electron-builder.config.cjs --win --${{ matrix.arch }} --publish never
+          if ($LASTEXITCODE -ne 0) { throw 'Signed Windows build failed.' }
+          $installer = Get-ChildItem 'apps/desktop/dist-electron/*-win-${{ matrix.arch }}-setup.exe' | Select-Object -First 1
+          node apps/desktop/scripts/windows-signing.cjs verify $installer.FullName 'apps/desktop/dist-electron/${{ matrix.unpacked_dir }}/PilotDeck.exe' 'apps/desktop/resources/.installer-tools/install-payload.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Windows signature verification failed.' }
+
+      - name: Remove temporary cloud signing session
+        if: ${{ always() && inputs.require_windows_signing }}
+        shell: pwsh
+        run: |
+          $sessionRoot = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'pilotdeck-signing-session'))
+          $expectedParent = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/')
+          if ([IO.Path]::GetDirectoryName($sessionRoot) -ne $expectedParent) { throw 'Unexpected signing cache location.' }
+          if (Test-Path -LiteralPath $sessionRoot) { Remove-Item -LiteralPath $sessionRoot -Recurse -Force }
 
       - name: Build Windows ${{ matrix.arch }} installer
-        run: pnpm --filter pilotdeck-desktop run dist:win:${{ matrix.arch }}
+        if: ${{ !inputs.require_windows_signing }}
+        run: pnpm --dir apps/desktop exec electron-builder --config electron-builder.config.cjs --win --${{ matrix.arch }} --publish never
 
       - name: Verify Windows artifact
         timeout-minutes: 5

@@ -2,6 +2,36 @@
 
 Electron desktop shell for the existing PilotDeck Web UI and local gateway runtime.
 
+## Notifications
+
+**Settings > General > Notifications** controls system notifications, the default
+notification sound, app icon counts, and message previews. Desktop preferences
+are saved on this device. Banners and sounds also follow OS permission and
+Do Not Disturb settings; the settings card links to the native notification
+settings and provides instructions if the desktop environment cannot open them.
+
+Completion, approval requests, questions, and terminal errors generate one
+reminder per event. A conversation contributes at most one to the badge count;
+viewing it clears that reminder without approving an operation or answering a
+question. The visible, focused conversation is quiet. Connection loss lasting
+15 seconds reminds only for running conversations. Automatic model retries and
+user cancellation do not notify.
+
+Desktop notifications rely on the OS application identity icon; no additional
+content image is attached on macOS, Windows or Linux.
+
+macOS uses Dock badges. Windows uses taskbar overlays; Windows and Linux tray
+icons also show counts while the main window is hidden. Linux launcher badges
+depend on the desktop's LauncherEntry support. Clicking a notification restores
+the existing window and opens its conversation.
+
+The web app uses browser notifications on HTTPS/localhost. With browser
+permission and a reachable Web Push service, reminders can also arrive while
+the page is closed. Browser tabs display the count in the title; installed PWAs
+use app badges where supported. Service Worker storage deduplicates live and
+push delivery and preserves pending reminders. Read state is local to each
+browser/device.
+
 ## Development
 
 ```bash
@@ -276,3 +306,93 @@ navigation/F10, all three caption buttons, double-click maximize/restore, edge
 resizing, Snap Layouts, 100%/125%/150% scaling, fullscreen and light/dark/system
 appearance. On macOS, manually check native menu accelerators, titlebar dragging and the system's configured
 double-click action, including controls/popovers overlapping the header.
+
+## Windows signing (EXE installers)
+
+Windows packaging loads `electron-builder.config.cjs`. On a configured Windows
+machine, `pack` and every `dist:win*` command automatically sign the PilotDeck
+application, installer payload helper, NSIS uninstaller, and final installer or
+portable EXE. Bundled third-party executables retain their original signatures.
+Every signature uses SHA-256 and an RFC3161 timestamp, then passes SignTool
+`verify /pa /all` and a certificate thumbprint/publisher/timestamp check.
+Signing errors stop packaging. The updater receives the expected publisher name.
+
+For local Certum SimplySign signing, log in to SimplySign Desktop under the same
+Windows account that runs the build. DSignTool is an optional manual UI; automated
+builds call Microsoft's Windows SDK SignTool directly. No PFX export is needed.
+Create `%LOCALAPPDATA%\PilotDeck\build-signing.json` with public metadata only:
+
+```json
+{
+  "certificateSha1": "YOUR_40_CHARACTER_CERTIFICATE_THUMBPRINT",
+  "publisherName": "EXACT_CERTIFICATE_COMMON_NAME",
+  "signToolPath": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\SDK_VERSION\\x64\\signtool.exe",
+  "timestampServer": "http://time.certum.pl"
+}
+```
+
+Do not put a PIN, OTP seed or private key in this file or the repository.
+`PILOTDECK_WINDOWS_SIGNING_CONFIG` selects another local config file.
+`PILOTDECK_WINDOWS_CERT_SHA1`, `PILOTDECK_WINDOWS_PUBLISHER` and `SIGNTOOL_PATH`
+override individual values. `PILOTDECK_WINDOWS_SIGNING=required` rejects missing
+configuration; `off` explicitly produces an unsigned development build. Without
+configuration, `auto` keeps the existing unsigned build behavior. A present but
+invalid config fails rather than silently producing unsigned output. These
+settings do not change macOS/Linux packaging. SimplySign may require a fresh login
+before a later build; signing does not make its desktop session permanent.
+
+```powershell
+pnpm --filter pilotdeck-desktop run dist:win:x64
+node apps/desktop/scripts/windows-signing.cjs verify PATH_TO_SETUP_EXE
+```
+
+### GitHub hosted runner option
+
+The Windows workflow supports an opt-in cloud backend using the independent
+[ssign client](https://github.com/Le-Syl21/ssign). It does not need a self-hosted
+runner or an online desktop PC. `setup-cloud-signing.ps1` pins v0.1.8 and the ZIP's
+SHA-256 digest; this version includes the Certum EV intermediate certificate fix.
+This is not a Certum-supported integration. A successful local SignTool test does
+not validate the cloud client; complete a real cloud build before enabling daily
+release signing.
+
+Repository administrator setup:
+
+1. Create the GitHub Environment `windows-signing`, restrict its deployment
+   branches to `main`, and add required reviewers if each signature needs approval.
+2. Add environment secrets `CERTUM_EMAIL` (SimplySign login) and `CERTUM_OTP`
+   (the long-lived base32 TOTP seed or complete `otpauth://` URI from the activation
+   QR backup, **not** a current six-digit code). Enter these directly in GitHub;
+   never put them in chat, workflow inputs, command arguments or build artifacts.
+3. Add environment variables `WINDOWS_CERT_SHA1` and `WINDOWS_PUBLISHER` matching
+   the certificate. Both are public metadata. For certificate renewal, update the
+   thumbprint and repeat the cloud test; retain the publisher if its CN is unchanged.
+4. After the workflow changes are on `main`, run **Windows Signing Check** for a
+   small real signature/verification probe, then run the **Windows** workflow
+   with `require_windows_signing=true`. It builds both native architectures, signs
+   each EXE before generating updater hashes, and fails on invalid signatures.
+5. Only after that succeeds, set the repository variable
+   `PILOTDECK_WINDOWS_SIGNING_ENABLED=true`. Daily Release then requires the signed
+   Windows job to succeed. Until enabled, existing daily Windows builds remain
+   unsigned. Manual Desktop Build also exposes `require_windows_signing`.
+
+An activation QR backup must contain the actual TOTP seed/`otpauth://` URI for
+this client. An activation URL alone is not sufficient; do not upload the QR image
+to an online decoder. Confirm the backup format locally before configuring CI.
+
+Only trusted `main` runs in `OpenBMB/PilotDeck` may request signing. Dependencies,
+tests and runtime compilation run before signing secrets are injected. The two
+architecture jobs are serialized when signing to avoid consuming one TOTP twice.
+Credentials are scoped to the packaging step, and its temporary session cache is
+removed even on failure; it must never be cached/uploaded. Signatures are checked
+with Microsoft's verifier and must match the configured certificate. ssign v0.1.8
+selects the first cloud card; accounts with several cards require a client with
+explicit certificate selection before use. The TOTP seed grants signing authority,
+so GitHub access to the environment must be controlled accordingly.
+
+Linux package signing is separate: RPM and APT repository signing use OpenPGP/GPG
+keys. This Authenticode certificate cannot be substituted for those keys. Running
+ssign on Linux signs Windows PE files, not Linux DEB/RPM packages. See
+[Certum's SignTool instructions](https://files.certum.eu/documents/manual_en/CS-Code_Signing_in_the_Cloud_Signtool_jarsigner_signing.pdf),
+[RPM signing](https://rpm.org/docs/6.1.x/man/rpmsign.1) and
+[APT authentication](https://manpages.debian.org/unstable/apt/apt-secure.8.en.html).

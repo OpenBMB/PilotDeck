@@ -164,6 +164,17 @@ jobs:
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           echo "CSC_IDENTITY_AUTO_DISCOVERY=true" >> "$GITHUB_ENV"
 
+      - name: Use TCP for Apple notarization on Intel
+        if: ${{ matrix.arch == 'x64' && inputs.require_macos_signing }}
+        shell: bash
+        run: |
+          # Work around HTTP/3 disconnects on macos-15-intel:
+          # https://github.com/actions/runner-images/issues/14924
+          printf '%s\n' 'block return out quick proto udp from any to any port 443' | sudo pfctl -f -
+          sudo pfctl -E
+          sudo pfctl -s info
+          sudo pfctl -sr
+
       - name: Build macOS ${{ matrix.arch }} installer
         shell: bash
         run: |

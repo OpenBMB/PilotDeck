@@ -107,6 +107,8 @@
     "compactFailed": "上下文压缩失败",
     "compactCancelled": "上下文压缩已停止",
     "compactingLevel": "正在触发 {{level}} 级压缩：{{label}}",
+    "waitingForAnswer": "等待你回答",
+    "waitingForApproval": "等待你审批",
     "waitingForPermission": "等待授权",
     "retrying": "重连中 {{attempt}}/{{max}}{{delay}}",
     "waitingForSubagent": "等待子任务完成",

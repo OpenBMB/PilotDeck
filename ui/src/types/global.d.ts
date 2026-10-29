@@ -3,6 +3,7 @@ import type { DesktopUpdateCheck, DesktopUpdateState } from "../utils/desktopUpd
 import type { LightAppearance } from '../lib/lightAppearance';
 import type { InterfacePreferences } from '../lib/interfacePreferences';
 import type { DesktopAboutInfo } from '../utils/desktopAbout';
+import type { NotificationPreferences, SystemNotification, DesktopNotificationStatus } from '../../shared/notifications';
 export {};
 
 declare global {
@@ -16,6 +17,13 @@ declare global {
     switchProject?: (projectName: string) => boolean;
     pilotdeckDesktop?: {
       platform?: string;
+      getNotificationStatus?: () => Promise<DesktopNotificationStatus & { preferences: NotificationPreferences }>;
+      setNotificationPreferences?: (value: NotificationPreferences) => Promise<NotificationPreferences>;
+      showNotification?: (value: SystemNotification) => Promise<boolean>;
+      recordTaskReminder?: (value: SystemNotification) => Promise<boolean>;
+      setNotificationScope?: (scope: string | null) => Promise<void>;
+      openNotificationSettings?: () => Promise<boolean>;
+      onNotificationNavigate?: (callback: (data: SystemNotification['data']) => void) => () => void;
       getZoomFactor?: () => number;
       resetZoom?: () => void;
       getAboutInfo?: () => Promise<DesktopAboutInfo>;

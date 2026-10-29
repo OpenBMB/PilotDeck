@@ -266,6 +266,9 @@ export const api = {
     if (token) params.set('token', token);
     return `/api/search/conversations?${params.toString()}`;
   },
+  globalSearch: (body, { signal } = {}) => authenticatedFetch('/api/search/global', {
+    method: 'POST', body: JSON.stringify(body), signal,
+  }),
   createProject: (path) =>
     authenticatedFetch('/api/projects/create', {
       method: 'POST',
@@ -288,6 +291,8 @@ export const api = {
   },
   readFileBlob: (projectName, filePath) =>
     authenticatedFetch(api.fileContentUrl(projectName, filePath), { suppressServerErrorToast: true }),
+  fileMetadata: (projectName, filePath, { signal } = {}) =>
+    authenticatedFetch(api.fileContentUrl(projectName, filePath), { method: 'HEAD', cache: 'no-store', signal, suppressServerErrorToast: true }),
   fileContentSha256: (projectName, filePath) => {
     const params = new URLSearchParams({ path: filePath, sha256: '1' });
     return authenticatedFetch(

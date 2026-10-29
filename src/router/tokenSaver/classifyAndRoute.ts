@@ -73,7 +73,6 @@ export async function classifyAndRoute(
       },
     ],
     maxOutputTokens: 256,
-    thinking: { enabled: false },
     stream: false,
   };
 

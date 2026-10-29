@@ -88,7 +88,15 @@ it('fetches catalog provider models from the configured proxy endpoint', async (
   const request = mocks.fetch.mock.calls.find(([url]) => url === '/api/config/models')!;
   expect(new URL(JSON.parse(request[1].body).baseUrl).origin).toBe('https://proxy.example');
 });
-it.each([undefined, { enabled: false, timezone: 'UTC' }])('offers a way to enable a missing or disabled scheduler: %j', (cron) => {
+it.each([undefined, null, {}])('allows disabling the default scheduler: %j', (cron) => {
+  const onChange = vi.fn();
+  render(<CronSection config={{ cron }} onChange={onChange} />);
+  fireEvent.click(screen.getByRole('switch', { name: 'pilotDeckConfig.panels.cron.enableLabel', checked: true }));
+  expect(onChange).toHaveBeenCalledOnce();
+  expect(onChange.mock.calls[0][0].cron).toEqual({ enabled: false });
+});
+it('offers a way to enable an explicitly disabled scheduler', () => {
+  const cron = { enabled: false, timezone: 'UTC' };
   const onChange = vi.fn();
   render(<CronSection config={{ cron }} onChange={onChange} />);
   fireEvent.click(screen.getByRole('switch', { name: 'pilotDeckConfig.panels.cron.enableLabel', checked: false }));

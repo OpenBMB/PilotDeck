@@ -86,7 +86,7 @@ export default function CodeEditorHeader({
   return (
     <div
       className={compact
-        ? 'absolute right-2 top-1 z-10 flex h-8 items-center rounded-md bg-neutral-50 pl-2 dark:bg-neutral-900'
+        ? 'flex h-10 shrink-0 items-center border-b border-neutral-200 bg-neutral-50 px-2 dark:border-neutral-800 dark:bg-neutral-900/70'
         : 'flex min-w-0 flex-shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950'}
     >
       {!compact ? (

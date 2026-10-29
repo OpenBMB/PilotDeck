@@ -71,6 +71,8 @@
     "showMore": "显示更多会话",
     "showMoreCount": "显示更多 ({{count}})",
     "showLess": "收起",
+    "waitingForAnswer": "等待你回答",
+    "waitingForApproval": "等待你审批",
     "processing": "智能体运行中",
     "unread": "有未读消息",
     "idle": "无未读消息",

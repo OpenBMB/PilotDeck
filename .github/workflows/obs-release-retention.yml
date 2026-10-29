@@ -1,0 +1,55 @@
+name: OBS Release Retention
+
+on:
+  schedule:
+    # Monday 05:30 Asia/Shanghai.
+    - cron: '30 21 * * 0'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete objects listed by the retention policy
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Share the production sync lock so cleanup never overlaps publishing latest.
+  group: release-to-obs
+  cancel-in-progress: false
+
+jobs:
+  retention:
+    if: github.ref == 'refs/heads/main'
+    environment: obs-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Test retention policy
+        run: python3 -m unittest discover -s .github/scripts -p 'test_obs_release_retention.py'
+      - name: Install AWS CLI
+        run: |
+          python3 -m venv "$RUNNER_TEMP/obs-cli"
+          "$RUNNER_TEMP/obs-cli/bin/pip" install 'awscli>=1.36,<2'
+          echo "$RUNNER_TEMP/obs-cli/bin" >> "$GITHUB_PATH"
+      - name: Plan or apply retention
+        env:
+          OBS_CREDENTIALS_BEARER_TOKEN: ${{ secrets.OBS_CREDENTIALS_BEARER_TOKEN }}
+          APPLY: ${{ (github.event_name == 'workflow_dispatch' && inputs.apply) || (github.event_name == 'schedule' && vars.OBS_RETENTION_ENABLED == 'true') }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$APPLY" == true ]]; then args+=(--apply); fi
+          python3 -u .github/scripts/obs_release_retention.py "${args[@]}"
+      - name: Save exact retention plan
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: obs-retention-plan
+          path: retention-plan.json
+          if-no-files-found: ignore
+          retention-days: 30

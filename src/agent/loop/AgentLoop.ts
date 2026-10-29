@@ -85,12 +85,17 @@ const CIRCUIT_BREAKER_GRACE_PROMPT = [
   "(2) explain the situation in text without calling tools,",
   "(3) if you believe the tool should work, try once more with corrected input.",
 ].join(" ");
-const PLAN_MODE_REMINDER_MESSAGE = [
-  "Plan mode is active.",
-  "Read first using read-only tools, then write or refine plan markdown only under `.pilotdeck/plans/`.",
-  "Do not make implementation changes while planning.",
-  "When the plan is ready for user review, call `exit_plan_mode` with the plan file path.",
-].join("\n");
+function planModeReminderMessage(planDirectory?: string): string {
+  return [
+    "Plan mode is active.",
+    planDirectory
+      ? `Read first using read-only tools, then use write_file/edit_file to write plan markdown ONLY under this absolute plan directory: ${planDirectory}`
+      : "Read first using read-only tools, then write or refine plan markdown only under `.pilotdeck/plans/`.",
+    ...(planDirectory ? ["Use that absolute directory for file paths and exit_plan_mode; do not assume cwd/.pilotdeck/plans is the plan directory."] : []),
+    "Do not make implementation changes while planning.",
+    "When the plan is ready for user review, call `exit_plan_mode` with the plan file path.",
+  ].join("\n");
+}
 
 function logAutoCompactFailure(
   stage: string,
@@ -2055,7 +2060,7 @@ export class AgentLoop {
     }
 
     const finalMessages = this.config.permissionMode === "plan"
-      ? appendPlanModeReminder(materialized.messages)
+      ? appendPlanModeReminder(materialized.messages, this.dependencies.planFileManager?.getPlanDirectoryPath())
       : materialized.messages;
     const finalCachePlan = prepared.cachePlan
       ? buildCachePlan({
@@ -2940,12 +2945,12 @@ function hasReplayableReasoningContent(message: CanonicalMessage): boolean {
   );
 }
 
-function appendPlanModeReminder(messages: CanonicalMessage[]): CanonicalMessage[] {
+function appendPlanModeReminder(messages: CanonicalMessage[], planDirectory?: string): CanonicalMessage[] {
   return [
     ...messages,
     {
       role: "user",
-      content: [{ type: "text", text: PLAN_MODE_REMINDER_MESSAGE }],
+      content: [{ type: "text", text: planModeReminderMessage(planDirectory) }],
       metadata: { synthetic: true, purpose: "plan_mode_reminder" },
     },
   ];

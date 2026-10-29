@@ -107,6 +107,8 @@
     "compactFailed": "Context compaction failed",
     "compactCancelled": "Context compaction stopped",
     "compactingLevel": "Triggering level {{level}} compaction: {{label}}",
+    "waitingForAnswer": "Waiting for your answer",
+    "waitingForApproval": "Waiting for approval",
     "waitingForPermission": "Waiting for permission",
     "retrying": "Reconnecting {{attempt}}/{{max}}{{delay}}",
     "waitingForSubagent": "Waiting for subagent",

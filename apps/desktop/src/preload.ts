@@ -4,6 +4,7 @@ import { installWindowChrome } from "./preloadChrome";
 import type { DesktopCommand, DesktopMenuState } from "./desktopCommands";
 import type { DesktopAppearance } from './appearance';
 import type { FilePickerRequest, FilePickerResult } from './filePicker';
+import type { NotificationPreferences, SystemNotification } from '../../../ui/shared/notifications';
 
 installWindowChrome(process.platform, ipcRenderer);
 
@@ -16,6 +17,17 @@ type RuntimeStatus = {
 
 contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   platform: process.platform,
+  getNotificationStatus: () => ipcRenderer.invoke('pilotdeck:notification-status'),
+  setNotificationPreferences: (value: NotificationPreferences) => ipcRenderer.invoke('pilotdeck:notification-preferences', value),
+  showNotification: (value: SystemNotification) => ipcRenderer.invoke('pilotdeck:notification-show', value),
+  recordTaskReminder: (value: SystemNotification) => ipcRenderer.invoke('pilotdeck:notification-reminder', value),
+  setNotificationScope: (scope: string | null) => ipcRenderer.invoke('pilotdeck:notification-scope', scope),
+  openNotificationSettings: () => ipcRenderer.invoke('pilotdeck:notification-settings'),
+  onNotificationNavigate: (callback: (data: SystemNotification['data']) => void) => {
+    const listener = (_event: IpcRendererEvent, data: SystemNotification['data']) => callback(data);
+    ipcRenderer.on('pilotdeck:notification-navigate', listener);
+    return () => ipcRenderer.off('pilotdeck:notification-navigate', listener);
+  },
   // Zoom roles in the application menu drive these; the renderer polls the
   // factor on window resize to show transient feedback (webFrame has no events).
   getZoomFactor: () => webFrame.getZoomFactor(),

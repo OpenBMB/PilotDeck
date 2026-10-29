@@ -1,5 +1,28 @@
 import webPush from 'web-push';
 import { notificationPreferencesDb, pushSubscriptionsDb, sessionNamesDb } from '../database/db.js';
+import { buildSystemNotification, normalizeNotificationPreferences } from '../../shared/notifications.js';
+
+export function notifySessionAttention(userId, notification) {
+  if (userId === undefined || userId === null) return;
+  const name = sessionNamesDb.getName(notification.sessionId, 'pilotdeck');
+  const event = { ...notification, sessionName: name || notification.sessionName };
+  for (const subscription of pushSubscriptionsDb.getSubscriptions(userId)) {
+    let saved = {};
+    try { saved = JSON.parse(subscription.preferences_json || '{}'); } catch { /* Legacy subscription. */ }
+    const preferences = normalizeNotificationPreferences({ enabled: true, ...saved });
+    if (!preferences.enabled) continue;
+    const payload = buildSystemNotification(event, preferences, saved.language || 'en');
+    // Strip previews before crossing the push service when the user disables them.
+    payload.event = { ...event, preview: preferences.preview ? event.preview : undefined };
+    payload.preferences = preferences;
+    webPush.sendNotification({ endpoint: subscription.endpoint, keys: {
+      p256dh: subscription.keys_p256dh, auth: subscription.keys_auth,
+    } }, JSON.stringify(payload), { TTL: 3600 }).catch(error => {
+      if (error.statusCode === 404 || error.statusCode === 410) pushSubscriptionsDb.removeSubscription(subscription.endpoint, userId);
+      else console.warn('Web push delivery failed:', error.statusCode || error.message);
+    });
+  }
+}
 
 const KIND_TO_PREF_KEY = {
   action_required: 'actionRequired',

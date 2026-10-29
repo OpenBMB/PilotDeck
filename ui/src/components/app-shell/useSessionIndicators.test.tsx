@@ -82,3 +82,30 @@ it('reconciles a completion missed during refresh, and isolates accounts', () =>
   expect(createSessionIndicatorStore('user-b',localStorage).getSnapshot().unreadSessionIds.size).toBe(0);
   expect(() => createSessionIndicatorStore('no-storage',undefined).receive(completed())).not.toThrow();
 });
+it('counts approval and failure reminders per conversation, ignores older replay, and clears deleted conversations', () => {
+  const store = createSessionIndicatorStore('test', localStorage);
+  store.receive({ type: 'session-attention', activity: { sessionId: 's1', attentionId: 'approval:p1', attentionAt: '2026-10-27T03:00:00Z' } });
+  store.receive({ type: 'session-attention', activity: { sessionId: 's1', attentionId: 'error:r1', attentionAt: '2026-10-27T03:01:00Z' } });
+  expect(store.getSnapshot().unreadSessionIds.size).toBe(1);
+  store.receive({ type: 'session-attention', activity: { sessionId: 's1', attentionId: 'approval:p1', attentionAt: '2026-10-27T03:00:00Z' } });
+  expect(store.unreadRun('s1')).toBe('error:r1');
+  store.markRead('s1', 'approval:p1');
+  expect(store.getSnapshot().unreadSessionIds.size).toBe(1);
+  store.receive({ type: 'session-deleted', sessionId: 's1' });
+  expect(store.getSnapshot().unreadSessionIds.size).toBe(0);
+});
+
+it('keeps waiting state after reading the reminder and clears it on resume and snapshots', () => {
+  const store = createSessionIndicatorStore('waiting', localStorage);
+  store.receive({type:'session-activity',activity:{sessionId:'s1',processing:true,waitingFor:'question',attentionId:'question:q1'}});
+  store.markRead('s1');
+  expect(store.getSnapshot().waitingSessions.get('s1')).toBe('question');
+  expect(store.getSnapshot().unreadSessionIds.size).toBe(0);
+  store.receive({type:'session-activity',activity:{sessionId:'s1',processing:true,waitingFor:null}});
+  expect(store.getSnapshot().waitingSessions.size).toBe(0);
+  expect(store.getSnapshot().processingSessions.has('s1')).toBe(true);
+  store.receive({type:'session-activity-snapshot',activities:[{sessionId:'s1',processing:true,waitingFor:'approval'}]});
+  expect(store.getSnapshot().waitingSessions.get('s1')).toBe('approval');
+  store.receive({type:'session-activity-snapshot',activities:[]});
+  expect(store.getSnapshot().waitingSessions.size).toBe(0);
+});

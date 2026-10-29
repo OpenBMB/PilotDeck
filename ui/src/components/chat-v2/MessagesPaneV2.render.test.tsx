@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
-import type { ChatMessage, ChatRunMode, SessionRuntimeState } from '../chat/types/types';
+import type { ChatMessage, ChatRunMode, PendingPermissionRequest, SessionRuntimeState } from '../chat/types/types';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import MessagesPaneV2 from './MessagesPaneV2';
@@ -117,6 +117,7 @@ function createPaneElement({
   activityMessages = [],
   sendingInputs = [],
   isAssistantWorking = false,
+  pendingPermissionRequests = [],
   sessionRuntimeState = 'synchronizing',
   activeRunId = null,
   runMode = 'agent',
@@ -129,6 +130,7 @@ function createPaneElement({
   activityMessages?: ChatMessage[];
   sendingInputs?: QueuedInputSummary[];
   isAssistantWorking?: boolean;
+  pendingPermissionRequests?: PendingPermissionRequest[];
   sessionRuntimeState?: SessionRuntimeState;
   activeRunId?: string | null;
   runMode?: ChatRunMode;
@@ -162,6 +164,7 @@ function createPaneElement({
         createDiff={() => []}
         setInput={() => {}}
         isAssistantWorking={isAssistantWorking}
+        pendingPermissionRequests={pendingPermissionRequests}
         sessionRuntimeState={sessionRuntimeState}
         activeRunId={activeRunId}
         runMode={runMode}
@@ -179,6 +182,7 @@ function renderPane(options: {
   activityMessages?: ChatMessage[];
   sendingInputs?: QueuedInputSummary[];
   isAssistantWorking?: boolean;
+  pendingPermissionRequests?: PendingPermissionRequest[];
   sessionRuntimeState?: SessionRuntimeState;
   activeRunId?: string | null;
   runMode?: ChatRunMode;
@@ -1822,4 +1826,21 @@ it.each([false, true])('preserves an inherited group toggle independently throug
     expect(screen.getByRole('button', { name: /first\.ts$/ }).getAttribute('aria-expanded')).toBe('false');
     expect(screen.getByRole('button', { name: /second\.ts$/ })).toBeTruthy();
   }
+});
+
+it('shows a static answer-waiting state instead of a running timer and resumes after answering', () => {
+  vi.useFakeTimers();
+  try {
+    const messages: ChatMessage[] = [{id:'wait-user',type:'user',content:'Ask a question',timestamp:new Date().toISOString()}];
+    const pendingPermissionRequests = [{requestId:'q1',toolName:'AskUserQuestion',receivedAt:new Date()}];
+    const view = renderPane({messages,isAssistantWorking:true,pendingPermissionRequests});
+    expect(screen.getAllByText(/Waiting for your answer|等待你回答/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Processed \d|已处理 \d/)).toBeNull();
+    expect(view.container.querySelector('.animate-spin')).toBeNull();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(screen.queryByText(/Processed \d|已处理 \d/)).toBeNull();
+    view.rerender(createPaneElement({messages,isAssistantWorking:true}));
+    expect(screen.queryByText(/Waiting for your answer|等待你回答/)).toBeNull();
+    expect(screen.getByText(/Processed \d|已处理 \d/)).toBeTruthy();
+  } finally { vi.useRealTimers(); }
 });

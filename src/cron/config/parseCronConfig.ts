@@ -24,8 +24,8 @@ export function parseCronConfig(
   raw: unknown,
   diagnostics: PilotConfigDiagnostic[],
 ): CronConfig | undefined {
-  if (raw === undefined) {
-    return undefined;
+  if (raw === undefined || raw === null) {
+    return defaultCronConfig();
   }
   if (!isRecord(raw)) {
     diagnostics.push({

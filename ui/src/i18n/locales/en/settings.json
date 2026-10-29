@@ -1,4 +1,27 @@
 {
+  "systemNotifications": {
+    "title": "Notifications",
+    "enabled": "Enable system notifications",
+    "description": "Get notified when a task completes, needs approval or an answer, or cannot continue.",
+    "sound": "Notification sound",
+    "soundDescription": "Use the default notification sound. System sound settings also apply.",
+    "badge": "Show app icon badge",
+    "badgeDescription": "Count tasks that need attention while the app is in the background. Returning to the main window clears the badge; conversation unread indicators remain separate.",
+    "preview": "Show message previews",
+    "previewDescription": "Include reply or question excerpts. When off, show only the conversation name and action needed.",
+    "systemSettings": "System notification settings",
+    "openSettings": "Open system settings",
+    "showHelp": "How to enable notifications",
+    "systemControlled": "Banners and sounds are controlled by your system. Allow notifications for PilotDeck in system settings.",
+    "granted": "Browser notification permission is granted. System banner and sound settings still apply.",
+    "denied": "Notifications are blocked. Allow them in your system or browser settings.",
+    "notGranted": "When enabling notifications, allow the browser to send them.",
+    "unsupported": "System notifications are unavailable. For the web app, use HTTPS or a localhost address.",
+    "unsupportedDesktop": "System notifications are unavailable in this desktop environment. Conversation indicators remain available.",
+    "browserHelp": "Open site settings beside the browser address bar and allow notifications for this site. Also allow the browser in your system notification settings.",
+    "desktopHelp": "Open Notifications in system settings, find PilotDeck, and allow notifications. On Linux, the location depends on your desktop environment.",
+    "saveError": "Could not save notification settings. Please try again."
+  },
   "openModelSettings": "Open model settings",
   "title": "Settings",
   "tabs": {
@@ -1344,7 +1367,7 @@
         "provider": {
           "label": "Search provider",
           "description": "Choose the search service currently used by the agent.",
-          "glm": "GLM / Z.AI Web Search",
+          "deepseek": "DeepSeek Search",          "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
           "custom": "Custom",
           "serper": "Serper (Google)",
@@ -1377,7 +1400,7 @@
         },
         "endpoint": {
           "label": "Endpoint",
-          "description": "HTTP(S) request URL for the custom search service.",
+          "description": "HTTP(S) request URL for the custom search service. Changing the URL clears the saved API key. Enter the key again for the new address.",
           "placeholder": "https://example.com/search"
         },
         "custom": {
@@ -1906,5 +1929,47 @@
   "disconnect": "Disconnect OAuth",
   "cancel": "Cancel authorization",
   "localDisconnect": "Local credentials removed. Remote revocation was not confirmed; revoke access at the provider if needed."
-}
+},
+  "customSearch": {
+    "basicsTitle": "Basic configuration",
+    "requestTitle": "Request template",
+    "previewTitle": "Preview and save",
+    "variablesHelp": "Variables and request rules",
+    "namePlaceholder": "Custom search",
+    "formEncoding": "Form URL encoded",
+    "title": "Custom request and response",
+    "description": "The model calls web_search(query, gl). These settings translate that call into your API request and map its response back to search results. Save this configuration before testing the connection.",
+    "endpoint": "Request URL",
+    "name": "Provider name",
+    "method": "Request method",
+    "auth": "Authentication",
+    "authOptions": {
+      "bearer": "Bearer token",
+      "headerApiKey": "API key in header",
+      "bodyApiKey": "API key in body",
+      "queryApiKey": "API key in query",
+      "none": "No authentication"
+    },
+    "apiKeyParam": "API key field / header name",
+    "queryParam": "Legacy query field",
+    "variables": "Variables: {{query}} (search text), {{limit}} (number), {{gl}} (country, defaults to us), {{apiKey}} (saved secret). Use variables in JSON values; a standalone {{limit}} keeps its numeric type. Store secrets in the API key field, not in templates.",
+    "legacy": "Leaving both query parameters and body blank keeps the legacy query field. An explicit JSON object defines the entire request. GET uses query parameters and cannot have a body. Changing URL or authentication requires re-entering the API key.",
+    "headers": "Request headers (JSON)",
+    "queryParams": "Query parameters (JSON)",
+    "bodyEncoding": "Body encoding",
+    "requestBody": "Request body (JSON template)",
+    "mapping": "Response mapping",
+    "paths": "Paths use dotted fields and array indexes, e.g. data.results or links[0].url. Use $ for a root array. Blank result path detects common lists; blank item fields use the placeholders below. Wrong lists or URL mappings fail the connection test.",
+    "resultsPath": "Results list path",
+    "titleField": "Title field",
+    "urlField": "URL field",
+    "snippetField": "Snippet field",
+    "sourceField": "Source field",
+    "publishedAtField": "Publication date field",
+    "testQuery": "Preview query",
+    "preview": "Preview request",
+    "previewHint": "JSON bodies are expanded for readability and serialized once when sent. Preview uses a placeholder key and sends no request.",
+    "save": "Save request configuration",
+    "invalidJson": "Invalid JSON"
+  }
 }

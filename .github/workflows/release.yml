@@ -89,6 +89,7 @@ jobs:
     with:
       release_date: ${{ needs.detect.outputs.release_date }}
       revision: ${{ needs.detect.outputs.revision }}
+      require_windows_signing: ${{ vars.PILOTDECK_WINDOWS_SIGNING_ENABLED == 'true' }}
 
   release:
     permissions:

@@ -8,6 +8,7 @@ for the same provider, endpoint and authentication settings.
 
 | Provider | Credential environment variable | Official API contract |
 | --- | --- | --- |
+| DeepSeek Search | `DEEPSEEK_API_KEY` | [Search](https://api-docs.deepseek.com/api/search/) |
 | GLM / Z.AI | `GLM_WEB_SEARCH_API_KEY` or `ZAI_API_KEY` | [Web Search](https://docs.z.ai/api-reference/tools/web-search) |
 | Tavily | `TAVILY_API_KEY` | [Search](https://docs.tavily.com/documentation/api-reference/endpoint/search) |
 | Serper (Google) | `SERPER_API_KEY` | [Serper](https://serper.dev/) |
@@ -59,3 +60,87 @@ Contract tests use synthetic responses and never contact paid APIs. To verify a
 subscription, quota and regional connectivity, run Test connection with your own
 provider key. The existing implicit environment-provider precedence is preserved;
 selecting `provider` explicitly is recommended when several keys are configured.
+
+DeepSeek Search uses `POST https://api.deepseek.com/v1/tools/search` with Bearer
+API-key authentication, `query` (1–128 Unicode characters), `count`, and
+`need_content: false`. Results include citations, summaries, site names and dates.
+It uses the same request adapter for real searches and the settings connection test.
+Changing a custom endpoint removes its saved key; enter the key for the new URL
+before testing or searching. Other providers retain their saved settings.
+
+## Custom HTTP adapters
+
+The model continues to call `web_search({ query, gl? })`. The adapter, not the
+model, constructs HTTP requests and handles secrets. Settings → Search → Custom
+now exposes GET/POST, Bearer/header/body/query authentication, headers, query
+parameters, JSON or form bodies and response-field mappings. Save the request
+configuration before running Test connection. Preview request renders locally
+with a placeholder key and makes no network call.
+
+Configure the method, authentication, fields, and response mapping according to
+the provider's documentation. The preview shows JSON bodies as expanded objects;
+the adapter serializes the body once when sending the HTTP request. Form bodies
+remain URL-encoded strings in the preview, and GET requests have no body.
+
+Templates are JSON objects. Variables are supported in **values**:
+
+| Variable | Value |
+| --- | --- |
+| `{{query}}` | The model's search text |
+| `{{limit}}` | Maximum results requested; a standalone placeholder retains number type |
+| `{{gl}}` | Country code, default `us` |
+| `{{apiKey}}` | Saved provider credential; never put the literal key in a template |
+
+Nested arrays/objects are supported in JSON bodies. Query parameters and form
+bodies accept scalar values and are URL-encoded once. Substitution occurs before
+JSON serialization, so quotes/newlines cannot break JSON and query text cannot
+introduce further variables. No JavaScript or executable expressions run.
+
+```yaml
+tools:
+  webSearch:
+    enabled: true
+    provider: custom
+    providers:
+      custom:
+        endpoint: https://search.example/api
+        # apiKey: stored through Settings, or CUSTOM_WEB_SEARCH_API_KEY
+        customProvider:
+          method: POST
+          auth: headerApiKey
+          apiKeyParam: X-API-Key
+          headers:
+            X-Client: PilotDeck
+          requestBody:
+            messages:
+              - role: user
+                content: "{{query}}"
+            count: "{{limit}}"
+          resultsPath: data.hits
+          titleField: headline
+          urlField: links[0].url
+          snippetField: summary
+```
+
+Result paths use dotted names and numeric array indexes; `$` selects a root array.
+This is a bounded path syntax, not full JSONPath. String arrays (e.g. Exa
+highlights) are joined as snippets. An actual empty array is a successful empty
+search; a missing list or invalid URL mapping is an error in both Test connection
+and real searches. HTML/XML, OAuth exchanges, request signatures and multi-step
+APIs require an HTTP adapter service; they cannot be described by this JSON form.
+
+Legacy custom configs remain valid: when both `queryParams` and `requestBody` are
+absent, `queryParam` (default `query`) is populated automatically. Explicit objects
+describe the complete request. GET cannot have a body. JSON objects are limited
+to 32 KB and 20 levels; unknown variables and unsafe property paths are rejected
+when saving and again before requests. Endpoint/auth changes require re-entering
+the saved key. Masked API responses preserve the key for unchanged endpoints.
+
+Design references reviewed:
+
+- [SearXNG JSON engine](https://docs.searxng.org/dev/engines/json_engine.html): configurable method, headers, body and result selectors.
+- [Open WebUI external search](https://docs.openwebui.com/features/chat-conversations/web-search/providers/external/): stable query/count request and normalized result contract.
+- [Dify tools](https://docs.dify.ai/en/cloud/use-dify/workspace/tools): API parameters described explicitly rather than inferred from a URL.
+
+Contract tests exercise all examples with synthetic responses and a local HTTP
+server; paid providers still require a user key for live account/quota validation.

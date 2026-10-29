@@ -43,6 +43,10 @@ export async function getLatestRelease(options = {}) {
   // This public release asset is served without the GitHub REST API's shared
   // unauthenticated IP quota. The release workflow explicitly marks it Latest.
   const manifest = await requestJson(`https://github.com/${repository}/releases/latest/download/release.json`, options);
+  return validateReleaseManifest(manifest, repository);
+}
+
+export function validateReleaseManifest(manifest, repository = RELEASE_REPOSITORY) {
   let expectedVersion;
   try { expectedVersion = releaseVersion(manifest?.tag); }
   catch { throw new Error('Release manifest does not match the published release.'); }

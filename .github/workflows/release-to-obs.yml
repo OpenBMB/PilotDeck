@@ -1,0 +1,107 @@
+name: Sync Latest Release to OBS
+
+on:
+  schedule:
+    # 03:30 Asia/Shanghai.
+    - cron: '30 19 * * *'
+  workflow_dispatch:
+  push:
+    branches: [codex/obs-production-sync]
+  pull_request:
+    paths:
+      - '.github/scripts/*obs*.py'
+      - '.github/workflows/release-to-obs.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && 'release-to-obs' || format('obs-production-tests-{0}', github.ref) }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install AWS CLI for the real large-file regression
+        run: |
+          python3 -m venv "$RUNNER_TEMP/obs-cli"
+          "$RUNNER_TEMP/obs-cli/bin/pip" install 'awscli>=1.36,<2'
+          echo "$RUNNER_TEMP/obs-cli/bin" >> "$GITHUB_PATH"
+      - name: Test synchronization and retention safeguards
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*obs*.py'
+
+  sync:
+    needs: tests
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'schedule' && vars.OBS_SYNC_ENABLED == 'true'))
+    environment: obs-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Resolve latest formal release once
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > resolved-release.json
+          python3 - <<'PY'
+          import json, sys
+          from pathlib import Path
+          sys.path.insert(0, '.github/scripts')
+          from release_to_obs import release_prefix
+          release = json.loads(Path('resolved-release.json').read_text())
+          print(f"Pinned {release['tag_name']}: {len(release['assets'])} assets -> {release_prefix(release)}")
+          PY
+      - name: Download pinned release and install AWS CLI
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          release = json.loads(Path('resolved-release.json').read_text())
+          subprocess.run(['gh', 'release', 'download', release['tag_name'], '--dir', 'release-assets'], check=True)
+          PY
+          python3 -m venv "$RUNNER_TEMP/obs-cli"
+          "$RUNNER_TEMP/obs-cli/bin/pip" install 'awscli>=1.36,<2'
+          echo "$RUNNER_TEMP/obs-cli/bin" >> "$GITHUB_PATH"
+      - name: Verify local assets, obtain temporary credentials and publish
+        env:
+          OBS_CREDENTIALS_BEARER_TOKEN: ${{ secrets.OBS_CREDENTIALS_BEARER_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 -u .github/scripts/release_to_obs.py 2>&1 | tee production-sync.log
+      - name: Save synchronization evidence and original latest pointer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: obs-production-sync
+          path: |
+            resolved-release.json
+            previous-latest.json
+            published-latest.json
+            production-sync.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Synchronization summary
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          release = json.loads(Path('resolved-release.json').read_text()) if Path('resolved-release.json').exists() else {}
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write(f"Result: {os.environ['RESULT']}\n\nRelease: {release.get('tag_name', 'unresolved')}\n\n")
+              out.write(f"Assets: {len(release.get('assets', []))}\n\nDestination: obs://n00069-minicpm-5-0/PilotDeck/{release.get('tag_name', 'unresolved')}/\n")
+          PY
