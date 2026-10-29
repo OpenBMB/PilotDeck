@@ -1,4 +1,5 @@
 import type { CanonicalToolSchema } from "../../model/index.js";
+import { buildMcpToolWireName } from "../../mcp/runtime/wireName.js";
 import type {
   ContributedCommand,
   ContributedSkill,
@@ -16,6 +17,8 @@ export type PromptAssemblerInput = {
   tools: CanonicalToolSchema[];
   /** Custom system prompt (replaces sections 1 + 3). */
   customSystemPrompt?: string;
+  /** Keep available MCP operating instructions alongside a custom subagent prompt. */
+  includeMcpInstructionsWithCustomPrompt?: boolean;
   /** Optional appended fragment (always last). */
   appendSystemPrompt?: string;
   /** Optional override for the user-context "now" line. */
@@ -58,6 +61,13 @@ export class PromptAssembler {
     if (useCustom) {
       if (input.customSystemPrompt && input.customSystemPrompt.trim().length > 0) {
         parts.push(input.customSystemPrompt.trim());
+      }
+      // Subagents use a custom identity but still need the operating rules of
+      // their inherited MCP tools. Do not expose unrelated server instructions
+      // to restricted subagent presets that cannot access those tools.
+      if (input.includeMcpInstructionsWithCustomPrompt) {
+        const mcpBlock = formatMcpInstructions(availableMcpInstructions(this.extension.listMcpInstructions(), input.tools));
+        if (mcpBlock) parts.push(`Connected MCP server instructions:\n${mcpBlock}`);
       }
     } else {
       parts.push(...sections.defaultSystemPrompt);
@@ -173,6 +183,24 @@ export class PromptAssembler {
     return sections;
   }
 
+}
+
+function availableMcpInstructions(instructions: McpServerInstruction[], tools: CanonicalToolSchema[]): McpServerInstruction[] {
+  const prefixes = instructions.map(({ serverName }) => ({ serverName, prefix: buildMcpToolWireName(serverName, "") }));
+  const available = new Set<string>();
+  for (const tool of tools) {
+    const segments = tool.name.slice("mcp__".length).split("__");
+    // Without explicit ownership metadata, extra separators (including a
+    // leading '_' in the tool segment) can belong to either server or tool.
+    if (segments.length !== 2 || !segments[1] || segments[1].startsWith("_")) continue;
+    const matches = prefixes.filter(({ prefix }) => tool.name.startsWith(prefix));
+    const names = new Set(matches.map(({ serverName }) => serverName));
+    if (names.size !== 1) continue;
+    // Distinct names can normalize to the same prefix. Ambiguous encodings
+    // and normalization collisions deliberately receive no added guidance.
+    available.add(matches[0]!.serverName);
+  }
+  return instructions.filter(({ serverName }) => available.has(serverName));
 }
 
 function formatPermissionMode(mode: string): string {

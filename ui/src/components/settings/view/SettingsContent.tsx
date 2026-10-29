@@ -1,8 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useModelReferenceFocus } from '../shared/hooks/useModelReferenceFocus';
 import { useTranslation } from "react-i18next";
 import { ChevronLeft } from "lucide-react";
+import { useModelReferenceFocus } from '../shared/hooks/useModelReferenceFocus';
 import { cn } from "../../../lib/utils";
 import type { DesktopVersionCheckResult } from "../version";
 import type { SettingsMenuKey } from "../types";
@@ -11,6 +11,7 @@ import { SETTINGS_CONFIG_ICON } from "./navIcons";
 const AgentMemorySections = lazy(() => import("./agentMemory"));
 const AgentResidentSections = lazy(() => import("./agentResident"));
 const AgentRouteSections = lazy(() => import("./agentRoute"));
+const AgentSubagentsSections = lazy(() => import("./agentSubagents"));
 const AgentScheduleSections = lazy(() => import("./agentSchedule"));
 const AgentSearchSections = lazy(() => import("./agentSearch"));
 const AdvancedSections = lazy(() => import("./advanced"));
@@ -44,6 +45,7 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   usage: "settingsPage.titles.usage",
   agent: "settingsPage.titles.agent",
   agentRoute: "settingsPage.titles.agentRoute",
+  agentSubagents: "settingsPage.titles.agentSubagents",
   agentMemory: "settingsPage.titles.agentMemory",
   agentResident: "settingsPage.titles.agentResident",
   agentSearch: "settingsPage.titles.agentSearch",
@@ -65,6 +67,7 @@ const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
   usage: "settingsPage.menu.usage",
   agent: "settingsPage.menu.agent",
   agentRoute: "settingsPage.menu.agentRoute",
+  agentSubagents: "settingsPage.menu.agentSubagents",
   agentMemory: "settingsPage.menu.agentMemory",
   agentResident: "settingsPage.menu.agentResident",
   agentSearch: "settingsPage.menu.agentSearch",
@@ -85,6 +88,7 @@ const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
   modelPool: "settingsPage.descriptions.modelPool",
   usage: "settingsPage.descriptions.usage",
   agentRoute: "settingsPage.descriptions.agentRoute",
+  agentSubagents: "settingsPage.descriptions.agentSubagents",
   agentMemory: "settingsPage.descriptions.agentMemory",
   agentResident: "settingsPage.descriptions.agentResident",
   agentSearch: "settingsPage.descriptions.agentSearch",
@@ -104,6 +108,7 @@ const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
   modelPool: "model-pool-page",
   usage: "usage-page",
   agentRoute: "agent-route-page",
+  agentSubagents: "agent-subagents-page",
   agentMemory: "agent-memory-page",
   agentResident: "agent-resident-page",
   agentSearch: "agent-search-page",
@@ -194,6 +199,8 @@ export default function SettingsContent({
           <AppearanceSettings />
         ) : selectedKey === "agentRoute" ? (
           <AgentRouteSections title={title} reference={reference} />
+        ) : selectedKey === "agentSubagents" ? (
+          <AgentSubagentsSections title={title} reference={reference} />
         ) : selectedKey === "agentMemory" ? (
           <AgentMemorySections title={title} projects={projects} />
         ) : selectedKey === "agentResident" ? (
