@@ -1146,6 +1146,12 @@ async function* streamAttempt(
   try {
     for await (const event of modelRuntime.stream(request, {
       signal: abortSignal,
+      requestContext: {
+        sessionId: ctx.sessionId,
+        turnId: ctx.turnId,
+        projectPath: ctx.projectPath,
+        purpose: ctx.turnId === "compact" ? "compaction" : "conversation",
+      },
       onRetryProgress(progress) {
         events.emit({
           type: "pilotdeck_router_retry_progress",

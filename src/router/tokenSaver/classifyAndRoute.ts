@@ -122,6 +122,7 @@ export async function classifyAndRoute(
       });
       const judgeRequestPromise = input.judgeRuntime.complete(judgeRequest, {
         signal: judgeAbortController.signal,
+        requestContext: { sessionId: input.sessionId, purpose: "router-judge" },
       });
       const response = await Promise.race([
         judgeRequestPromise,

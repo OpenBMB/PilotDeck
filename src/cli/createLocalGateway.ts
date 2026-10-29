@@ -969,7 +969,7 @@ class ProjectRuntimeRegistry {
     const snapshot = loadPilotConfig({ projectRoot, env: this.options.env });
     const baseModel = this.options.modelFactory
       ? this.options.modelFactory(snapshot)
-      : createModelRuntime(snapshot.config.model);
+      : createModelRuntime(snapshot.config.model, { requestContext: { projectPath: projectRoot } });
     this.usageCounter ??= new UsageCounter(this.options.pilotHome, this.options.now);
     const model = withUsageCounter(baseModel, this.usageCounter);
     const tokenAccounting = new TokenAccountingRuntime({

@@ -55,7 +55,7 @@ test("anthropic fast mode adds the required beta header and preserves existing b
     ...provider,
     headers: { "Anthropic-Beta": "fast-mode-2026-02-01" },
   }, { speed: "fast" }) as Record<string, string>;
-  assert.equal(duplicateHeaders["Anthropic-Beta"], "fast-mode-2026-02-01");
+  assert.equal(new Headers(duplicateHeaders).get("anthropic-beta"), "fast-mode-2026-02-01");
 });
 
 test("shared request validation rejects speed for models without the capability", () => {

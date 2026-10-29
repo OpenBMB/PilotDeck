@@ -116,11 +116,17 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     ),
     timeoutMs: readOptionalPositiveNumber(provider.timeoutMs, "timeoutMs"),
     headers: readStringRecord(provider.headers, "headers"),
+    requestHeadersMode: parseRequestHeadersMode(provider.requestHeadersMode),
     extraBody: isRecord(provider.extraBody) ? sanitizeProviderBody(provider.extraBody as Record<string, unknown>) : undefined,
     speedMapping: parseSpeedMapping(provider.speedMapping, providerId, protocol, catalogProvider !== undefined),
     retry: parseRetryConfig(provider.retry),
     models,
   };
+}
+
+function parseRequestHeadersMode(value: unknown): "full" | "basic" | "off" | undefined {
+  if (value === undefined || value === "full" || value === "basic" || value === "off") return value;
+  throw new ModelConfigError("invalid_config_value", "requestHeadersMode must be full, basic, or off.");
 }
 
 function parseSpeedMapping(
