@@ -16,6 +16,7 @@ import {
   DEFAULT_SUBAGENT_POLICY,
   type RouterConfig,
   type RouterModelRef,
+  type RouterTokenSaverConfig,
 } from "./config/schema.js";
 import type {
   PilotDeckCustomRouter,
@@ -99,6 +100,22 @@ export type RouterRuntime = {
   stats: TokenStatsCollector;
   shutdown(): Promise<void>;
 };
+
+function isTierDowngrade(
+  tiers: RouterTokenSaverConfig["tiers"] | undefined,
+  previousTier: string | undefined,
+  nextTier: string,
+): boolean {
+  if (!tiers || !previousTier) {
+    return false;
+  }
+
+  // Tier declaration order is the router's low-to-high capability order.
+  const tierOrder = Object.keys(tiers);
+  const previousIndex = tierOrder.indexOf(previousTier);
+  const nextIndex = tierOrder.indexOf(nextTier);
+  return previousIndex >= 0 && nextIndex >= 0 && nextIndex < previousIndex;
+}
 
 export function createRouterRuntime(
   config: RouterConfig,
@@ -219,6 +236,8 @@ export function createRouterRuntime(
   function maybePreserveStickyForCache(
     current: RouterModelRef | undefined,
     next: RouterModelRef,
+    previousTier: string | undefined,
+    nextTier: string,
     messages: CanonicalModelRequest["messages"],
     lastUsage: import("../model/index.js").CanonicalUsage | undefined,
   ): { selection: RouterModelRef; mutation?: RouterMutationsLog["cacheAwareSwitch"] } {
@@ -227,6 +246,13 @@ export function createRouterRuntime(
       return { selection: next };
     }
     if (current.provider === next.provider && current.model === next.model) {
+      return { selection: next };
+    }
+
+    // Cache savings may justify retaining a stronger model on a downgrade,
+    // but must never veto a judge-requested capability upgrade. If direction
+    // cannot be established, prefer the fresh judge decision over stale state.
+    if (!isTierDowngrade(config.tokenSaver?.tiers, previousTier, nextTier)) {
       return { selection: next };
     }
 
@@ -365,6 +391,7 @@ export function createRouterRuntime(
       : sticky?.stickyProvider && sticky.stickyModel
       ? { id: `${sticky.stickyProvider}/${sticky.stickyModel}`, provider: sticky.stickyProvider, model: sticky.stickyModel }
       : undefined;
+    const previousTokenSaverTier = sticky?.tokenSaverTier ?? input.metadata?.previousTier;
     let selection: RouterModelRef | undefined =
       custom?.provider && custom.model
         ? { id: `${custom.provider}/${custom.model}`, provider: custom.provider, model: custom.model }
@@ -445,6 +472,8 @@ export function createRouterRuntime(
             const cacheAware = maybePreserveStickyForCache(
               previousStickySelection,
               selection,
+              previousTokenSaverTier,
+              tokenSaver.tier,
               input.request.messages,
               baseUsage,
             );
