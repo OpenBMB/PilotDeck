@@ -94,6 +94,118 @@ describe('automatic update policy', () => {
   });
 });
 describe('automatic update lifecycle', () => {
+  const bases = ['https://preferred.invalid/release/', 'https://origin.invalid/release/'];
+  it('remembers the route only after verification and before preparing installation', async () => {
+    const downloadSucceeded = vi.fn(), downloadFailed = vi.fn();
+    const { controller, updater, verifyFile, prepareToInstall } = setup({ downloadBases: async () => bases, downloadSucceeded, downloadFailed });
+    verifyFile.mockRejectedValueOnce(new Error('checksumMismatch'));
+    controller.start(); await controller.wait();
+    expect(downloadFailed).toHaveBeenCalledExactlyOnceWith(bases[0], releaseFor());
+    expect(downloadSucceeded).toHaveBeenCalledExactlyOnceWith(bases[1], releaseFor());
+    expect(downloadSucceeded.mock.invocationCallOrder[0]).toBeGreaterThan(verifyFile.mock.invocationCallOrder[1]);
+    expect(downloadSucceeded.mock.invocationCallOrder[0]).toBeLessThan(prepareToInstall.mock.invocationCallOrder[0]);
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+  it('does not let cache write failure interrupt installation', async () => {
+    const { controller, updater } = setup({ downloadBases: async () => bases,
+      downloadSucceeded: () => { throw new Error('disk read only'); } });
+    controller.start(); await controller.wait();
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(controller.status().state).toBe('installing');
+  });
+  it('switches after feed, payload and checksum failures while pinning the release', async () => {
+    for (const stage of ['feed', 'download', 'verify']) {
+      const { controller, updater, verifyFile, latestRelease, prepareToInstall } = setup({ downloadBases: async () => bases });
+      if (stage === 'feed') updater.checkForUpdates.mockRejectedValueOnce(new Error('offline'));
+      if (stage === 'download') updater.downloadUpdate.mockRejectedValueOnce(new Error('offline'));
+      if (stage === 'verify') verifyFile.mockRejectedValueOnce(new Error('checksumMismatch'));
+      controller.start(); await controller.wait();
+      expect(controller.status().state).toBe('installing');
+      expect(updater.setFeedURL.mock.calls.map(([config]) => config.url)).toEqual(bases.slice(0, 2));
+      expect(latestRelease).toHaveBeenCalledTimes(1);
+      expect(prepareToInstall).toHaveBeenCalledTimes(1);
+      expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    }
+  });
+  it('rejects mismatched feed metadata and continues on a different route', async () => {
+    const { controller, updater } = setup({ downloadBases: async () => bases });
+    updater.checkForUpdates.mockResolvedValueOnce({ isUpdateAvailable: true, updateInfo: { ...infoFor(releaseFor()), version: '2026.908.0' }, cancellationToken: { cancel: vi.fn() } });
+    controller.start(); await controller.wait();
+    expect(updater.setFeedURL).toHaveBeenCalledTimes(2);
+    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(controller.status().state).toBe('installing');
+  });
+  it('fails only after both rounds exhaust every route', async () => {
+    const { controller, updater, prepareToInstall } = setup({ downloadBases: async () => bases });
+    updater.downloadUpdate.mockRejectedValue(new Error('private hostname'));
+    controller.start(); await controller.wait();
+    expect(updater.setFeedURL.mock.calls.map(([config]) => config.url)).toEqual([...bases, ...bases]);
+    expect(controller.status()).toMatchObject({ state: 'failed', reason: 'updateFailed' });
+    expect(JSON.stringify(controller.status())).not.toContain('hostname');
+    expect(prepareToInstall).not.toHaveBeenCalled();
+  });
+  it('does not fail over after the user cancels a failing download', async () => {
+    const downloadSucceeded = vi.fn(), downloadFailed = vi.fn();
+    const { controller, updater } = setup({ downloadBases: async () => bases, downloadSucceeded, downloadFailed });
+    let reject!: (error: Error) => void;
+    updater.downloadUpdate.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
+    controller.start(); await vi.waitFor(() => expect(reject).toBeTypeOf('function'));
+    controller.cancel(); reject(new Error('cancelled'));
+    await controller.wait();
+    expect(updater.setFeedURL).toHaveBeenCalledTimes(1);
+    expect(controller.status().state).toBe('cancelled');
+    expect(downloadSucceeded).not.toHaveBeenCalled();
+    expect(downloadFailed).not.toHaveBeenCalled();
+  });
+  it('waits for Resume before switching away from a paused failed transport', async () => {
+    const { controller, updater } = setup({ downloadBases: async () => bases });
+    let reject!: (error: Error) => void;
+    updater.downloadUpdate.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    controller.start(); await vi.waitFor(() => expect(reject).toBeTypeOf('function'));
+    controller.pause(); reject(new Error('socket closed'));
+    await new Promise(resolve => setImmediate(resolve));
+    expect(controller.status().state).toBe('paused');
+    expect(updater.setFeedURL).toHaveBeenCalledTimes(1);
+    controller.resume(); await controller.wait();
+    expect(updater.setFeedURL).toHaveBeenCalledTimes(2);
+    expect(controller.status().state).toBe('installing');
+  });
+  it('cancels a stalled route and retries, excluding paused time', async () => {
+    vi.useFakeTimers();
+    try {
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases });
+      updater.downloadUpdate.mockImplementationOnce(() => new Promise((_, reject) => {
+        cancel.mockImplementationOnce(() => reject(new Error('cancelled')));
+      }));
+      controller.start(); await vi.advanceTimersByTimeAsync(0);
+      expect(controller.status().state).toBe('downloading');
+      controller.pause(); await vi.advanceTimersByTimeAsync(60000);
+      expect(cancel).not.toHaveBeenCalled();
+      controller.resume(); await vi.advanceTimersByTimeAsync(31000);
+      await controller.wait();
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(updater.setFeedURL).toHaveBeenCalledTimes(2);
+      expect(controller.status().state).toBe('installing');
+    } finally { vi.useRealTimers(); }
+  });
+  it('allows continuing slow progress on the final round', async () => {
+    vi.useFakeTimers();
+    try {
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases.slice(0, 2) });
+      let resolve!: (files: string[]) => void;
+      updater.downloadUpdate.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'))
+        .mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+      controller.start(); await vi.advanceTimersByTimeAsync(0);
+      expect(updater.setFeedURL).toHaveBeenCalledTimes(3);
+      for (let i = 1; i <= 6; i++) {
+        updater.emit('download-progress', { transferred: i, total: 100, percent: i });
+        await vi.advanceTimersByTimeAsync(10000);
+      }
+      expect(cancel).not.toHaveBeenCalled();
+      resolve(['/tmp/file']); await controller.wait();
+      expect(controller.status().state).toBe('installing');
+    } finally { vi.useRealTimers(); }
+  });
   it('keeps a paused download locked and resumes without another check or download', async () => {
     const downloadControl = { pause: vi.fn(), resume: vi.fn() };
     const { controller, updater, prepareToInstall } = setup({ downloadControl });

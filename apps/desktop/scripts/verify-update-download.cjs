@@ -9,8 +9,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { app } = require('electron');
 const { DebUpdater, CancellationToken } = require('electron-updater');
-const { installUpdateDownloadControl } = require('../dist/updateDownload.js');
+const { installUpdateDownloadControl, PausableUpdateHttpExecutor } = require('../dist/updateDownload.js');
 const { verifyDownloadedFile } = require('../dist/updates.js');
+const { createUpdateController } = require('../dist/updates.js');
+const { createUpdateNetwork } = require('../dist/updateNetwork.js');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(predicate) {
   const deadline = Date.now() + 15000;
@@ -28,6 +30,8 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   const manifest = { version: '2026.1002.0', files: [{ url: 'update-linux-arm64.deb', size: body.length, sha512 }] };
   let payloadRequests = 0, openPayloads = 0;
   server = http.createServer((request, response) => {
+    if (request.url === '/stalled') return;
+    if (request.url.startsWith('/bad/') && !request.url.includes('.yml')) { response.writeHead(503); response.end(); return; }
     if (request.url.split('?')[0].endsWith('.yml')) { response.end(JSON.stringify(manifest)); return; }
     if (request.url === '/redirect') { response.writeHead(302, { Location: '/update-linux-arm64.deb' }); response.end(); return; }
     if (request.url === '/broken') { response.writeHead(200, { 'Content-Length': body.length }); response.write(body.subarray(0, 65536)); setTimeout(() => response.destroy(), 100); return; }
@@ -42,6 +46,21 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
+  const boundedTransport = new PausableUpdateHttpExecutor(undefined, 100);
+  const stalledRequest = { protocol: 'http:', hostname: '127.0.0.1', port: server.address().port, path: '/stalled' };
+  await assert.rejects(boundedTransport.request(stalledRequest), /cancelled/);
+  const cancelledFeed = boundedTransport.request(stalledRequest);
+  boundedTransport.cancel();
+  await assert.rejects(cancelledFeed, /cancelled/);
+  const network = createUpdateNetwork({ setProxy: async () => {}, closeAllConnections: async () => {}, clearAuthCache: async () => {} }, () => undefined, {});
+  // This fixture ignores Range: sampling must still abort the response early.
+  assert.ok(await network.probe(`${base}/redirect`) > 0);
+  await until(() => openPayloads === 0);
+  const abortProbe = new AbortController();
+  const probing = network.probe(`${base}/redirect`, abortProbe.signal);
+  abortProbe.abort();
+  await assert.rejects(probing);
+  payloadRequests = 0;
   const config = path.join(directory, 'app-update.yml');
   await fs.writeFile(config, 'updaterCacheDirName: pilotdeck-update-download-test\n');
   const adapter = {
@@ -111,12 +130,33 @@ const timeout = setTimeout(() => { console.error('Download integration test time
   assert.deepEqual(await fs.readFile(recovered), body);
   await assert.rejects(transport.download(new URL(`${base}/broken`), path.join(directory, 'broken.deb'), { cancellationToken: new CancellationToken(), sha512 }));
   await assert.rejects(transport.download(new URL(`${base}/update-linux-arm64.deb`), path.join(directory, 'checksum.deb'), { cancellationToken: new CancellationToken(), sha512: Buffer.alloc(64).toString('base64') }));
+  await fs.rm(pending, { recursive: true, force: true });
+  let installed = 0;
+  updater.quitAndInstall = () => { installed++; };
+  const releaseAsset = { name: manifest.files[0].url, size: body.length, sha512,
+    sha256: createHash('sha256').update(body).digest('hex'), platform: 'linux', arch: 'arm64' };
+  const controller = createUpdateController({ updater, repository: 'fixture/PilotDeck', platform: 'linux', arch: 'arm64',
+    version: adapter.version, packaged: true, downloadControl: transport,
+    latestRelease: async () => ({ version: manifest.version, tagName: 'v2026.10.02', assets: [releaseAsset, { ...releaseAsset, name: 'latest-linux-arm64.yml' }] }),
+    downloadBases: async () => [`${base}/bad/`, `${base}/`], compareVersions: () => -1,
+    prepareToInstall: async () => {}, recoverRuntime: async () => {} });
+  controller.start(); await controller.wait();
+  assert.equal(controller.status().state, 'installing');
+  assert.equal(installed, 1);
+  console.log('Real updater: bounded redirected probes and cancellation; failed payload switches provider, rechecks the feed, verifies the file and installs exactly once.');
   console.log('Real updater: pause freezes file bytes, resume uses one request and validates checksums; redirects, paused cancellation/cache cleanup, restart, network failure and checksum failure passed.');
 })().then(() => finish(0), error => { console.error(error); return finish(1); });
 async function finish(code) {
   clearTimeout(timeout);
   server?.closeAllConnections();
   if (server) await new Promise(resolve => server.close(resolve));
-  if (directory) await fs.rm(directory, { recursive: true, force: true });
-  app.exit(code);
+  try {
+    if (directory) await fs.rm(directory, { recursive: true, force: true });
+  } catch (error) {
+    // Chromium can keep its dictionary open until process exit on Windows.
+    // Do not leave a successful headless test running forever during cleanup.
+    if (process.platform !== 'win32' || !['EBUSY', 'EPERM'].includes(error.code)) {
+      console.error(error); code = 1;
+    }
+  } finally { app.exit(code); }
 }

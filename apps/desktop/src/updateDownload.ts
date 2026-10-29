@@ -1,6 +1,6 @@
 import { Transform, type Readable, type TransformCallback } from "node:stream";
 import type { IncomingMessage, ClientRequest } from "electron";
-import type { AppUpdater } from "electron-updater";
+import { CancellationToken, type AppUpdater } from "electron-updater";
 import { ElectronHttpExecutor } from "electron-updater/out/electronHttpExecutor";
 
 // Hold a chunk's callback to apply backpressure through the existing download
@@ -30,6 +30,24 @@ export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
   private downloading = false;
   private readonly requests = new Set<ClientRequest>();
   private readonly gates = new Set<DownloadGate>();
+  private readonly metadataTokens = new Set<CancellationToken>();
+
+  constructor(login: ConstructorParameters<typeof ElectronHttpExecutor>[0], private readonly metadataTimeoutMs = 15_000) {
+    super(login);
+  }
+
+  // Electron net.request does not expose Node's socket timeout event used by
+  // the upstream executor. Bound the entire feed request, including redirects
+  // and response bodies, so a stalled feed cannot prevent fallback forever.
+  override async request(...args: Parameters<ElectronHttpExecutor["request"]>) {
+    const token = new CancellationToken(args[1]);
+    this.metadataTokens.add(token);
+    const timeout = setTimeout(() => token.cancel(), this.metadataTimeoutMs);
+    try { return await super.request(args[0], token, args[2]); }
+    finally { clearTimeout(timeout); this.metadataTokens.delete(token); token.dispose(); }
+  }
+
+  cancel() { for (const token of this.metadataTokens) token.cancel(); }
 
   pause() { this.paused = true; }
   resume() {
