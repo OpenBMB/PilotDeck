@@ -6,6 +6,8 @@ import AttachmentPreview from '../chat/view/subcomponents/AttachmentPreview';
 import ImageLightbox from '../chat/view/subcomponents/ImageLightbox';
 import ChatInterfaceV2 from './ChatInterfaceV2';
 
+vi.mock('../chat/utils/rasterizeAttachmentImage', () => ({ rasterizeAttachmentImage: vi.fn(async () => new Blob(['pixels'], { type: 'image/png' })) }));
+
 const queueMocks = vi.hoisted(() => ({
   useSessionInputQueue: vi.fn(),
   useChatSessionState: vi.fn(),

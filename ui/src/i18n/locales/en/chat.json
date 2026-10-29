@@ -1,5 +1,6 @@
 {
   "attachmentPreview": {
+    "imageNote": "Static preview. Download the original for full resolution and animation.",
     "sheetTruncated": "Spreadsheet preview shows up to 200 rows and 50 columns per sheet. Download for the complete workbook.",
     "tooLarge": "Document preview supports files up to 20 MB. Download to open this file.",
     "title": "Attachment preview",

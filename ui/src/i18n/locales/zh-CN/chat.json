@@ -1,5 +1,6 @@
 {
   "attachmentPreview": {
+    "imageNote": "静态预览；下载原文件可查看完整分辨率和动画。",
     "sheetTruncated": "表格预览每张工作表最多显示 200 行、50 列，完整内容请下载查看。",
     "tooLarge": "文档预览支持 20 MB 以内的文件，请下载后打开此文件。",
     "title": "附件预览",

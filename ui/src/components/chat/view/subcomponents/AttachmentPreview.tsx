@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { attachmentPreviewKind } from '../../utils/attachmentPreviewKind';
+import { useAttachmentImagePreview } from '../../hooks/useAttachmentImagePreview';
 
 const TEXT_LIMIT = 256 * 1024;
 const DOCUMENT_LIMIT = 20 * 1024 * 1024;
@@ -18,6 +19,7 @@ function FileContent({ file, url }: { file: File; url: string }) {
   const [failed, setFailed] = useState(false);
   const fail = useCallback(() => setFailed(true), []);
   const kind = attachmentPreviewKind(file);
+  const image = useAttachmentImagePreview(kind === 'image' ? file : null, 4096);
   useEffect(() => {
     if (kind !== 'text') return;
     const reader = new FileReader();
@@ -27,7 +29,7 @@ function FileContent({ file, url }: { file: File; url: string }) {
     return () => { if (reader.readyState === FileReader.LOADING) reader.abort(); };
   }, [file, kind]);
   const unavailable = <p className="m-auto p-6 text-center text-sm text-neutral-500">{t(failed ? 'attachmentPreview.failed' : 'attachmentPreview.unsupported')}</p>;
-  if (failed) return unavailable;
+  if (failed || image?.failed) return <p className="m-auto p-6 text-sm text-neutral-500">{t('attachmentPreview.failed')}</p>;
   if (['pdf', 'docx', 'pptx', 'xlsx'].includes(kind)) {
     if (file.size > DOCUMENT_LIMIT) return <p className="m-auto p-6 text-sm">{t('attachmentPreview.tooLarge')}</p>;
     return <ErrorBoundary fallback={unavailable}><Suspense fallback={<p className="m-auto p-4">{t('attachmentPreview.loading')}</p>}>
@@ -39,7 +41,10 @@ function FileContent({ file, url }: { file: File; url: string }) {
       </div>
     </Suspense></ErrorBoundary>;
   }
-  if (kind === 'image') return <img src={url} alt={file.name} onError={() => setFailed(true)} className="m-auto max-h-full max-w-full object-contain" />;
+  if (kind === 'image') return <figure className="flex h-full min-h-0 w-full flex-col gap-2">
+    <img src={image?.url} alt={file.name} onError={() => setFailed(true)} className="mx-auto min-h-0 max-w-full flex-1 object-contain" />
+    <figcaption className="shrink-0 text-center text-xs text-neutral-500">{t('attachmentPreview.imageNote')}</figcaption>
+  </figure>;
   if (kind === 'audio') return <audio controls src={url} onError={() => setFailed(true)} className="m-auto max-w-full" />;
   if (kind === 'video') return <video controls src={url} onError={() => setFailed(true)} className="m-auto max-h-full max-w-full" />;
   if (kind === 'text') return <div className="w-full overflow-auto p-4">
@@ -55,7 +60,7 @@ export default function AttachmentPreview({ files, initialFile, onClose }: {
 }) {
   const { t } = useTranslation('chat');
   const [selected, setSelected] = useState(initialFile);
-  const [resource, setResource] = useState<{ file: File; url: string } | null>(null);
+  const [resource, setResource] = useState<{ file: File; url: string; downloadUrl: string } | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const index = Math.max(0, files.indexOf(selected));
@@ -64,11 +69,12 @@ export default function AttachmentPreview({ files, initialFile, onClose }: {
 
   useEffect(() => {
     if (!file) { onClose(); return; }
-    // Force PDF MIME even when the OS did not supply one.
-    const blob = attachmentPreviewKind(file) === 'pdf' ? file.slice(0, file.size, 'application/pdf') : file;
-    const url = URL.createObjectURL(blob);
-    setResource({ file, url });
-    return () => URL.revokeObjectURL(url);
+    // Original bytes are downloadable, but never an active same-origin document.
+    const downloadUrl = URL.createObjectURL(file.slice(0, file.size, 'application/octet-stream'));
+    const kind = attachmentPreviewKind(file);
+    const url = kind === 'audio' || kind === 'video' ? URL.createObjectURL(file) : downloadUrl;
+    setResource({ file, url, downloadUrl });
+    return () => { URL.revokeObjectURL(downloadUrl); if (url !== downloadUrl) URL.revokeObjectURL(url); };
   }, [file, onClose]);
 
   useEffect(() => {
@@ -101,7 +107,7 @@ export default function AttachmentPreview({ files, initialFile, onClose }: {
       <header className="flex items-center gap-3 border-b border-neutral-200 p-3 dark:border-neutral-700">
         <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium" title={file.name}>{file.name}</div>
           <div className="text-xs text-neutral-500">{(file.size / 1024).toFixed(1)} KB · {index + 1} / {files.length}</div></div>
-        {resource?.file === file && <a href={resource.url} download={file.name} className="rounded p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800" aria-label={t('attachmentPreview.download')}><Download size={18} /></a>}
+        {resource?.file === file && <a href={resource.downloadUrl} download={file.name} className="rounded p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800" aria-label={t('attachmentPreview.download')}><Download size={18} /></a>}
         <button ref={closeRef} type="button" onClick={onClose} className="rounded p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800" aria-label={t('attachmentPreview.close')}><X size={20} /></button>
       </header>
       <div className="flex min-h-0 flex-1 gap-2 p-2">

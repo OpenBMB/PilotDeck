@@ -7,6 +7,7 @@ import ComposerAttachments from './ComposerAttachments';
 import AttachmentPreview from './AttachmentPreview';
 import ImageLightbox from './ImageLightbox';
 
+vi.mock('../../utils/rasterizeAttachmentImage', () => ({ rasterizeAttachmentImage: vi.fn(async () => new Blob(['pixels'], { type: 'image/png' })) }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, options?: any) => key === 'attachmentPreview.open' ? `Preview ${options.name}` : key }) }));
 let created: string[];
 beforeEach(() => {
