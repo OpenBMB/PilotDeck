@@ -8,7 +8,8 @@ export type AgentLoopTransitionReason =
   | "aborted_streaming"
   | "aborted_tools"
   | "auto_compact"
-  | "user_steer";
+  | "user_steer"
+  | "background_subagent_results";
 
 export type AgentLoopTransition = {
   reason: AgentLoopTransitionReason;

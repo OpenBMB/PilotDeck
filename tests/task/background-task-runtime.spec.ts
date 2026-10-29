@@ -230,13 +230,18 @@ test("background waits, stop and notifications wait for asynchronous execution b
   const task = await runtime.start({ command: "write", cwd: "/tmp", onSettled: async () => {
     await bookkeeping; captured = true;
   } });
+  child.stdout.write("captured output\n");
   child.finish();
+  const atomicWaiting = runtime.wait(task.taskId, { outputOffset: 0 });
   const waiting = runtime.waitFor(task.taskId).then(() => { assert.equal(captured, true); waited = true; });
   const stopping = runtime.stop(task.taskId).then(() => { assert.equal(captured, true); stopped = true; });
   await Promise.resolve();
   assert.equal(waited, false); assert.equal(stopped, false); assert.equal(notifications, 0);
   release(); await Promise.all([waiting, stopping]);
   assert.equal(notifications, 1);
+  const atomic = await atomicWaiting;
+  assert.equal(atomic?.outcome, "completed");
+  assert.equal(atomic?.outputSlice?.content, "captured output\n");
 });
 
 test("background bookkeeping runs once after spawn failure and propagates errors to waiters", async () => {
@@ -248,4 +253,7 @@ test("background bookkeeping runs once after spawn failure and propagates errors
   const writer = await runtime.start({ command: "write", cwd: "/tmp", onSettled: async () => { throw new Error("backup failed"); } });
   child.finish();
   await assert.rejects(runtime.waitFor(writer.taskId), /backup failed/);
+  await assert.rejects(runtime.wait(writer.taskId, { outputOffset: 0 }), /backup failed/);
+  await assert.rejects(runtime.stop(writer.taskId), /backup failed/);
+  assert.equal(writer.completionStatusSentInAttachment, false);
 });
