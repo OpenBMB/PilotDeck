@@ -235,12 +235,16 @@ export type AttachmentAddResult = {
   droppedCount: number;
 };
 
-function attachmentPathForFile(file: File): string {
-  return file.webkitRelativePath || file.name;
-}
-
+const fileIdentities = new WeakMap<File, string>();
+let nextFileIdentity = 0;
 function fileFingerprint(file: File): string {
-  return `${attachmentPathForFile(file)}::${file.size}::${file.lastModified}`;
+  // Distinct clipboard files may share name, size and lastModified.
+  let identity = fileIdentities.get(file);
+  if (!identity) {
+    identity = String(++nextFileIdentity);
+    fileIdentities.set(file, identity);
+  }
+  return identity;
 }
 
 export function addAttachmentFiles(
@@ -261,15 +265,6 @@ export function addAttachmentFiles(
     files: mergedFiles.slice(0, maxAttachments),
     droppedCount: Math.max(0, mergedFiles.length - maxAttachments),
   };
-}
-
-function matchUploadedAttachment(
-  file: File,
-  attachments: NonNullable<AttachmentUploadRecord['attachments']>,
-) {
-  const relativePath = attachmentPathForFile(file);
-  return attachments.find((attachment) => attachment.relativePath === relativePath)
-    || attachments.find((attachment) => attachment.name === file.name);
 }
 
 export function useChatComposerState({
@@ -498,14 +493,15 @@ export function useChatComposerState({
         if (batch.cancelled) return;
 
         const attachments = Array.isArray(result.attachments) ? result.attachments : [];
-        for (const file of filesToUpload) {
+        for (const [index, file] of filesToUpload.entries()) {
           if (
             removedAttachmentFilesRef.current.has(file)
             || !attachedImagesRef.current.includes(file)
           ) {
             continue;
           }
-          const attachment = matchUploadedAttachment(file, attachments);
+          // uploadAttachmentBatch returns metadata in manifest order.
+          const attachment = attachments[index];
           if (!attachment) {
             setImageErrors((previous) => {
               const next = new Map(previous);
@@ -1525,6 +1521,7 @@ export function useChatComposerState({
         images: uploadedImages,
         attachments: turnAttachments,
         uploadedAttachments: uploadedAttachmentRefs,
+        displayAttachments: [...uploadedFiles, ...turnAttachments].map(attachmentDisplayMetadata),
       });
 
       if (!startedSessionId) {

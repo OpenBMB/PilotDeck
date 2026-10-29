@@ -564,7 +564,7 @@ export function flattenCanonicalMessage(
   };
 
   for (const block of message.content) {
-    if (block.type === 'text') {
+    if (block.type === 'text' && role === 'assistant') {
       if (textBlockId !== block.blockId) flushText();
       textBlockId = block.blockId;
       textTimeline = block.timeline;
@@ -591,6 +591,21 @@ export function flattenCanonicalMessage(
     }
   }
   flushText();
+  // A user submission is one bubble even when attachment resolution inserts
+  // text labels or PDF/audio status blocks between its images. Tool-result
+  // images retain their separate tool ownership above.
+  if (role === 'user' && !message.content.some(block =>
+    block.type === 'tool_result' || block.type === 'tool_result_reference' || block.type === 'media_reference')) {
+    const userRows = out.filter(row => row.kind === 'text' && row.role === 'user');
+    if (userRows.length > 1) {
+      const first = userRows[0]!;
+      first.text = userRows.map(row => row.text || '').join('');
+      first.images = userRows.flatMap(row => row.images ?? []);
+      for (let index = out.length - 1; index >= 0; index--) {
+        if (out[index] !== first && userRows.includes(out[index]!)) out.splice(index, 1);
+      }
+    }
+  }
   const queueItemId = message.metadata?.queueItemId;
   if (typeof queueItemId === "string" && queueItemId) {
     for (const webMessage of out) {
