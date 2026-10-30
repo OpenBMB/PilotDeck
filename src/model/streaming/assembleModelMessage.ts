@@ -19,6 +19,7 @@ export type ModelMessageAssemblerState = {
   thinkingReasoningContentBuffer: string;
   thinkingSignature?: string;
   usage: CanonicalUsage;
+  usageBeforeRequest?: CanonicalUsage;
   finishReason?: CanonicalFinishReason;
   hasMessageEnd: boolean;
   error?: CanonicalModelError;
@@ -61,6 +62,8 @@ export function applyModelEventToAssembler(
   switch (event.type) {
     case "request_started":
       state.model = event.model;
+      // Retries and continuations report separate usage snapshots.
+      state.usageBeforeRequest = state.usage;
       return;
     case "message_start":
     case "tool_call_start":
@@ -97,7 +100,7 @@ export function applyModelEventToAssembler(
       state.hasMessageEnd = true;
       return;
     case "usage":
-      state.usage = mergeUsage(state.usage, event.usage);
+      state.usage = mergeUsage(state.usage, event.usage, state.usageBeforeRequest);
       return;
     case "error":
       flushTextBuffers(state);
@@ -191,21 +194,19 @@ function flushTextBuffers(state: ModelMessageAssemblerState): void {
   }
 }
 
-function mergeUsage(first: CanonicalUsage, second: CanonicalUsage): CanonicalUsage {
+function mergeUsage(total: CanonicalUsage, snapshot: CanonicalUsage, beforeRequest: CanonicalUsage = {}): CanonicalUsage {
   return {
-    inputTokens: add(first.inputTokens, second.inputTokens),
-    outputTokens: add(first.outputTokens, second.outputTokens),
-    cacheReadTokens: add(first.cacheReadTokens, second.cacheReadTokens),
-    cacheWriteTokens: add(first.cacheWriteTokens, second.cacheWriteTokens),
-    totalTokens: add(first.totalTokens, second.totalTokens),
+    inputTokens: update(total.inputTokens, snapshot.inputTokens, beforeRequest.inputTokens),
+    outputTokens: update(total.outputTokens, snapshot.outputTokens, beforeRequest.outputTokens),
+    cacheReadTokens: update(total.cacheReadTokens, snapshot.cacheReadTokens, beforeRequest.cacheReadTokens),
+    cacheWriteTokens: update(total.cacheWriteTokens, snapshot.cacheWriteTokens, beforeRequest.cacheWriteTokens),
+    totalTokens: update(total.totalTokens, snapshot.totalTokens, beforeRequest.totalTokens),
   };
 }
 
-function add(first: number | undefined, second: number | undefined): number | undefined {
-  if (first === undefined && second === undefined) {
-    return undefined;
-  }
-  return (first ?? 0) + (second ?? 0);
+function update(total: number | undefined, snapshot: number | undefined, beforeRequest: number | undefined): number | undefined {
+  // Missing fields retain their last value; defined fields replace this request's snapshot.
+  return snapshot === undefined ? total : (beforeRequest ?? 0) + snapshot;
 }
 
 function hasUsage(usage: CanonicalUsage): boolean {
