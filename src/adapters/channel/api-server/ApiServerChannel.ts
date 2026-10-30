@@ -256,6 +256,7 @@ export class ApiServerChannel implements ChannelAdapter {
     const mapped = this.mapper.resolve({ chatId, text: userText });
     if (mapped.command === "new" && !mapped.message) {
       const ack = "已创建新会话。";
+      res.setHeader("X-Hermes-Session-Id", chatId);
       if (streaming) {
         writeChatCompletionStream(res, this.modelName, ack);
       } else {
