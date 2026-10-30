@@ -275,6 +275,13 @@ export class ApiServerChannel implements ChannelAdapter {
     }
 
     this.activeChats.add(chatId);
+    // Expose the session id on every response for this turn, including
+    // buffered failures. An inline `/new <message>` creates the session
+    // binding before the gateway is contacted; when such a turn fails
+    // without this header the caller never learns the chat id, the
+    // retained binding becomes unreachable, and headerless retries fork
+    // into fresh `:general` sessions instead of the reset one.
+    res.setHeader("X-Hermes-Session-Id", chatId);
     try {
       if (streaming) {
         await this.streamTurn(res, chatId, mapped.sessionKey, mapped.message);
@@ -303,7 +310,6 @@ export class ApiServerChannel implements ChannelAdapter {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Hermes-Session-Id", chatId);
     res.statusCode = 200;
     res.flushHeaders?.();
 
@@ -401,7 +407,6 @@ export class ApiServerChannel implements ChannelAdapter {
     }
     clearTimeout(timeout);
 
-    res.setHeader("X-Hermes-Session-Id", chatId);
     sendJson(res, 200, buildChatCompletion(this.modelName, replyText.trim()));
   }
 }
