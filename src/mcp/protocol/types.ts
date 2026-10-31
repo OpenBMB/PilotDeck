@@ -28,6 +28,8 @@ export type PilotDeckMcpServerSpec =
       transport: "streamable_http";
       url: string;
       headers?: Record<string, string>;
+      /** Opaque reference to private, resource-bound OAuth credentials. */
+      oauth?: { credentialId: string };
       /** Optional per-server tool timeout for slow first-load operations. */
       callTimeoutMs?: number;
       /** False opts read-only tools out of parallel tool batches (not a session lock). */
