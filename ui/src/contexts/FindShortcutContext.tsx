@@ -25,6 +25,7 @@ type FindShortcutContextValue = {
 
 type FindShortcutProviderProps = {
   activeScope: FindShortcutScope;
+  onGlobalFind?: () => void;
   children: ReactNode;
 };
 
@@ -58,7 +59,7 @@ function markedScope(target: Element | null): FindShortcutScope | null {
   return null;
 }
 
-export function FindShortcutProvider({ activeScope, children }: FindShortcutProviderProps) {
+export function FindShortcutProvider({ activeScope, onGlobalFind, children }: FindShortcutProviderProps) {
   const targetsRef = useRef(new Map<symbol, FindShortcutTarget>());
 
   const registerTarget = useCallback((target: FindShortcutTarget) => {
@@ -72,6 +73,7 @@ export function FindShortcutProvider({ activeScope, children }: FindShortcutProv
   }, []);
 
   const resolveTarget = useCallback((targetElement: Element | null) => {
+    if (onGlobalFind) return { scope: activeScope, containerRef: { current: document.body }, onOpen: onGlobalFind };
     const targets = Array.from(targetsRef.current.values())
       .reverse()
       .filter(isTargetAvailable);
@@ -104,7 +106,7 @@ export function FindShortcutProvider({ activeScope, children }: FindShortcutProv
     }
 
     return shortcutTarget;
-  }, [activeScope]);
+  }, [activeScope, onGlobalFind]);
 
   useEffect(() => {
     const resolve = () => resolveTarget(document.activeElement);
@@ -122,6 +124,7 @@ export function FindShortcutProvider({ activeScope, children }: FindShortcutProv
         (event.ctrlKey !== event.metaKey) && !event.shiftKey && !event.altKey && !event.isComposing
         && event.key.toLowerCase() === 'f');
       if (!isFindShortcut) return;
+      if (onGlobalFind && document.querySelector('[aria-modal="true"]:not([data-global-search])')) return;
       const shortcutTarget = resolveTarget(eventTargetElement(event));
       // No searchable target: retain the browser's native find.
       if (!shortcutTarget) return;
@@ -137,7 +140,7 @@ export function FindShortcutProvider({ activeScope, children }: FindShortcutProv
       document.removeEventListener('keydown', handleKeyDown, { capture: true });
       window.removeEventListener('pilotdeck:find', handleKeyDown);
     };
-  }, [resolveTarget]);
+  }, [resolveTarget, onGlobalFind]);
 
   const value = useMemo(() => ({ registerTarget }), [registerTarget]);
 

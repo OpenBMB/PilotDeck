@@ -1,5 +1,16 @@
 import { postFormDataWithProgress } from './uploadFormData';
 import { IS_PLATFORM } from "../constants/config";
+import { clientRequestHeaders, rememberRequestUser, requestAuthToken } from './requestContext';
+
+const firstPartyFetch = (url, options = {}) => {
+  const dispatchedToken = requestAuthToken();
+  const headers = new Headers(clientRequestHeaders(url, options.body));
+  new Headers(options.headers).forEach((value, name) => headers.set(name, value));
+  return fetch(url, { ...options, headers: Object.fromEntries(headers) }).then(response => {
+    rememberRequestUser(url, response, options.body, dispatchedToken);
+    return response;
+  });
+};
 
 const normalizePathForUrl = (value) => String(value || '').replace(/\\/g, '/');
 
@@ -51,15 +62,14 @@ export const authenticatedFetch = (url, options = {}) => {
     defaultHeaders['Authorization'] = `Bearer ${token}`;
   }
 
-  return fetch(url, {
+  const mergedHeaders = new Headers(defaultHeaders);
+  new Headers(fetchOptions.headers).forEach((value, name) => mergedHeaders.set(name, value));
+  return firstPartyFetch(url, {
     ...fetchOptions,
-    headers: {
-      ...defaultHeaders,
-      ...fetchOptions.headers,
-    },
+    headers: mergedHeaders,
   }).then((response) => {
     const refreshedToken = response.headers.get('X-Refreshed-Token');
-    if (refreshedToken) {
+    if (refreshedToken && token === requestAuthToken()) {
       localStorage.setItem('auth-token', refreshedToken);
     }
     if (!suppressServerErrorToast && response.status >= 500) {
@@ -157,13 +167,13 @@ function defaultWebHttpUserHint(status) {
 export const api = {
   // Auth endpoints (no token required)
   auth: {
-    status: () => fetch('/api/auth/status'),
-    login: (username, password) => fetch('/api/auth/login', {
+    status: () => firstPartyFetch('/api/auth/status'),
+    login: (username, password) => firstPartyFetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }),
-    register: (username, password) => fetch('/api/auth/register', {
+    register: (username, password) => firstPartyFetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -266,6 +276,9 @@ export const api = {
     if (token) params.set('token', token);
     return `/api/search/conversations?${params.toString()}`;
   },
+  globalSearch: (body, { signal } = {}) => authenticatedFetch('/api/search/global', {
+    method: 'POST', body: JSON.stringify(body), signal,
+  }),
   createProject: (path) =>
     authenticatedFetch('/api/projects/create', {
       method: 'POST',
@@ -288,6 +301,8 @@ export const api = {
   },
   readFileBlob: (projectName, filePath) =>
     authenticatedFetch(api.fileContentUrl(projectName, filePath), { suppressServerErrorToast: true }),
+  fileMetadata: (projectName, filePath, { signal } = {}) =>
+    authenticatedFetch(api.fileContentUrl(projectName, filePath), { method: 'HEAD', cache: 'no-store', signal, suppressServerErrorToast: true }),
   fileContentSha256: (projectName, filePath) => {
     const params = new URLSearchParams({ path: filePath, sha256: '1' });
     return authenticatedFetch(
@@ -381,10 +396,10 @@ export const api = {
   },
   pilotDeckConfig: () =>
     authenticatedFetch('/api/config'),
-  saveFile: (projectName, filePath, content) =>
+  saveFile: (projectName, filePath, content, expectedHash, expectedContent) =>
     authenticatedFetch(`/api/projects/${projectName}/file`, {
       method: 'PUT',
-      body: JSON.stringify({ filePath, content }),
+      body: JSON.stringify({ filePath, content, expectedHash, expectedContent }),
     }),
   getFiles: (projectName, options = {}) =>
     authenticatedFetch(`/api/projects/${projectName}/files`, options),

@@ -395,7 +395,6 @@ export class CompactionEngine {
         : COMPACT_SUMMARY_SYSTEM_PROMPT_DEFAULT,
       maxOutputTokens: maxOutputTokens ?? this.options.maxOutputTokens ?? COMPACT_MAX_OUTPUT_TOKENS,
       stream: true,
-      thinking: { enabled: false },
       cacheBreakpoints: [],
     };
 

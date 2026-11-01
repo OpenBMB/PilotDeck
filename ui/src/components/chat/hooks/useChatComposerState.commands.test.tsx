@@ -1,3 +1,5 @@
+import { useState, type ReactNode } from 'react';
+import { SkillConversationContext, type SkillConversationRequest } from '../../../contexts/SkillConversationContext';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useChatComposerState } from './useChatComposerState';
@@ -18,7 +20,12 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function setup(isModelSelectionReady: boolean, isPermissionModeReady = true) {
+function setup(isModelSelectionReady: boolean, isPermissionModeReady = true, initialSkillRequest: SkillConversationRequest | null = null) {
+  const consume = vi.fn();
+  function SkillRequestProvider({ children }: { children: ReactNode }) {
+    const [request, setRequest] = useState(initialSkillRequest);
+    return <SkillConversationContext.Provider value={{ request, consume: (id) => { consume(id); setRequest((current) => current?.id === id ? null : current); } }}>{children}</SkillConversationContext.Provider>;
+  }
   const onShowSettings = vi.fn();
   const sendMessage = vi.fn(() => true);
   const addMessage = vi.fn();
@@ -33,8 +40,8 @@ function setup(isModelSelectionReady: boolean, isPermissionModeReady = true) {
     clearMessages: vi.fn(), rewindMessages: vi.fn(), setIsLoading: vi.fn(), setCanAbortSession: vi.fn(),
     setIsAborting: vi.fn(), setClaudeStatus: vi.fn(), setPilotDeckStatus: vi.fn(), setIsUserScrolledUp: vi.fn(),
     pendingPermissionRequests: [], setPendingPermissionRequests: vi.fn(),
-  }), { initialProps: { session: null as { id: string } | null } });
-  return { ...view, onShowSettings, sendMessage, addMessage };
+  }), { initialProps: { session: null as { id: string } | null }, wrapper: SkillRequestProvider });
+  return { ...view, onShowSettings, sendMessage, addMessage, consume };
 }
 
 it.each([true, false])('allows settings and help while model ready=%s', async (ready) => {
@@ -119,4 +126,21 @@ it('flushes the old conversation before restoring another draft and saves on unm
   view.unmount();
   expect(localStorage.getItem(savedKey)).toBe('edited saved draft');
   expect(localStorage.getItem(newKey)).toBe('new unsaved draft');
+});
+
+
+it('consumes a skill handoff into the new conversation without sending it', async () => {
+  const skill = { slug: 'report-writer', name: 'Report writer', command: '/report-writer' };
+  const { result, consume, sendMessage } = setup(true, true, { id: 'handoff', projectPath: '/tmp/demo', skill });
+  await waitFor(() => expect(result.current.selectedSkills).toEqual([skill]));
+  expect(consume).toHaveBeenCalledWith('handoff');
+  expect(sendMessage).not.toHaveBeenCalled();
+  expect(result.current.input).toBe('');
+});
+
+it('does not attach a skill handoff to a different project', async () => {
+  const { result, consume } = setup(true, true, { id: 'other', projectPath: '/different-project', skill: { slug: 'private', name: 'Private' } });
+  await waitFor(() => expect(result.current.slashCommandsCount).toBe(3));
+  expect(result.current.selectedSkills).toEqual([]);
+  expect(consume).not.toHaveBeenCalled();
 });

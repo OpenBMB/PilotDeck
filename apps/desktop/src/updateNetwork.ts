@@ -1,4 +1,4 @@
-import type { Session, AuthInfo } from "electron";
+import type { Session, AuthInfo, ClientRequest } from "electron";
 import { CancellationToken } from "electron-updater";
 import { ElectronHttpExecutor } from "electron-updater/out/electronHttpExecutor";
 
@@ -34,7 +34,10 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
   // net.fetch does not handle proxy authentication challenges. Reuse the
   // updater's net.request transport, session and redirect/auth behavior for GETs.
   const executor = executorFactory(login);
+  const probeExecutor = new ElectronHttpExecutor(login);
   return {
+    probe: (url: string, signal?: AbortSignal, expectedSize?: number) => probeUpdateDownload(probeExecutor, url, signal, expectedSize),
+    checkDownload: (url: string, signal?: AbortSignal, expectedSize?: number) => checkUpdateDownload(probeExecutor, url, signal, expectedSize),
     async prepare() {
       const config = resolveUpdateProxy(readConfig(), env);
       const key = JSON.stringify(config);
@@ -66,4 +69,68 @@ export function createUpdateNetwork(session: Pick<Session, "setProxy" | "closeAl
     credentialsFor,
     login,
   };
+}
+
+// Read at most 256 KiB, even when a server ignores Range. Abort the transport
+// after sampling; never buffer an installer merely to measure its speed.
+export async function probeUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal?: AbortSignal, expectedSize?: number): Promise<number> {
+  return readUpdateSample(executor, url, signal, expectedSize, 262144);
+}
+
+// Reachability is not a throughput requirement. Valid headers plus the first
+// payload byte suffice; the actual download still verifies its full hashes.
+export async function checkUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal?: AbortSignal, expectedSize?: number): Promise<void> {
+  await readUpdateSample(executor, url, signal, expectedSize, 1);
+}
+
+async function readUpdateSample(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal: AbortSignal | undefined, expectedSize: number | undefined, sampleBytes: number): Promise<number> {
+  try { return await sampleUpdateDownload(executor, url, signal, expectedSize, true, sampleBytes); }
+  catch (error) {
+    if (!(error instanceof Error) || error.message !== "probeRangeUnsupported") throw error;
+    return sampleUpdateDownload(executor, url, signal, expectedSize, false, sampleBytes);
+  }
+}
+
+function sampleUpdateDownload(executor: Pick<ElectronHttpExecutor, "createRequest">, url: string, signal: AbortSignal | undefined, expectedSize: number | undefined, useRange: boolean, sampleBytes: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
+    const started = Date.now();
+    let request: ClientRequest | undefined;
+    let settled = false;
+    let bytes = 0;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      request?.abort();
+      if (error) reject(error);
+      else resolve(Math.max(1, Date.now() - started));
+    };
+    const abort = () => finish(new Error("cancelled"));
+    const timer = setTimeout(() => finish(new Error("probeTimeout")), 5000);
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      const target = new URL(url);
+      request = executor.createRequest({ protocol: target.protocol, hostname: target.hostname,
+        port: target.port || undefined, path: `${target.pathname}${target.search}`, redirect: "follow",
+        headers: { ...(useRange ? { Range: `bytes=0-${sampleBytes - 1}` } : {}), "Cache-Control": "no-cache", "User-Agent": "PilotDeck-Updater" } }, response => {
+        if (useRange && [400, 405, 416].includes(response.statusCode)) { finish(new Error("probeRangeUnsupported")); return; }
+        if (response.statusCode !== 200 && response.statusCode !== 206) { finish(new Error("probeFailed")); return; }
+        const type = String(response.headers['content-type'] || '');
+        const length = response.statusCode === 206 ? String(response.headers['content-range'] || '').match(/^bytes 0-\d+\/(\d+)$/)?.[1]
+          : response.headers['content-length'];
+        if (/text\/|json|xml/i.test(type) || (response.statusCode === 206 && !length)
+          || (expectedSize !== undefined && length !== undefined && Number(length) !== expectedSize)) {
+          finish(new Error("invalidProbePayload")); return;
+        }
+        response.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes >= sampleBytes) finish(); });
+        response.on("end", () => finish(bytes ? undefined : new Error("emptyProbe")));
+        response.on("error", finish);
+        response.on("aborted", () => finish(new Error("probeAborted")));
+      });
+      request.on("error", finish);
+      request.end();
+    } catch (error) { finish(error instanceof Error ? error : new Error("probeFailed")); }
+  });
 }

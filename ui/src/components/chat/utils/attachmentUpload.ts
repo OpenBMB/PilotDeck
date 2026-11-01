@@ -243,7 +243,14 @@ export async function uploadAttachmentBatch({
     throw uploadError(finalRecord, fallback);
   }
 
-  const attachments = Array.isArray(finalRecord.attachments) ? finalRecord.attachments : [];
+  const received = new Map((finalRecord.attachments ?? []).map(attachment => [attachment.attachmentId, attachment]));
+  // Multipart writes can finish out of order. Correlate by the manifest ID,
+  // never by a filename (clipboard images commonly all use image.png).
+  const attachments = manifest.map(file => {
+    const attachment = received.get(file.clientFileId);
+    if (!attachment) throw new Error(`Upload completed without attachment metadata: ${file.name}`);
+    return attachment;
+  });
   return {
     uploadId,
     attachmentIds: attachments.map((attachment) => attachment.attachmentId),

@@ -43,6 +43,18 @@ function SettingsInner({
   const [checkingVersion, setCheckingVersion] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    if (isDesktopApp) {
+      void window.pilotdeckDesktop?.getAboutInfo?.().then(info => {
+        if (active) setVersionInfo(previous => ({
+          ...previous, currentVersion: info.version, buildTime: info.buildTime,
+        }));
+      }).catch(() => { /* Older shells fall back to the update check. */ });
+    }
+    return () => { active = false; };
+  }, [isDesktopApp]);
+
+  useEffect(() => {
     if (section === 'agent-model') navigate(`${getSettingsPath('modelPool')}${search}`, { replace: true });
   }, [section, search, navigate]);
 

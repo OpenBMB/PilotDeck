@@ -1,6 +1,9 @@
 // Run with Electron after desktop compile. No windows or external network access.
 // Exercises the actual discovery fetch and electron-updater download executor.
 const { app } = require('electron');
+// EventEmitter callback failures must fail CI, never open an Electron error dialog.
+process.on('uncaughtException', error => { console.error(error); app.exit(1); });
+app.commandLine.appendSwitch('disable-background-networking');
 const { DebUpdater, MacUpdater, NsisUpdater } = require('electron-updater');
 const { createUpdateNetwork } = require('../dist/updateNetwork.js');
 const { getLatestRelease } = require('../../../ui/server/services/releaseService.js');
@@ -47,12 +50,19 @@ app.whenReady().then(async () => {
   let requireAuth = false;
   const proxy = createServer((_req, res) => { res.writeHead(502); res.end(); });
   proxy.on('connect', (req, socket, head) => {
+    // Chromium can make background CONNECTs (e.g. certificate checks). Deny
+    // anything outside the local fixture instead of throwing from this callback
+    // and leaving an untracked socket that prevents server.close() from settling.
+    if (!['github.com:443', 'release-assets.githubusercontent.com:443'].includes(req.url)) {
+      console.log(`Blocked unmocked proxy destination: ${req.url}`);
+      socket.end('HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
+      return;
+    }
     if (requireAuth && req.headers['proxy-authorization'] !== `Basic ${Buffer.from('user:password').toString('base64')}`) {
       socket.end('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="fixture"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n');
       return;
     }
     destinations.push(req.url);
-    assert.ok(['github.com:443', 'release-assets.githubusercontent.com:443'].includes(req.url));
     const upstream = net.connect(origin.address().port, '127.0.0.1', () => {
       socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       if (head.length) upstream.write(head);
@@ -100,5 +110,14 @@ app.whenReady().then(async () => {
     for (const socket of tunnels) socket.destroy();
     await close(proxy); await close(origin);
   }
-}).then(() => { clearTimeout(guard); fs.rmSync(root, { recursive: true, force: true }); app.exit(0); })
-  .catch(error => { console.error(error); fs.rmSync(root, { recursive: true, force: true }); app.exit(1); });
+}).then(() => finish(0), error => { console.error(error); finish(1); });
+function finish(code) {
+  clearTimeout(guard);
+  try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
+  catch (error) {
+    // Chromium may hold a dictionary/cache handle until app.exit on Windows.
+    if (process.platform !== 'win32' || !['EPERM', 'EBUSY'].includes(error.code)) {
+      console.error(error); code = 1;
+    }
+  } finally { app.exit(code); }
+}

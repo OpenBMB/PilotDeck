@@ -13,6 +13,7 @@ const profile = process.env.PILOTDECK_CHROME_PROFILE || fs.mkdtempSync(path.join
 app.setPath('userData', profile);
 app.setName('PilotDeck Chrome Test');
 let window;
+let loaded = false;
 let state = { ...emptyMenuState };
 let appearance = { language: 'en', themeMode: 'dark' };
 let checks = 0;
@@ -94,15 +95,16 @@ ipcMain.handle('pilotdeck:linux-menu-activate', (_e, request) => {
   return true;
 });
 nativeTheme.on('updated', publish);
-global.chromeTest = { state: () => state, checks: () => checks, menuRequests: () => menuRequests, closeMenu: () => captionMenu?.close(), refreshMenu: refresh,
+global.chromeTest = { loaded: () => loaded, state: () => state, checks: () => checks, menuRequests: () => menuRequests, closeMenu: () => captionMenu?.close(), refreshMenu: refresh,
   about: () => ({ dialogs: aboutDialogs, copiedVersion, openedWebsite }) };
 app.whenReady().then(async () => {
   nativeTheme.themeSource = 'dark';
-  window = new BrowserWindow({ ...windowChromeOptions(process.platform, true), show: false, width: 1320, height: 900,
+  window = new BrowserWindow({ ...windowChromeOptions(process.platform, true), show: true, width: 1320, height: 900,
     autoHideMenuBar: process.platform === 'win32' || process.platform === 'linux',
-    webPreferences: { preload: path.resolve(__dirname, '../../dist/preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false },
+    webPreferences: { preload: path.resolve(__dirname, '../../dist/preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false, backgroundThrottling: false },
   });
   window.once('ready-to-show', () => window.show());
+  window.webContents.on('render-process-gone', (_event, details) => console.error('Chrome renderer exited:', details));
   window.on('enter-full-screen', () => setImmediate(publish));
   window.on('leave-full-screen', () => setImmediate(publish));
   window.webContents.on('before-input-event', (_event, input) => {
@@ -110,6 +112,7 @@ app.whenReady().then(async () => {
   });
   refresh();
   await window.loadURL('about:blank');
+  loaded = true;
 });
 app.on('window-all-closed', () => app.quit());
 // The parent removes its temporary profile after Chromium releases Windows locks.

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ComputerUseStatus } from '../../../../../shared/computerUse';
 import { authenticatedFetch } from '../../../../utils/api';
@@ -88,4 +88,34 @@ it.each(['win32', 'linux'])('does not expose the macOS permission fallback on %s
   const view = render(<ComputerUseSections />);
   await waitFor(() => expect(view.getByRole('switch').hasAttribute('disabled')).toBe(false));
   expect(view.queryByText('computerUse.permissionFallbackTitle')).toBeNull();
+});
+
+it('updates both permission indicators on return to the page without enabling a disabled instance', async () => {
+  const fetch = install(); const view = render(<ComputerUseSections />);
+  await waitFor(() => expect(view.getAllByText('computerUse.notGranted')).toHaveLength(2));
+  fetch.mockResolvedValueOnce({ok: true, json: async () => ({...disabled, permissions: {accessibility: true, screenRecording: true}})} as Response);
+  fireEvent.focus(window);
+  await waitFor(() => expect(view.getAllByText('computerUse.granted')).toHaveLength(2));
+  expect(view.getByRole('switch').getAttribute('aria-checked')).toBe('false');
+  fireEvent.focus(window);
+  await waitFor(() => expect(view.getAllByText('computerUse.notGranted')).toHaveLength(2));
+});
+
+it('does not let an older status response overwrite the result of enabling computer use', async () => {
+  const fetch = install(); const view = render(<ComputerUseSections />);
+  await waitFor(() => expect(view.getByRole('switch').hasAttribute('disabled')).toBe(false));
+  let complete!: (response: Response) => void;
+  fetch.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  fireEvent.focus(window);
+  fireEvent.click(view.getByRole('switch'));
+  await waitFor(() => expect(view.getByRole('switch').getAttribute('aria-checked')).toBe('true'));
+  await act(async () => complete({ok: true, json: async () => disabled} as Response));
+  expect(view.getByRole('switch').getAttribute('aria-checked')).toBe('true');
+});
+
+it('shows a failed native probe as unknown instead of a missing permission', async () => {
+  install(false, {...disabled, error: 'Probe timed out', permissions: {accessibility: null, screenRecording: null}});
+  const view = render(<ComputerUseSections />);
+  await waitFor(() => expect(view.getAllByText('computerUse.permissionCheckFailed')).toHaveLength(2));
+  expect(view.queryByText('computerUse.notGranted')).toBeNull();
 });

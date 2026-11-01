@@ -66,6 +66,7 @@ export type MainContentProps = {
     inputId?: string,
   ) => void | (() => void);
   processingSessions: Set<string>;
+  waitingSessions?: Map<string, 'question' | 'approval'>;
   unreadSessionIds: Set<string>;
   onReplaceTemporarySession: SessionLifecycleHandler;
   onNavigateToSession: (targetSessionId: string) => void;

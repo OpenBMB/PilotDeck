@@ -32,16 +32,29 @@ export function useGatewayStatus() {
     void fetchStatus({ showLoading: true });
   }, [fetchStatus]);
 
+  const weixinState = status?.weixin?.runtime?.state;
+  // Token channels start in the background after a save; keep polling until
+  // they report connected/failed so the summary line settles by itself.
+  const tokenChannelPending = (["slack", "telegram"] as const).some((key) => {
+    const channel = status?.[key];
+    if (!channel?.enabled) return false;
+    const state = channel.runtime?.state;
+    return !state || state === "starting" || state === "stopped";
+  });
+
   useEffect(() => {
-    const state = status?.weixin?.runtime?.state;
-    if (state !== "starting" && state !== "waiting_for_login") {
+    const weixinWaiting = weixinState === "starting" || weixinState === "waiting_for_login";
+    if (!weixinWaiting && !tokenChannelPending) {
       return undefined;
     }
+    let polls = 0;
     const timer = window.setInterval(() => {
       void fetchStatus();
+      // WeChat login waits on a human scan; token channels settle quickly.
+      if (!weixinWaiting && ++polls >= 20) window.clearInterval(timer);
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [fetchStatus, status?.weixin?.runtime?.state]);
+  }, [fetchStatus, weixinState, tokenChannelPending]);
 
   return { status, loading, refresh: fetchStatus };
 }

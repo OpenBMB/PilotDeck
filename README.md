@@ -33,6 +33,7 @@
 
 **News** 🔥
 
+- **[2026.10.15]** PilotDeck 2.0 is here! Get started with one-click installation and visual configuration, and keep long-running tasks on track, even across 2,000 interaction messages! New high-quality Word / Excel / PPT Skills deliver office-ready results with a single click. Visit [pilotdeck.openbmb.cn](https://pilotdeck.openbmb.cn) to try it out and contribute.
 - **[2026.05.28]** PilotDeck is now open source! Visit our official website at [pilotdeck.openbmb.cn](https://pilotdeck.openbmb.cn). We welcome contributions, feedback, and stars from the community.
 
 ---

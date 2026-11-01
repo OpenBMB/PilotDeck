@@ -32,6 +32,7 @@ test("Feishu handles permission replies before the active chat drain finishes", 
   const sent: Array<{ chatId: string; text: string }> = [];
   const channel = new FeishuChannel({
     connectionMode: "webhook",
+    verifyToken: "test-verification-token",
     send: async (message) => {
       sent.push(message);
     },
@@ -52,7 +53,7 @@ test("Feishu handles permission replies before the active chat drain finishes", 
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "1", eventId: "reply-1" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "1", eventId: "reply-1" }),
   );
   await withTimeout(decided, 1_000);
 
@@ -96,6 +97,7 @@ test("Feishu sends permission prompts in FIFO order", async () => {
   } as unknown as Gateway;
   const channel = new FeishuChannel({
     connectionMode: "webhook",
+    verifyToken: "test-verification-token",
     send: async (message) => { sent.push(message); },
   });
   await channel.start({ gateway, logger: {} });
@@ -104,7 +106,7 @@ test("Feishu sends permission prompts in FIFO order", async () => {
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "run", eventId: "run-1" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "run", eventId: "run-1" }),
   );
   await delay(50);
 
@@ -114,7 +116,7 @@ test("Feishu sends permission prompts in FIFO order", async () => {
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "1", eventId: "reply-1" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "1", eventId: "reply-1" }),
   );
   await delay(50);
   assert.deepEqual(decisions, ["request-1"]);
@@ -124,7 +126,7 @@ test("Feishu sends permission prompts in FIFO order", async () => {
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "1", eventId: "reply-2" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "1", eventId: "reply-2" }),
   );
   await delay(50);
   assert.deepEqual(decisions, ["request-1", "request-2"]);
@@ -160,6 +162,7 @@ test("Feishu does not decide replies before the initial permission prompt is con
   } as unknown as Gateway;
   const channel = new FeishuChannel({
     connectionMode: "webhook",
+    verifyToken: "test-verification-token",
     send: async (message) => { sent.push(message); },
   });
   await channel.start({ gateway, logger: {} });
@@ -168,7 +171,7 @@ test("Feishu does not decide replies before the initial permission prompt is con
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "run", eventId: "run-duplicate" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "run", eventId: "run-duplicate" }),
   );
   await withTimeout(permissionShown, 1_000);
   while (!sent.some((message) => message.text.includes("工具 bash 需要权限"))) await delay(5);
@@ -176,19 +179,19 @@ test("Feishu does not decide replies before the initial permission prompt is con
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "1", eventId: "reply-duplicate-1" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "1", eventId: "reply-duplicate-1" }),
   );
   await delay(20);
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "1", eventId: "reply-duplicate-2" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "1", eventId: "reply-duplicate-2" }),
   );
   await delay(20);
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "1", eventId: "reply-duplicate-3" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "1", eventId: "reply-duplicate-3" }),
   );
   await delay(50);
 
@@ -210,6 +213,7 @@ test("Feishu keeps the next permission locked when confirmation delivery fails",
   } as unknown as Gateway;
   const channel = new FeishuChannel({
     connectionMode: "webhook",
+    verifyToken: "test-verification-token",
     send: async (message) => {
       sendCount += 1;
       if (sendCount === 1) throw new Error("send unavailable");
@@ -230,13 +234,13 @@ test("Feishu keeps the next permission locked when confirmation delivery fails",
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "1", eventId: "reply-send-failure-1" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "1", eventId: "reply-send-failure-1" }),
   );
   await delay(20);
   await channel.handleWebhook(
     {} as IncomingMessage,
     response as unknown as ServerResponse,
-    JSON.stringify({ chatId, text: "1", eventId: "reply-send-failure-2" }),
+    JSON.stringify({ token: "test-verification-token", chatId, text: "1", eventId: "reply-send-failure-2" }),
   );
   await delay(20);
 
@@ -247,6 +251,7 @@ test("Feishu keeps the next permission locked when confirmation delivery fails",
 test("Feishu reports explicit sender failures as undelivered", async () => {
   const channel = new FeishuChannel({
     connectionMode: "webhook",
+    verifyToken: "test-verification-token",
     send: async () => {
       throw new Error("send unavailable");
     },

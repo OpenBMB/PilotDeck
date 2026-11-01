@@ -37,7 +37,7 @@ import type {
 } from "../chat/types/types";
 import { MAX_ATTACHMENTS_ERROR_KEY } from "../chat/hooks/useChatComposerState";
 import PermissionRequestsBanner from "../chat/view/subcomponents/PermissionRequestsBanner";
-import ImageAttachment from "../chat/view/subcomponents/ImageAttachment";
+import ComposerAttachments from "../chat/view/subcomponents/ComposerAttachments";
 import CommandMenu from "../chat/view/subcomponents/CommandMenu";
 import { cn } from "../../lib/utils.js";
 import type { ContentReference } from "../../types/contentReference";
@@ -853,16 +853,8 @@ export default function ComposerV2({
                       onRemove={() => onRemoveDocumentReference(reference.id)}
                     />
                   ))}
-                  {attachedImages.map((file, index) => (
-                    <ImageAttachment
-                      key={index}
-                      file={file}
-                      onRemove={() => onRemoveImage(index)}
-                      onRetry={() => onRetryImage(file)}
-                      uploadProgress={uploadingImages.get(file)}
-                      error={imageErrors.get(file)}
-                    />
-                  ))}
+                  {attachedImages.length > 0 && <ComposerAttachments files={attachedImages}
+                    uploading={uploadingImages} errors={imageErrors} onRemove={onRemoveImage} onRetry={onRetryImage} />}
                 </div>
                 {attachmentLimitError ? (
                   <div className="mt-2 text-xs text-amber-600 dark:text-amber-300">

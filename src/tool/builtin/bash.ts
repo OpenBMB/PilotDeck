@@ -1,3 +1,4 @@
+import { withCommandMutation } from "./filesystem/coordinateMutation.js";
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import { NodeShellCommandRunner, type PilotDeckCommandRunner } from "./bash/commandRunner.js";
@@ -138,16 +139,11 @@ export function createBashTool(options?: CreateBashToolOptions): PilotDeckToolDe
             }
           }
         : undefined;
-      const finishCommand = !isReadOnlyShellCommand(command) ? await context.fileHistory?.trackCommand?.() : undefined;
-      let result: Awaited<ReturnType<PilotDeckCommandRunner["run"]>>;
-      try { result = await runner.run(command, {
-        cwd: context.cwd,
-        env: context.env,
-        timeoutMs,
-        signal: context.abortSignal,
-        onStdout: emitProgress?.("stdout"),
-        onStderr: emitProgress?.("stderr"),
-      }); } finally { await finishCommand?.(); }
+      const run = () => runner.run(command, {
+        cwd: context.cwd, env: context.env, timeoutMs, signal: context.abortSignal,
+        onStdout: emitProgress?.("stdout"), onStderr: emitProgress?.("stderr"),
+      });
+      const result = isReadOnlyShellCommand(command) ? await run() : await withCommandMutation(context, run);
 
       if (result.timedOut) {
         throw new PilotDeckToolRuntimeError("tool_timeout", `Command timed out after ${timeoutMs}ms.`);

@@ -42,6 +42,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { promises as fsPromises } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { currentRequestContext } from '../../src/network/requestContext.js';
 
 import { installGlobalProxy } from '../../src/cli/proxy.js';
 await installGlobalProxy();
@@ -1594,6 +1595,15 @@ export async function runChatViaGateway(
     provider = 'pilotdeck',
     hooks = {},
 ) {
+    // HTTP handlers carry authenticated attribution in ALS; queued WebSocket
+    // messages carry their own snapshot. Never mix a queued sender with the
+    // request that happened to trigger dispatch, and only serialize wire fields.
+    const sourceContext = options.requestContext ?? currentRequestContext();
+    const requestContext = Object.fromEntries(
+        ['userId', 'deviceId', 'clientVersion', 'parentRequestId']
+            .filter(key => sourceContext[key] !== undefined)
+            .map(key => [key, sourceContext[key]]),
+    );
     const projectKey = options.projectPath || options.cwd || GENERAL_HOME;
     const isGeneralConversation = path.resolve(projectKey) === path.resolve(GENERAL_HOME);
     // Never trust a browser-provided cwd for General. Its transcript identity
@@ -1672,6 +1682,7 @@ export async function runChatViaGateway(
             mode: resolvedMode,
             runId,
             ...(Array.isArray(options?.uploadedAttachments) ? { uploadedAttachments: options.uploadedAttachments } : {}),
+            ...(Object.keys(requestContext).length > 0 ? { requestContext } : {}),
             ...(options?.modelOverride ? { modelOverride: options.modelOverride } : {}),
             ...(options?.modelSelection ? { modelSelection: options.modelSelection } : {}),
             ...(basePermissionMode ? { basePermissionMode } : {}),

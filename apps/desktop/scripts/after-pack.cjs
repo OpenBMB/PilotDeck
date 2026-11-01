@@ -184,6 +184,10 @@ module.exports = async function afterPack(context) {
     // restrictive build-shell umask make it unreadable to desktop users.
     process.umask(0o022);
     makePackagedLinuxFilesReadable(context.appOutDir);
+    // Probe the copied payload too: staging checks cannot detect packaging loss.
+    execFileSync(join(nodeRoot, "bin", "node"), [
+      join(__dirname, "verify-runtime-pty.cjs"), runtimeRoot,
+    ], { cwd: runtimeRoot, stdio: "inherit", timeout: 15_000 });
   }
   ensureMacSigningFallback(context);
   if (context.electronPlatformName === "win32") {

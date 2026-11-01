@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import type { Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { search } from '@codemirror/search';
+import { fileSearchHighlights } from '../../utils/searchHighlights';
 import { zincDarkTheme, zincLightTheme } from '../../utils/zincThemes';
 import HtmlDocumentPreview from './HtmlDocumentPreview';
 import MarkdownPreview from './markdown/MarkdownPreview';
@@ -47,7 +48,7 @@ export default function CodeEditorSurface({
   const createdEditorViewRef = useRef<EditorView | null>(null);
   const searchExtension = useMemo(() => search({ top: true }), []);
   const resolvedExtensions = useMemo(
-    () => [searchExtension, ...extensions],
+    () => [searchExtension, fileSearchHighlights, ...extensions],
     [extensions, searchExtension],
   );
   const previewActive = (htmlPreview && isHtmlFile) || (markdownPreview && isMarkdownFile);
@@ -71,9 +72,9 @@ export default function CodeEditorSurface({
     return (
       <div
         ref={previewRootRef}
-        className="h-full overflow-y-auto bg-white dark:bg-neutral-950"
+        className="h-full overflow-y-auto bg-neutral-100 p-5 dark:bg-neutral-950 sm:p-7"
       >
-        <div className="prose prose-sm prose-neutral mx-auto max-w-none px-8 py-6 dark:prose-invert prose-headings:font-semibold prose-a:text-neutral-900 prose-a:underline prose-code:text-[13px] prose-pre:bg-neutral-900 prose-img:rounded-lg dark:prose-a:text-neutral-100">
+        <div className="prose prose-sm prose-neutral mx-auto min-h-full max-w-[780px] bg-white px-7 py-10 shadow-sm dark:prose-invert sm:px-12 sm:py-14 prose-headings:font-semibold prose-p:leading-7 prose-a:text-neutral-900 prose-a:underline prose-code:text-[13px] prose-pre:bg-neutral-900 prose-img:rounded-lg dark:bg-neutral-900 dark:prose-a:text-neutral-100">
           <MarkdownPreview content={content} baseFilePath={baseFilePath} onFileOpen={onFileOpen} />
         </div>
       </div>

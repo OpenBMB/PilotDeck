@@ -7,7 +7,7 @@ export type ComputerUseStatus = {
   permissionOwner?: string;
   permissionAppPath?: string;
   desktopSession?: 'x11' | 'wayland' | 'unknown';
-  permissions?: { accessibility: boolean; screenRecording: boolean };
+  permissions?: { accessibility: boolean | null; screenRecording: boolean | null };
   error?: string;
 };
 export type ComputerUsePermission = 'accessibility' | 'screenRecording';

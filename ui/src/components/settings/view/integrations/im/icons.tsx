@@ -144,6 +144,26 @@ export function Send(props: IconProps) {
   );
 }
 
+export function SlackIcon(props: IconProps) {
+  const { size = 20, ...svgProps } = props;
+  return (
+    <Icon size={size} strokeWidth={2.2} {...svgProps}>
+      <path d="M9.5 3.5v7M14.5 13.5v7M3.5 14.5h7M13.5 9.5h7" />
+      <path d="M9.5 3.5a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2M14.5 20.5a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2M3.5 14.5a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2M20.5 9.5a2 2 0 0 0-2-2h-3a2 2 0 0 0-2 2" />
+    </Icon>
+  );
+}
+
+export function TelegramIcon(props: IconProps) {
+  const { size = 20, ...svgProps } = props;
+  return (
+    <Icon size={size} {...svgProps}>
+      <path d="M21.5 4.5 2.8 11.7c-.9.4-.9 1.6.1 1.9l4.6 1.4 1.8 5.4c.2.7 1.1.9 1.6.4l2.6-2.5 4.6 3.4c.6.4 1.4.1 1.6-.6l3.2-15.2c.2-.9-.6-1.6-1.4-1.4Z" />
+      <path d="m7.5 15 10-7.5-7.6 8.9" />
+    </Icon>
+  );
+}
+
 export function XCircle(props: IconProps) {
   return <Icon {...props}><circle cx="12" cy="12" r="9" /><path d="m9 9 6 6M15 9l-6 6" /></Icon>;
 }

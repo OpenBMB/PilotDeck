@@ -43,6 +43,7 @@ export function createOptimisticUserFrames({
       .map((image) => typeof image === 'string' ? image : image?.data)
       .filter((image) => typeof image === 'string')
     : [];
+  const attachments = options.displayAttachments ?? options.attachments;
 
   return [
     createNormalizedMessage({
@@ -53,8 +54,8 @@ export function createOptimisticUserFrames({
       role: 'user',
       content: userVisibleInput,
       ...(runId ? { runId } : {}),
-      ...(Array.isArray(options.attachments) && options.attachments.length > 0
-        ? { attachments: options.attachments }
+      ...(Array.isArray(attachments) && attachments.length > 0
+        ? { attachments }
         : {}),
       ...(images.length > 0 ? { images } : {}),
       timestamp,

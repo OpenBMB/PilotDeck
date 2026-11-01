@@ -22,10 +22,13 @@ import { StreamingCheckpointManager } from "./StreamingCheckpoint.js";
 import { buildLiteLLMContinuationRequest } from "./continuationRequest.js";
 import { requestFingerprint } from "./requestFingerprint.js";
 import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
+import { randomUUID } from "node:crypto";
+import { mergeRequestHeaders, requestContextHeaders, requestHeadersMode, type RequestContext } from "../../network/requestContext.js";
 
 export type ModelTransport = typeof fetch;
 
 export type ModelRuntimeOptions = {
+  requestContext?: RequestContext;
   fetch?: ModelTransport;
   googleClientFactory?: GoogleClientFactory;
   signal?: AbortSignal;
@@ -69,6 +72,7 @@ export async function complete(
   config: ModelConfig,
   options: ModelRuntimeOptions = {},
 ) {
+  options = { ...options, requestContext: { ...options.requestContext, operationId: randomUUID() } };
   const nonStreamingRequest = { ...request, stream: false };
   const { provider } = validateModelRequest(nonStreamingRequest, config);
   const maxRetries = provider.retry?.requestMaxRetries ?? DEFAULT_REQUEST_MAX_RETRIES;
@@ -101,7 +105,7 @@ export async function complete(
     const body = buildModelRequest(nonStreamingRequest, config);
     let response: Response;
     try {
-      response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal);
+      response = await sendProviderRequest(provider, body, false, options.fetch ?? fetch, options.signal, options);
     } catch (error) {
       if (attempt < maxRetries && isRetryableRequestError(error)) {
         const delayMs = retryBaseDelay * (attempt + 1);
@@ -136,6 +140,7 @@ export async function* streamModel(
   config: ModelConfig,
   options: ModelRuntimeOptions = {},
 ): AsyncIterable<CanonicalModelEvent> {
+  options = { ...options, requestContext: { ...options.requestContext, operationId: randomUUID() } };
   const streamingRequest = { ...request, stream: true };
   const { provider } = validateModelRequest(streamingRequest, config);
   const maxRetries = provider.retry?.streamMaxRetries ?? DEFAULT_STREAM_MAX_RETRIES;
@@ -164,7 +169,7 @@ export async function* streamModel(
       model: currentRequest.model,
       providerBaseUrl: normalizeProviderBaseUrl(provider.url),
       requestFingerprint: requestFingerprint(currentRequest),
-      metadata: currentRequest.metadata,
+      metadata: { ...currentRequest.metadata, requestOperationId: options.requestContext?.operationId },
     };
     const body = buildModelRequest(currentRequest, config);
     if (process.env.PILOTDECK_DUMP_REQUEST === "1") {
@@ -309,7 +314,10 @@ async function sendGoogleCompleteRequest(
     const body = withGoogleAbortSignal(buildModelRequest(request, {
       providers: { [provider.id]: provider },
     }) as Record<string, unknown>, options.signal);
-    const client = (options.googleClientFactory ?? createGoogleClient)(provider);
+    const client = (options.googleClientFactory ?? createGoogleClient)({
+      ...provider,
+      headers: mergeRequestHeaders(requestContextHeaders(options.requestContext, { mode: provider.requestHeadersMode }), provider.headers),
+    });
     return await client.models.generateContent(body as unknown as GoogleRequestBody);
   } catch (error) {
     throwIfGoogleAbort(error, options.signal);
@@ -335,7 +343,7 @@ async function* streamGoogleProviderRequest(params: {
       model: currentRequest.model,
       providerBaseUrl: normalizeProviderBaseUrl(params.provider.url),
       requestFingerprint: requestFingerprint(currentRequest),
-      metadata: currentRequest.metadata,
+      metadata: { ...currentRequest.metadata, requestOperationId: params.options.requestContext?.operationId },
     };
     const streamAbort = new AbortController();
     const detachAbort = params.options.signal ? forwardAbort(params.options.signal, streamAbort) : undefined;
@@ -357,6 +365,7 @@ async function* streamGoogleProviderRequest(params: {
       // either the idle timeout or the provider's request timeout here.
       const client = (params.options.googleClientFactory ?? createGoogleClient)({
         ...params.provider,
+        headers: mergeRequestHeaders(requestContextHeaders(params.options.requestContext, { mode: params.provider.requestHeadersMode }), params.provider.headers),
         timeoutMs: undefined,
       });
       const streamIdleTimeoutMs = resolveStreamIdleTimeout(params.provider, params.options);
@@ -697,11 +706,17 @@ async function sendProviderRequest(
   try {
     const fetchOptions: RequestInit = {
       method: "POST",
-      headers: buildProviderHeaders(provider, finalBody),
+      headers: buildProviderHeaders(provider, finalBody, options?.requestContext),
       body: JSON.stringify(finalBody),
       signal: controller.signal,
     };
-    return await sendWithEndpointFallback(provider, stream, transport, fetchOptions, effectiveTimeoutMs);
+    let usageFallbackBody: string | undefined;
+    if (provider.protocol === "openai" && stream && finalBody.stream_options !== undefined
+      && provider.extraBody?.stream_options === undefined) {
+      const { stream_options: _usageOptions, ...fallbackBody } = finalBody;
+      usageFallbackBody = JSON.stringify(fallbackBody);
+    }
+    return await sendWithEndpointFallback(provider, stream, transport, fetchOptions, effectiveTimeoutMs, usageFallbackBody);
   } catch (error) {
     if (signal?.aborted) {
       throw createAbortError(signal.reason);
@@ -713,6 +728,14 @@ async function sendProviderRequest(
     }
     detachAbort?.();
   }
+}
+
+async function rejectsStreamUsageOption(response: Response): Promise<boolean> {
+  if (response.status !== 400 && response.status !== 422) return false;
+  const raw = await safeReadJson(response.clone());
+  const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+  return /\b(stream_options|include_usage)\b/i.test(text)
+    && /\b(unknown|unrecognized|unexpected|unsupported)\b|not\s+(supported|allowed|permitted)|extra_forbidden/i.test(text);
 }
 
 function forwardAbort(source: AbortSignal, target: AbortController): () => void {
@@ -732,16 +755,29 @@ async function sendWithEndpointFallback(
   transport: ModelTransport,
   fetchOptions: RequestInit,
   timeoutMs: number,
+  usageFallbackBody?: string,
 ): Promise<Response> {
   const endpoints = buildProviderChatEndpointCandidates({ protocol: provider.protocol, baseUrl: provider.url });
+  const networkOptions = {
+    signal: fetchOptions.signal instanceof AbortSignal ? fetchOptions.signal : undefined,
+    fetchImpl: transport === fetch ? undefined : transport,
+    timeoutMs,
+    retry: { maxRetries: 0, retryOnPost: true },
+  };
   let lastResponse: Response | undefined;
+  const dispatch = (endpoint: string, body = fetchOptions.body) => {
+    // Endpoint and parameter fallbacks are distinct wire requests in one operation.
+    const headers = mergeRequestHeaders(fetchOptions.headers as Record<string, string>,
+      requestHeadersMode(provider.requestHeadersMode) === "off" ? {} : { "x-pilotdeck-request-id": randomUUID() });
+    return networkFetch(endpoint, { ...fetchOptions, headers, body }, networkOptions);
+  };
   for (const endpoint of endpoints) {
-    const response = await networkFetch(endpoint, fetchOptions, {
-      signal: fetchOptions.signal instanceof AbortSignal ? fetchOptions.signal : undefined,
-      fetchImpl: transport === fetch ? undefined : transport,
-      timeoutMs,
-      retry: { maxRetries: 0, retryOnPost: true },
-    });
+    let response = await dispatch(endpoint);
+    if (usageFallbackBody !== undefined && await rejectsStreamUsageOption(response)) {
+      // Retry an explicit parameter rejection at this endpoint before trying
+      // another address, which could otherwise hide the rejection with a 404.
+      response = await dispatch(endpoint, usageFallbackBody);
+    }
     if (await shouldUseEndpointResponse(provider, response, stream, endpoints.length)) {
       return response;
     }
@@ -770,11 +806,11 @@ async function shouldUseEndpointResponse(
   }
 }
 
-export function buildProviderHeaders(provider: ProviderConfig, body?: unknown): HeadersInit {
-  const headers: Record<string, string> = {
+export function buildProviderHeaders(provider: ProviderConfig, body?: unknown, context?: RequestContext): HeadersInit {
+  const headers: Record<string, string> = mergeRequestHeaders({
     "content-type": "application/json",
-    ...provider.headers,
-  };
+    ...requestContextHeaders(context, { mode: provider.requestHeadersMode }),
+  }, provider.headers);
 
   // Defensive trim: parseModelConfig already strips whitespace from
   // apiKey, but a programmatic caller could hand a ProviderConfig in

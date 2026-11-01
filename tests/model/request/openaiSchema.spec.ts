@@ -12,6 +12,7 @@ import type {
   ProviderConfig,
 } from "../../../src/model/index.js";
 import { normalizeOpenAISchema } from "../../../src/model/providers/openai/schema.js";
+import type { OpenAIResponsesRequestBody } from "../../../src/model/providers/openai-responses/request.js";
 
 test("openai schema normalization adds explicit types to cron literal variants", () => {
   const normalized = normalizeOpenAISchema({
@@ -75,6 +76,65 @@ test("openai responses output schemas get literal types normalized", () => {
   const schema = body.text?.format.schema;
   assert.ok(schema);
   assertLiteralTypes(schema);
+});
+
+test("openai responses tools preserve optional parameters without strict validation", () => {
+  const inputSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["description", "prompt"],
+    properties: {
+      description: { type: "string" },
+      prompt: { type: "string" },
+      subagentType: { type: "string" },
+      options: {
+        type: "object",
+        properties: { label: { type: "string" } },
+      },
+    },
+  };
+  const originalSchema = structuredClone(inputSchema);
+  const request = outputSchemaRequest("openai-responses");
+  request.tools = [{ name: "agent", description: "Run an agent", inputSchema }];
+  const body = buildModelRequest(request, modelConfig("openai-responses")) as {
+    tools: Array<{ strict: boolean; parameters: Record<string, unknown> }>;
+    text: { format: { strict: boolean } };
+  };
+
+  assert.equal(body.tools[0].strict, false);
+  assert.deepEqual(body.tools[0].parameters, originalSchema);
+  assert.deepEqual(inputSchema, originalSchema);
+  assert.equal(body.text.format.strict, true);
+});
+
+test("openai responses tools allow free-form object arguments", () => {
+  const request = outputSchemaRequest("openai-responses");
+  request.tools = [{ name: "custom", description: "Accept metadata", inputSchema: {
+    type: "object",
+    properties: { metadata: { type: "object", additionalProperties: { type: "string" } } },
+  } }];
+  const body = buildModelRequest(request, modelConfig("openai-responses")) as {
+    tools: Array<{ strict: boolean; parameters: Record<string, unknown> }>;
+  };
+
+  assert.equal(body.tools[0].strict, false);
+  assert.deepEqual(body.tools[0].parameters, request.tools[0].inputSchema);
+});
+
+test("openai responses encodes assistant history as output text", () => {
+  const request = outputSchemaRequest("openai-responses");
+  request.messages = [
+    { role: "user", content: [{ type: "text", text: "hello" }] },
+    { role: "assistant", content: [{ type: "text", text: "hi" }] },
+    { role: "user", content: [{ type: "text", text: "continue" }] },
+  ];
+  const body = buildModelRequest(request, modelConfig("openai-responses")) as OpenAIResponsesRequestBody;
+
+  assert.deepEqual(body.input, [
+    { role: "user", content: [{ type: "input_text", text: "hello" }] },
+    { role: "assistant", content: [{ type: "output_text", text: "hi" }] },
+    { role: "user", content: [{ type: "input_text", text: "continue" }] },
+  ]);
 });
 
 function outputSchemaRequest(provider: string): CanonicalModelRequest {

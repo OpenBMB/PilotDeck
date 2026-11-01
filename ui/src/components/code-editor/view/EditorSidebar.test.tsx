@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
     compactHeader?: boolean;
     headerPrefix?: ReactNode;
   }>,
-  tabBarProps: [] as Array<{ reserveToolbarSpace?: boolean }>,
 }));
 
 vi.mock('./CodeEditor', () => ({
@@ -26,10 +25,7 @@ vi.mock('./CodeEditor', () => ({
 }));
 
 vi.mock('./subcomponents/CodeEditorTabBar', () => ({
-  default: (props: { reserveToolbarSpace?: boolean }) => {
-    mocks.tabBarProps.push(props);
-    return <div data-testid="editor-tab-bar" />;
-  },
+  default: () => <div data-testid="editor-tab-bar" />,
 }));
 
 const editorTabs: CodeEditorTab[] = [{
@@ -67,7 +63,6 @@ function renderSidebar(workspaceMode: boolean) {
 afterEach(() => {
   cleanup();
   mocks.codeEditorProps.length = 0;
-  mocks.tabBarProps.length = 0;
 });
 
 describe('EditorSidebar workspace embedding', () => {
@@ -76,7 +71,7 @@ describe('EditorSidebar workspace embedding', () => {
 
     expect(mocks.codeEditorProps.at(-1)?.isSidebar).toBe(true);
     expect(mocks.codeEditorProps.at(-1)?.compactHeader).toBe(true);
-    expect(mocks.tabBarProps.at(-1)?.reserveToolbarSpace).toBe(true);
+    expect(mocks.codeEditorProps.at(-1)?.headerPrefix).toBeTruthy();
   });
 
   it('retains the legacy full-screen mobile editor outside workspace mode', () => {
@@ -84,6 +79,6 @@ describe('EditorSidebar workspace embedding', () => {
 
     expect(mocks.codeEditorProps.at(-1)?.isSidebar).toBe(false);
     expect(mocks.codeEditorProps.at(-1)?.compactHeader).toBe(false);
-    expect(mocks.tabBarProps.at(-1)?.reserveToolbarSpace).toBe(false);
+    expect(mocks.codeEditorProps.at(-1)?.headerPrefix).toBeTruthy();
   });
 });

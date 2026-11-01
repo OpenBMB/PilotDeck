@@ -25,6 +25,7 @@ const PRIMARY_ITEMS: NavItem[] = [
   { key: "general", labelKey: "settingsPage.menu.general" },
   { key: "appearance", labelKey: "lightAppearance.title" },
   { key: "modelPool", labelKey: "settingsPage.menu.modelPool" },
+  { key: "usage", labelKey: "settingsPage.menu.usage" },
 ];
 
 const AGENT_ITEMS: NavItem[] = [

@@ -1,3 +1,6 @@
+// Direct consumers (including notification delivery) can load this module before
+// the server entry point. Resolve the user database path before opening SQLite.
+import '../load-env.js';
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -129,6 +132,9 @@ const runMigrations = () => {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )
     `);
+    if (!db.prepare('PRAGMA table_info(push_subscriptions)').all().some(column => column.name === 'preferences_json')) {
+      db.exec("ALTER TABLE push_subscriptions ADD COLUMN preferences_json TEXT NOT NULL DEFAULT '{}'");
+    }
     // Create app_config table if it doesn't exist (for existing installations)
     db.exec(`CREATE TABLE IF NOT EXISTS app_config (
       key TEXT PRIMARY KEY,
@@ -475,16 +481,17 @@ const notificationPreferencesDb = {
 };
 
 const pushSubscriptionsDb = {
-  saveSubscription: (userId, endpoint, keysP256dh, keysAuth) => {
+  saveSubscription: (userId, endpoint, keysP256dh, keysAuth, preferences = {}) => {
     try {
       db.prepare(
-        `INSERT INTO push_subscriptions (user_id, endpoint, keys_p256dh, keys_auth)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO push_subscriptions (user_id, endpoint, keys_p256dh, keys_auth, preferences_json)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(endpoint) DO UPDATE SET
            user_id = excluded.user_id,
            keys_p256dh = excluded.keys_p256dh,
-           keys_auth = excluded.keys_auth`
-      ).run(userId, endpoint, keysP256dh, keysAuth);
+           keys_auth = excluded.keys_auth,
+           preferences_json = excluded.preferences_json`
+      ).run(userId, endpoint, keysP256dh, keysAuth, JSON.stringify(preferences));
     } catch (err) {
       throw err;
     }
@@ -492,15 +499,16 @@ const pushSubscriptionsDb = {
 
   getSubscriptions: (userId) => {
     try {
-      return db.prepare('SELECT endpoint, keys_p256dh, keys_auth FROM push_subscriptions WHERE user_id = ?').all(userId);
+      return db.prepare('SELECT endpoint, keys_p256dh, keys_auth, preferences_json FROM push_subscriptions WHERE user_id = ?').all(userId);
     } catch (err) {
       throw err;
     }
   },
 
-  removeSubscription: (endpoint) => {
+  removeSubscription: (endpoint, userId) => {
     try {
-      db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+      if (userId === undefined) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+      else db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, userId);
     } catch (err) {
       throw err;
     }

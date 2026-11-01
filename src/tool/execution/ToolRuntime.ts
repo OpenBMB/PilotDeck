@@ -10,6 +10,7 @@ import {
 } from "../planModeConstraints.js";
 import { getAskModeViolation } from "../askModeConstraints.js";
 import { isReadOnlyShellCommand } from "../builtin/bash/permissions.js";
+import { preloadBashParser } from "../builtin/bash/parser.js";
 import {
   applyResultSizeLimit,
   type PilotDeckToolErrorResult,
@@ -108,6 +109,8 @@ export class ToolRuntime {
       );
     }
 
+    // Shell permission checks below are sync and need the bash grammar loaded.
+    await preloadBashParser();
     const planModeViolation = getPlanModeViolation(tool.name, call.input, runtimeContext);
     if (planModeViolation) {
       return this.errorResult(
@@ -549,7 +552,7 @@ function getPlanModeViolation(
   if (toolName === "write_file" || toolName === "edit_file") {
     const filePath = readStringProperty(input, "file_path") ?? readStringProperty(input, "filePath");
     if (!isPlanMarkdownPath(filePath, context)) {
-      return buildPlanModeViolationMessage(toolName);
+      return buildPlanModeViolationMessage(toolName, context.planDirectory?.path);
     }
   }
 

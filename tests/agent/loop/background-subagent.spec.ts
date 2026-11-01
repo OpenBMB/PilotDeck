@@ -353,7 +353,7 @@ test("background child checkpoints delayed command writes before task_wait and p
     backgroundTasks: runtime,
     parentResponses: [backgroundAgentCall("checkpoint-child"), textResponse("parent independent work"), textResponse("all writes captured")],
     childBehavior: async function* (request) {
-      if (childStep++ === 0) yield* toolCallResponse("child-command", "task_create", { command })();
+      if (childStep++ === 0) yield* toolCallResponse("child-command", "task_create", { command, lifecycle: "finite" })();
       else if (childStep === 2) yield* toolCallResponse("child-wait", "task_wait", { taskId, timeoutMs: 10_000 })();
       else yield* textResponse(CHILD_REPORT)(request);
     },
@@ -399,9 +399,12 @@ test("background child checkpoints delayed command writes before task_wait and p
   assert.equal(diff.oldContent, "before");
   assert.equal(diff.newContent, "after");
   const plan = await store.preview("session-1", checkpoint.id);
-  assert.equal(plan.files[0]?.status, "ready");
+  // Shell writes are observed, not attributable file-tool edits. Preserve the
+  // shared-directory safety contract: capture them, but never auto-restore them.
+  assert.equal(plan.files[0]?.status, "unprotected");
   const restored = await store.restore("session-1", plan.id);
-  assert.equal(await readFile(file, "utf8"), "before");
+  assert.deepEqual(restored.applied, []);
+  assert.equal(await readFile(file, "utf8"), "after");
   await store.restore("session-1", (await store.undoPreview("session-1", restored.id)).id);
   assert.equal(await readFile(file, "utf8"), "after");
 });

@@ -2,24 +2,26 @@
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
+import { describeReleaseAsset, compatibilityFeeds } from "../../../ui/shared/releaseArtifacts.js";
 
 const assetsDir = resolve(process.argv[2] || "release-assets");
 const files = listFiles(assetsDir)
-  .filter((file) => !["release.json", "SHA256SUMS.txt"].includes(basename(file)));
+  .filter((file) => !["release.json", "SHA256SUMS.txt"].includes(basename(file)) && !file.endsWith('.yml'));
 
 if (files.length === 0) throw new Error(`No desktop release assets found under ${assetsDir}`);
 
-const assets = files.map((file) => ({
+const record = (file) => ({
   name: basename(file),
   size: statSync(file).size,
   sha256: digest(file, "sha256", "hex"),
   sha512: digest(file, "sha512", "base64"),
-  platform: inferPlatform(file),
-  arch: inferArch(file),
-}));
+  ...describeReleaseAsset(basename(file)),
+});
+const assets = files.map(record);
 
 const manifest = {
   schemaVersion: 1,
+  artifactSchemaVersion: 1,
   version: requiredEnv("PILOTDECK_RELEASE_VERSION"),
   tag: requiredEnv("PILOTDECK_RELEASE_TAG"),
   date: requiredEnv("PILOTDECK_RELEASE_DATE"),
@@ -29,6 +31,12 @@ const manifest = {
   assets,
 };
 
+for (const feed of compatibilityFeeds(manifest)) {
+  const file = resolve(assetsDir, feed.name);
+  writeFileSync(file, feed.text);
+  assets.push(record(file));
+}
+assets.sort((a, b) => a.name.localeCompare(b.name));
 writeFileSync(resolve(assetsDir, "release.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 writeFileSync(
   resolve(assetsDir, "SHA256SUMS.txt"),
@@ -44,22 +52,6 @@ function listFiles(directory) {
 
 function digest(file, algorithm, encoding) {
   return createHash(algorithm).update(readFileSync(file)).digest(encoding);
-}
-
-function inferPlatform(file) {
-  const name = basename(file).toLowerCase();
-  if (name.endsWith(".dmg") || name.includes("mac")) return "darwin";
-  if (name.endsWith(".exe") || name.includes("win")) return "win32";
-  if (name.endsWith(".deb") || name.endsWith(".rpm") || name.includes("linux")) return "linux";
-  return "unknown";
-}
-
-function inferArch(file) {
-  const name = basename(file).toLowerCase();
-  if (name.includes("universal")) return "universal";
-  if (name.includes("arm64") || name.includes("aarch64")) return "arm64";
-  if (name.includes("x64") || name.includes("x86_64")) return "x64";
-  return "unknown";
 }
 
 function requiredEnv(name) {

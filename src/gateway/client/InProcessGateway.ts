@@ -1,4 +1,5 @@
 import { ActiveTimeline } from "../stream/ActiveTimeline.js";
+import { withRequestContext } from "../../network/requestContext.js";
 import { normalizeSessionModelSelection } from "../dialog/modelCatalog.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
@@ -482,7 +483,13 @@ export class InProcessGateway implements Gateway {
     let completedEventAt: number | undefined;
 
     // Background pump: agent events → queue.
-    const pump = (async () => {
+    const pump = withRequestContext({
+      ...input.requestContext,
+      sessionId: input.sessionKey,
+      turnId: runId,
+      projectPath: input.projectKey,
+      purpose: "conversation",
+    }, async () => {
       try {
         // Refresh only after beginTurn has reserved the session. Replacement
         // submissions claim their transaction before this await, so an
@@ -731,7 +738,7 @@ export class InProcessGateway implements Gateway {
         }
         queue.close();
       }
-    })();
+    });
 
     try {
       for await (const event of queue) {

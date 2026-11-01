@@ -1,4 +1,7 @@
 import type { ChannelAdapter } from "./protocol/ChannelAdapter.js";
+import type { ChannelStatePersistence } from "./protocol/ChannelStatePersistence.js";
+import type { SlackSessionMapperState } from "./slack/SlackSessionMapper.js";
+import type { TelegramSessionMapperState } from "./telegram/TelegramSessionMapper.js";
 import type { PilotAdaptersConfig, PilotPlatformAdapterConfig } from "../../pilot/config/types.js";
 
 /**
@@ -9,22 +12,32 @@ const CHANNEL_LOADERS: Record<
   string,
   (cfg: PilotPlatformAdapterConfig, options: LoadEnabledChannelsOptions) => Promise<ChannelAdapter>
 > = {
-  telegram: async (cfg) => {
+  telegram: async (cfg, options) => {
     const { TelegramChannel } = await import("./telegram/TelegramChannel.js");
+    const { TelegramSessionMapper } = await import("./telegram/TelegramSessionMapper.js");
+    const saved = await options.statePersistence?.load<TelegramSessionMapperState>("telegram");
     return new TelegramChannel({
       token: cfg.token,
       webhookUrl: cfg.webhookUrl,
+      ...(permissionModeOf(cfg) ? { permissionMode: permissionModeOf(cfg) } : {}),
+      ...(saved ? { mapper: new TelegramSessionMapper(saved) } : {}),
+      ...(options.statePersistence ? { onStateChange: (state) => options.statePersistence?.save("telegram", state) } : {}),
     });
   },
   discord: async (cfg) => {
     const { DiscordChannel } = await import("./discord/DiscordChannel.js");
     return new DiscordChannel({ token: cfg.token });
   },
-  slack: async (cfg) => {
+  slack: async (cfg, options) => {
     const { SlackChannel } = await import("./slack/SlackChannel.js");
+    const { SlackSessionMapper } = await import("./slack/SlackSessionMapper.js");
+    const saved = await options.statePersistence?.load<SlackSessionMapperState>("slack");
     return new SlackChannel({
       botToken: cfg.token,
       appToken: cfg.extra?.appToken as string | undefined,
+      ...(permissionModeOf(cfg) ? { permissionMode: permissionModeOf(cfg) } : {}),
+      ...(saved ? { mapper: new SlackSessionMapper(saved) } : {}),
+      ...(options.statePersistence ? { onStateChange: (state) => options.statePersistence?.save("slack", state) } : {}),
     });
   },
   matrix: async (cfg, options) => {
@@ -116,7 +129,18 @@ const CHANNEL_LOADERS: Record<
 
 export type LoadEnabledChannelsOptions = {
   pilotHome?: string;
+  /** Restores and saves per-chat session mappings (Slack, Telegram). */
+  statePersistence?: Pick<ChannelStatePersistence, "load" | "save">;
 };
+
+/**
+ * Read permissionMode only from the config being loaded. An absent override
+ * must stay absent: deps.config is the startup snapshot across hot reloads.
+ */
+function permissionModeOf(cfg: PilotPlatformAdapterConfig): "default" | "bypassPermissions" | undefined {
+  const mode = cfg.extra?.permissionMode;
+  return mode === "default" || mode === "bypassPermissions" ? mode : undefined;
+}
 
 export async function loadEnabledChannels(
   adapters: PilotAdaptersConfig | undefined,

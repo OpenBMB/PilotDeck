@@ -1,6 +1,23 @@
 name: macOS
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_date:
+        description: Optional build date in YYYY-MM-DD
+        required: false
+        default: ""
+        type: string
+      revision:
+        description: Zero-based same-day build revision
+        required: false
+        default: "0"
+        type: string
+      require_macos_signing:
+        description: Build signed and notarized validation artifacts without publishing a release
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       release_date:
@@ -97,6 +114,15 @@ jobs:
       - name: Verify computer use lifecycle and pinned assets
         run: node --test apps/desktop/scripts/computer-use.test.mjs
 
+      - name: Verify shared desktop and Web permission ownership
+        run: >-
+          pnpm --dir ui exec vitest run
+          server/services/computerUse.test.js
+          server/services/standaloneComputerUse.test.js
+          server/services/macComputerUseRuntime.test.js
+          server/services/macComputerUsePermissions.test.js
+          server/routes/computer-use.test.js
+
       - name: Verify macOS background and quit lifecycle
         run: node apps/desktop/scripts/verify-desktop-lifecycle.cjs
 
@@ -138,6 +164,17 @@ jobs:
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           echo "CSC_IDENTITY_AUTO_DISCOVERY=true" >> "$GITHUB_ENV"
 
+      - name: Use TCP for Apple notarization on Intel
+        if: ${{ matrix.arch == 'x64' && inputs.require_macos_signing }}
+        shell: bash
+        run: |
+          # Work around HTTP/3 disconnects on macos-15-intel:
+          # https://github.com/actions/runner-images/issues/14924
+          printf '%s\n' 'block return out quick proto udp from any to any port 443' | sudo pfctl -f -
+          sudo pfctl -E
+          sudo pfctl -s info
+          sudo pfctl -sr
+
       - name: Build macOS ${{ matrix.arch }} installer
         shell: bash
         run: |
@@ -161,6 +198,7 @@ jobs:
           test "$(lipo -archs "$app_path/Contents/Resources/node/bin/node")" = "$MACH_ARCH"
           "$app_path/Contents/Resources/node/bin/node" apps/desktop/scripts/verify-cua-driver.cjs "$app_path/Contents/Resources" "$MACOS_ARCH"
           codesign --verify --strict "$app_path/Contents/Resources/runtime/resources/cua-driver/PilotDeck Computer Use.app"
+          "$app_path/Contents/Resources/node/bin/node" apps/desktop/scripts/verify-mac-permission-probe.mjs "$app_path/Contents/Resources/runtime/resources/cua-driver"
           native_path="$(find "$app_path/Contents/Resources/runtime/node_modules/better-sqlite3" -name '*.node' -print -quit)"
           test -n "$native_path"
           test "$(lipo -archs "$native_path")" = "$MACH_ARCH"

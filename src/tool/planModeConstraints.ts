@@ -31,7 +31,7 @@ export const PLAN_MODE_ALLOWED_TOOLS = new Set([
 
 const PLAN_MODE_VIOLATION_HEADER = "[PLAN_MODE_VIOLATION]";
 
-export function buildPlanModeViolationMessage(toolName: string): string {
+export function buildPlanModeViolationMessage(toolName: string, planDirectoryPath?: string): string {
   return [
     `${PLAN_MODE_VIOLATION_HEADER} Tool "${toolName}" is BLOCKED in plan mode.`,
     "",
@@ -39,7 +39,9 @@ export function buildPlanModeViolationMessage(toolName: string): string {
     "",
     "What you should do instead:",
     "1. Use read-only tools (read_file, grep, glob, bash with read-only commands) to explore",
-    "2. Write your plan as markdown under .pilotdeck/plans/",
+    planDirectoryPath
+      ? `2. Use write_file/edit_file with an absolute markdown path under the designated plan directory: ${planDirectoryPath}`
+      : "2. Write your plan as markdown under .pilotdeck/plans/",
     "3. Call exit_plan_mode when your plan is ready",
     "",
     "Do NOT retry this tool. It will fail again.",

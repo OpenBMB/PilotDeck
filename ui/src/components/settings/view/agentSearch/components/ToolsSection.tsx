@@ -1,8 +1,10 @@
-import { isOptionalFeatureEnabled } from "../../../../../../../src/pilot/config/optionalFeature.js";
-import { WEB_SEARCH_PROVIDERS, WEB_SEARCH_DOCS, SERPAPI_ENGINES, isSerpApiEngine } from "../../../../../../../src/pilot/config/webSearchProviders.js";
 import { useEffect, useState } from "react";
+import CustomSearchEditor from './CustomSearchEditor';
 import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { isOptionalFeatureEnabled } from "../../../../../../../src/pilot/config/optionalFeature.js";
+import { WEB_SEARCH_PROVIDERS, WEB_SEARCH_DOCS, SERPAPI_ENGINES, isSerpApiEngine } from "../../../../../../../src/pilot/config/webSearchProviders.js";
+import { resolveWebSearchConfig, updateWebSearchProviderConfig } from "../../../../../../../src/pilot/config/webSearchConfig.js";
 import Tooltip from "../../../../../shared/view/ui/Tooltip";
 import { GeneralSettingsIcon } from "../../../shared/view/GeneralSettingsPrimitives";
 import { authenticatedFetch } from "../../../../../utils/api";
@@ -234,7 +236,8 @@ function normalizeProvider(value: unknown): WebSearchProvider {
 
 export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
   const { t } = useTranslation("settings");
-  const ws = config.tools?.webSearch ?? {};
+  const savedWebSearch = config.tools?.webSearch ?? {};
+  const ws = resolveWebSearchConfig(savedWebSearch);
   const enabled = isOptionalFeatureEnabled(config.tools?.webSearch);
   const provider = normalizeProvider(ws.provider);
   const apiKey = typeof ws.apiKey === "string" ? ws.apiKey : "";
@@ -259,21 +262,22 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
     setTestMessage("");
   };
 
-  const updateWebSearch = (next: WebSearchConfig) => {
+  const commitWebSearch = (next: WebSearchConfig) => {
     onChange(patch(config, ["tools", "webSearch"], next));
     resetTest();
   };
 
+  const updateWebSearch = (next: WebSearchConfig) => {
+    commitWebSearch(updateWebSearchProviderConfig(savedWebSearch, next));
+  };
+
   const setProvider = (nextProvider: WebSearchProvider) => {
     const next = webSearchConfigForProvider(
-      ws,
+      savedWebSearch,
       nextProvider,
       GLM_DEFAULT_ENDPOINT,
     );
-    if (nextProvider === "custom") {
-      next.customProvider = { auth: "bearer", method: "POST" };
-    }
-    updateWebSearch(next);
+    commitWebSearch(next);
     setEditingField(null);
     setApiKeyDraft("");
   };
@@ -311,6 +315,8 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
       ...ws,
       provider: "custom",
       endpoint: value,
+      // Saved credentials belong to their endpoint; re-enter the key for a new URL.
+      ...(value !== endpoint.trim() ? { apiKey: undefined } : {}),
       customProvider: {
         ...ws.customProvider,
         auth: ws.customProvider?.auth ?? "bearer",
@@ -372,7 +378,7 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
             provider,
             apiKey: trimmedKey,
             ...(provider === "serpapi" ? { searchEngine: ws.searchEngine ?? "google" } : {}),
-            ...(provider === "custom" ? { endpoint: trimmedEndpoint } : {}),
+            ...(trimmedEndpoint ? { endpoint: trimmedEndpoint } : {}),
             customProvider:
               provider === "custom"
                 ? {
@@ -618,6 +624,13 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
           </div>
         </div>
 
+        {provider === 'custom' && <CustomSearchEditor key={JSON.stringify([endpoint, ws.customProvider])}
+          value={ws.customProvider ?? {}} endpoint={endpoint} disabled={!enabled}
+          onSave={(customProvider, nextEndpoint) => {
+            const scope = (value: typeof customProvider) => JSON.stringify([value.auth ?? 'bearer', value.method ?? 'POST', value.apiKeyParam?.trim() || 'api_key']);
+            updateWebSearch({ ...ws, endpoint: nextEndpoint, customProvider,
+              ...(nextEndpoint !== endpoint || scope(customProvider) !== scope(ws.customProvider ?? {}) ? { apiKey: undefined } : {}) });
+          }} />}
         <footer className="search-test-footer">
           <div className="test-row search-test-row">
             {testStatus === "success" ? (

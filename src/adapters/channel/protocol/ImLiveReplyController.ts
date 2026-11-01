@@ -1,5 +1,6 @@
 import type { GatewayEvent } from "../../../gateway/index.js";
 import { isVisibleFailureStatusDetail } from "../../../status/agentStatus.js";
+import { closeCodeFence, codeFenceContinuation, codeFenceSplitPoint } from "./ImCodeFences.js";
 
 export type ImLiveReplyHandle = unknown;
 
@@ -29,7 +30,16 @@ export type ImLiveReplyTransport<Handle = ImLiveReplyHandle> = {
   pulseActivity?(activity: ImLiveReplyActivity): Promise<void | boolean>;
   stopActivity?(): Promise<void | boolean>;
   maxMessageLength?: number;
+  /**
+   * Platform cap on how many times one sent message may be edited (Feishu: 20).
+   * The controller keeps one edit in reserve for the final text and continues
+   * streaming in a fresh message once the budget is spent, so long replies do
+   * not freeze half-way when the platform starts rejecting edits.
+   */
+  maxEditsPerMessage?: number;
   formatText?: (text: string) => string;
+  /** Keep code blocks intact when a Markdown reply spans several messages. */
+  preserveCodeFences?: boolean;
 };
 
 export type ImLiveReplyControllerOptions<Handle = ImLiveReplyHandle> = {
@@ -38,6 +48,8 @@ export type ImLiveReplyControllerOptions<Handle = ImLiveReplyHandle> = {
   bufferThreshold?: number;
   initialThrottleMs?: number;
   initialBufferThreshold?: number;
+  /** Minimum gap between two live (non-final) edits once text is visible. */
+  minEditIntervalMs?: number;
   turnTimeoutMs?: number;
   activityDelayMs?: number;
   activityUpdateThrottleMs?: number;
@@ -55,10 +67,12 @@ export type ImLiveReplyControllerOptions<Handle = ImLiveReplyHandle> = {
 
 type Segment<Handle> = {
   text: string;
+  codeFencePrefix: string;
   handle?: Handle;
   firstTextAt?: number;
   lastVisibleText: string;
   lastVisibleFinalText: string;
+  editCount: number;
   editDisabled: boolean;
   fallbackPrefix: string;
   final: boolean;
@@ -75,6 +89,9 @@ const DEFAULT_THROTTLE_MS = 2_000;
 const DEFAULT_BUFFER_THRESHOLD = 96;
 const DEFAULT_INITIAL_THROTTLE_MS = 800;
 const DEFAULT_INITIAL_BUFFER_THRESHOLD = 24;
+const DEFAULT_MIN_EDIT_INTERVAL_MS = 1_000;
+/** Upper bound on how much `formatText` can grow raw text (`&` → `&amp;`). */
+const MAX_FORMAT_EXPANSION = 6;
 const DEFAULT_TURN_TIMEOUT_MS = 600_000;
 const DEFAULT_ACTIVITY_DELAY_MS = 2_500;
 const DEFAULT_ACTIVITY_UPDATE_THROTTLE_MS = 10_000;
@@ -119,6 +136,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   private readonly bufferThreshold: number;
   private readonly initialThrottleMs: number;
   private readonly initialBufferThreshold: number;
+  private readonly minEditIntervalMs: number;
   private readonly turnTimeoutMs: number;
   private readonly activityDelayMs: number;
   private readonly activityUpdateThrottleMs: number;
@@ -136,10 +154,13 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   private currentSegment: Segment<Handle> = createSegment();
   private readonly completedSegments: Array<Segment<Handle>> = [];
   private textTimer: ReturnType<typeof setTimeout> | undefined;
+  private textTimerDueAt = 0;
   private turnTimer: ReturnType<typeof setTimeout> | undefined;
   private activityDelayTimer: ReturnType<typeof setTimeout> | undefined;
   private activityUpdateTimer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
+  private readonly liveFlushQueued = new Set<Segment<Handle>>();
+  private finalizing = false;
   private lastFlushAt = 0;
   private closed = false;
   private turnTimerArmed = false;
@@ -151,6 +172,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     this.bufferThreshold = options.bufferThreshold ?? DEFAULT_BUFFER_THRESHOLD;
     this.initialThrottleMs = options.initialThrottleMs ?? DEFAULT_INITIAL_THROTTLE_MS;
     this.initialBufferThreshold = options.initialBufferThreshold ?? DEFAULT_INITIAL_BUFFER_THRESHOLD;
+    this.minEditIntervalMs = Math.max(0, options.minEditIntervalMs ?? DEFAULT_MIN_EDIT_INTERVAL_MS);
     this.turnTimeoutMs = options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
     this.activityDelayMs = options.activityDelayMs ?? DEFAULT_ACTIVITY_DELAY_MS;
     this.activityUpdateThrottleMs = options.activityUpdateThrottleMs ?? DEFAULT_ACTIVITY_UPDATE_THROTTLE_MS;
@@ -187,7 +209,9 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
         return;
       case "tool_call_started":
         if (this.shouldFlushBeforeToolBoundary()) {
-          await this.flushSegment({ finalizeActivityOnly: false });
+          // Finalize the text written so far in the background; the agent's
+          // event stream should not wait on an IM round trip at every tool call.
+          this.finalizeSegmentInBackground();
         } else {
           this.clearTextTimer();
         }
@@ -237,20 +261,38 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     const finalizeActivityOnly = options.finalizeActivityOnly ?? true;
     this.clearTextTimer();
     this.clearActivityTimers();
-    await this.flushCurrent({ final: true, force: true, finalizeActivityOnly });
+    this.finalizing = true;
+    try {
+      await this.flushCurrent({ final: true, force: true, finalizeActivityOnly });
+    } finally {
+      this.finalizing = false;
+    }
     if (
       this.currentSegment.text.trim()
       || this.currentSegment.lastVisibleFinalText.trim()
       || (finalizeActivityOnly && this.currentSegment.lastVisibleText.trim())
     ) {
-      this.completedSegments.push(this.currentSegment);
-      this.currentSegment = createSegment();
+      const previous = this.currentSegment;
+      this.completedSegments.push(previous);
+      this.currentSegment = this.nextSegment(previous);
     }
   }
 
   async pauseActivity(): Promise<void> {
-    this.clearActivityTimers();
+    if (this.closed) return;
+    // Seal even text whose throttle timer has not fired. The final flush is a
+    // barrier behind earlier segments, so prompts cannot overtake buffered text.
+    await this.flushSegment({ finalizeActivityOnly: false });
     await this.stopNativeActivity();
+  }
+
+  /** Stop timers and discard queued delivery work without sending more text. */
+  cancel(): void {
+    this.closed = true;
+    this.clearTextTimer();
+    this.clearTurnTimer();
+    this.clearActivityTimers();
+    this.liveFlushQueued.clear();
   }
 
   async resumeActivity(
@@ -335,31 +377,61 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
       this.clearActivityTimers();
       await this.stopNativeActivity();
     }
+    if (this.closed) return;
 
+    if (this.editBudgetExhausted(this.currentSegment) && this.hasVisibleReplyText(this.currentSegment)) {
+      this.rollOverSegment();
+    }
     const liveTextLimit = this.liveTextLimit();
     if (liveTextLimit) {
       let rest = text;
       while (rest) {
-        const available = liveTextLimit - this.currentSegment.text.length;
-        if (available <= 0) {
-          await this.flushSegment();
-          continue;
+        const available = liveTextLimit - this.currentSegment.codeFencePrefix.length - this.currentSegment.text.length;
+        let piece = rest.slice(0, Math.max(0, available));
+        piece = this.fitFormattedPiece(this.currentSegment.codeFencePrefix + this.currentSegment.text, piece);
+        if (this.transport.preserveCodeFences && piece.length < rest.length) {
+          const base = this.currentSegment.codeFencePrefix + this.currentSegment.text;
+          const split = codeFenceSplitPoint(base + rest, base.length + piece.length);
+          if (split > base.length) {
+            piece = rest.slice(0, split - base.length);
+          } else if (split > this.currentSegment.codeFencePrefix.length && split < base.length
+            && !this.currentSegment.editDisabled && !this.liveFlushQueued.has(this.currentSegment) && !this.inFlight) {
+            // The preferred line boundary (or an unfinished fence header) can
+            // be in a previous delta. Move the tail before sealing the segment.
+            const carried = base.slice(split);
+            this.currentSegment.text = this.currentSegment.text.slice(0, split - this.currentSegment.codeFencePrefix.length);
+            this.rollOverSegment();
+            rest = carried + rest;
+            continue;
+          }
         }
-
-        const piece = rest.length > available ? rest.slice(0, available) : rest;
-        await this.appendToCurrentSegment(piece);
+        if (!piece) {
+          if (this.currentSegment.text) {
+            this.rollOverSegment();
+            continue;
+          }
+          // Not even one character fits once formatted; keep making progress
+          // and let the transport-side truncation handle the pathological case.
+          piece = rest.slice(0, 1);
+        }
+        this.appendToCurrentSegment(piece);
         rest = rest.slice(piece.length);
         if (rest) {
-          await this.flushSegment();
+          this.rollOverSegment();
         }
       }
       return;
     }
 
-    await this.appendToCurrentSegment(text);
+    this.appendToCurrentSegment(text);
   }
 
-  private async appendToCurrentSegment(text: string): Promise<void> {
+  /**
+   * Buffer text and schedule a live update. Never waits on the transport:
+   * channels await `handleEvent` for every streamed delta, so blocking here
+   * would cap reply throughput at one chunk per IM round trip.
+   */
+  private appendToCurrentSegment(text: string): void {
     if (!text) return;
     const segment = this.currentSegment;
     segment.text += text;
@@ -371,7 +443,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
 
     if (!this.hasVisibleReplyText(segment)) {
       if (segment.text.length >= this.initialBufferThreshold) {
-        await this.flushCurrent({ final: false, force: true, finalizeActivityOnly: false });
+        this.scheduleTextFlush(0);
         return;
       }
       this.scheduleInitialTextFlush(segment);
@@ -380,11 +452,93 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
 
     const pendingChars = Math.max(0, segment.text.length - segment.lastVisibleFinalText.length);
     if (pendingChars >= this.bufferThreshold) {
-      await this.flushCurrent({ final: false, force: true, finalizeActivityOnly: false });
+      this.scheduleTextFlush(this.remainingEditInterval());
       return;
     }
 
     this.scheduleTextFlush(this.throttleMs);
+  }
+
+  /**
+   * Start a new segment (a new IM message) right away and finalize the
+   * previous one behind any transport work already queued. Swapping
+   * synchronously keeps text that arrives meanwhile out of the old message.
+   */
+  private rollOverSegment(): void {
+    this.clearTextTimer();
+    this.clearActivityTimers();
+    const segment = this.currentSegment;
+    this.completedSegments.push(segment);
+    this.currentSegment = this.nextSegment(segment);
+    this.runInBackground(
+      () => this.flushCurrentNow({ final: true, force: true, finalizeActivityOnly: false }, segment),
+      "edit",
+    );
+  }
+
+  private nextSegment(previous: Segment<Handle>): Segment<Handle> {
+    const next = createSegment<Handle>();
+    if (this.transport.preserveCodeFences) {
+      next.codeFencePrefix = codeFenceContinuation(previous.codeFencePrefix + previous.text);
+    }
+    return next;
+  }
+
+  private replyText(segment: Segment<Handle>, text: string): string {
+    const raw = segment.codeFencePrefix + text;
+    return this.transport.preserveCodeFences ? closeCodeFence(raw) : raw;
+  }
+
+  private finalizeSegmentInBackground(): void {
+    const segment = this.currentSegment;
+    if (segment.text.trim() || segment.lastVisibleFinalText.trim()) {
+      this.rollOverSegment();
+      return;
+    }
+    this.clearTextTimer();
+    this.clearActivityTimers();
+  }
+
+  /**
+   * Queue one live (non-final) flush. While one is already waiting, further
+   * requests are absorbed: it reads the newest segment text when it runs, so a
+   * backlog collapses into a single edit.
+   */
+  private requestLiveFlush(): void {
+    const segment = this.currentSegment;
+    if (this.liveFlushQueued.has(segment) || this.closed) return;
+    this.liveFlushQueued.add(segment);
+    // Coalesce only within this segment. Looking up currentSegment at execution
+    // time can send a later segment ahead of an earlier queued finalization.
+    this.runInBackground(async () => {
+      this.liveFlushQueued.delete(segment);
+      if (this.closed || this.finalizing || segment.final) return;
+      if (this.hasVisibleReplyText(segment)) {
+        const wait = this.remainingEditInterval();
+        if (wait > 0) {
+          if (segment === this.currentSegment) this.scheduleTextFlush(wait);
+          return;
+        }
+      }
+      await this.flushCurrentNow({ final: false, force: false, finalizeActivityOnly: false }, segment);
+    }, "edit");
+  }
+
+  private remainingEditInterval(): number {
+    return Math.max(0, this.lastFlushAt + this.minEditIntervalMs - Date.now());
+  }
+
+  private editBudgetExhausted(segment: Segment<Handle>): boolean {
+    const max = this.transport.maxEditsPerMessage;
+    if (!max || max <= 0 || segment.handle === undefined || segment.editDisabled) return false;
+    // Keep the last edit for the final text (cursor removed).
+    return segment.editCount >= max - 1;
+  }
+
+  private runInBackground(fn: () => Promise<void>, phase: ImLiveReplyTransportErrorPhase): void {
+    void this.runExclusive(fn).catch((error: unknown) => {
+      this.reportTransportError(error, phase);
+    });
   }
 
   private canSendNonFinalText(segment: Segment<Handle>): boolean {
@@ -399,7 +553,41 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     if (!this.transport.edit) return undefined;
     const max = this.transport.maxMessageLength;
     if (!max) return undefined;
-    return Math.max(1, max - this.cursor.length);
+    // Reserve the newline + closing fence before accepting raw text.
+    return Math.max(1, max - this.cursor.length - (this.transport.preserveCodeFences ? 4 : 0));
+  }
+
+  /**
+   * The live text limit is measured on raw text, but transports with
+   * `formatText` may expand it (Slack escapes `<`, `>` and `&` into entities).
+   * Return the longest prefix of `piece` whose formatted segment, cursor
+   * included, still fits in one message, so the overflow rolls into the next
+   * message instead of being cut off by `formatForTransport`.
+   */
+  private fitFormattedPiece(base: string, piece: string): string {
+    const max = this.transport.maxMessageLength;
+    if (!max || !piece || (!this.transport.formatText && !this.transport.preserveCodeFences)) return piece;
+    // Formatting the whole segment on every delta is wasted work while it is
+    // far below the limit; no formatter expands text more than this.
+    if ((base.length + piece.length + this.cursor.length + (this.transport.preserveCodeFences ? 4 : 0)) * MAX_FORMAT_EXPANSION <= max) return piece;
+    const fits = (length: number) => {
+      const raw = `${base}${piece.slice(0, length)}`;
+      const text = this.transport.preserveCodeFences ? closeCodeFence(raw) : raw;
+      return this.formattedLength(`${text}${this.cursor}`) <= max;
+    };
+    if (fits(piece.length)) return piece;
+    let low = 0;
+    let high = piece.length - 1;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (fits(mid)) low = mid;
+      else high = mid - 1;
+    }
+    return low > 0 && fits(low) ? piece.slice(0, low) : "";
+  }
+
+  private formattedLength(text: string): number {
+    return this.transport.formatText ? this.transport.formatText(text).length : text.length;
   }
 
   private scheduleInitialTextFlush(segment: Segment<Handle>): void {
@@ -409,11 +597,19 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   }
 
   private scheduleTextFlush(delayMs: number): void {
-    if (this.textTimer || this.closed) return;
+    if (this.closed || this.finalizing) return;
+    const delay = Math.max(0, delayMs);
+    const dueAt = Date.now() + delay;
+    if (this.textTimer) {
+      // An earlier deadline (e.g. the buffer filled up) wins over a lazy throttle.
+      if (this.textTimerDueAt <= dueAt) return;
+      clearTimeout(this.textTimer);
+    }
+    this.textTimerDueAt = dueAt;
     this.textTimer = setTimeout(() => {
       this.textTimer = undefined;
-      void this.flushCurrent({ final: false, force: false, finalizeActivityOnly: false });
-    }, delayMs);
+      this.requestLiveFlush();
+    }, delay);
     this.textTimer.unref?.();
   }
 
@@ -493,13 +689,15 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   }
 
   private async flushActivity(params: { force: boolean }): Promise<void> {
-    await this.runExclusive(() => this.flushActivityNow(params));
+    const segment = this.currentSegment;
+    await this.runExclusive(() => this.flushActivityNow(params, segment));
   }
 
-  private async flushActivityNow(params: { force: boolean }): Promise<void> {
-    const segment = this.currentSegment;
+  private async flushActivityNow(params: { force: boolean }, segment: Segment<Handle>): Promise<void> {
     if (
       this.closed
+      || segment !== this.currentSegment
+      || segment.final
       || !this.canUseActivity()
       || segment.activityDisabled
       || this.shouldSuppressActivityForText(segment)
@@ -549,6 +747,10 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     }
 
     if (segment.handle) {
+      if (this.editBudgetExhausted(segment)) {
+        // Do not spend the reserved final edit on a status refresh.
+        return;
+      }
       try {
         const ok = await this.transport.edit(segment.handle, formatted);
         if (ok === false) {
@@ -557,6 +759,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
           segment.fallbackPrefix = "";
           return;
         }
+        segment.editCount += 1;
         segment.lastVisibleText = formatted;
         segment.activityVisible = true;
         segment.activityUpdates += 1;
@@ -592,7 +795,8 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
 
   private async flushCurrent(params: { final: boolean; force: boolean; finalizeActivityOnly: boolean }): Promise<void> {
     this.clearTextTimer();
-    await this.runExclusive(() => this.flushCurrentNow(params));
+    const segment = this.currentSegment;
+    await this.runExclusive(() => this.flushCurrentNow(params, segment));
   }
 
   private async finalizeWithTerminalText(text: string): Promise<void> {
@@ -606,18 +810,17 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     this.closed = true;
   }
 
-  private async runExclusive(fn: () => Promise<void>): Promise<void> {
-    while (this.inFlight) {
-      await this.inFlight;
-    }
-
-    const current = fn().finally(() => {
-      if (this.inFlight === current) {
-        this.inFlight = undefined;
-      }
+  private runExclusive(fn: () => Promise<void>): Promise<void> {
+    // Publish the tail synchronously: every operation has a fixed FIFO slot,
+    // including segment finalization and permission-prompt barriers.
+    const previous = this.inFlight ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(async () => {
+      if (!this.closed) await fn();
+    }).finally(() => {
+      if (this.inFlight === current) this.inFlight = undefined;
     });
     this.inFlight = current;
-    await current;
+    return current;
   }
 
   private async waitForInFlight(): Promise<void> {
@@ -626,8 +829,10 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     }
   }
 
-  private async flushCurrentNow(params: { final: boolean; force: boolean; finalizeActivityOnly: boolean }): Promise<void> {
-    const segment = this.currentSegment;
+  private async flushCurrentNow(
+    params: { final: boolean; force: boolean; finalizeActivityOnly: boolean },
+    segment: Segment<Handle> = this.currentSegment,
+  ): Promise<void> {
     const finalText = segment.text;
     const hasText = finalText.trim().length > 0;
 
@@ -639,6 +844,10 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
     }
 
     if (!params.final && !this.canSendNonFinalText(segment)) {
+      return;
+    }
+
+    if (!params.final && this.editBudgetExhausted(segment)) {
       return;
     }
 
@@ -656,7 +865,8 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
       return;
     }
 
-    const visibleText = params.final ? finalText : `${finalText}${this.cursor}`;
+    const replyText = this.replyText(segment, finalText);
+    const visibleText = params.final ? replyText : `${replyText}${this.cursor}`;
     const formatted = this.formatForTransport(visibleText);
     if (!params.force && formatted === segment.lastVisibleText) {
       return;
@@ -673,6 +883,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
           }
           return;
         }
+        segment.editCount += 1;
         segment.activityVisible = false;
         segment.lastVisibleText = formatted;
         segment.lastVisibleFinalText = finalText;
@@ -759,6 +970,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
         segment.editDisabled = true;
         return;
       }
+      segment.editCount += 1;
       segment.activityVisible = false;
       segment.lastVisibleText = formatted;
       segment.lastVisibleFinalText = formatted;
@@ -783,6 +995,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
       try {
         const ok = await this.transport.edit(segment.handle, formatted);
         if (ok !== false) {
+          segment.editCount += 1;
           segment.lastVisibleText = formatted;
           this.lastFlushAt = Date.now();
           return;
@@ -797,6 +1010,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
       try {
         const handle = await this.transport.send(formatted);
         if (handle !== false) {
+          if (handle !== undefined) segment.editCount = 0;
           segment.handle = handle === undefined ? segment.handle : handle;
           segment.lastVisibleText = formatted;
           this.lastFlushAt = Date.now();
@@ -815,13 +1029,14 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   }
 
   private async stripCursorBestEffort(segment: Segment<Handle>): Promise<void> {
-    if (!segment.handle || !this.transport.edit || !this.cursor) return;
+    if (this.closed || !segment.handle || !this.transport.edit || !this.cursor) return;
     if (!segment.lastVisibleText.endsWith(this.cursor)) return;
 
     const clean = segment.lastVisibleText.slice(0, -this.cursor.length);
     try {
       const ok = await this.transport.edit(segment.handle, clean);
       if (ok !== false) {
+        segment.editCount += 1;
         segment.lastVisibleText = clean;
       }
     } catch (error) {
@@ -830,19 +1045,27 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
   }
 
   private async sendFallbackContinuation(segment: Segment<Handle>, finalText: string): Promise<void> {
-    const continuation = continuationText(finalText, segment.fallbackPrefix);
+    let continuation = continuationText(finalText, segment.fallbackPrefix);
+    if (this.transport.preserveCodeFences) {
+      const delivered = finalText.startsWith(segment.fallbackPrefix) ? segment.fallbackPrefix : "";
+      const prefix = codeFenceContinuation(segment.codeFencePrefix + delivered);
+      continuation = finalText.slice(delivered.length);
+      if (continuation) continuation = closeCodeFence(prefix + continuation);
+    }
     if (!continuation.trim()) {
       segment.lastVisibleFinalText = finalText;
       return;
     }
 
     for (const chunk of this.splitForTransport(continuation)) {
+      if (this.closed) return;
       try {
         const handle = await this.transport.send(chunk);
         if (handle === false) {
           return;
         }
         segment.handle = handle;
+        segment.editCount = 0;
         segment.activityVisible = false;
         segment.lastVisibleText = chunk;
         segment.lastVisibleFinalText = finalText;
@@ -872,6 +1095,7 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
 
   private async sendFinalChunks(segment: Segment<Handle>, finalText: string): Promise<void> {
     for (const chunk of this.splitForTransport(finalText)) {
+      if (this.closed) return;
       try {
         const handle = await this.transport.send(chunk);
         if (handle === false) {
@@ -960,8 +1184,10 @@ export class ImLiveReplyController<Handle = ImLiveReplyHandle> {
 function createSegment<Handle>(): Segment<Handle> {
   return {
     text: "",
+    codeFencePrefix: "",
     lastVisibleText: "",
     lastVisibleFinalText: "",
+    editCount: 0,
     editDisabled: false,
     fallbackPrefix: "",
     final: false,

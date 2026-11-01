@@ -83,6 +83,8 @@ async function stop() {
 async function main() {
   try {
     const url = await waitForReady();
+    assert.ok(fs.existsSync(path.join(root, 'pilot-home', 'auth.db')),
+      'The installed app must store its database in PILOT_HOME, including when the smoke test runs as root');
     await pause(2_000);
     assert.equal(exited, false, `Electron exited after readiness:\n${output}`);
     if (display === 'x11') {

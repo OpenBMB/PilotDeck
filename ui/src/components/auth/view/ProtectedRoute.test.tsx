@@ -4,7 +4,7 @@ import { createTestI18n } from '../../../i18n/testInstance';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ProtectedRoute from './ProtectedRoute';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({
   auth: {},
@@ -91,6 +91,53 @@ describe('ProtectedRoute runtime states', () => {
     render(<MemoryRouter initialEntries={['/settings/models']}><ProtectedRoute><div>model settings</div></ProtectedRoute></MemoryRouter>);
     expect(screen.getByText('model settings')).toBeTruthy();
     expect(screen.queryByText('Model configuration unavailable')).toBeNull();
+  });
+
+  it.each([
+    '/settings/models/test',
+    '/settings/models/test/',
+    '/settings/advanced/anything',
+    '/settings//models',
+    '/settings/models%2Ftest/extra',
+  ])('keeps an unconfigured user in onboarding at %s', (path) => {
+    mocks.auth = authValue({
+      modelConfiguration: { state: 'needs_configuration', reason: 'missing_config' },
+      gatewayRuntime: { state: 'stopped' },
+    });
+
+    render(<MemoryRouter initialEntries={[path]}><ProtectedRoute><div>application</div></ProtectedRoute></MemoryRouter>);
+
+    expect(screen.getByText('onboarding')).toBeTruthy();
+    expect(screen.queryByText('application')).toBeNull();
+  });
+
+  it.each(['/settings', '/settings/', '/settings/models', '/settings/models/', '/SETTINGS/models'])('keeps the real settings route %s available for configuration repair', (path) => {
+    mocks.auth = authValue({
+      modelConfiguration: { state: 'invalid', errors: ['bad provider'] },
+      gatewayRuntime: { state: 'stopped' },
+    });
+
+    render(<MemoryRouter initialEntries={[path]}><ProtectedRoute><div>model settings</div></ProtectedRoute></MemoryRouter>);
+
+    expect(screen.getByText('model settings')).toBeTruthy();
+    expect(screen.queryByText('onboarding')).toBeNull();
+  });
+
+  it('reapplies the onboarding gate when navigating from settings to an invalid nested path', () => {
+    mocks.auth = authValue({
+      modelConfiguration: { state: 'needs_configuration', reason: 'missing_config' },
+      gatewayRuntime: { state: 'stopped' },
+    });
+    function SettingsProbe() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate('/settings/models/test')}>Nested settings link</button>;
+    }
+
+    render(<MemoryRouter initialEntries={['/settings/models']}><ProtectedRoute><SettingsProbe /></ProtectedRoute></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Nested settings link' }));
+
+    expect(screen.getByText('onboarding')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Nested settings link' })).toBeNull();
   });
 
   it('links the model error screen to the repair settings', () => {

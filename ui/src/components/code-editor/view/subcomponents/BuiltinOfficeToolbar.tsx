@@ -1,3 +1,4 @@
+import { useGlobalSearch } from '../../../global-search/GlobalSearchContext';
 import {
   ChevronLeft,
   ChevronRight,
@@ -51,7 +52,7 @@ type BuiltinOfficeToolbarProps = {
 };
 
 const buttonClass = [
-  'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-600 transition-colors',
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors',
   'hover:bg-neutral-100 hover:text-neutral-950 disabled:cursor-not-allowed disabled:opacity-40',
   'dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-50',
 ].join(' ');
@@ -92,11 +93,12 @@ export default function BuiltinOfficeToolbar({
   onCancelReferenceMode,
 }: BuiltinOfficeToolbarProps) {
   const { t } = useTranslation('codeEditor');
+  const globalSearch = useGlobalSearch();
   const hasItemControls = Boolean(itemCount && itemCount > 0);
 
   return (
     <div className="relative z-20 min-w-0 shrink-0">
-      <div className="flex min-h-12 w-full min-w-0 items-center gap-1 overflow-x-auto border-b border-neutral-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-950">
+      <div className="flex min-h-[44px] w-full min-w-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-950">
       {navigationAvailable && onToggleNavigation ? (
         <>
           <button
@@ -165,6 +167,7 @@ export default function BuiltinOfficeToolbar({
         </>
       ) : null}
 
+      {!globalSearch ? <>
       <Separator />
       <button
         type="button"
@@ -182,6 +185,7 @@ export default function BuiltinOfficeToolbar({
       >
         <Search className="h-4 w-4" strokeWidth={1.75} />
       </button>
+      </> : null}
       <span className="flex-1" />
       {referenceCapabilities && onSelectReferenceMode ? (
         <ContentReferenceMenu

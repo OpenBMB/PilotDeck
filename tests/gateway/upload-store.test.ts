@@ -1,10 +1,42 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { Readable } from "node:stream";
 import test from "node:test";
 import { UploadStore } from "../../src/gateway/dialog/UploadStore.js";
+import sharp from 'sharp';
+import { AttachmentResolver } from '../../src/context/attachments/AttachmentResolver.js';
+
+test('three same-name uploads reach model content as three ordered image blocks', async t => {
+  const project = await mkdtemp(join(tmpdir(), 'pilotdeck-upload-model-images-'));
+  t.after(() => rm(project, { recursive: true, force: true }));
+  const store = new UploadStore({ resolveProject: async () => project, listProjects: async () => [project] });
+  const bytes = await Promise.all(['red', 'green', 'blue'].map(background => sharp({ create: { width: 2, height: 2, channels: 3, background } }).png().toBuffer()));
+  const created = await store.create(project, bytes.map((data, index) => ({ clientFileId: String(index), name: 'image.png', relativePath: 'image.png', mimeType: 'image/png', size: data.length })));
+  for (const index of [2, 0, 1]) await store.writePart(created.uploadId, String(index), Readable.from([bytes[index]]));
+  await store.complete(created.uploadId);
+  const uploaded = await store.verifyAttachment(created.uploadId, project, ['0', '1', '2']);
+  const resolved = await new AttachmentResolver().resolveAll(uploaded.map(file => ({ type: 'image', path: file.path, mimeType: file.mimeType })));
+  const images = resolved.blocks.filter(block => block.type === 'image');
+  assert.equal(images.length, 3);
+  assert.deepEqual(images.map(image => image.data), bytes.map(data => data.toString('base64')));
+});
+
+test('same-name images retain distinct bytes and requested order after out-of-order writes', async t => {
+  const project = await mkdtemp(join(tmpdir(), 'pilotdeck-multi-image-'));
+  t.after(() => rm(project, { recursive: true, force: true }));
+  const store = new UploadStore({ resolveProject: async () => project, listProjects: async () => [project] });
+  const ids = ['a', 'b', 'c'];
+  const created = await store.create(project, ids.map(clientFileId => ({ clientFileId, name: 'image.png', relativePath: 'image.png', mimeType: 'image/png', size: 1 })));
+  for (const id of ['c', 'a', 'b']) await store.writePart(created.uploadId, id, Readable.from([id]));
+  await store.complete(created.uploadId);
+  for (const requested of [undefined, ['b', 'c', 'a']]) {
+    const attachments = await store.verifyAttachment(created.uploadId, project, requested);
+    assert.deepEqual(attachments.map(file => file.attachmentId), requested ?? ids);
+    assert.deepEqual(await Promise.all(attachments.map(file => readFile(file.path, 'utf8'))), requested ?? ids);
+  }
+});
 
 test("upload metadata cannot escape through a symlink or change its directory identity", async (t) => {
   const project = await mkdtemp(join(tmpdir(), "pilotdeck-upload-boundary-"));
@@ -47,6 +79,40 @@ test("upload store persists, verifies, and resolves streamed attachments", async
   assert.equal(completed.uploadedBytes, 5);
   const attachments = await store.verifyAttachment(created.uploadId, project);
   assert.equal(await readFile(attachments[0]!.path, "utf8"), "hello");
+});
+
+test("upload paths preserve safe extensions without colliding across file IDs", async (t) => {
+  const project = await mkdtemp(join(tmpdir(), "pilotdeck-upload-extensions-"));
+  t.after(() => rm(project, { recursive: true, force: true }));
+  const store = new UploadStore({ resolveProject: async () => project, listProjects: async () => [project] });
+  const files = [
+    { clientFileId: "file", name: "report.pdf", extension: ".pdf" },
+    { clientFileId: "file.pdf", name: "README", extension: "" },
+    { clientFileId: "photo", name: "Screen Shot.PNG", extension: ".png" },
+    { clientFileId: "photo.png", name: "README", extension: "" },
+    { clientFileId: "office", name: "notes.docx", extension: ".docx" },
+    { clientFileId: "invalid", name: "weird.ext with space", extension: "" },
+    { clientFileId: "long", name: "file.abcdefghijklmnopq", extension: "" },
+  ];
+  const created = await store.create(project, files.map((file) => ({
+    clientFileId: file.clientFileId,
+    name: file.name,
+    relativePath: file.name,
+    size: Buffer.byteLength(file.clientFileId),
+  })));
+  for (const file of files) {
+    const attachment = await store.writePart(created.uploadId, file.clientFileId, Readable.from([file.clientFileId]));
+    assert.equal(attachment.attachmentId, file.clientFileId);
+    assert.equal(extname(attachment.path), file.extension);
+  }
+  assert.equal((await store.complete(created.uploadId)).status, "completed");
+  const reopened = new UploadStore({ resolveProject: async () => project, listProjects: async () => [project] });
+  const attachments = await reopened.verifyAttachment(created.uploadId, project);
+  assert.equal(attachments.length, files.length);
+  assert.equal(new Set(attachments.map((attachment) => attachment.path)).size, files.length);
+  for (const attachment of attachments) {
+    assert.equal(await readFile(attachment.path, "utf8"), attachment.attachmentId);
+  }
 });
 
 test("upload store rejects unsafe manifests and size mismatches", async (t) => {

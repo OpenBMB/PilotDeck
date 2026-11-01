@@ -76,7 +76,10 @@ function bundledNodeMatchesRequest() {
   const versionCheck = spawnSync(nodeBinary, ["--version"], { encoding: "utf8" });
   if (versionCheck.stdout.trim() !== `v${version}`) return false;
   if (process.platform === "win32") return architecture.executableArchitecture(nodeBinary) === nodeArch;
-  if (process.platform !== "darwin") return true;
+  if (process.platform === "linux") {
+    const archCheck = spawnSync(nodeBinary, ["-p", "process.arch"], { encoding: "utf8" });
+    return archCheck.status === 0 && archCheck.stdout.trim() === nodeArch;
+  }
 
   const archCheck = spawnSync("lipo", ["-archs", nodeBinary], { encoding: "utf8" });
   if (archCheck.status !== 0) return false;

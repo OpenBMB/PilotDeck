@@ -10,6 +10,7 @@ import { WebSocketProvider } from './contexts/WebSocketContext';
 import { PluginsProvider } from './contexts/PluginsContext';
 import { ToastProvider } from './contexts/ToastContext';
 import AppShellV2 from './components/app-shell/AppShellV2';
+import ZoomIndicator from './components/desktop/ZoomIndicator';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import i18n from './i18n/config.js';
 
@@ -37,6 +38,7 @@ export default function App() {
     <I18nextProvider i18n={i18n}>
       <ThemeProvider>
         <DesktopAppearanceSync />
+        <ZoomIndicator />
         <ToastProvider>
           <ConfirmProvider>
             <AuthProvider>

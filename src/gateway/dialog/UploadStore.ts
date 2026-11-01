@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, open, readFile, readdir, realpath, rename, rm, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { EventEmitter } from "node:events";
 import { Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -147,7 +147,11 @@ export class UploadStore {
       throw new DialogGatewayError("UPLOAD_MANIFEST_MISMATCH", `Unexpected or duplicate file part: ${clientFileId}`);
     }
     record = await this.mutate(record, (next) => { next.status = "uploading"; });
-    const destination = join(this.filesDir(record), clientFileId);
+    // Keep the original extension: read_file, document skills and converters
+    // classify files by extension, and an opaque id alone reads as text.
+    // Separate the ID from the extension so distinct IDs cannot share a path.
+    const fileDir = join(this.filesDir(record), `attachment-${clientFileId}`);
+    const destination = join(fileDir, `content${safeFileExtension(expected.name)}`);
     const hash = createHash("sha256");
     let bytes = 0;
     let pendingProgressBytes = 0;
@@ -175,6 +179,7 @@ export class UploadStore {
       },
     });
     try {
+      await mkdir(fileDir, { recursive: true });
       await pipeline(stream, meter, createWriteStream(destination, { flags: "wx", mode: 0o600 }));
       flushProgress();
       await this.drainUpdates(uploadId);
@@ -262,16 +267,21 @@ export class UploadStore {
     if (record.projectKey !== canonicalProject) throw new DialogGatewayError("PROJECT_PATH_FORBIDDEN", "Upload belongs to another project.");
     if (record.status === "expired") throw new DialogGatewayError("ATTACHMENT_EXPIRED", "Upload expired.");
     if (record.status !== "completed") throw new DialogGatewayError("UPLOAD_NOT_COMPLETED", `Upload is ${record.status}.`);
-    const wanted = attachmentIds ? new Set(attachmentIds) : undefined;
-    const attachments = (record.attachments ?? []).filter((item) => !wanted || wanted.has(item.attachmentId));
-    if (wanted && attachments.length !== wanted.size) throw new DialogGatewayError("ATTACHMENT_NOT_FOUND", "Unknown attachmentId.");
-    for (const attachment of attachments) {
+    const byId = new Map((record.attachments ?? []).map(item => [item.attachmentId, item]));
+    // Disk writes finish independently; preserve prompt order, not completion order.
+    const wanted = [...new Set(attachmentIds ?? record.manifest.map(item => item.clientFileId))];
+    const verified = wanted.map(id => {
+      const attachment = byId.get(id);
+      if (!attachment) throw new DialogGatewayError("ATTACHMENT_NOT_FOUND", "Unknown attachmentId.");
+      return attachment;
+    });
+    for (const attachment of verified) {
       const info = await stat(attachment.path).catch(() => undefined);
       if (!info || info.size !== attachment.bytes || await sha256File(attachment.path) !== attachment.sha256) {
         throw new DialogGatewayError("ATTACHMENT_TAMPERED", `Attachment integrity check failed: ${attachment.attachmentId}`);
       }
     }
-    return attachments;
+    return verified;
   }
 
   private async mutate(record: UploadRecord, mutate: (record: UploadRecord) => void): Promise<UploadRecord> {
@@ -378,6 +388,10 @@ function isSafeRelativePath(value: unknown): value is string {
   const parts = value.split("/"); return parts.every((part) => part !== "" && part !== "." && part !== "..");
 }
 function isSafeUploadId(value: string): boolean { return /^[A-Za-z0-9._-]{1,128}$/.test(value) && !value.includes(".."); }
+function safeFileExtension(name: string): string {
+  const extension = extname(name).toLowerCase();
+  return /^\.[a-z0-9]{1,16}$/.test(extension) ? extension : "";
+}
 function assertUploadId(value: string): void { if (!isSafeUploadId(value)) throw new DialogGatewayError("UPLOAD_NOT_FOUND", "Invalid uploadId."); }
 async function sha256File(path: string): Promise<string> {
   const hash = createHash("sha256");

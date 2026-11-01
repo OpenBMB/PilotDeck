@@ -6,11 +6,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { computerUseDirectory, computerUseMcpConfigPath } from './computerUsePaths.js';
+import { MAC_HOST_ID, resolveMacRuntime } from '../../../scripts/lib/mac-computer-use.mjs';
+import { probeMacPermissions } from './macComputerUsePermissions.js';
 
 const executeFile = promisify(execFile);
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const SERVER_ID = 'pilotdeck-computer-use';
-const MAC_HOST_ID = 'cn.pilotdeck.computer-use';
 
 export function findDriver(env, platform, runtimeRoot = root) {
   const name = platform === 'darwin' ? 'PilotDeck Computer Use.app/Contents/MacOS/cua-driver' : platform === 'win32' ? 'cua-driver.exe' : 'cua-driver';
@@ -28,11 +29,14 @@ export class StandaloneComputerUseController {
   constructor({ env = process.env, platform = process.platform, execute = executeFile, spawnImpl = spawn, runtimeRoot = root,
     binary = findDriver(env, platform, runtimeRoot), managed = !env.PILOTDECK_CUA_DRIVER_PATH,
     version = JSON.parse(fs.readFileSync(path.join(root, 'scripts/computer-use/cua-driver.json'), 'utf8')).version,
-    log = console.log } = {}) {
+    log = console.log, macRuntimeResolver = resolveMacRuntime, macPermissionProbe = probeMacPermissions, monitorIntervalMs = 3000 } = {}) {
     this.env = env; this.platform = platform; this.execute = execute; this.spawn = spawnImpl; this.binary = binary;
     this.managed = managed; this.livenessFd = null; this.ownedPid = null; this.permissionRequests = [];
     if (managed && binary) this.renewEndpoint();
     this.expectedVersion = version; this.log = log;
+    this.macRuntimeResolver = macRuntimeResolver; this.macPermissionProbe = macPermissionProbe;
+    this.macRuntime = null; this.monitorIntervalMs = monitorIntervalMs; this.monitorTimer = null;
+    this.resumeAfterPermission = false;
     this.directory = computerUseDirectory(env);
     this.mcpConfigPath = computerUseMcpConfigPath(env);
     this.settingsPath = path.join(this.directory, 'settings.json');
@@ -43,7 +47,7 @@ export class StandaloneComputerUseController {
     this.state = { enabled, phase: 'disabled', available: !!binary, version, platform };
     if (platform === 'darwin') {
       this.state.permissionOwner = managed ? 'PilotDeck Computer Use' : 'CuaDriver';
-      this.state.permissions = { accessibility: false, screenRecording: false };
+      this.state.permissions = { accessibility: null, screenRecording: null };
       if (binary) {
         const executable = fs.realpathSync(binary);
         const bundleEnd = executable.indexOf('.app/Contents/MacOS/');
@@ -56,7 +60,7 @@ export class StandaloneComputerUseController {
   }
 
   initialize() {
-    return this.enqueue(async () => { this.adoptLegacyConfiguration(); return this.inspect(true); });
+    return this.enqueue(async () => { this.adoptLegacyConfiguration(); const status = await this.inspect(true); this.scheduleMonitor(); return status; });
   }
 
   status() {
@@ -74,15 +78,16 @@ export class StandaloneComputerUseController {
     return this.enqueue(async () => {
       this.writeJson(this.settingsPath, { enabled }); this.state.enabled = enabled;
       if (!enabled) { this.publish(false); this.stopPermissionRequests(); await this.stopOwnedChild(); if (this.managed) this.renewEndpoint(); }
-      return this.inspect(true);
+      const status = await this.inspect(true); this.scheduleMonitor(); return status;
     });
   }
 
   requestPermission(permission) {
     if (!['accessibility', 'screenRecording'].includes(permission)) return Promise.reject(new Error('Invalid permission'));
     return this.enqueue(async () => {
-      if (this.platform === 'darwin' && this.binary) {
+      if (this.platform === 'darwin' && (this.managed || this.binary)) {
         if (this.managed) {
+          await this.prepareMacRuntime();
           await this.requestBundledPermissions(permission);
           if (this.state.enabled) { this.publish(false); await this.stopOwnedChild(); this.renewEndpoint(); }
         }
@@ -106,7 +111,7 @@ export class StandaloneComputerUseController {
   }
 
   async stop() {
-    this.stopping = true; await this.serial.catch(() => undefined);
+    this.stopping = true; clearTimeout(this.monitorTimer); await this.serial.catch(() => undefined);
     this.publish(false); this.stopPermissionRequests(); await this.stopOwnedChild();
     if (this.instanceDirectory) fs.rmSync(this.instanceDirectory, { recursive: true, force: true });
   }
@@ -120,6 +125,87 @@ export class StandaloneComputerUseController {
   }
 
   snapshot() { return { ...this.state, ...(this.state.permissions ? { permissions: { ...this.state.permissions } } : {}) }; }
+
+  scheduleMonitor() {
+    clearTimeout(this.monitorTimer);
+    if (this.stopping || !this.state.enabled || !this.managed || this.platform !== 'darwin' || !this.monitorIntervalMs) return;
+    this.monitorTimer = setTimeout(() => {
+      void this.enqueue(() => this.inspect(false)).catch(error => this.log(`[computer-use] ${error.message}`))
+        .finally(() => this.scheduleMonitor());
+    }, this.monitorIntervalMs);
+    this.monitorTimer.unref?.();
+  }
+
+  async prepareMacRuntime() {
+    if (this.macRuntime) return;
+    this.macRuntime = await this.macRuntimeResolver({ binary: this.binary, version: this.expectedVersion });
+    this.binary = this.macRuntime.binary;
+    this.state.available = true;
+    this.state.permissionOwner = this.macRuntime.permissionOwner;
+    this.state.permissionAppPath = this.macRuntime.app;
+    if (!this.endpoint) this.renewEndpoint();
+  }
+
+  async inspectManagedMac(allowStart) {
+    try {
+      await this.prepareMacRuntime();
+      // Always read through a fresh process in the same signed GUI identity.
+      // This works while disabled and cannot present a consent dialog.
+      this.state.permissions = await this.macPermissionProbe({ runtime: this.macRuntime, execute: this.execute, env: this.environment() });
+    } catch (error) {
+      this.state.permissions = { accessibility: null, screenRecording: null };
+      // A temporary read failure withdraws tools conservatively. Once a fresh
+      // check succeeds, restore an instance that was already running.
+      this.resumeAfterPermission ||= this.state.enabled && (this.livenessFd !== null || this.ownedPid !== null);
+      this.publish(false);
+      await this.stopOwnedChild();
+      if (this.resumeAfterPermission) this.renewEndpoint();
+      throw error;
+    }
+    if (!this.state.enabled) { this.state.phase = 'disabled'; this.publish(false); return this.snapshot(); }
+    const granted = this.state.permissions.accessibility === true && this.state.permissions.screenRecording === true;
+    if (!granted) {
+      const hadGeneration = this.livenessFd !== null || this.ownedPid !== null;
+      this.publish(false); await this.stopOwnedChild();
+      if (hadGeneration) this.renewEndpoint();
+      this.resumeAfterPermission = true; this.state.phase = 'needs-permissions';
+      return this.snapshot();
+    }
+    let running = await this.daemonIsRunning();
+    const start = async () => {
+      this.state.phase = 'starting';
+      await this.startNativeService();
+      const deadline = Date.now() + 15_000;
+      while (!await this.daemonIsRunning() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+      if (!await this.daemonIsRunning()) throw new Error('The local Driver did not start. Recheck to reconnect.');
+    };
+    if (!running && (allowStart || this.resumeAfterPermission)) { await start(); running = true; }
+    if (!running) throw new Error('The local Driver is not running. Recheck to reconnect.');
+    const read = async () => {
+      const result = JSON.parse((await this.command(['call', 'check_permissions', '{"prompt":false}'])).stdout);
+      if (result.source?.attribution !== 'host' || result.source?.host_bundle_id !== this.macRuntime.bundleId
+        || result.source?.executable !== this.binary || !Number.isInteger(result.source?.pid)) {
+        throw new Error('The local Driver does not match this instance’s native component.');
+      }
+      if (this.ownedPid && this.ownedPid !== result.source.pid) throw new Error('The bundled Driver process has changed. Recheck to reconnect.');
+      this.ownedPid = result.source.pid;
+      return result.accessibility === true && result.screen_recording === true;
+    };
+    if (!await read()) {
+      // The GUI identity is granted but this daemon still has cached denial.
+      // Rebuild only our own generation; never replay an interrupted action.
+      this.publish(false); await this.stopOwnedChild(); this.renewEndpoint(); await start();
+      if (!await read()) throw new Error('The native component is authorized, but its Driver cannot use the permissions. Recheck to reconnect.');
+    }
+    const health = JSON.parse((await this.command(['call', 'health_report', '{"include":["bundle_identity"]}'])).stdout);
+    const identity = health.checks?.find(check => check.name === 'bundle_identity');
+    if (identity?.status !== 'pass' || identity.data?.bundle_identifier !== this.macRuntime.bundleId
+      || identity.data?.executable_path !== this.binary || identity.data?.identity_source !== 'parent_application') {
+      throw new Error('The bundled Driver has no matching native GUI parent.');
+    }
+    this.resumeAfterPermission = false;
+    this.state.phase = 'ready'; this.publish(true); return this.snapshot();
+  }
 
   renewEndpoint() {
     if (!this.binary) return;
@@ -139,7 +225,7 @@ export class StandaloneComputerUseController {
     }
     Object.assign(env, { CUA_DRIVER_EMBEDDED: this.managed ? '1' : '0', CUA_DRIVER_PERMISSION_MODE: 'standard',
       CUA_DRIVER_RS_TELEMETRY_ENABLED: 'false', CUA_TELEMETRY_ENABLED: 'false' });
-    if (this.managed && this.platform === 'darwin') env.CUA_DRIVER_HOST_BUNDLE_ID = MAC_HOST_ID;
+    if (this.managed && this.platform === 'darwin') env.CUA_DRIVER_HOST_BUNDLE_ID = this.macRuntime?.bundleId || MAC_HOST_ID;
     if (this.state.desktopSession === 'wayland') env.CUA_DRIVER_RS_ENABLE_WAYLAND = '1';
     return env;
   }
@@ -162,6 +248,7 @@ export class StandaloneComputerUseController {
   async inspect(allowStart) {
     try {
       delete this.state.error;
+      if (this.platform === 'darwin' && this.managed) return await this.inspectManagedMac(allowStart);
       if (!this.binary) {
         this.state.phase = this.state.enabled ? 'error' : 'disabled';
         this.publish(false); return this.snapshot();
@@ -314,7 +401,7 @@ export class StandaloneComputerUseController {
       const deadline = Date.now() + 5_000;
       while (!fs.readFileSync(resultFile, 'utf8') && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
       const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
-      if (result.host_bundle_id !== MAC_HOST_ID) throw new Error('Native permission setup returned a different host identity.');
+      if (result.host_bundle_id !== this.macRuntime.bundleId) throw new Error('Native permission setup returned a different host identity.');
       this.state.permissions = { accessibility: result.accessibility === true, screenRecording: result.screen_recording === true };
     } catch (error) { this.stopPermissionRequests(); throw error; }
     finally { fs.rmSync(resultFile, { force: true }); if (!request) fs.rmSync(directory, { recursive: true, force: true }); }
