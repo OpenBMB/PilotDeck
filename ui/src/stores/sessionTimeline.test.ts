@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { normalizedToChatMessages } from '../components/chat/hooks/useChatMessages';
 import { SessionTimeline, mergeTimeline } from './sessionTimeline';
 import { computeMerged, type NormalizedMessage } from './useSessionStore';
-import { normalizedToChatMessages } from '../components/chat/hooks/useChatMessages';
 
 const frame = (id: string, order: number, revision: number, content: string, offset?: number,
   overrides: Partial<NormalizedMessage> = {}): NormalizedMessage => ({
@@ -146,4 +146,56 @@ it('terminal recovery clears orphaned predecessors, pending deltas and conflicts
   const next = frame('next', 0, 1, 'New turn', 0, { runId: 'next-run' });
   next.timeline!.turnId = 'next-run';
   expect(state.apply(next)).toBe(false);
+});
+
+it('reopens only the new child round within the same parent run and rejects stale lifecycle frames', () => {
+  const state = new SessionTimeline();
+  const activity = (index: number | undefined, status: string): NormalizedMessage => ({
+    ...frame('activity', 0, 1, ''), timeline: undefined, kind: 'agent_activity', phase: 'subagent',
+    subagentId: 'child', subagentTurnId: index === undefined ? undefined : `child-t${index}`,
+    runId: 'subagent:child', parentRunId: 'turn', state: status,
+  });
+  const child = (index: number, text: string, offset?: number): NormalizedMessage => ({
+    ...frame('text', 0, 1, text, offset), subagentId: 'child', isSubagentDetail: true,
+    timeline: { ...frame('text', 0, 1, text, offset).timeline!, turnId: `child-t${index}` },
+  });
+  state.apply(activity(0, 'running'));
+  state.apply(child(0, 'first', 0));
+  state.apply(activity(0, 'completed'));
+  state.apply(activity(1, 'running'));
+  state.apply(child(1, 'next', 0));
+  state.apply(activity(0, 'running'));
+  state.apply(activity(0, 'completed'));
+  state.apply(activity(undefined, 'completed'));
+  state.apply(child(0, ' stale', 5));
+  state.apply(child(1, ' live', 4));
+  expect(state.values('child').map(m => [m.timeline?.turnId, m.content, m.streamState])).toEqual([
+    ['child-t0', 'first', 'closed'], ['child-t1', 'next live', 'open'],
+  ]);
+  // A duplicate start never reopens the already completed coordinates.
+  state.apply(activity(1, 'completed'));
+  state.apply(activity(1, 'running'));
+  state.apply(child(1, ' stale', 9));
+  expect(state.values('child')[1]).toMatchObject({ content: 'next live', streamState: 'closed' });
+  state.close('turn', true);
+  state.apply(activity(2, 'running'));
+  state.apply(child(2, 'after parent ended', 0));
+  expect(state.values('child')).toHaveLength(2);
+});
+
+it('can resume after an unversioned completion without reopening restored old coordinates', () => {
+  const state = new SessionTimeline();
+  state.close('turn', true, 'child');
+  const child = frame('text', 0, 1, 'first', undefined, { isSubagentDetail: true, subagentId: 'child' });
+  child.timeline!.turnId = 'child-t0';
+  state.apply(child);
+  state.apply({ ...child, timeline: undefined, kind: 'agent_activity', phase: 'subagent', state: 'running',
+    runId: 'subagent:child', parentRunId: 'turn', subagentTurnId: 'child-t0', isSubagentDetail: false });
+  state.apply({ ...child, content: ' stale', timeline: { ...child.timeline!, offset: 5 } });
+  expect(state.values('child')[0]).toMatchObject({ content: 'first', streamState: 'closed' });
+  state.apply({ ...child, timeline: undefined, kind: 'agent_activity', phase: 'subagent', state: 'running',
+    runId: 'subagent:child', parentRunId: 'turn', subagentTurnId: 'child-t1', isSubagentDetail: false });
+  state.apply({ ...child, content: 'next', timeline: { ...child.timeline!, turnId: 'child-t1', offset: 0 } });
+  state.apply({ ...child, content: ' stale', timeline: { ...child.timeline!, offset: 5 } });
+  expect(state.values('child').map(m => [m.content, m.streamState])).toEqual([['first', 'closed'], ['next', 'open']]);
 });

@@ -23,6 +23,15 @@ const key = (message: NormalizedMessage) => `${message.timeline!.turnId}:${messa
 const isContent = (message: NormalizedMessage) => message.kind === 'thinking'
   || message.kind === 'stream_delta' || (message.kind === 'text' && message.role !== 'user');
 
+/** Continuations retain the child ID but advance the sidechain turn suffix. */
+export function subagentRoundIndex(subagentId: string | undefined, turnId: string | undefined): number | undefined {
+  const prefix = `${subagentId}-t`;
+  if (!subagentId || !turnId?.startsWith(prefix)) return undefined;
+  const suffix = turnId.slice(prefix.length);
+  const index = /^\d+$/.test(suffix) ? Number(suffix) : NaN;
+  return Number.isSafeInteger(index) ? index : undefined;
+}
+
 /** Ordered, versioned content state. UI expansion/scrolling never enter this reducer. */
 export class SessionTimeline {
   private rendered = new Map<string, { source: NormalizedMessage; closed: boolean; row: NormalizedMessage }>();
@@ -35,12 +44,36 @@ export class SessionTimeline {
   private removedBlocks = new Set<string>();
   private terminalTurns = new Set<string>();
   private terminalAgents = new Set<string>();
+  private activeAgentTurns = new Map<string, string>();
 
   private isTerminal(message: NormalizedMessage): boolean {
     const child = detailAgent(message);
+    const childKey = JSON.stringify([message.runId, child]);
+    const activeTurn = this.activeAgentTurns.get(childKey);
     return this.terminalTurns.has(turn(message)) || this.terminalTurns.has(message.runId || '')
-      || Boolean(child && (this.terminalAgents.has(JSON.stringify([message.runId, child]))
-        || this.terminalAgents.has(JSON.stringify([undefined, child]))));
+      || Boolean(child && ((activeTurn && activeTurn !== turn(message))
+        || ((this.terminalAgents.has(childKey) || this.terminalAgents.has(JSON.stringify([undefined, child])))
+          && activeTurn !== turn(message))));
+  }
+
+  private startAgentRound(runId: string | undefined, child: string, childTurnId: string): void {
+    const index = subagentRoundIndex(child, childTurnId);
+    if (index === undefined || this.terminalTurns.has(childTurnId)
+        || this.terminalTurns.has(runId || '') || this.removedTurns.has(runId || '')) return;
+    const childKey = JSON.stringify([runId, child]);
+    if (index === 0 && (this.terminalAgents.has(childKey)
+        || this.terminalAgents.has(JSON.stringify([undefined, child])))) return;
+    const previousTurn = this.activeAgentTurns.get(childKey);
+    const previousIndex = subagentRoundIndex(child, previousTurn);
+    if (previousIndex !== undefined && previousIndex >= index) return;
+    // Keep prior coordinates terminal even when a delayed start/completion or
+    // HTTP snapshot arrives after this new round has begun.
+    const isPrevious = (message: NormalizedMessage) => detailAgent(message) === child
+      && (!runId || message.runId === runId) && turn(message) !== childTurnId;
+    if (previousTurn) this.terminalTurns.add(previousTurn);
+    for (const message of this.blocks.values()) if (isPrevious(message)) this.terminalTurns.add(turn(message));
+    this.clearGaps(isPrevious);
+    this.activeAgentTurns.set(childKey, childTurnId);
   }
 
   private clearGaps(matches: (message: NormalizedMessage) => boolean): void {
@@ -55,9 +88,16 @@ export class SessionTimeline {
   apply(message: NormalizedMessage): boolean {
     // HTTP baselines contain lifecycle frames as well as content. Completion
     // can arrive before the child's first restored block.
-    if (message.kind === 'agent_activity' && message.phase === 'subagent' && message.subagentId
-        && ['completed', 'failed', 'cancelled'].includes(message.state || '')) {
-      this.close(message.parentRunId, true, message.subagentId);
+    if (message.kind === 'agent_activity' && message.phase === 'subagent' && message.subagentId) {
+      if (['completed', 'failed', 'cancelled'].includes(message.state || '')) {
+        // Old HTTP activity snapshots cannot identify which round ended.
+        // Once a versioned start is known, only its scoped terminal can end it.
+        if (message.subagentTurnId || !this.activeAgentTurns.has(JSON.stringify([message.parentRunId, message.subagentId]))) {
+          this.close(message.parentRunId, true, message.subagentId, undefined, message.subagentTurnId);
+        }
+      } else if (message.subagentTurnId) {
+        this.startAgentRound(message.parentRunId, message.subagentId, message.subagentTurnId);
+      }
     }
     if (!isTimelineMessage(message)) return false;
     const id = key(message);
@@ -114,13 +154,15 @@ export class SessionTimeline {
 
   get hasGap(): boolean { return this.pending.size > 0 || this.missingPredecessors.size > 0 || this.conflicts.size > 0; }
 
-  close(runId?: string, terminal = false, subagentId?: string, boundary?: { turnId: string; through: number }): void {
+  close(runId?: string, terminal = false, subagentId?: string, boundary?: { turnId: string; through: number }, subagentTurnId?: string): void {
     const matches = (message: NormalizedMessage) =>
       (!runId || turn(message) === runId || message.runId === runId)
       && (subagentId !== undefined ? detailAgent(message) === subagentId : terminal || !detailAgent(message))
-      && (!boundary || turn(message) === boundary.turnId);
+      && (!boundary || turn(message) === boundary.turnId)
+      && (!subagentTurnId || turn(message) === subagentTurnId);
     if (terminal) {
-      if (subagentId) this.terminalAgents.add(JSON.stringify([runId, subagentId]));
+      if (subagentId && subagentTurnId) this.terminalTurns.add(subagentTurnId);
+      else if (subagentId) this.terminalAgents.add(JSON.stringify([runId, subagentId]));
       this.clearGaps(matches);
     }
     for (const message of this.blocks.values()) {

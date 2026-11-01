@@ -134,6 +134,21 @@ describe('cancelRunningAgentActivities', () => {
 });
 
 describe('preserveTerminalAgentActivity', () => {
+  it('opens a newer continuation round and ignores older terminal or running replays', () => {
+    const first = {
+      id: 'activity', kind: 'agent_activity', subagentId: 'child', subagentTurnId: 'child-t0',
+      parentRunId: 'parent', runId: 'subagent:child', state: 'completed',
+    } as NormalizedMessage;
+    const resumed = { ...first, subagentTurnId: 'child-t1', state: 'running' };
+    expect(preserveTerminalAgentActivity(first, resumed)).toBe(resumed);
+    expect(preserveTerminalAgentActivity(resumed, first)).toBe(resumed);
+    expect(preserveTerminalAgentActivity(resumed, { ...first, state: 'running' })).toBe(resumed);
+    expect(preserveTerminalAgentActivity(resumed, { ...first, subagentTurnId: undefined })).toBe(resumed);
+    const completed = { ...resumed, state: 'completed' };
+    expect(preserveTerminalAgentActivity(resumed, completed)).toBe(completed);
+    expect(preserveTerminalAgentActivity(completed, resumed)).toBe(completed);
+  });
+
   it('does not reopen a cancelled activity when an older running update is replayed', () => {
     const cancelled: NormalizedMessage = {
       id: 'subagent-activity',

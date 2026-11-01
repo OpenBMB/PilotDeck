@@ -1,6 +1,6 @@
-import { isTimelineMessage, type TimelinePosition } from '../../../stores/sessionTimeline';
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { isTimelineMessage, type TimelinePosition } from '../../../stores/sessionTimeline';
 import type {
   ClaudeWorkStatus,
   CompactProgress,
@@ -773,12 +773,14 @@ export function useChatRealtimeHandlers({
         : String(msg.activityId || '').startsWith('subagent:')
           ? String(msg.activityId).slice('subagent:'.length)
           : '';
+      if (activitySubagentId && msg.phase === 'subagent') {
+        sessionStore.applyTimelineMessage(sid, { ...msg, subagentId: activitySubagentId } as NormalizedMessage);
+      }
       if (
         activitySubagentId &&
         msg.phase === 'subagent' &&
         ['completed', 'failed', 'cancelled'].includes(String(msg.state || ''))
       ) {
-        sessionStore.closeTimeline(sid, getMessageRunId({ runId: msg.parentRunId }), true, activitySubagentId);
         sessionStore.finalizeSubagentDetailThinking?.(sid, activitySubagentId);
         sessionStore.finalizeSubagentDetailStreaming?.(sid, activitySubagentId);
       }
