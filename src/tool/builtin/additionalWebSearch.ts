@@ -1,9 +1,9 @@
 import { isSerpApiEngine, type SerpApiEngine } from "../../pilot/config/webSearchProviders.js";
 import type { WebSearchOrganicResult } from "./webSearch.js";
 
-export type AdditionalSearchProvider = "baidu" | "bocha" | "exa" | "serpapi";
+export type AdditionalSearchProvider = "deepseek" | "baidu" | "bocha" | "exa" | "serpapi";
 export function isAdditionalSearchProvider(value: unknown): value is AdditionalSearchProvider {
-  return value === "baidu" || value === "bocha" || value === "exa" || value === "serpapi";
+  return value === "deepseek" || value === "baidu" || value === "bocha" || value === "exa" || value === "serpapi";
 }
 
 /** Used by both real searches and the settings connection probe. */
@@ -26,7 +26,11 @@ export function additionalSearchRequest(provider: AdditionalSearchProvider, opti
   }
   headers["Content-Type"] = "application/json";
   let body: Record<string, unknown>;
-  if (provider === "baidu") {
+  if (provider === "deepseek") {
+    if (!query.trim() || [...query].length > 128) throw new Error("DeepSeek search query must contain 1 to 128 Unicode characters.");
+    headers.Authorization = `Bearer ${apiKey}`;
+    body = { query, count: limit, need_content: false };
+  } else if (provider === "baidu") {
     headers.Authorization = `Bearer ${apiKey}`;
     body = { messages: [{ role: "user", content: query }], search_source: "baidu_search_v2", resource_type_filter: [{ type: "web", top_k: limit }] };
   } else if (provider === "bocha") {
@@ -52,7 +56,7 @@ export function additionalSearchResults(provider: AdditionalSearchProvider, raw:
   if (provider === "serpapi" && record(raw.search_metadata) && raw.search_metadata.status === "Error") throw new Error("SerpAPI search failed.");
   const data = provider === "bocha" && record(raw.data) ? raw.data : raw;
   const pages = record(data.webPages) ? data.webPages.value : undefined;
-  const items = provider === "baidu" ? raw.references : provider === "bocha" ? pages : provider === "exa" ? raw.results : raw.organic_results;
+  const items = provider === "baidu" ? raw.references : provider === "bocha" ? pages : (provider === "exa" || provider === "deepseek") ? raw.results : raw.organic_results;
   // SerpAPI legitimately omits organic_results for a query with no organic hits.
   if (!Array.isArray(items)) {
     if (provider === "serpapi" && record(raw.search_metadata) && raw.search_metadata.status === "Success") return [];
@@ -64,15 +68,15 @@ export function additionalSearchResults(provider: AdditionalSearchProvider, raw:
     snippet: text(item.summary) ?? text(item.snippet) ?? text(item.content)
       ?? (Array.isArray(item.highlights) ? item.highlights.filter(value => typeof value === "string").join("\n") || undefined : undefined)
       ?? text(item.text),
-    source: text(item.siteName) ?? text(item.source),
+    source: text(item.site_name) ?? text(item.siteName) ?? text(item.source),
     publishedAt: text(item.publishedDate) ?? text(item.datePublished) ?? text(item.date),
   }));
 }
 
 /** Query-authenticated APIs can include the full request URL in network errors. */
-export function redactSearchError(value: unknown, apiKey: string): string {
+export function redactSearchError(value: unknown, apiKey: string | string[]): string {
   let message = value instanceof Error ? value.message : String(value);
-  for (const secret of [apiKey, encodeURIComponent(apiKey), new URLSearchParams({ key: apiKey }).toString().slice(4)]) {
+  for (const secret of (Array.isArray(apiKey) ? apiKey : [apiKey]).flatMap(key => [key, encodeURIComponent(key), new URLSearchParams({ key }).toString().slice(4)])) {
     if (secret) message = message.split(secret).join("[redacted]");
   }
   return message.slice(0, 500);

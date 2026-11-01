@@ -83,3 +83,33 @@ test("SerpAPI engine selection survives config parsing and invalid values are fa
   parseToolsConfig({ webSearch: { provider: "serpapi", searchEngine: "unsupported" } }, diagnostics);
   assert.ok(diagnostics.some(item => item.code === "TOOLS_WEB_SEARCH_ENGINE_INVALID" && item.severity === "fatal"));
 });
+
+test("web search parses saved configurations for active and inactive providers", () => {
+  const diagnostics: PilotConfigDiagnostic[] = [];
+  const webSearch = {
+    enabled: true, provider: "glm" as const,
+    providers: {
+      glm: { apiKey: "glm-key" },
+      serpapi: { apiKey: "serpapi-key", searchEngine: "bing" as const },
+      custom: { endpoint: "https://custom.example/search", customProvider: { auth: "none" as const } },
+    },
+  };
+  assert.deepEqual(parseToolsConfig({ webSearch }, diagnostics), { webSearch });
+  assert.deepEqual(diagnostics, []);
+});
+
+test("invalid saved provider configurations report their own paths", () => {
+  const diagnostics: PilotConfigDiagnostic[] = [];
+  parseToolsConfig({ webSearch: { providers: {
+    glm: null,
+    tavily: { apiKey: "" },
+    custom: { endpoint: "ftp://custom.example", customProvider: { auth: "invalid" } },
+  } } }, diagnostics);
+  assert.deepEqual(diagnostics.map(item => item.path), [
+    "tools.webSearch.providers.glm",
+    "tools.webSearch.providers.tavily.apiKey",
+    "tools.webSearch.providers.custom.endpoint",
+    "tools.webSearch.providers.custom.customProvider.auth",
+  ]);
+  assert.ok(diagnostics.every(item => item.severity === "fatal"));
+});

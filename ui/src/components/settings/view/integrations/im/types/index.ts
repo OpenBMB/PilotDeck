@@ -35,6 +35,28 @@ export type GatewayStatus = {
     allowFrom: string[];
     groupAllowFrom: string[];
   };
+  /** Absent when talking to an older server without Slack/Telegram support. */
+  slack?: {
+    enabled: boolean;
+    hasBotToken: boolean;
+    hasAppToken: boolean;
+    botTokenHint: string;
+    runtime?: ChannelRuntime | null;
+  };
+  telegram?: {
+    enabled: boolean;
+    hasToken: boolean;
+    tokenHint: string;
+    runtime?: ChannelRuntime | null;
+  };
+};
+
+export type ChannelRuntime = {
+  state: "starting" | "connected" | "waiting_for_login" | "expired" | "failed" | "stopped";
+  message?: string;
+  accountId?: string;
+  error?: string;
+  updatedAt?: string;
 };
 
 export type TestResult = { ok: boolean; message?: string; error?: string } | null;

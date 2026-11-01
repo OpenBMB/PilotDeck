@@ -138,3 +138,89 @@ html:is([data-desktop-platform="win32"], [data-desktop-platform="linux"]) .works
 html[data-desktop-platform][data-desktop-fullscreen] {
   --desktop-caption-height: 0px;
 }
+
+/* Transient bubble mirroring the native ⌘/Ctrl +/- window zoom. Rendered only
+   by the packaged shell (ZoomIndicator mounts inert without the zoom bridge). */
+.zoom-indicator {
+  position: fixed;
+  top: calc(var(--desktop-caption-height, 0px) + 60px);
+  left: 50%;
+  /* Keyframes animate opacity/translateY; translateX(-50%) must live here so
+     the bubble stays centered after the entrance animation ends. */
+  transform: translateX(-50%);
+  z-index: 9990;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--pd-border, #e4e5ee);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--pd-ink, #252737);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 8px 24px rgba(37, 39, 55, 0.14);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  -webkit-app-region: no-drag;
+  animation: zoom-indicator-in 0.16s ease-out;
+}
+.dark .zoom-indicator {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(24, 24, 27, 0.92);
+  color: #f4f4f5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.zoom-indicator-leaving {
+  animation: zoom-indicator-out 0.2s ease-in forwards;
+}
+.zoom-indicator-divider {
+  width: 1px;
+  height: 12px;
+  background: currentColor;
+  opacity: 0.2;
+}
+.zoom-indicator-reset {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--brand, #5b5ce2);
+  cursor: pointer;
+}
+.zoom-indicator-reset:hover {
+  color: var(--brand-strong, #4948cf);
+}
+.zoom-indicator-reset:focus-visible {
+  outline: 2px solid var(--brand, #5b5ce2);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+@keyframes zoom-indicator-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+@keyframes zoom-indicator-out {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zoom-indicator,
+  .zoom-indicator-leaving {
+    animation-duration: 0.01s;
+  }
+}

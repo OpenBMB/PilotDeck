@@ -33,6 +33,10 @@ function readMap(key: string): NameMap {
   }
 }
 
+export function getSearchNameOverrides(): { projectNames: NameMap; sessionTitles: NameMap } {
+  return { projectNames: readMap(PROJECT_KEY), sessionTitles: readMap(SESSION_KEY) };
+}
+
 function writeMap(key: string, map: NameMap): void {
   localStorage.setItem(key, JSON.stringify(map));
   // Dispatch a synthetic event so same-tab listeners can refresh — the

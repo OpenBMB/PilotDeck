@@ -51,6 +51,7 @@ import {
   missingInputModalities,
 } from "./utils/mediaRequirements.js";
 import type { TelemetryClient } from "../telemetry/index.js";
+import { currentRequestContext } from "../network/requestContext.js";
 
 export type RouterRuntimeDeps = {
   modelRuntime: ModelRuntime;
@@ -1146,6 +1147,14 @@ async function* streamAttempt(
   try {
     for await (const event of modelRuntime.stream(request, {
       signal: abortSignal,
+      requestContext: {
+        sessionId: ctx.sessionId,
+        // "compact" is an internal routing marker, not a user turn identity.
+        // Manual compaction outside a turn intentionally has no turn header.
+        turnId: ctx.turnId === "compact" ? currentRequestContext().turnId : ctx.turnId,
+        projectPath: ctx.projectPath,
+        purpose: ctx.turnId === "compact" ? "compaction" : "conversation",
+      },
       onRetryProgress(progress) {
         events.emit({
           type: "pilotdeck_router_retry_progress",

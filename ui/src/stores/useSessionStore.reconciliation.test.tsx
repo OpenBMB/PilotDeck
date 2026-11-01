@@ -21,6 +21,24 @@ async function refresh(store: ReturnType<typeof useSessionStore>, messages: Norm
 }
 
 describe('live and persisted message reconciliation', () => {
+  it.each([false, true])('keeps three same-name uploads in one stable row across echoes and repeated history (reverse=%s)', async reverse => {
+    const { result } = renderHook(() => useSessionStore());
+    const attachments = ['a', 'b', 'c'].map(attachmentId => ({ name: 'image.png', path: 'image.png', uploadId: 'u', attachmentId, mimeType: 'image/png' }));
+    const local = msg('local_client', 'text', 'Compare', { role: 'user', attachments });
+    const echo = { ...local, id: 'local_ws_user', attachments: undefined };
+    act(() => result.current.appendRealtimeBatch(session, reverse ? [echo, local, echo] : [local, echo, local]));
+    const key = getIntrinsicMessageKey(normalizedToChatMessages(result.current.getMessages(session))[0]);
+    const persisted = { ...local, id: 'persisted', images: ['data:image/png;base64,YQ==', 'data:image/png;base64,Yg==', 'data:image/png;base64,Yw=='] };
+    for (let pass = 0; pass < 3; pass++) {
+      await refresh(result.current, [persisted]);
+      act(() => result.current.appendRealtime(session, echo));
+      const rows = normalizedToChatMessages(result.current.getMessages(session));
+      expect(rows).toHaveLength(1);
+      expect(rows[0].attachments).toEqual(attachments);
+      expect(rows[0].images).toHaveLength(3);
+      expect(getIntrinsicMessageKey(rows[0])).toBe(key);
+    }
+  });
   it('updates compression in place and ignores replayed starts after completion', async () => {
     const { result } = renderHook(() => useSessionStore());
     await refresh(result.current, [user]);

@@ -69,28 +69,9 @@ export type PilotDeckConfig = {
     enabled?: boolean;
     timezone?: string;
     maxConcurrentRuns?: number;
-  };
+  } | null;
   tools?: {
-    webSearch?: {
-      enabled?: boolean;
-      provider?: import("../../../../../../../src/pilot/config/webSearchProviders.js").WebSearchProvider;
-      searchEngine?: import("../../../../../../../src/pilot/config/webSearchProviders.js").SerpApiEngine;
-      apiKey?: string;
-      endpoint?: string;
-      customProvider?: {
-        name?: string;
-        auth?: "bearer" | "bodyApiKey" | "queryApiKey" | "none";
-        method?: "GET" | "POST";
-        queryParam?: string;
-        apiKeyParam?: string;
-        resultsPath?: string;
-        titleField?: string;
-        urlField?: string;
-        snippetField?: string;
-        sourceField?: string;
-        publishedAtField?: string;
-      };
-    };
+    webSearch?: import("../../../../../../../src/pilot/config/webSearchConfig.js").WebSearchConfig;
   };
   gateway?: {
     enabled?: boolean;

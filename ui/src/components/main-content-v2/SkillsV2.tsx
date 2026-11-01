@@ -1,5 +1,14 @@
-import { useConfirm } from '../ui/ConfirmDialog';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
@@ -9,12 +18,15 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   CheckCircle2,
+  Copy,
   Download,
   Folder,
   FolderInput,
   FolderSearch,
   Globe,
   Loader2,
+  MoreHorizontal,
+  PanelLeftOpen,
   PencilLine,
   Plus,
   RefreshCw,
@@ -26,16 +38,28 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
+import { useConfirm } from '../ui/ConfirmDialog';
 import type { Project } from '../../types/app';
 import { authenticatedFetch } from '../../utils/api';
 import { useTheme } from '../../contexts/ThemeContext';
 import { zincDarkTheme, zincLightTheme } from '../code-editor/utils/zincThemes';
+import type { ConversationSkill } from '../../contexts/SkillConversationContext';
 import { cn } from '../../lib/utils.js';
+import SkillDialog from './SkillDialog';
+import SkillMarkdown from './SkillMarkdown';
+import SkillReader from './SkillReader';
+import SkillForm from './SkillForm';
+import { canEditSkillForm, splitSkillDocument } from './skillDocument';
+import './SkillsV2.css';
 
 type SkillsV2Props = {
   selectedProject: Project | null;
   projects: Project[];
   compact?: boolean;
+  isSidebarCollapsed?: boolean;
+  onOpenSidebar?: () => void;
+  onProjectChange?: (project: Project | null) => void;
+  onUseSkill?: (skill: ConversationSkill, project: Project | null) => void;
 };
 
 type SkillScope = 'builtin' | 'user' | 'project';
@@ -62,7 +86,7 @@ type SkillsListResponse = {
   isGeneralCwd: boolean;
 };
 
-type SearchResult = { slug: string; name: string; score: number | null };
+type SearchResult = { slug: string; owner?: string; name: string; score: number | null };
 
 type InstallResponse = {
   ok: boolean;
@@ -78,6 +102,8 @@ type InstallResponse = {
 };
 
 type ToastState = { kind: 'success' | 'error' | 'info'; text: string } | null;
+// Keep drafts during in-app navigation; browser reloads are guarded below.
+const skillDrafts = new Map<string, { content: string; original: string }>();
 
 // ---------------------------------------------------------------------------
 
@@ -98,8 +124,10 @@ async function api<T>(url: string, body: unknown): Promise<T> {
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const message = (data as { error?: string; message?: string }).error ||
-      (data as { message?: string }).message || `Request failed (${r.status})`;
+    const message =
+      (data as { error?: string; message?: string }).error ||
+      (data as { message?: string }).message ||
+      `Request failed (${r.status})`;
     throw new Error(message);
   }
   return data as T;
@@ -107,13 +135,22 @@ async function api<T>(url: string, body: unknown): Promise<T> {
 
 // ---------------------------------------------------------------------------
 
-export default function SkillsV2({ selectedProject, projects, compact = false }: SkillsV2Props) {
+export default function SkillsV2({
+  selectedProject,
+  projects,
+  compact = false,
+  isSidebarCollapsed,
+  onOpenSidebar,
+  onProjectChange,
+  onUseSkill,
+}: SkillsV2Props) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const { isDarkMode } = useTheme() as { isDarkMode: boolean };
 
   const cwd = projectCwd(selectedProject);
   const localGeneralCwd = isGeneralProject(selectedProject);
+  const draftConflictMessage = t('skillsTab.draftConflict');
 
   const [skills, setSkills] = useState<SkillsListResponse | null>(null);
   const [serverGeneralCwdPath, setServerGeneralCwdPath] = useState<string | null>(null);
@@ -126,10 +163,40 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
   const [saving, setSaving] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
+  const [editing, setEditing] = useState(false);
+  const [readReady, setReadReady] = useState(false);
+  const [readRetry, setReadRetry] = useState(0);
+  const listRequest = useRef(0);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [overrideScope, setOverrideScope] = useState<'user' | 'project'>('user');
+  const [showOverride, setShowOverride] = useState(false);
+  const [creatingOverride, setCreatingOverride] = useState(false);
+  const [narrow, setNarrow] = useState(
+    () => window.matchMedia?.('(max-width: 680px)').matches ?? false,
+  );
+  const compactLayout = compact || narrow;
 
   const serverGeneralCwd = Boolean(cwd && serverGeneralCwdPath === cwd);
   const generalCwd = localGeneralCwd || serverGeneralCwd;
   const effectiveProjectPath = generalCwd ? null : cwd;
+  const previousProjectPath = useRef(effectiveProjectPath);
+  const projectContext = useMemo(
+    () => ({ projectPath: effectiveProjectPath }),
+    [effectiveProjectPath],
+  );
+  const currentProjectContext = useRef(projectContext);
+  currentProjectContext.current = projectContext;
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrentContext = useCallback(
+    () => mounted.current && currentProjectContext.current === projectContext,
+    [projectContext],
+  );
 
   const flashToast = useCallback((toastValue: ToastState, ms = 2400) => {
     setToast(toastValue);
@@ -139,11 +206,14 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
   }, []);
 
   const refresh = useCallback(async () => {
+    if (!isCurrentContext()) return;
+    const requestId = ++listRequest.current;
     setLoading(true);
     try {
       const data = await api<SkillsListResponse>('/api/skills/list', {
         projectPath: effectiveProjectPath,
       });
+      if (!isCurrentContext() || requestId !== listRequest.current) return;
       setSkills(data);
       setServerGeneralCwdPath((prev) => {
         if (!cwd) return null;
@@ -152,15 +222,49 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
         return prev === cwd ? null : prev;
       });
     } catch (e) {
-      flashToast({ kind: 'error', text: (e as Error).message });
+      if (isCurrentContext() && requestId === listRequest.current)
+        flashToast({ kind: 'error', text: (e as Error).message });
     } finally {
-      setLoading(false);
+      if (isCurrentContext() && requestId === listRequest.current) setLoading(false);
     }
-  }, [cwd, effectiveProjectPath, flashToast, localGeneralCwd]);
+  }, [cwd, effectiveProjectPath, flashToast, localGeneralCwd, isCurrentContext]);
+
+  const invalidateListRequests = useCallback(() => {
+    listRequest.current++;
+  }, []);
 
   useEffect(() => {
+    // General context hydration does not change the visible skill scope.
+    if (previousProjectPath.current !== effectiveProjectPath) {
+      previousProjectPath.current = effectiveProjectPath;
+      setSkills(null);
+      setActiveSlug(null);
+      setActiveScope(null);
+      setSaving(false);
+      setShowNew(false);
+      setShowOverride(false);
+      setCreatingOverride(false);
+    }
     void refresh();
-  }, [refresh]);
+    return invalidateListRequests;
+  }, [refresh, effectiveProjectPath, invalidateListRequests]);
+
+  useEffect(() => {
+    const media = window.matchMedia?.('(max-width: 680px)');
+    if (!media) return;
+    const update = () => setNarrow(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    if (compactLayout || activeSlug || !skills) return;
+    const first = (!generalCwd && skills.project[0]) || skills.user[0] || skills.builtin[0];
+    if (first) {
+      setActiveSlug(first.slug);
+      setActiveScope(first.scope);
+    }
+  }, [skills, activeSlug, compactLayout, generalCwd]);
 
   useEffect(() => {
     if (generalCwd && activeScope === 'project') {
@@ -171,35 +275,51 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
 
   const activeSkill = useMemo(() => {
     if (!skills || !activeSlug) return null;
-    const list = activeScope === 'builtin'
-      ? skills.builtin
-      : activeScope === 'project'
-        ? skills.project
-        : skills.user;
+    const list =
+      activeScope === 'builtin'
+        ? skills.builtin
+        : activeScope === 'project'
+          ? skills.project
+          : skills.user;
     return list.find((s) => s.slug === activeSlug) ?? null;
   }, [skills, activeSlug, activeScope]);
 
-  // Load SKILL.md when active skill changes
+  const activeSkillPath = activeSkill?.skillDir;
+  const activeSkillScope = activeSkill?.scope;
+  const activeSkillSlug = activeSkill?.slug;
+  // Metadata refreshes must not discard an open draft.
   useEffect(() => {
-    if (!activeSkill) {
+    setEditing(false);
+    setReadReady(false);
+    setDetailError(null);
+    if (!activeSkillPath || !activeSkillScope || !activeSkillSlug) {
       setEditorContent('');
       setOriginalContent('');
+      setEditorLoading(false);
       return;
     }
     let cancelled = false;
     setEditorLoading(true);
     api<{ content: string }>('/api/skills/read', {
-      skillPath: activeSkill.skillDir,
+      scope: activeSkillScope,
+      slug: activeSkillSlug,
       projectPath: effectiveProjectPath,
     })
       .then((data) => {
         if (cancelled) return;
-        setEditorContent(data.content);
+        setReadReady(true);
+        const draft = skillDrafts.get(activeSkillPath);
+        setEditorContent(draft?.content ?? data.content);
         setOriginalContent(data.content);
+        if (draft) {
+          setEditing(true);
+          if (draft.original !== data.content) setDetailError(draftConflictMessage);
+        }
       })
       .catch((e) => {
         if (cancelled) return;
         flashToast({ kind: 'error', text: (e as Error).message });
+        setDetailError((e as Error).message);
         setEditorContent('');
         setOriginalContent('');
       })
@@ -209,27 +329,51 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
     return () => {
       cancelled = true;
     };
-  }, [activeSkill, effectiveProjectPath, flashToast]);
+  }, [
+    activeSkillPath,
+    activeSkillScope,
+    activeSkillSlug,
+    effectiveProjectPath,
+    flashToast,
+    draftConflictMessage,
+    readRetry,
+  ]);
 
   const isDirty = editorContent !== originalContent;
 
+  useEffect(() => {
+    if (!isDirty) return;
+    const protectDraft = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', protectDraft);
+    return () => window.removeEventListener('beforeunload', protectDraft);
+  }, [isDirty]);
+
   const handleSave = useCallback(async () => {
-    if (!activeSkill) return;
+    if (!activeSkill || !isCurrentContext()) return;
     setSaving(true);
+    setDetailError(null);
     try {
       const result = await api<{ ok: boolean; skill: Skill }>('/api/skills/write', {
-        skillPath: activeSkill.skillDir,
+        scope: activeSkill.scope,
+        slug: activeSkill.slug,
         projectPath: effectiveProjectPath,
         content: editorContent,
       });
+      skillDrafts.delete(activeSkill.skillDir);
+      if (!isCurrentContext()) return;
       setOriginalContent(editorContent);
       // Patch the skill in-place so list metadata (name/desc) refreshes.
       setSkills((prev) => {
         if (!prev) return prev;
         const updateIn = (list: Skill[]) =>
-          list.map((s) => (s.slug === activeSkill.slug && s.scope === activeSkill.scope
-            ? { ...s, ...result.skill, scope: activeSkill.scope }
-            : s));
+          list.map((s) =>
+            s.slug === activeSkill.slug && s.scope === activeSkill.scope
+              ? { ...s, ...result.skill, scope: activeSkill.scope }
+              : s,
+          );
         return {
           ...prev,
           user: updateIn(prev.user),
@@ -237,89 +381,167 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
         };
       });
       flashToast({ kind: 'success', text: t('skillsTab.savedSuccess', { defaultValue: 'Saved' }) });
+      setEditing(false);
     } catch (e) {
+      if (!isCurrentContext()) return;
+      setDetailError((e as Error).message);
       flashToast({ kind: 'error', text: (e as Error).message });
     } finally {
-      setSaving(false);
+      if (isCurrentContext()) setSaving(false);
     }
-  }, [activeSkill, editorContent, effectiveProjectPath, flashToast, t]);
+  }, [activeSkill, editorContent, effectiveProjectPath, flashToast, t, isCurrentContext]);
 
   const handleDelete = useCallback(async () => {
-    if (!activeSkill || activeSkill.readonly) return;
-    if (!await confirm({ message: t('skillsTab.confirmDelete', { defaultValue: 'Delete this skill? This will remove the entire folder.', name: activeSkill.name }) as string, destructive: true, confirmLabel: t('confirmDialog.delete') })) {
+    if (!activeSkill || activeSkill.readonly || !isCurrentContext()) return;
+    if (
+      !(await confirm({
+        message: t('skillsTab.confirmDelete', {
+          defaultValue: 'Delete this skill? This will remove the entire folder.',
+          name: activeSkill.name,
+        }) as string,
+        destructive: true,
+        confirmLabel: t('confirmDialog.delete'),
+      }))
+    ) {
       return;
     }
+    if (!isCurrentContext()) return;
     try {
       await api('/api/skills/delete', {
-        skillPath: activeSkill.skillDir,
+        scope: activeSkill.scope,
+        slug: activeSkill.slug,
         projectPath: effectiveProjectPath,
       });
+      skillDrafts.delete(activeSkill.skillDir);
+      if (!isCurrentContext()) return;
       setActiveSlug(null);
       setActiveScope(null);
       await refresh();
-      flashToast({ kind: 'success', text: t('skillsTab.deletedSuccess', { defaultValue: 'Deleted' }) });
+      if (!isCurrentContext()) return;
+      flashToast({
+        kind: 'success',
+        text: t('skillsTab.deletedSuccess', { defaultValue: 'Deleted' }),
+      });
     } catch (e) {
+      if (!isCurrentContext()) return;
       flashToast({ kind: 'error', text: (e as Error).message });
     }
-  }, [activeSkill, effectiveProjectPath, refresh, flashToast, t, confirm]);
+  }, [activeSkill, effectiveProjectPath, refresh, flashToast, t, confirm, isCurrentContext]);
 
-  const handleCreateUserOverride = useCallback(async () => {
-    if (!activeSkill || activeSkill.scope !== 'builtin') return;
+  const handleCreateOverride = useCallback(async () => {
+    if (!activeSkill || activeSkill.scope !== 'builtin' || !isCurrentContext()) return;
+    setCreatingOverride(true);
+    setDetailError(null);
+    const scope = effectiveProjectPath ? overrideScope : 'user';
     try {
       const result = await api<{ skill: Skill }>('/api/skills/import', {
-        sourcePath: activeSkill.skillDir,
+        sourceSkill: {
+          scope: activeSkill.scope,
+          slug: activeSkill.slug,
+          projectPath: effectiveProjectPath,
+        },
         slug: activeSkill.slug,
-        scope: 'user',
-        projectPath: null,
+        scope,
+        projectPath: scope === 'project' ? effectiveProjectPath : null,
         mode: 'copy',
         force: false,
       });
+      if (!isCurrentContext()) return;
       await refresh();
+      if (!isCurrentContext()) return;
       setActiveSlug(activeSkill.slug);
-      setActiveScope('user');
+      setActiveScope(scope);
+      setShowOverride(false);
       flashToast({
         kind: 'success',
-        text: t('skillsTab.overrideCreated', { defaultValue: 'Created user override for "{{name}}"', name: result.skill?.name || activeSkill.name }) as string,
+        text: t('skillsTab.overrideCreated', {
+          name: result.skill?.name || activeSkill.name,
+        }) as string,
       });
     } catch (e) {
-      flashToast({ kind: 'error', text: (e as Error).message });
+      if (!isCurrentContext()) return;
+      setDetailError((e as Error).message);
+    } finally {
+      if (isCurrentContext()) setCreatingOverride(false);
     }
-  }, [activeSkill, flashToast, refresh, t]);
+  }, [activeSkill, effectiveProjectPath, overrideScope, flashToast, refresh, t, isCurrentContext]);
 
-  const handleSelect = useCallback(async (skill: Skill) => {
-    if (isDirty) {
-      if (!await confirm({ message: t('skillsTab.discardUnsaved', { defaultValue: 'Discard unsaved changes?' }) as string, destructive: true, confirmLabel: t('confirmDialog.discard') })) {
-        return;
+  const handleSelect = useCallback(
+    async (skill: Skill) => {
+      if (saving || !isCurrentContext()) return;
+      if (skill.slug === activeSlug && skill.scope === activeScope) return;
+      if (isDirty) {
+        if (
+          !(await confirm({
+            message: t('skillsTab.discardUnsaved', {
+              defaultValue: 'Discard unsaved changes?',
+            }) as string,
+            destructive: true,
+            confirmLabel: t('confirmDialog.discard'),
+          }))
+        ) {
+          return;
+        }
+        if (!isCurrentContext()) return;
+        if (activeSkillPath) skillDrafts.delete(activeSkillPath);
       }
-    }
-    setActiveSlug(skill.slug);
-    setActiveScope(skill.scope);
-  }, [isDirty, t, confirm]);
+      setActiveSlug(skill.slug);
+      setActiveScope(skill.scope);
+    },
+    [activeSlug, activeScope, activeSkillPath, isDirty, saving, t, confirm, isCurrentContext],
+  );
+
+  const discardDraft = async () => {
+    if (!isCurrentContext()) return false;
+    if (
+      saving ||
+      (isDirty &&
+        !(await confirm({
+          message: t('skillsTab.discardUnsaved'),
+          destructive: true,
+          confirmLabel: t('confirmDialog.discard'),
+        })))
+    )
+      return false;
+    if (!isCurrentContext()) return false;
+    if (activeSkillPath) skillDrafts.delete(activeSkillPath);
+    setEditorContent(originalContent);
+    setEditing(false);
+    return true;
+  };
 
   // ------------------------------------------------------------------------
 
-  if (!selectedProject) {
-    return (
-      <div className="flex h-full items-center justify-center bg-white text-[13px] text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
-        {t('skillsTab.pickProject', { defaultValue: 'Open a project to manage its skills.' })}
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">
+    <div className={cn('skills-workbench skills-page', compactLayout && 'compact')}>
       <Header
-        cwd={cwd}
+        projectName={selectedProject?.displayName || selectedProject?.name || null}
         generalCwd={generalCwd}
-        loading={loading}
+        loading={loading || saving}
         onRefresh={refresh}
-        onNew={() => setShowNew(true)}
-        compact={compact}
+        onNew={async () => {
+          if (await discardDraft()) setShowNew(true);
+        }}
+        projects={projects}
+        selectedProject={selectedProject}
+        onProjectChange={
+          onProjectChange
+            ? async (project) => {
+                if (!(await discardDraft())) return;
+                setSkills(null);
+                setActiveSlug(null);
+                setActiveScope(null);
+                onProjectChange(project);
+              }
+            : undefined
+        }
+        isSidebarCollapsed={isSidebarCollapsed}
+        onOpenSidebar={onOpenSidebar}
         t={t}
       />
 
-      <div className="flex min-h-0 flex-1">
-        {!compact || !activeSkill ? (
+      <div className="skills-layout">
+        {!compactLayout || !activeSkill ? (
           <SkillsList
             skills={skills}
             loading={loading}
@@ -334,61 +556,134 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
             flashToast={flashToast}
             setActiveSlug={setActiveSlug}
             setActiveScope={setActiveScope}
-            compact={compact}
+            compact={compactLayout}
+            beforeMutation={async (skill) =>
+              isCurrentContext() && (skill.skillDir !== activeSkillPath || (await discardDraft()))
+            }
+            isCurrentContext={isCurrentContext}
             t={t}
           />
         ) : null}
-        {!compact || activeSkill ? (
-        <div className={cn(
-          'flex min-h-0 flex-1 flex-col',
-          !compact && 'border-l border-neutral-200 dark:border-neutral-800',
-        )}>
-          {compact && activeSkill ? (
-            <button
-              type="button"
-              onClick={async () => {
-                if (isDirty && !await confirm({ message: t('skillsTab.discardUnsaved', { defaultValue: 'Discard unsaved changes?' }) as string, destructive: true, confirmLabel: t('confirmDialog.discard') })) return;
-                setActiveSlug(null);
-                setActiveScope(null);
-              }}
-              className="flex h-9 shrink-0 items-center gap-1.5 border-b border-neutral-200 px-3 text-[12px] font-medium text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-              <span>{t('skillsTab.backToSkills', { defaultValue: 'Back to skills' })}</span>
-            </button>
-          ) : null}
-          {activeSkill ? (
-            <SkillDetail
-              skill={activeSkill}
-              content={editorContent}
-              onChange={setEditorContent}
-              isDirty={isDirty}
-              loading={editorLoading}
-              saving={saving}
-              isDarkMode={isDarkMode}
-              onSave={handleSave}
-              onDelete={handleDelete}
-              onCreateUserOverride={handleCreateUserOverride}
-              onRevert={() => setEditorContent(originalContent)}
-              compact={compact}
-              t={t}
-            />
-          ) : (
-            <EmptyState t={t} />
-          )}
-        </div>
+        {!compactLayout || activeSkill ? (
+          <div className="skills-detail">
+            {compactLayout && activeSkill ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (
+                    isDirty &&
+                    !(await confirm({
+                      message: t('skillsTab.discardUnsaved', {
+                        defaultValue: 'Discard unsaved changes?',
+                      }) as string,
+                      destructive: true,
+                      confirmLabel: t('confirmDialog.discard'),
+                    }))
+                  )
+                    return;
+                  if (activeSkillPath) skillDrafts.delete(activeSkillPath);
+                  setActiveSlug(null);
+                  setActiveScope(null);
+                }}
+                className="flex h-9 shrink-0 items-center gap-1.5 border-b border-neutral-200 px-3 text-[12px] font-medium text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <span>{t('skillsTab.backToSkills', { defaultValue: 'Back to skills' })}</span>
+              </button>
+            ) : null}
+            {activeSkill ? (
+              <SkillDetail
+                skill={activeSkill}
+                content={editorContent}
+                onChange={(content) => {
+                  setEditorContent(content);
+                  if (activeSkillPath) {
+                    if (content === originalContent) skillDrafts.delete(activeSkillPath);
+                    else skillDrafts.set(activeSkillPath, { content, original: originalContent });
+                  }
+                }}
+                isDirty={isDirty}
+                loading={editorLoading}
+                saving={saving}
+                editing={editing}
+                error={detailError}
+                readReady={readReady}
+                onRetry={() => setReadRetry((value) => value + 1)}
+                projectPath={effectiveProjectPath}
+                onUseSkill={
+                  onUseSkill &&
+                  (projectCwd(selectedProject) ||
+                    projects.some((project) => isGeneralProject(project) && projectCwd(project)))
+                    ? async () => {
+                        if (await discardDraft())
+                          onUseSkill(
+                            {
+                              slug: activeSkill.slug,
+                              name: activeSkill.name,
+                              command: `/${activeSkill.slug}`,
+                            },
+                            selectedProject,
+                          );
+                      }
+                    : undefined
+                }
+                isDarkMode={isDarkMode}
+                onSave={handleSave}
+                onDelete={handleDelete}
+                onEdit={() => {
+                  setEditing(true);
+                  setDetailError(null);
+                }}
+                onCreateOverride={() => {
+                  setOverrideScope(effectiveProjectPath ? 'project' : 'user');
+                  setDetailError(null);
+                  setShowOverride(true);
+                }}
+                onCancel={async () => {
+                  if (
+                    isDirty &&
+                    !(await confirm({
+                      message: t('skillsTab.discardUnsaved'),
+                      destructive: true,
+                      confirmLabel: t('confirmDialog.discard'),
+                    }))
+                  )
+                    return;
+                  if (activeSkillPath) skillDrafts.delete(activeSkillPath);
+                  setEditorContent(originalContent);
+                  setEditing(false);
+                  setDetailError(null);
+                }}
+                t={t}
+              />
+            ) : (
+              <EmptyState t={t} />
+            )}
+          </div>
         ) : null}
       </div>
 
       {showNew ? (
         <NewSkillModal
           onClose={() => setShowNew(false)}
+          onBatchChanged={refresh}
           onCreated={async (created) => {
+            if (!isCurrentContext()) return;
             await refresh();
-            setActiveSlug(created.slug);
-            setActiveScope(created.scope);
+            if (!isCurrentContext()) return;
+            if (created.slug) {
+              setActiveSlug(created.slug);
+              setActiveScope(created.scope);
+            }
             setShowNew(false);
-            flashToast({ kind: 'success', text: t('skillsTab.installedSuccess', { defaultValue: 'Installed', name: created.name }) });
+            if (created.slug)
+              flashToast({
+                kind: 'success',
+                text: t('skillsTab.installedSuccess', {
+                  defaultValue: 'Installed',
+                  name: created.name,
+                }),
+              });
           }}
           projectAvailable={Boolean(effectiveProjectPath)}
           projectPath={effectiveProjectPath}
@@ -396,8 +691,62 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
         />
       ) : null}
 
+      {showOverride && activeSkill ? (
+        <SkillDialog
+          small
+          title={t('skillsTab.createOverride')}
+          description={t('skillsTab.customizeDescription')}
+          onClose={() => {
+            setShowOverride(false);
+            setDetailError(null);
+          }}
+          busy={creatingOverride}
+        >
+          <div className="skills-dialog-content">
+            <ScopeSelector
+              scope={overrideScope}
+              onChange={setOverrideScope}
+              projectAvailable={Boolean(effectiveProjectPath)}
+              t={t}
+            />
+            <p className="mt-4 text-[12px] text-muted-foreground">
+              {t('skillsTab.overrideExplanation')}
+            </p>
+            {detailError ? (
+              <p role="alert" className="mt-3 text-[12px] text-destructive">
+                {detailError}
+              </p>
+            ) : null}
+          </div>
+          <footer className="skills-dialog-footer">
+            <button
+              type="button"
+              className="skills-button"
+              disabled={creatingOverride}
+              onClick={() => setShowOverride(false)}
+            >
+              {t('skillsTab.cancel')}
+            </button>
+            <button
+              type="button"
+              className="skills-button skills-button-primary"
+              disabled={creatingOverride}
+              onClick={handleCreateOverride}
+            >
+              {creatingOverride ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Copy size={15} />
+              )}
+              {t('skillsTab.createOverride')}
+            </button>
+          </footer>
+        </SkillDialog>
+      ) : null}
+
       {toast ? (
         <div
+          role={toast.kind === 'error' ? 'alert' : 'status'}
           className={cn(
             'pointer-events-none absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-3 py-1.5 text-[12px] shadow-lg',
             toast.kind === 'success' && 'bg-emerald-600 text-white',
@@ -415,56 +764,100 @@ export default function SkillsV2({ selectedProject, projects, compact = false }:
 // ---------------------------------------------------------------------------
 
 function Header({
-  cwd,
+  projectName,
+  projects,
+  selectedProject,
+  onProjectChange,
   generalCwd,
   loading,
   onRefresh,
   onNew,
-  compact,
   t,
+  onOpenSidebar,
+  isSidebarCollapsed,
 }: {
-  cwd: string | null;
+  projectName: string | null;
+  projects: Project[];
+  selectedProject: Project | null;
+  onProjectChange?: (project: Project | null) => void;
   generalCwd: boolean;
   loading: boolean;
   onRefresh: () => void;
   onNew: () => void;
-  compact: boolean;
   t: ReturnType<typeof useTranslation>['t'];
+  onOpenSidebar?: () => void;
+  isSidebarCollapsed?: boolean;
 }) {
   return (
-    <div className={cn(
-      'flex h-10 shrink-0 items-center justify-between border-b border-neutral-200 dark:border-neutral-800',
-      compact ? 'px-3' : 'px-6',
-    )}>
-      <div className="flex min-w-0 items-center gap-2 truncate font-mono text-xxs text-neutral-500 dark:text-neutral-400">
-        <Sparkles className="h-3.5 w-3.5 text-amber-500" strokeWidth={1.75} />
-        {generalCwd ? (
-          <span>{t('skillsTab.generalChat', { defaultValue: 'General chat — user-scope skills only' })}</span>
+    <>
+      <header className="skills-header">
+        <div className="flex min-w-0 items-center gap-3">
+          {isSidebarCollapsed ? (
+            <button
+              type="button"
+              className="skills-icon-button"
+              onClick={onOpenSidebar}
+              aria-label={t('sidebar:tooltips.showSidebar')}
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          ) : null}
+          <div>
+            <h2>{t('skillsTab.title')}</h2>
+            <p>{t('skillsTab.subtitle')}</p>
+          </div>
+        </div>
+        <div className="skills-header-actions">
+          <button
+            type="button"
+            className="skills-icon-button"
+            disabled={loading}
+            onClick={onRefresh}
+            aria-label={t('skillsTab.refresh')}
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button type="button" className="skills-button skills-button-primary" onClick={onNew}>
+            <Plus size={16} />
+            {t('skillsTab.newSkill')}
+          </button>
+        </div>
+      </header>
+      <div className="skills-context">
+        <Folder size={14} />
+        {onProjectChange ? (
+          <label className="skills-project-selector">
+            <span>{t('skillsTab.projectContext')}</span>
+            <select
+              aria-label={t('skillsTab.switchProject')}
+              value={isGeneralProject(selectedProject) ? '' : (selectedProject?.name ?? '')}
+              disabled={loading}
+              onChange={(event) =>
+                onProjectChange(
+                  projects.find((project) => project.name === (event.target.value || 'general')) ??
+                    null,
+                )
+              }
+            >
+              <option value="">{t('skillsTab.generalChat')}</option>
+              {projects
+                .filter((project) => !isGeneralProject(project))
+                .map((project) => (
+                  <option key={project.name} value={project.name}>
+                    {project.displayName || project.name}
+                  </option>
+                ))}
+            </select>
+          </label>
         ) : (
-          <span className="truncate">{cwd}</span>
+          <span>
+            {projectName && !generalCwd
+              ? t('skillsTab.currentProject', { name: projectName })
+              : t('skillsTab.generalChat')}
+          </span>
         )}
       </div>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-600 transition hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-300 dark:hover:bg-neutral-900"
-          title={t('skillsTab.refresh', { defaultValue: 'Refresh' }) as string}
-          aria-label={t('skillsTab.refresh', { defaultValue: 'Refresh' }) as string}
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} strokeWidth={1.75} />
-        </button>
-        <button
-          type="button"
-          onClick={onNew}
-          className="inline-flex h-7 items-center gap-1.5 rounded-md bg-neutral-900 px-2.5 text-[12px] font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-        >
-          <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
-          <span>{t('skillsTab.newSkill', { defaultValue: 'New' })}</span>
-        </button>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -485,6 +878,8 @@ function SkillsList({
   setActiveSlug,
   setActiveScope,
   compact,
+  beforeMutation,
+  isCurrentContext,
   t,
 }: {
   skills: SkillsListResponse | null;
@@ -501,66 +896,156 @@ function SkillsList({
   setActiveSlug: (slug: string | null) => void;
   setActiveScope: (scope: SkillScope | null) => void;
   compact: boolean;
+  beforeMutation: (skill: Skill) => Promise<boolean>;
+  isCurrentContext: () => boolean;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   const confirm = useConfirm();
-  const handleDeleteSkill = useCallback(async (skill: Skill) => {
-    if (skill.readonly) return;
-    if (!await confirm({ message: t('skillsTab.confirmUninstall', { defaultValue: 'Uninstall "{{name}}"? This will remove the entire skill folder.', name: skill.name }) as string, destructive: true, confirmLabel: t('confirmDialog.delete') })) {
-      return;
-    }
-    try {
-      await api('/api/skills/delete', {
-        skillPath: skill.skillDir,
-        projectPath: effectiveProjectPath,
-      });
-      if (selectedSkill?.slug === skill.slug && selectedSkill?.scope === skill.scope) {
-        setActiveSlug(null);
-        setActiveScope(null);
-      }
-      await refresh();
-      flashToast({ kind: 'success', text: t('skillsTab.uninstallSuccess', { defaultValue: 'Uninstalled "{{name}}"', name: skill.name }) as string });
-    } catch (e) {
-      flashToast({ kind: 'error', text: (e as Error).message });
-    }
-  }, [effectiveProjectPath, selectedSkill, refresh, flashToast, setActiveSlug, setActiveScope, t, confirm]);
+  const [query, setQuery] = useState('');
+  const [scopeFilter, setScopeFilter] = useState<SkillScope | 'all'>('all');
+  const matchingSkills = useMemo(() => {
+    const matches = (skill: Skill) =>
+      `${skill.name} ${skill.slug} ${skill.description}`
+        .toLocaleLowerCase()
+        .includes(query.trim().toLocaleLowerCase());
+    return {
+      builtin: skills?.builtin.filter(matches) ?? [],
+      user: skills?.user.filter(matches) ?? [],
+      project: generalCwd ? [] : (skills?.project.filter(matches) ?? []),
+    };
+  }, [skills, query, generalCwd]);
+  const sections = [
+    {
+      scope: 'project' as const,
+      title: t('skillsTab.projectScope'),
+      items: matchingSkills.project,
+    },
+    { scope: 'user' as const, title: t('skillsTab.userScope'), items: matchingSkills.user },
+    {
+      scope: 'builtin' as const,
+      title: t('skillsTab.builtinScope'),
+      items: matchingSkills.builtin,
+    },
+  ].filter(
+    (section) =>
+      (scopeFilter === 'all' || scopeFilter === section.scope) && section.items.length > 0,
+  );
 
-  const handleMoveSkill = useCallback(async (skill: Skill, target: MoveTarget) => {
-    if (skill.readonly) return;
-    try {
-      await api('/api/skills/import', {
-        sourcePath: skill.skillDir,
-        slug: skill.slug,
-        scope: target.scope,
-        projectPath: target.projectPath,
-        mode: 'copy',
-        force: false,
-      });
-      await api('/api/skills/delete', {
-        skillPath: skill.skillDir,
-        projectPath: effectiveProjectPath,
-      });
-      if (selectedSkill?.slug === skill.slug && selectedSkill?.scope === skill.scope) {
-        setActiveScope(target.scope);
+  const handleDeleteSkill = useCallback(
+    async (skill: Skill) => {
+      if (skill.readonly) return;
+      if (
+        !(await confirm({
+          message: t('skillsTab.confirmUninstall', {
+            defaultValue: 'Uninstall "{{name}}"? This will remove the entire skill folder.',
+            name: skill.name,
+          }) as string,
+          destructive: true,
+          confirmLabel: t('confirmDialog.delete'),
+        }))
+      ) {
+        return;
       }
-      await refresh();
-      const label = target.scope === 'user' ? t('uiText.userScope') : target.projectPath.split('/').pop() || t('uiText.projectScope');
-      flashToast({
-        kind: 'success',
-        text: t('skillsTab.moveSuccess', {
-          defaultValue: 'Moved "{{name}}" to {{scope}}',
-          name: skill.name,
-          scope: label,
-        }) as string,
-      });
-    } catch (e) {
-      flashToast({ kind: 'error', text: (e as Error).message });
-    }
-  }, [effectiveProjectPath, selectedSkill, refresh, flashToast, setActiveScope, t]);
+      if (!(await beforeMutation(skill))) return;
+      try {
+        await api('/api/skills/delete', {
+          scope: skill.scope,
+          slug: skill.slug,
+          projectPath: effectiveProjectPath,
+        });
+        if (!isCurrentContext()) return;
+        if (selectedSkill?.slug === skill.slug && selectedSkill?.scope === skill.scope) {
+          setActiveSlug(null);
+          setActiveScope(null);
+        }
+        await refresh();
+        if (!isCurrentContext()) return;
+        flashToast({
+          kind: 'success',
+          text: t('skillsTab.uninstallSuccess', {
+            defaultValue: 'Uninstalled "{{name}}"',
+            name: skill.name,
+          }) as string,
+        });
+      } catch (e) {
+        if (!isCurrentContext()) return;
+        flashToast({ kind: 'error', text: (e as Error).message });
+      }
+    },
+    [
+      effectiveProjectPath,
+      selectedSkill,
+      refresh,
+      flashToast,
+      setActiveSlug,
+      setActiveScope,
+      t,
+      confirm,
+      beforeMutation,
+      isCurrentContext,
+    ],
+  );
+
+  const handleMoveSkill = useCallback(
+    async (skill: Skill, target: MoveTarget) => {
+      if (skill.readonly) return;
+      if (!(await beforeMutation(skill))) return;
+      try {
+        await api('/api/skills/import', {
+          sourceSkill: { scope: skill.scope, slug: skill.slug, projectPath: effectiveProjectPath },
+          slug: skill.slug,
+          scope: target.scope,
+          projectPath: target.projectPath,
+          mode: 'copy',
+          force: false,
+        });
+        await api('/api/skills/delete', {
+          scope: skill.scope,
+          slug: skill.slug,
+          projectPath: effectiveProjectPath,
+        });
+        if (!isCurrentContext()) return;
+        if (selectedSkill?.slug === skill.slug && selectedSkill?.scope === skill.scope) {
+          if (target.scope === 'project' && target.projectPath !== effectiveProjectPath) {
+            setActiveSlug(null);
+            setActiveScope(null);
+          } else setActiveScope(target.scope);
+        }
+        await refresh();
+        if (!isCurrentContext()) return;
+        const label =
+          target.scope === 'user'
+            ? t('uiText.userScope')
+            : target.projectPath.split('/').pop() || t('uiText.projectScope');
+        flashToast({
+          kind: 'success',
+          text: t('skillsTab.moveSuccess', {
+            defaultValue: 'Moved "{{name}}" to {{scope}}',
+            name: skill.name,
+            scope: label,
+          }) as string,
+        });
+      } catch (e) {
+        if (!isCurrentContext()) return;
+        flashToast({ kind: 'error', text: (e as Error).message });
+      }
+    },
+    [
+      effectiveProjectPath,
+      selectedSkill,
+      refresh,
+      flashToast,
+      setActiveScope,
+      setActiveSlug,
+      t,
+      beforeMutation,
+      isCurrentContext,
+    ],
+  );
 
   const moveTargets = useMemo((): { label: string; target: MoveTarget }[] => {
     const targets: { label: string; target: MoveTarget }[] = [];
-    targets.push({ label: t('uiText.userGlobal'), target: { scope: 'user', projectPath: null } });
+    targets.push({ label: t('skillsTab.userScope'), target: { scope: 'user', projectPath: null } });
     for (const project of projects) {
       const path = project.fullPath || project.path || null;
       if (!path) continue;
@@ -574,66 +1059,85 @@ function SkillsList({
   }, [projects, t]);
 
   return (
-    <div className={cn(
-      'flex shrink-0 flex-col',
-      compact ? 'w-full' : 'w-72 border-r border-neutral-200 dark:border-neutral-800',
-    )}>
-      <div className="min-h-0 flex-1 overflow-y-auto py-2 text-[13px]">
+    <aside className={cn('skills-list', compact && 'w-full')} aria-label={t('skillsTab.listLabel')}>
+      <div className="skills-list-controls">
+        <label className="skills-search">
+          <Search size={15} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t('skillsTab.localSearch')}
+            aria-label={t('skillsTab.localSearch')}
+          />
+          {query ? (
+            <button
+              type="button"
+              className="skills-icon-button"
+              onClick={() => setQuery('')}
+              aria-label={t('skillsTab.clearSearch')}
+            >
+              <X size={14} />
+            </button>
+          ) : null}
+        </label>
+        <div className="skills-filter-group" aria-label={t('skillsTab.filterLabel')}>
+          {(['all', 'user', 'project', 'builtin'] as const).map((scope) => (
+            <button
+              type="button"
+              key={scope}
+              aria-pressed={scopeFilter === scope}
+              disabled={scope === 'project' && !effectiveProjectPath}
+              onClick={() => setScopeFilter(scope)}
+            >
+              {t(`skillsTab.filter${scope[0].toUpperCase()}${scope.slice(1)}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="skills-list-scroll">
         {loading && !skills ? (
-          <div className="flex items-center justify-center gap-2 py-6 text-xxs text-neutral-500 dark:text-neutral-400">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
-            <span>{t('skillsTab.loading', { defaultValue: 'Loading…' })}</span>
+          <div className="skills-empty">
+            <Loader2 size={18} className="animate-spin" />
+            <p>{t('skillsTab.loading')}</p>
           </div>
+        ) : sections.length ? (
+          sections.map((section) => (
+            <ListSection
+              key={section.scope}
+              title={section.title}
+              items={section.items}
+              activeSlug={activeScope === section.scope ? activeSlug : null}
+              onSelect={onSelect}
+              onDelete={handleDeleteSkill}
+              onMove={handleMoveSkill}
+              moveTargets={moveTargets}
+              currentProjectPath={effectiveProjectPath}
+              t={t}
+            />
+          ))
         ) : (
-          <>
-            {!generalCwd && skills?.project && skills.project.length > 0 ? (
-              <ListSection
-                title={t('skillsTab.projectScope', { defaultValue: 'Project Skills' })}
-                items={skills.project}
-                activeSlug={activeScope === 'project' ? activeSlug : null}
-                onSelect={onSelect}
-                onDelete={handleDeleteSkill}
-                onMove={handleMoveSkill}
-                moveTargets={moveTargets}
-                currentProjectPath={effectiveProjectPath}
-                t={t}
-              />
+          <div className="skills-empty">
+            <Search size={22} />
+            <p>
+              {t(
+                query.trim()
+                  ? 'skillsTab.noMatches'
+                  : scopeFilter === 'project'
+                    ? 'skillsTab.emptyProject'
+                    : scopeFilter === 'user'
+                      ? 'skillsTab.emptyGlobal'
+                      : 'skillsTab.empty',
+              )}
+            </p>
+            {query.trim() ? (
+              <button type="button" className="skills-button" onClick={() => setQuery('')}>
+                {t('skillsTab.clearSearch')}
+              </button>
             ) : null}
-            {skills?.user && skills.user.length > 0 ? (
-              <ListSection
-                title={t('skillsTab.userScope', { defaultValue: 'User Skills' })}
-                items={skills.user}
-                activeSlug={activeScope === 'user' ? activeSlug : null}
-                onSelect={onSelect}
-                onDelete={handleDeleteSkill}
-                onMove={handleMoveSkill}
-                moveTargets={moveTargets}
-                currentProjectPath={effectiveProjectPath}
-                t={t}
-              />
-            ) : null}
-            {skills?.builtin && skills.builtin.length > 0 ? (
-              <ListSection
-                title={t('skillsTab.builtinScope', { defaultValue: 'Built-in Skills' })}
-                items={skills.builtin}
-                activeSlug={activeScope === 'builtin' ? activeSlug : null}
-                onSelect={onSelect}
-                onDelete={handleDeleteSkill}
-                onMove={handleMoveSkill}
-                moveTargets={moveTargets}
-                currentProjectPath={effectiveProjectPath}
-                t={t}
-              />
-            ) : null}
-            {skills && skills.builtin.length === 0 && skills.user.length === 0 && (generalCwd || skills.project.length === 0) ? (
-              <div className="px-4 py-6 text-center text-xxs text-neutral-500 dark:text-neutral-400">
-                {t('skillsTab.empty', { defaultValue: 'No skills yet. Click "New" to install or create one.' })}
-              </div>
-            ) : null}
-          </>
+          </div>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -663,183 +1167,156 @@ function ListSection({
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>(null);
   const [showMoveSubmenu, setShowMoveSubmenu] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
   useEffect(() => {
     if (!ctxMenu) return;
-    const handleClose = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent && e.key === 'Escape') {
-        setCtxMenu(null);
-        setShowMoveSubmenu(false);
-        return;
-      }
-      if (e instanceof MouseEvent && menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setCtxMenu(null);
-        setShowMoveSubmenu(false);
-      }
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent && event.key !== 'Escape') return;
+      if (event instanceof MouseEvent && menuRef.current?.contains(event.target as Node)) return;
+      setCtxMenu(null);
+      setShowMoveSubmenu(false);
     };
-    document.addEventListener('mousedown', handleClose);
-    document.addEventListener('keydown', handleClose);
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
     return () => {
-      document.removeEventListener('mousedown', handleClose);
-      document.removeEventListener('keydown', handleClose);
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
     };
   }, [ctxMenu]);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent, skill: Skill) => {
-    if (skill.readonly) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setCtxMenu({ skill, x: e.clientX, y: e.clientY });
-    setShowMoveSubmenu(false);
-  }, []);
-
-  const filteredMoveTargets = useMemo(() => {
-    if (!ctxMenu) return [];
-    const skill = ctxMenu.skill;
-    if (skill.readonly) return [];
-    return moveTargets.filter((mt) => {
-      if (skill.scope === 'user' && mt.target.scope === 'user') return false;
-      if (skill.scope === 'project' && mt.target.scope === 'project' && mt.target.projectPath === currentProjectPath) return false;
-      return true;
+  const openMenu = (event: React.MouseEvent, skill: Skill) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCtxMenu({
+      skill,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 205)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 260)),
     });
-  }, [ctxMenu, moveTargets, currentProjectPath]);
-
+    setShowMoveSubmenu(false);
+  };
+  const targets = moveTargets.filter((target) =>
+    ctxMenu?.skill.scope === 'user'
+      ? target.target.scope !== 'user'
+      : target.target.scope !== 'project' || target.target.projectPath !== currentProjectPath,
+  );
   return (
-    <div className="mb-2">
-      <div className="px-4 py-1 text-xxs uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-        {title} <span className="text-neutral-300 dark:text-neutral-600">· {items.length}</span>
+    <section className="skills-section" aria-label={title}>
+      <div className="skills-section-label">
+        {title}
+        <span>{items.length}</span>
       </div>
-      <ul className="space-y-0.5 px-2">
-        {items.map((s) => {
-          const isActive = activeSlug === s.slug;
-          return (
-            <li key={`${s.scope}:${s.slug}`} className="group relative">
+      <ul>
+        {items.map((skill) => (
+          <li key={`${skill.scope}:${skill.slug}`} className="relative">
+            <button
+              type="button"
+              className="skills-row"
+              aria-current={activeSlug === skill.slug ? 'true' : undefined}
+              onClick={() => onSelect(skill)}
+              onContextMenu={skill.readonly ? undefined : (event) => openMenu(event, skill)}
+            >
+              <div className="skills-row-title">
+                <span>{skill.name}</span>
+                {skill.version ? (
+                  <span className="text-[11px] text-muted-foreground">v{skill.version}</span>
+                ) : null}
+              </div>
+              {skill.description ? (
+                <p className="skills-row-description line-clamp-2">{skill.description}</p>
+              ) : null}
+              <div className="skills-row-meta">
+                <span>
+                  {t(
+                    `skillsTab.${skill.scope === 'user' ? 'scopeUser' : skill.scope === 'project' ? 'scopeProject' : 'scopeBuiltin'}`,
+                  )}
+                  {skill.readonly ? ` · ${t('skillsTab.readOnly')}` : ''}
+                </span>
+                {skill.overriddenBy ? (
+                  <span className="skills-tag">
+                    {t('skillsTab.replacedBy', {
+                      scope: t(
+                        skill.overriddenBy === 'project'
+                          ? 'skillsTab.scopeProject'
+                          : 'skillsTab.scopeUser',
+                      ),
+                    })}
+                  </span>
+                ) : skill.overridesBuiltin ? (
+                  <span className="skills-tag skills-tag-accent">{t('skillsTab.override')}</span>
+                ) : null}
+              </div>
+            </button>
+            {!skill.readonly ? (
               <button
                 type="button"
-                onClick={() => onSelect(s)}
-                onContextMenu={s.readonly ? undefined : (e) => handleContextMenu(e, s)}
-                className={cn(
-                  'block w-full truncate rounded-md px-2 py-1.5 pr-8 text-left text-[13px] transition-colors',
-                  isActive
-                    ? 'bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100'
-                    : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-900/60',
-                )}
-                title={s.description || s.name}
+                className="skills-icon-button skills-row-menu"
+                aria-label={t('skillsTab.moreFor', { name: skill.name })}
+                aria-haspopup="menu"
+                onClick={(event) => openMenu(event, skill)}
               >
-                <div className="flex items-center gap-1.5 truncate font-medium">
-                  <span className="truncate">{s.name}</span>
-                  {s.version ? (
-                    <span className="shrink-0 rounded bg-neutral-200 px-1 py-px text-[10px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
-                      v{s.version}
-                    </span>
-                  ) : null}
-                  {s.overriddenBy ? (
-                    <span className="shrink-0 rounded bg-neutral-200 px-1 py-px text-[10px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-                      {t('skillsTab.overridden', { defaultValue: 'overridden' })}
-                    </span>
-                  ) : null}
-                  {s.overridesBuiltin ? (
-                    <span className="shrink-0 rounded bg-[var(--pd-accent-soft,#ede9fe)] px-1 py-px text-[10px] text-[var(--pd-accent-strong,#6d28d9)] dark:bg-violet-950/50 dark:text-violet-300">
-                      {t('skillsTab.override', { defaultValue: 'override' })}
-                    </span>
-                  ) : null}
-                </div>
-                {s.description ? (
-                  <div className="mt-0.5 line-clamp-1 text-xxs text-neutral-500 dark:text-neutral-400">
-                    {s.description}
-                  </div>
-                ) : null}
+                <MoreHorizontal size={16} />
               </button>
-              {!s.readonly ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(s);
-                  }}
-                  className="absolute right-1.5 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-neutral-400 hover:bg-red-50 hover:text-red-600 group-hover:inline-flex dark:text-neutral-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                  title={t('skillsTab.delete', { defaultValue: 'Delete' }) as string}
-                >
-                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-                </button>
-              ) : null}
-            </li>
-          );
-        })}
+            ) : null}
+          </li>
+        ))}
       </ul>
-
       {ctxMenu ? (
         <div
           ref={menuRef}
-          className="fixed z-[100] min-w-[180px] rounded-lg border border-neutral-200 bg-white py-1 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          role="menu"
+          className="skills-menu"
+          style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y }}
         >
-          {filteredMoveTargets.length > 0 ? (
-            <div className="relative">
-              <button
-                type="button"
-                onMouseEnter={() => setShowMoveSubmenu(true)}
-                onClick={() => setShowMoveSubmenu(!showMoveSubmenu)}
-                className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[12px] text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
-              >
-                <span className="flex items-center gap-2">
-                  <ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  <span>{t('skillsTab.moveTo', { defaultValue: 'Move to…' })}</span>
-                </span>
-                <span className="text-neutral-400">›</span>
-              </button>
-              {showMoveSubmenu ? (
-                <div
-                  className="absolute left-full top-0 z-[101] ml-1 min-w-[160px] max-h-[240px] overflow-y-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => setShowMoveSubmenu(!showMoveSubmenu)}
+          >
+            <ArrowRightLeft size={14} />
+            {t('skillsTab.moveTo')}
+          </button>
+          {showMoveSubmenu ? (
+            <div className="max-h-44 overflow-y-auto border-y border-border py-1">
+              {targets.map((target) => (
+                <button
+                  type="button"
+                  role="menuitem"
+                  key={`${target.target.scope}:${target.target.projectPath}`}
+                  onClick={() => {
+                    onMove(ctxMenu.skill, target.target);
+                    setCtxMenu(null);
+                  }}
                 >
-                  {filteredMoveTargets.map((mt) => (
-                    <button
-                      key={mt.target.scope + ':' + (mt.target.projectPath || 'user')}
-                      type="button"
-                      onClick={() => {
-                        const skill = ctxMenu.skill;
-                        setCtxMenu(null);
-                        setShowMoveSubmenu(false);
-                        onMove(skill, mt.target);
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
-                    >
-                      {mt.target.scope === 'user' ? (
-                        <Globe className="h-3.5 w-3.5 shrink-0 text-amber-500" strokeWidth={1.75} />
-                      ) : (
-                        <Folder className="h-3.5 w-3.5 shrink-0 text-blue-500" strokeWidth={1.75} />
-                      )}
-                      <span className="truncate">{mt.label}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+                  {target.target.scope === 'user' ? <Globe size={14} /> : <Folder size={14} />}
+                  {target.label}
+                </button>
+              ))}
             </div>
           ) : null}
           <button
             type="button"
+            role="menuitem"
+            className="text-destructive"
             onClick={() => {
-              const skill = ctxMenu.skill;
+              onDelete(ctxMenu.skill);
               setCtxMenu(null);
-              setShowMoveSubmenu(false);
-              onDelete(skill);
             }}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
           >
-            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-            <span>{t('skillsTab.delete', { defaultValue: 'Delete' })}</span>
+            <Trash2 size={14} />
+            {t('skillsTab.delete')}
           </button>
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
 
 function EmptyState({ t }: { t: ReturnType<typeof useTranslation>['t'] }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-[13px] text-neutral-500 dark:text-neutral-400">
-      <Sparkles className="h-8 w-8 text-neutral-300 dark:text-neutral-700" strokeWidth={1.5} />
-      <div>{t('skillsTab.selectHint', { defaultValue: 'Pick a skill on the left to view or edit its SKILL.md.' })}</div>
+    <div className="skills-empty">
+      <span className="skills-empty-symbol">
+        <Sparkles size={24} />
+      </span>
+      <h3>{t('skillsTab.selectTitle')}</h3>
+      <p>{t('skillsTab.selectHint')}</p>
     </div>
   );
 }
@@ -851,12 +1328,18 @@ function SkillDetail({
   isDirty,
   loading,
   saving,
+  editing,
+  error,
+  readReady,
+  onRetry,
+  projectPath,
+  onUseSkill,
   isDarkMode,
   onSave,
   onDelete,
-  onCreateUserOverride,
-  onRevert,
-  compact,
+  onEdit,
+  onCreateOverride,
+  onCancel,
   t,
 }: {
   skill: Skill;
@@ -865,242 +1348,392 @@ function SkillDetail({
   isDirty: boolean;
   loading: boolean;
   saving: boolean;
+  editing: boolean;
+  error: string | null;
+  readReady: boolean;
+  onRetry: () => void;
+  projectPath: string | null;
+  onUseSkill?: () => void;
   isDarkMode: boolean;
   onSave: () => void;
   onDelete: () => void;
-  onCreateUserOverride: () => void;
-  onRevert: () => void;
-  compact: boolean;
+  onEdit: () => void;
+  onCreateOverride: () => void;
+  onCancel: () => void;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
+  const [view, setView] = useState<'read' | 'form' | 'source' | 'split'>('read');
+  const document = useMemo(() => splitSkillDocument(content), [content]);
+  const formAvailable = canEditSkillForm(content);
+  const latestContent = useRef(content);
+  latestContent.current = content;
+  useEffect(
+    () => setView(editing ? (canEditSkillForm(latestContent.current) ? 'form' : 'source') : 'read'),
+    [skill.skillDir, editing],
+  );
+  const scopeLabel = t(
+    skill.scope === 'user'
+      ? 'skillsTab.scopeUser'
+      : skill.scope === 'project'
+        ? 'skillsTab.scopeProject'
+        : 'skillsTab.scopeBuiltin',
+  );
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className={cn(
-        'shrink-0 border-b border-neutral-200 py-3 dark:border-neutral-800',
-        compact ? 'px-4' : 'px-6',
-      )}>
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-            {skill.name}
-          </h2>
-          <span
-            className={cn(
-              'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider',
-              skill.scope === 'project'
-                ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
-                : skill.scope === 'builtin'
-                  ? 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
-                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
-            )}
-          >
-            {skill.scope === 'builtin'
-              ? t('skillsTab.scopeBuiltin', { defaultValue: 'Built-in' })
-              : skill.scope === 'project'
-                ? t('skillsTab.scopeProject', { defaultValue: 'Project' })
-                : t('skillsTab.scopeUser', { defaultValue: 'User' })}
+    <section
+      className="skills-detail"
+      aria-label={t('skillsTab.detailLabel', { name: skill.name })}
+    >
+      <header className="skills-detail-header">
+        <div className="skills-detail-heading">
+          <span className="skills-detail-symbol">
+            <Sparkles size={20} />
           </span>
-          {skill.version ? (
-            <span className="text-xxs text-neutral-500 dark:text-neutral-400">v{skill.version}</span>
-          ) : null}
+          <div>
+            <h2>{skill.name}</h2>
+            <div className="skills-detail-badges">
+              <span className="skills-tag">
+                {scopeLabel}
+                {skill.readonly ? ` · ${t('skillsTab.readOnly')}` : ''}
+              </span>
+              {skill.version ? <span className="skills-tag">v{skill.version}</span> : null}
+              {skill.overriddenBy ? (
+                <span className="skills-tag">
+                  {t('skillsTab.replacedBy', {
+                    scope: t(
+                      skill.overriddenBy === 'project'
+                        ? 'skillsTab.scopeProject'
+                        : 'skillsTab.scopeUser',
+                    ),
+                  })}
+                </span>
+              ) : (
+                <span className="skills-tag skills-tag-accent">
+                  {t('skillsTab.effectiveVersion')}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
         {skill.description ? (
-          <p className="mt-1 text-xxs text-neutral-500 dark:text-neutral-400">{skill.description}</p>
+          <p className="skills-detail-description">{skill.description}</p>
         ) : null}
-        <div className="mt-1 truncate font-mono text-[10px] text-neutral-400 dark:text-neutral-500">
-          {skill.skillDir}
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {loading ? (
-          <div className="flex h-full items-center justify-center gap-2 text-xxs text-neutral-500 dark:text-neutral-400">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
-            <span>{t('skillsTab.loading', { defaultValue: 'Loading…' })}</span>
+        <div className="skills-detail-actions">
+          <div className="skills-view-tabs" aria-label={t('skillsTab.viewLabel')}>
+            {(
+              [
+                ...(editing && formAvailable ? ['form'] : []),
+                'read',
+                'source',
+                ...(editing ? ['split'] : []),
+              ] as ('read' | 'form' | 'source' | 'split')[]
+            ).map((mode) => (
+              <button
+                type="button"
+                key={mode}
+                aria-pressed={view === mode}
+                onClick={() => setView(mode)}
+              >
+                {t(mode === 'source' && editing ? 'skillsTab.advancedSource' : `skillsTab.${mode}`)}
+              </button>
+            ))}
           </div>
-        ) : (
-          <CodeMirror
-            value={content}
-            onChange={onChange}
-            editable={!skill.readonly}
-            extensions={[markdown(), EditorView.lineWrapping]}
-            theme={isDarkMode ? zincDarkTheme : zincLightTheme}
-            height="100%"
-            style={{ height: '100%', fontSize: '13px' }}
-            basicSetup={{
-              lineNumbers: false,
-              foldGutter: false,
-              highlightActiveLine: false,
-              indentOnInput: true,
-              autocompletion: false,
-              searchKeymap: true,
-            }}
-          />
-        )}
-      </div>
-
-      <div className={cn(
-        'flex shrink-0 items-center justify-between gap-2 border-t border-neutral-200 py-2 dark:border-neutral-800',
-        compact ? 'flex-wrap px-3' : 'px-6',
-      )}>
-        {skill.readonly ? (
-          <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            {skill.overriddenBy
-              ? t('skillsTab.builtinOverriddenBy', {
-                  defaultValue: 'Read-only · overridden by {{scope}} skill',
-                  scope: skill.overriddenBy === 'project'
-                    ? t('skillsTab.scopeProject', { defaultValue: 'Project' })
-                    : t('skillsTab.scopeUser', { defaultValue: 'User' }),
-                })
-              : t('skillsTab.builtinReadOnly', { defaultValue: 'Read-only built-in skill' })}
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-          >
-            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-            <span>{t('skillsTab.delete', { defaultValue: 'Delete' })}</span>
-          </button>
-        )}
-        <div className="flex items-center gap-1.5">
-          {skill.readonly && !skill.overriddenBy ? (
-            <button
-              type="button"
-              onClick={onCreateUserOverride}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md bg-neutral-900 px-2.5 text-[12px] font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-            >
-              <PencilLine className="h-3.5 w-3.5" strokeWidth={1.75} />
-              <span>{t('skillsTab.createOverride', { defaultValue: 'Create user override' })}</span>
-            </button>
-          ) : null}
-          {!skill.readonly && isDirty ? (
-            <button
-              type="button"
-              onClick={onRevert}
-              className="inline-flex h-7 items-center rounded-md px-2.5 text-[12px] text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-900"
-            >
-              {t('skillsTab.revert', { defaultValue: 'Revert' })}
-            </button>
-          ) : null}
-          {!skill.readonly ? (
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={!isDirty || saving}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md bg-neutral-900 px-2.5 text-[12px] font-medium text-white transition hover:bg-neutral-700 disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-            >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} /> : <Save className="h-3.5 w-3.5" strokeWidth={1.75} />}
-              <span>{saving ? t('skillsTab.saving', { defaultValue: 'Saving…' }) : t('skillsTab.save', { defaultValue: 'Save' })}</span>
-            </button>
-          ) : null}
+          <div className="skills-edit-actions">
+            {!editing && onUseSkill ? (
+              <button
+                type="button"
+                className="skills-button skills-button-primary"
+                disabled={loading || !readReady || Boolean(skill.overriddenBy)}
+                title={skill.overriddenBy ? t('skillsTab.useEffectiveVersion') : undefined}
+                onClick={onUseSkill}
+              >
+                <Sparkles size={15} />
+                {t('skillsTab.useInConversation')}
+              </button>
+            ) : null}
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  className="skills-button"
+                  disabled={saving}
+                  onClick={onCancel}
+                >
+                  {t('skillsTab.cancel')}
+                </button>
+                <button
+                  type="button"
+                  className="skills-button skills-button-primary"
+                  disabled={!isDirty || saving}
+                  onClick={onSave}
+                >
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                  {t(saving ? 'skillsTab.saving' : 'skillsTab.save')}
+                </button>
+              </>
+            ) : skill.readonly ? (
+              <button
+                type="button"
+                className="skills-button"
+                disabled={loading || !readReady}
+                onClick={onCreateOverride}
+              >
+                <Copy size={15} />
+                {t('skillsTab.createOverride')}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="skills-button"
+                  disabled={loading || !readReady}
+                  onClick={onEdit}
+                >
+                  <PencilLine size={15} />
+                  {t('skillsTab.edit')}
+                </button>
+                <button
+                  type="button"
+                  className="skills-icon-button"
+                  onClick={onDelete}
+                  aria-label={t('skillsTab.delete')}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </>
+            )}
+          </div>
         </div>
+      </header>
+      {error ? (
+        <p role="alert" className="skills-inline-error">
+          {error}
+          {!readReady ? (
+            <button type="button" className="skills-button" disabled={loading} onClick={onRetry}>
+              <RefreshCw size={14} />
+              {t('skillsTab.retry')}
+            </button>
+          ) : null}
+        </p>
+      ) : null}
+      <div className={cn('skills-detail-content', view === 'split' && 'split')}>
+        {loading ? (
+          <div className="skills-empty">
+            <Loader2 size={20} className="animate-spin" />
+            <p>{t('skillsTab.loading')}</p>
+          </div>
+        ) : !readReady ? null : (
+          <>
+            {view === 'form' ? (
+              <SkillForm
+                content={content}
+                onChange={onChange}
+                disabled={saving}
+                isDarkMode={isDarkMode}
+              />
+            ) : null}
+            {view === 'source' || view === 'split' ? (
+              <div className="skills-source" aria-label={t('skillsTab.source')}>
+                <CodeMirror
+                  value={content}
+                  onChange={onChange}
+                  editable={!skill.readonly && editing && !saving}
+                  extensions={[markdown(), EditorView.lineWrapping]}
+                  theme={isDarkMode ? zincDarkTheme : zincLightTheme}
+                  height="100%"
+                  style={{ height: '100%' }}
+                  basicSetup={{
+                    lineNumbers: editing,
+                    foldGutter: editing,
+                    highlightActiveLine: editing,
+                    indentOnInput: true,
+                    autocompletion: false,
+                    searchKeymap: true,
+                  }}
+                />
+              </div>
+            ) : null}
+            {view === 'read' || view === 'split' ? (
+              <SkillReader
+                key={`${skill.scope}:${skill.slug}:${skill.scope === 'project' ? projectPath : ''}`}
+                content={document.body}
+                scope={skill.scope}
+                slug={skill.slug}
+                projectPath={projectPath}
+              />
+            ) : null}
+          </>
+        )}
       </div>
-    </div>
+      <footer className="skills-detail-footer">
+        <details>
+          <summary>{t('skillsTab.basicInfo')}</summary>
+          <dl className="skills-info">
+            <dt>{t('skillsTab.location')}</dt>
+            <dd>{skill.skillDir}</dd>
+            <dt>{t('skillsTab.file')}</dt>
+            <dd>SKILL.md</dd>
+            <dt>{t('skillsTab.availability')}</dt>
+            <dd>
+              {t(
+                skill.scope === 'project'
+                  ? 'skillsTab.projectAvailability'
+                  : 'skillsTab.globalAvailability',
+              )}
+            </dd>
+            {Object.entries(document.metadata).map(([key, value]) => (
+              <div className="contents" key={key}>
+                <dt>{key}</dt>
+                <dd>{typeof value === 'string' ? value : JSON.stringify(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+        <span role="status">
+          {editing
+            ? t(isDirty ? 'skillsTab.unsaved' : 'skillsTab.editing')
+            : skill.readonly
+              ? t('skillsTab.builtinReadOnly')
+              : t(
+                  skill.scope === 'project'
+                    ? 'skillsTab.projectAvailability'
+                    : 'skillsTab.globalAvailability',
+                )}
+        </span>
+      </footer>
+    </section>
   );
 }
-
-// ---------------------------------------------------------------------------
-// New Skill modal — two tabs: Install from ClawHub, Create from scratch
-// ---------------------------------------------------------------------------
 
 type NewModalCreated = { slug: string; name: string; scope: 'user' | 'project' };
 
 function NewSkillModal({
   onClose,
   onCreated,
+  onBatchChanged,
   projectAvailable,
   projectPath,
   t,
 }: {
   onClose: () => void;
   onCreated: (created: NewModalCreated) => void;
+  onBatchChanged: () => void;
   projectAvailable: boolean;
   projectPath: string | null;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   const [tab, setTab] = useState<'install' | 'import' | 'create'>('install');
+  const [scope, setScope] = useState<'user' | 'project'>(projectAvailable ? 'project' : 'user');
+  const [busy, setBusy] = useState(false);
+  const id = useId();
+  const confirm = useConfirm();
+  const [createDirty, setCreateDirty] = useState(false);
+  const [importDirty, setImportDirty] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const dirty = createDirty || importDirty;
+  useEffect(() => {
+    if (!dirty) return;
+    const protect = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', protect);
+    return () => window.removeEventListener('beforeunload', protect);
+  }, [dirty]);
+  const close = async () => {
+    if (busy || closing) return;
+    setClosing(true);
+    try {
+      if (
+        dirty &&
+        !(await confirm({
+          message: t('skillsTab.discardNewSkill'),
+          destructive: true,
+          confirmLabel: t('confirmDialog.discard'),
+        }))
+      )
+        return;
+      onClose();
+    } finally {
+      setClosing(false);
+    }
+  };
+  useEffect(() => {
+    if (!projectAvailable) setScope('user');
+  }, [projectAvailable]);
+  const shared = {
+    projectAvailable,
+    projectPath,
+    t,
+    scope,
+    onScopeChange: setScope,
+    onBusyChange: setBusy,
+  };
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex h-[560px] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950">
-        <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
-          <h3 className="text-sm font-semibold">{t('skillsTab.newTitle', { defaultValue: 'New Skill' })}</h3>
+    <SkillDialog
+      title={t('skillsTab.newTitle')}
+      description={t('skillsTab.addDescription')}
+      onClose={close}
+      busy={busy || closing}
+      suspended={closing}
+    >
+      <div className="skills-add-tabs" role="tablist" aria-label={t('skillsTab.addMethod')}>
+        {(
+          [
+            { tab: 'install', icon: Download, label: 'tabInstall' },
+            { tab: 'import', icon: FolderInput, label: 'tabImport' },
+            { tab: 'create', icon: PencilLine, label: 'tabCreate' },
+          ] as const
+        ).map((item) => (
           <button
             type="button"
-            onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-900"
-            aria-label={t('skillsTab.close', { defaultValue: 'Close' }) as string}
+            key={item.tab}
+            id={`${id}-${item.tab}`}
+            role="tab"
+            aria-controls={`${id}-${item.tab}-panel`}
+            aria-selected={tab === item.tab}
+            disabled={busy}
+            onClick={() => setTab(item.tab)}
           >
-            <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+            <item.icon size={15} />
+            {t(`skillsTab.${item.label}`)}
           </button>
+        ))}
+      </div>
+      <div className="skills-dialog-body">
+        <div
+          className="h-full"
+          role="tabpanel"
+          id={`${id}-install-panel`}
+          aria-labelledby={`${id}-install`}
+          hidden={tab !== 'install'}
+        >
+          <InstallFromClawHub {...shared} onInstalled={onCreated} />
         </div>
-
-        <div className="flex shrink-0 gap-1 border-b border-neutral-200 px-5 dark:border-neutral-800">
-          <ModalTab active={tab === 'install'} onClick={() => setTab('install')} icon={Download}>
-            {t('skillsTab.tabInstall', { defaultValue: 'Install from ClawHub' })}
-          </ModalTab>
-          <ModalTab active={tab === 'import'} onClick={() => setTab('import')} icon={FolderInput}>
-            {t('skillsTab.tabImport', { defaultValue: 'Import folder' })}
-          </ModalTab>
-          <ModalTab active={tab === 'create'} onClick={() => setTab('create')} icon={PencilLine}>
-            {t('skillsTab.tabCreate', { defaultValue: 'Write my own' })}
-          </ModalTab>
+        <div
+          className="h-full"
+          role="tabpanel"
+          id={`${id}-import-panel`}
+          aria-labelledby={`${id}-import`}
+          hidden={tab !== 'import'}
+        >
+          <ImportFromFolder
+            {...shared}
+            onDirtyChange={setImportDirty}
+            onBatchChanged={onBatchChanged}
+            onImported={onCreated}
+          />
         </div>
-
-        <div className="min-h-0 flex-1 overflow-hidden">
-          {tab === 'install' ? (
-            <InstallFromClawHub
-              projectAvailable={projectAvailable}
-              projectPath={projectPath}
-              onInstalled={onCreated}
-              t={t}
-            />
-          ) : tab === 'import' ? (
-            <ImportFromFolder
-              projectAvailable={projectAvailable}
-              projectPath={projectPath}
-              onImported={onCreated}
-              t={t}
-            />
-          ) : (
-            <CreateFromScratch
-              projectAvailable={projectAvailable}
-              projectPath={projectPath}
-              onCreated={onCreated}
-              t={t}
-            />
-          )}
+        <div
+          className="h-full"
+          role="tabpanel"
+          id={`${id}-create-panel`}
+          aria-labelledby={`${id}-create`}
+          hidden={tab !== 'create'}
+        >
+          <CreateFromScratch {...shared} onDirtyChange={setCreateDirty} onCreated={onCreated} />
         </div>
       </div>
-    </div>
-  );
-}
-
-function ModalTab({
-  active,
-  onClick,
-  children,
-  icon: Icon,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  icon: typeof Download;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-[12px] transition-colors',
-        active
-          ? 'border-neutral-900 font-medium text-neutral-900 dark:border-neutral-100 dark:text-neutral-100'
-          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
-      )}
-    >
-      <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
-      {children}
-    </button>
+    </SkillDialog>
   );
 }
 
@@ -1109,54 +1742,50 @@ function ScopeSelector({
   onChange,
   projectAvailable,
   t,
+  disabled = false,
 }: {
   scope: 'user' | 'project';
   onChange: (s: 'user' | 'project') => void;
   projectAvailable: boolean;
   t: ReturnType<typeof useTranslation>['t'];
+  disabled?: boolean;
 }) {
+  const id = useId();
   return (
-    <div className="flex items-center gap-2 text-[12px]">
-      <span className="text-neutral-500 dark:text-neutral-400">
-        {t('skillsTab.scope', { defaultValue: 'Scope' })}:
-      </span>
-      <div className="inline-flex overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
-        <button
-          type="button"
-          onClick={() => onChange('user')}
-          className={cn(
-            'px-2.5 py-1 transition-colors',
-            scope === 'user'
-              ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-              : 'text-neutral-600 hover:bg-neutral-50 dark:text-neutral-400 dark:hover:bg-neutral-900',
-          )}
-        >
-          <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" strokeWidth={1.75} />{t('skillsTab.scopeUser', { defaultValue: 'User' })}</span>
-        </button>
-        <button
-          type="button"
-          disabled={!projectAvailable}
-          onClick={() => onChange('project')}
-          className={cn(
-            'px-2.5 py-1 transition-colors',
-            scope === 'project'
-              ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-              : 'text-neutral-600 hover:bg-neutral-50 disabled:opacity-40 disabled:hover:bg-transparent dark:text-neutral-400 dark:hover:bg-neutral-900',
-          )}
-        >
-          {t('skillsTab.scopeProject', { defaultValue: 'Project' })}
-        </button>
-      </div>
+    <div className="skills-scope-selector">
+      <label htmlFor={id}>{t('skillsTab.scope')}</label>
+      <select
+        id={id}
+        value={projectAvailable ? scope : 'user'}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as 'user' | 'project')}
+      >
+        <option value="user">{t('skillsTab.installGlobal')}</option>
+        {projectAvailable ? <option value="project">{t('skillsTab.installProject')}</option> : null}
+      </select>
+      <p>
+        {t(
+          scope === 'project' && projectAvailable
+            ? 'skillsTab.projectAvailability'
+            : 'skillsTab.globalAvailability',
+        )}
+      </p>
     </div>
   );
 }
 
 function InstallFromClawHub({
+  scope,
+  onScopeChange,
+  onBusyChange,
   projectAvailable,
   projectPath,
   onInstalled,
   t,
 }: {
+  scope: 'user' | 'project';
+  onScopeChange: (scope: 'user' | 'project') => void;
+  onBusyChange: (busy: boolean) => void;
   projectAvailable: boolean;
   projectPath: string | null;
   onInstalled: (created: NewModalCreated) => void;
@@ -1165,146 +1794,231 @@ function InstallFromClawHub({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [scope, setScope] = useState<'user' | 'project'>(projectAvailable ? 'project' : 'user');
-  const [installing, setInstalling] = useState<string | null>(null);
+  const [selected, setSelected] = useState<SearchResult | null>(null);
+  const [preview, setPreview] = useState<{ content: string; version: string | null } | null>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [forceForSlug, setForceForSlug] = useState<string | null>(null);
-  const debounceRef = useRef<number | undefined>(undefined);
-
+  const inspectSequence = useRef(0);
+  useEffect(() => onBusyChange(installing), [installing, onBusyChange]);
   useEffect(() => {
-    if (!projectAvailable && scope === 'project') setScope('user');
-  }, [projectAvailable, scope]);
-
-  useEffect(() => {
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    let cancelled = false;
+    setResults([]);
+    setSelected(null);
+    setPreview(null);
+    setInspecting(false);
+    setErrorText(null);
+    inspectSequence.current++;
     if (!query.trim()) {
-      setResults([]);
+      setSearching(false);
       return;
     }
     setSearching(true);
-    debounceRef.current = window.setTimeout(async () => {
+    const timer = window.setTimeout(async () => {
       try {
-        const data = await api<{ results: SearchResult[] }>('/api/skills/clawhub/search', { query });
-        setResults(data.results);
-      } catch (e) {
-        setErrorText((e as Error).message);
-        setResults([]);
+        const data = await api<{ results: SearchResult[] }>('/api/skills/clawhub/search', {
+          query,
+        });
+        if (!cancelled) setResults(data.results);
+      } catch (error) {
+        if (!cancelled) setErrorText((error as Error).message);
       } finally {
-        setSearching(false);
+        if (!cancelled) setSearching(false);
       }
     }, 350);
     return () => {
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [query]);
-
-  const install = useCallback(async (slug: string, force = false) => {
-    setInstalling(slug);
+  const inspect = async (result: SearchResult) => {
+    const sequence = ++inspectSequence.current;
+    setSelected(result);
+    setPreview(null);
+    setInspecting(true);
+    setErrorText(null);
+    setForceForSlug(null);
+    try {
+      const data = await api<{ content: string; version: string | null }>(
+        '/api/skills/clawhub/inspect',
+        { slug: result.slug, owner: result.owner },
+      );
+      if (sequence === inspectSequence.current) setPreview(data);
+    } catch (error) {
+      if (sequence === inspectSequence.current) setErrorText((error as Error).message);
+    } finally {
+      if (sequence === inspectSequence.current) setInspecting(false);
+    }
+  };
+  const install = async () => {
+    if (!selected || !preview) return;
+    setInstalling(true);
     setErrorText(null);
     try {
       const effectiveScope = projectAvailable ? scope : 'user';
-      const r = await api<InstallResponse>('/api/skills/clawhub/install', {
-        slug,
+      const result = await api<InstallResponse>('/api/skills/clawhub/install', {
+        slug: selected.slug,
+        owner: selected.owner,
+        version: preview.version,
         scope: effectiveScope,
         projectPath: effectiveScope === 'project' ? projectPath : null,
-        force,
+        force: forceForSlug === `${selected.owner || ''}:${selected.slug}`,
       });
-      if (r.installed) {
-        onInstalled({ slug: r.slug, name: r.skill?.name || r.slug, scope: r.scope });
+      if (result.installed) {
+        onInstalled({
+          slug: result.slug,
+          name: result.skill?.name || result.slug,
+          scope: result.scope,
+        });
         return;
       }
-      if (r.needsForce) {
-        setForceForSlug(slug);
-        setErrorText(t('skillsTab.flaggedSuspicious', {
-          defaultValue: '"{{slug}}" is flagged as suspicious by VirusTotal. Re-confirm to install with --force.',
-          slug,
-        }));
+      if (result.needsForce) {
+        setForceForSlug(`${selected.owner || ''}:${selected.slug}`);
+        setErrorText(t('skillsTab.flaggedSuspicious', { slug: selected.slug }));
         return;
       }
-      setErrorText(r.stderr || r.stdout || `Install failed (exit ${r.exitCode})`);
-    } catch (e) {
-      setErrorText((e as Error).message);
+      setErrorText(result.stderr || result.stdout || `Install failed (exit ${result.exitCode})`);
+    } catch (error) {
+      setErrorText((error as Error).message);
     } finally {
-      setInstalling(null);
+      setInstalling(false);
     }
-  }, [projectAvailable, scope, projectPath, onInstalled, t]);
-
+  };
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
-        <div className="relative flex flex-1 items-center">
-          <Search className="absolute left-2.5 h-3.5 w-3.5 text-neutral-400" strokeWidth={1.75} />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 px-6 py-4">
+        <label className="skills-search">
+          <Search size={16} />
           <input
-            type="text"
+            disabled={installing}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('skillsTab.searchPlaceholder', { defaultValue: 'Search clawhub.com…' }) as string}
-            className="h-8 w-full rounded-md border border-neutral-200 bg-white pl-8 pr-2 text-[13px] outline-none focus:border-neutral-400 dark:border-neutral-800 dark:bg-neutral-950 dark:focus:border-neutral-600"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t('skillsTab.searchPlaceholder')}
+            aria-label={t('skillsTab.searchPlaceholder')}
           />
-          {searching ? (
-            <Loader2 className="absolute right-2.5 h-3.5 w-3.5 animate-spin text-neutral-400" strokeWidth={1.75} />
-          ) : null}
-        </div>
-        <ScopeSelector scope={scope} onChange={setScope} projectAvailable={projectAvailable} t={t} />
+          {searching ? <Loader2 size={15} className="animate-spin" /> : null}
+        </label>
       </div>
-
       {errorText ? (
-        <div className="shrink-0 border-b border-red-200 bg-red-50 px-5 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+        <p
+          role="alert"
+          className="mx-6 mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive"
+        >
           {errorText}
-        </div>
+        </p>
       ) : null}
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {results.length === 0 && !searching ? (
-          <div className="flex h-full items-center justify-center text-xxs text-neutral-500 dark:text-neutral-400">
-            {query.trim()
-              ? t('skillsTab.noResults', { defaultValue: 'No results.' })
-              : t('skillsTab.searchHint', { defaultValue: 'Type to search clawhub.com.' })}
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+        {selected ? (
+          <>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-[16px] font-semibold">{selected.name}</h3>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {selected.owner ? `@${selected.owner}/` : ''}
+                  {selected.slug}
+                  {preview?.version ? ` · v${preview.version}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="skills-icon-button"
+                disabled={installing}
+                onClick={() => {
+                  inspectSequence.current++;
+                  setSelected(null);
+                  setPreview(null);
+                  setInspecting(false);
+                  setErrorText(null);
+                }}
+                aria-label={t('skillsTab.backToResults')}
+              >
+                <ArrowLeft size={16} />
+              </button>
+            </div>
+            {inspecting ? (
+              <div className="skills-empty">
+                <Loader2 size={20} className="animate-spin" />
+                <p>{t('skillsTab.inspecting')}</p>
+              </div>
+            ) : preview ? (
+              <SkillMarkdown content={splitSkillDocument(preview.content).body} />
+            ) : (
+              <button type="button" className="skills-button" onClick={() => inspect(selected)}>
+                {t('skillsTab.retry')}
+              </button>
+            )}
+          </>
+        ) : results.length ? (
+          <ul className="divide-y divide-border">
+            {results.map((result) => (
+              <li
+                key={`${result.owner || ''}:${result.slug}`}
+                className="flex items-center justify-between gap-3 py-4"
+              >
+                <div className="min-w-0">
+                  <h3 className="break-words text-[13px] font-medium">{result.name}</h3>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {result.owner ? `@${result.owner}/` : ''}
+                    {result.slug}
+                  </p>
+                </div>
+                <button type="button" className="skills-button" onClick={() => inspect(result)}>
+                  {t('skillsTab.inspect')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : searching ? (
+          <div className="skills-empty">
+            <Loader2 size={20} className="animate-spin" />
+            <p>{t('skillsTab.loading')}</p>
           </div>
         ) : (
-          <ul className="divide-y divide-neutral-100 dark:divide-neutral-900">
-            {results.map((r) => {
-              const isForce = forceForSlug === r.slug;
-              const isInstalling = installing === r.slug;
-              return (
-                <li key={r.slug} className="flex items-center justify-between gap-3 px-5 py-2.5">
-                  <div className="min-w-0">
-                    <div className="flex items-baseline gap-2">
-                      <span className="truncate font-medium text-[13px]">{r.name}</span>
-                      <span className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400">{r.slug}</span>
-                      {r.score ? (
-                        <span className="text-[10px] text-neutral-400 dark:text-neutral-600">· {r.score.toFixed(2)}</span>
-                      ) : null}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={isInstalling}
-                    onClick={() => install(r.slug, isForce)}
-                    className={cn(
-                      'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium text-white transition disabled:opacity-50',
-                      isForce ? 'bg-amber-600 hover:bg-amber-500' : 'bg-neutral-900 hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300',
-                    )}
-                  >
-                    {isInstalling ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
-                    ) : (
-                      <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
-                    )}
-                    <span>
-                      {isInstalling
-                        ? t('skillsTab.installing', { defaultValue: 'Installing…' })
-                        : isForce
-                          ? t('skillsTab.installForce', { defaultValue: 'Install (force)' })
-                          : t('skillsTab.install', { defaultValue: 'Install' })}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="skills-empty h-full">
+            <span className="skills-empty-symbol">
+              <Search size={24} />
+            </span>
+            <h3>{t(query.trim() ? 'skillsTab.noResults' : 'skillsTab.searchHint')}</h3>
+            {!query.trim() ? (
+              <>
+                <p>{t('skillsTab.searchHelp')}</p>
+                <div className="skills-suggestions">
+                  {['slides', 'pdf', 'design'].map((example) => (
+                    <button type="button" key={example} onClick={() => setQuery(example)}>
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
         )}
       </div>
+      <footer className="skills-dialog-footer">
+        <ScopeSelector
+          scope={scope}
+          onChange={onScopeChange}
+          projectAvailable={projectAvailable}
+          t={t}
+          disabled={installing}
+        />
+        <button
+          type="button"
+          className="skills-button skills-button-primary"
+          disabled={!preview || installing || inspecting}
+          onClick={install}
+        >
+          {installing ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+          {t(
+            installing
+              ? 'skillsTab.installing'
+              : selected && forceForSlug === `${selected.owner || ''}:${selected.slug}`
+                ? 'skillsTab.installForce'
+                : 'skillsTab.install',
+          )}
+        </button>
+      </footer>
     </div>
   );
 }
@@ -1319,7 +2033,12 @@ type ValidationResult = {
   sourcePath?: string;
 };
 
-type PickedFiles = { rootName: string; files: File[]; manifest: { relativePath: string; size: number }[]; skillMd: string | null } | null;
+type PickedFiles = {
+  rootName: string;
+  files: File[];
+  manifest: { relativePath: string; size: number }[];
+  skillMd: string | null;
+} | null;
 
 type BatchCandidate = {
   folderName: string;
@@ -1335,7 +2054,10 @@ type BatchCandidate = {
 type BatchResultStatus = 'pending' | 'importing' | 'success' | 'error';
 type BatchResult = { folderName: string; status: BatchResultStatus; error?: string };
 
-function parseFrontmatterFields(content: string): { name: string | null; description: string | null } {
+function parseFrontmatterFields(content: string): {
+  name: string | null;
+  description: string | null;
+} {
   const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
   if (!fmMatch) return { name: null, description: null };
   const fm = fmMatch[1];
@@ -1348,11 +2070,21 @@ function parseFrontmatterFields(content: string): { name: string | null; descrip
 }
 
 function ImportFromFolder({
+  scope,
+  onScopeChange: setScope,
+  onBusyChange,
+  onDirtyChange,
+  onBatchChanged,
   projectAvailable,
   projectPath,
   onImported,
   t,
 }: {
+  scope: 'user' | 'project';
+  onScopeChange: (scope: 'user' | 'project') => void;
+  onBusyChange: (busy: boolean) => void;
+  onDirtyChange: (dirty: boolean) => void;
+  onBatchChanged: () => void;
   projectAvailable: boolean;
   projectPath: string | null;
   onImported: (created: NewModalCreated) => void;
@@ -1369,7 +2101,6 @@ function ImportFromFolder({
   const [picked, setPicked] = useState<PickedFiles>(null);
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
-  const [scope, setScope] = useState<'user' | 'project'>(projectAvailable ? 'project' : 'user');
   const [mode, setMode] = useState<'copy' | 'symlink'>('copy');
   const [force, setForce] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -1384,15 +2115,20 @@ function ImportFromFolder({
   const [batchParentName, setBatchParentName] = useState('');
   const [selectedFolders, setSelectedFolders] = useState<Set<string>>(new Set());
   const [batchImporting, setBatchImporting] = useState(false);
+  useEffect(
+    () => onBusyChange(importing || batchImporting),
+    [importing, batchImporting, onBusyChange],
+  );
   const [batchResults, setBatchResults] = useState<Map<string, BatchResult>>(new Map());
   const [batchDone, setBatchDone] = useState(false);
   const [scanning, setScanning] = useState(false);
+  useEffect(
+    () => onDirtyChange(!batchDone && Boolean(sourcePath || picked || batchCandidates)),
+    [sourcePath, picked, batchCandidates, batchDone, onDirtyChange],
+  );
 
   const batchMode = batchCandidates !== null;
 
-  useEffect(() => {
-    if (!projectAvailable && scope === 'project') setScope('user');
-  }, [projectAvailable, scope]);
   const skillCandidates = batchCandidates?.filter((c) => c.hasSkillMd) ?? [];
   const selectedCount = selectedFolders.size;
 
@@ -1404,7 +2140,7 @@ function ImportFromFolder({
       return;
     }
     const cleaned = sourcePath.trim().replace(/\/+$/, '');
-    setSlug(cleaned ? (cleaned.split('/').filter(Boolean).pop() || '') : '');
+    setSlug(cleaned ? cleaned.split('/').filter(Boolean).pop() || '' : '');
   }, [picked, sourcePath, slugTouched]);
 
   // Force "copy" when in picked mode (no source path on disk → can't symlink).
@@ -1421,20 +2157,23 @@ function ImportFromFolder({
       return;
     }
     setValidating(true);
-    validationDebounceRef.current = window.setTimeout(async () => {
-      try {
-        const body = picked
-          ? { skillMdContent: picked.skillMd ?? '', files: picked.manifest }
-          : { sourcePath };
-        const r = await api<ValidationResult>('/api/skills/validate', body);
-        setValidation(r);
-      } catch (e) {
-        setValidation(null);
-        setErrorText((e as Error).message);
-      } finally {
-        setValidating(false);
-      }
-    }, picked ? 50 : 400);
+    validationDebounceRef.current = window.setTimeout(
+      async () => {
+        try {
+          const body = picked
+            ? { skillMdContent: picked.skillMd ?? '', files: picked.manifest }
+            : { sourcePath };
+          const r = await api<ValidationResult>('/api/skills/validate', body);
+          setValidation(r);
+        } catch (e) {
+          setValidation(null);
+          setErrorText((e as Error).message);
+        } finally {
+          setValidating(false);
+        }
+      },
+      picked ? 50 : 400,
+    );
     return () => {
       if (validationDebounceRef.current) window.clearTimeout(validationDebounceRef.current);
     };
@@ -1459,7 +2198,8 @@ function ImportFromFolder({
     // Check if root directory directly has SKILL.md (single skill import)
     const rootSkillFile = files.find((f) => {
       const rel = f.webkitRelativePath || f.name;
-      const stripped = rootName && rel.startsWith(rootName + '/') ? rel.slice(rootName.length + 1) : rel;
+      const stripped =
+        rootName && rel.startsWith(rootName + '/') ? rel.slice(rootName.length + 1) : rel;
       return stripped === 'SKILL.md';
     });
 
@@ -1467,7 +2207,8 @@ function ImportFromFolder({
       // Single skill — existing flow
       const manifest: { relativePath: string; size: number }[] = files.map((f) => {
         const rel = f.webkitRelativePath || f.name;
-        const stripped = rootName && rel.startsWith(rootName + '/') ? rel.slice(rootName.length + 1) : rel;
+        const stripped =
+          rootName && rel.startsWith(rootName + '/') ? rel.slice(rootName.length + 1) : rel;
         return { relativePath: stripped, size: f.size };
       });
       const skillMd = await rootSkillFile.text();
@@ -1482,7 +2223,8 @@ function ImportFromFolder({
     const subDirMap = new Map<string, File[]>();
     for (const f of files) {
       const rel = f.webkitRelativePath || f.name;
-      const stripped = rootName && rel.startsWith(rootName + '/') ? rel.slice(rootName.length + 1) : rel;
+      const stripped =
+        rootName && rel.startsWith(rootName + '/') ? rel.slice(rootName.length + 1) : rel;
       const firstSeg = stripped.split('/')[0];
       if (!firstSeg || !stripped.includes('/')) continue;
       if (!subDirMap.has(firstSeg)) subDirMap.set(firstSeg, []);
@@ -1554,10 +2296,18 @@ function ImportFromFolder({
     if (!sourcePath.trim()) return;
     setScanning(true);
     try {
-      const r = await api<{ parentPath: string; folders: Array<{
-        folderName: string; hasSkillMd: boolean; name: string | null;
-        description: string | null; sourcePath: string; fileCount: number; totalSize: number;
-      }> }>('/api/skills/scan', { parentPath: sourcePath.trim() });
+      const r = await api<{
+        parentPath: string;
+        folders: Array<{
+          folderName: string;
+          hasSkillMd: boolean;
+          name: string | null;
+          description: string | null;
+          sourcePath: string;
+          fileCount: number;
+          totalSize: number;
+        }>;
+      }>('/api/skills/scan', { parentPath: sourcePath.trim() });
       const candidates: BatchCandidate[] = r.folders.map((f) => ({
         ...f,
         files: [],
@@ -1597,88 +2347,104 @@ function ImportFromFolder({
     }
   }, [batchCandidates, selectedFolders]);
 
-  const submitBatch = useCallback(async () => {
-    if (!batchCandidates || selectedCount === 0) return;
-    setBatchImporting(true);
-    setBatchDone(false);
-    const selected = batchCandidates.filter((c) => c.hasSkillMd && selectedFolders.has(c.folderName));
+  const submitBatch = useCallback(
+    async (retryFailed = false) => {
+      if (!batchCandidates || selectedCount === 0) return;
+      setBatchImporting(true);
+      setBatchDone(false);
+      const selected = batchCandidates.filter(
+        (c) =>
+          c.hasSkillMd &&
+          selectedFolders.has(c.folderName) &&
+          (!retryFailed || batchResults.get(c.folderName)?.status === 'error'),
+      );
 
-    const results = new Map<string, BatchResult>();
-    for (const c of selected) {
-      results.set(c.folderName, { folderName: c.folderName, status: 'pending' });
-    }
-    setBatchResults(new Map(results));
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const candidate of selected) {
-      results.set(candidate.folderName, { folderName: candidate.folderName, status: 'importing' });
-      setBatchResults(new Map(results));
-
-      try {
-        const effectiveScope = projectAvailable ? scope : 'user';
-        if (candidate.sourcePath) {
-          // Scan mode — use path-based import
-          await api<{ ok: boolean }>('/api/skills/import', {
-            sourcePath: candidate.sourcePath,
-            slug: candidate.folderName,
-            scope: effectiveScope,
-            projectPath: effectiveScope === 'project' ? projectPath : null,
-            mode,
-            force,
-          });
-        } else {
-          // Pick folder mode — use multipart upload
-          const rootName = batchParentName;
-          const formData = new FormData();
-          const paths: string[] = [];
-          for (const file of candidate.files) {
-            formData.append('files', file);
-            const rel = file.webkitRelativePath || file.name;
-            const prefix = rootName + '/' + candidate.folderName + '/';
-            const stripped = rel.startsWith(prefix) ? rel.slice(prefix.length) : rel;
-            paths.push(stripped);
-          }
-          formData.append('paths', JSON.stringify(paths));
-          formData.append('slug', candidate.folderName);
-          formData.append('scope', effectiveScope);
-          if (effectiveScope === 'project' && projectPath) formData.append('projectPath', projectPath);
-          if (force) formData.append('force', 'true');
-
-          const r = await authenticatedFetch('/api/skills/import-upload', {
-            method: 'POST',
-            body: formData,
-          });
-          if (!r.ok) {
-            const data = await r.json().catch(() => ({}));
-            throw new Error((data as { error?: string }).error || `Upload failed (${r.status})`);
-          }
-        }
-        results.set(candidate.folderName, { folderName: candidate.folderName, status: 'success' });
-        successCount++;
-      } catch (e) {
-        results.set(candidate.folderName, {
-          folderName: candidate.folderName,
-          status: 'error',
-          error: (e as Error).message,
-        });
-        failCount++;
+      const results = retryFailed ? new Map(batchResults) : new Map<string, BatchResult>();
+      for (const c of selected) {
+        results.set(c.folderName, { folderName: c.folderName, status: 'pending' });
       }
       setBatchResults(new Map(results));
-    }
 
-    setBatchImporting(false);
-    setBatchDone(true);
+      for (const candidate of selected) {
+        results.set(candidate.folderName, {
+          folderName: candidate.folderName,
+          status: 'importing',
+        });
+        setBatchResults(new Map(results));
 
-    if (successCount > 0) {
-      onImported({
-        slug: selected[0].folderName,
-        name: selected[0].name || selected[0].folderName,
-        scope: projectAvailable ? scope : 'user',
-      });
-    }
-  }, [batchCandidates, selectedCount, selectedFolders, projectAvailable, scope, projectPath, mode, force, batchParentName, onImported]);
+        try {
+          const effectiveScope = projectAvailable ? scope : 'user';
+          if (candidate.sourcePath) {
+            // Scan mode — use path-based import
+            await api<{ ok: boolean }>('/api/skills/import', {
+              sourcePath: candidate.sourcePath,
+              slug: candidate.folderName,
+              scope: effectiveScope,
+              projectPath: effectiveScope === 'project' ? projectPath : null,
+              mode,
+              force,
+            });
+          } else {
+            // Pick folder mode — use multipart upload
+            const rootName = batchParentName;
+            const formData = new FormData();
+            const paths: string[] = [];
+            for (const file of candidate.files) {
+              formData.append('files', file);
+              const rel = file.webkitRelativePath || file.name;
+              const prefix = rootName + '/' + candidate.folderName + '/';
+              const stripped = rel.startsWith(prefix) ? rel.slice(prefix.length) : rel;
+              paths.push(stripped);
+            }
+            formData.append('paths', JSON.stringify(paths));
+            formData.append('slug', candidate.folderName);
+            formData.append('scope', effectiveScope);
+            if (effectiveScope === 'project' && projectPath)
+              formData.append('projectPath', projectPath);
+            if (force) formData.append('force', 'true');
+
+            const r = await authenticatedFetch('/api/skills/import-upload', {
+              method: 'POST',
+              body: formData,
+            });
+            if (!r.ok) {
+              const data = await r.json().catch(() => ({}));
+              throw new Error((data as { error?: string }).error || `Upload failed (${r.status})`);
+            }
+          }
+          results.set(candidate.folderName, {
+            folderName: candidate.folderName,
+            status: 'success',
+          });
+        } catch (e) {
+          results.set(candidate.folderName, {
+            folderName: candidate.folderName,
+            status: 'error',
+            error: (e as Error).message,
+          });
+        }
+        setBatchResults(new Map(results));
+      }
+
+      setBatchImporting(false);
+      setBatchDone(true);
+
+      onBatchChanged();
+    },
+    [
+      batchCandidates,
+      selectedCount,
+      selectedFolders,
+      projectAvailable,
+      scope,
+      projectPath,
+      mode,
+      force,
+      batchParentName,
+      onBatchChanged,
+      batchResults,
+    ],
+  );
 
   const submit = useCallback(async () => {
     if (!canSubmit) return;
@@ -1700,20 +2466,25 @@ function ImportFromFolder({
         formData.append('paths', JSON.stringify(picked.manifest.map((m) => m.relativePath)));
         if (slug) formData.append('slug', slug);
         formData.append('scope', effectiveScope);
-        if (effectiveScope === 'project' && projectPath) formData.append('projectPath', projectPath);
+        if (effectiveScope === 'project' && projectPath)
+          formData.append('projectPath', projectPath);
         if (force) formData.append('force', 'true');
 
         const r = await authenticatedFetch('/api/skills/import-upload', {
           method: 'POST',
           body: formData,
         });
-        const data = await r.json().catch(() => ({} as Record<string, unknown>));
+        const data = await r.json().catch(() => ({}) as Record<string, unknown>);
         if (!r.ok) {
           if (data.validation) setValidation(data.validation as ValidationResult);
           throw new Error((data as { error?: string }).error || `Upload failed (${r.status})`);
         }
         const result = data as { slug: string; scope: 'user' | 'project'; skill: Skill | null };
-        onImported({ slug: result.slug, name: result.skill?.name || result.slug, scope: result.scope });
+        onImported({
+          slug: result.slug,
+          name: result.skill?.name || result.slug,
+          scope: result.scope,
+        });
       } else {
         // Path-based path. /api/skills/import runs the same validator
         // server-side, so a hardFail still blocks here.
@@ -1738,14 +2509,30 @@ function ImportFromFolder({
     } catch (e) {
       const msg = (e as Error).message;
       if (/already exists/i.test(msg) && !force) {
-        setErrorText(msg + ' ' + t('skillsTab.importEnableForce', { defaultValue: 'Enable "Overwrite" to replace it.' }));
+        setErrorText(
+          msg +
+            ' ' +
+            t('skillsTab.importEnableForce', { defaultValue: 'Enable "Overwrite" to replace it.' }),
+        );
       } else {
         setErrorText(msg);
       }
     } finally {
       setImporting(false);
     }
-  }, [canSubmit, picked, sourcePath, slug, projectAvailable, scope, projectPath, mode, force, onImported, t]);
+  }, [
+    canSubmit,
+    picked,
+    sourcePath,
+    slug,
+    projectAvailable,
+    scope,
+    projectPath,
+    mode,
+    force,
+    onImported,
+    t,
+  ]);
 
   return (
     <div className="flex h-full flex-col">
@@ -1753,7 +2540,14 @@ function ImportFromFolder({
         {/* Source: pick or paste */}
         <Field
           label={t('skillsTab.importSource', { defaultValue: 'Source folder' })}
-          hint={!batchMode ? (t('skillsTab.importSourceHintBoth', { defaultValue: 'Pick a folder via the native dialog, or paste an absolute path. ~ is expanded server-side.' }) as string) : undefined}
+          hint={
+            !batchMode
+              ? (t('skillsTab.importSourceHintBoth', {
+                  defaultValue:
+                    'Pick a folder via the native dialog, or paste an absolute path. ~ is expanded server-side.',
+                }) as string)
+              : undefined
+          }
         >
           <div className="flex items-stretch gap-2">
             <button
@@ -1776,20 +2570,27 @@ function ImportFromFolder({
               disabled={!sourcePath.trim() || scanning || batchMode}
               className={cn(
                 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium transition',
-                (!sourcePath.trim() || scanning || batchMode)
+                !sourcePath.trim() || scanning || batchMode
                   ? 'cursor-not-allowed border-neutral-100 text-neutral-400 dark:border-neutral-900 dark:text-neutral-600'
                   : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200 dark:hover:bg-neutral-900',
               )}
             >
-              {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} /> : <FolderSearch className="h-3.5 w-3.5" strokeWidth={1.75} />}
-              <span>{scanning ? t('skillsTab.scanning', { defaultValue: 'Scanning…' }) : t('skillsTab.scan', { defaultValue: 'Scan' })}</span>
+              {scanning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+              ) : (
+                <FolderSearch className="h-3.5 w-3.5" strokeWidth={1.75} />
+              )}
+              <span>
+                {scanning
+                  ? t('skillsTab.scanning', { defaultValue: 'Scanning…' })
+                  : t('skillsTab.scan', { defaultValue: 'Scan' })}
+              </span>
             </button>
             <input
               ref={fileInputRef}
               type="file"
               // @ts-expect-error webkitdirectory is non-standard but supported in Chromium/WebKit/Firefox.
               webkitdirectory=""
-              directory=""
               multiple
               onChange={handleFolderSelected}
               className="hidden"
@@ -1809,7 +2610,7 @@ function ImportFromFolder({
               disabled={picked !== null || batchMode}
               className={cn(
                 'h-8 flex-1 rounded-md border bg-white px-2 font-mono text-[12px] outline-none focus:border-neutral-400 dark:bg-neutral-950 dark:focus:border-neutral-600',
-                (picked || batchMode)
+                picked || batchMode
                   ? 'cursor-not-allowed border-neutral-100 text-neutral-400 dark:border-neutral-900 dark:text-neutral-600'
                   : 'border-neutral-200 dark:border-neutral-800',
               )}
@@ -1842,7 +2643,9 @@ function ImportFromFolder({
             {/* Header */}
             <div className="flex items-center gap-2 border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
               <Folder className="h-3.5 w-3.5 shrink-0 text-amber-500" strokeWidth={1.75} />
-              <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{batchParentName}</span>
+              <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                {batchParentName}
+              </span>
               <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
                 {t('skillsTab.foundSkills', {
                   defaultValue: 'Found {{count}} skills in {{total}} subfolders',
@@ -1854,7 +2657,7 @@ function ImportFromFolder({
                 type="button"
                 onClick={clearBatch}
                 disabled={batchImporting}
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-neutral-500 hover:bg-neutral-200 dark:text-neutral-400 dark:hover:bg-neutral-800 disabled:opacity-40"
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-neutral-500 hover:bg-neutral-200 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800"
               >
                 <X className="h-3 w-3" strokeWidth={1.75} />
               </button>
@@ -1891,7 +2694,9 @@ function ImportFromFolder({
                   <div className="border-b border-neutral-100 px-3 py-1.5 text-[11px] text-neutral-500 dark:border-neutral-900 dark:text-neutral-400">
                     {t('skillsTab.batchProgress', {
                       defaultValue: 'Importing {{current}}/{{total}}…',
-                      current: Array.from(batchResults.values()).filter((r) => r.status === 'success' || r.status === 'error').length,
+                      current: Array.from(batchResults.values()).filter(
+                        (r) => r.status === 'success' || r.status === 'error',
+                      ).length,
                       total: selectedCount,
                     })}
                   </div>
@@ -1899,9 +2704,13 @@ function ImportFromFolder({
                 {batchDone && (
                   <div className="border-b border-neutral-100 px-3 py-1.5 text-[11px] font-medium dark:border-neutral-900">
                     {t('skillsTab.batchComplete', {
-                      defaultValue: 'Batch import complete: {{success}} succeeded, {{failed}} failed',
-                      success: Array.from(batchResults.values()).filter((r) => r.status === 'success').length,
-                      failed: Array.from(batchResults.values()).filter((r) => r.status === 'error').length,
+                      defaultValue:
+                        'Batch import complete: {{success}} succeeded, {{failed}} failed',
+                      success: Array.from(batchResults.values()).filter(
+                        (r) => r.status === 'success',
+                      ).length,
+                      failed: Array.from(batchResults.values()).filter((r) => r.status === 'error')
+                        .length,
                     })}
                   </div>
                 )}
@@ -1931,9 +2740,24 @@ function ImportFromFolder({
                           />
                         ) : result ? (
                           <span className="mt-0.5 shrink-0">
-                            {result.status === 'success' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-500" strokeWidth={1.75} />}
-                            {result.status === 'error' && <XCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-500" strokeWidth={1.75} />}
-                            {result.status === 'importing' && <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-400" strokeWidth={1.75} />}
+                            {result.status === 'success' && (
+                              <CheckCircle2
+                                className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-500"
+                                strokeWidth={1.75}
+                              />
+                            )}
+                            {result.status === 'error' && (
+                              <XCircle
+                                className="h-3.5 w-3.5 text-red-600 dark:text-red-500"
+                                strokeWidth={1.75}
+                              />
+                            )}
+                            {result.status === 'importing' && (
+                              <Loader2
+                                className="h-3.5 w-3.5 animate-spin text-neutral-400"
+                                strokeWidth={1.75}
+                              />
+                            )}
                             {result.status === 'pending' && <div className="h-3.5 w-3.5" />}
                           </span>
                         ) : !isSkill ? (
@@ -1942,8 +2766,21 @@ function ImportFromFolder({
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            <Folder className={cn('h-3 w-3 shrink-0', isSkill ? 'text-amber-500' : 'text-neutral-300 dark:text-neutral-700')} strokeWidth={1.75} />
-                            <span className={cn('truncate text-[12px]', isSkill ? 'font-medium' : 'text-neutral-400 dark:text-neutral-600')}>
+                            <Folder
+                              className={cn(
+                                'h-3 w-3 shrink-0',
+                                isSkill
+                                  ? 'text-amber-500'
+                                  : 'text-neutral-300 dark:text-neutral-700',
+                              )}
+                              strokeWidth={1.75}
+                            />
+                            <span
+                              className={cn(
+                                'truncate text-[12px]',
+                                isSkill ? 'font-medium' : 'text-neutral-400 dark:text-neutral-600',
+                              )}
+                            >
                               {candidate.folderName}
                             </span>
                             {!isSkill && (
@@ -1954,18 +2791,24 @@ function ImportFromFolder({
                           </div>
                           {isSkill && (candidate.name || candidate.description) && (
                             <div className="mt-0.5 truncate text-[11px] text-neutral-500 dark:text-neutral-400">
-                              {candidate.name && <span className="font-medium">{candidate.name}</span>}
+                              {candidate.name && (
+                                <span className="font-medium">{candidate.name}</span>
+                              )}
                               {candidate.name && candidate.description && <span> — </span>}
                               {candidate.description && <span>{candidate.description}</span>}
                             </div>
                           )}
                           {isSkill && (
                             <div className="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">
-                              {candidate.fileCount} {t('skillsTab.files', { defaultValue: 'files' })} · {formatBytes(candidate.totalSize)}
+                              {candidate.fileCount}{' '}
+                              {t('skillsTab.files', { defaultValue: 'files' })} ·{' '}
+                              {formatBytes(candidate.totalSize)}
                             </div>
                           )}
                           {result?.status === 'error' && result.error && (
-                            <div className="mt-0.5 truncate text-[11px] text-red-600 dark:text-red-400">{result.error}</div>
+                            <div className="mt-0.5 truncate text-[11px] text-red-600 dark:text-red-400">
+                              {result.error}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1979,10 +2822,16 @@ function ImportFromFolder({
             {skillCandidates.length > 0 && !batchDone && (
               <div className="border-t border-neutral-200 px-3 py-2 dark:border-neutral-800">
                 <div className="flex items-center justify-between gap-3">
-                  <ScopeSelector scope={scope} onChange={setScope} projectAvailable={projectAvailable} t={t} />
                   <label className="flex cursor-pointer items-center gap-2 text-[12px]">
-                    <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} disabled={batchImporting} />
-                    <span>{t('skillsTab.importForce', { defaultValue: 'Overwrite if exists' })}</span>
+                    <input
+                      type="checkbox"
+                      checked={force}
+                      onChange={(e) => setForce(e.target.checked)}
+                      disabled={batchImporting}
+                    />
+                    <span>
+                      {t('skillsTab.importForce', { defaultValue: 'Overwrite if exists' })}
+                    </span>
                   </label>
                 </div>
               </div>
@@ -1993,7 +2842,11 @@ function ImportFromFolder({
             {/* ---- Single import mode (existing UI) ---- */}
             <Field
               label={t('skillsTab.importSlug', { defaultValue: 'Slug (target folder name)' })}
-              hint={t('skillsTab.importSlugHint', { defaultValue: 'Defaults to the source folder name. Edit to override.' }) as string}
+              hint={
+                t('skillsTab.importSlugHint', {
+                  defaultValue: 'Defaults to the source folder name. Edit to override.',
+                }) as string
+              }
             >
               <input
                 type="text"
@@ -2012,53 +2865,73 @@ function ImportFromFolder({
               />
             </Field>
 
-            <Field label={t('skillsTab.importMode', { defaultValue: 'Import mode' })}>
-              <div className="flex flex-col gap-1.5 text-[12px]">
-                <label className="flex cursor-pointer items-start gap-2">
-                  <input
-                    type="radio"
-                    name="import-mode"
-                    checked={mode === 'copy'}
-                    onChange={() => setMode('copy')}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium">{t('skillsTab.importModeCopy', { defaultValue: 'Copy' })}</span>
-                    <span className="ml-1 text-neutral-500 dark:text-neutral-400">
-                      {t('skillsTab.importModeCopyHint', { defaultValue: '— independent copy, edits live in the skills folder.' })}
+            <details className="skills-advanced">
+              <summary>{t('skillsTab.advancedOptions')}</summary>
+              <Field label={t('skillsTab.importMode', { defaultValue: 'Import mode' })}>
+                <div className="flex flex-col gap-1.5 text-[12px]">
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="radio"
+                      name="import-mode"
+                      checked={mode === 'copy'}
+                      onChange={() => setMode('copy')}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium">
+                        {t('skillsTab.importModeCopy', { defaultValue: 'Copy' })}
+                      </span>
+                      <span className="ml-1 text-neutral-500 dark:text-neutral-400">
+                        {t('skillsTab.importModeCopyHint', {
+                          defaultValue: '— independent copy, edits live in the skills folder.',
+                        })}
+                      </span>
                     </span>
-                  </span>
-                </label>
-                <label className={cn('flex items-start gap-2', picked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
-                  <input
-                    type="radio"
-                    name="import-mode"
-                    checked={mode === 'symlink'}
-                    disabled={picked !== null}
-                    onChange={() => setMode('symlink')}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium">{t('skillsTab.importModeSymlink', { defaultValue: 'Symlink' })}</span>
-                    <span className="ml-1 text-neutral-500 dark:text-neutral-400">
-                      {picked
-                        ? t('skillsTab.symlinkUnavailable', { defaultValue: '— unavailable for picker uploads (no source path on disk).' })
-                        : t('skillsTab.importModeSymlinkHint', { defaultValue: '— edits in the source folder propagate live; deleting the source breaks the skill.' })}
+                  </label>
+                  <label
+                    className={cn(
+                      'flex items-start gap-2',
+                      picked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="import-mode"
+                      checked={mode === 'symlink'}
+                      disabled={picked !== null}
+                      onChange={() => setMode('symlink')}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium">
+                        {t('skillsTab.importModeSymlink', { defaultValue: 'Symlink' })}
+                      </span>
+                      <span className="ml-1 text-neutral-500 dark:text-neutral-400">
+                        {picked
+                          ? t('skillsTab.symlinkUnavailable', {
+                              defaultValue:
+                                '— unavailable for picker uploads (no source path on disk).',
+                            })
+                          : t('skillsTab.importModeSymlinkHint', {
+                              defaultValue:
+                                '— edits in the source folder propagate live; deleting the source breaks the skill.',
+                            })}
+                      </span>
                     </span>
-                  </span>
-                </label>
-              </div>
-            </Field>
+                  </label>
+                </div>
+              </Field>
+              <label className="mt-3 flex items-center gap-2 text-[12px]">
+                <input
+                  type="checkbox"
+                  checked={force}
+                  onChange={(event) => setForce(event.target.checked)}
+                />
+                {t('skillsTab.importForce')}
+              </label>
+            </details>
 
             <ValidationPanel result={validation} validating={validating} t={t} />
-
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <ScopeSelector scope={scope} onChange={setScope} projectAvailable={projectAvailable} t={t} />
-              <label className="flex cursor-pointer items-center gap-2 text-[12px]">
-                <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
-                <span>{t('skillsTab.importForce', { defaultValue: 'Overwrite if exists' })}</span>
-              </label>
-            </div>
           </>
         )}
 
@@ -2069,24 +2942,50 @@ function ImportFromFolder({
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-neutral-200 px-5 py-3 dark:border-neutral-800">
+      <div className="skills-dialog-footer">
+        <ScopeSelector
+          scope={scope}
+          onChange={setScope}
+          projectAvailable={projectAvailable}
+          t={t}
+          disabled={importing || batchImporting || batchDone}
+        />
         {batchMode ? (
           batchDone ? (
-            <button
-              type="button"
-              onClick={() => {
-                clearBatch();
-                onImported({ slug: '', name: '', scope });
-              }}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-              <span>{t('skillsTab.batchDone', { defaultValue: 'Done' })}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {Array.from(batchResults.values()).some((result) => result.status === 'error') ? (
+                <button
+                  type="button"
+                  className="skills-button"
+                  disabled={batchImporting}
+                  onClick={() => void submitBatch(true)}
+                >
+                  <RefreshCw size={14} />
+                  {t('skillsTab.retryFailed')}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  const first = batchCandidates?.find(
+                    (candidate) => batchResults.get(candidate.folderName)?.status === 'success',
+                  );
+                  onImported({
+                    slug: first?.folderName ?? '',
+                    name: first?.name || first?.folderName || '',
+                    scope,
+                  });
+                }}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <span>{t('skillsTab.batchDone', { defaultValue: 'Done' })}</span>
+              </button>
+            </div>
           ) : (
             <button
               type="button"
-              onClick={submitBatch}
+              onClick={() => void submitBatch()}
               disabled={selectedCount === 0 || batchImporting}
               className="inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white transition hover:bg-neutral-700 disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
             >
@@ -2098,7 +2997,10 @@ function ImportFromFolder({
               <span>
                 {batchImporting
                   ? t('skillsTab.importing', { defaultValue: 'Importing…' })
-                  : t('skillsTab.importNSkills', { defaultValue: 'Import {{count}} skills', count: selectedCount })}
+                  : t('skillsTab.importNSkills', {
+                      defaultValue: 'Import {{count}} skills',
+                      count: selectedCount,
+                    })}
               </span>
             </button>
           )
@@ -2142,23 +3044,37 @@ function ValidationPanel({
         <ShieldCheck className="h-3.5 w-3.5 text-neutral-500" strokeWidth={1.75} />
         <span>{t('skillsTab.complianceCheck', { defaultValue: 'Compliance check' })}</span>
         {validating ? (
-          <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-neutral-400" strokeWidth={1.75} />
+          <Loader2
+            className="ml-auto h-3.5 w-3.5 animate-spin text-neutral-400"
+            strokeWidth={1.75}
+          />
         ) : result?.ok ? (
-          <CheckCircle2 className="ml-auto h-3.5 w-3.5 text-emerald-600 dark:text-emerald-500" strokeWidth={1.75} />
+          <CheckCircle2
+            className="ml-auto h-3.5 w-3.5 text-emerald-600 dark:text-emerald-500"
+            strokeWidth={1.75}
+          />
         ) : (
-          <XCircle className="ml-auto h-3.5 w-3.5 text-red-600 dark:text-red-500" strokeWidth={1.75} />
+          <XCircle
+            className="ml-auto h-3.5 w-3.5 text-red-600 dark:text-red-500"
+            strokeWidth={1.75}
+          />
         )}
       </div>
       <div className="space-y-1.5 px-3 py-2 text-[12px]">
         {result?.stats ? (
           <div className="flex items-center gap-3 text-neutral-500 dark:text-neutral-400">
-            <span>{result.stats.fileCount} {t('skillsTab.files', { defaultValue: 'files' })}</span>
+            <span>
+              {result.stats.fileCount} {t('skillsTab.files', { defaultValue: 'files' })}
+            </span>
             <span>·</span>
             <span>{formatBytes(result.stats.totalBytes)}</span>
             {result.frontmatter && (result.frontmatter as { name?: string }).name ? (
               <>
                 <span>·</span>
-                <span className="truncate">name: <span className="font-mono">{(result.frontmatter as { name: string }).name}</span></span>
+                <span className="truncate">
+                  name:{' '}
+                  <span className="font-mono">{(result.frontmatter as { name: string }).name}</span>
+                </span>
               </>
             ) : null}
           </div>
@@ -2176,7 +3092,10 @@ function ValidationPanel({
         {result?.warnings && result.warnings.length > 0 ? (
           <ul className="space-y-1">
             {result.warnings.map((iss, i) => (
-              <li key={`w${i}`} className="flex items-start gap-1.5 text-amber-700 dark:text-amber-400">
+              <li
+                key={`w${i}`}
+                className="flex items-start gap-1.5 text-amber-700 dark:text-amber-400"
+              >
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2} />
                 <span>{iss.message}</span>
               </li>
@@ -2202,11 +3121,19 @@ function formatBytes(bytes: number) {
 }
 
 function CreateFromScratch({
+  scope,
+  onScopeChange: setScope,
+  onBusyChange,
+  onDirtyChange,
   projectAvailable,
   projectPath,
   onCreated,
   t,
 }: {
+  scope: 'user' | 'project';
+  onScopeChange: (scope: 'user' | 'project') => void;
+  onBusyChange: (busy: boolean) => void;
+  onDirtyChange: (dirty: boolean) => void;
   projectAvailable: boolean;
   projectPath: string | null;
   onCreated: (created: NewModalCreated) => void;
@@ -2215,14 +3142,15 @@ function CreateFromScratch({
   const [slug, setSlug] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [body, setBody] = useState('');
-  const [scope, setScope] = useState<'user' | 'project'>(projectAvailable ? 'project' : 'user');
+  const [initialBody] = useState(t('skillsTab.bodyTemplate'));
+  const [body, setBody] = useState(initialBody);
+  useEffect(
+    () => onDirtyChange(Boolean(slug || name || description || body !== initialBody)),
+    [slug, name, description, body, initialBody, onDirtyChange],
+  );
   const [creating, setCreating] = useState(false);
+  useEffect(() => onBusyChange(creating), [creating, onBusyChange]);
   const [errorText, setErrorText] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!projectAvailable && scope === 'project') setScope('user');
-  }, [projectAvailable, scope]);
 
   const slugValid = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(slug);
   const canSubmit = slugValid && (description.trim().length > 0 || body.trim().length > 0);
@@ -2256,7 +3184,10 @@ function CreateFromScratch({
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <div className="grid grid-cols-2 gap-3">
-          <Field label={t('skillsTab.fieldSlug', { defaultValue: 'Slug' })} hint={t('skillsTab.slugHint', { defaultValue: 'Folder name, e.g. my-skill' }) as string}>
+          <Field
+            label={t('skillsTab.fieldSlug', { defaultValue: 'Slug' })}
+            hint={t('skillsTab.slugHint', { defaultValue: 'Folder name, e.g. my-skill' }) as string}
+          >
             <input
               type="text"
               value={slug}
@@ -2275,12 +3206,25 @@ function CreateFromScratch({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={slug || t('skillsTab.fieldNamePlaceholder', { defaultValue: 'Optional, defaults to slug' }) as string}
+              placeholder={
+                slug ||
+                (t('skillsTab.fieldNamePlaceholder', {
+                  defaultValue: 'Optional, defaults to slug',
+                }) as string)
+              }
               className="h-8 w-full rounded-md border border-neutral-200 bg-white px-2 text-[13px] outline-none focus:border-neutral-400 dark:border-neutral-800 dark:bg-neutral-950 dark:focus:border-neutral-600"
             />
           </Field>
         </div>
-        <Field label={t('skillsTab.fieldDescription', { defaultValue: 'Description' })} hint={t('skillsTab.descHint', { defaultValue: 'Shown in the slash menu — describe what this skill does and when to invoke it.' }) as string}>
+        <Field
+          label={t('skillsTab.fieldDescription', { defaultValue: 'Description' })}
+          hint={
+            t('skillsTab.descHint', {
+              defaultValue:
+                'Shown in the slash menu — describe what this skill does and when to invoke it.',
+            }) as string
+          }
+        >
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -2288,7 +3232,14 @@ function CreateFromScratch({
             className="w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-[13px] outline-none focus:border-neutral-400 dark:border-neutral-800 dark:bg-neutral-950 dark:focus:border-neutral-600"
           />
         </Field>
-        <Field label={t('skillsTab.fieldBody', { defaultValue: 'Initial body (Markdown)' })} hint={t('skillsTab.bodyHint', { defaultValue: 'Optional. Edit in detail later from the main view.' }) as string}>
+        <Field
+          label={t('skillsTab.fieldBody', { defaultValue: 'Initial body (Markdown)' })}
+          hint={
+            t('skillsTab.bodyHint', {
+              defaultValue: 'Optional. Edit in detail later from the main view.',
+            }) as string
+          }
+        >
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
@@ -2297,9 +3248,7 @@ function CreateFromScratch({
             placeholder={'# My Skill\n\nDescribe what this skill does...'}
           />
         </Field>
-        <div className="mt-3">
-          <ScopeSelector scope={scope} onChange={setScope} projectAvailable={projectAvailable} t={t} />
-        </div>
+
         {errorText ? (
           <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
             {errorText}
@@ -2307,15 +3256,30 @@ function CreateFromScratch({
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-neutral-200 px-5 py-3 dark:border-neutral-800">
+      <div className="skills-dialog-footer">
+        <ScopeSelector
+          scope={scope}
+          onChange={setScope}
+          projectAvailable={projectAvailable}
+          t={t}
+          disabled={creating}
+        />
         <button
           type="button"
           onClick={submit}
           disabled={!canSubmit || creating}
           className="inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white transition hover:bg-neutral-700 disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
         >
-          {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} /> : <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />}
-          <span>{creating ? t('skillsTab.creating', { defaultValue: 'Creating…' }) : t('skillsTab.create', { defaultValue: 'Create skill' })}</span>
+          {creating ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+          ) : (
+            <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+          )}
+          <span>
+            {creating
+              ? t('skillsTab.creating', { defaultValue: 'Creating…' })
+              : t('skillsTab.create', { defaultValue: 'Create skill' })}
+          </span>
         </button>
       </div>
     </div>
@@ -2331,12 +3295,18 @@ function Field({
   hint?: string;
   children: React.ReactNode;
 }) {
+  const id = useId();
+  const input =
+    isValidElement(children) && (children.type === 'input' || children.type === 'textarea');
   return (
     <div className="mt-3">
-      <label className="mb-1 block text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
+      <label
+        htmlFor={input ? id : undefined}
+        className="mb-1 block text-[12px] font-medium text-neutral-700 dark:text-neutral-300"
+      >
         {label}
       </label>
-      {children}
+      {input ? cloneElement(children as ReactElement<{ id?: string }>, { id }) : children}
       {hint ? <p className="mt-1 text-xxs text-neutral-500 dark:text-neutral-400">{hint}</p> : null}
     </div>
   );

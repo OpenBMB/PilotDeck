@@ -6,6 +6,26 @@ function codeFor(message: string): string {
   return normalizeModelError("test", "openai", new Error(message)).code;
 }
 
+test("normalizeModelError extracts SSE error details from HTTP error bodies", () => {
+  const message = "Invalid value: 'input_text'. Supported values are: 'output_text' and 'refusal'.";
+  const raw = `event: error\r\ndata: ${JSON.stringify({ error: {
+    type: "invalid_request_error", code: "invalid_request", message,
+  } })}\r\n\r\n`;
+  const error = normalizeModelError("test", "openai-responses", raw, 400);
+
+  assert.equal(error.message, message);
+  assert.equal(error.code, "invalid_request");
+  assert.equal(error.retryable, false);
+  assert.equal(error.raw, raw);
+});
+
+test("normalizeModelError ignores malformed SSE data before an error event", () => {
+  const raw = 'data: not-json\n\ndata: {"error":{"code":"invalid_api_key","message":"Incorrect API key provided"}}\n\n';
+  const error = normalizeModelError("test", "openai-responses", raw, 401);
+  assert.equal(error.code, "auth_error");
+  assert.equal(error.message, "Incorrect API key provided");
+});
+
 test("normalizeModelError classifies common network failures", () => {
   assert.equal(codeFor("getaddrinfo ENOTFOUND api.test"), "dns_error");
   assert.equal(codeFor("read ECONNRESET"), "connection_reset");

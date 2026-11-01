@@ -130,13 +130,13 @@ function assertBundledNodeRuntime() {
     bundledNodeBinary,
     [
       "-e",
-      "const major=Number(process.versions.node.split('.')[0]); if (major !== 22) process.exit(2); import('node:sqlite').then(() => {}, () => process.exit(3));",
+      `const major=Number(process.versions.node.split('.')[0]); if (major !== 22) process.exit(2); if (process.arch !== ${JSON.stringify(targetRuntimeArch)}) process.exit(4); import('node:sqlite').then(() => {}, () => process.exit(3));`,
     ],
     { encoding: "utf8" },
   );
   if (result.status !== 0) {
     throw new Error(
-      `Desktop bundled Node must be Node.js 22 with node:sqlite. Current check failed for ${bundledNodeBinary}: ${(result.stderr || result.stdout || `exit ${result.status}`).trim()}`,
+      `Desktop bundled Node must be Node.js 22 (${targetRuntimeArch}) with node:sqlite. Current check failed for ${bundledNodeBinary}: ${(result.stderr || result.stdout || `exit ${result.status}`).trim()}`,
     );
   }
 }
@@ -244,6 +244,11 @@ function prepareRuntimeTree(installEnv = process.env) {
     "--frozen-lockfile",
     "--prefer-offline",
   ], installRoot, withBundledPlaywrightEnv(installEnv));
+  if (process.platform === "linux") {
+    // node-pty ships no Linux prebuilds; do not rely on cached install side effects.
+    runPnpm(["rebuild", "node-pty", "--ignore-workspace", "--config.node-linker=hoisted"],
+      installRoot, withBundledPlaywrightEnv(installEnv));
+  }
   rmSync(runtimeRoot, { recursive: true, force: true });
   mkdirSync(dirname(runtimeRoot), { recursive: true });
   renameSync(installRoot, runtimeRoot);
@@ -494,6 +499,9 @@ function rewriteUiServerSourceImports(serverRoot) {
 }
 
 run(process.execPath, [resolve(desktopRoot, "scripts", "download-node.mjs")], desktopRoot);
+if (process.platform === "linux") {
+  run(process.execPath, [resolve(desktopRoot, "scripts", "prepare-electron.mjs")], desktopRoot);
+}
 run(process.execPath, [resolve(desktopRoot, "scripts", "download-cua-driver.mjs")], desktopRoot);
 assertBundledNodeRuntime();
 if (process.platform === "win32") {
@@ -576,9 +584,28 @@ function verifyRuntime(root, label = "runtime", runtimeArch = targetRuntimeArch)
   }
 
   verifyRuntimeNativeModule("better-sqlite3", label, runtimeArch);
+  if (process.platform === "linux") {
+    const ptyCheck = spawnRuntimeNodeSync(
+      [resolve(desktopRoot, "scripts", "verify-runtime-pty.cjs"), runtimeRoot],
+      { cwd: runtimeRoot, encoding: "utf8", timeout: 15_000, env: withBundledNodeEnv() },
+      runtimeArch,
+    );
+    if (ptyCheck.status !== 0) {
+      throw new Error(`Desktop ${label} PTY check failed: ${(ptyCheck.error?.message || ptyCheck.stderr || ptyCheck.stdout || "unknown error").trim()}`);
+    }
+  }
   verifyRuntimeModuleImport(resolve(runtimeRoot, "dist", "src", "cli", "pilotdeck.js"), label, runtimeArch);
   verifyRuntimeModuleImport(resolve(runtimeRoot, "ui", "server", "services", "spreadsheetPreview.js"), label, runtimeArch);
   verifyRuntimeModuleImport(resolve(runtimeRoot, "ui", "server", "services", "standaloneComputerUse.js"), label, runtimeArch);
+  const searchCheck = spawnRuntimeNodeSync(
+    [resolve(desktopRoot, "scripts", "verify-global-search.mjs"), runtimeRoot],
+    { cwd: runtimeRoot, encoding: "utf8", timeout: 30_000, env: withBundledNodeEnv() },
+    runtimeArch,
+  );
+  if (searchCheck.status !== 0) {
+    throw new Error(`Desktop ${label} global search check failed: ${searchCheck.error?.message || searchCheck.stderr || searchCheck.stdout}`);
+  }
+  console.log(searchCheck.stdout.trim());
 
   console.log(`[desktop] staged ${label} ready: ${runtimeRoot}`);
   console.log(`[desktop] staged ${label} size: ${formatBytes(directorySize(runtimeRoot))}`);

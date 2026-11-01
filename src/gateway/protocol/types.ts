@@ -91,6 +91,9 @@ export type GatewayOutboundAttachment = {
 export type TurnUsage = CanonicalUsage;
 
 export type GatewaySubmitTurnInput = {
+  /** Opaque diagnostics supplied by an authenticated host; never authorization. */
+  requestContext?: Pick<import("../../network/requestContext.js").RequestContext,
+    "userId" | "deviceId" | "clientVersion" | "parentRequestId">;
   sessionKey: string;
   channelKey: GatewayChannelKey;
   message: string;

@@ -4,20 +4,24 @@
 
 浏览器与桌面客户端均在「设置 → 外部集成 → 电脑操控」中配置，显示相同的开关、系统权限和连接状态。入口位于「Office 预览」下方，默认关闭。页面统一调用经过认证的 `/api/computer-use` 接口，由后端返回能力和权限归属，不依赖 Electron 的前端桥接。
 
-桌面安装包和网页部署环境均携带固定版本 `0.34.1` 的 Cua Driver，用户无需另行安装或配置 MCP。源码构建及标准网页启动脚本会自动准备这一依赖，校验归档 SHA-256 后放入 `resources/cua-driver`；桌面安装包将同一目录放入 `Resources/runtime/resources/cua-driver`。后端默认只查找随包资源，不依赖 PATH、用户的安装记录或 `/Applications/CuaDriver.app`。只有部署者明确配置 `PILOTDECK_CUA_DRIVER_PATH` 时才借用指定的外置服务。
+桌面安装包和网页部署环境均携带固定版本 `0.34.1` 的 Cua Driver，用户无需另行安装或配置 MCP。源码构建及标准网页启动脚本会自动准备这一依赖，校验归档 SHA-256 后放入 `resources/cua-driver`；桌面安装包将同一目录放入 `Resources/runtime/resources/cua-driver`。Windows/Linux 默认使用随包资源。macOS 会校验并选择同版本的正式签名组件，来源可以是随包资源、已安装的 PilotDeck 或本用户的共享组件目录；不查找 PATH 或 `/Applications/CuaDriver.app`。只有部署者明确配置 `PILOTDECK_CUA_DRIVER_PATH` 时才借用指定的外置服务。
 
 1. 打开「启用电脑操控」。macOS 权限不足时显示「等待系统授权」，此时不向 Agent 提供内置工具。
-2. macOS 使用「前往授权」，在系统设置中给 **PilotDeck Computer Use** 开启「辅助功能」和「屏幕录制」。桌面客户端、开发客户端与独立网页后端均使用环境包内的同一原生宿主，bundle ID 为 `cn.pilotdeck.computer-use`，所有系统语言均使用此英文名称。Electron/PilotDeck 主应用的权限不再参与电脑操控检查。
+2. macOS 使用「前往授权」，在系统设置中给 **PilotDeck Computer Use** 开启「辅助功能」和「屏幕录制」。同一 Mac 登录用户下，两端选择正式组件时使用同一个签名身份，bundle ID 为 `cn.pilotdeck.computer-use`，所有系统语言均使用此英文名称。Electron/PilotDeck 主应用的权限不再参与电脑操控检查。
    授权请求异步启动原生宿主，页面不会等待系统确认而超时。授权宿主最多保留五分钟，供用户处理系统提示、登录密码或 Touch ID；授权完成、重新检测、关闭功能或后端退出时结束。屏幕捕获探测返回未授权不会提前关闭首次授权弹窗。
    若系统列表没有显示应用，展开「授权列表里没有应用？」。点击「显示授权应用」在 Finder 中定位正确应用并拖入权限列表，或复制应用路径，在系统设置的 `+` 选择窗口中按 `⌘⇧G` 粘贴。权限不足时这段引导默认展开。路径由后端提供，两种入口均指向实际启动的原生组件。显示应用的接口只使用宿主选定的路径，不接受网页传入的路径，也不启动 Driver 或发起授权。
-3. 授权后点击「重新检测」。macOS 会重新启动所属组件，使新进程读取授权；若系统仍要求重开应用，则按系统提示退出并重新启动。状态为「已连接，可使用」后可在任务中请求电脑操控。
+3. 页面定时检查权限，返回页面时也会检查。撤销任一权限后，已启用实例撤下 MCP 并停止自己的 Driver；重新授权后自动启动新连接。关闭的实例只更新权限显示，不自动开启。也可点击「重新检测」；若 macOS 另有重启提示则按提示操作。状态为「已连接，可使用」后可在任务中请求电脑操控。
 4. 「停止并关闭」会撤销此实例的 MCP 连接并保存关闭偏好。实例拥有的 Driver 子进程会停止；默认内置的网页 Driver 也会停止；仅明确配置的外置共享服务会保留。正常退出也会撤销连接并清理实例拥有的进程，但保留开关偏好供下次启动。
 
 操作审批沿用当前任务的权限设置，模型须支持图片输入。此版本使用本机登录用户的真实桌面，多个任务仍可能争用同一桌面，按单任务使用。Driver 崩溃后显示错误，由用户重新检测；不会自动重放完成情况不明的动作。
 
-页面访问方式不决定权限归属。macOS 的桌面与独立网页后端复用同一个原生组件控制器，通过 LaunchServices 启动包内 `PilotDeck Computer Use.app`，使用私有 socket 和 FIFO 生命周期管道；Node 退出或开关关闭时，FIFO 关闭使 Driver 结束，不会连接或停止系统上另装的 CuaDriver。这个轻量原生宿主使用 PilotDeck 自己的 bundle ID `cn.pilotdeck.computer-use`，直接启动 embedded Driver 子进程；权限请求也由宿主处理，不调用上游公共 CLI 硬编码的 Applications 路径。Windows/Linux 桌面继续通过私有父子进程 IPC 交给 Electron 管理 Driver。权限不足时不向 Agent 发布工具。读取状态不会启动服务或弹出授权，仅启用、重新检测或点击授权会执行相应操作。接口检查请求来源与本机 Host，避免免登录本地部署被其他网页调用。
+页面访问方式不决定权限归属。macOS 的桌面与独立网页后端复用同一个原生组件控制器，通过 LaunchServices 启动共享目录中的 `PilotDeck Computer Use.app`，使用私有 socket 和 FIFO 生命周期管道；Node 退出或开关关闭时，FIFO 关闭使 Driver 结束，不会连接或停止系统上另装的 CuaDriver。这个轻量原生宿主使用 PilotDeck 自己的 bundle ID `cn.pilotdeck.computer-use`，直接启动 embedded Driver 子进程；权限请求也由宿主处理，不调用上游公共 CLI 硬编码的 Applications 路径。Windows/Linux 桌面继续通过私有父子进程 IPC 交给 Electron 管理 Driver。权限不足时不向 Agent 发布工具。只读权限检测使用新启动的同身份原生进程，不发起授权或截屏；兼容旧正式组件时使用独立、短暂的 Driver 检测实例，不发布其 MCP。已启用实例每三秒检查一次，因此授权变化不依赖设置页面保持打开。检测失败显示未知/检查失败，不伪装成权限被拒绝。接口检查请求来源与本机 Host，避免免登录本地部署被其他网页调用。
 
-macOS 复用授权还要求组件的代码签名身份兼容。同一正式发行签名下的网页组件与客户端组件可以复用原生宿主授权；源码准备脚本的临时签名不能自动继承正式签名的授权，重新编译临时宿主也可能使旧授权失效。升级前只授权过 PilotDeck/Electron 主应用的用户，需要为新的统一宿主授权一次，系统不提供将主应用授权直接转移给另一个 bundle 的接口。界面始终检测实际 Driver 的权限，不能用保存的「已授权」配置替代系统结果。
+macOS 组件安装到 `~/Library/Application Support/PilotDeck/ComputerUse/production/<内容哈希>/PilotDeck Computer Use.app`，位于桌面主应用 `.app` 之外，避免屏幕录制被归属到外层应用。安装前后均验证 Developer ID 签名、PilotDeck Team ID、bundle ID 和固定 Driver 版本，原子安装后不覆盖旧内容。各版本可并存；两端共享授权身份，进程、私有 socket、配置和退出控制各自独立。
+
+源码环境优先复用机器上符合固定版本的正式组件。没有正式组件时，临时签名使用独立 `cn.pilotdeck.computer-use.dev` 身份，并安装为 `PilotDeck Computer Use Dev.app`，避免开发构建破坏正式授权。源码临时签名的授权不能转移给正式发行签名；后来安装正式客户端，需要重启网页后端以重新选择正式组件，并为正式身份授权一次。只有正式组件之间承诺复用授权，不承诺开发签名与正式签名互通。
+
+曾运行旧临时签名组件的机器可能有同名但签名不匹配的 TCC 记录。仅关开旧开关不一定修复；需要在对应权限列表移除旧条目，再通过本页提供的实际路径添加正式组件并授权一次。应用不会自动重置 TCC、修改系统数据库或将主应用的授权当作组件授权。
 
 独立网页后端会自动接管全局配置中与本机 Driver 路径一致、参数恰为 `["mcp"]` 且无自定义环境或会话策略的旧 `cua-driver` POC 条目，先保存完整备份 `PILOT_HOME/computer-use/legacy-mcp.backup.json`，再移除该条目，避免开关关闭后仍通过重复配置暴露工具。其他手动配置保持独立，开关只控制保留服务 `pilotdeck-computer-use`。
 
@@ -65,7 +69,7 @@ pnpm --dir ui test src/components/settings/view/computerUse/index.test.tsx src/c
 pnpm --filter pilotdeck-desktop run dev
 ```
 
-现有各平台发布流程已加入资源和生命周期检查；安装后运行固定版本的 `--version`，Windows 还核对 PE 架构，macOS 核对嵌套签名。开发模式中的 macOS 宿主是 Electron，系统授权归属 Electron；正式安装包归属 PilotDeck。
+现有各平台发布流程已加入资源和生命周期检查；安装后运行固定版本的 `--version`，Windows 还核对 PE 架构，macOS 核对嵌套签名。macOS 发布校验会实际运行打包宿主的只读原生权限检测，检查返回身份和布尔值类型；Windows/Linux 沿用原有 IPC、原生二进制和生命周期路径。
 
 2026-10-10 本机验证：macOS arm64 目录包构建及深度签名校验通过；真实嵌入 Driver 的父进程身份、权限归属、MCP 初始化、工具发现和关闭通过。普通浏览器经统一 HTTP 接口启用、关闭桌面宿主的内置 Driver，桌面页面同步状态。独立网页环境包使用包内 Driver，完成首次授权后的截图、辅助功能树读取和关闭后重新连接。自动化覆盖默认关闭、缺少权限、私有连接撤销、异常退出、手动重连、项目覆盖保护、IPC 断连、输入校验与请求来源限制。Windows/Linux 的代码和构建接入已完成，仍需对应系统上的安装包与桌面实测。
 
@@ -162,3 +166,14 @@ node --import tsx --test tests/mcp/*.spec.ts tests/mcp/client/McpClient.spec.ts 
 ```
 
 本轮仍未覆盖多会话同时操作同一桌面、远程 Driver 连接和其他操作系统。
+
+
+### 2026-10-13 权限同步修复验证
+
+修复分支从 `upstream/main` 的 `dbb893de` 创建。初步验证使用现有 Developer ID 签名组件和运行时覆盖；随后从修复提交完整构建 Electron 目录包，再通过 [macOS 签名验证构建](https://github.com/OpenBMB/PilotDeck/actions/runs/38340998405) 生成 `4ffcab6b` 的正式签名安装包。验证流程仅上传构建产物，不发布 Release。
+
+在本机 macOS arm64 解压并直接启动新签名包，使用包内后端、Node 和 layout 7 原生组件，没有运行时覆盖。深度签名校验、公证票据、Gatekeeper、DMG 校验和打包后的只读原生 probe 均通过。新组件自动识别同一正式签名身份已有的两项授权，不需要重新授予。安装在 `/Applications` 的原客户端未被替换。
+
+新客户端与本地 3001 网页实例同时运行；两端分别使用新、旧版本的不可变正式组件。辅助功能与屏幕录制分别关闭时，两端 API 和页面自动显示待授权；录屏撤权时确认两端撤销各自的 MCP 配置。重新开启后两端自动恢复可用，无需重启 PilotDeck。分别关闭、重新启用和重新检测一端，另一端的 Driver PID 与 socket 保持不变；停用的一端仍显示真实系统授权。最终两端实际 MCP 均返回 PilotDeck 窗口截图和辅助功能树，两项系统权限已恢复。
+
+[跨平台 CI](https://github.com/OpenBMB/PilotDeck/actions/runs/38341049095) 的 macOS、Windows、Linux 检查与 x64/arm64 打包任务全部通过；Windows/Linux 安装与现有 GUI smoke 通过，但未在这些系统上完成真实桌面的电脑操控任务。正式 macOS arm64/x64 签名构建全部通过；x64 首次在 Apple 公证票据 stapling 时发生网络断连，重试同一任务后通过。此轮不是全新 macOS 账户测试，也不代表未来任意签名身份变更都能继承旧授权。

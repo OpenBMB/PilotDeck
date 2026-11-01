@@ -104,12 +104,16 @@ export const zincDarkTheme: Extension = [
       },
       '.cm-searchMatch': {
         backgroundColor: 'var(--file-search-highlight-bg)',
+        color: 'var(--search-match-color)',
+        borderRadius: '3px',
         outline: '1px solid var(--file-search-highlight-border)',
       },
       '.cm-searchMatch.cm-searchMatch-selected': {
-        backgroundColor: 'var(--file-search-highlight-active-bg)',
+        backgroundColor: 'var(--search-match-active-bg)',
+        color: 'var(--search-match-active-text)',
+        fontWeight: '600',
         outline: '1px solid var(--file-search-highlight-active-border)',
-        boxShadow: '0 0 0 2px var(--file-search-highlight-active-ring)',
+        boxShadow: '0 0 0 3px var(--file-search-highlight-active-ring)',
       },
       '.cm-matchingBracket, .cm-nonmatchingBracket': {
         backgroundColor: zinc.selection,
@@ -239,12 +243,16 @@ export const zincLightTheme: Extension = [
       },
       '.cm-searchMatch': {
         backgroundColor: 'var(--file-search-highlight-bg)',
+        color: 'var(--search-match-color)',
+        borderRadius: '3px',
         outline: '1px solid var(--file-search-highlight-border)',
       },
       '.cm-searchMatch.cm-searchMatch-selected': {
-        backgroundColor: 'var(--file-search-highlight-active-bg)',
+        backgroundColor: 'var(--search-match-active-bg)',
+        color: 'var(--search-match-active-text)',
+        fontWeight: '600',
         outline: '1px solid var(--file-search-highlight-active-border)',
-        boxShadow: '0 0 0 2px var(--file-search-highlight-active-ring)',
+        boxShadow: '0 0 0 3px var(--file-search-highlight-active-ring)',
       },
       '.cm-matchingBracket, .cm-nonmatchingBracket': {
         backgroundColor: zincLight.selection,

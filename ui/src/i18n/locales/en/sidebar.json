@@ -71,6 +71,8 @@
     "showMore": "Show more sessions",
     "showMoreCount": "Show more ({{count}})",
     "showLess": "Show less",
+    "waitingForAnswer": "Waiting for your answer",
+    "waitingForApproval": "Waiting for approval",
     "processing": "Agent is running",
     "unread": "Unread messages",
     "idle": "No unread messages",

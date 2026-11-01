@@ -1,3 +1,4 @@
+import { withFileMutation } from "./filesystem/coordinateMutation.js";
 import { stat } from "node:fs/promises";
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
@@ -158,84 +159,86 @@ export function createEditFileTool(): PilotDeckToolDefinition<EditFileInput> {
         throw new PilotDeckToolRuntimeError(resolved.error.code, resolved.error.message, resolved.error.details);
       }
 
-      const freshness = await ensureWriteSnapshotFresh(context, resolved.absolutePath);
-      if (context.fileHistory) {
-        await context.fileHistory.trackEdit(
-          resolved.absolutePath,
-          context.messageId ?? context.turnId,
-        );
-      }
-
-      const content = freshness.previousContent ?? "";
-      let occurrences = 0;
-      let nextContent: string;
-
-      if (input.old_string === "") {
-        if (freshness.exists && content.length !== 0) {
-          throw new PilotDeckToolRuntimeError(
-            "invalid_tool_input",
-            "old_string may be empty only when creating a new file or writing to an empty file.",
+      return withFileMutation(context, resolved.absolutePath, async () => {
+        const freshness = await ensureWriteSnapshotFresh(context, resolved.absolutePath);
+        if (context.fileHistory) {
+          await context.fileHistory.trackEdit(
+            resolved.absolutePath,
+            context.messageId ?? context.turnId,
           );
         }
-        nextContent = input.new_string;
-      } else {
-        const { oldString: normalizedOld, newString: normalizedNew } =
-          normalizeEditInput(resolved.absolutePath, input.old_string, input.new_string);
-        const actualOldString = findActualString(content, normalizedOld);
-        if (!actualOldString) {
-          throw new PilotDeckToolRuntimeError(
-            "invalid_tool_input",
-            `String to replace not found in file.\nString: ${input.old_string}`,
-          );
+
+        const content = freshness.previousContent ?? "";
+        let occurrences = 0;
+        let nextContent: string;
+
+        if (input.old_string === "") {
+          if (freshness.exists && content.length !== 0) {
+            throw new PilotDeckToolRuntimeError(
+              "invalid_tool_input",
+              "old_string may be empty only when creating a new file or writing to an empty file.",
+            );
+          }
+          nextContent = input.new_string;
+        } else {
+          const { oldString: normalizedOld, newString: normalizedNew } =
+            normalizeEditInput(resolved.absolutePath, input.old_string, input.new_string);
+          const actualOldString = findActualString(content, normalizedOld);
+          if (!actualOldString) {
+            throw new PilotDeckToolRuntimeError(
+              "invalid_tool_input",
+              `String to replace not found in file.\nString: ${input.old_string}`,
+            );
+          }
+          occurrences = countOccurrences(content, actualOldString);
+          if (occurrences > 1 && !input.replace_all) {
+            throw new PilotDeckToolRuntimeError(
+              "invalid_tool_input",
+              `Found ${occurrences} matches of old_string. Set replace_all to true to replace all occurrences, or provide a more specific old_string.`,
+            );
+          }
+          // Function replacer: a string replacement would expand $$, $&, $` and $' in new_string.
+          nextContent = input.replace_all
+            ? content.split(actualOldString).join(normalizedNew)
+            : content.replace(actualOldString, () => normalizedNew);
         }
-        occurrences = countOccurrences(content, actualOldString);
-        if (occurrences > 1 && !input.replace_all) {
-          throw new PilotDeckToolRuntimeError(
-            "invalid_tool_input",
-            `Found ${occurrences} matches of old_string. Set replace_all to true to replace all occurrences, or provide a more specific old_string.`,
-          );
-        }
-        // Function replacer: a string replacement would expand $$, $&, $` and $' in new_string.
-        nextContent = input.replace_all
-          ? content.split(actualOldString).join(normalizedNew)
-          : content.replace(actualOldString, () => normalizedNew);
-      }
 
-      const action = await writeTextFile(resolved.absolutePath, nextContent, { allowOverwrite: true });
-      await context.fileHistory?.recordEdit?.(resolved.absolutePath, context.messageId ?? context.turnId, nextContent);
-      const fileStat = await stat(resolved.absolutePath);
-      invalidateReadFileState(context, resolved.absolutePath);
-      recordWriteSnapshot(context, resolved.absolutePath, nextContent, Math.floor(fileStat.mtimeMs));
+        const action = await writeTextFile(resolved.absolutePath, nextContent, { allowOverwrite: freshness.exists });
+        await context.fileHistory?.recordEdit?.(resolved.absolutePath, context.messageId ?? context.turnId, nextContent);
+        const fileStat = await stat(resolved.absolutePath);
+        invalidateReadFileState(context, resolved.absolutePath);
+        await recordWriteSnapshot(context, resolved.absolutePath, nextContent, Math.floor(fileStat.mtimeMs));
 
-      const update = {
-        absolutePath: resolved.absolutePath,
-        relativePath: resolved.relativePath,
-        root: resolved.root,
-        content: nextContent,
-        previousContent: freshness.previousContent,
-      };
-      await context.fileUpdateNotifier?.didChange?.(update);
-      await context.fileUpdateNotifier?.didSave?.(update);
+        const update = {
+          absolutePath: resolved.absolutePath,
+          relativePath: resolved.relativePath,
+          root: resolved.root,
+          content: nextContent,
+          previousContent: freshness.previousContent,
+        };
+        await context.fileUpdateNotifier?.didChange?.(update);
+        await context.fileUpdateNotifier?.didSave?.(update);
 
-      const replacements = input.old_string === "" ? 0 : input.replace_all ? occurrences : 1;
-      const successText =
-        `${action === "created" ? "Created" : "Updated"} ${resolved.relativePath}${replacements > 0 ? ` (${replacements} replacement).` : "."}`;
-      const syntaxDiagnostics = await formatSyntaxDiagnostics(resolved.relativePath, nextContent);
-      return {
-        content: [{
-          type: "text",
-          text: syntaxDiagnostics ? `${successText}\n\n${syntaxDiagnostics}` : successText,
-        }],
-        data: {
-          filePath: resolved.relativePath,
-          replacements,
-          changed: action === "created" || nextContent !== content,
-        },
-        metadata: {
-          bytesWritten: Buffer.byteLength(nextContent, "utf8"),
-          mtimeMs: Math.floor(fileStat.mtimeMs),
-        },
-      };
+        const replacements = input.old_string === "" ? 0 : input.replace_all ? occurrences : 1;
+        const successText =
+          `${action === "created" ? "Created" : "Updated"} ${resolved.relativePath}${replacements > 0 ? ` (${replacements} replacement).` : "."}`;
+        const syntaxDiagnostics = await formatSyntaxDiagnostics(resolved.relativePath, nextContent);
+        return {
+          content: [{
+            type: "text",
+            text: syntaxDiagnostics ? `${successText}\n\n${syntaxDiagnostics}` : successText,
+          }],
+          data: {
+            filePath: resolved.relativePath,
+            replacements,
+            changed: action === "created" || nextContent !== content,
+          },
+          metadata: {
+            bytesWritten: Buffer.byteLength(nextContent, "utf8"),
+            mtimeMs: Math.floor(fileStat.mtimeMs),
+          },
+        };
+      });
     },
   };
 }

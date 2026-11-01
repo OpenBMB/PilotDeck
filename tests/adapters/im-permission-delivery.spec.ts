@@ -15,18 +15,12 @@ test("Mattermost reports failed permission prompt delivery", async () => {
 });
 
 test("Slack reports failed permission prompt delivery", async () => {
-  const channel = new SlackChannel();
-  (channel as any).app = {
-    client: {
-      chat: {
-        postMessage: async () => {
-          throw new Error("post unavailable");
-        },
-      },
-    },
+  const channel = new SlackChannel({ botToken: "xoxb-test", appToken: "xapp-test" });
+  (channel as any).api = async () => {
+    throw new Error("post unavailable");
   };
 
-  assert.equal(await (channel as any).sendReply({ channelId: "channel-1" }, "permission prompt"), false);
+  assert.equal(await (channel as any).sendText({ channelId: "channel-1" }, "permission prompt"), false);
 });
 
 test("Home Assistant reports failed permission prompt delivery", async () => {

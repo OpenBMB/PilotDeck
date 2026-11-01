@@ -23,6 +23,7 @@ type ConversationSwitcherProps = {
   project: Project;
   selectedSession: ProjectSession | null;
   processingSessions: Set<string>;
+  waitingSessions?: Map<string, 'question' | 'approval'>;
   unreadSessionIds: Set<string>;
   onSelectSession: (session: ProjectSession) => void;
   onNewSession: () => void;
@@ -62,6 +63,7 @@ export default function ConversationSwitcher({
   project,
   selectedSession,
   processingSessions,
+  waitingSessions,
   unreadSessionIds,
   onSelectSession,
   onNewSession,
@@ -233,6 +235,7 @@ export default function ConversationSwitcher({
             </div>
             {filteredSessions.length > 0 ? filteredSessions.map((session, index) => {
               const isSelected = selectedSession?.id === session.id;
+              const waitingFor = waitingSessions?.get(session.id);
               const isProcessing = processingSessions.has(session.id) || session.id.startsWith('new-session-');
               const isUnread = unreadSessionIds.has(session.id);
               const title = sessionDisplayTitle(session);
@@ -261,7 +264,9 @@ export default function ConversationSwitcher({
                   )}
                 >
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                    {isProcessing ? (
+                    {waitingFor ? (
+                      <span role="status" className="text-amber-500" aria-label={t(waitingFor === 'question' ? 'chat:working.waitingForAnswer' : 'chat:working.waitingForApproval')}>!</span>
+                    ) : isProcessing ? (
                       <Loader2
                         className="h-3.5 w-3.5 animate-spin text-neutral-500 dark:text-neutral-400"
                         strokeWidth={1.8}

@@ -3,6 +3,7 @@ import {
   isExpectedProviderResponseShape,
 } from '../../../src/model/providerEndpoint.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
+import { mergeRequestHeaders, requestContextHeaders } from '../../../src/network/requestContext.js';
 import { deflateSync } from 'node:zlib';
 import { randomInt } from 'node:crypto';
 
@@ -214,7 +215,7 @@ export async function probeModelConnection({ protocol, baseUrl, endpointUrl, api
     let last = null;
     for (const url of urls) {
       const response = await networkFetch(url, {
-        method: 'POST', headers: request.headers, body: JSON.stringify(request.body), signal: controller.signal,
+        method: 'POST', headers: mergeRequestHeaders(requestContextHeaders({ purpose: 'model-probe' }), request.headers), body: JSON.stringify(request.body), signal: controller.signal,
       }, {
         signal: controller.signal, fetchImpl: fetch,
         retry: {

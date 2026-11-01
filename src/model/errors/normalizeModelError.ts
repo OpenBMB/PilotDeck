@@ -116,6 +116,26 @@ function classifyNetworkError(error: unknown, message: string): CanonicalModelEr
 }
 
 function firstErrorRecord(error: unknown): Record<string, unknown> | undefined {
+  if (typeof error === "string") {
+    // Some compatible gateways return SSE error frames even with HTTP 4xx.
+    for (const frame of error.split(/\r?\n\r?\n/)) {
+      const data = frame.split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart()).join("\n");
+      if (!data || data === "[DONE]") continue;
+      try {
+        const parsed: unknown = JSON.parse(data);
+        if (isRecord(parsed)) {
+          if (isRecord(parsed.error)) return parsed;
+          if (isRecord(parsed.response) && isRecord(parsed.response.error)) return parsed.response;
+          if (parsed.type === "error" && typeof parsed.message === "string") return parsed;
+        }
+      } catch {
+        // Continue to the next frame when a proxy includes malformed data.
+      }
+    }
+    return undefined;
+  }
   if (isRecord(error)) {
     return error;
   }

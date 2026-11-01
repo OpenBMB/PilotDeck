@@ -13,26 +13,43 @@ const artifactDir = process.env.PILOTDECK_CHROME_ARTIFACTS || path.join(root, 'o
 await fs.mkdir(artifactDir, { recursive: true });
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-chrome-'));
 const app = await electron.launch({
+  timeout: 60_000,
   executablePath: createRequire(import.meta.url)(path.join(root, 'apps/desktop/node_modules/electron')),
   args: [path.join(root, 'apps/desktop/scripts/fixtures/desktop-chrome.cjs'),
     ...(process.env.PILOTDECK_CHROME_SCALE ? [`--force-device-scale-factor=${process.env.PILOTDECK_CHROME_SCALE}`] : []),
     ...(process.env.PILOTDECK_CHROME_OZONE ? [`--ozone-platform=${process.env.PILOTDECK_CHROME_OZONE}`] : []),
-    ...(process.env.PILOTDECK_CHROME_DISABLE_SANDBOX ? ['--no-sandbox'] : [])],
+    ...(process.env.PILOTDECK_CHROME_DISABLE_SANDBOX ? ['--no-sandbox'] : []),
+    ...(process.env.PILOTDECK_CHROME_DISABLE_GPU ? ['--disable-gpu', '--disable-dev-shm-usage'] : [])],
   env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')), PILOTDECK_CHROME_PROFILE: profile },
 });
 app.process().on('exit', (code, signal) => { if (code) console.error('Electron exited', { code, signal }); });
+const errors = [];
+let page;
 try {
-  const page = await app.firstWindow();
+  page = await app.firstWindow();
+  page.on('crash', () => console.error('Desktop renderer crashed'));
+  page.on('console', message => { if (message.type() === 'error') console.error('Renderer:', message.text()); });
+  page.on('requestfailed', request => console.error('Request failed:', request.url(), request.failure()));
+  await expect.poll(() => app.evaluate(() => global.chromeTest.loaded()), { timeout: 30_000 }).toBe(true);
   const projects = [
     { name: 'general', displayName: 'General conversation', kind: 'general', fullPath: '/fixture/general', sessions: [], capabilities: { files: false } },
     { name: 'demo', displayName: 'Desktop design review', kind: 'workspace', fullPath: '/fixture/demo', sessions: [{ id: 'chrome-review', title: 'Native title review', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }], capabilities: { files: true } },
   ];
   let completedOnboarding = true;
   const missing = new Set();
+  const searchRequests = [];
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     let body = {};
     if (url.pathname === '/api/projects') body = projects;
+    else if (url.pathname === '/api/search/global') {
+      searchRequests.push(route.request().postDataJSON());
+      body = {
+        groups: { chats: [{ id: 'chat:demo:chrome-review', kind: 'chats', project: projects[1],
+          title: 'Native title review', sessionId: 'chrome-review', snippet: 'Native search fixture' }], files: [] },
+        counts: { chats: 1, files: 0 }, hasMore: { chats: false, files: false }, partial: [],
+      };
+    }
     else if (url.pathname.includes('onboarding-status')) body = { hasCompletedOnboarding: completedOnboarding };
     else if (url.pathname === '/api/settings/permissions') body = { success: true, permissions: { skipPermissions: false, allowedTools: [], deniedTools: [] } };
     else if (url.pathname.includes('/messages')) body = { messages: [], hasMore: false, total: 0 };
@@ -56,9 +73,8 @@ try {
       } catch {}
     });
   });
-  const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('http://127.0.0.1:5187');
+  await page.goto('http://127.0.0.1:5187/p/demo/c/chrome-review');
   await expect(page.locator('.app-shell')).toBeVisible({ timeout: 60000 });
   await expect.poll(() => app.evaluate(() => global.chromeTest.state().ready)).toBe(true);
   await expect(page.locator('html')).toHaveAttribute('data-desktop-platform', process.platform);
@@ -197,6 +213,15 @@ try {
     await expect.poll(() => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu().getMenuItemById(id)?.enabled, id)).toBe(true);
     await app.evaluate(({ Menu }, id) => Menu.getApplicationMenu().getMenuItemById(id).click(), id);
   };
+  const closeGlobalSearch = async () => {
+    const dialog = page.locator('[data-global-search]');
+    // Visibility precedes the dialog's scheduled focus. Sending Escape before
+    // focus arrives targets the sidebar and leaves the native menu blocked.
+    await expect(dialog.getByRole('combobox')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => app.evaluate(() => global.chromeTest.state().blocked)).toBe(false);
+  };
   if (!mac) {
     const caption = page.locator('#pilotdeck-window-caption');
     await expect(caption).toHaveCSS('height', '32px');
@@ -244,13 +269,23 @@ try {
   await page.goto('http://127.0.0.1:5187/p/demo');
   await expect.poll(() => app.evaluate(() => global.chromeTest.state().hasProject)).toBe(true);
   await page.locator('.workspace-actions').getByRole('button', { name: 'Files', exact: true }).click();
-  await expect.poll(() => app.evaluate(() => global.chromeTest.state().canFind)).toBe(false);
-  expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('find').enabled)).toBe(false);
+  await expect.poll(() => app.evaluate(() => global.chromeTest.state().canFind)).toBe(true);
+  expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('find').enabled)).toBe(true);
+  await command('find');
+  await expect(page.locator('[data-global-search]')).toBeVisible();
+  await closeGlobalSearch();
   await command('chat');
   await page.goto('http://127.0.0.1:5187/p/demo/c/chrome-review');
-  await page.locator('.workspace-actions').getByRole('button', { name: 'Search current conversation', exact: true }).click();
-  await expect(page.locator('[data-chat-history-search]')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page.locator('.workspace-actions').getByRole('button', { name: 'Search current conversation', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Search PilotDeck', exact: true }).click();
+  await expect(page.locator('[data-global-search]')).toBeVisible();
+  await page.getByRole('combobox', { name: 'Search chats and files' }).fill('Native');
+  await expect.poll(() => searchRequests.at(-1)?.query).toBe('Native');
+  await expect(page.getByRole('option', { name: /Native search fixture/ })).toBeVisible();
+  await closeGlobalSearch();
+  await page.keyboard.press(mac ? 'Meta+f' : 'Control+f');
+  await expect(page.locator('[data-global-search]')).toBeVisible();
+  await closeGlobalSearch();
   await command('new-conversation');
   await expect(page).toHaveURL(/\/p\/demo$/);
   await command('toggle-sidebar');
@@ -483,6 +518,12 @@ try {
   await expect(page.locator('html')).toHaveAttribute('data-desktop-platform', process.platform);
   expect(errors).toEqual([]);
   console.log(JSON.stringify({ passed: true, geometry, unmappedFixtureEndpoints: [...missing], artifactDir }));
+} catch (error) {
+  console.error('Desktop chrome failure:', { url: page?.url(), errors });
+  if (page && !page.isClosed()) {
+    await page.screenshot({ path: path.join(artifactDir, `${platformName}-failure.png`), timeout: 5000 }).catch(() => {});
+  }
+  throw error;
 } finally {
   await app.close();
   await fs.rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });

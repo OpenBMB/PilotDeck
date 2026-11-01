@@ -5,8 +5,9 @@
 #include <errno.h>
 #include <unistd.h>
 
-// LaunchServices gives this tiny GUI host its own TCC responsibility. The
-// embedded Driver remains its direct child and inherits that responsibility.
+// Run this app outside the enclosing desktop .app: nested applications can be
+// attributed to the enclosing bundle by TCC even when launched via LaunchServices.
+// The embedded Driver remains its direct child and inherits its responsibility.
 // No automation API or daemon listener is implemented by this host.
 static NSString *argument(NSArray<NSString *> *args, NSString *flag) {
   NSUInteger index = [args indexOfObject:flag];
@@ -32,20 +33,27 @@ int main(int argc, const char *argv[]) {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     [NSApp finishLaunching];
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
-    if ([args containsObject:@"permissions"]) {
+    BOOL probe = [args containsObject:@"probe"];
+    if (probe || [args containsObject:@"permissions"]) {
       NSString *permission = argument(args, @"--permission");
       NSString *resultFile = argument(args, @"--result-file");
       if (!resultFile.isAbsolutePath || ![resultFile.lastPathComponent hasPrefix:@"pilotdeck-permissions-"]) return 64;
-      if (![@[@"accessibility", @"screenRecording"] containsObject:permission]) return 64;
+      if (!probe && ![@[@"accessibility", @"screenRecording"] containsObject:permission]) return 64;
       // Publish startup before requesting consent. The backend must remain
       // responsive while the user handles macOS's prompt or System Settings.
-      NSDictionary *result = @{@"accessibility": @(AXIsProcessTrusted()), @"screen_recording": @(CGPreflightScreenCaptureAccess()),
+      // AXIsProcessTrusted returns UInt8, which otherwise serializes as 0/1.
+      // Publish JSON booleans consistently on both native architectures.
+      NSDictionary *result = @{@"accessibility": AXIsProcessTrusted() ? @YES : @NO,
+        @"screen_recording": CGPreflightScreenCaptureAccess() ? @YES : @NO,
         @"host_bundle_id": NSBundle.mainBundle.bundleIdentifier};
       NSData *data = [NSJSONSerialization dataWithJSONObject:result options:0 error:nil];
       int fd = open(resultFile.fileSystemRepresentation, O_WRONLY | O_TRUNC | O_NOFOLLOW);
       if (fd < 0) return 74;
       ssize_t written = write(fd, data.bytes, data.length); close(fd);
       if (written != (ssize_t)data.length) return 74;
+      // A fresh process avoids stale per-process answers. A status read must
+      // never request consent, take screenshots, or start an automation daemon.
+      if (probe) return 0;
       if ([args containsObject:@"--parent-liveness-stdio"]) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
           char bytes[256]; ssize_t received;

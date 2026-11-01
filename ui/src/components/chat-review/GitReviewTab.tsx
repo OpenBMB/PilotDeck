@@ -58,7 +58,7 @@ export default function GitReviewTab() {
     if (!project || busy) return;
     setBusy(true); setError(null); setNotice(null);
     try {
-      await readJson<{ output?: string }>(await authenticatedFetch('/api/git/operation', { method: 'POST', suppressServerErrorToast: true, body: JSON.stringify({ project: project.name, sessionId: review.sessionId, operation, ...extra }) }));
+      await readJson<{ output?: string }>(await authenticatedFetch('/api/git/operation', { method: 'POST', suppressServerErrorToast: true, body: JSON.stringify({ project: project.name, sessionId: review.sessionId, operation, ...(operation === 'stage' && status?.fileFingerprints ? { expectedFiles: status.fileFingerprints } : {}), ...extra }) }));
       setNotice(operation === 'commit' ? '本地提交已创建。' : operation === 'push' ? '推送完成。' : operation === 'init' ? 'Git 仓库已初始化，请选择文件创建首次提交。' : '操作完成。');
       if (operation === 'commit') { setMessage(''); setSelected([]); }
       if (operation === 'remote') { setRemoteUrl(''); setRemoteSetupOpen(false); }
@@ -66,7 +66,7 @@ export default function GitReviewTab() {
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { setBusy(false); }
   };
-  const blocked = busy || review.running || review.data.busy || review.readOnly;
+  const blocked = busy || review.data.busy || review.readOnly;
   const entries = status?.entries ?? [], staged = entries.filter(file => file.staged && !file.conflicted), unstaged = entries.filter(file => file.unstaged && !file.conflicted), conflicted = entries.filter(file => file.conflicted);
   const viewDiff = async (file: GitEntry, side: 'staged' | 'unstaged') => {
     if (!project) return;

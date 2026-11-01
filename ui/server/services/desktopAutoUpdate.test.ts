@@ -24,15 +24,15 @@ function setup(overrides: Record<string, unknown> = {}) {
   const verifyFile = vi.fn();
   const latestRelease = vi.fn(async () => release);
   const controller = createUpdateController({ updater: updater as unknown as Parameters<typeof createUpdateController>[0]["updater"], repository: 'OpenBMB/PilotDeck', platform: 'darwin', arch: 'arm64',
-    version: '2026.907.0', packaged: true, compareVersions, latestRelease, prepareToInstall, recoverRuntime, verifyFile, ...overrides });
+    version: '2026.907.0', packaged: true, compareVersions, latestRelease, downloadAvailable: async () => true, prepareToInstall, recoverRuntime, verifyFile, ...overrides });
   return { controller, updater, cancel, release, latestRelease, prepareToInstall, recoverRuntime, verifyFile };
 }
 describe('automatic update policy', () => {
-  it.each([['darwin', 'arm64'], ['darwin', 'x64'], ['win32', 'x64'], ['win32', 'arm64']])('requires the exact %s %s payload and feed', (platform, arch) => {
+  it.each([['darwin', 'arm64'], ['darwin', 'x64'], ['win32', 'x64'], ['win32', 'arm64']])('requires the exact %s %s payload without requiring a legacy feed', (platform, arch) => {
     const release = releaseFor(platform, arch);
     expect(selectUpdateAssets(release, platform, arch)?.asset).toEqual(asset(platform, arch));
     expect(selectUpdateAssets(release, platform, 'other')).toBeNull();
-    expect(selectUpdateAssets({ ...release, assets: release.assets.slice(0, 1) }, platform, arch)).toBeNull();
+    expect(selectUpdateAssets({ ...release, assets: release.assets.slice(0, 1) }, platform, arch)?.asset).toEqual(asset(platform, arch));
   });
   it.each(['x64', 'arm64'])('keeps Windows %s updates on their own architecture feed', async (arch) => {
     const own = releaseFor('win32', arch);
@@ -47,7 +47,7 @@ describe('automatic update policy', () => {
     const { controller, updater } = setup({ platform: 'win32', arch, latestRelease: async () => release });
     updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: info, cancellationToken: { cancel: vi.fn() } });
     controller.start(); await controller.wait();
-    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ channel: `latest-${arch}` }));
+    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ provider: 'custom', updateInfo: expect.objectContaining({ files: info.files }) }));
     expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
     expect(updater.autoRunAppAfterInstall).toBe(false);
     expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
@@ -71,7 +71,7 @@ describe('automatic update policy', () => {
       const { controller, updater } = setup({ platform: 'linux', arch, linuxPackageType: type, latestRelease: async () => release });
       updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true, updateInfo: { version: release.version, files: [{ url: expected.name, sha512: expected.sha512, size: expected.size }] }, cancellationToken: { cancel: vi.fn() } });
       controller.start(); await controller.wait();
-      expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ channel: type === 'rpm' ? 'latest-rpm' : 'latest' }));
+      expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ provider: 'custom', updateInfo: expect.objectContaining({ files: [{ url: expected.name, sha512: expected.sha512, size: expected.size }] }) }));
       expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
     }
     expect(selectUpdateAssets(release, 'linux', arch, 'unknown')).toBeNull();
@@ -94,6 +94,180 @@ describe('automatic update policy', () => {
   });
 });
 describe('automatic update lifecycle', () => {
+  it('keeps the new version visible while unavailable and rechecks readiness before starting', async () => {
+    const downloadAvailable = vi.fn().mockResolvedValue(false);
+    const { controller, updater, release } = setup({ downloadAvailable });
+    expect(await controller.check()).toMatchObject({ latest: release, hasUpdate: true, canDownload: false, reason: 'downloadUnavailable', checkUnavailable: false });
+    controller.start(); await controller.wait();
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(controller.status()).toMatchObject({ state: 'failed', reason: 'downloadUnavailable' });
+    downloadAvailable.mockResolvedValue(true);
+    expect(await controller.check()).toMatchObject({ canDownload: true, reason: null });
+    downloadAvailable.mockResolvedValue(false);
+    controller.start(); await controller.wait();
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    downloadAvailable.mockResolvedValue(true);
+    controller.start(); await controller.wait();
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+  it('cancels an in-flight readiness check without starting a download', async () => {
+    const downloadAvailable = vi.fn((_release, _asset, signal) => new Promise<boolean>(resolve => signal.addEventListener('abort', () => resolve(false), { once: true })));
+    const { controller, updater } = setup({ downloadAvailable });
+    controller.start();
+    await vi.waitFor(() => expect(downloadAvailable).toHaveBeenCalled());
+    controller.cancel(); await controller.wait();
+    expect(controller.status().state).toBe('cancelled');
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+  });
+  const bases = ['https://preferred.invalid/release/', 'https://origin.invalid/release/'];
+  it('remembers the route only after verification and before preparing installation', async () => {
+    const downloadSucceeded = vi.fn(), downloadFailed = vi.fn();
+    const { controller, updater, verifyFile, prepareToInstall } = setup({ downloadBases: async () => bases, downloadSucceeded, downloadFailed });
+    verifyFile.mockRejectedValueOnce(new Error('checksumMismatch'));
+    controller.start(); await controller.wait();
+    expect(downloadFailed).toHaveBeenCalledExactlyOnceWith(bases[0], releaseFor());
+    expect(downloadSucceeded).toHaveBeenCalledExactlyOnceWith(bases[1], releaseFor());
+    expect(downloadSucceeded.mock.invocationCallOrder[0]).toBeGreaterThan(verifyFile.mock.invocationCallOrder[1]);
+    expect(downloadSucceeded.mock.invocationCallOrder[0]).toBeLessThan(prepareToInstall.mock.invocationCallOrder[0]);
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+  it('does not let cache write failure interrupt installation', async () => {
+    const { controller, updater } = setup({ downloadBases: async () => bases,
+      downloadSucceeded: () => { throw new Error('disk read only'); } });
+    controller.start(); await controller.wait();
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(controller.status().state).toBe('installing');
+  });
+  it('switches after feed, payload and checksum failures while pinning the release', async () => {
+    for (const stage of ['feed', 'download', 'verify']) {
+      const { controller, updater, verifyFile, latestRelease, prepareToInstall } = setup({ downloadBases: async () => bases });
+      if (stage === 'feed') updater.checkForUpdates.mockRejectedValueOnce(new Error('offline'));
+      if (stage === 'download') updater.downloadUpdate.mockRejectedValueOnce(new Error('offline'));
+      if (stage === 'verify') verifyFile.mockRejectedValueOnce(new Error('checksumMismatch'));
+      controller.start(); await controller.wait();
+      expect(controller.status().state).toBe('installing');
+      expect(updater.setFeedURL.mock.calls.map(([config]) => config.url)).toEqual(bases.slice(0, 2));
+      expect(latestRelease).toHaveBeenCalledTimes(1);
+      expect(prepareToInstall).toHaveBeenCalledTimes(1);
+      expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    }
+  });
+  it('rejects mismatched feed metadata and continues on a different route', async () => {
+    const { controller, updater } = setup({ downloadBases: async () => bases });
+    updater.checkForUpdates.mockResolvedValueOnce({ isUpdateAvailable: true, updateInfo: { ...infoFor(releaseFor()), version: '2026.908.0' }, cancellationToken: { cancel: vi.fn() } });
+    controller.start(); await controller.wait();
+    expect(updater.setFeedURL).toHaveBeenCalledTimes(2);
+    expect(updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(controller.status().state).toBe('installing');
+  });
+  it('fails only after both rounds exhaust every route', async () => {
+    const { controller, updater, prepareToInstall } = setup({ downloadBases: async () => bases });
+    updater.downloadUpdate.mockRejectedValue(new Error('private hostname'));
+    controller.start(); await controller.wait();
+    expect(updater.setFeedURL.mock.calls.map(([config]) => config.url)).toEqual([...bases, ...bases]);
+    expect(controller.status()).toMatchObject({ state: 'failed', reason: 'updateFailed' });
+    expect(JSON.stringify(controller.status())).not.toContain('hostname');
+    expect(prepareToInstall).not.toHaveBeenCalled();
+  });
+  it('does not fail over after the user cancels a failing download', async () => {
+    const downloadSucceeded = vi.fn(), downloadFailed = vi.fn();
+    const { controller, updater } = setup({ downloadBases: async () => bases, downloadSucceeded, downloadFailed });
+    let reject!: (error: Error) => void;
+    updater.downloadUpdate.mockImplementation(() => new Promise((_, fail) => { reject = fail; }));
+    controller.start(); await vi.waitFor(() => expect(reject).toBeTypeOf('function'));
+    controller.cancel(); reject(new Error('cancelled'));
+    await controller.wait();
+    expect(updater.setFeedURL).toHaveBeenCalledTimes(1);
+    expect(controller.status().state).toBe('cancelled');
+    expect(downloadSucceeded).not.toHaveBeenCalled();
+    expect(downloadFailed).not.toHaveBeenCalled();
+  });
+  it('waits for Resume before switching away from a paused failed transport', async () => {
+    const { controller, updater } = setup({ downloadBases: async () => bases });
+    let reject!: (error: Error) => void;
+    updater.downloadUpdate.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    controller.start(); await vi.waitFor(() => expect(reject).toBeTypeOf('function'));
+    controller.pause(); reject(new Error('socket closed'));
+    await new Promise(resolve => setImmediate(resolve));
+    expect(controller.status().state).toBe('paused');
+    expect(updater.setFeedURL).toHaveBeenCalledTimes(1);
+    controller.resume(); await controller.wait();
+    expect(updater.setFeedURL).toHaveBeenCalledTimes(2);
+    expect(controller.status().state).toBe('installing');
+  });
+  it('cancels a stalled route and retries, excluding paused time', async () => {
+    vi.useFakeTimers();
+    try {
+      const downloadControl = { pause: vi.fn(), resume: vi.fn(), receivedBytes: () => 999999 };
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases, downloadControl });
+      updater.downloadUpdate.mockImplementationOnce(() => new Promise((_, reject) => {
+        cancel.mockImplementationOnce(() => reject(new Error('cancelled')));
+      }));
+      controller.start(); await vi.advanceTimersByTimeAsync(0);
+      expect(controller.status().state).toBe('downloading');
+      updater.emit('download-progress', { transferred: 5000000, percent: 99 });
+      controller.pause(); await vi.advanceTimersByTimeAsync(60000);
+      expect(cancel).not.toHaveBeenCalled();
+      controller.resume(); await vi.advanceTimersByTimeAsync(31000);
+      await controller.wait();
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(updater.setFeedURL).toHaveBeenCalledTimes(2);
+      expect(controller.status().state).toBe('installing');
+    } finally { vi.useRealTimers(); }
+  });
+  it('allows continuing slow progress on the final round', async () => {
+    vi.useFakeTimers();
+    try {
+      let received = 5000000;
+      const downloadControl = { pause: vi.fn(), resume: vi.fn(), receivedBytes: () => received };
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases.slice(0, 2), downloadControl });
+      let resolve!: (files: string[]) => void;
+      updater.downloadUpdate.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'))
+        .mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+      controller.start(); await vi.advanceTimersByTimeAsync(0);
+      expect(updater.setFeedURL).toHaveBeenCalledTimes(3);
+      for (let i = 1; i <= 6; i++) {
+        received++;
+        await vi.advanceTimersByTimeAsync(10000);
+      }
+      expect(cancel).not.toHaveBeenCalled();
+      expect(controller.status().transferred).toBe(0);
+      resolve(['/tmp/file']); await controller.wait();
+      expect(controller.status().state).toBe('installing');
+    } finally { vi.useRealTimers(); }
+  });
+  it('does not cancel healthy chunked downloads with no UI progress events', async () => {
+    vi.useFakeTimers();
+    try {
+      let received = 12345678;
+      const downloadControl = { pause: vi.fn(), resume: vi.fn(), receivedBytes: () => received };
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases, downloadControl });
+      let resolve!: (files: string[]) => void;
+      updater.downloadUpdate.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+      controller.start(); await vi.advanceTimersByTimeAsync(0);
+      for (let i = 0; i < 9; i++) {
+        received += 1024 * 1024;
+        await vi.advanceTimersByTimeAsync(10000);
+      }
+      expect(controller.status()).toMatchObject({ state: 'downloading', transferred: 0 });
+      expect(cancel).not.toHaveBeenCalled();
+      expect(updater.setFeedURL).toHaveBeenCalledTimes(1);
+      resolve(['/tmp/file']); await controller.wait();
+      expect(controller.status().state).toBe('installing');
+    } finally { vi.useRealTimers(); }
+  });
+  it('does not infer stalls when an adapter has no transport telemetry', async () => {
+    vi.useFakeTimers();
+    try {
+      const { controller, updater, cancel } = setup({ downloadBases: async () => bases });
+      let resolve!: (files: string[]) => void;
+      updater.downloadUpdate.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+      controller.start(); await vi.advanceTimersByTimeAsync(90000);
+      expect(cancel).not.toHaveBeenCalled();
+      resolve(['/tmp/file']); await controller.wait();
+      expect(controller.status().state).toBe('installing');
+    } finally { vi.useRealTimers(); }
+  });
   it('keeps a paused download locked and resumes without another check or download', async () => {
     const downloadControl = { pause: vi.fn(), resume: vi.fn() };
     const { controller, updater, prepareToInstall } = setup({ downloadControl });
@@ -150,7 +324,7 @@ describe('automatic update lifecycle', () => {
     const { controller, updater, prepareToInstall, verifyFile } = setup();
     expect(controller.start().state).toBe('checking'); await controller.wait();
     expect(controller.status().state).toBe('installing');
-    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://github.com/OpenBMB/PilotDeck/releases/download/v2026.09.07-r2/', channel: 'latest-arm64' }));
+    expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://github.com/OpenBMB/PilotDeck/releases/download/v2026.09.07-r2/', provider: 'custom' }));
     expect(verifyFile.mock.invocationCallOrder[0]).toBeLessThan(prepareToInstall.mock.invocationCallOrder[0]);
     expect(prepareToInstall.mock.invocationCallOrder[0]).toBeLessThan(updater.quitAndInstall.mock.invocationCallOrder[0]);
     expect(updater.quitAndInstall).toHaveBeenCalledWith(true, true);

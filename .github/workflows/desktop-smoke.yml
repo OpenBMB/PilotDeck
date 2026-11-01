@@ -50,6 +50,19 @@ jobs:
         run: pnpm run build
       - name: Test MCP transport, observations and managed computer use
         run: pnpm run test:mcp
+      - name: Test computer use permission state and platform isolation
+        run: >-
+          pnpm --dir ui exec vitest run
+          server/services/computerUse.test.js
+          src/components/settings/view/computerUse/index.test.tsx
+          server/routes/computer-use.test.js
+      - name: Test native computer use process and endpoint lifecycle
+        run: node --test apps/desktop/scripts/computer-use.test.mjs
+      - name: Test standalone macOS and Linux computer use
+        # The macOS host fixtures use POSIX app paths. Windows desktop uses
+        # the IPC controller and real named-pipe fixture tested above.
+        if: runner.os != 'Windows'
+        run: pnpm --dir ui exec vitest run server/services/standaloneComputerUse.test.js
       - name: Test checkpoints, restore, Git operations and internal ignore rules
         run: pnpm run test:checkpoints
       - name: Test review UI and Windows path matching
@@ -91,7 +104,13 @@ jobs:
 
       - name: Test desktop updater network
         # Requires electron-updater, intentionally absent from the Web-only job.
-        run: pnpm --dir ui exec vitest run server/services/desktopUpdateNetwork.test.ts server/services/desktopUpdates.spec.ts server/services/desktopAutoUpdate.test.ts
+        run: >-
+          pnpm --dir ui exec vitest run
+          server/services/desktopUpdateNetwork.test.ts
+          server/services/desktopUpdateAvailability.test.ts
+          server/services/desktopUpdates.spec.ts
+          server/services/desktopAutoUpdate.test.ts
+          server/services/jsonReleaseProvider.test.ts
 
   # PRs exercise the same native packages and updater feeds as releases.
   linux:

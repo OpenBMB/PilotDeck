@@ -27,8 +27,9 @@ function verifyCuaDriver(resources, expectedArch) {
     assert.equal(icon.readUInt32BE(4), icon.length);
     const signature = spawnSync('/usr/bin/codesign', ['--display', '--verbose=4', app], { encoding: 'utf8' });
     assert.equal(signature.status, 0, 'The permission helper must be signed');
-    assert.match(signature.stderr, /^Identifier=cn\.pilotdeck\.computer-use$/m);
+    assert.match(signature.stderr, /^Identifier=cn\.pilotdeck\.computer-use(?:\.dev)?$/m);
     if (process.env.PILOTDECK_DESKTOP_REQUIRE_SIGNING === '1') {
+      assert.match(signature.stderr, /^Identifier=cn\.pilotdeck\.computer-use$/m);
       assert.match(signature.stderr, /^Authority=Developer ID Application:/m);
       const outerApp = path.resolve(resources, '..', '..');
       const outerSignature = spawnSync('/usr/bin/codesign', ['--display', '--verbose=4', outerApp], { encoding: 'utf8' });

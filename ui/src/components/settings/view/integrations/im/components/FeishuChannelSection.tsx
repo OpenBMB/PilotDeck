@@ -18,6 +18,7 @@ import { authenticatedFetch } from "../../../../../../utils/api";
 import { showSettingsSuccess } from "../../../../shared/SettingsSuccessToast";
 import { cn } from "../../../../../../lib/utils";
 import type { GatewayStatus, TestResult } from "../types";
+import ChannelSetupChoice from "./ChannelSetupChoice";
 
 type FeishuSetupMode = "choose" | "qr" | "manual";
 type FeishuQrPhase = "idle" | "connecting" | "scanning" | "success" | "error";
@@ -212,34 +213,10 @@ export default function FeishuChannelSection({
                 <span>{t("gateway.feishu.chooseHint")}</span>
               </div>
               <div className="integration-setup-choices">
-                <button
-                  type="button"
-                  onClick={() => setSetupMode("qr")}
-                  className="integration-setup-choice"
-                >
-                  <span className="integration-choice-icon">
-                    <QrCode size={22} />
-                  </span>
-                  <span className="integration-choice-copy">
-                    <strong>{t("gateway.feishu.qrScan")}</strong>
-                    <small>{t("gateway.feishu.qrScanDesc")}</small>
-                  </span>
-                  <span className="integration-choice-check" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSetupMode("manual")}
-                  className="integration-setup-choice"
-                >
-                  <span className="integration-choice-icon">
-                    <KeyRound size={22} />
-                  </span>
-                  <span className="integration-choice-copy">
-                    <strong>{t("gateway.feishu.manualInput")}</strong>
-                    <small>{t("gateway.feishu.manualInputDesc")}</small>
-                  </span>
-                  <span className="integration-choice-check" />
-                </button>
+                <ChannelSetupChoice icon={<QrCode size={22} />} title={t("gateway.feishu.qrScan")}
+                  description={t("gateway.feishu.qrScanDesc")} onClick={() => setSetupMode("qr")} />
+                <ChannelSetupChoice icon={<KeyRound size={22} />} title={t("gateway.feishu.manualInput")}
+                  description={t("gateway.feishu.manualInputDesc")} onClick={() => setSetupMode("manual")} />
               </div>
               {status.enabled && (
                 <div className="flex items-center gap-2 pt-3">

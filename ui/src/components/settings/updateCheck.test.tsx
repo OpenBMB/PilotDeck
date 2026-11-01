@@ -8,9 +8,10 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: ()
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 const copy = (key: string) => `settingsPage.about.desktopUpdate.${key}`;
 const release = (hasUpdate = true) => ({ current: { version: '2026.1001.0' }, latest: { version: hasUpdate ? '2026.1002.0' : '2026.1001.0' }, hasUpdate, canDownload: hasUpdate, checkUnavailable: false });
-const bridge = { platform: 'darwin', checkUpdates: vi.fn(), getUpdateStatus: vi.fn(), startUpdate: vi.fn(), cancelUpdate: vi.fn() };
+const bridge = { getAboutInfo: vi.fn(), platform: 'darwin', checkUpdates: vi.fn(), getUpdateStatus: vi.fn(), startUpdate: vi.fn(), cancelUpdate: vi.fn() };
 beforeEach(() => {
   vi.resetAllMocks(); vi.stubGlobal('pilotdeckDesktop', bridge);
+  bridge.getAboutInfo.mockResolvedValue({ version: '2026.1001.0', buildTime: null });
   bridge.getUpdateStatus.mockResolvedValue({ state: 'idle', progress: 0 });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -40,4 +41,11 @@ it('keeps the refresh action available after repeated failures without requestin
   await waitFor(() => expect((screen.getByRole('button', { name: copy('checkAgain') }) as HTMLButtonElement).disabled).toBe(false));
   expect(screen.getByRole('alert').textContent).toBe(copy('reasons.checkFailed'));
   expect(bridge.startUpdate).not.toHaveBeenCalled();
+});
+
+it('shows the installed version while the network check remains pending', async () => {
+  bridge.checkUpdates.mockReturnValue(new Promise(() => {}));
+  render(<Settings section="about" onClose={vi.fn()} />);
+  await waitFor(() => expect(screen.getByText('settingsPage.about.currentVersion 2026.1001.0')).toBeTruthy());
+  expect(bridge.checkUpdates).toHaveBeenCalledOnce();
 });

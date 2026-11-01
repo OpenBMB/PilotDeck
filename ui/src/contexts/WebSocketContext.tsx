@@ -2,6 +2,7 @@ import { globalModelSelectionStore } from '../components/chat/utils/globalModelS
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../components/auth/context/AuthContext';
 import { IS_PLATFORM } from '../constants/config';
+import { withClientRequestContext } from '../utils/requestContext';
 
 type WSSubscriber = (msg: any) => void;
 
@@ -121,7 +122,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
 
           while (queuedMessagesRef.current.length > 0 && websocket.readyState === WebSocket.OPEN) {
             const message = queuedMessagesRef.current.shift();
-            websocket.send(JSON.stringify(message));
+            websocket.send(JSON.stringify(withClientRequestContext(message)));
           }
 
           const pingInterval = setInterval(() => {
@@ -218,7 +219,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
     const socket = wsRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
       try {
-        socket.send(JSON.stringify(message));
+        socket.send(JSON.stringify(withClientRequestContext(message)));
         globalModelSelectionStore.trackMessage(message);
         return true;
       } catch (error) {

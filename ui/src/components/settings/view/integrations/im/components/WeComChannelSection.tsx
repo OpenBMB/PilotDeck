@@ -17,6 +17,7 @@ import { authenticatedFetch } from "../../../../../../utils/api";
 import { showSettingsSuccess } from "../../../../shared/SettingsSuccessToast";
 import { cn } from "../../../../../../lib/utils";
 import type { GatewayStatus, TestResult, WeComAccessPolicy } from "../types";
+import ChannelSetupChoice from "./ChannelSetupChoice";
 
 type WeComSetupMode = "choose" | "qr" | "manual";
 type WeComQrPhase = "idle" | "connecting" | "scanning" | "success" | "error";
@@ -217,35 +218,13 @@ export default function WeComChannelSection({
       {expanded ? (
         <div className="integration-channel-detail">
           {expanded && setupMode === "choose" && (
-            <div className="space-y-3 border-t border-border pt-4">
-              <p className="text-xs text-muted-foreground">{t("gateway.wecom.chooseMethod")}</p>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSetupMode("qr")}
-                  className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center transition-colors hover:border-ring hover:bg-accent/30"
-                >
-                  <QrCode className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-[13px] font-medium text-foreground">
-                    {t("gateway.wecom.qrSetup")}
-                  </span>
-                  <span className="text-[11px] leading-4 text-muted-foreground">
-                    {t("gateway.wecom.qrSetupDesc")}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSetupMode("manual")}
-                  className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center transition-colors hover:border-ring hover:bg-accent/30"
-                >
-                  <KeyRound className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-[13px] font-medium text-foreground">
-                    {t("gateway.wecom.manualInput")}
-                  </span>
-                  <span className="text-[11px] leading-4 text-muted-foreground">
-                    {t("gateway.wecom.manualInputDesc")}
-                  </span>
-                </button>
+            <div>
+              <div className="integration-detail-heading"><strong>{t("gateway.wecom.chooseMethod")}</strong></div>
+              <div className="integration-setup-choices">
+                <ChannelSetupChoice icon={<QrCode size={22} />} title={t("gateway.wecom.qrSetup")}
+                  description={t("gateway.wecom.qrSetupDesc")} onClick={() => setSetupMode("qr")} />
+                <ChannelSetupChoice icon={<KeyRound size={22} />} title={t("gateway.wecom.manualInput")}
+                  description={t("gateway.wecom.manualInputDesc")} onClick={() => setSetupMode("manual")} />
               </div>
               {status.enabled && (
                 <div className="flex items-center gap-2">

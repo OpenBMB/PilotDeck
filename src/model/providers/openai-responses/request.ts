@@ -61,7 +61,7 @@ type OpenAIResponsesTool = {
   name: string;
   description?: string;
   parameters: Record<string, unknown>;
-  strict: true;
+  strict: false;
 };
 
 export function buildOpenAIResponsesRequest(
@@ -119,7 +119,7 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
 
   const flushContent = () => {
     if (normalContent.length === 0) return;
-    const content = normalContent.flatMap((block) => toResponsesContentPart(block));
+    const content = normalContent.flatMap((block) => toResponsesContentPart(block, message.role));
     if (content.length > 0) {
       items.push({ role: message.role, content });
     }
@@ -175,12 +175,16 @@ function toResponsesInputItems(message: CanonicalMessage): OpenAIResponsesInputI
   return items;
 }
 
-function toResponsesContentPart(block: CanonicalContentBlock): Record<string, unknown>[] {
+function toResponsesContentPart(
+  block: CanonicalContentBlock,
+  role: "user" | "assistant" = "user",
+): Record<string, unknown>[] {
+  const textType = role === "assistant" ? "output_text" : "input_text";
   switch (block.type) {
     case "text":
-      return [{ type: "input_text", text: block.text }];
+      return [{ type: textType, text: block.text }];
     case "thinking":
-      return [{ type: "input_text", text: block.text }];
+      return [{ type: textType, text: block.text }];
     case "image":
       return [{
         type: "input_image",
@@ -195,10 +199,10 @@ function toResponsesContentPart(block: CanonicalContentBlock): Record<string, un
       }];
     case "audio":
       return block.source === "url"
-        ? [{ type: "input_text", text: `[Audio URL: ${block.data}]` }]
-        : [{ type: "input_text", text: "[Audio content omitted]" }];
+        ? [{ type: textType, text: `[Audio URL: ${block.data}]` }]
+        : [{ type: textType, text: "[Audio content omitted]" }];
     case "media_reference":
-      return [{ type: "input_text", text: block.preview }];
+      return [{ type: textType, text: block.preview }];
     case "tool_call":
     case "tool_result":
     case "tool_result_reference":
@@ -212,7 +216,8 @@ function toResponsesTool(tool: CanonicalToolSchema): OpenAIResponsesTool {
     name: tool.name,
     description: tool.description,
     parameters: normalizeOpenAISchema(tool.inputSchema),
-    strict: true,
+    // Tool schemas include optional fields and open objects; preserve their semantics.
+    strict: false,
   };
 }
 

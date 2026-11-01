@@ -273,6 +273,14 @@ describe('attachment path notes', () => {
 });
 
 describe('mergeUserAttachments', () => {
+  it('keeps same-name uploads distinct across files and batches, while deduplicating the same ID', () => {
+    const files = [
+      { name: 'image.png', path: 'image.png', uploadId: 'one', attachmentId: 'a' },
+      { name: 'image.png', path: 'image.png', uploadId: 'one', attachmentId: 'b' },
+      { name: 'image.png', path: 'image.png', uploadId: 'two', attachmentId: 'a' },
+    ];
+    expect(mergeUserAttachments(files, [files[0]])).toEqual(files);
+  });
   it('prefers structured attachment metadata over the text fallback', () => {
     const structured: ChatAttachment = {
       name: 'report.xlsx',

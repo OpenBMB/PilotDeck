@@ -41,9 +41,13 @@ export function createModelRuntime(
     return model;
   };
 
+  const mergeOptions = (callOptions?: ModelRuntimeOptions): ModelRuntimeOptions => ({
+    ...options, ...callOptions,
+    requestContext: { ...options.requestContext, ...callOptions?.requestContext },
+  });
   return {
-    stream: (request, callOptions) => streamModel(request, config, { ...options, ...callOptions }),
-    complete: (request, callOptions) => complete(request, config, { ...options, ...callOptions }),
+    stream: (request, callOptions) => streamModel(request, config, mergeOptions(callOptions)),
+    complete: (request, callOptions) => complete(request, config, mergeOptions(callOptions)),
     getCapabilities: (providerId, modelId) => getModel(providerId, modelId).capabilities,
     getMultimodal: (providerId, modelId) => getModel(providerId, modelId).multimodal,
     getProviderProtocol: (providerId) => config.providers[providerId]?.protocol,

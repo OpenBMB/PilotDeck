@@ -1,5 +1,6 @@
 import { isWebSearchProvider, SERPAPI_ENGINES, type SerpApiEngine } from "./webSearchProviders.js";
 import { isRecord } from "../../model/config/schema.js";
+import { validateCustomSearch } from "./customSearch.js";
 import type {
   PilotConfigDiagnostic,
   PilotToolsConfig,
@@ -7,6 +8,7 @@ import type {
   PilotWebSearchCustomAuth,
   PilotWebSearchCustomMethod,
   PilotWebSearchProvider,
+  PilotWebSearchProviderConfig,
 } from "./types.js";
 
 /**
@@ -16,8 +18,12 @@ import type {
  *     webSearch:
  *       enabled: true
  *       provider: glm                    # See webSearchProviders.ts for supported providers
- *       apiKey: "..."
- *       endpoint: https://api.z.ai/api/paas/v4/web_search
+ *       providers:
+ *         glm:
+ *           apiKey: "..."
+ *           endpoint: https://api.z.ai/api/paas/v4/web_search
+ *
+ * Legacy apiKey/endpoint fields at the webSearch level remain supported.
  *
  * Unknown fields produce non-fatal warnings so future additions don't break
  * older deployments. Returns `undefined` when no webSearch block exists.
@@ -114,56 +120,55 @@ function parseWebSearch(
     }
   }
 
-  const searchEngine = parseEnumField<SerpApiEngine>(
-    raw.searchEngine, [...SERPAPI_ENGINES], "tools.webSearch.searchEngine",
-    "TOOLS_WEB_SEARCH_ENGINE_INVALID", diagnostics,
-  );
-  if (searchEngine) result.searchEngine = searchEngine;
+  Object.assign(result, parseProviderConfig(raw, diagnostics, "tools.webSearch"));
 
-  if (raw.apiKey !== undefined) {
-    if (typeof raw.apiKey !== "string" || raw.apiKey.trim().length === 0) {
+  if (raw.providers !== undefined) {
+    if (!isRecord(raw.providers)) {
       diagnostics.push({
-        code: "TOOLS_WEB_SEARCH_API_KEY_INVALID",
+        code: "TOOLS_WEB_SEARCH_PROVIDERS_INVALID",
         severity: "fatal",
-        message: "tools.webSearch.apiKey must be a non-empty string.",
-        path: "tools.webSearch.apiKey",
+        message: "tools.webSearch.providers must be an object.",
+        path: "tools.webSearch.providers",
         recoverable: false,
       });
     } else {
-      result.apiKey = raw.apiKey.trim();
-    }
-  }
-
-  if (raw.endpoint !== undefined) {
-    if (typeof raw.endpoint !== "string" || raw.endpoint.trim().length === 0) {
-      diagnostics.push({
-        code: "TOOLS_WEB_SEARCH_ENDPOINT_INVALID",
-        severity: "fatal",
-        message: "tools.webSearch.endpoint must be a non-empty URL string.",
-        path: "tools.webSearch.endpoint",
-        recoverable: false,
-      });
-    } else {
-      const endpoint = raw.endpoint.trim();
-      try {
-        const parsed = new URL(endpoint);
-        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("unsupported protocol");
-        result.endpoint = endpoint;
-      } catch {
-        diagnostics.push({
-          code: "TOOLS_WEB_SEARCH_ENDPOINT_INVALID",
-          severity: "fatal",
-          message: "tools.webSearch.endpoint must be an HTTP(S) URL.",
-          path: "tools.webSearch.endpoint",
-          recoverable: false,
-        });
+      result.providers = {};
+      for (const [provider, settings] of Object.entries(raw.providers)) {
+        const path = `tools.webSearch.providers.${provider}`;
+        if (!isWebSearchProvider(provider)) {
+          diagnostics.push({
+            code: "TOOLS_WEB_SEARCH_PROVIDER_UNKNOWN",
+            severity: "warning",
+            message: `Unknown Web Search provider ${provider}.`,
+            path,
+            recoverable: true,
+          });
+          continue;
+        }
+        if (!isRecord(settings)) {
+          diagnostics.push({
+            code: "TOOLS_WEB_SEARCH_PROVIDER_CONFIG_INVALID",
+            severity: "fatal",
+            message: `${path} must be an object.`,
+            path,
+            recoverable: false,
+          });
+          continue;
+        }
+        result.providers[provider] = parseProviderConfig(settings, diagnostics, path);
+        for (const key of Object.keys(settings)) {
+          if (!["apiKey", "endpoint", "searchEngine", "customProvider"].includes(key)) {
+            diagnostics.push({
+              code: "TOOLS_WEB_SEARCH_UNKNOWN_FIELD",
+              severity: "warning",
+              message: `Unknown ${path} field ${key}.`,
+              path: `${path}.${key}`,
+              recoverable: true,
+            });
+          }
+        }
       }
     }
-  }
-
-  const customProvider = parseCustomProvider(raw.customProvider, diagnostics);
-  if (customProvider) {
-    result.customProvider = customProvider;
   }
 
   // Soft-deprecate removed legacy fields. Emit warnings + ignore so existing
@@ -190,7 +195,7 @@ function parseWebSearch(
   }
 
   for (const key of Object.keys(raw)) {
-    if (key !== "enabled" && key !== "provider" && key !== "apiKey" && key !== "endpoint" && key !== "customProvider" && key !== "searchEngine" && key !== "region" && key !== "tavilyApiKey") {
+    if (key !== "enabled" && key !== "provider" && key !== "apiKey" && key !== "endpoint" && key !== "customProvider" && key !== "searchEngine" && key !== "region" && key !== "tavilyApiKey" && key !== "providers") {
       diagnostics.push({
         code: "TOOLS_WEB_SEARCH_UNKNOWN_FIELD",
         severity: "warning",
@@ -205,17 +210,79 @@ function parseWebSearch(
   return result;
 }
 
+function parseProviderConfig(
+  raw: Record<string, unknown>,
+  diagnostics: PilotConfigDiagnostic[],
+  path: string,
+): PilotWebSearchProviderConfig {
+  const result: PilotWebSearchProviderConfig = {};
+  const searchEngine = parseEnumField<SerpApiEngine>(
+    raw.searchEngine, [...SERPAPI_ENGINES], `${path}.searchEngine`,
+    "TOOLS_WEB_SEARCH_ENGINE_INVALID", diagnostics,
+  );
+  if (searchEngine) result.searchEngine = searchEngine;
+
+  if (raw.apiKey !== undefined) {
+    if (typeof raw.apiKey !== "string" || raw.apiKey.trim().length === 0) {
+      diagnostics.push({
+        code: "TOOLS_WEB_SEARCH_API_KEY_INVALID",
+        severity: "fatal",
+        message: `${path}.apiKey must be a non-empty string.`,
+        path: `${path}.apiKey`,
+        recoverable: false,
+      });
+    } else {
+      result.apiKey = raw.apiKey.trim();
+    }
+  }
+
+  if (raw.endpoint !== undefined) {
+    if (typeof raw.endpoint !== "string" || raw.endpoint.trim().length === 0) {
+      diagnostics.push({
+        code: "TOOLS_WEB_SEARCH_ENDPOINT_INVALID",
+        severity: "fatal",
+        message: `${path}.endpoint must be a non-empty URL string.`,
+        path: `${path}.endpoint`,
+        recoverable: false,
+      });
+    } else {
+      const endpoint = raw.endpoint.trim();
+      try {
+        const parsed = new URL(endpoint);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("unsupported protocol");
+        result.endpoint = endpoint;
+      } catch {
+        diagnostics.push({
+          code: "TOOLS_WEB_SEARCH_ENDPOINT_INVALID",
+          severity: "fatal",
+          message: `${path}.endpoint must be an HTTP(S) URL.`,
+          path: `${path}.endpoint`,
+          recoverable: false,
+        });
+      }
+    }
+  }
+
+  const customProvider = parseCustomProvider(raw.customProvider, diagnostics, `${path}.customProvider`);
+  if (customProvider) {
+    result.customProvider = customProvider;
+  }
+
+  return result;
+}
+
 function parseCustomProvider(
   raw: unknown,
   diagnostics: PilotConfigDiagnostic[],
+  path: string,
 ): NonNullable<PilotWebSearchConfig["customProvider"]> | undefined {
   if (raw === undefined) return undefined;
   if (!isRecord(raw)) {
     diagnostics.push({
       code: "TOOLS_WEB_SEARCH_CUSTOM_PROVIDER_INVALID",
       severity: "fatal",
-      message: "tools.webSearch.customProvider must be an object.",
-      path: "tools.webSearch.customProvider",
+      message: `${path} must be an object.`,
+      path,
       recoverable: false,
     });
     return undefined;
@@ -224,8 +291,8 @@ function parseCustomProvider(
   const result: NonNullable<PilotWebSearchConfig["customProvider"]> = {};
   const auth = parseEnumField<PilotWebSearchCustomAuth>(
     raw.auth,
-    ["bearer", "bodyApiKey", "queryApiKey", "none"],
-    "tools.webSearch.customProvider.auth",
+    ["bearer", "bodyApiKey", "queryApiKey", "headerApiKey", "none"],
+    `${path}.auth`,
     "TOOLS_WEB_SEARCH_CUSTOM_AUTH_INVALID",
     diagnostics,
   );
@@ -234,7 +301,7 @@ function parseCustomProvider(
   const method = parseEnumField<PilotWebSearchCustomMethod>(
     raw.method,
     ["GET", "POST"],
-    "tools.webSearch.customProvider.method",
+    `${path}.method`,
     "TOOLS_WEB_SEARCH_CUSTOM_METHOD_INVALID",
     diagnostics,
   );
@@ -251,14 +318,23 @@ function parseCustomProvider(
     "sourceField",
     "publishedAtField",
   ] as const) {
-    const parsed = parseOptionalStringField(raw[field], `tools.webSearch.customProvider.${field}`, diagnostics);
+    const parsed = parseOptionalStringField(raw[field], `${path}.${field}`, diagnostics);
     if (parsed !== undefined) {
       result[field] = parsed;
     }
   }
 
+  for (const field of ['headers', 'queryParams', 'requestBody', 'bodyEncoding'] as const) {
+    if (raw[field] !== undefined) Object.assign(result, { [field]: raw[field] });
+  }
+  try { validateCustomSearch(result); }
+  catch (error) {
+    diagnostics.push({ code: 'TOOLS_WEB_SEARCH_CUSTOM_TEMPLATE_INVALID', severity: 'fatal',
+      message: `${path}: ${error instanceof Error ? error.message : String(error)}`, path, recoverable: false });
+  }
   for (const key of Object.keys(raw)) {
     if (
+      !['headers', 'queryParams', 'requestBody', 'bodyEncoding'].includes(key) &&
       key !== "auth" &&
       key !== "name" &&
       key !== "method" &&
@@ -274,8 +350,8 @@ function parseCustomProvider(
       diagnostics.push({
         code: "TOOLS_WEB_SEARCH_CUSTOM_PROVIDER_UNKNOWN_FIELD",
         severity: "warning",
-        message: `Unknown tools.webSearch.customProvider field ${key}.`,
-        path: `tools.webSearch.customProvider.${key}`,
+        message: `Unknown ${path} field ${key}.`,
+        path: `${path}.${key}`,
         recoverable: true,
       });
     }

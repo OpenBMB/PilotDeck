@@ -251,3 +251,11 @@ it('renders running, unread and idle indicators in the same slot', () => {
   expect(view.container.querySelector('[data-session-indicator="unread"]')?.getAttribute('data-status')).toBe('unread');
   expect(view.container.querySelector('[data-session-indicator="idle"]')?.getAttribute('data-status')).toBe('idle');
 });
+
+it('shows waiting questions and approvals ahead of running and unread indicators', () => {
+  const withSessions = {...project, sessions:[{id:'question',title:'Question'}, {id:'approval',title:'Approval'}]};
+  const view = renderSidebar(withSessions, {projects:[withSessions],processingSessions:new Set(['question','approval']),unreadSessionIds:new Set(['question','approval']),waitingSessions:new Map([['question','question'],['approval','approval']])});
+  expect(view.container.querySelector('[data-session-indicator="question"]')?.getAttribute('aria-label')).toMatch(/Waiting for your answer|等待你回答/);
+  expect(view.container.querySelector('[data-session-indicator="approval"]')?.getAttribute('aria-label')).toMatch(/Waiting for approval|等待你审批/);
+  expect(screen.queryByTestId('running-indicator')).toBeNull();
+});

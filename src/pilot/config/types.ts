@@ -140,36 +140,12 @@ export type PilotGatewayConfig = {
 };
 
 export type PilotWebSearchProvider = import("./webSearchProviders.js").WebSearchProvider;
-export type PilotWebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "none";
+export type PilotWebSearchCustomAuth = "bearer" | "bodyApiKey" | "queryApiKey" | "headerApiKey" | "none";
 export type PilotWebSearchCustomMethod = "GET" | "POST";
 
-export type PilotWebSearchCustomProviderConfig = {
-  name?: string;
-  auth?: PilotWebSearchCustomAuth;
-  method?: PilotWebSearchCustomMethod;
-  queryParam?: string;
-  apiKeyParam?: string;
-  resultsPath?: string;
-  titleField?: string;
-  urlField?: string;
-  snippetField?: string;
-  sourceField?: string;
-  publishedAtField?: string;
-};
-
-/**
- * Per-tool runtime config for `web_search`. Exactly one provider is active at
- * runtime; `apiKey` and `endpoint` apply to the selected provider.
- */
-export type PilotWebSearchConfig = {
-  /** Missing webSearch section is off; legacy sections without this flag remain enabled. */
-  enabled?: boolean;
-  provider?: PilotWebSearchProvider;
-  searchEngine?: import("./webSearchProviders.js").SerpApiEngine;
-  apiKey?: string;
-  endpoint?: string;
-  customProvider?: PilotWebSearchCustomProviderConfig;
-};
+export type PilotWebSearchCustomProviderConfig = import("./webSearchConfig.js").WebSearchCustomProviderConfig;
+export type PilotWebSearchProviderConfig = import("./webSearchConfig.js").WebSearchProviderConfig;
+export type PilotWebSearchConfig = import("./webSearchConfig.js").WebSearchConfig;
 
 export type PilotToolsConfig = {
   webSearch?: PilotWebSearchConfig;

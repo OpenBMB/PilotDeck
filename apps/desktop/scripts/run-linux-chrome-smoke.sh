@@ -12,11 +12,10 @@ repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$repo_root"
 export PILOTDECK_CHROME_OZONE="$mode"
 export PILOTDECK_CHROME_DISABLE_SANDBOX=1
+export PILOTDECK_CHROME_DISABLE_GPU=1
 export PILOTDECK_CHROME_ARTIFACTS="$repo_root/outputs/desktop-chrome-review/linux-$mode"
 mkdir -p "$PILOTDECK_CHROME_ARTIFACTS"
-if ! "$node_binary" -e "require('./apps/desktop/node_modules/electron')" >/dev/null 2>&1; then
-  "$node_binary" apps/desktop/node_modules/electron/install.js
-fi
+"$node_binary" apps/desktop/scripts/prepare-electron.mjs
 
 (cd ui && exec "$node_binary" node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5187 --strictPort) \
   >"${TMPDIR:-/tmp}/pilotdeck-chrome-vite-$mode.log" 2>&1 &
@@ -35,11 +34,11 @@ cleanup() {
 trap cleanup EXIT
 
 for ((attempt = 0; attempt < 200; attempt++)); do
-  if curl --silent --fail http://127.0.0.1:5187/ >/dev/null; then break; fi
   if ! kill -0 "$vite_pid" 2>/dev/null; then
     cat "${TMPDIR:-/tmp}/pilotdeck-chrome-vite-$mode.log" >&2
     exit 1
   fi
+  if curl --silent --fail http://127.0.0.1:5187/ >/dev/null; then break; fi
   sleep 0.1
 done
 curl --silent --fail http://127.0.0.1:5187/ >/dev/null
@@ -53,7 +52,7 @@ else
   export WAYLAND_DISPLAY=wayland-pilotdeck-chrome
   unset DISPLAY
   weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" \
-    --no-config --idle-time=0 --width=1440 --height=900 >"$runtime_dir/weston.log" 2>&1 &
+    --use-pixman --no-config --idle-time=0 --width=1440 --height=900 >"$runtime_dir/weston.log" 2>&1 &
   weston_pid=$!
   for ((attempt = 0; attempt < 100; attempt++)); do
     if [[ -S "$runtime_dir/$WAYLAND_DISPLAY" ]]; then break; fi

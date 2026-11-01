@@ -1,103 +1,36 @@
-import { useCallback, useEffect, useState } from 'react';
 import { authenticatedFetch } from '../utils/api';
+import type { NotificationPreferences } from '../../shared/notifications';
 
-type WebPushState = {
-  permission: NotificationPermission | 'unsupported';
-  isSubscribed: boolean;
-  isLoading: boolean;
-  subscribe: () => Promise<void>;
-  unsubscribe: () => Promise<void>;
-};
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
-export function useWebPush(): WebPushState {
-  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(() => {
-    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
-      return 'unsupported';
-    }
-    return Notification.permission;
-  });
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Check existing subscription on mount
-  useEffect(() => {
-    if (permission === 'unsupported') return;
-
-    navigator.serviceWorker.ready.then((registration) => {
-      registration.pushManager.getSubscription().then((sub) => {
-        setIsSubscribed(sub !== null);
-      });
-    }).catch(() => {
-      // SW not ready yet
-    });
-  }, [permission]);
-
-  const subscribe = useCallback(async () => {
-    if (permission === 'unsupported') return;
-    setIsLoading(true);
-
-    try {
-      const perm = await Notification.requestPermission();
-      setPermission(perm);
-      if (perm !== 'granted') return;
-
-      const keyRes = await authenticatedFetch('/api/settings/push/vapid-public-key');
-      const { publicKey } = await keyRes.json();
-
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey).buffer as ArrayBuffer,
-      });
-
-      const subJson = subscription.toJSON();
-      await authenticatedFetch('/api/settings/push/subscribe', {
-        method: 'POST',
-        body: JSON.stringify({
-          endpoint: subJson.endpoint,
-          keys: subJson.keys,
-        }),
-      });
-
-      setIsSubscribed(true);
-    } catch (err) {
-      console.error('Push subscribe failed:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [permission]);
-
-  const unsubscribe = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-      if (subscription) {
-        const endpoint = subscription.endpoint;
-        await subscription.unsubscribe();
-        await authenticatedFetch('/api/settings/push/unsubscribe', {
-          method: 'POST',
-          body: JSON.stringify({ endpoint }),
+/** Live notifications remain available when the browser push service is unavailable. */
+export async function syncWebPush(preferences: NotificationPreferences, language: string) {
+  if (window.pilotdeckDesktop || !('serviceWorker' in navigator)) return;
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration || !('pushManager' in registration)) return;
+  let subscription = await registration.pushManager.getSubscription();
+  if (!preferences.enabled) {
+    if (subscription) {
+      try {
+        const response = await authenticatedFetch('/api/settings/push/unsubscribe', {
+          method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint }), suppressServerErrorToast: true,
         });
-      }
-      setIsSubscribed(false);
-    } catch (err) {
-      console.error('Push unsubscribe failed:', err);
-    } finally {
-      setIsLoading(false);
+        if (!response.ok) throw new Error('Could not disable background notifications');
+      } finally { await subscription.unsubscribe(); }
     }
-  }, []);
-
-  return { permission, isSubscribed, isLoading, subscribe, unsubscribe };
+    return;
+  }
+  if (Notification.permission !== 'granted') return;
+  if (!subscription) {
+    const response = await authenticatedFetch('/api/settings/push/vapid-public-key', { suppressServerErrorToast: true });
+    if (!response.ok) throw new Error('Could not register background notifications');
+    const { publicKey } = await response.json();
+    const base64 = publicKey.replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(base64 + '='.repeat((4 - base64.length % 4) % 4)), c => c.charCodeAt(0));
+    subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
+  }
+  const json = subscription.toJSON();
+  const response = await authenticatedFetch('/api/settings/push/subscribe', {
+    method: 'POST', suppressServerErrorToast: true, body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, preferences,
+      language: language.startsWith('zh') ? 'zh-CN' : 'en' }),
+  });
+  if (!response.ok) throw new Error('Could not save background notification settings');
 }

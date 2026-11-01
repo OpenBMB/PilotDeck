@@ -53,7 +53,7 @@ describe('CodeEditorHeader', () => {
     expect(screen.getByText('/workspace/hundouluo/index.html')).not.toBeNull();
   });
 
-  it('uses a toolbar-only overlay in workspace mode', () => {
+  it('keeps the workspace toolbar in the layout', () => {
     const { container } = render(<CodeEditorHeader {...baseProps} compact />);
 
     expect(screen.queryByText('index.html')).toBeNull();
@@ -61,7 +61,8 @@ describe('CodeEditorHeader', () => {
     expect(screen.getByRole('button', { name: 'Download' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Save' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Expand' })).not.toBeNull();
-    expect(container.firstElementChild?.className).toContain('absolute');
+    expect(container.firstElementChild?.className).not.toContain('absolute');
+    expect(container.firstElementChild?.className).toContain('shrink-0');
   });
 
   it('offers a source toggle for HTML previews', () => {

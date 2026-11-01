@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ComputerUseStatus } from '../../../../../shared/computerUse';
 import { SettingsCard, SettingsSection } from '../../shared/view';
@@ -23,22 +23,38 @@ export default function ComputerUseSections() {
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [pathCopied, setPathCopied] = useState(false);
+  const requestSequence = useRef(0);
+  const operationPending = useRef(false);
   const permissionOwner = status?.permissionOwner || 'PilotDeck';
 
   useEffect(() => {
     let active = true;
-    const read = () => bridge.status().then(value => { if (active) { setStatus(value); setLoadError(''); } })
-      .catch(caught => { if (active) setLoadError(String(caught.message || caught)); });
+    let reading = false;
+    const read = async () => {
+      if (reading || operationPending.current) return;
+      reading = true;
+      const sequence = ++requestSequence.current;
+      try {
+        const value = await bridge.status();
+        if (active && sequence === requestSequence.current) { setStatus(value); setLoadError(''); }
+      } catch (caught) {
+        if (active && sequence === requestSequence.current) setLoadError(caught instanceof Error ? caught.message : String(caught));
+      } finally { reading = false; }
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') void read(); };
     void read();
     const interval = window.setInterval(() => { void read(); }, 3000);
-    return () => { active = false; window.clearInterval(interval); };
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener('focus', onVisible); document.removeEventListener('visibilitychange', onVisible); };
   }, [bridge]);
 
   const run = async (operation: () => Promise<ComputerUseStatus>) => {
+    operationPending.current = true; ++requestSequence.current;
     setBusy(true); setError('');
     try { setStatus(await operation()); }
     catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
-    finally { setBusy(false); }
+    finally { operationPending.current = false; setBusy(false); }
   };
   return <div className="space-y-6">
     <SettingsSection title={t('computerUse.controlTitle')}>
@@ -61,7 +77,7 @@ export default function ComputerUseSections() {
             <div><div className="text-sm font-medium">{t(`computerUse.permissions.${permission}`)}</div>
               <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Icon name={granted ? 'check' : 'circle'} className={granted ? 'text-green-600' : ''} />
-                {t(granted ? 'computerUse.granted' : 'computerUse.notGranted')}
+                {t(granted === null ? (status.error ? 'computerUse.permissionCheckFailed' : 'computerUse.checking') : granted ? 'computerUse.granted' : 'computerUse.notGranted')}
               </div></div>
             <button className="button secondary compact shrink-0 disabled:opacity-50" disabled={busy || !status.available} onClick={() => { void run(() => bridge.requestPermission(permission)); }}>
               {t('computerUse.openPermissions')}
@@ -73,7 +89,7 @@ export default function ComputerUseSections() {
       </SettingsCard>
       {status?.platform === 'darwin' && <p className="text-xs leading-5 text-muted-foreground">{t('computerUse.permissionHint', { owner: permissionOwner })}</p>}
       {status?.platform === 'darwin' && status.permissionAppPath && <details
-        open={status.permissions && (!status.permissions.accessibility || !status.permissions.screenRecording) ? true : undefined}
+        open={status.permissions && (status.permissions.accessibility === false || status.permissions.screenRecording === false) ? true : undefined}
         className="rounded-lg border bg-muted/20 p-4 text-xs leading-5">
         <summary className="cursor-pointer font-medium">{t('computerUse.permissionFallbackTitle')}</summary>
         <div className="mt-3 space-y-3">

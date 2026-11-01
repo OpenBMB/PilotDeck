@@ -1,3 +1,4 @@
+import { describeReleaseAsset, installerDownloads } from '../../shared/releaseArtifacts.js';
 // Shared release discovery. Installation policy belongs to each platform.
 export const RELEASE_REPOSITORY = 'OpenBMB/PilotDeck';
 export const RELEASE_TAG = /^v\d{4}\.\d{2}\.\d{2}(?:-r[1-9]\d*)?$/;
@@ -43,10 +44,15 @@ export async function getLatestRelease(options = {}) {
   // This public release asset is served without the GitHub REST API's shared
   // unauthenticated IP quota. The release workflow explicitly marks it Latest.
   const manifest = await requestJson(`https://github.com/${repository}/releases/latest/download/release.json`, options);
+  return validateReleaseManifest(manifest, repository);
+}
+
+export function validateReleaseManifest(manifest, repository = RELEASE_REPOSITORY) {
   let expectedVersion;
   try { expectedVersion = releaseVersion(manifest?.tag); }
   catch { throw new Error('Release manifest does not match the published release.'); }
   if (manifest.schemaVersion !== 1 || manifest.repository !== repository
+      || (manifest.artifactSchemaVersion !== undefined && manifest.artifactSchemaVersion !== 1)
       || !COMMIT_SHA.test(manifest.sourceSha || '')
       || manifest.version !== expectedVersion
       || manifest.date !== manifest.tag.slice(1, 11).replaceAll('.', '-')
@@ -61,10 +67,16 @@ export async function getLatestRelease(options = {}) {
         || !/^[A-Za-z0-9+/]{86}==$/.test(asset.sha512 || '')
         || typeof asset.platform !== 'string' || typeof asset.arch !== 'string') throw new Error('Invalid installer manifest.');
     names.add(asset.name);
-    return { ...asset, sha256: asset.sha256.toLowerCase(), downloadUrl: `${base}/${encodeURIComponent(asset.name)}` };
+    const metadata = describeReleaseAsset(asset.name);
+    if (manifest.artifactSchemaVersion === 1 && (!Array.isArray(asset.roles) || !asset.roles.length
+      || asset.roles.some(role => !['install', 'update', 'compatibility'].includes(role))
+      || asset.platform !== metadata.platform || asset.arch !== metadata.arch
+      || asset.format !== metadata.format || JSON.stringify(asset.roles) !== JSON.stringify(metadata.roles))) throw new Error('Invalid artifact roles.');
+    return { ...asset, format: asset.format ?? metadata.format, roles: asset.roles ?? metadata.roles,
+      sha256: asset.sha256.toLowerCase(), downloadUrl: `${base}/${encodeURIComponent(asset.name)}` };
   });
   return {
-    tagName: manifest.tag, version: manifest.version, sourceSha: manifest.sourceSha, assets,
+    tagName: manifest.tag, version: manifest.version, sourceSha: manifest.sourceSha, assets, downloads: installerDownloads(assets),
     publishedAt: manifest.date, body: '',
     htmlUrl: `https://github.com/${repository}/releases/tag/${manifest.tag}`,
   };

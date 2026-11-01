@@ -155,6 +155,8 @@ router.get('/status', (_req, res) => {
     const weixinRuntime = runtimeStatus.weixin ?? null;
 
     const weixinCredentials = loadWeixinCredentials();
+    const slack = config.adapters?.slack ?? {};
+    const telegram = config.adapters?.telegram ?? {};
 
     res.json({
       feishu: {
@@ -179,6 +181,19 @@ router.get('/status', (_req, res) => {
         groupPolicy: wecomExtra.group_policy || wecomExtra.groupPolicy || 'disabled',
         allowFrom: normalizeList(wecomExtra.allow_from ?? wecomExtra.allowFrom),
         groupAllowFrom: normalizeList(wecomExtra.group_allow_from ?? wecomExtra.groupAllowFrom),
+      },
+      slack: {
+        enabled: slack.enabled === true,
+        hasBotToken: !!slack.token,
+        hasAppToken: !!slack.extra?.appToken,
+        botTokenHint: slack.token ? maskValue(slack.token) : '',
+        runtime: runtimeStatus.slack ?? null,
+      },
+      telegram: {
+        enabled: telegram.enabled === true,
+        hasToken: !!telegram.token,
+        tokenHint: telegram.token ? maskValue(telegram.token) : '',
+        runtime: runtimeStatus.telegram ?? null,
       },
     });
   } catch (error) {
@@ -619,6 +634,137 @@ router.post('/wecom/disable', async (_req, res) => {
       if (config.adapters?.wecom) {
         config.adapters.wecom.enabled = false;
       }
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
+  }
+});
+
+// ─── Slack / Telegram (token based) ──────────────────────────────────────────────────
+
+const SLACK_API_BASE = (process.env.SLACK_API_BASE_URL || 'https://slack.com/api').replace(/\/+$/, '');
+const TELEGRAM_API_BASE = (process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org').replace(/\/+$/, '');
+
+async function callSlack(method, token) {
+  const resp = await fetch(`${SLACK_API_BASE}/${method}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=utf-8' },
+    body: '{}',
+    signal: AbortSignal.timeout(10_000),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (json.ok !== true) throw new Error(`${method}: ${json.error || `HTTP ${resp.status}`}`);
+  return json;
+}
+
+async function verifySlackTokens(botToken, appToken) {
+  if (!botToken.startsWith('xoxb-')) throw new Error('Bot token should start with xoxb-');
+  if (!appToken.startsWith('xapp-')) throw new Error('App-level token should start with xapp-');
+  const auth = await callSlack('auth.test', botToken);
+  // Confirms the app token works and Socket Mode is enabled for the app.
+  await callSlack('apps.connections.open', appToken);
+  return `@${auth.user || auth.user_id} · ${auth.team || 'Slack'}`;
+}
+
+async function verifyTelegramToken(token) {
+  const resp = await fetch(`${TELEGRAM_API_BASE}/bot${token}/getMe`, { signal: AbortSignal.timeout(10_000) });
+  const json = await resp.json().catch(() => ({}));
+  if (json.ok !== true) throw new Error(json.description || `HTTP ${resp.status}`);
+  return `@${json.result?.username || json.result?.id}`;
+}
+
+function verificationErrorBody(err) {
+  if (err?.name === 'TimeoutError' || err?.name === 'AbortError') return { ok: false, error: 'Connection timed out (10s)' };
+  return { ok: false, error: err?.message || 'Verification failed' };
+}
+
+function resolveSlackTokens(config, body) {
+  const previous = config.adapters?.slack ?? {};
+  return {
+    botToken: String(body.botToken || '').trim() || String(previous.token || '').trim(),
+    appToken: String(body.appToken || '').trim() || String(previous.extra?.appToken || '').trim(),
+  };
+}
+
+router.post('/slack/test', async (req, res) => {
+  const { botToken, appToken } = resolveSlackTokens(readPilotDeckConfigFile().config, req.body || {});
+  if (!botToken || !appToken) {
+    return res.status(400).json({ ok: false, error: 'botToken and appToken are required' });
+  }
+  try {
+    res.json({ ok: true, message: await verifySlackTokens(botToken, appToken) });
+  } catch (err) {
+    res.json(verificationErrorBody(err));
+  }
+});
+
+router.post('/slack/save', async (req, res) => {
+  try {
+    const { botToken, appToken } = resolveSlackTokens(readPilotDeckConfigFile().config, req.body || {});
+    if (!botToken || !appToken) {
+      return res.status(400).json({ ok: false, error: 'botToken and appToken are required' });
+    }
+    await mutateConfigAndReload('slack', (config) => {
+      if (!config.adapters) config.adapters = {};
+      const previous = config.adapters.slack ?? {};
+      config.adapters.slack = {
+        ...previous,
+        enabled: true,
+        token: botToken,
+        extra: { ...(previous.extra ?? {}), appToken },
+      };
+    });
+    res.json({ ok: true, message: 'Slack config saved' });
+  } catch (error) {
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
+  }
+});
+
+router.post('/slack/disable', async (_req, res) => {
+  try {
+    await mutateConfigAndReload('slack', (config) => {
+      if (config.adapters?.slack) config.adapters.slack.enabled = false;
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
+  }
+});
+
+function resolveTelegramToken(config, body) {
+  return String(body.token || '').trim() || String(config.adapters?.telegram?.token || '').trim();
+}
+
+router.post('/telegram/test', async (req, res) => {
+  const token = resolveTelegramToken(readPilotDeckConfigFile().config, req.body || {});
+  if (!token) return res.status(400).json({ ok: false, error: 'token is required' });
+  try {
+    res.json({ ok: true, message: await verifyTelegramToken(token) });
+  } catch (err) {
+    res.json(verificationErrorBody(err));
+  }
+});
+
+router.post('/telegram/save', async (req, res) => {
+  try {
+    const token = resolveTelegramToken(readPilotDeckConfigFile().config, req.body || {});
+    if (!token) return res.status(400).json({ ok: false, error: 'token is required' });
+    await mutateConfigAndReload('telegram', (config) => {
+      if (!config.adapters) config.adapters = {};
+      const previous = config.adapters.telegram ?? {};
+      config.adapters.telegram = { ...previous, enabled: true, token };
+    });
+    res.json({ ok: true, message: 'Telegram config saved' });
+  } catch (error) {
+    res.status(error.statusCode || 500).json(configWriteErrorBody(error));
+  }
+});
+
+router.post('/telegram/disable', async (_req, res) => {
+  try {
+    await mutateConfigAndReload('telegram', (config) => {
+      if (config.adapters?.telegram) config.adapters.telegram.enabled = false;
     });
     res.json({ ok: true });
   } catch (error) {

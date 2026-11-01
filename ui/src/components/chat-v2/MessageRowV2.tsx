@@ -180,7 +180,10 @@ function MessageRowV2({
         : [],
     [message.attachments],
   );
-  const messageAttachments = useUploadedAttachmentPreviews(rawMessageAttachments);
+  const uploadImageCount = rawMessageAttachments.filter(attachment => attachment.uploadId && attachment.mimeType?.startsWith('image/')).length;
+  const referenceImageCount = rawMessageAttachments.filter(attachment => attachmentToDocumentReference(attachment)?.selectionMode === 'region').length;
+  const hasCanonicalUploadedImages = uploadImageCount > 0 && (message.images?.length ?? 0) >= uploadImageCount + referenceImageCount;
+  const messageAttachments = useUploadedAttachmentPreviews(rawMessageAttachments, hasCanonicalUploadedImages);
   const documentReferenceAttachments = useMemo(
     () => messageAttachments
       .map(attachmentToDocumentReference)
@@ -224,17 +227,19 @@ function MessageRowV2({
       const [preview] = remaining.splice(index, 1);
       return { ...image, name: image.name || preview.name };
     });
+    if (hasCanonicalUploadedImages) return confirmed;
     return [...confirmed, ...remaining.map((attachment) => ({
       data: attachment.previewData!, name: attachment.name, mimeType: attachment.mimeType,
     }))];
-  }, [messageImages, uploadedImagePreviews]);
+  }, [messageImages, uploadedImagePreviews, hasCanonicalUploadedImages]);
   const fileAttachments = useMemo(
     () => messageAttachments.filter((attachment) => (
       attachment.kind !== DOCUMENT_SELECTION_ATTACHMENT_KIND
       && attachment.kind !== CONTENT_REFERENCE_ATTACHMENT_KIND
       && !uploadedImagePreviews.includes(attachment)
+      && !(hasCanonicalUploadedImages && attachment.uploadId && attachment.mimeType?.startsWith('image/'))
     )),
-    [messageAttachments, uploadedImagePreviews],
+    [messageAttachments, uploadedImagePreviews, hasCanonicalUploadedImages],
   );
   const [userImageLightbox, setUserImageLightbox] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -423,19 +428,19 @@ function MessageRowV2({
                 </div>
               ) : null}
               {visibleImages.length > 0 ? (
-                <div className={formattedContent ? 'mb-2 grid grid-cols-1 gap-2' : 'grid grid-cols-1 gap-2'}>
+                <div className={cn('flex flex-wrap gap-2', formattedContent && 'mb-2')}>
                   {visibleImages.map((image, index) => (
                     <button
                       type="button"
-                      key={`${image.name || 'image'}-${index}`}
+                      key={index}
                       onClick={() => setUserImageLightbox(index)}
-                      className="block w-72 max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900/40"
+                      className={cn('block max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900/40', visibleImages.length > 1 ? 'h-24 w-24' : 'w-72')}
                       aria-label={image.name ? `Preview ${image.name}` : 'Preview image'}
                     >
                       <img
                         src={image.data}
                         alt={image.name || 'Uploaded image'}
-                        className="block h-auto max-h-64 w-full cursor-zoom-in object-contain transition-opacity hover:opacity-90"
+                        className={cn('block w-full cursor-zoom-in object-contain hover:opacity-90', visibleImages.length > 1 ? 'h-full' : 'h-48')}
                         loading="lazy"
                       />
                     </button>

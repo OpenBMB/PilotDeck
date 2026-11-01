@@ -1,11 +1,15 @@
 import express from 'express';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { validatePilotDeckConfig } from '../services/pilotdeckConfig.js';
 import { rewriteModelReferences } from '../services/modelReferences.js';
+import { resolveWebSearchConfig, updateWebSearchProviderConfig } from '../../../src/pilot/config/webSearchConfig.js';
+import { webSearchConfigForProvider } from '../../src/components/settings/view/agentSearch/utils/webSearchConfig.ts';
 
 const nativeFetch = globalThis.fetch;
 const tempDirs = [];
@@ -14,6 +18,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  vi.doUnmock('child_process');
   vi.resetModules();
   delete process.env.PILOT_HOME;
   delete process.env.PILOTDECK_CONFIG_PATH;
@@ -523,7 +528,7 @@ describe('config model-list route', () => {
     const authHeaders = [];
     vi.stubEnv('DEEPSEEK_API_KEY', 'deepseek-from-env');
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
-      authHeaders.push(init?.headers?.Authorization);
+      authHeaders.push(new Headers(init?.headers).get('authorization'));
       return jsonResponse({ data: [{ id: 'deepseek-chat' }] });
     }));
 
@@ -546,7 +551,7 @@ describe('config model-list route', () => {
     const authHeaders = [];
     vi.stubEnv('OPENAI_API_KEY', 'responses-from-env');
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
-      authHeaders.push(init?.headers?.Authorization);
+      authHeaders.push(new Headers(init?.headers).get('authorization'));
       return jsonResponse({ data: [{ id: 'gpt-4.1' }] });
     }));
 
@@ -1629,6 +1634,46 @@ describe('config model removal route', () => {
 
 describe('config test-web-search route', () => {
   it.each([
+    ['glm', 401, { error: { code: '401', message: 'token expired or incorrect' } }, 'HTTP 401: token expired or incorrect'],
+    ['tavily', 403, { error: 'Invalid API key' }, 'HTTP 403: Invalid API key'],
+    ['brave', 400, { error: { code: 'VALIDATION', msg: 'Invalid request' } }, 'HTTP 400, code=VALIDATION: Invalid request'],
+    ['serper', 403, { message: 'Forbidden' }, 'HTTP 403: Forbidden'],
+    ['exa', 401, { error: { message: 'Invalid credential' } }, 'HTTP 401: Invalid credential'],
+    ['glm', 200, { error: { code: '1000', message: 'Authentication failed' } }, 'code=1000: Authentication failed'],
+  ])('shows readable %s API errors for HTTP %s', async (provider, status, payload, expected) => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(payload, { ok: status < 400, status })));
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/test-web-search', {
+      method: 'POST', body: JSON.stringify({ provider, apiKey: 'synthetic-key' }),
+    });
+    expect(response.body).toMatchObject({ ok: false, error: expected });
+    expect(response.body.error).not.toContain('[object Object]');
+  });
+
+  it('falls back to the HTTP status when an error response is not JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(null, {
+      ok: false, status: 403, statusText: 'Forbidden',
+      json: async () => { throw new SyntaxError('Invalid JSON'); },
+    })));
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/test-web-search', {
+      method: 'POST', body: JSON.stringify({ provider: 'glm', apiKey: 'synthetic-key' }),
+    });
+    expect(response.body).toMatchObject({ ok: false, error: 'HTTP 403: Forbidden' });
+  });
+
+  it('redacts keys echoed in structured provider errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+      error: { code: '401', message: 'Invalid secret+/ or secret%2B%2F' },
+    }, { ok: false, status: 401 })));
+    const { requestStatus } = await createConfigApp();
+    const response = await requestStatus('/api/config/test-web-search', {
+      method: 'POST', body: JSON.stringify({ provider: 'glm', apiKey: 'secret+/' }),
+    });
+    expect(response.body.error).toBe('HTTP 401: Invalid [redacted] or [redacted]');
+  });
+
+  it.each([
     ['baidu', { references: [{ type: 'web', title: '百度', url: 'https://example.test' }] }],
     ['bocha', { code: 200, data: { webPages: { value: [{ name: '博查', url: 'https://example.test' }] } } }],
     ['exa', { results: [{ title: 'Exa', url: 'https://example.test' }] }],
@@ -1709,7 +1754,7 @@ describe('config test-web-search route', () => {
     let captured;
     vi.stubGlobal('fetch', vi.fn(async (url, init) => {
       captured = { url: String(url), init };
-      return jsonResponse({ payload: [{ title: 'result' }] });
+      return jsonResponse({ payload: [{ title: 'result', url: 'https://example.test' }] });
     }));
 
     const { requestStatus } = await createConfigApp();
@@ -1733,7 +1778,7 @@ describe('config test-web-search route', () => {
     let captured;
     vi.stubGlobal('fetch', vi.fn(async (url, init) => {
       captured = { url: String(url), init };
-      return jsonResponse({ results: [{ title: 'result' }] });
+      return jsonResponse({ results: [{ title: 'result', url: 'https://example.test' }] });
     }));
 
     const { requestStatus } = await createConfigApp();
@@ -1961,6 +2006,196 @@ describe('config test-web-search route', () => {
   });
 });
 
+describe('saved Web Search provider configurations', () => {
+  const glmEndpoint = 'https://api.z.ai/api/paas/v4/web_search';
+
+  describe.each(['raw', 'config'])('mixed legacy and provider records with %s saves', shape => {
+    const submit = (request, config) => request('/api/config', {
+      method: 'PUT', body: JSON.stringify(shape === 'raw' ? { raw: stringifyYaml(config) } : { config }),
+    });
+
+    it.each([
+      ['glm', { endpoint: 'https://proxy.example/search' }],
+      ['glm', { endpoint: glmEndpoint }],
+      ['custom', {
+        endpoint: 'https://custom.example/search',
+        customProvider: { auth: 'queryApiKey', method: 'GET' },
+      }],
+    ])('keeps both credential sources unchanged when saving unrelated settings: %s %j', async (provider, settings) => {
+      const webSearch = {
+        enabled: true, provider, apiKey: 'legacy-key',
+        ...(provider === 'custom'
+          ? { endpoint: 'https://legacy.example/search', customProvider: { auth: 'bearer', method: 'POST' } }
+          : {}),
+        providers: { [provider]: { apiKey: 'provider-key', ...settings } },
+      };
+      const { request, configPath } = await createDiskConfigApp(stringifyYaml({
+        tools: { webSearch }, telemetry: { enabled: false },
+      }));
+      const current = (await request('/api/config')).body.config;
+      expect(current.tools.webSearch.apiKey).toBe('********');
+      expect(current.tools.webSearch.providers[provider].apiKey).toBe('********');
+      current.telemetry.enabled = true;
+      const response = await submit(request, current);
+      expect(response.status).toBe(200);
+      const saved = parseYaml(readFileSync(configPath, 'utf8'));
+      expect(saved.telemetry.enabled).toBe(true);
+      expect(saved.tools.webSearch).toEqual(webSearch);
+      expect(resolveWebSearchConfig(saved.tools.webSearch).apiKey).toBe('provider-key');
+    });
+
+    it('still rejects endpoint and authentication changes for either masked credential source', async () => {
+      const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+        enabled: true, provider: 'custom', apiKey: 'legacy-key', endpoint: 'https://legacy.example/search',
+        customProvider: { auth: 'bearer', method: 'POST' },
+        providers: { custom: {
+          apiKey: 'provider-key', endpoint: 'https://custom.example/search',
+          customProvider: { auth: 'queryApiKey', method: 'GET' },
+        } },
+      } } }));
+      const before = readFileSync(configPath, 'utf8');
+      const current = (await request('/api/config')).body.config;
+      for (const source of ['legacy', 'provider']) {
+        for (const field of ['endpoint', 'auth', 'method']) {
+          const changed = structuredClone(current);
+          const settings = source === 'legacy' ? changed.tools.webSearch : changed.tools.webSearch.providers.custom;
+          if (field === 'endpoint') settings.endpoint = 'https://changed.example/search';
+          else if (field === 'auth') settings.customProvider.auth = 'bodyApiKey';
+          else settings.customProvider.method = settings.customProvider.method === 'POST' ? 'GET' : 'POST';
+          const response = await submit(request, changed);
+          expect(response.status).toBe(400);
+          expect(readFileSync(configPath, 'utf8')).toBe(before);
+        }
+      }
+    });
+
+    it('removes legacy fields only when the form explicitly migrates its search settings', async () => {
+      const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+        enabled: true, provider: 'glm', apiKey: 'legacy-key',
+        providers: { glm: { apiKey: 'provider-key', endpoint: 'https://proxy.example/search' } },
+      } } }));
+      const current = (await request('/api/config')).body.config;
+      current.tools.webSearch = webSearchConfigForProvider(current.tools.webSearch, 'tavily', glmEndpoint);
+      const response = await submit(request, current);
+      expect(response.status).toBe(200);
+      const saved = parseYaml(readFileSync(configPath, 'utf8')).tools.webSearch;
+      expect(saved.apiKey).toBeUndefined();
+      expect(saved.endpoint).toBeUndefined();
+      expect(saved.providers.glm).toEqual({ apiKey: 'provider-key', endpoint: 'https://proxy.example/search' });
+    });
+
+    it('does not borrow a provider record key for a new masked legacy field', async () => {
+      const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+        enabled: true, provider: 'glm', providers: { glm: { apiKey: 'provider-key' } },
+      } } }));
+      const before = readFileSync(configPath, 'utf8');
+      const current = (await request('/api/config')).body.config;
+      current.tools.webSearch.apiKey = '********';
+      const response = await submit(request, current);
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('Saved Web Search API key is unavailable');
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    });
+  });
+
+  it.each(['raw', 'config'])('migrates and retains both keys on disk through switching and toggling with %s saves', async shape => {
+    const { request, configPath } = await createDiskConfigApp(stringifyYaml({
+      tools: { webSearch: { enabled: true, provider: 'glm', apiKey: 'glm-original' } },
+    }));
+    let current = (await request('/api/config')).body.config;
+    const save = async webSearch => {
+      const next = { ...current, tools: { ...current.tools, webSearch } };
+      const response = await request('/api/config', {
+        method: 'PUT',
+        body: JSON.stringify(shape === 'raw' ? { raw: stringifyYaml(next) } : { config: next }),
+      });
+      expect(response.status).toBe(200);
+      current = response.body.config;
+    };
+    await save(webSearchConfigForProvider(current.tools.webSearch, 'tavily', glmEndpoint));
+    expect(parseYaml(readFileSync(configPath, 'utf8')).tools.webSearch.providers.glm.apiKey).toBe('glm-original');
+    expect(resolveWebSearchConfig(current.tools.webSearch).apiKey).toBeUndefined();
+    await save(updateWebSearchProviderConfig(current.tools.webSearch, {
+      ...resolveWebSearchConfig(current.tools.webSearch), apiKey: 'tavily-saved',
+    }));
+    await save(webSearchConfigForProvider(current.tools.webSearch, 'glm', glmEndpoint));
+    expect(resolveWebSearchConfig(current.tools.webSearch).apiKey).toBe('********');
+    await save(updateWebSearchProviderConfig(current.tools.webSearch, {
+      ...resolveWebSearchConfig(current.tools.webSearch), apiKey: 'glm-updated',
+    }));
+    for (const enabled of [false, true]) {
+      await save(updateWebSearchProviderConfig(current.tools.webSearch, {
+        ...resolveWebSearchConfig(current.tools.webSearch), enabled,
+      }));
+    }
+    await save(webSearchConfigForProvider(current.tools.webSearch, 'tavily', glmEndpoint));
+    const disk = parseYaml(readFileSync(configPath, 'utf8'));
+    expect(disk.tools.webSearch.providers.glm.apiKey).toBe('glm-updated');
+    expect(disk.tools.webSearch.providers.tavily.apiKey).toBe('tavily-saved');
+    expect(disk.tools.webSearch.apiKey).toBeUndefined();
+    const refreshed = (await request('/api/config')).body.config.tools.webSearch;
+    expect(refreshed.provider).toBe('tavily');
+    expect(refreshed.providers.glm.apiKey).toBe('********');
+    expect(refreshed.providers.tavily.apiKey).toBe('********');
+    expect(JSON.stringify(refreshed)).not.toContain('glm-updated');
+    expect(JSON.stringify(refreshed)).not.toContain('tavily-saved');
+    const restarted = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+      import { readPilotDeckConfigFile } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'server/services/pilotdeckConfig.js')).href)};
+      import { resolveWebSearchConfig } from ${JSON.stringify(pathToFileURL(join(process.cwd(), '../src/pilot/config/webSearchConfig.ts')).href)};
+      const saved = readPilotDeckConfigFile().config.tools.webSearch;
+      console.log(JSON.stringify({
+        provider: saved.provider,
+        glmRetained: resolveWebSearchConfig({ ...saved, provider: 'glm' }).apiKey === 'glm-updated',
+        tavilyRetained: resolveWebSearchConfig(saved).apiKey === 'tavily-saved',
+      }));
+    `], { env: { ...process.env, PILOTDECK_CONFIG_PATH: configPath }, encoding: 'utf8' });
+    expect(restarted.status, restarted.stderr).toBe(0);
+    expect(JSON.parse(restarted.stdout)).toEqual({ provider: 'tavily', glmRetained: true, tavilyRetained: true });
+  });
+
+  it.each(['glm', 'tavily'])('tests %s using its saved masked key even when another provider is active', async provider => {
+    let captured;
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+      captured = init;
+      return jsonResponse(provider === 'glm' ? { search_result: [] } : { results: [] });
+    }));
+    const { requestStatus } = await createConfigApp({ config: {
+      tools: { webSearch: { provider: 'glm', providers: {
+        glm: { apiKey: 'glm-saved' }, tavily: { apiKey: 'tavily-saved' },
+      } } },
+    } });
+    const response = await requestStatus('/api/config/test-web-search', {
+      method: 'POST', body: JSON.stringify({ provider, apiKey: '********' }),
+    });
+    expect(response.body.ok).toBe(true);
+    if (provider === 'glm') expect(captured.headers.Authorization).toBe('Bearer glm-saved');
+    else expect(JSON.parse(captured.body).api_key).toBe('tavily-saved');
+  });
+
+  it('rejects moved masked keys and changed custom endpoints without modifying saved credentials', async () => {
+    const { request, configPath } = await createDiskConfigApp(stringifyYaml({
+      tools: { webSearch: { provider: 'glm', providers: {
+        glm: { apiKey: 'glm-saved' },
+        custom: { apiKey: 'custom-saved', endpoint: 'https://custom.example/search' },
+      } } },
+    }));
+    const before = readFileSync(configPath, 'utf8');
+    const current = (await request('/api/config')).body.config;
+    for (const edit of [
+      config => { config.tools.webSearch.providers.tavily = { apiKey: '********' }; },
+      config => { config.tools.webSearch.providers.custom.endpoint = 'https://changed.example/search'; },
+    ]) {
+      const next = structuredClone(current);
+      edit(next);
+      const response = await request('/api/config', {
+        method: 'PUT', body: JSON.stringify({ raw: stringifyYaml(next) }),
+      });
+      expect(response.status).toBe(400);
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    }
+  });
+});
+
 describe('config provider rename secret preservation', () => {
   it('does not preserve a masked provider key when its endpoint changes', async () => {
     const initialConfig = {
@@ -2126,6 +2361,64 @@ describe('config provider rename secret preservation', () => {
     expect(
       parseYaml(readFileSync(configPath, 'utf8')).model.providers['old-provider'].apiKey,
     ).toBe('sk-saved-secret');
+  });
+});
+
+describe('first-run config creation', () => {
+  it.each(['raw', 'config'])('does not create an empty config through a %s preferences save', async (shape) => {
+    const { request, configPath } = await createDiskConfigApp(null);
+    const initial = await request('/api/config');
+    expect(initial.body.exists).toBe(false);
+    const config = initial.body.config;
+    config.alwaysOn.language = 'zh-CN';
+
+    const response = await request('/api/config', {
+      method: 'PUT',
+      body: JSON.stringify(shape === 'raw' ? { raw: stringifyYaml(config) } : { config }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('MODEL_CONFIGURATION_REQUIRED');
+    expect(existsSync(configPath)).toBe(false);
+    const { getModelConfigurationState } = await import('../services/modelConfigurationState.js');
+    expect(getModelConfigurationState({ env: {} })).toMatchObject({
+      state: 'needs_configuration', reason: 'missing_config',
+    });
+  });
+
+  it('creates the file when a model is saved and still permits clearing the model pool later', async () => {
+    const { request, configPath } = await createDiskConfigApp(null);
+    const config = (await request('/api/config')).body.config;
+    config.agent.model = 'ollama/qwen3:0.6b';
+    config.model.providers.ollama = {
+      protocol: 'openai', url: 'http://localhost:11434/v1', models: { 'qwen3:0.6b': {} },
+    };
+    config.alwaysOn.language = 'zh-CN';
+
+    const saved = await request('/api/config', { method: 'PUT', body: JSON.stringify({ config }) });
+
+    expect(saved.status).toBe(200);
+    expect(parseYaml(readFileSync(configPath, 'utf8'))).toMatchObject(config);
+    const { getModelConfigurationState } = await import('../services/modelConfigurationState.js');
+    expect(getModelConfigurationState({ env: {} }).state).toBe('ready');
+
+    config.agent.model = '';
+    config.model.providers = {};
+    expect((await request('/api/config', { method: 'PUT', body: JSON.stringify({ config }) })).status).toBe(200);
+    expect(getModelConfigurationState({ env: {} }).state).toBe('empty');
+  });
+
+  it('does not create a config when asked to open a missing file', async () => {
+    const spawn = vi.fn(() => ({ unref: vi.fn() }));
+    vi.doMock('child_process', async () => ({ ...await vi.importActual('child_process'), spawn }));
+    const { request, configPath } = await createDiskConfigApp(null);
+
+    const response = await request('/api/config/open', { method: 'POST' });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ success: false, code: 'MODEL_CONFIGURATION_REQUIRED' });
+    expect(existsSync(configPath)).toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
   });
 });
 
@@ -2431,7 +2724,7 @@ async function createDiskConfigApp(initialRaw, overrides = {}) {
   const pilotHome = mkdtempSync(join(tmpdir(), 'pilotdeck-config-route-'));
   tempDirs.push(pilotHome);
   const configPath = join(pilotHome, 'pilotdeck.yaml');
-  writeFileSync(configPath, initialRaw, 'utf8');
+  if (initialRaw !== null) writeFileSync(configPath, initialRaw, 'utf8');
 
   process.env.PILOT_HOME = pilotHome;
   process.env.PILOTDECK_CONFIG_PATH = configPath;
@@ -2498,3 +2791,154 @@ function openaiReply(init) {
 function retryPolicy() {
   return { maxRetries: 2, maxStreamRetries: 3, streamIdleTimeoutMs: 30000, baseDelayMs: 1000, maxDelayMs: 60000 };
 }
+
+it('round-trips custom request templates and response mappings through masked API and YAML', async () => {
+  const customProvider = { method: 'POST', auth: 'headerApiKey', apiKeyParam: 'X-Key', headers: { 'X-Client': 'PilotDeck', Authorization: 'Bearer {{apiKey}}' },
+    queryParams: { format: 'json' }, requestBody: { messages: [{ role: 'user', content: '{{query}}' }], count: '{{limit}}', credentials: { api_key: '{{apiKey}}' } },
+    resultsPath: 'data.hits', urlField: 'links[0].url', titleField: 'headline', snippetField: 'text' };
+  const initial = { tools: { webSearch: { enabled: true, provider: 'custom', providers: { custom: {
+    endpoint: 'https://example.test/search', apiKey: 'private-secret', customProvider,
+  } } } } };
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml(initial));
+  const config = (await request('/api/config')).body.config;
+  expect(config.tools.webSearch.providers.custom.apiKey).toBe('********');
+  expect(config.tools.webSearch.providers.custom.customProvider).toEqual(customProvider);
+  config.tools.webSearch.providers.custom.customProvider.requestBody.extra = true;
+  const saved = await request('/api/config', { method: 'PUT', body: JSON.stringify({ raw: stringifyYaml(config) }) });
+  expect(saved.status).toBe(200);
+  const disk = parseYaml(readFileSync(configPath, 'utf8'));
+  expect(disk.tools.webSearch.providers.custom).toEqual({ endpoint: 'https://example.test/search', apiKey: 'private-secret', customProvider: { ...customProvider, requestBody: { ...customProvider.requestBody, extra: true } } });
+  expect((await request('/api/config')).body.config.tools.webSearch.providers.custom.customProvider).toEqual(disk.tools.webSearch.providers.custom.customProvider);
+});
+
+it('connection probe uses templates, header authentication and real response mapping', async () => {
+  const calls = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+    calls.push({ url: String(url), init });
+    return jsonResponse({ data: { hits: [{ links: [{ url: 'https://example.test' }], headline: 'Title', text: 'summary' }] } });
+  }));
+  const { requestStatus } = await createConfigApp();
+  const config = { provider: 'custom', apiKey: 'custom-secret', endpoint: 'https://example.test/search', customProvider: {
+    auth: 'headerApiKey', apiKeyParam: 'X-Key', requestBody: { messages: [{ content: '{{query}}' }], count: '{{limit}}' },
+    resultsPath: 'data.hits', urlField: 'links[0].url', titleField: 'headline', snippetField: 'text',
+  } };
+  const probe = () => requestStatus('/api/config/test-web-search', { method: 'POST', body: JSON.stringify(config) });
+  expect((await probe()).body).toMatchObject({ ok: true, organicCount: 1 });
+  expect(new Headers(calls[0].init.headers).get('X-Key')).toBe('custom-secret');
+  expect(JSON.parse(calls[0].init.body)).toEqual({ messages: [{ content: 'hello' }], count: 3 });
+  config.customProvider.urlField = 'missing';
+  expect((await probe()).body).toMatchObject({ ok: false, error: expect.stringContaining('URL') });
+  config.customProvider.requestBody.count = '{{unknown}}';
+  expect((await probe()).status).toBe(400);
+  expect(calls).toHaveLength(2);
+});
+
+it.each(['********', 'replacement-key'])('restores masked search templates after reload while preserving a %s API key', async requestedKey => {
+  const calls = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+    calls.push({ url: String(url), init });
+    return jsonResponse({ results: [{ url: 'https://example.test/result', title: 'Found' }] });
+  }));
+  const settings = { endpoint: 'https://example.test/search', apiKey: 'saved-key', customProvider: {
+    auth: 'none', method: 'POST',
+    headers: { 'X-Access-Token': 'Token {{ apiKey }}', 'X-Secret': 'literal-secret' },
+    queryParams: { token: 'v1:{{apiKey}}:{{query}}' },
+    requestBody: { credentials: [{ api_key: '{{query}}/{{apiKey}}/{{limit}}' }] },
+  } };
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+    provider: 'custom', providers: { custom: settings },
+  } } }));
+  const loaded = (await request('/api/config')).body.config;
+  const masked = loaded.tools.webSearch.providers.custom;
+  expect(masked.customProvider.headers['X-Access-Token']).toBe('********');
+  expect(masked.customProvider.headers['X-Secret']).toBe('********');
+  expect(JSON.stringify(loaded)).not.toContain('literal-secret');
+  expect((await request('/api/config', { method: 'PUT', body: JSON.stringify({ config: loaded }) })).status).toBe(200);
+  const reloaded = (await request('/api/config')).body.config.tools.webSearch.providers.custom;
+  const result = await request('/api/config/test-web-search', { method: 'POST', body: JSON.stringify({ ...reloaded, provider: 'custom', apiKey: requestedKey }) });
+  expect(result.body).toMatchObject({ ok: true, organicCount: 1 });
+  const key = requestedKey === '********' ? 'saved-key' : requestedKey;
+  expect(new Headers(calls[0].init.headers).get('X-Access-Token')).toBe(`Token ${key}`);
+  expect(new Headers(calls[0].init.headers).get('X-Secret')).toBe('literal-secret');
+  expect(new URL(calls[0].url).searchParams.get('token')).toBe(`v1:${key}:hello`);
+  expect(JSON.parse(calls[0].init.body)).toEqual({ credentials: [{ api_key: `hello/${key}/3` }] });
+  expect(parseYaml(readFileSync(configPath, 'utf8')).tools.webSearch.providers.custom).toEqual(settings);
+});
+
+it.each(['literal-secret+/', 'literal-secret+/{{query}}'])('restores masked search credential %s without a separate API key and redacts echoed errors', async template => {
+  const rendered = template.replace('{{query}}', 'hello');
+  const fetchMock = vi.fn(async (_url, init) => {
+    expect(new Headers(init.headers).get('X-Access-Token')).toBe(rendered);
+    return jsonResponse({ error: `Denied ${rendered} or ${encodeURIComponent(rendered)}` }, { ok: false, status: 401 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const { request } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+    provider: 'custom', endpoint: 'https://example.test/search',
+    customProvider: { auth: 'none', headers: { 'X-Access-Token': template } },
+  } } }));
+  const loaded = (await request('/api/config')).body.config.tools.webSearch;
+  const result = await request('/api/config/test-web-search', { method: 'POST', body: JSON.stringify(loaded) });
+  expect(result.body.ok).toBe(false);
+  expect(result.body.error).toContain('[redacted]');
+  expect(JSON.stringify(result.body)).not.toContain('literal-secret');
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it('rejects masked search templates when credential scope changes or their original field is missing', async () => {
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+    provider: 'custom', providers: { custom: { endpoint: 'https://example.test/search', apiKey: 'saved-key',
+      customProvider: { auth: 'none', method: 'POST', headers: { 'X-Access-Token': 'Token {{apiKey}}' } },
+    } },
+  } } }));
+  const original = readFileSync(configPath, 'utf8');
+  const loaded = (await request('/api/config')).body.config.tools.webSearch.providers.custom;
+  for (const mutate of [
+    value => { value.endpoint = 'https://other.example/search'; },
+    value => { value.customProvider.auth = 'bearer'; },
+    value => { value.customProvider.method = 'GET'; },
+    value => { value.customProvider.apiKeyParam = 'another-key'; },
+    value => { value.customProvider.headers = { 'X-Different-Token': '********' }; },
+    value => { value.customProvider.requestBody = { nested: [{ api_key: '********' }] }; },
+  ]) {
+    const next = { ...structuredClone(loaded), provider: 'custom', apiKey: 'explicit-new-key' };
+    mutate(next);
+    const result = await request('/api/config/test-web-search', { method: 'POST', body: JSON.stringify(next) });
+    expect(result.status).toBe(400);
+    expect(result.body.ok).toBe(false);
+    const save = await request('/api/config', { method: 'PUT', body: JSON.stringify({ config: {
+      tools: { webSearch: { provider: 'custom', providers: { custom: next } } },
+    } }) });
+    expect(save.status).toBe(400);
+    expect(readFileSync(configPath, 'utf8')).toBe(original);
+  }
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('rejects invalid custom templates on save without modifying the YAML', async () => {
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: { enabled: false } } }));
+  const before = readFileSync(configPath, 'utf8');
+  const invalid = { tools: { webSearch: { enabled: true, provider: 'custom', endpoint: 'https://example.test', customProvider: { auth: 'none', requestBody: { q: '{{unknown}}' } } } } };
+  const saved = await request('/api/config', { method: 'PUT', body: JSON.stringify({ raw: stringifyYaml(invalid) }) });
+  expect(saved.status).toBe(400);
+  expect(readFileSync(configPath, 'utf8')).toBe(before);
+});
+
+it('persists a custom endpoint change after dropping the old endpoint credential', async () => {
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { webSearch: {
+    enabled: true, provider: 'custom', providers: { custom: {
+      endpoint: 'https://old.example/search', apiKey: 'saved-secret',
+      customProvider: { auth: 'bearer', method: 'POST' },
+    } },
+  } } }));
+  const config = (await request('/api/config')).body.config;
+  const ws = config.tools.webSearch;
+  config.tools.webSearch = updateWebSearchProviderConfig(ws, {
+    ...resolveWebSearchConfig(ws), endpoint: 'https://new.example/search', apiKey: undefined,
+  });
+  const saved = await request('/api/config', { method: 'PUT', body: JSON.stringify({ raw: stringifyYaml(config) }) });
+  expect(saved.status).toBe(200);
+  expect(readFileSync(configPath, 'utf8')).toContain('https://new.example/search');
+  expect(readFileSync(configPath, 'utf8')).not.toContain('saved-secret');
+  expect(resolveWebSearchConfig((await request('/api/config')).body.config.tools.webSearch).endpoint).toBe('https://new.example/search');
+});

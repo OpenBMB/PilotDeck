@@ -1,8 +1,20 @@
 name: Linux
 
 on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Native Linux architecture to validate
+        type: choice
+        options: [arm64, x64, all]
+        default: arm64
   workflow_call:
     inputs:
+      architecture:
+        description: Native Linux architecture to validate (all, x64 or arm64)
+        required: false
+        default: all
+        type: string
       release_date:
         description: Optional release date in YYYY-MM-DD
         required: false
@@ -27,16 +39,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x64
-            deb_arch: amd64
-            unpacked_dir: linux-unpacked
-            runner: ubuntu-22.04
-          - arch: arm64
-            deb_arch: arm64
-            unpacked_dir: linux-arm64-unpacked
-            runner: ubuntu-22.04-arm
-    runs-on: ${{ matrix.runner }}
+        arch: ${{ fromJSON(inputs.architecture == 'arm64' && '["arm64"]' || inputs.architecture == 'x64' && '["x64"]' || '["x64","arm64"]') }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-22.04-arm' || 'ubuntu-22.04' }}
     timeout-minutes: 90
     env:
       PILOTDECK_RELEASE_DATE: ${{ inputs.release_date }}
@@ -63,7 +67,15 @@ jobs:
         run: node apps/desktop/scripts/check-linux-build-host.mjs ${{ matrix.arch }}
 
       - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
+        # node-pty has no Linux prebuilds; native addons need this even on ARM64.
+        # Declare the tools instead of relying on the hosted runner image.
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3
+          pnpm install --frozen-lockfile
+
+      - name: Verify runtime PTY probe
+        run: node --test apps/desktop/scripts/verify-runtime-pty.test.mjs apps/desktop/scripts/download-node.test.mjs apps/desktop/scripts/prepare-electron.test.mjs
 
       - name: Verify Linux background and quit lifecycle
         run: node --test apps/desktop/scripts/desktop-lifecycle.test.mjs
@@ -80,9 +92,9 @@ jobs:
       - name: Verify Ubuntu artifact and updater
         shell: bash
         env:
-          EXPECTED_DEB_ARCH: ${{ matrix.deb_arch }}
+          EXPECTED_DEB_ARCH: ${{ matrix.arch == 'arm64' && 'arm64' || 'amd64' }}
           EXPECTED_ARCH: ${{ matrix.arch }}
-          UNPACKED_DIR: ${{ matrix.unpacked_dir }}
+          UNPACKED_DIR: ${{ matrix.arch == 'arm64' && 'linux-arm64-unpacked' || 'linux-unpacked' }}
         run: |
           set -euo pipefail
           deb_path="$(find apps/desktop/dist-electron -maxdepth 1 -name "*-linux-${EXPECTED_ARCH}.deb" -print -quit)"
@@ -103,7 +115,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            dbus-x11 desktop-file-utils weston x11-utils xauth xvfb
+            dbus-x11 desktop-file-utils fonts-noto-cjk openbox weston x11-utils xauth xvfb
 
       - name: Install DEB and exercise bundled native modules
         env:
@@ -116,6 +128,9 @@ jobs:
 
       - name: Smoke installed app under X11
         run: bash apps/desktop/scripts/run-linux-display-smoke.sh x11
+
+      - name: Verify task badges and native foreground acknowledgement
+        run: bash apps/desktop/scripts/run-linux-badge-smoke.sh
 
       - name: Smoke installed app under Wayland
         run: bash apps/desktop/scripts/run-linux-display-smoke.sh wayland
@@ -151,16 +166,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x64
-            rpm_arch: x86_64
-            unpacked_dir: linux-unpacked
-            runner: ubuntu-22.04
-          - arch: arm64
-            rpm_arch: aarch64
-            unpacked_dir: linux-arm64-unpacked
-            runner: ubuntu-22.04-arm
-    runs-on: ${{ matrix.runner }}
+        arch: ${{ fromJSON(inputs.architecture == 'arm64' && '["arm64"]' || inputs.architecture == 'x64' && '["x64"]' || '["x64","arm64"]') }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-22.04-arm' || 'ubuntu-22.04' }}
     container: rockylinux:9
     timeout-minutes: 90
     env:
@@ -196,16 +203,19 @@ jobs:
         run: pnpm --filter pilotdeck-desktop run dist:linux:rpm:${{ matrix.arch }}
       - name: Verify RPM architecture, updater and baseline installation
         shell: bash
+        env:
+          EXPECTED_RPM_ARCH: ${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}
+          UNPACKED_DIR: ${{ matrix.arch == 'arm64' && 'linux-arm64-unpacked' || 'linux-unpacked' }}
         run: |
           set -euo pipefail
           rpm_path="$(find apps/desktop/dist-electron -maxdepth 1 -name '*-linux-${{ matrix.arch }}.rpm' -print -quit)"
           test -n "$rpm_path"
-          test "$(rpm -qp --qf '%{ARCH}' "$rpm_path")" = '${{ matrix.rpm_arch }}'
+          test "$(rpm -qp --qf '%{ARCH}' "$rpm_path")" = "$EXPECTED_RPM_ARCH"
           feed=latest-rpm-linux.yml
           if [ '${{ matrix.arch }}' = arm64 ]; then feed=latest-rpm-linux-arm64.yml; fi
           test -s "apps/desktop/dist-electron/$feed"
           grep -Fq "$(basename "$rpm_path")" "apps/desktop/dist-electron/$feed"
-          test "$(cat apps/desktop/dist-electron/${{ matrix.unpacked_dir }}/resources/package-type)" = rpm
+          test "$(cat "apps/desktop/dist-electron/$UNPACKED_DIR/resources/package-type")" = rpm
           bash apps/desktop/scripts/verify-rpm-upgrade.sh "$rpm_path"
           desktop-file-validate /usr/share/applications/pilotdeck-desktop.desktop
           /opt/PilotDeck/resources/node/bin/node apps/desktop/scripts/verify-linux-package.cjs '${{ matrix.arch }}' rpm
@@ -214,11 +224,23 @@ jobs:
         # Weston is a test-only EPEL dependency; verify the RPM baseline first.
         run: |
           dnf install -y epel-release
-          dnf --enablerepo=crb install -y dbus-x11 xorg-x11-server-Xvfb xorg-x11-xauth xwininfo weston
+          dnf --enablerepo=crb install -y dbus-x11 xorg-x11-server-Xvfb xorg-x11-xauth xwininfo weston google-noto-sans-cjk-ttc-fonts
       - name: Smoke installed app under X11
         run: bash apps/desktop/scripts/run-linux-display-smoke.sh x11
       - name: Smoke installed app under Wayland
         run: bash apps/desktop/scripts/run-linux-display-smoke.sh wayland
+      - name: Verify RPM Linux chrome under X11 and Wayland
+        run: |
+          bash apps/desktop/scripts/run-linux-chrome-smoke.sh x11
+          bash apps/desktop/scripts/run-linux-chrome-smoke.sh wayland
+      - name: Upload RPM chrome screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: pilotdeck-rpm-chrome-${{ matrix.arch }}
+          path: outputs/desktop-chrome-review/linux-*/linux-*.png
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload RPM installer and feed
         uses: actions/upload-artifact@v7
         with:

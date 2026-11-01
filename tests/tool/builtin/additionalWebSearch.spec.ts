@@ -6,6 +6,8 @@ import { SERPAPI_ENGINES } from "../../../src/pilot/config/webSearchProviders.js
 const context = { env: {}, cwd: "/", projectRoot: "/" } as any;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 for (const [provider, response, requestBody, header] of [
+  ["deepseek", { results: [{ title: "DeepSeek", url: "https://example.test", summary: "摘要", site_name: "Example", date: "2026-09-30" }] },
+    { query: "你好", count: 8, need_content: false }, "Authorization"],
   ["baidu", { references: [{ type: "image", title: "ignore" }, { type: "web", title: "百度", url: "https://example.test", content: "摘要", date: "2026-09-30" }] },
     { messages: [{ role: "user", content: "你好" }], search_source: "baidu_search_v2", resource_type_filter: [{ type: "web", top_k: 8 }] }, "Authorization"],
   ["bocha", { code: 200, data: { webPages: { value: [{ name: "博查", url: "https://example.test", snippet: "short", summary: "摘要", siteName: "Example", datePublished: "2026-09-30" }] } } },

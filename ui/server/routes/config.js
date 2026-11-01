@@ -1,6 +1,9 @@
+import { customSearchRequest, customSearchResults } from "../../../src/pilot/config/customSearch.js";
 import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../../../src/pilot/config/webSearchProviders.js";
+import { getWebSearchProviderConfig, migrateWebSearchProviderConfigs, resolveWebSearchConfig } from "../../../src/pilot/config/webSearchConfig.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError } from "../../../src/tool/builtin/additionalWebSearch.js";
 import express from 'express';
+import { mergeRequestHeaders, requestContextHeaders } from '../../../src/network/requestContext.js';
 import { createConnectionTestTasks } from '../services/connectionTestTasks.js';
 import fsPromises from 'fs/promises';
 import path from 'path';
@@ -8,7 +11,6 @@ import { spawn } from 'child_process';
 import { prepareBackgroundSpawnOptions } from '../utils/processSpawn.js';
 import { parse as parseYaml } from 'yaml';
 import {
-  buildDefaultPilotDeckConfig,
   configRevision,
   getPilotDeckConfigPath,
   hasUnresolvedMaskedSecrets,
@@ -223,7 +225,7 @@ function normalizeWebSearchProvider(provider) {
 }
 
 function normalizeWebSearchCustomAuth(auth) {
-  return auth === 'bodyApiKey' || auth === 'queryApiKey' || auth === 'none' ? auth : 'bearer';
+  return auth === 'bodyApiKey' || auth === 'queryApiKey' || auth === 'headerApiKey' || auth === 'none' ? auth : 'bearer';
 }
 
 function normalizeWebSearchEndpoint(provider, endpoint) {
@@ -263,19 +265,64 @@ function webSearchCredentialScopeMatches(nextConfig, previousConfig) {
   return JSON.stringify(webSearchCredentialScope(nextConfig)) === JSON.stringify(webSearchCredentialScope(previousConfig));
 }
 
+function formatWebSearchApiError(response, raw) {
+  const error = isRecord(raw?.error) ? raw.error : {};
+  const message = [raw?.error, error.message, error.msg, raw?.message, raw?.msg]
+    .find(value => typeof value === 'string' && value.trim());
+  const code = [error.code, raw?.code]
+    .find(value => typeof value === 'number' || (typeof value === 'string' && value.trim()));
+  const context = [
+    ...(!response.ok ? [`HTTP ${response.status}`] : []),
+    ...(code !== undefined && String(code) !== '0' && (response.ok || String(code) !== String(response.status))
+      ? [`code=${code}`]
+      : []),
+  ].join(', ');
+  const detail = message?.trim() || (!response.ok && response.statusText) || 'Search provider error';
+  return context ? `${context}: ${detail}` : detail;
+}
+
 function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
   const nextWebSearch = nextConfig?.tools?.webSearch;
-  if (nextWebSearch?.apiKey !== MASKED_SECRET) return null;
-
   const previousWebSearch = previousConfig?.tools?.webSearch;
-  const previousKey = typeof previousWebSearch?.apiKey === 'string' ? previousWebSearch.apiKey.trim() : '';
-  if (!previousKey || previousKey === MASKED_SECRET) {
-    return 'Saved Web Search API key is unavailable. Enter the API key again.';
+
+  const entries = [];
+  if (nextWebSearch?.apiKey === MASKED_SECRET || containsMaskedValue(nextWebSearch?.customProvider)) {
+    entries.push([nextWebSearch, previousWebSearch ?? {}]);
   }
-  if (!webSearchCredentialScopeMatches(nextWebSearch, previousWebSearch)) {
-    return 'Enter the Web Search API key again after changing the provider, endpoint, or authentication settings.';
+  for (const [provider, settings] of Object.entries(nextWebSearch?.providers ?? {})) {
+    if (!isWebSearchProvider(provider) || (settings?.apiKey !== MASKED_SECRET && !containsMaskedValue(settings?.customProvider))) continue;
+    entries.push([
+      { ...settings, provider },
+      { ...getWebSearchProviderConfig(previousWebSearch ?? {}, provider), provider },
+    ]);
+  }
+  for (const [next, previous] of entries) {
+    const previousKey = typeof previous.apiKey === 'string' ? previous.apiKey.trim() : '';
+    if (next.apiKey === MASKED_SECRET && (!previousKey || previousKey === MASKED_SECRET)) {
+      return 'Saved Web Search API key is unavailable. Enter the API key again.';
+    }
+    if (!webSearchCredentialScopeMatches(next, previous)) {
+      return 'Enter the Web Search API key again after changing the provider, endpoint, or authentication settings.';
+    }
   }
   return null;
+}
+
+// Keep each existing secret at its original path. Only add the legacy provider
+// fallback for form migrations; an existing provider record remains independent.
+function webSearchSecretSource(config) {
+  const webSearch = config?.tools?.webSearch;
+  if (!webSearch || typeof webSearch !== 'object' || Array.isArray(webSearch)) return config;
+  return {
+    ...config,
+    tools: {
+      ...config.tools,
+      webSearch: {
+        ...webSearch,
+        ...migrateWebSearchProviderConfigs(webSearch),
+      },
+    },
+  };
 }
 
 function isRecord(value) {
@@ -287,6 +334,23 @@ function containsMaskedValue(value) {
   if (Array.isArray(value)) return value.some(containsMaskedValue);
   if (!isRecord(value)) return false;
   return Object.values(value).some(containsMaskedValue);
+}
+
+// Only call after checking credential scope. Restore each masked field from
+// its original path, and retain its value for redacting upstream error echoes.
+function restoreMaskedSearchValues(next, previous, secrets) {
+  if (next === MASKED_SECRET) {
+    if (typeof previous !== 'string' || previous === MASKED_SECRET) {
+      throw new Error('Saved search template field is unavailable. Enter it again.');
+    }
+    secrets.push(previous);
+    return previous;
+  }
+  if (Array.isArray(next)) return next.map((item, index) => restoreMaskedSearchValues(item, Array.isArray(previous) ? previous[index] : undefined, secrets));
+  if (!isRecord(next)) return next;
+  return Object.fromEntries(Object.entries(next).map(([key, child]) => [key,
+    restoreMaskedSearchValues(child, isRecord(previous) && Object.hasOwn(previous, key) ? previous[key] : undefined, secrets),
+  ]));
 }
 
 function modelProviderCredentialScope(providerId, provider) {
@@ -606,7 +670,7 @@ function isNetworkTimeout(error) {
 async function fetchWithEndpointFallback(urls, options, isExpectedOkBody = null) {
   let lastResult = null;
   for (const url of urls) {
-    const response = await networkFetch(url, options, {
+    const response = await networkFetch(url, { ...options, headers: mergeRequestHeaders(requestContextHeaders({ purpose: 'model-discovery' }), options.headers) }, {
       signal: options?.signal,
       fetchImpl: fetch,
       retry: {
@@ -756,7 +820,7 @@ router.post('/model-removal', async (req, res) => {
       broadcastConfigEvent({ source: 'ui-save', ...response, timestamp: new Date().toISOString() });
       return res.json({ ...response, removal: publicRemovalPlan(plan, revision) });
     } catch (error) {
-      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML', 'MODEL_CONFIGURATION_REQUIRED'].includes(error?.code)) {
         return res.status(error.statusCode || 409).json({ code: error.code, message: error.message, error: error.message });
       }
       if (error?.validation) {
@@ -874,7 +938,7 @@ router.put('/', async (req, res) => {
       // for secrets the user didn't actually touch.
       const restored = diskRecord.parseError
         ? renamedConfig
-        : preserveMaskedSecrets(renamedConfig, diskRecord.rawYaml ?? {});
+        : preserveMaskedSecrets(renamedConfig, webSearchSecretSource(diskRecord.rawYaml ?? {}));
       if (hasUnresolvedMaskedSecrets(restored)) {
         return res.status(400).json({
           error: 'One or more masked secrets could not be restored. Enter those credentials again before saving.',
@@ -937,7 +1001,7 @@ router.put('/', async (req, res) => {
       if (maskedKeyError) {
         return res.status(400).json({ error: maskedKeyError });
       }
-      const restored = preserveMaskedSecrets(renamedConfig, diskRecord.config);
+      const restored = preserveMaskedSecrets(renamedConfig, webSearchSecretSource(diskRecord.config));
       if (hasUnresolvedMaskedSecrets(restored)) {
         return res.status(400).json({
           error: 'One or more masked secrets could not be restored. Enter those credentials again before saving.',
@@ -981,7 +1045,7 @@ router.put('/', async (req, res) => {
     broadcastConfigEvent({ source: 'ui-save', ...response, timestamp: new Date().toISOString() });
     res.json(response);
     } catch (error) {
-      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML'].includes(error?.code)) {
+      if (['CONFIG_CONFLICT', 'CONFIG_BUSY', 'INVALID_CONFIG_YAML', 'MODEL_CONFIGURATION_REQUIRED'].includes(error?.code)) {
         return res.status(error.statusCode || 409).json({
           error: error.message,
           code: error.code,
@@ -1290,38 +1354,55 @@ router.post('/test-web-search', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Unsupported SerpAPI search engine.' });
   }
   const selectedProvider = normalizeWebSearchProvider(provider);
-  const custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
+  let custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
   const customAuth = normalizeWebSearchCustomAuth(custom.auth);
-  const customMethod = custom.method === 'GET' ? 'GET' : 'POST';
-  const queryParam = typeof custom.queryParam === 'string' && custom.queryParam.trim() ? custom.queryParam.trim() : 'query';
-  const apiKeyParam = typeof custom.apiKeyParam === 'string' && custom.apiKeyParam.trim() ? custom.apiKeyParam.trim() : 'api_key';
-  const resultsPath = typeof custom.resultsPath === 'string' ? custom.resultsPath.trim() : '';
   const requestedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
   const trimmedEndpoint = typeof endpoint === 'string' ? endpoint.trim() : '';
+  const maskedTemplate = selectedProvider === 'custom' && containsMaskedValue(custom);
+  const restoredSecrets = [];
   let trimmedKey = requestedKey === MASKED_SECRET ? '' : requestedKey;
-  if (requestedKey === MASKED_SECRET) {
+  if (requestedKey === MASKED_SECRET || maskedTemplate) {
     try {
       const record = readPilotDeckConfigFile();
-      const savedWebSearch = record.config?.tools?.webSearch;
+      const savedWebSearch = {
+        ...getWebSearchProviderConfig(record.config?.tools?.webSearch ?? {}, selectedProvider),
+        provider: selectedProvider,
+      };
       const savedKey = savedWebSearch?.apiKey;
+      const activeKey = resolveWebSearchConfig(record.config?.tools?.webSearch ?? {}).apiKey;
       const requestedWebSearch = {
         provider: selectedProvider,
         endpoint: trimmedEndpoint,
         customProvider: custom,
       };
+      if (maskedTemplate) {
+        if (!webSearchCredentialScopeMatches(requestedWebSearch, savedWebSearch)) {
+          return res.status(400).json({ ok: false, error: 'Enter masked search template fields again after changing the provider, endpoint, or authentication settings.' });
+        }
+        custom = restoreMaskedSearchValues(custom, savedWebSearch.customProvider, restoredSecrets);
+      }
       if (
+        requestedKey === MASKED_SECRET &&
         typeof savedKey === 'string' &&
         savedKey.trim() !== MASKED_SECRET &&
         webSearchCredentialScopeMatches(requestedWebSearch, savedWebSearch)
       ) {
         trimmedKey = savedKey.trim();
-      } else if (typeof savedKey === 'string' && savedKey.trim() !== MASKED_SECRET) {
+      } else if (
+        requestedKey === MASKED_SECRET && (
+          (typeof savedKey === 'string' && savedKey.trim() !== MASKED_SECRET)
+          || (typeof activeKey === 'string' && activeKey.trim() && activeKey.trim() !== MASKED_SECRET)
+        )
+      ) {
         return res.status(400).json({
           ok: false,
           error: 'Enter the Web Search API key again after changing the provider, endpoint, or authentication settings.',
         });
       }
-    } catch { /* fall through to validation below */ }
+    } catch {
+      if (maskedTemplate) return res.status(400).json({ ok: false, error: 'Saved search template fields are unavailable. Enter them again.' });
+      // Missing saved API keys are rejected by validation below.
+    }
   }
   if (!trimmedKey && !(selectedProvider === 'custom' && customAuth === 'none')) {
     return res.status(400).json({ ok: false, error: 'API key is required.' });
@@ -1330,6 +1411,10 @@ router.post('/test-web-search', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Custom provider endpoint is required.' });
   }
   const effectiveEndpoint = normalizeWebSearchEndpoint(selectedProvider, trimmedEndpoint);
+  // A masked template can mix literal credentials with variables. Redact its
+  // literal parts too, since the upstream response may echo the rendered value.
+  const probeSecrets = [...restoredSecrets.flatMap(value => [value, ...value.split(/\{\{[^{}]*\}\}/g)]), trimmedKey];
+  const redactProbeError = value => redactSearchError(value, probeSecrets);
 
   let requestUrl;
   let requestInit;
@@ -1381,28 +1466,9 @@ router.post('/test-web-search', async (req, res) => {
         },
       };
     } else if (selectedProvider === 'custom') {
-      const headers = { Accept: 'application/json' };
-      const body = {};
-      if (customMethod === 'GET') {
-        url.searchParams.set(queryParam, 'hello');
-      } else {
-        headers['Content-Type'] = 'application/json';
-        body[queryParam] = 'hello';
-      }
-      if (customAuth === 'bearer' && trimmedKey) {
-        headers.Authorization = `Bearer ${trimmedKey}`;
-      } else if (customAuth === 'queryApiKey' && trimmedKey) {
-        url.searchParams.set(apiKeyParam, trimmedKey);
-      } else if (customAuth === 'bodyApiKey' && trimmedKey) {
-        if (customMethod === 'GET') url.searchParams.set(apiKeyParam, trimmedKey);
-        else body[apiKeyParam] = trimmedKey;
-      }
-      requestUrl = url.toString();
-      requestInit = {
-        method: customMethod,
-        headers,
-        ...(customMethod === 'POST' ? { body: JSON.stringify(body) } : {}),
-      };
+      const request = customSearchRequest(effectiveEndpoint, custom, { query: 'hello', limit: 3, apiKey: trimmedKey });
+      requestUrl = request.url;
+      requestInit = request.init;
     } else {
       requestUrl = effectiveEndpoint;
       requestInit = {
@@ -1420,8 +1486,8 @@ router.post('/test-web-search', async (req, res) => {
           }),
         };
     }
-  } catch {
-    return res.status(400).json({ ok: false, error: `Invalid endpoint URL: ${effectiveEndpoint}` });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: redactProbeError(error) });
   }
 
   const timeout = 15_000;
@@ -1449,21 +1515,21 @@ router.post('/test-web-search', async (req, res) => {
       raw = await response.json();
     } catch { /* not JSON */ }
 
+    const hasApiError = (typeof raw?.error === 'string' && raw.error.trim())
+      || (isRecord(raw?.error) && Object.keys(raw.error).length > 0);
+    if (!response.ok || hasApiError) {
+      return res.json({ ok: false, error: redactProbeError(formatWebSearchApiError(response, raw)), latencyMs });
+    }
     if (isAdditionalSearchProvider(selectedProvider)) {
-      if (!response.ok) throw new Error(`API error (${response.status}): ${JSON.stringify(raw)}`);
       const organic = additionalSearchResults(selectedProvider, raw, 3);
       return res.json({ ok: true, latencyMs, organicCount: organic.length });
     }
-    if (!response.ok) {
-      const detail = (raw && (raw.error || raw.msg)) || `${response.status} ${response.statusText}`;
-      return res.json({ ok: false, error: String(detail), latencyMs });
-    }
-    if (raw && typeof raw.error === 'string' && raw.error.length > 0) {
-      return res.json({ ok: false, error: raw.error, latencyMs });
+    if (selectedProvider === 'custom') {
+      const organic = customSearchResults(raw, custom, 3);
+      return res.json({ ok: true, latencyMs, organicCount: organic.length });
     }
     if (raw && typeof raw.code === 'number' && raw.code !== 0) {
-      const msg = typeof raw.msg === 'string' ? raw.msg : 'proxy error';
-      return res.json({ ok: false, error: `code=${raw.code}: ${msg}`, latencyMs });
+      return res.json({ ok: false, error: redactProbeError(formatWebSearchApiError(response, raw)), latencyMs });
     }
 
     const organic = selectedProvider === 'tavily'
@@ -1472,8 +1538,6 @@ router.post('/test-web-search', async (req, res) => {
         ? raw?.organic
         : selectedProvider === 'brave'
           ? raw?.web?.results
-      : selectedProvider === 'custom' && resultsPath
-        ? readPath(raw, resultsPath)
         : (raw?.search_result ?? raw?.results ?? raw?.items ?? raw?.data);
     const organicCount = Array.isArray(organic) ? organic.length : 0;
     return res.json({ ok: true, latencyMs, organicCount });
@@ -1482,27 +1546,22 @@ router.post('/test-web-search', async (req, res) => {
     if (isNetworkTimeout(err)) {
       return res.json({ ok: false, error: `Connection timed out after ${timeout / 1000}s.` });
     }
-    return res.json({ ok: false, error: isAdditionalSearchProvider(selectedProvider) ? redactSearchError(err, trimmedKey) : err.message || String(err) });
+    return res.json({ ok: false, error: redactProbeError(err) });
   }
 });
-
-function readPath(value, pathValue) {
-  return pathValue.split('.').reduce((current, segment) => {
-    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
-    return current[segment];
-  }, value);
-}
 
 router.post('/open', async (_req, res) => {
   const configPath = getPilotDeckConfigPath();
   try {
-    await fsPromises.mkdir(path.dirname(configPath), { recursive: true });
     try {
       await fsPromises.access(configPath);
-    } catch {
-      await writePilotDeckConfig(buildDefaultPilotDeckConfig(), {
-        expectedRevision: configRevision(''),
-        onWriteCommitted: suppressNextWatchEvent,
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      return res.status(409).json({
+        success: false,
+        code: 'MODEL_CONFIGURATION_REQUIRED',
+        error: 'Save a model configuration before opening the configuration file.',
+        path: configPath,
       });
     }
 

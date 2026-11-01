@@ -1,9 +1,11 @@
 #!/usr/bin/env node
+// Configure paths before evaluating services with persistent storage.
+import { assertRequiredPilotDeckEnv } from './load-env.js';
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from './services/workspaceFileUpload.js';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
+import { createSessionNotificationRegistry } from './session-notifications.js';
+import { notifySessionAttention } from './services/notification-orchestrator.js';
 import '../../scripts/check-node-runtime.mjs';
-// Load environment variables before other imports execute
-import { assertRequiredPilotDeckEnv } from './load-env.js';
 // Install global fetch proxy (PILOTDECK_PROXY / HTTPS_PROXY) before any network calls
 import { installGlobalProxy } from './utils/proxy.js';
 installGlobalProxy();
@@ -47,6 +49,9 @@ assertRequiredPilotDeckEnv();
 console.log('SERVER_PORT from runtime config:', process.env.SERVER_PORT);
 
 import express from 'express';
+import { authenticatedRequestContext, createRequestContextMiddleware } from './middleware/requestContext.js';
+import { requestLimiters } from './middleware/rateLimits.js';
+import searchRoutes from './routes/search.js';
 import { rateLimit } from 'express-rate-limit';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcrypt';
@@ -152,33 +157,13 @@ import { getConnectableHost } from '../shared/networkHosts.js';
 import { contentDispositionAttachment } from './utils/downloadHeaders.js';
 import { createSessionWatchRegistry } from './session-watch-registry.js';
 import { isPathInsideOrEqual } from './utils/pathSafety.js';
-import { isVirtualProjectPath, resolvePilotHome } from './utils/pilotPaths.js';
+import { createProjectFilesystemMiddleware } from './middleware/projectFilesystem.js';
 
 // PilotDeck-only mode: chat execution always goes through src/gateway via
 // cursor-cli, openai-codex, gemini-cli) has been removed.
 const VALID_PROVIDERS = ['pilotdeck'];
 
-async function requireRealProjectFilesystem(req, res, next) {
-    try {
-        const projectRoot = await extractProjectDirectory(req.params.projectName);
-        if (isVirtualProjectPath(projectRoot, resolvePilotHome(process.env), process.env)) {
-            return res.status(403).json({
-                error: {
-                    code: 'PROJECT_PATH_FORBIDDEN',
-                    message: 'Project file operations are unavailable for General conversations.',
-                },
-            });
-        }
-        return next();
-    } catch (error) {
-        return res.status(404).json({
-            error: {
-                code: 'PROJECT_NOT_FOUND',
-                message: error instanceof Error ? error.message : 'Project not found',
-            },
-        });
-    }
-}
+const requireRealProjectFilesystem = createProjectFilesystemMiddleware();
 
 // File-system watchers for the chat transcript root maintained by
 // PilotDeck. Provider-specific watchers (.pilotdeck) were dropped along with the four provider adapters.
@@ -206,12 +191,26 @@ let projectsWatchers = [];
 let projectUpdateScheduler = null;
 const connectedClients = new Set();
 const sessionActivityRegistry = createSessionActivityRegistry();
+const sessionNotificationRegistry = createSessionNotificationRegistry();
 function broadcastSessionActivity(frame, userId) {
-    const activity = sessionActivityRegistry.receive(userId, frame);
-    if (!activity) return;
-    const payload = JSON.stringify({type: 'session-activity', activity});
+    const notification = sessionNotificationRegistry.receive(userId, frame);
+    const activity = sessionActivityRegistry.receive(userId, notification ? { ...frame, timestamp: notification.createdAt } : frame);
+    if (notification) {
+        try { notification.sessionName = sessionNamesDb.getName(notification.sessionId, 'pilotdeck') || notification.sessionName; }
+        catch { /* A notification lookup must not interrupt the chat stream. */ }
+    }
+    if (!activity && !notification) return;
+    const payload = activity ? JSON.stringify({type: 'session-activity', activity}) : null;
+    const reminder = notification ? JSON.stringify({type: 'session-notification', notification}) : null;
     for (const client of connectedClients) {
-        if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) client.send(payload);
+        if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) {
+            if (payload) client.send(payload);
+            if (reminder) client.send(reminder);
+        }
+    }
+    if (notification) {
+        try { notifySessionAttention(userId, notification); }
+        catch (error) { console.warn('Notification delivery unavailable:', error.message); }
     }
 }
 const sessionWatchRegistry = createSessionWatchRegistry();
@@ -264,6 +263,8 @@ function broadcastChatFrame(frame, originWs, userId) {
 function broadcastToSessionWatchers(sessionId, frame, userId, excludeWs = null) {
     const normalizedSessionId = normalizeSessionId(sessionId);
     if (!normalizedSessionId) return;
+    // Responses also update sidebar state in windows that are not watching this chat.
+    if (frame.kind === 'permission_cancelled' && userId !== undefined) broadcastSessionActivity(frame, userId);
     const payload = JSON.stringify(frame);
     const watchers = sessionWatchRegistry.getWatchers(normalizedSessionId);
     watchers.forEach((client) => {
@@ -511,7 +512,11 @@ const wss = new WebSocketServer({
 // Make WebSocket server available to routes
 app.locals.wss = wss;
 
-app.use(cors({ exposedHeaders: ['X-Refreshed-Token'] }));
+app.use(cors({ exposedHeaders: ['X-Refreshed-Token', 'x-pilotdeck-request-id', 'x-pilotdeck-version', 'x-pilotdeck-user-id', 'x-pilotdeck-project-id', 'x-pilotdeck-session-id', 'x-pilotdeck-request-headers-mode', 'Retry-After', 'RateLimit', 'RateLimit-Policy'] }));
+app.use('/api', requestLimiters.ingress);
+// Keep the dashboard's guard and protected routes in one mounted chain.
+const memoryDashboardRouter = express.Router();
+app.use('/memory-dashboard', requestLimiters.ingress, memoryDashboardRouter);
 app.use(express.json({
     limit: '50mb',
     type: (req) => {
@@ -524,6 +529,7 @@ app.use(express.json({
     }
 }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/api', createRequestContextMiddleware(extractProjectDirectory));
 
 // Public health check endpoint (no authentication required)
 app.get('/health', (req, res) => {
@@ -589,6 +595,9 @@ app.get('/api/projects/files', authenticateToken, async (req, res) => {
 
 // Projects API Routes (protected)
 app.use('/api/projects', authenticateToken, projectsRoutes);
+app.use('/api/search', authenticateToken, searchRoutes);
+// Populate the independent search index without holding up server readiness.
+void searchRoutes.warm().catch(error => console.warn('[Search] Index warm-up:', error.message));
 
 // Git API Routes (protected)
 app.use('/api/git', authenticateToken, gitRoutes);
@@ -755,7 +764,7 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
 
 app.patch('/api/always-on/cron-jobs/:taskId', authenticateToken, createCronUpdateHandler({ getGateway: getPilotDeckGateway }));
 
-app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, async (req, res) => {
+app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, requestLimiters.model, async (req, res) => {
     try {
         const gateway = await getPilotDeckGateway();
         const result = await gateway.cronRunNow({
@@ -853,7 +862,7 @@ app.put('/api/ccr/config', authenticateToken, (_req, res) => {
     });
 });
 
-app.get('/memory-dashboard', authenticateToken, (req, res) => {
+memoryDashboardRouter.get('/', authenticateToken, (req, res) => {
     const indexPath = path.join(MEMORY_DASHBOARD_DIR, 'index.html');
     if (!fs.existsSync(indexPath)) {
         res.status(404).type('text/plain').send('Memory dashboard assets not bundled.');
@@ -862,7 +871,7 @@ app.get('/memory-dashboard', authenticateToken, (req, res) => {
     res.sendFile(indexPath);
 });
 
-app.use('/memory-dashboard', authenticateToken, express.static(MEMORY_DASHBOARD_DIR, {
+memoryDashboardRouter.use(authenticateToken, express.static(MEMORY_DASHBOARD_DIR, {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.html')) {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -877,7 +886,7 @@ app.use('/memory-dashboard', authenticateToken, express.static(MEMORY_DASHBOARD_
 // through to the SPA wildcard below and return the PilotDeck shell index.html,
 // which the MemoryPanel iframe then renders — recursively nesting the entire
 // app inside itself (see bug: "嵌套显示 + general memory 多次出现").
-app.use('/memory-dashboard', (_req, res) => {
+memoryDashboardRouter.use((_req, res) => {
     res.status(404).type('text/plain').send('Not found in memory-dashboard.');
 });
 
@@ -966,6 +975,8 @@ app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, 
         });
         sessionNamesDb.deleteName(sessionId, 'pilotdeck');
         const userId = req.user?.id ?? req.user?.userId ?? null;
+        sessionActivityRegistry.remove(userId, sessionId);
+        sessionNotificationRegistry.remove(userId, sessionId);
         const payload = JSON.stringify({ type: 'session-deleted', projectName, sessionId });
         connectedClients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) client.send(payload);
@@ -1507,7 +1518,7 @@ app.get('/api/projects/:projectName/file', authenticateToken, requireRealProject
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1521,7 +1532,7 @@ app.get('/api/projects/:projectName/file', authenticateToken, requireRealProject
         }
 
         const content = await fsPromises.readFile(resolved, 'utf8');
-        res.json({ content, path: resolved });
+        res.json({ content, path: resolved, hash: crypto.createHash('sha256').update(content).digest('hex') });
     } catch (error) {
         console.error('Error reading file:', error);
         if (error.code === 'ENOENT') {
@@ -1545,7 +1556,7 @@ app.get('/api/projects/:projectName/files/content', authenticateToken, requireRe
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1620,7 +1631,7 @@ app.get('/api/projects/:projectName/files/preview/pdf', authenticateToken, requi
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1683,7 +1694,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/manifest', authent
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1726,7 +1737,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/data', authenticat
             return res.status(400).json({ error: 'Invalid file path' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1775,7 +1786,7 @@ app.get('/api/projects/:projectName/files/preview/spreadsheet/sheet', authentica
             return res.status(400).json({ error: 'File path and worksheet index are required' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1823,7 +1834,7 @@ app.get('/api/projects/:projectName/preview/*', authenticateToken, requireRealPr
         const { projectName } = req.params;
         const relativeFilePath = req.params[0] || 'index.html';
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1857,7 +1868,7 @@ app.get('/api/projects/:projectName/preview/*', authenticateToken, requireRealPr
 app.get('/api/projects/:projectName/download', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
         const { projectName } = req.params;
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1896,6 +1907,17 @@ app.get('/api/projects/:projectName/download', authenticateToken, requireRealPro
     }
 });
 
+async function mutateWorkspaceFile(projectRoot, fileOperation, signal) {
+    const gateway = await getPilotDeckGateway();
+    const requestId = crypto.randomUUID();
+    const input = { projectKey: projectRoot, sessionKey: 'filesystem:user', action: 'filesystem', fileOperation: { ...fileOperation, requestId } };
+    const cancel = () => { void gateway.manageCheckpoints({ ...input, fileOperation: { ...input.fileOperation, cancel: true } }).catch(() => {}); };
+    if (signal?.aborted) throw Object.assign(new Error('Upload cancelled.'), { code: 'UPLOAD_CANCELLED' });
+    signal?.addEventListener('abort', cancel, { once: true });
+    try { return await gateway.manageCheckpoints(input); }
+    finally { signal?.removeEventListener('abort', cancel); }
+}
+
 // Save file content endpoint
 app.put('/api/projects/:projectName/file', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {
@@ -1912,7 +1934,7 @@ app.put('/api/projects/:projectName/file', authenticateToken, requireRealProject
             return res.status(400).json({ error: 'Content is required' });
         }
 
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -1926,15 +1948,16 @@ app.put('/api/projects/:projectName/file', authenticateToken, requireRealProject
         }
 
         // Write the new content
-        await fsPromises.writeFile(resolved, content, 'utf8');
+        const result = await mutateWorkspaceFile(projectRoot, { operation: 'save', path: resolved, content, expectedHash: req.body.expectedHash, expectedContent: req.body.expectedContent });
 
         res.json({
             success: true,
             path: resolved,
-            message: 'File saved successfully'
+            message: 'File saved successfully', hash: result.hash
         });
     } catch (error) {
         console.error('Error saving file:', error);
+        if (/FILE_CHANGED|文件已被修改/.test(error.message)) return res.status(409).json({ error: '文件已被修改，请重新读取后再保存。' });
         if (error.code === 'ENOENT') {
             res.status(404).json({ error: 'File or directory not found' });
         } else if (error.code === 'EACCES') {
@@ -1950,15 +1973,7 @@ app.get('/api/projects/:projectName/files', authenticateToken, requireRealProjec
 
         // Using fsPromises from import
 
-        // Use extractProjectDirectory to get the actual project path
-        let actualPath;
-        try {
-            actualPath = await extractProjectDirectory(req.params.projectName);
-        } catch (error) {
-            console.error('Error extracting project directory:', error);
-            // Fallback to simple dash replacement
-            actualPath = req.params.projectName.replace(/-/g, '/');
-        }
+        const actualPath = req.projectRoot;
 
         // Check if path exists
         try {
@@ -2042,7 +2057,7 @@ app.post('/api/projects/:projectName/files/create', authenticateToken, requireRe
         }
 
         // Get project root
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -2065,19 +2080,7 @@ app.post('/api/projects/:projectName/files/create', authenticateToken, requireRe
             // Doesn't exist, which is what we want
         }
 
-        // Create file or directory
-        if (type === 'directory') {
-            await fsPromises.mkdir(resolvedPath, { recursive: false });
-        } else {
-            // Ensure parent directory exists
-            const parentDir = path.dirname(resolvedPath);
-            try {
-                await fsPromises.access(parentDir);
-            } catch {
-                await fsPromises.mkdir(parentDir, { recursive: true });
-            }
-            await fsPromises.writeFile(resolvedPath, '', 'utf8');
-        }
+        await mutateWorkspaceFile(projectRoot, { operation: type === 'directory' ? 'mkdir' : 'create', path: resolvedPath });
 
         res.json({
             success: true,
@@ -2115,7 +2118,7 @@ app.put('/api/projects/:projectName/files/rename', authenticateToken, requireRea
         }
 
         // Get project root
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -2152,7 +2155,7 @@ app.put('/api/projects/:projectName/files/rename', authenticateToken, requireRea
         }
 
         // Rename
-        await fsPromises.rename(resolvedOldPath, resolvedNewPath);
+        await mutateWorkspaceFile(projectRoot, { operation: 'rename', path: resolvedOldPath, newPath: resolvedNewPath });
 
         res.json({
             success: true,
@@ -2187,7 +2190,7 @@ app.delete('/api/projects/:projectName/files', authenticateToken, requireRealPro
         }
 
         // Get project root
-        const projectRoot = await extractProjectDirectory(projectName).catch(() => null);
+        const projectRoot = req.projectRoot;
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -2213,12 +2216,7 @@ app.delete('/api/projects/:projectName/files', authenticateToken, requireRealPro
             return res.status(403).json({ error: 'Cannot delete project root directory' });
         }
 
-        // Delete based on type
-        if (stats.isDirectory()) {
-            await fsPromises.rm(resolvedPath, { recursive: true, force: true });
-        } else {
-            await fsPromises.unlink(resolvedPath);
-        }
+        await mutateWorkspaceFile(projectRoot, { operation: 'delete', path: resolvedPath });
 
         res.json({
             success: true,
@@ -2240,7 +2238,7 @@ app.delete('/api/projects/:projectName/files', authenticateToken, requireRealPro
     }
 });
 
-const uploadFilesHandler = createWorkspaceFileUploadHandler({ resolveProject: extractProjectDirectory });
+const uploadFilesHandler = createWorkspaceFileUploadHandler({ resolveProject: extractProjectDirectory, publish: (root, source, destination, signal) => mutateWorkspaceFile(root, { operation: 'upload', path: destination, stagedPath: source }, signal) });
 
 app.post('/api/projects/:projectName/files/upload/check', authenticateToken, requireRealProjectFilesystem,
     createWorkspaceUploadCheckHandler({ resolveProject: extractProjectDirectory }));
@@ -2380,9 +2378,18 @@ function handleChatConnection(ws, request) {
         try {
             const data = JSON.parse(message);
 
+            // Browser WebSockets cannot set custom HTTP headers. Carry the same
+            // diagnostic context per frame; derive user identity from authenticated ws.
+            const requestContext = authenticatedRequestContext(userId, data.requestContext);
+            if (data.type?.endsWith('-command')) {
+                data.options = { ...data.options, requestContext };
+            } else if (data.type === 'queue-input') {
+                data.item = { ...data.item, options: { ...data.item?.options, requestContext } };
+            }
+
             if (data.type === 'ping') return;
             if (data.type === 'get-session-activity') {
-                writer.send({type: 'session-activity-snapshot', activities: sessionActivityRegistry.snapshot(userId)});
+                writer.send({type: 'session-activity-snapshot', scope: String(userId ?? 'local'), activities: sessionActivityRegistry.snapshot(userId)});
                 return;
             }
             const requestSessionId = normalizeSessionId(data.sessionId);
@@ -3677,6 +3684,7 @@ async function startServer() {
                 // that self-reference SERVER_PORT (e.g. routes/taskmaster.js) hit
                 // the right port after a fallback.
                 process.env.SERVER_PORT = String(boundPort);
+                runtimeCoordination.publishServerReady(boundPort);
                 runtimeCoordination.publishConfigurationState();
                 {
                     const appInstallPath = path.join(__dirname, '..');
@@ -3739,6 +3747,7 @@ async function startServer() {
 
             shutdownPromise = (async () => {
                 try {
+                    await searchRoutes.close();
                     await computerUse.stop().catch(error => console.error('[computer-use] Shutdown:', error.message));
                     stopMemoryScheduler();
                     closeMemoryServices();

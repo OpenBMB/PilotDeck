@@ -169,6 +169,60 @@ describe('useChatComposerState attachment submission', () => {
     if (queued) expect(addMessage).not.toHaveBeenCalled(); // A waiting input must not jump into the transcript.
   }, 15_000);
 
+  it.each([false, true])('sends every same-name clipboard file once after independent uploads finish (queued=%s)', async queued => {
+    const gates: Array<() => void> = [];
+    let batch = 0;
+    mocks.uploadAttachmentBatch.mockImplementation(({ files }: { files: File[] }) => {
+      const uploadId = `same-name-${++batch}`;
+      return new Promise(resolve => gates.push(() => resolve({ uploadId,
+        attachmentIds: files.map((_, index) => `file-${index}`),
+        attachments: files.map((file, index) => ({ attachmentId: `file-${index}`, name: file.name,
+          relativePath: file.name, bytes: file.size, mimeType: file.type })) })));
+    });
+    const addMessage = vi.fn();
+    const sendMessage = vi.fn(() => true);
+    const enqueuePreparedInput = vi.fn(async () => ({ ok: true }));
+    const options = {
+      selectedProject: { name: 'demo', displayName: 'Demo', fullPath: '/tmp/demo' },
+      selectedSession: queued ? { id: 'web:queue' } : null, currentSessionId: queued ? 'web:queue' : null,
+      model: 'provider/model', permissionMode: 'default', runMode: 'agent', cycleRunMode: vi.fn(),
+      isLoading: queued, canAbortSession: queued, tokenBudget: null, sendMessage, enqueuePreparedInput,
+      pendingViewSessionRef: { current: null }, scrollToBottom: vi.fn(), addMessage,
+      clearMessages: vi.fn(), rewindMessages: vi.fn(), setIsLoading: vi.fn(), setCanAbortSession: vi.fn(),
+      setIsAborting: vi.fn(), setClaudeStatus: vi.fn(), setPilotDeckStatus: vi.fn(), setIsUserScrolledUp: vi.fn(),
+      pendingPermissionRequests: [], setPendingPermissionRequests: vi.fn(),
+    };
+    const { result } = renderHook(() => useChatComposerState(options));
+    const files = ['a', 'b', 'c'].map(data => new File([data], 'image.png', { type: 'image/png', lastModified: 1 }));
+    const paste = (members: File[]) => result.current.handlePaste({ preventDefault: vi.fn(), clipboardData: {
+      items: members.map(file => ({ kind: 'file', getAsFile: () => file })), files: members,
+    } } as never);
+    act(() => { result.current.setInput('Compare'); paste(files.slice(0, 2)); });
+    act(() => paste(files.slice(2)));
+    expect(result.current.attachedImages).toHaveLength(3);
+    await act(async () => gates[1]());
+    await act(async () => { await result.current.handleSubmit({ preventDefault: vi.fn() } as never); });
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(enqueuePreparedInput).not.toHaveBeenCalled();
+    await act(async () => gates[0]());
+    await waitFor(() => expect(result.current.hasPendingAttachments).toBe(false));
+    await act(async () => { await Promise.all([result.current.handleSubmit({ preventDefault: vi.fn() } as never), result.current.handleSubmit({ preventDefault: vi.fn() } as never)]); });
+    const dispatch = queued ? enqueuePreparedInput : sendMessage;
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const sent = (dispatch.mock.calls[0] as any)[0].options;
+    expect(sent.uploadedAttachments).toEqual([
+      { uploadId: 'same-name-1', attachmentIds: ['file-0', 'file-1'] },
+      { uploadId: 'same-name-2', attachmentIds: ['file-0'] },
+    ]);
+    expect(sent.displayAttachments).toHaveLength(3);
+    expect(sent.displayAttachments.map((file: any) => cachedUploadedPreview(file))).toEqual([
+      'data:image/png;base64,YQ==', 'data:image/png;base64,Yg==', 'data:image/png;base64,Yw==',
+    ]);
+    expect(JSON.stringify(sent)).not.toContain('data:image/');
+    expect(result.current.attachedImages).toHaveLength(0);
+    expect(addMessage).toHaveBeenCalledTimes(queued ? 0 : 1);
+  });
+
   it('does not create an optimistic sidebar session when attachment upload fails', async () => {
     mocks.uploadAttachmentBatch.mockRejectedValue(new Error('upload failed'));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);

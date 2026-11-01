@@ -53,6 +53,24 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it('anchors a search result inside an expanded process while content above the result resizes', () => {
+    const { node, metrics } = setup();
+    const process = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    const result = document.createElement('div');
+    result.dataset.messageKey = 'search-result';
+    process.appendChild(result);
+    let inserted = 0;
+    process.getBoundingClientRect = () => ({ top: 100 - metrics.top, bottom: 1000 + inserted - metrics.top }) as DOMRect;
+    result.getBoundingClientRect = () => ({ top: 550 + inserted - metrics.top, bottom: 580 + inserted - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('search-result'));
+    expect(api.getReadingAnchor()?.key).toBe('search-result');
+    inserted = 120; metrics.height += 120;
+    resize(); flush();
+    expect(node.scrollTop).toBe(620);
+    expect(result.getBoundingClientRect().top).toBe(50);
+  });
+
   it('cancels a queued follow on a small upward gesture, before React commits', () => {
     const { node, metrics, view } = setup();
     resize();

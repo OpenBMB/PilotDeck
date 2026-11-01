@@ -12,6 +12,7 @@ export type RawProviderConfig = {
   apiKey?: unknown;
   timeoutMs?: unknown;
   headers?: unknown;
+  requestHeadersMode?: unknown;
   extraBody?: unknown;
   speedMapping?: unknown;
   retry?: unknown;

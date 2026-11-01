@@ -24,6 +24,7 @@ describe('desktop automatic update UI', () => {
   });
   it.each([
     { canDownload: false, desktopReason: 'noCompatibleInstaller' },
+    { canDownload: false, hasUpdate: true, desktopReason: 'downloadUnavailable' },
     { canDownload: false, hasUpdate: false },
     { canDownload: false, checkUnavailable: true, desktopReason: 'checkFailed' },
   ])('offers a fresh check when no downloadable update is available', async (props) => {

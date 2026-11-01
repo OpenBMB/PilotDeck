@@ -22,6 +22,7 @@ import { useTaskMaster } from "../../../contexts/TaskMasterContext";
 import { useTasksSettings } from "../../../contexts/TasksSettingsContext";
 import { useUiPreferences } from "../../../hooks/useUiPreferences";
 import { useEditorSidebar } from "../../code-editor/hooks/useEditorSidebar";
+import { useGlobalSearch } from '../../global-search/GlobalSearchContext';
 import EditorSidebar from "../../code-editor/view/EditorSidebar";
 import type { CodeEditorDiffInfo } from "../../code-editor/types/types";
 import type {
@@ -229,6 +230,7 @@ function MainContent({
   onSessionNotProcessing,
   onSessionActivityBump,
   processingSessions,
+  waitingSessions,
   unreadSessionIds,
   onReplaceTemporarySession,
   onNavigateToSession,
@@ -293,6 +295,16 @@ function MainContent({
     },
     [handleFileOpen, setActiveTab],
   );
+
+  const globalSearchTarget = useGlobalSearch()?.target;
+  const openedSearchTarget = useRef<string | null>(null);
+  useEffect(() => {
+    if (globalSearchTarget?.kind !== 'files' || !globalSearchTarget.path
+      || globalSearchTarget.project.name !== selectedProject?.name
+      || openedSearchTarget.current === globalSearchTarget.requestId) return;
+    openedSearchTarget.current = globalSearchTarget.requestId;
+    openFileInWorkspace(globalSearchTarget.path);
+  }, [globalSearchTarget, selectedProject?.name, openFileInWorkspace]);
 
   const handledMisroutedFileRef = useRef<string | null>(null);
   useEffect(() => {
@@ -558,6 +570,7 @@ function MainContent({
           onSessionNotProcessing={onSessionNotProcessing}
           onSessionActivityBump={onSessionActivityBump}
           processingSessions={processingSessions}
+          waitingSessions={waitingSessions}
           unreadSessionIds={unreadSessionIds}
           onReplaceTemporarySession={onReplaceTemporarySession}
           onNavigateToSession={onNavigateToSession}
@@ -650,6 +663,7 @@ type SplitBodyProps = {
     inputId?: string,
   ) => void | (() => void);
   processingSessions: Set<string>;
+  waitingSessions?: Map<string, 'question' | 'approval'>;
   unreadSessionIds: Set<string>;
   onReplaceTemporarySession: any;
   onNavigateToSession: (sessionId: string) => void;
@@ -706,6 +720,7 @@ function SplitBody(props: SplitBodyProps) {
     onSessionNotProcessing,
     onSessionActivityBump,
     processingSessions,
+    waitingSessions,
     unreadSessionIds,
     onReplaceTemporarySession,
     onNavigateToSession,
@@ -1545,6 +1560,7 @@ function SplitBody(props: SplitBodyProps) {
                   project={selectedProject}
                   selectedSession={selectedSession}
                   processingSessions={processingSessions}
+                  waitingSessions={waitingSessions}
                   unreadSessionIds={unreadSessionIds}
                   onSelectSession={(session) => {
                     if (onSelectSession) {

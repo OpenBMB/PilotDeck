@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { writeIcns } from './lib/app-icons.mjs';
+import { MAC_HOST_ID, MAC_DEV_HOST_ID } from './lib/mac-computer-use.mjs';
 
 const scripts = dirname(fileURLToPath(import.meta.url));
 export const driverPin = JSON.parse(readFileSync(join(scripts, 'computer-use/cua-driver.json'), 'utf8'));
@@ -26,7 +27,7 @@ const run = (command, args, options = {}) => {
 
 // A native GUI host gives Web deployments the same direct-parent permission
 // contract as Electron, without using a user's separately installed Driver.
-async function stageMacApp(directory) {
+async function stageMacApp(directory, productionHost) {
   const app = join(directory, 'PilotDeck Computer Use.app');
   const contents = join(app, 'Contents');
   mkdirSync(join(contents, 'MacOS'), { recursive: true });
@@ -35,9 +36,10 @@ async function stageMacApp(directory) {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>pilotdeck-computer-use</string>
-<key>CFBundleIdentifier</key><string>cn.pilotdeck.computer-use</string>
-<key>CFBundleName</key><string>PilotDeck Computer Use</string>
-<key>CFBundleDisplayName</key><string>PilotDeck Computer Use</string>
+<key>CFBundleIdentifier</key><string>${productionHost ? MAC_HOST_ID : MAC_DEV_HOST_ID}</string>
+<key>CFBundleName</key><string>PilotDeck Computer Use${productionHost ? '' : ' Dev'}</string>
+<key>CFBundleDisplayName</key><string>PilotDeck Computer Use${productionHost ? '' : ' Dev'}</string>
+<key>PilotDeckPermissionProbeVersion</key><integer>1</integer>
 <key>CFBundleDevelopmentRegion</key><string>en</string>
 <key>CFBundleIconFile</key><string>computer-use.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
@@ -63,16 +65,18 @@ async function stageMacApp(directory) {
 }
 
 export async function prepareComputerUse({ destination = resolve(scripts, '../resources/cua-driver'),
-  platform = process.platform, arch = process.env.PILOTDECK_DESKTOP_NODE_ARCH || process.arch, env = process.env } = {}) {
+  platform = process.platform, arch = process.env.PILOTDECK_DESKTOP_NODE_ARCH || process.arch, env = process.env,
+  productionHost = env.PILOTDECK_DESKTOP_REQUIRE_SIGNING === '1' } = {}) {
   const asset = selectDriverAsset(platform, arch);
   const binaryName = platform === 'win32' ? 'cua-driver.exe' : 'cua-driver';
   const executable = platform === 'darwin' ? 'PilotDeck Computer Use.app/Contents/MacOS/cua-driver' : binaryName;
   const metadataPath = join(destination, 'manifest.json');
   if (existsSync(metadataPath) && existsSync(join(destination, executable))) {
     const installed = JSON.parse(readFileSync(metadataPath, 'utf8'));
-    if (installed.layoutVersion === 6 && installed.version === driverPin.version && installed.platform === platform && installed.arch === arch
+    if (installed.layoutVersion === 7 && installed.version === driverPin.version && installed.platform === platform && installed.arch === arch
       && installed.archiveSha256 === asset.sha256 && installed.binarySha256 === sha256(join(destination, executable))
-      && (platform !== 'darwin' || installed.hostSourceSha256 === sha256(join(scripts, 'computer-use/macos-host.m'))
+      && (platform !== 'darwin' || installed.hostBundleId === (productionHost ? MAC_HOST_ID : MAC_DEV_HOST_ID)
+        && installed.hostSourceSha256 === sha256(join(scripts, 'computer-use/macos-host.m'))
         && installed.iconSourceSha256 === sha256(join(scripts, 'computer-use/icon.png'))
         && existsSync(join(destination, 'PilotDeck Computer Use.app/Contents/Resources/computer-use.icns'))
         && installed.iconSha256 === sha256(join(destination, 'PilotDeck Computer Use.app/Contents/Resources/computer-use.icns')))) return destination;
@@ -109,9 +113,10 @@ export async function prepareComputerUse({ destination = resolve(scripts, '../re
     cpSync(binary, join(staged, binaryName));
     if (platform !== 'win32') chmodSync(join(staged, binaryName), 0o755);
     cpSync(join(scripts, 'computer-use/LICENSE.txt'), join(staged, 'LICENSE.txt'));
-    if (platform === 'darwin') await stageMacApp(staged);
-    writeFileSync(join(staged, 'manifest.json'), JSON.stringify({ layoutVersion: 6, executable, version: driverPin.version, platform, arch,
-      ...(platform === 'darwin' ? { hostSourceSha256: sha256(join(scripts, 'computer-use/macos-host.m')),
+    if (platform === 'darwin') await stageMacApp(staged, productionHost);
+    writeFileSync(join(staged, 'manifest.json'), JSON.stringify({ layoutVersion: 7, executable, version: driverPin.version, platform, arch,
+      ...(platform === 'darwin' ? { hostBundleId: productionHost ? MAC_HOST_ID : MAC_DEV_HOST_ID,
+        hostSourceSha256: sha256(join(scripts, 'computer-use/macos-host.m')),
         iconSourceSha256: sha256(join(scripts, 'computer-use/icon.png')),
         iconSha256: sha256(join(staged, 'PilotDeck Computer Use.app/Contents/Resources/computer-use.icns')) } : {}),
       archive: asset.name, archiveSha256: asset.sha256, binarySha256: sha256(join(staged, executable)) }, null, 2));

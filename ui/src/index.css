@@ -69,6 +69,11 @@
     --ink: var(--pd-ink, #252737);
     --app-muted: var(--pd-muted, #858998);
     --line: var(--pd-border, #e4e5ee);
+    --search-match-color: var(--brand-strong);
+    --search-match-bg: color-mix(in srgb, var(--brand) 11%, transparent);
+    --search-match-active-bg: var(--brand);
+    --search-match-active-text: var(--on-primary, #fff);
+    --search-match-ring: color-mix(in srgb, var(--brand) 28%, transparent);
 
     /* V2 zinc/neutral palette — light */
     --background: 0 0% 100%;
@@ -104,12 +109,12 @@
     --nav-input-bg: 0 0% 96% / 0.6;
     --nav-input-focus-ring: 0 0% 30% / 0.18;
 
-    /* File search — light fill preserves the source document's text color. */
-    --file-search-highlight-bg: rgb(253 224 71 / 0.12);
-    --file-search-highlight-border: rgb(202 138 4 / 0.62);
-    --file-search-highlight-active-bg: rgb(251 191 36 / 0.18);
-    --file-search-highlight-active-border: rgb(217 119 6 / 0.88);
-    --file-search-highlight-active-ring: rgb(251 191 36 / 0.24);
+    /* Document overlays retain a translucent fill so source text stays readable. */
+    --file-search-highlight-bg: var(--search-match-bg);
+    --file-search-highlight-border: color-mix(in srgb, var(--brand) 45%, transparent);
+    --file-search-highlight-active-bg: color-mix(in srgb, var(--brand) 24%, transparent);
+    --file-search-highlight-active-border: var(--brand);
+    --file-search-highlight-active-ring: var(--search-match-ring);
 
     /* Safe area CSS variables */
     --safe-area-inset-top: env(safe-area-inset-top);
@@ -173,11 +178,6 @@
     --nav-divider-color: 0 0% 15% / 0.7;
     --nav-input-bg: 0 0% 15% / 0.5;
     --nav-input-focus-ring: 0 0% 96% / 0.12;
-    --file-search-highlight-bg: rgb(253 224 71 / 0.1);
-    --file-search-highlight-border: rgb(253 224 71 / 0.68);
-    --file-search-highlight-active-bg: rgb(251 191 36 / 0.16);
-    --file-search-highlight-active-border: rgb(251 191 36 / 0.92);
-    --file-search-highlight-active-ring: rgb(253 224 71 / 0.22);
 
     /* V2 chrome tokens — match Tailwind dark:bg-neutral-950 / text-neutral-100 */
     --ink: #f5f5f5;
@@ -1063,26 +1063,18 @@
   }
 
   mark.chat-history-search-highlight {
-    border-radius: 2px;
-    background-color: rgb(254 240 138 / 0.78);
-    color: inherit;
+    border-radius: 3px;
+    background-color: var(--search-match-bg);
+    color: var(--search-match-color);
     padding: 0 1px;
   }
 
-  .dark mark.chat-history-search-highlight {
-    background-color: rgb(113 63 18 / 0.72);
-  }
-
   mark.chat-history-search-highlight-active {
-    background-color: rgb(250 204 21 / 0.96);
-    outline: 1px solid rgb(180 83 9);
-    box-shadow: 0 0 0 2px rgb(251 191 36 / 0.32);
-  }
-
-  .dark mark.chat-history-search-highlight-active {
-    background-color: rgb(217 119 6 / 0.94);
-    outline-color: rgb(253 224 71);
-    box-shadow: 0 0 0 2px rgb(253 224 71 / 0.28);
+    background-color: var(--search-match-active-bg);
+    color: var(--search-match-active-text);
+    font-weight: 600;
+    outline: 1px solid var(--brand);
+    box-shadow: 0 0 0 3px var(--search-match-ring);
   }
 
   .textLayer .pilotdeck-document-search-highlight {
