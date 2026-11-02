@@ -1,3 +1,4 @@
+import { startupLabels } from './startupPresentation';
 import { normalizeLightAppearance, deriveLightColors, type LightAppearance } from './lightAppearance';
 import { normalizeInterfacePreferences, type InterfacePreferences } from './interfacePreferences';
 export type DesktopAppearance = { language: 'en' | 'zh-CN'; themeMode: 'light' | 'dark' | 'system'; lightAppearance?: LightAppearance; interfacePreferences?: InterfacePreferences };
@@ -40,167 +41,43 @@ export function startupText(message: string, language: DesktopAppearance['langua
 }
 
 export function renderLoadingHtml(appearance: DesktopAppearance): string {
-  const text = (value: string) => startupText(value, appearance.language);
+  const labels = startupLabels(appearance.language);
   const light = normalizeLightAppearance(appearance.lightAppearance);
   const canvas = light.preset === 'default' ? '#ffffff' : deriveLightColors(light).background;
   return `<!doctype html>
 <html lang="${appearance.language}" data-theme="${appearance.themeMode}">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PilotDeck</title>
-  <style>
-     :root { color-scheme: light; --bg: ${canvas}; --fg: #171717; --muted: #525252; --line: #e5e5e5; --panel: #fafafa; --error-bg: #fef2f2; --error-fg: #991b1b; --shadow: rgba(0,0,0,.12); }
-    :root[data-theme="dark"] { color-scheme: dark; --bg: #0a0a0a; --fg: #f5f5f5; --muted: #a3a3a3; --line: #303039; --panel: #19191f; --error-bg: #35191f; --error-fg: #fecaca; --shadow: rgba(0,0,0,.35); }
-    @media (prefers-color-scheme: dark) {
-      :root[data-theme="system"] { color-scheme: dark; --bg: #0a0a0a; --fg: #f5f5f5; --muted: #a3a3a3; --line: #303039; --panel: #19191f; --error-bg: #35191f; --error-fg: #fecaca; --shadow: rgba(0,0,0,.35); }
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      padding-top: var(--desktop-caption-height, 0px);
-      display: grid;
-      place-items: center;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--fg);
-    }
-    main {
-      width: min(520px, calc(100vw - 48px));
-      display: grid;
-      gap: 18px;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 22px;
-      font-weight: 650;
-      letter-spacing: 0;
-    }
-    .mark {
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      display: grid;
-      place-items: center;
-      background: var(--fg);
-      color: var(--bg);
-      font-weight: 800;
-    }
-    .panel {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 22px;
-      background: var(--panel);
-      box-shadow: 0 18px 60px var(--shadow);
-    }
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .spinner {
-      width: 18px;
-      height: 18px;
-      border: 2px solid var(--line);
-      border-top-color: var(--fg);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      flex: 0 0 auto;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #message {
-      margin: 0;
-      font-size: 15px;
-      line-height: 1.45;
-      color: var(--fg);
-    }
-    #detail {
-      display: none;
-      margin: 14px 0 0;
-      padding: 12px;
-      max-height: 180px;
-      overflow: auto;
-      white-space: pre-wrap;
-      border-radius: 6px;
-      background: var(--error-bg);
-      color: var(--error-fg);
-      font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
-    }
-    #log {
-      margin-top: 12px;
-      color: var(--muted);
-      font-size: 12px;
-      word-break: break-all;
-    }
-    .actions {
-      display: none;
-      gap: 10px;
-      margin-top: 16px;
-    }
-    button {
-      appearance: none;
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      padding: 8px 12px;
-      background: var(--fg);
-      color: var(--bg);
-      font: inherit;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    button.secondary {
-      background: transparent;
-      color: var(--fg);
-    }
-    .error .spinner { display: none; }
-    .error #detail,
-    .error .actions { display: flex; }
-    .error #detail { display: block; }
-  </style>
-</head>
-<body>
-  <main>
-    <div class="brand"><div class="mark">P</div><div>PilotDeck</div></div>
-    <section class="panel" id="panel">
-      <div class="row">
-        <div class="spinner" aria-hidden="true"></div>
-        <p id="message">${text("Preparing PilotDeck runtime...")}</p>
-      </div>
-      <pre id="detail"></pre>
-      <div id="log"></div>
-      <div class="actions">
-        <button id="retry">${text("Retry")}</button>
-        <button id="openLog" class="secondary">${text("Open Log")}</button>
-      </div>
-    </section>
-  </main>
-  <script>
-    const translations = ${JSON.stringify(appearance.language === 'zh-CN' ? STARTUP_ZH : {})};
-    const translate = value => translations[value] || value;
-    const panel = document.getElementById("panel");
-    const message = document.getElementById("message");
-    const detail = document.getElementById("detail");
-    const log = document.getElementById("log");
-    const retry = document.getElementById("retry");
-    const openLog = document.getElementById("openLog");
-
-    window.pilotdeckDesktop?.onRuntimeStatus((status) => {
-      message.textContent = translate(status.message || "Starting PilotDeck...");
-      log.textContent = status.logPath ? translate("Log: ") + status.logPath : "";
-      if (status.phase === "error") {
-        panel.classList.add("error");
-        detail.textContent = status.error || translate(status.message || "Unknown startup error.");
-      } else {
-        panel.classList.remove("error");
-        detail.textContent = "";
-      }
-    });
-    retry.addEventListener("click", () => window.pilotdeckDesktop?.retryRuntime());
-    openLog.addEventListener("click", () => window.pilotdeckDesktop?.openRuntimeLog());
-  </script>
-</body>
-</html>`;
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>PilotDeck</title>
+<style>
+:root {color-scheme:light;--bg:${canvas};--fg:#171717;--muted:#737373;--line:#e5e5e5;--error:#dc2626}
+:root[data-theme="dark"] {color-scheme:dark;--bg:#0a0a0a;--fg:#f5f5f5;--muted:#a3a3a3;--line:#262626;--error:#f87171}
+@media(prefers-color-scheme:dark){:root[data-theme="system"]{color-scheme:dark;--bg:#0a0a0a;--fg:#f5f5f5;--muted:#a3a3a3;--line:#262626;--error:#f87171}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;padding-top:calc(24px + var(--desktop-caption-height,0px));display:grid;place-items:center;background:var(--bg);color:var(--fg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{width:min(360px,100%);text-align:center}.mark{display:grid;place-items:center;width:64px;height:64px;margin:0 auto 16px;border-radius:12px;background:var(--fg);color:var(--bg);font-size:30px;font-weight:700}h1{margin:0 0 24px;font-size:24px;line-height:32px;font-weight:700}.track{height:4px;overflow:hidden;border-radius:9px;background:var(--line)}.bar{height:100%;width:8%;border-radius:9px;background:var(--fg);transition:width .45s ease}#message{margin:16px 0 0;color:var(--muted);font-size:14px;line-height:20px}
+#failure{display:none;text-align:left;border:1px solid var(--line);border-radius:12px;padding:24px}h2{margin:0;font-size:18px;line-height:26px}#reason{font-size:14px;line-height:22px;margin:12px 0}#code,#log,#saveStatus{font-size:12px;line-height:18px;color:var(--muted);overflow-wrap:anywhere}#log{margin:8px 0 20px}.actions{display:flex;gap:10px}button{flex:1;border:1px solid var(--line);border-radius:7px;padding:10px 12px;background:var(--fg);color:var(--bg);font-family:inherit;font-size:13px;font-weight:500;line-height:20px;cursor:pointer}.secondary{background:transparent;color:var(--fg)}button:disabled{opacity:.6;cursor:default}.error{width:min(440px,100%)}.error #loading{display:none}.error #failure{display:block}@media(prefers-reduced-motion:reduce){.bar{transition:none}}
+</style></head><body><main id="startup"><div class="mark" aria-hidden="true">P</div><h1>PilotDeck</h1>
+<div id="loading" role="status"><div class="track" role="progressbar" aria-label="PilotDeck" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"><div class="bar" id="bar"></div></div><p id="message">${labels.starting}</p></div>
+<section id="failure" role="alert"><h2>${labels.failed}</h2><p id="reason"></p><div id="code"></div><p id="log"></p><div class="actions"><button id="retry">${labels.restart}</button><button id="saveLog" class="secondary">${labels.save}</button></div><p id="saveStatus" role="status"></p></section>
+</main><script>
+const labels=${JSON.stringify(labels)};
+const main=document.getElementById('startup'),bar=document.getElementById('bar'),message=document.getElementById('message');
+let progress=8;
+function update(status){
+ if(!status)return;
+ if(status.phase==='starting')progress=8;
+ progress=Math.max(progress,status.progress||8);bar.style.width=progress+'%';bar.parentElement.setAttribute('aria-valuenow',String(progress));
+ main.classList.toggle('error',status.phase==='error');
+ if(status.phase==='error'){
+  const code=(status.error||'').match(/\\bPD_[A-Z_]+\\b/)?.[0]||'PD_RUNTIME_PROCESS_FAILED';
+  document.getElementById('reason').textContent=labels[code]||labels.unknown;
+  document.getElementById('code').textContent=code;
+  document.getElementById('log').textContent=status.logPath?labels.log+': '+status.logPath:'';
+ }else message.textContent=labels[status.phase]||labels.starting;
+}
+window.pilotdeckDesktop?.onRuntimeStatus(update);update(window.pilotdeckDesktop?.getRuntimeStatus?.());
+document.getElementById('retry').addEventListener('click',()=>window.pilotdeckDesktop?.retryRuntime());
+document.getElementById('saveLog').addEventListener('click',async()=>{
+ const button=document.getElementById('saveLog'),status=document.getElementById('saveStatus');button.disabled=true;status.textContent='';
+ try{const result=await window.pilotdeckDesktop?.saveRuntimeLogs();if(result&&!result.canceled)status.textContent=labels.saved;}catch{status.textContent=labels.saveFailed;}finally{button.disabled=false;}
+});
+</script></body></html>`;
 }

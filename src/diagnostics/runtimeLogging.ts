@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { format } from 'node:util';
-import { classifyRuntimeError, redactDiagnostic, registerDiagnosticSecrets, resolveConfigHome } from '@pilotdeck/config';
+import { parseDocument } from 'yaml';
+import { classifyRuntimeError, createRuntimeLogWriter, redactDiagnostic, registerDiagnosticSecrets, resolveConfigHome, setRuntimeLogRetention } from '@pilotdeck/config';
 
 type RuntimeLogging = { logPath: string; report: (error: unknown, phase?: string) => string };
 let installed: RuntimeLogging | undefined;
@@ -10,12 +11,22 @@ export function installRuntimeLogging(service: string, redactOutput = true): Run
   if (installed) return installed;
   const logPath = process.env.PILOTDECK_LOG_PATH || path.join(resolveConfigHome(), 'logs', 'runtime.log');
   const captured = process.env.PILOTDECK_LOG_CAPTURED === '1';
+  if (!captured) {
+    try {
+      const file = process.env.PILOTDECK_CONFIG_PATH || path.join(resolveConfigHome(), 'pilotdeck.yaml');
+      if (fs.statSync(file).size <= 1024 * 1024) {
+        const document = parseDocument(fs.readFileSync(file, 'utf8'));
+        if (!document.errors.length) setRuntimeLogRetention(document.toJS()?.webui?.runtime?.logRetentionDays);
+      }
+    } catch { /* Diagnostic preferences must not make malformed configuration fatal. */ }
+  }
   registerDiagnosticSecrets(process.env);
   let writable = !captured;
+  const writer = writable ? createRuntimeLogWriter(logPath) : undefined;
   if (writable) { try { fs.mkdirSync(path.dirname(logPath), { recursive: true, mode: 0o700 }); } catch { writable = false; } }
   const append = (message: string) => {
     if (!writable) return;
-    try { fs.appendFileSync(logPath, `${new Date().toISOString()} [${service}] ${message.replace(/\u001b\[[0-9;]*m/g, '')}\n`, { mode: 0o600 }); }
+    try { writable = writer!.write(`${new Date().toISOString()} [${service}] ${message.replace(/\u001b\[[0-9;]*m/g, '')}\n`); }
     catch { writable = false; }
   };
   for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {

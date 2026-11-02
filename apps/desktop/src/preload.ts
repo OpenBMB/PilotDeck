@@ -13,6 +13,7 @@ type RuntimeStatus = {
   message: string;
   logPath?: string;
   error?: string;
+  progress?: number;
 };
 
 contextBridge.exposeInMainWorld("pilotdeckDesktop", {
@@ -53,6 +54,8 @@ contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   pauseUpdate: () => ipcRenderer.invoke("pilotdeck:update-pause"),
   resumeUpdate: () => ipcRenderer.invoke("pilotdeck:update-resume"),
   getRuntimeInfo: () => ipcRenderer.invoke("pilotdeck:get-runtime-info"),
+  getRuntimeStatus: () => ipcRenderer.sendSync('pilotdeck:get-runtime-status') as RuntimeStatus | null,
+  saveRuntimeLogs: () => ipcRenderer.invoke('pilotdeck:save-runtime-logs') as Promise<{ canceled: boolean }>,
   getAboutInfo: () => ipcRenderer.invoke("pilotdeck:about-info"),
   onRuntimeStatus: (callback: (status: RuntimeStatus) => void) => {
     const listener = (_event: IpcRendererEvent, status: RuntimeStatus) => callback(status);
