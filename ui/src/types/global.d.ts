@@ -18,6 +18,8 @@ declare global {
     switchProject?: (projectName: string) => boolean;
     pilotdeckDesktop?: {
       platform?: string;
+      getUninstallStatus?: () => Promise<{ supported: boolean }>;
+      uninstall?: () => Promise<{ canceled: boolean }>;
       getRuntimeStatus?: () => { phase: string; message: string; progress?: number; startedAt?: number; phaseStartedAt?: number; logPath?: string; error?: string } | null;
       saveRuntimeLogs?: () => Promise<{ canceled: boolean }>;
       getNotificationStatus?: () => Promise<DesktopNotificationStatus & { preferences: NotificationPreferences }>;
@@ -58,7 +60,9 @@ declare global {
         message: string;
         logPath?: string;
         error?: string;
-        progress?: number; startedAt?: number; phaseStartedAt?: number;
+        progress?: number;
+        startedAt?: number;
+        phaseStartedAt?: number;
       }) => void) => () => void;
       retryRuntime: () => Promise<void>;
       openRuntimeLog: () => Promise<void>;

@@ -30,7 +30,7 @@ const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
   try {
     fs.mkdirSync(resources, { recursive: true });
     fs.mkdirSync(path.join(payload, 'resources', 'git'), { recursive: true });
-    for (const file of ['installer.nsh', 'installer-start-app.nsh', 'installer-payload.nsh'])
+    for (const file of ['installer.nsh', 'installer-pages.nsh', 'installer-start-app.nsh', 'installer-payload.nsh'])
       fs.copyFileSync(path.join(__dirname, '..', 'resources', file), path.join(resources, file));
     // Launch paths have their own compiler test. The fixture executable is data;
     // never dispatch it to Explorer from the interactive finish page.

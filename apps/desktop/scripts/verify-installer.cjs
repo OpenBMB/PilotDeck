@@ -20,7 +20,7 @@ const { build } = require(path.join(projectDir, 'package.json'));
     const fixtureDir = path.join(root, 'desktop project');
     const fixtureResources = path.join(fixtureDir, 'resources');
     fs.mkdirSync(fixtureResources, { recursive: true });
-    for (const name of ['installer.nsh', 'installer-start-app.nsh']) {
+    for (const name of ['installer.nsh', 'installer-pages.nsh', 'installer-start-app.nsh']) {
       fs.copyFileSync(path.join(projectDir, 'resources', name), path.join(fixtureResources, name));
     }
     const buildResources = path.resolve(fixtureDir, build.directories.buildResources || 'build');
@@ -49,8 +49,10 @@ const { build } = require(path.join(projectDir, 'package.json'));
 !include "MUI2.nsh"
 !insertmacro customPageAfterChangeDir
 !insertmacro MUI_PAGE_INSTFILES
+!insertmacro customWelcomePage
 !insertmacro customFinishPage
 !insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro customHeader
 OutFile "${path.join(root, 'installer.exe')}"
 Section

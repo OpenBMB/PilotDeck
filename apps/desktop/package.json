@@ -63,6 +63,10 @@
     "afterPack": "scripts/after-pack.cjs",
     "extraResources": [
       {
+        "from": "resources/uninstall-data.cjs",
+        "to": "uninstall-data.cjs"
+      },
+      {
         "from": "resources/node",
         "to": "node"
       },
@@ -118,6 +122,15 @@
       "category": "Development",
       "icon": "resources/icons/icon.png",
       "maintainer": "OpenBMB <contact@openbmb.cn>",
+      "desktop": {
+        "desktopActions": {
+          "Uninstall": {
+            "Name": "Uninstall PilotDeck",
+            "Name[zh_CN]": "卸载 PilotDeck",
+            "Exec": "pilotdeck-desktop --uninstall"
+          }
+        }
+      },
       "syncDesktopName": true,
       "target": ["deb"]
     },
@@ -150,6 +163,7 @@
       "installerIcon": "resources/icons/installer-icon.ico",
       "uninstallerIcon": "resources/icons/installer-icon.ico",
       "include": "resources/installer.nsh",
+      "installerLanguages": ["en_US", "zh_CN"],
       "allowToChangeInstallationDirectory": true
     },
     "portable": {

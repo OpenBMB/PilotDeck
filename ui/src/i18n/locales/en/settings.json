@@ -1,4 +1,10 @@
 {
+  "uninstall": {
+    "title": "Uninstall PilotDeck",
+    "description": "Choose whether to keep personal data before the system asks to remove the application.",
+    "systemHint": "Use your system package manager to remove this application. Personal data is retained.",
+    "failed": "Uninstall did not finish. Your personal data has been retained."
+  },
   "runtimeLogs": {
     "title": "Runtime logs",
     "description": "Save logs for troubleshooting and control how long they are kept.",

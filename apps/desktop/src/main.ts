@@ -12,6 +12,7 @@ import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiag
 import { createRuntimeLogWriter, normalizeLogRetentionDays, redactDiagnostic, registerDiagnosticSecrets, setRuntimeLogRetention, type RuntimeLogWriter } from '@pilotdeck/config';
 import { startupProgress } from './startupPresentation';
 import { exportRuntimeLogs } from './runtimeLogExport';
+import { createDesktopUninstaller } from './desktopUninstall';
 import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } from './notifications';
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
@@ -22,7 +23,7 @@ import { DebUpdater, MacUpdater, NsisUpdater, RpmUpdater } from "electron-update
 import { installUpdateDownloadControl } from "./updateDownload";
 import { createUpdateController } from "./updates";
 import { createUpdateNetwork } from "./updateNetwork";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -1346,6 +1347,21 @@ ipcMain.handle('pilotdeck:delete-appearance-image', (event, id: unknown) => {
 });
 
 ipcMain.handle("pilotdeck:get-runtime-info", () => runtime?.getInfo());
+const uninstallDataHelper = require(app.isPackaged ? path.join(process.resourcesPath, 'uninstall-data.cjs') : path.join(__dirname, '../resources/uninstall-data.cjs'));
+const desktopUninstaller = createDesktopUninstaller({
+  platform: process.platform, packaged: app.isPackaged, chinese: () => readAppearance().language === 'zh-CN', exists: fs.existsSync,
+  run: (file, args) => new Promise(resolve => execFile(file, args, { windowsHide: true }, (error, stdout) => resolve({ code: error ? 1 : 0, stdout }))),
+  confirm: options => mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options),
+  stop: async () => { isQuitting = true; await runtimeStartPromise?.catch(() => {}); await runtime?.stop(); runtime = null; runtimeStartPromise = null; },
+  restore: async () => { isQuitting = false; await startRuntimeAndLoad(); },
+  cleanup: () => {
+    return uninstallDataHelper.cleanupPersonalData({ profile: os.homedir(), appData: app.getPath('appData'), localAppData: process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), pilotHome: process.env.PILOT_HOME });
+  },
+  notify: async message => { await dialog.showMessageBox({ type: 'info', title: 'PilotDeck', message }); },
+  quit: () => { isQuitting = true; app.exit(0); },
+});
+ipcMain.handle('pilotdeck:uninstall-status', event => { requireUpdateSender(event); return { supported: desktopUninstaller.supported() }; });
+ipcMain.handle('pilotdeck:uninstall', event => { requireUpdateSender(event); return desktopUninstaller.start(); });
 ipcMain.on('pilotdeck:get-runtime-status', (event) => { event.returnValue = lastRuntimeStatus; });
 ipcMain.handle('pilotdeck:save-runtime-logs', async event => {
   if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid log export sender');
@@ -1423,8 +1439,8 @@ const ownsInstance = process.platform === "darwin" || app.requestSingleInstanceL
 if (!ownsInstance) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    void restoreMainWindow().catch(error => console.error("Could not restore PilotDeck", error));
+  app.on("second-instance", (_event, argv) => {
+    void restoreMainWindow().then(() => argv.includes('--uninstall') ? desktopUninstaller.start() : undefined).catch(error => console.error("Could not restore PilotDeck", error));
   });
   app.whenReady()
     .then(async () => {
@@ -1483,7 +1499,13 @@ if (!ownsInstance) {
       }
       await createOrShowWindow();
     })
-    .then(startRuntimeAndLoad)
+    .then(async () => {
+      if (process.platform === 'linux' && process.argv.includes('--uninstall')) {
+        try { await desktopUninstaller.start(); }
+        catch (error) { dialog.showErrorBox('PilotDeck', String(error)); }
+        if (!isQuitting) app.exit(0);
+      } else await startRuntimeAndLoad();
+    })
     .catch(async (error) => {
       const detail = error instanceof Error ? error.stack ?? error.message : String(error);
       await runtime?.stop().catch(() => undefined);

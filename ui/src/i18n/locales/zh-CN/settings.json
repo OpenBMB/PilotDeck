@@ -1,4 +1,10 @@
 {
+  "uninstall": {
+    "title": "卸载 PilotDeck",
+    "description": "先选择是否保留个人数据，再由系统确认卸载应用。",
+    "systemHint": "请使用系统包管理器卸载应用，个人数据将保留。",
+    "failed": "卸载未完成，个人数据已保留。"
+  },
   "runtimeLogs": {
     "title": "系统运行日志",
     "description": "保存排查问题所需的日志，并设置保留时长。",

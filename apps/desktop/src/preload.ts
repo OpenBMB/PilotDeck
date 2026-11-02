@@ -20,6 +20,8 @@ type RuntimeStatus = {
 
 contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   platform: process.platform,
+  getUninstallStatus: () => ipcRenderer.invoke('pilotdeck:uninstall-status') as Promise<{ supported: boolean }>,
+  uninstall: () => ipcRenderer.invoke('pilotdeck:uninstall') as Promise<{ canceled: boolean }>,
   getNotificationStatus: () => ipcRenderer.invoke('pilotdeck:notification-status'),
   setNotificationPreferences: (value: NotificationPreferences) => ipcRenderer.invoke('pilotdeck:notification-preferences', value),
   showNotification: (value: SystemNotification) => ipcRenderer.invoke('pilotdeck:notification-show', value),
