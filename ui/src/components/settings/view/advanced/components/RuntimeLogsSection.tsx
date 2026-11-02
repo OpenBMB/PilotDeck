@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { PilotDeckConfig } from '../../modelPool/types';
 import { patch } from '../../modelPool/utils/patch';
 import { authenticatedFetch } from '../../../../../utils/api';
+import { saveRuntimeLogs } from '../../../../../utils/runtimeLogExport';
 
 export default function RuntimeLogsSection({ config, onSave, saving }: {
   config: PilotDeckConfig; onSave: (next: PilotDeckConfig) => Promise<boolean>; saving: boolean;
@@ -23,7 +24,7 @@ export default function RuntimeLogsSection({ config, onSave, saving }: {
   const saveLogs = async () => {
     setExporting(true); setNotice('');
     try {
-      const result = await window.pilotdeckDesktop?.saveRuntimeLogs?.();
+      const result = await saveRuntimeLogs();
       if (result && !result.canceled) setNotice(t('runtimeLogs.saved'));
     } catch { setNotice(t('runtimeLogs.saveFailed')); }
     finally { setExporting(false); }
@@ -45,7 +46,7 @@ export default function RuntimeLogsSection({ config, onSave, saving }: {
           </select>
         </label>
         {logPath && <p className="break-all text-xs text-muted-foreground">{t('runtimeLogs.location')}: {logPath}</p>}
-        {window.pilotdeckDesktop?.saveRuntimeLogs && <div className="runtime-logs-actions"><button className="button secondary compact" type="button" disabled={exporting} onClick={() => void saveLogs()}>{t('runtimeLogs.save')}</button></div>}
+        <div className="runtime-logs-actions"><button className="button secondary compact" type="button" disabled={exporting} onClick={() => void saveLogs()}>{t('runtimeLogs.save')}</button></div>
         {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
       </div>
     </div>

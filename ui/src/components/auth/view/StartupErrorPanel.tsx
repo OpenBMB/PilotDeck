@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { startupFailure, startupLabels } from '../../../../../apps/desktop/src/startupPresentation';
 import StartupFrame from './StartupFrame';
-import { authenticatedFetch } from '../../../utils/api';
+import { saveRuntimeLogs } from '../../../utils/runtimeLogExport';
 
 export default function StartupErrorPanel({ error, logPath, onRetry, children }: {
   error: string; logPath?: string | null; onRetry: () => void | Promise<void>; children?: ReactNode;
@@ -14,16 +14,8 @@ export default function StartupErrorPanel({ error, logPath, onRetry, children }:
   const save = async () => {
     setBusy(true); setNotice('');
     try {
-      if (window.pilotdeckDesktop?.saveRuntimeLogs) {
-        const result = await window.pilotdeckDesktop.saveRuntimeLogs();
-        if (!result.canceled) setNotice(labels.saved);
-      } else {
-        const response = await authenticatedFetch('/api/diagnostics/logs');
-        if (!response.ok) throw new Error('Log download failed');
-        const url = URL.createObjectURL(await response.blob());
-        const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'PilotDeck-runtime.log'; anchor.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
+      const result = await saveRuntimeLogs();
+      if (!result.canceled) setNotice(labels.saved);
     } catch { setNotice(labels.saveFailed); }
     finally { setBusy(false); }
   };
