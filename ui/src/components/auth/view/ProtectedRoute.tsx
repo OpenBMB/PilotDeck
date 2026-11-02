@@ -60,7 +60,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (gatewayRuntime.state === 'stopped' || gatewayRuntime.state === 'starting') {
-    return <AuthLoadingScreen />;
+    return <AuthLoadingScreen gateway />;
   }
 
   if (gatewayRuntime.state === 'error') {

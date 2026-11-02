@@ -1,33 +1,21 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageSquare } from 'lucide-react';
+import { startupLabels } from '../../../../../apps/desktop/src/startupPresentation';
+import StartupFrame from './StartupFrame';
 
-const loadingDotAnimationDelays = ['0s', '0.1s', '0.2s'];
-
-export default function AuthLoadingScreen() {
-  const { t } = useTranslation('common');
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="text-center">
-        <div className="mb-4 flex justify-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary shadow-sm">
-            <MessageSquare className="h-8 w-8 text-primary-foreground" />
-          </div>
-        </div>
-
-        <h1 className="mb-2 text-2xl font-bold text-foreground">PilotDeck</h1>
-
-        <div className="flex items-center justify-center space-x-2">
-          {loadingDotAnimationDelays.map((delay) => (
-            <div
-              key={delay}
-              className="h-2 w-2 animate-bounce rounded-full bg-blue-500"
-              style={{ animationDelay: delay }}
-            />
-          ))}
-        </div>
-
-        <p className="mt-2 text-muted-foreground">{t('common:uiText.loading')}</p>
+export default function AuthLoadingScreen({ gateway = false }: { gateway?: boolean }) {
+  const { i18n } = useTranslation();
+  const [status, setStatus] = useState(() => window.pilotdeckDesktop?.getRuntimeStatus?.());
+  useEffect(() => window.pilotdeckDesktop?.onRuntimeStatus(setStatus), []);
+  const labels = startupLabels(i18n.resolvedLanguage || i18n.language);
+  const phase = status?.phase === 'ready' ? 'ready' : gateway ? 'gateway' : status?.phase || 'starting';
+  const progress = Math.max(gateway ? 78 : 8, status?.progress || 0);
+  return <StartupFrame>
+    <div role="status">
+      <div role="progressbar" aria-label="PilotDeck" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} className="h-1 overflow-hidden rounded-full bg-border">
+        <div className="h-full rounded-full bg-foreground transition-[width] duration-500 motion-reduce:transition-none" style={{ width: progress + '%' }} />
       </div>
+      <p className="mt-4 text-sm leading-5 text-muted-foreground">{labels[phase as keyof typeof labels] || labels.starting}</p>
     </div>
-  );
+  </StartupFrame>;
 }

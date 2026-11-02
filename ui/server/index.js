@@ -636,6 +636,9 @@ app.use('/api/usage', authenticateToken, createUsageRouter());
 
 // PilotDeck unified YAML config routes (protected)
 app.use('/api/config', authenticateToken, configRoutes);
+app.get('/api/diagnostics/logs', authenticateToken, (_req, res, next) => {
+  res.download(webRuntimeLogging.logPath, 'PilotDeck-runtime.log', error => { if (error) next(error); });
+});
 app.get('/api/diagnostics/location', authenticateToken, (_req, res) => res.json({ logPath: webRuntimeLogging.logPath }));
 app.post('/api/diagnostics/ui', authenticateToken, (req, res) => {
     const { diagnosticId, code, event, errorName } = req.body || {};

@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 import { getConnectableHost, normalizeLoopbackHost } from './shared/networkHosts.js'
 import { LIGHT_PRESETS } from '../apps/desktop/src/lightAppearance'
+import { renderLoadingHtml } from '../apps/desktop/src/appearance'
+import { startupLabels } from '../apps/desktop/src/startupPresentation'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -59,6 +61,21 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_DISABLE_LOCAL_AUTH': JSON.stringify(disableLocalAuth ? 'true' : 'false'),
     },
     plugins: [react(), {
+      name: 'continuous-startup-shell',
+      transformIndexHtml(html) {
+        // The same shell is painted before the application bundle is evaluated.
+        // React replaces it with the matching frame after its imports complete.
+        const page = renderLoadingHtml({ language: 'en', themeMode: 'system' });
+        const style = page.match(/<style>([\s\S]*?)<\/style>/)[1];
+        let body = page.match(/<body>([\s\S]*?)<\/body>/)[1];
+        body = body.replace(/^const labels=.*;$/m, `const languages=${JSON.stringify({ en: startupLabels('en'), 'zh-CN': startupLabels('zh-CN') })};\nconst appearance=window.pilotdeckDesktop?.getAppearance?.();\nconst language=appearance?.language||localStorage.getItem('userLanguage')||(navigator.language.startsWith('zh')?'zh-CN':'en');\nconst labels=languages[language]||languages.en;`);
+        body = body.replace("window.pilotdeckDesktop?.onRuntimeStatus(update);", "window.__pilotdeckStartupCleanup=window.pilotdeckDesktop?.onRuntimeStatus(update);window.__pilotdeckStartupUpdate=update;");
+        body = body.replace("let progress=8;", `document.documentElement.dataset.theme=appearance?.themeMode||localStorage.getItem('themeMode')||'system';\nif(!document.documentElement.classList.contains('dark'))document.documentElement.style.setProperty('--bg',getComputedStyle(document.documentElement).backgroundColor);\ndocument.getElementById('message').textContent=labels.starting;document.getElementById('retry').textContent=labels.restart;document.getElementById('saveLog').textContent=labels.save;document.querySelector('#failure h2').textContent=labels.failed;\nlet progress=8;`);
+        body = body.replace('window.pilotdeckDesktop?.retryRuntime()', "window.pilotdeckDesktop?.retryRuntime ? window.pilotdeckDesktop.retryRuntime() : window.location.reload()");
+        body = body.replace('<script>', '<script>(()=>{').replace('</script>', '})();</script>');
+        return html.replace('<div id="root"></div>', () => `<div id="root"><style>${style}</style>${body}</div>`);
+      },
+    }, {
       name: 'appearance-first-paint',
       transformIndexHtml() {
         // Inline and synchronous: even a slow app bundle must not flash the

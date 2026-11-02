@@ -17,6 +17,8 @@ declare global {
     switchProject?: (projectName: string) => boolean;
     pilotdeckDesktop?: {
       platform?: string;
+      getRuntimeStatus?: () => { phase: string; message: string; progress?: number; logPath?: string; error?: string } | null;
+      saveRuntimeLogs?: () => Promise<{ canceled: boolean }>;
       getNotificationStatus?: () => Promise<DesktopNotificationStatus & { preferences: NotificationPreferences }>;
       setNotificationPreferences?: (value: NotificationPreferences) => Promise<NotificationPreferences>;
       showNotification?: (value: SystemNotification) => Promise<boolean>;
@@ -55,6 +57,7 @@ declare global {
         message: string;
         logPath?: string;
         error?: string;
+        progress?: number;
       }) => void) => () => void;
       retryRuntime: () => Promise<void>;
       openRuntimeLog: () => Promise<void>;
