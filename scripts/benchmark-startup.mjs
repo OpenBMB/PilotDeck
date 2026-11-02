@@ -85,7 +85,7 @@ app.use((req, res, next) => { if (/^\\/assets\\/App-[^/]+\\.js$/.test(req.path))
     const oomHook = fault === 'oom' ? `const Module=require('node:module'),original=Module._load;
 Module._load=function(request,...rest){const loaded=original.call(this,request,...rest);if(String(request).replaceAll('\\\\','/').endsWith('/ui/server/utils/processTree.js'))return {...loaded,spawnManaged(command,argv,...options){return loaded.spawnManaged(command,argv.includes(${JSON.stringify(gatewayEntry)})?['--max-old-space-size=16',...argv]:argv,...options)}};return loaded};` : '';
     const windowTitle = option('--title');
-    const titleHook = windowTitle ? `app.on('browser-window-created',(_,window)=>{window.setTitle(${JSON.stringify(windowTitle)});window.webContents.on('page-title-updated',event=>event.preventDefault())});` : '';
+    const titleHook = windowTitle ? `app.on('browser-window-created',(_,window)=>{const setTitle=()=>{if(!window.isDestroyed())window.setTitle(${JSON.stringify(windowTitle)})};setImmediate(setTitle);window.webContents.on('did-finish-load',setTitle);window.webContents.on('page-title-updated',event=>{event.preventDefault();setTitle()})});` : '';
     fs.writeFileSync(wrapper, `const {app}=require('electron');app.setPath('userData',${JSON.stringify(userData)});${titleHook}${oomHook}\nrequire(${JSON.stringify(path.join(root, 'apps/desktop/dist/main.js'))});`);
     const executable = require(path.join(root, 'apps/desktop/node_modules/electron'));
     const env = { ...process.env, PILOT_HOME: home, PILOTDECK_CONFIG_PATH: path.join(home,'pilotdeck.yaml'), PILOTDECK_DESKTOP_RUNTIME_ROOT: runtime, PILOTDECK_DESKTOP_NODE: process.execPath, PILOTDECK_SKIP_DEFAULT_PROJECT: '1' };
