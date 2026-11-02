@@ -70,6 +70,23 @@ export function recoverPilotConfig(value: unknown, options: PilotConfigLoadOptio
   const warnings: PilotConfigDiagnostic[] = [];
   const env = { ...(options.env ?? process.env) };
   const defaults: Record<string, unknown> = { schemaVersion: 1, agent: { model: '' }, model: { providers: {} } };
+  const issue = (field: string) => warnings.push({ code: 'PD_CONFIG_FIELD', severity: 'warning' as const, path: field, message: 'Invalid field type; using its default value.', recoverable: true });
+  // Validate only fields that exist. Missing optional fields retain the strict
+  // parser's legacy defaults instead of accidentally enabling/disabling features.
+  function recoverPresent(value: unknown, schema: unknown, field: string): unknown {
+    if (isRecord(schema) && isRecord(value)) {
+      const result = { ...value };
+      for (const [key, fallback] of Object.entries(schema)) if (Object.hasOwn(value, key)) result[key] = recoverPresent(value[key], fallback, field ? `${field}.${key}` : key);
+      return result;
+    }
+    return recoverValues(value, schema, () => issue(field));
+  }
+  const known = defaultPilotConfiguration(env);
+  for (const [field, schema] of Object.entries(known)) if (Object.hasOwn(raw, field)) raw[field] = recoverPresent(raw[field], schema, field);
+  if (isRecord(raw.adapters)) for (const [name, adapter] of Object.entries(raw.adapters)) {
+    if (!isRecord(adapter)) continue;
+    raw.adapters[name] = recoverPresent(adapter, { enabled: false, autoConnect: false, token: '', apiKey: '', webhookUrl: '', appId: '', appSecret: '', clientSecret: '' }, `adapters.${name}`);
+  }
   for (const field of ['agent', 'model']) if (raw[field] !== undefined && !isRecord(raw[field])) {
     warnings.push({ code: 'PD_CONFIG_FIELD', severity: 'warning', path: field, message: `Invalid ${field}; using its default value.`, recoverable: true });
   }
@@ -82,36 +99,46 @@ export function recoverPilotConfig(value: unknown, options: PilotConfigLoadOptio
     ['gateway', 'idleSweepIntervalSeconds', 0, Number.MAX_SAFE_INTEGER, 60], ['gateway', 'maxPerSessionMcpInstances', 1, 10000, 5],
   ] as const) {
     const item = raw[section];
-    if (isRecord(item) && item[key] !== undefined && (typeof item[key] !== 'number' || !Number.isFinite(item[key]) || item[key] < min || item[key] > max)) {
+    if (isRecord(item) && item[key] !== undefined && (typeof item[key] !== 'number' || !Number.isFinite(item[key]) || item[key] < min || item[key] > max || (key === 'port' || key === 'maxPerSessionMcpInstances') && !Number.isInteger(item[key]))) {
       item[key] = fallback;
       warnings.push({ code: 'PD_CONFIG_FIELD', severity: 'warning', path: `${section}.${key}`, message: 'Invalid numeric setting; using its default value.', recoverable: true });
     }
   }
   if (isRecord(raw.webui) && isRecord(raw.webui.runtime)) for (const [key, fallback] of [['serverPort', 3001], ['vitePort', 5173], ['apiTimeoutMs', 120000]] as const) {
     const value = raw.webui.runtime[key];
-    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || (key !== 'apiTimeoutMs' && value > 65535)) raw.webui.runtime[key] = fallback;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || (key !== 'apiTimeoutMs' && value > 65535)) { raw.webui.runtime[key] = fallback; issue(`webui.runtime.${key}`); }
+  }
+  function locate(root: unknown, field: string): { parent: Record<string, unknown>; key: string } | undefined {
+    if (!isRecord(root)) return undefined;
+    // Provider IDs, model IDs and absolute project paths may contain dots and
+    // slashes. Prefer the longest actual key instead of splitting such names.
+    const key = Object.keys(root).filter(key => field === key || field.startsWith(`${key}.`)).sort((a,b) => b.length-a.length)[0];
+    if (!key) return undefined;
+    return field === key ? { parent: root, key } : locate(root[key], field.slice(key.length + 1));
   }
   const reset = (field: string) => {
-    const keys = field.split('.');
-    let cursor = raw, fallback: unknown = defaults;
-    for (const key of keys.slice(0, -1)) {
-      if (!isRecord(cursor[key])) cursor[key] = {};
-      cursor = cursor[key] as Record<string, unknown>;
-      fallback = isRecord(fallback) ? fallback[key] : undefined;
-    }
-    const key = keys.at(-1)!;
-    const replacement = isRecord(fallback) ? fallback[key] : undefined;
-    if (replacement === undefined) delete cursor[key]; else cursor[key] = structuredClone(replacement);
+    const target = locate(raw, field), fallback = locate(defaults, field);
+    if (!target) return;
+    const replacement = fallback?.parent[fallback.key];
+    if (replacement === undefined) delete target.parent[target.key]; else target.parent[target.key] = structuredClone(replacement);
   };
   for (let attempt = 0; attempt < 128; attempt++) {
     try {
       const snapshot = parseLoadedConfig({ ...options, env }, raw);
+      for (const diagnostic of snapshot.diagnostics) {
+        if (!diagnostic.recoverable || !diagnostic.path || diagnostic.path.startsWith('model.') || !/INVALID|UNSUPPORTED/.test(diagnostic.code)) continue;
+        const target = locate(raw, diagnostic.path), normalized = locate(snapshot.config, diagnostic.path);
+        if (!target) continue;
+        const replacement = normalized?.parent[normalized.key];
+        if (replacement === undefined) delete target.parent[target.key];
+        else if (replacement === null || typeof replacement !== 'object') target.parent[target.key] = replacement;
+      }
       return { raw, snapshot: { ...snapshot, diagnostics: [...warnings, ...snapshot.diagnostics] } };
     } catch (error) {
       const configError = error instanceof PilotConfigError ? error : null;
       const fatal = configError?.diagnostics.filter(issue => issue.severity === 'fatal') ?? [];
       const inferred = error instanceof Error ? error.message.match(/\b(?:agent|model|memory|router|gateway|adapters|alwaysOn|cron|tools|proxy|extension)(?:\.[A-Za-z_][\w-]*)+/)?.[0] : undefined;
-      const fields = fatal.map(issue => issue.path).filter((field): field is string => Boolean(field && !field.includes('\\') && !field.includes('/')));
+      const fields = fatal.map(issue => issue.path).filter((field): field is string => Boolean(field));
       if (!fields.length && inferred) fields.push(inferred);
       if (!fields.length) {
         const code = configError?.code ?? '';
@@ -130,7 +157,7 @@ export function recoverPilotConfig(value: unknown, options: PilotConfigLoadOptio
   }
   // A large or mutually inconsistent document still cannot prevent the UI from booting.
   const snapshot = parseLoadedConfig({ ...options, env: { ...env, PILOT_AGENT_MODEL: undefined } }, defaults);
-  return { raw: defaults, snapshot: { ...snapshot, diagnostics: [...warnings, ...snapshot.diagnostics] } };
+  return { raw, snapshot: { ...snapshot, diagnostics: [...warnings, ...snapshot.diagnostics] } };
 }
 
 function parseLoadedConfig(options: PilotConfigLoadOptions, recoveredRaw?: Record<string, unknown>): PilotConfigSnapshot {

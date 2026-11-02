@@ -11,6 +11,26 @@ const valid = {
   model: { providers: { test: { protocol: 'openai', url: 'http://127.0.0.1:1/v1', apiKey: 'preserve-key', models: { one: {} } } } },
 };
 
+test('present boolean fields recover without changing legacy defaults of missing fields', () => {
+  const result = recoverPilotConfig({ ...valid, telemetry: { enabled: 'false' }, adapters: { qq: { enabled: 'yes', appId: 'keep-id', clientSecret: 'keep-secret' } }, gateway: { port: 123.5 }, memory: { includeAssistant: 'invalid' } }, { env: {} });
+  assert.equal(result.snapshot.config.telemetry?.enabled, false);
+  assert.equal(result.snapshot.config.adapters?.qq?.enabled, false);
+  assert.equal(result.snapshot.config.adapters?.qq?.clientSecret, 'keep-secret');
+  assert.equal(result.snapshot.config.gateway?.port, 18789);
+  assert.equal(result.snapshot.config.memory?.enabled, true);
+  assert.equal(result.raw.model && (result.raw.model as any).providers.test.apiKey, 'preserve-key');
+});
+
+test('repairs literal project-path keys and warning-only fields without losing other configuration', () => {
+  const result = recoverPilotConfig({ ...valid, cron: { timezone: 'not-a-timezone', maxConcurrentRuns: -5 }, alwaysOn: { projects: { '/workspace/project.with.dots': 'invalid', '/workspace/healthy': { enabled: false } } } }, { env: {} });
+  assert.equal(result.snapshot.config.agent.model.id, 'test/one');
+  assert.equal((result.raw.model as any).providers.test.apiKey, 'preserve-key');
+  assert.equal((result.raw.cron as any).timezone, 'UTC');
+  assert.equal((result.raw.cron as any).maxConcurrentRuns, 1);
+  assert.equal(Object.hasOwn((result.raw.alwaysOn as any).projects, '/workspace/project.with.dots'), false);
+  assert.deepEqual((result.raw.alwaysOn as any).projects['/workspace/healthy'], { enabled: false });
+});
+
 test('invalid individual values recover while healthy siblings and keys survive', () => {
   const original = { ...valid, agent: { ...valid.agent, maxOutputTokens: -5 }, memory: { enabled: true, maxMessageChars: 'bad', includeAssistant: false }, gateway: { port: -1 } };
   const result = recoverPilotConfig(original, { env: {} });

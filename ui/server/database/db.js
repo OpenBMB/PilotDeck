@@ -420,7 +420,15 @@ const oldAppConfig = () => Object.fromEntries(yamlConfig.legacy('SELECT key, val
 const appConfigDb = {
   get: key => yamlConfig.read('app', oldAppConfig)[key] || null,
   set: (key, value) => { yamlConfig.update('app', current => ({ ...current, [key]: value }), oldAppConfig); },
-  getOrCreateJwtSecret: () => yamlConfig.update('app', current => ({ ...current, jwt_secret: current.jwt_secret || crypto.randomBytes(64).toString('hex') }), oldAppConfig).jwt_secret,
+  getOrCreateJwtSecret: () => {
+    const existing = appConfigDb.get('jwt_secret');
+    if (existing) return existing;
+    try { return yamlConfig.update('app', current => ({ ...current, jwt_secret: current.jwt_secret || crypto.randomBytes(64).toString('hex') }), oldAppConfig).jwt_secret; }
+    catch {
+      console.warn('[PD_CONFIG_WRITE] credentials/web.yaml (app.jwt_secret): cannot save credentials; using a temporary secret until storage is writable. Login sessions will require renewal after restart.');
+      return crypto.randomBytes(64).toString('hex');
+    }
+  },
 };
 
 // Backward compatibility - keep old names pointing to new system
