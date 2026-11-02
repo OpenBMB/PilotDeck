@@ -84,7 +84,9 @@ app.use((req, res, next) => { if (/^\\/assets\\/App-[^/]+\\.js$/.test(req.path))
     // use its built-in module and isolate userData before loading the main entry.
     const oomHook = fault === 'oom' ? `const Module=require('node:module'),original=Module._load;
 Module._load=function(request,...rest){const loaded=original.call(this,request,...rest);if(String(request).replaceAll('\\\\','/').endsWith('/ui/server/utils/processTree.js'))return {...loaded,spawnManaged(command,argv,...options){return loaded.spawnManaged(command,argv.includes(${JSON.stringify(gatewayEntry)})?['--max-old-space-size=16',...argv]:argv,...options)}};return loaded};` : '';
-    fs.writeFileSync(wrapper, `const {app}=require('electron');app.setPath('userData',${JSON.stringify(userData)});${oomHook}\nrequire(${JSON.stringify(path.join(root, 'apps/desktop/dist/main.js'))});`);
+    const windowTitle = option('--title');
+    const titleHook = windowTitle ? `app.on('browser-window-created',(_,window)=>{window.setTitle(${JSON.stringify(windowTitle)});window.webContents.on('page-title-updated',event=>event.preventDefault())});` : '';
+    fs.writeFileSync(wrapper, `const {app}=require('electron');app.setPath('userData',${JSON.stringify(userData)});${titleHook}${oomHook}\nrequire(${JSON.stringify(path.join(root, 'apps/desktop/dist/main.js'))});`);
     const executable = require(path.join(root, 'apps/desktop/node_modules/electron'));
     const env = { ...process.env, PILOT_HOME: home, PILOTDECK_CONFIG_PATH: path.join(home,'pilotdeck.yaml'), PILOTDECK_DESKTOP_RUNTIME_ROOT: runtime, PILOTDECK_DESKTOP_NODE: process.execPath, PILOTDECK_SKIP_DEFAULT_PROJECT: '1' };
     delete env.ELECTRON_RUN_AS_NODE;
@@ -116,21 +118,31 @@ Module._load=function(request,...rest){const loaded=original.call(this,request,.
       PILOTDECK_RUNTIME_ROOT: runtime, PILOTDECK_DESKTOP_RUNTIME_ROOT: runtime, PILOTDECK_DESKTOP: '1', PILOTDECK_DISABLE_LOCAL_AUTH: '1', PILOTDECK_RUNTIME_SUPERVISED: '1', PILOTDECK_SKIP_BROWSER_OPEN: '1', PILOTDECK_SKIP_DEFAULT_PROJECT: '1', ANALYTICS_ENABLED: 'false' };
     delete env.NODE_OPTIONS; delete env.PILOTDECK_NATIVE_PROCESS_HOST;
     const start = performance.now();
-    function launch(entry, cwd, commandArgs, readyType) {
+    function launch(entry, cwd, commandArgs, readyType, onMessage) {
       const child = spawnManaged(process.execPath, [entry, ...commandArgs], { cwd, env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], windowsHide: true }); children.push(child);
       let output = ''; for (const stream of [child.stdout, child.stderr]) stream.on('data', data => { output = (output + data).slice(-5000); });
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error(`Startup timed out: ${output}`)), 120_000);
-        child.on('message', message => { if (message?.type === readyType) { clearTimeout(timer); resolve(child); } });
+        child.on('message', message => { onMessage?.(message); if (message?.type === readyType) { clearTimeout(timer); resolve(child); } });
         child.once('managed-exit', (code, signal, failure) => { clearTimeout(timer); reject(new Error(`Startup exited ${code}/${signal}: ${failure || output}`)); });
         child.once('error', reject);
       });
     }
     try {
-      await launch(path.join(runtime, 'ui/server/index.js'), path.join(runtime, 'ui'), [], 'pilotdeck:server-ready');
+      const overlap = !args.includes('--serial') && fs.existsSync(path.join(runtime, 'ui/server/supervisedBootstrap.js'));
+      let gatewayPromise;
+      const beginGateway = () => {
+        gatewayPromise ??= launch(path.join(runtime, 'dist/src/cli/pilotdeck.js'), runtime, ['server'], 'pilotdeck:gateway-ready');
+        gatewayPromise.catch(() => {}); // Web may still be starting when a fault exits Gateway.
+        return gatewayPromise;
+      };
+      const server = await launch(path.join(runtime, `ui/server/${overlap ? 'supervisedBootstrap' : 'index'}.js`), path.join(runtime, 'ui'), [], 'pilotdeck:server-ready', message => {
+        if (overlap && message?.type === 'pilotdeck:configuration-state' && message.configuration?.state === 'ready') beginGateway();
+      });
       const webMs = Math.round(performance.now() - start);
-      await launch(path.join(runtime, 'dist/src/cli/pilotdeck.js'), runtime, ['server'], 'pilotdeck:gateway-ready');
-      const row = { sample, profile: sample === 0 ? 'first-start' : 'existing', webMs, totalMs: Math.round(performance.now() - start) };
+      await beginGateway();
+      if (server.connected) server.send({ type: 'pilotdeck:gateway-state', state: 'ready' });
+      const row = { sample, profile: sample === 0 ? 'first-start' : 'existing', overlap, webMs, totalMs: Math.round(performance.now() - start) };
       const response = await fetch(`http://127.0.0.1:${serverPort}/api/projects`, { signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error(`Web/Gateway integration check failed (${response.status}).`);
       await response.json(); row.usableMs = Math.round(performance.now() - start);

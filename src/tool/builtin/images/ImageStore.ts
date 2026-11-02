@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { link, mkdir, open, readFile, readdir, realpath, unlink } from "node:fs/promises";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
-import sharp from "sharp";
 
 export type ImagePurpose = "intermediate" | "deliverable";
 export type GeneratedImage = {
@@ -36,6 +35,7 @@ export class ImageStore {
     return images;
   }
   async save(sessionId: string, bytes: Buffer, signal?: AbortSignal, purpose: ImagePurpose = "deliverable"): Promise<GeneratedImage> {
+    const { default: sharp } = await import("sharp");
     const meta = await sharp(bytes, { limitInputPixels: 100_000_000 }).metadata();
     const mimeType = ({ png: "image/png", jpeg: "image/jpeg", webp: "image/webp" } as Record<string, string>)[meta.format ?? ""];
     if (!mimeType || !meta.width || !meta.height) throw new Error("The image service returned unsupported or invalid image data.");

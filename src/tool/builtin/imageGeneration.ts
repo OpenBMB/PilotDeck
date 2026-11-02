@@ -1,7 +1,6 @@
 import { link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, extname } from "node:path";
-import sharp from "sharp";
 import type { ImageGenerationConfig } from "../../pilot/config/imageGenerationConfig.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type { PilotDeckToolDefinition, PilotDeckToolExecutionOutput, PilotDeckToolRuntimeContext } from "../protocol/types.js";
@@ -41,6 +40,7 @@ async function publish(image: GeneratedImage, path: string, context: PilotDeckTo
     outputPath(path, context);
     const source = await readFile(image.path, { signal: context.abortSignal });
     const format = extname(target).toLowerCase();
+    const { default: sharp } = await import("sharp");
     const bytes = await sharp(source).toFormat(format === ".png" ? "png" : format === ".webp" ? "webp" : "jpeg").toBuffer();
     await context.fileHistory?.trackEdit(target, context.messageId ?? context.turnId);
     await mkdir(dirname(target), { recursive: true });
@@ -119,6 +119,7 @@ export function createImageGenerationTools(options: ImageToolOptions): PilotDeck
         if (!resolved.ok) throw new PilotDeckToolRuntimeError(resolved.error.code, resolved.error.message);
         const bytes = await readFile(resolved.absolutePath, { signal: context.abortSignal });
         if (bytes.length > 32 * 1024 * 1024) throw new Error("Reference image exceeds 32 MB.");
+        const { default: sharp } = await import("sharp");
         const format = (await sharp(bytes).metadata()).format;
         const mimeType = ({ png: "image/png", jpeg: "image/jpeg", webp: "image/webp" } as Record<string, string>)[format ?? ""];
         if (!mimeType) throw new Error("Reference must be a PNG, JPEG, or WebP image.");

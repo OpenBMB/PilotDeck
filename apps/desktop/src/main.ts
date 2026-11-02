@@ -246,6 +246,8 @@ class RuntimeManager {
       const message = error instanceof Error ? error.message : String(error);
       const detail = this.processDiagnostics.get(server)?.failure(message) ?? message;
       this.log(detail);
+      // Configuration may now have started Gateway before Web was ready.
+      await this.stopGateway().catch(stopError => this.log(`Failed to stop startup Gateway: ${String(stopError)}`));
       throw Object.assign(new Error(detail, { cause: error }), { name: 'RuntimeStartupError' });
     }
     this.processDiagnostics.get(server)?.markReady();
@@ -317,10 +319,12 @@ class RuntimeManager {
   }
 
   private serverCommand(): string[] {
+    const entry = fs.existsSync(path.join(this.runtimeRoot, 'ui/server/supervisedBootstrap.js'))
+      ? 'server/supervisedBootstrap.js' : 'server/index.js';
     if (app.isPackaged || process.env.PILOTDECK_DESKTOP_RUNTIME_ROOT) {
-      return [this.nodeBinary, "server/index.js"];
+      return [this.nodeBinary, entry];
     }
-    return [this.nodeBinary, "--import", "tsx", "server/index.js"];
+    return [this.nodeBinary, "--import", "tsx", entry];
   }
 
   private spawnRuntime(
@@ -525,9 +529,12 @@ class RuntimeManager {
     const gateway = this.gatewayProcess;
     this.gatewayStopPromise = (async () => {
       if (gateway) {
-        this.expectedExits.add(gateway);
-        await this.stopManagedProcess(gateway);
+        // Readiness can reject while the intentional termination is in flight.
+        // Detach it first so that rejection cannot overwrite the Web failure.
         this.gatewayProcess = null;
+        this.expectedExits.add(gateway);
+        try { await this.stopManagedProcess(gateway); }
+        catch (error) { this.gatewayProcess = gateway; throw error; }
       }
       this.setGatewayState({ state: "stopped" });
     })().finally(() => {
