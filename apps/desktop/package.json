@@ -123,6 +123,9 @@
       "icon": "resources/icons/icon.png",
       "maintainer": "OpenBMB <contact@openbmb.cn>",
       "desktop": {
+        "entry": {
+          "Actions": "Uninstall;"
+        },
         "desktopActions": {
           "Uninstall": {
             "Name": "Uninstall PilotDeck",
