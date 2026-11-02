@@ -476,10 +476,12 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     };
     const shutdownAndExit = createShutdownAndExit(stop, (exitCode) => process.exit(exitCode));
     process.on("uncaughtException", (error) => {
+      console.error('[runtime] uncaughtException:', error.stack ?? error.message);
       telemetry.trackError(error, { module: "runtime", metadata: { source: "uncaughtException" } });
       void shutdownAndExit(1);
     });
     process.on("unhandledRejection", (reason) => {
+      console.error('[runtime] unhandledRejection:', reason instanceof Error ? reason.stack ?? reason.message : String(reason));
       telemetry.trackError(reason, { module: "runtime", metadata: { source: "unhandledRejection" } });
       void shutdownAndExit(1);
     });
@@ -834,6 +836,6 @@ function createFallbackGateway(): Gateway {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
   process.exitCode = 1;
 });

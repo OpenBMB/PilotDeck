@@ -25,7 +25,7 @@ export default function GatewayRuntimeErrorScreen({
     >
       <div className="space-y-4">
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-          <p className="break-words text-sm text-destructive">{error}</p>
+          <p className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-sm text-destructive">{error}</p>
         </div>
         <button
           type="button"
@@ -34,6 +34,15 @@ export default function GatewayRuntimeErrorScreen({
         >
           {t('common:uiText.retryGateway')}
         </button>
+        {window.pilotdeckDesktop?.openRuntimeLog && (
+          <button
+            type="button"
+            className="w-full rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+            onClick={() => void window.pilotdeckDesktop?.openRuntimeLog()}
+          >
+            {t('common:uiText.openRuntimeLog')}
+          </button>
+        )}
       </div>
     </AuthScreenLayout>
   );

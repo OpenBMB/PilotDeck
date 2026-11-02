@@ -8,6 +8,7 @@ import { linuxCaptionAction, linuxCaptionEntries } from "./linuxCaptionMenu";
 import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
+import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiagnostics';
 import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } from './notifications';
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
@@ -90,6 +91,7 @@ type BuildMetadata = {
 class RuntimeManager {
   private readonly processes: ManagedProcess[] = [];
   private readonly expectedExits = new WeakSet<ChildProcess>();
+  private readonly processDiagnostics = new WeakMap<ChildProcess, RuntimeProcessDiagnostics>();
   private readonly logPath: string;
   private logStream: fs.WriteStream | null = null;
   private info: RuntimeInfo | null = null;
@@ -160,6 +162,7 @@ class RuntimeManager {
     }
     const playwrightBrowsersPath = resolvePlaywrightBrowsersPath(this.runtimeRoot);
     const buildMetadata = readBuildMetadata();
+    this.log(`Runtime context: ${JSON.stringify({ version: app.getVersion(), commit: buildMetadata.commitSha, platform: process.platform, arch: process.arch, nodeBinary: this.nodeBinary, inheritedNodeOptions: Boolean(process.env.NODE_OPTIONS) })}`);
     this.log(`Playwright browsers path: ${playwrightBrowsersPath}`);
     const inheritedEnv = { ...process.env };
     const configuredConfigPath = inheritedEnv.PILOTDECK_CONFIG_PATH?.trim();
@@ -213,6 +216,7 @@ class RuntimeManager {
     this.serverProcess = server;
     server.on("message", (message) => this.handleServerMessage(message));
     await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath);
+    this.processDiagnostics.get(server)?.markReady();
 
     this.info = {
       serverPort,
@@ -272,12 +276,12 @@ class RuntimeManager {
   private gatewayCommand(): string[] {
     const builtEntry = path.join(this.runtimeRoot, "dist", "src", "cli", "pilotdeck.js");
     if (fs.existsSync(builtEntry)) {
-      return [this.nodeBinary, builtEntry, "server"];
+      return [this.nodeBinary, ...runtimeReportArguments(), builtEntry, "server"];
     }
     if (app.isPackaged || process.env.PILOTDECK_DESKTOP_RUNTIME_ROOT) {
       throw new Error(`Compiled PilotDeck gateway entry not found: ${builtEntry}`);
     }
-    return [this.nodeBinary, "--import", "tsx", path.join(this.runtimeRoot, "src", "cli", "pilotdeck.ts"), "server"];
+    return [this.nodeBinary, ...runtimeReportArguments(), "--import", "tsx", path.join(this.runtimeRoot, "src", "cli", "pilotdeck.ts"), "server"];
   }
 
   private serverCommand(): string[] {
@@ -307,10 +311,16 @@ class RuntimeManager {
       windowsHide: process.platform === "win32",
     }, this.nodeBinary);
     this.processes.push({ name, child });
+    const diagnostics = new RuntimeProcessDiagnostics(name, this.logPath);
+    this.processDiagnostics.set(child, diagnostics);
     this.log(`[${name}] spawn ${bin} ${args.join(" ")}`);
+    this.log(`[${name}] diagnostic=${diagnostics.id}`);
 
     child.stdout?.on("data", (chunk: Buffer) => this.logChunk(name, chunk));
-    child.stderr?.on("data", (chunk: Buffer) => this.logChunk(name, chunk));
+    child.stderr?.on("data", (chunk: Buffer) => {
+      diagnostics.captureStderr(chunk);
+      this.logChunk(name, chunk);
+    });
     child.on("managed-exit", (code, signal, startupError) => {
       // Retain the group record until stop() confirms all descendants exited.
       this.log(`[${name}] exited code=${code ?? "null"} signal=${signal ?? "null"}`);
@@ -318,7 +328,8 @@ class RuntimeManager {
       if (name === "gateway" && this.gatewayProcess === child) {
         this.gatewayProcess = null;
         if (!isQuitting) {
-          const detail = startupError || `Gateway exited code=${code ?? "null"} signal=${signal ?? "null"}`;
+          const detail = diagnostics.exited(code, signal, startupError);
+          this.log(detail);
           this.setGatewayState({ state: "error", error: detail });
           publishRuntimeStatus({
             phase: "error",
@@ -334,7 +345,7 @@ class RuntimeManager {
           phase: "error",
           message: `${name} exited unexpectedly. See runtime log for details.`,
           logPath: this.logPath,
-          error: `${name} exited code=${code ?? "null"} signal=${signal ?? "null"}`,
+          error: diagnostics.exited(code, signal, startupError),
         });
       }
     });
@@ -443,6 +454,7 @@ class RuntimeManager {
         this.logPath,
       );
       if (this.gatewayProcess !== gateway) return;
+      this.processDiagnostics.get(gateway)?.markReady();
       this.setGatewayState({ state: "ready" });
       publishRuntimeStatus({
         phase: "ready",
@@ -458,7 +470,8 @@ class RuntimeManager {
           this.gatewayProcess = null;
         } catch (stopError) { error = stopError; }
       }
-      const detail = error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
+      const detail = gateway ? this.processDiagnostics.get(gateway)?.failure(message) ?? message : message;
       this.log(`Gateway failed to start: ${detail}`);
       this.setGatewayState({ state: "error", error: detail });
       publishRuntimeStatus({

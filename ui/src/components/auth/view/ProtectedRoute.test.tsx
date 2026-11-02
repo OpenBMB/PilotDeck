@@ -38,7 +38,10 @@ function authValue(overrides = {}) {
   };
 }
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  delete window.pilotdeckDesktop;
+});
 
 describe('ProtectedRoute runtime states', () => {
   it('keeps the application visible with an empty model pool and stopped Gateway', () => {
@@ -72,9 +75,11 @@ describe('ProtectedRoute runtime states', () => {
     expect(screen.queryByText('application')).toBeNull();
   });
 
-  it('keeps an actionable error screen when Gateway fails', async () => {
+  it.each([false, true])('keeps an actionable Gateway error screen with desktop=%s', async (desktop) => {
     const i18n = await createTestI18n();
     const retryGateway = vi.fn();
+    const openRuntimeLog = vi.fn().mockResolvedValue(undefined);
+    if (desktop) Object.defineProperty(window, 'pilotdeckDesktop', { configurable: true, value: { openRuntimeLog } });
     mocks.auth = authValue({
       gatewayRuntime: { state: 'error', error: 'Gateway crashed' },
       retryGateway,
@@ -84,6 +89,13 @@ describe('ProtectedRoute runtime states', () => {
     expect(screen.getByText('Gateway crashed')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry Gateway' }));
     expect(retryGateway).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Gateway unavailable')).toBeTruthy();
+    if (desktop) {
+      fireEvent.click(screen.getByRole('button', { name: 'Open runtime log' }));
+      expect(openRuntimeLog).toHaveBeenCalledTimes(1);
+    } else {
+      expect(screen.queryByRole('button', { name: 'Open runtime log' })).toBeNull();
+    }
   });
 
   it('allows authenticated users to repair invalid model config from settings', () => {
