@@ -35,6 +35,17 @@ describe('catalogProviders maxOutputTokens', () => {
     expect(zhipu?.models.find((model) => model.id === 'glm-4-flash-250414')?.maxContextTokens).toBe(128_000);
   });
 
+  it('exposes Atlas Cloud as an OpenAI-compatible provider', () => {
+    const atlasCloud = findCatalogProviderById('atlas_cloud');
+    const qwen = atlasCloud?.models.find((model) => model.id === 'qwen/qwen3.8-max');
+
+    expect(atlasCloud?.protocol).toBe('openai');
+    expect(atlasCloud?.defaultUrl).toBe('https://api.atlascloud.ai/v1');
+    expect(qwen?.supportsImage).toBe(true);
+    expect(qwen?.maxContextTokens).toBe(1_000_000);
+    expect(qwen?.maxOutputTokens).toBe(131_072);
+  });
+
   it('exposes the current Kimi model catalog', () => {
     const moonshot = findCatalogProviderById('moonshot');
 
