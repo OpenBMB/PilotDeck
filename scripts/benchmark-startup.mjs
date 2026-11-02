@@ -94,16 +94,13 @@ app.use((req, res, next) => { if (/^\\/assets\\/App-[^/]+\\.js$/.test(req.path))
     fs.writeFileSync(path.join(userData,'appearance.json'), '{"language":"zh-CN","themeMode":"light"}\n');
     // Electron's package export is an executable path under Node; inside Electron
     // use its built-in module and isolate userData before loading the main entry.
-    const oomHook = fault === 'oom' ? `const Module=require('node:module'),original=Module._load;
-Module._load=function(request,...rest){const loaded=original.call(this,request,...rest);if(String(request).replaceAll('\\\\','/').endsWith('/ui/server/utils/processTree.js'))return {...loaded,spawnManaged(command,argv,...options){return loaded.spawnManaged(command,argv.includes(${JSON.stringify(gatewayEntry)})?['--max-old-space-size=16',...argv]:argv,...options)}};return loaded};` : '';
-    const windowTitle = option('--title');
-    const titleHook = windowTitle ? `app.on('browser-window-created',(_,window)=>{const setTitle=()=>{if(!window.isDestroyed())window.setTitle(${JSON.stringify(windowTitle)})};setImmediate(setTitle);window.webContents.on('did-finish-load',setTitle);window.webContents.on('page-title-updated',event=>{event.preventDefault();setTitle()})});` : '';
-    fs.writeFileSync(wrapper, `const {app}=require('electron');app.setPath('userData',${JSON.stringify(userData)});${titleHook}${oomHook}\nrequire(${JSON.stringify(path.join(root, 'apps/desktop/dist/main.js'))});`);
+    fs.copyFileSync(new URL('./fixtures/benchmark-desktop.cjs', import.meta.url), wrapper);
     const executable = require(path.join(root, 'apps/desktop/node_modules/electron'));
-    const env = { ...process.env, PILOT_HOME: home, PILOTDECK_CONFIG_PATH: path.join(home,'pilotdeck.yaml'), PILOTDECK_DESKTOP_RUNTIME_ROOT: runtime, PILOTDECK_DESKTOP_NODE: process.execPath, PILOTDECK_SKIP_DEFAULT_PROJECT: '1' };
+    const env = { ...process.env, PILOT_HOME: home, PILOTDECK_CONFIG_PATH: path.join(home,'pilotdeck.yaml'), PILOTDECK_DESKTOP_RUNTIME_ROOT: runtime, PILOTDECK_DESKTOP_NODE: process.execPath, PILOTDECK_SKIP_DEFAULT_PROJECT: '1',
+      PILOTDECK_BENCHMARK_OPTIONS: JSON.stringify({ userData, title: option('--title'), oom: fault === 'oom', gatewayEntry, mainEntry: path.join(root, 'apps/desktop/dist/main.js'), executable, wrapper }) };
     delete env.ELECTRON_RUN_AS_NODE;
     const launcher = path.join(temporary, 'desktop-launcher.cjs');
-    fs.writeFileSync(launcher, `const child=require('node:child_process').spawn(${JSON.stringify(executable)},[${JSON.stringify(wrapper)}],{stdio:'inherit',windowsHide:false});child.on('exit',code=>process.exit(code??1));`);
+    fs.copyFileSync(new URL('./fixtures/benchmark-electron-launcher.cjs', import.meta.url), launcher);
     const child = spawnManaged(process.execPath, [launcher], { env, cwd: root, stdio: ['ignore','pipe','pipe'], windowsHide: true });
     child.stdout.on('data', data => process.stdout.write(data)); child.stderr.on('data', data => process.stderr.write(data));
     const info = { runtime, home, userData, fault: fault || null, desktopPid: child.pid };

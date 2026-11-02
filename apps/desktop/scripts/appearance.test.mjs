@@ -66,7 +66,11 @@ test('native startup script preserves progress and presents the classified cause
   let update;
   const desktop = { onRuntimeStatus(callback) { update = callback; }, getRuntimeStatus() { return { phase: 'gateway', progress: 78 }; } };
   const browser = { pilotdeckDesktop: desktop };
-  new Function('window', 'document', html.match(/<script>([\s\S]*?)<\/script>/)[1])(browser, { getElementById: get, querySelector: () => get('heading') });
+  // This is our generated template's script, not an HTML sanitization routine.
+  const start = html.indexOf('<script>');
+  const end = html.lastIndexOf('</script>');
+  assert.ok(start >= 0 && end > start);
+  new Function('window', 'document', html.slice(start + '<script>'.length, end))(browser, { getElementById: get, querySelector: () => get('heading') });
   assert.ok(parseFloat(get('bar').style.width) >= 78 && parseFloat(get('bar').style.width) < 79);
   update({ phase: 'server', progress: 45 }); assert.ok(parseFloat(get('bar').style.width) >= 78);
   update({ phase: 'error', error: 'Error code: PD_RUNTIME_OUT_OF_MEMORY\nnative-private-stack', logPath: 'C:/logs/runtime.log' });

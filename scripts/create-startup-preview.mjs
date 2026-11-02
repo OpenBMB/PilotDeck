@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { inlineJson } from './lib/inline-json.mjs';
 const require = createRequire(import.meta.url);
 const { renderLoadingHtml } = require('../apps/desktop/dist/appearance.js');
 let logPath = '~/.pilotdeck/logs/runtime.log';
@@ -28,7 +29,7 @@ function run(kind){
  for(const [i,stage] of [['config',22],['server',45],['gateway',78],['ready',96]].entries()){
   timers.push(setTimeout(()=>update(stage[0],stage[1]),times[i]));
  }
-  if(codes[kind]){timers.forEach(clearTimeout);timers=[setTimeout(()=>update('gateway',78),400),setTimeout(()=>update('error',78,{error:'Error code: '+codes[kind],logPath:${JSON.stringify(logPath).replaceAll('<', '\u003c')}}),1000)];}
+  if(codes[kind]){timers.forEach(clearTimeout);timers=[setTimeout(()=>update('gateway',78),400),setTimeout(()=>update('error',78,{error:'Error code: '+codes[kind],logPath:${inlineJson(logPath)}}),1000)];}
  else{timers.push(setTimeout(()=>{update('ready',100,{completed:true});root.dataset.complete='true';},times[3]+200),setTimeout(()=>{root.dataset.leaving='true';},times[3]+500),setTimeout(()=>{done.style.display='grid';},times[3]+700));}
 }
 document.querySelectorAll('[data-scenario]').forEach(button=>button.addEventListener('click',()=>run(button.dataset.scenario)));
