@@ -1,3 +1,4 @@
+import { createImageGenerationTools, type ImageToolOptions } from "../builtin/imageGeneration.js";
 import type { BackgroundTaskRuntime } from "../../task/runtime/BackgroundTaskRuntime.js";
 import { createAgentTool, type CreateAgentToolOptions } from "../builtin/agent.js";
 import { createAskUserQuestionTool } from "../builtin/askUserQuestion.js";
@@ -27,6 +28,7 @@ import { createWriteFileTool } from "../builtin/writeFile.js";
 import { ToolRegistry } from "./ToolRegistry.js";
 
 export type CreateBuiltinRegistryOptions = {
+  imageGeneration?: ImageToolOptions;
   bash?: CreateBashToolOptions;
   /**
    * `web_search` defaults to the GLM/Z.AI provider. Pass `false` to skip
@@ -90,6 +92,9 @@ export type CreateBuiltinRegistryOptions = {
 
 export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): ToolRegistry {
   const registry = new ToolRegistry();
+  if (options?.imageGeneration?.getConfig()?.enabled === true) {
+    for (const tool of createImageGenerationTools(options.imageGeneration)) registry.register(tool);
+  }
   registry.register(createGetCurrentTimeTool());
   registry.register(createReadFileTool());
   registry.register(createSendAttachmentTool());

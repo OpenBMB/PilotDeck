@@ -90,6 +90,8 @@ export interface NormalizedMessage {
   toolName?: string;
   toolInput?: unknown;
   toolId?: string;
+  /** Structured presentation data on tool_result frames, shared by parent and child streams. */
+  toolUseResult?: unknown;
   toolResult?: { content: string; isError: boolean; toolUseResult?: unknown } | null;
   /**
    * Inline image payloads attached to a `tool_result` frame (e.g. `read_file`

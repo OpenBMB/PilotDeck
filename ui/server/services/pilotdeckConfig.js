@@ -126,7 +126,7 @@ export function buildDefaultPilotDeckConfig() {
       heartbeatBatchSize: 30,
     },
     router: { enabled: false },
-    tools: { webSearch: { enabled: false } },
+    tools: { webSearch: { enabled: false }, imageGeneration: { enabled: false } },
     alwaysOn: { projects: {} },
     cron: { enabled: true },
     adapters: {

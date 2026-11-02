@@ -1,4 +1,16 @@
 {
+  "imageGeneration": {
+  "drawing": "正在绘图…",
+  "loading": "正在加载图片…",
+  "complete": "图片已生成",
+  "failed": "绘图失败",
+  "loadFailed": "图片加载失败，请重新打开此聊天",
+  "interrupted": "绘图已停止",
+  "enlarge": "放大图片",
+  "image": "生成的图片",
+  "download": "下载原图",
+  "saved": "已保存到 {{path}}"
+},
   "attachmentPreview": {
     "imageNote": "静态预览；下载原文件可查看完整分辨率和动画。",
     "sheetTruncated": "表格预览每张工作表最多显示 200 行、50 列，完整内容请下载查看。",

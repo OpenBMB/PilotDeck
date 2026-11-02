@@ -104,3 +104,39 @@ tools: { webSearch: { region: cn } }
     assert.equal(judges.length > 0, enabled, 'disabled routing must not make hidden classification calls');
   });
 }
+
+
+test('image tools appear only after opt-in and disappear from the next request in the same chat', async (t) => {
+  const home = await mkdtemp(join(tmpdir(), 'pilotdeck-image-toggle-'));
+  const configPath = join(home, 'pilotdeck.yaml');
+  await writeFile(configPath, BASE);
+  await mkdir(join(home, 'skills'));
+  const requests: CanonicalModelRequest[] = [];
+  const local = createLocalGateway({ pilotHome: home, projectRoot: home, builtinSkillsRoot: join(home, 'skills'),
+    env: { ...process.env, PILOT_HOME: home, PILOTDECK_CONFIG_PATH: configPath, PILOT_AGENT_MODEL: undefined },
+    __testModelFactory(snapshot) {
+      return { ...createModelRuntime(snapshot.config.model),
+        async *stream(request): AsyncIterable<CanonicalModelEvent> {
+          requests.push(request);
+          yield { type: 'message_start', role: 'assistant' };
+          yield { type: 'text_delta', text: 'ok' };
+          yield { type: 'message_end', finishReason: 'stop' };
+        },
+      };
+    },
+  });
+  t.after(async () => { local.dispose(); await rm(home, { recursive: true, force: true }); });
+  for (const [round, enabled] of [false, true, false, true].entries()) {
+    await writeFile(configPath, BASE + `\ntools: { imageGeneration: { enabled: ${enabled}, apiKey: image-key, model: image-model } }\n`);
+    for (const sessionKey of ['web:image-toggle', 'web:image-toggle-fresh-' + round]) {
+      for await (const event of local.gateway.submitTurn({ projectKey: home, sessionKey, channelKey: 'web', message: 'hello' })) {
+        assert.notEqual(event.type, 'error');
+      }
+      const request = requests.at(-1)!;
+      for (const name of ['generate_image', 'edit_image', 'save_generated_image']) {
+        assert.equal(request.tools?.some(tool => tool.name === name), enabled, sessionKey + ': ' + name);
+        if (!enabled) assert.ok(!request.systemPrompt?.includes(name));
+      }
+    }
+  }
+});

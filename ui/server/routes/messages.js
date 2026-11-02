@@ -235,7 +235,7 @@ function mapWebMessageToNormalized(message, sessionId) {
       const planPayload = message.payload && typeof message.payload === 'object'
           ? message.payload
           : {};
-      const searchPayload = isSearchToolName(message.toolName) && message.payload && typeof message.payload === 'object'
+      const toolPayload = (isSearchToolName(message.toolName) || ['generate_image', 'edit_image', 'save_generated_image'].includes(message.toolName)) && message.payload && typeof message.payload === 'object'
           ? message.payload
           : null;
       return createNormalizedMessage({
@@ -261,7 +261,7 @@ function mapWebMessageToNormalized(message, sessionId) {
             planTitle: planPayload.planTitle,
             planSummary: planPayload.planSummary,
         } : {}),
-        ...(searchPayload ? { toolUseResult: searchPayload } : {}),
+        ...(toolPayload ? { toolUseResult: toolPayload } : {}),
       });
     }
     case 'permission_request':
