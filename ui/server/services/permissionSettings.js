@@ -1,4 +1,4 @@
-import fs from 'fs';
+import { readConfiguration, updateConfiguration } from '@pilotdeck/config';
 import path from 'path';
 import { resolvePilotHome } from '../utils/pilotPaths.js';
 
@@ -26,7 +26,7 @@ const TOOL_NAME_ALIASES = new Map([
 ]);
 
 export function getPermissionSettingsPath(env = process.env) {
-  return path.join(resolvePilotHome(env), 'permissions.json');
+  return path.join(resolvePilotHome(env), 'permissions.yaml');
 }
 
 export function normalizePermissionEntry(entry) {
@@ -47,36 +47,24 @@ export function normalizePermissionSettings(value) {
     allowedTools: normalizeStringArray(obj.allowedTools),
     askTools: normalizeStringArray(obj.askTools),
     disallowedTools: normalizeStringArray(obj.disallowedTools),
-    skipPermissions: Boolean(obj.skipPermissions),
+    skipPermissions: obj.skipPermissions === true,
     lastUpdated: typeof obj.lastUpdated === 'string' ? obj.lastUpdated : undefined,
   };
 }
 
 export function readPermissionSettings(env = process.env) {
-  try {
-    const raw = fs.readFileSync(getPermissionSettingsPath(env), 'utf8');
-    return normalizePermissionSettings(JSON.parse(raw));
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
+  return readConfiguration(getPermissionSettingsPath(env), {
+    defaults: DEFAULT_SETTINGS, legacyPaths: [path.join(resolvePilotHome(env), 'permissions.json')], normalize: normalizePermissionSettings,
+  }).value;
 }
 
 export function writePermissionSettings(updates, env = process.env) {
-  const current = readPermissionSettings(env);
-  const next = normalizePermissionSettings({
+  readPermissionSettings(env);
+  return updateConfiguration(getPermissionSettingsPath(env), current => normalizePermissionSettings({
     ...current,
     ...(updates || {}),
     lastUpdated: new Date().toISOString(),
-  });
-  const filePath = getPermissionSettingsPath(env);
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-  } catch (err) {
-    console.error(`[permissionSettings] Failed to write ${filePath}:`, err);
-    throw err;
-  }
-  return next;
+  }), { defaults: DEFAULT_SETTINGS });
 }
 
 function normalizeStringArray(value) {

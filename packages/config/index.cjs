@@ -31,6 +31,30 @@ function defaultPilotConfiguration(env = process.env) {
   };
 }
 
+function normalizeMcpConfiguration(value, issue = () => {}) {
+  const input = record(value) ? value : {};
+  const servers = record(input.mcpServers) ? input.mcpServers : {};
+  const output = {};
+  for (const [name, server] of Object.entries(servers)) {
+    if (!record(server) || ![server.command, server.url, server.httpUrl].some(v => typeof v === 'string' && v.trim())) {
+      issue(`mcpServers.${name}`, 'Invalid MCP server; keeping it disabled.'); continue;
+    }
+    const next = { ...server };
+    if (next.args !== undefined && (!Array.isArray(next.args) || !next.args.every(v => typeof v === 'string'))) {
+      issue(`mcpServers.${name}.args`, 'Invalid arguments; using an empty argument list.'); next.args = [];
+    }
+    for (const key of ['env', 'headers']) if (next[key] !== undefined) {
+      if (!record(next[key])) { issue(`mcpServers.${name}.${key}`, 'Invalid mapping; using an empty mapping.'); next[key] = {}; }
+      else next[key] = Object.fromEntries(Object.entries(next[key]).filter(([field, v]) => {
+        if (typeof v === 'string') return true;
+        issue(`mcpServers.${name}.${key}.${field}`, 'Invalid value; using an empty string.'); return false;
+      }));
+    }
+    output[name] = next;
+  }
+  return { ...input, mcpServers: output };
+}
+
 function report(diagnostics, options, code, file, key, message) {
   const issue = { code, path: file, field: key || '', message, recoverable: true };
   diagnostics.push(issue);
@@ -182,4 +206,4 @@ function updateConfiguration(file, update, options = {}) {
   });
 }
 
-module.exports = { resolveConfigHome, defaultPilotConfiguration, readConfiguration, writeConfiguration, updateConfiguration, recoverValues };
+module.exports = { resolveConfigHome, defaultPilotConfiguration, normalizeMcpConfiguration, readConfiguration, writeConfiguration, updateConfiguration, recoverValues };

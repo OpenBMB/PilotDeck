@@ -1,4 +1,6 @@
-import fsPromises from 'fs/promises';
+import { existsSync } from 'node:fs';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { readConfiguration, writeConfiguration, normalizeMcpConfiguration } from '@pilotdeck/config';
 import path from 'path';
 import { isVirtualProjectPath, resolvePilotHome } from '../utils/pilotPaths.js';
 
@@ -11,11 +13,11 @@ function pilotHome() {
 }
 
 export function getGlobalMcpConfigPath() {
-  return path.join(pilotHome(), 'mcp.json');
+  return path.join(pilotHome(), 'mcp.yaml');
 }
 
 export function getProjectMcpConfigPath(projectPath) {
-  return path.join(projectPath, '.pilotdeck', 'mcp.json');
+  return path.join(projectPath, '.pilotdeck', 'mcp.yaml');
 }
 
 export function normalizeMcpConfig(input) {
@@ -53,43 +55,25 @@ export async function readMcpConfigFile(scope, projectPath) {
     return {
       exists: false,
       path: null,
-      raw: JSON.stringify(DEFAULT_MCP_CONFIG, null, 2),
+      raw: stringifyYaml(DEFAULT_MCP_CONFIG),
       config: DEFAULT_MCP_CONFIG,
       disabled: true,
       reason: 'Project MCP config requires a real project. Use global scope for general chat.',
     };
   }
   const filePath = scope === 'project' ? getProjectMcpConfigPath(projectPath) : getGlobalMcpConfigPath();
-  try {
-    const raw = await fsPromises.readFile(filePath, 'utf8');
-    const parsed = normalizeMcpConfig(JSON.parse(raw));
-    return {
-      exists: true,
-      path: filePath,
-      raw: JSON.stringify(parsed, null, 2),
-      config: parsed,
-    };
-  } catch (error) {
-    if (error?.code === 'ENOENT') {
-      return {
-        exists: false,
-        path: filePath,
-        raw: JSON.stringify(DEFAULT_MCP_CONFIG, null, 2),
-        config: DEFAULT_MCP_CONFIG,
-      };
-    }
-    throw error;
-  }
+  const legacy = filePath.replace(/\.yaml$/, '.json');
+  const loaded = readConfiguration(filePath, { defaults: DEFAULT_MCP_CONFIG, create: false, legacyPaths: [legacy], normalize: normalizeMcpConfiguration });
+  return { exists: existsSync(filePath), path: filePath, raw: stringifyYaml(loaded.value), config: loaded.value, diagnostics: loaded.diagnostics };
 }
 
 export async function writeMcpConfigFile(scope, raw, projectPath) {
-  const parsed = normalizeMcpConfig(JSON.parse(raw));
+  const parsed = normalizeMcpConfig(parseYaml(raw));
   if (scope === 'project' && (!projectPath || isVirtualProjectPath(projectPath, pilotHome()))) {
     throw new Error('Project MCP config requires a real project. Use global scope for general chat.');
   }
   const filePath = scope === 'project' ? getProjectMcpConfigPath(projectPath) : getGlobalMcpConfigPath();
-  await fsPromises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  await fsPromises.writeFile(filePath, JSON.stringify(parsed, null, 2) + '\n', { mode: 0o600 });
+  writeConfiguration(filePath, parsed);
   return readMcpConfigFile(scope, projectPath);
 }
 

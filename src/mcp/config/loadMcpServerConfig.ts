@@ -1,9 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readConfiguration, normalizeMcpConfiguration } from '@pilotdeck/config';
 import { resolve } from "node:path";
 
 import { expandMcpConfig } from "./expandPlaceholders.js";
 
-export const MCP_CONFIG_FILE_NAME = "mcp.json";
+export const MCP_CONFIG_FILE_NAME = "mcp.yaml";
 
 export type LoadMcpServerConfigResult = {
   servers: Record<string, unknown>;
@@ -42,13 +43,17 @@ function readMcpConfig(
   path: string,
   diagnostics: LoadMcpServerConfigResult["diagnostics"],
 ): { mcpServers?: Record<string, unknown> } | undefined {
-  if (!existsSync(path)) {
+  const legacy = path.replace(/\.yaml$/, '.json');
+  if (!existsSync(path) && !existsSync(legacy)) {
     return undefined;
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8"));
+    parsed = readConfiguration(path, { defaults: { mcpServers: {} }, legacyPaths: legacy !== path ? [legacy] : [], repair: path.endsWith('.yaml'), create: false,
+      normalize: normalizeMcpConfiguration,
+      onDiagnostic: issue => diagnostics.push({ path: issue.field || issue.path, message: `[${issue.code}] ${issue.message}` }),
+    }).value;
   } catch (error) {
     diagnostics.push({
       path,

@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readConfiguration, updateConfiguration } from '@pilotdeck/config';
+import { join } from "node:path";
 import { resolvePilotHome } from "../pilot/paths.js";
 import type { PermissionRule, PermissionRuleSet } from "./protocol/types.js";
 
@@ -36,32 +36,27 @@ const TOOL_NAME_ALIASES = new Map<string, string>([
 ]);
 
 export function getPermissionSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
-  return join(resolvePilotHome(env), "permissions.json");
+  return join(resolvePilotHome(env), "permissions.yaml");
 }
 
 export function readPermissionSettings(env: NodeJS.ProcessEnv = process.env): PermissionSettings {
-  try {
-    const raw = readFileSync(getPermissionSettingsPath(env), "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    return normalizePermissionSettings(parsed);
-  } catch {
-    return { ...DEFAULT_PERMISSION_SETTINGS };
-  }
+  return readConfiguration(getPermissionSettingsPath(env), {
+    defaults: DEFAULT_PERMISSION_SETTINGS,
+    legacyPaths: [join(resolvePilotHome(env), 'permissions.json')],
+    normalize: normalizePermissionSettings,
+  }).value;
 }
 
 export function writePermissionSettings(
   settings: Partial<PermissionSettings>,
   env: NodeJS.ProcessEnv = process.env,
 ): PermissionSettings {
-  const next = normalizePermissionSettings({
-    ...readPermissionSettings(env),
+  readPermissionSettings(env);
+  return updateConfiguration(getPermissionSettingsPath(env), current => normalizePermissionSettings({
+    ...current,
     ...settings,
     lastUpdated: new Date().toISOString(),
-  });
-  const filePath = getPermissionSettingsPath(env);
-  mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  return next;
+  }), { defaults: DEFAULT_PERMISSION_SETTINGS });
 }
 
 export function permissionSettingsToRuleSet(settings: PermissionSettings): PermissionRuleSet {
@@ -92,7 +87,7 @@ export function normalizePermissionSettings(value: unknown): PermissionSettings 
     allowedTools: normalizeStringArray(record.allowedTools),
     askTools: normalizeStringArray(record.askTools),
     disallowedTools: normalizeStringArray(record.disallowedTools),
-    skipPermissions: Boolean(record.skipPermissions),
+    skipPermissions: record.skipPermissions === true,
     lastUpdated: typeof record.lastUpdated === "string" ? record.lastUpdated : undefined,
   };
 }

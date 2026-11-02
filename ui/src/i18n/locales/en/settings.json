@@ -730,7 +730,7 @@
   },
   "mcpConfig": {
     "title": "MCP Servers",
-    "description": "Edit PilotDeck MCP config. Global config lives in ~/.pilotdeck/mcp.json; project config lives in .pilotdeck/mcp.json and overrides global servers with the same name.",
+    "description": "Edit PilotDeck MCP config. Global config lives in ~/.pilotdeck/mcp.yaml; project config lives in .pilotdeck/mcp.yaml and overrides global servers with the same name.",
     "project": "Project for project-scoped config",
     "scopes": {
       "global": "Global",
@@ -752,8 +752,8 @@
     "addStdioServer": "Add STDIO server",
     "globalTitle": "Global MCP servers",
     "projectTitle": "Project MCP servers",
-    "globalLocation": "Stored in ~/.pilotdeck/mcp.json and available to every project.",
-    "projectLocation": "Stored in .pilotdeck/mcp.json; servers with the same name override global config.",
+    "globalLocation": "Stored in ~/.pilotdeck/mcp.yaml and available to every project.",
+    "projectLocation": "Stored in .pilotdeck/mcp.yaml; servers with the same name override global config.",
     "servers": "Servers",
     "projects": "Projects",
     "searchServer": "Search servers",
