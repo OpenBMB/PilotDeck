@@ -116,6 +116,12 @@ export type AgentRuntimeDependencies = {
   lifecycle?: LifecycleRuntime;
   /** C3 sidechain transcript hooks (optional). */
   subagentTranscript?: AgentSubagentTranscriptHooks;
+  /** Snapshot parent attachments into the child before its first model request. */
+  prepareSubagentArtifacts?: (args: {
+    parentSessionId: string;
+    subagentSessionId: string;
+    abortSignal?: AbortSignal;
+  }) => Promise<{ key: string; description: string }[]>;
   /** Register child tool artifacts in the trusted parent scope before returning its report. */
   inheritSubagentToolResult?: (args: {
     parentSessionId: string;

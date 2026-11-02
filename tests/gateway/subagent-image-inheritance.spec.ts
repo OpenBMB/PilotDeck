@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import sharp from "sharp";
 import { createLocalGateway } from "../../src/cli/createLocalGateway.js";
-import { createSubagentImageInheritance } from "../../src/cli/subagentImageInheritance.js";
+import { createSubagentImageInheritance, createSubagentImagePreparation } from "../../src/cli/subagentImageInheritance.js";
 import { createModelRuntime, type CanonicalModelEvent, type CanonicalModelRequest } from "../../src/model/index.js";
 import { ImageStore, type GeneratedImage } from "../../src/tool/builtin/images/ImageStore.js";
 import type { PilotDeckToolSuccessResult } from "../../src/tool/index.js";
@@ -171,4 +171,35 @@ test("child image handoff tolerates concurrent replay, preserves originals and r
   await writeFile(inherited.path, "conflicting bytes");
   await assert.rejects(() => inherit(args), /conflicts/);
   assert.equal(await readFile(inherited.path, "utf8"), "conflicting bytes", "never overwrite an existing conflicting attachment");
+});
+
+test("delegation snapshots only the parent's images, supports replay and exposes nothing when disabled", async t => {
+  const root = await mkdtemp(join(tmpdir(), "parent-image-snapshot-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const png = await sharp({ create: { width: 24, height: 16, channels: 3, background: "blue" } }).png().toBuffer();
+  const store = new ImageStore(root);
+  const first = await store.save("parent", png, undefined, "intermediate");
+  const second = await store.save("parent", png);
+  const unrelated = await store.save("unrelated", png);
+  let enabled = false;
+  const prepare = createSubagentImagePreparation(store, () => enabled);
+  const args = { parentSessionId: "parent", subagentSessionId: "child" };
+  assert.deepEqual(await prepare(args), []);
+  assert.deepEqual(await store.list("child"), []);
+  enabled = true;
+  const inherited = await prepare(args);
+  assert.deepEqual(inherited.map(image => image.key).sort(), [first.imageId, second.imageId].sort());
+  assert.deepEqual(await prepare(args), inherited, "preparation can be replayed without duplicate copies");
+  for (const source of [first, second]) {
+    const child = await store.get("child", source.imageId);
+    assert.notEqual(child.path, source.path);
+    assert.equal(child.purpose, source.purpose);
+    assert.ok(inherited.find(item => item.key === source.imageId)!.description.includes(child.path));
+    assert.deepEqual(await readFile(child.path), png);
+  }
+  await assert.rejects(() => store.get("child", unrelated.imageId), /ENOENT/);
+  assert.deepEqual(await prepare({ parentSessionId: "empty", subagentSessionId: "empty-child" }), []);
+  const signal = AbortSignal.abort();
+  await assert.rejects(() => prepare({ ...args, subagentSessionId: "aborted-child", abortSignal: signal }), { name: "AbortError" });
+  assert.deepEqual(await store.list("aborted-child"), []);
 });

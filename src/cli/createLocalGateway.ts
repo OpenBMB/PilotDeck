@@ -1,5 +1,5 @@
 import { ImageStore } from "../tool/builtin/images/ImageStore.js";
-import { createSubagentImageInheritance } from "./subagentImageInheritance.js";
+import { createSubagentImageInheritance, createSubagentImagePreparation } from "./subagentImageInheritance.js";
 import { acquireWorkspaceOperation, operationContext } from "../session/checkpoints/WorkspaceCoordinator.js";
 import { runWorkspaceFileOperation } from "../session/checkpoints/workspaceFileOperation.js";
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
@@ -1388,6 +1388,7 @@ class ProjectRuntimeRegistry {
     const memoryResolver = runtime.memory;
     const now = this.options.now;
     const eventBuf = createAgentEventBuffer();
+    const imageStore = new ImageStore(resolve(this.options.pilotHome, "generated-images"));
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
       router: runtime.router,
@@ -1396,7 +1397,9 @@ class ProjectRuntimeRegistry {
       now: this.options.now,
       eventEmitter: eventBuf.emitter,
       drainEvents: eventBuf.drain,
-      inheritSubagentToolResult: createSubagentImageInheritance(new ImageStore(resolve(this.options.pilotHome, "generated-images"))),
+      inheritSubagentToolResult: createSubagentImageInheritance(imageStore),
+      prepareSubagentArtifacts: createSubagentImagePreparation(imageStore,
+        () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration?.enabled === true),
       tokenAccounting: runtime.tokenAccounting,
       getModelMaxContextTokens: (provider, model) => resolveRoutedModelMaxContextTokens({
         modelRuntime: runtime.model,

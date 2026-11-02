@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
+import { link, mkdir, open, readFile, readdir, realpath, unlink } from "node:fs/promises";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import sharp from "sharp";
 
@@ -15,6 +15,25 @@ export class ImageStore {
   constructor(readonly root: string) {}
   private directory(sessionId: string): string {
     return join(resolve(this.root), createHash("sha256").update(sessionId).digest("hex"));
+  }
+  /** Enumerate only validated attachments in this session; never search other sessions. */
+  async list(sessionId: string): Promise<GeneratedImage[]> {
+    let names: string[];
+    try { names = await readdir(this.directory(sessionId)); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    const images: GeneratedImage[] = [];
+    for (const name of names.sort()) {
+      if (!/^[0-9a-f-]{36}\.json$/.test(name)) continue;
+      try { images.push(await this.get(sessionId, name.slice(0, -5))); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        // A cancelled writer may roll back an attachment while it is being listed.
+      }
+    }
+    return images;
   }
   async save(sessionId: string, bytes: Buffer, signal?: AbortSignal, purpose: ImagePurpose = "deliverable"): Promise<GeneratedImage> {
     const meta = await sharp(bytes, { limitInputPixels: 100_000_000 }).metadata();
@@ -74,7 +93,12 @@ export class ImageStore {
     };
     try {
       await writeExclusive(image.path, bytes);
-      await writeExclusive(manifestPath, JSON.stringify(image));
+      // A delegation snapshot must never observe a partially written manifest.
+      const staging = `${manifestPath}.${randomUUID()}.tmp`;
+      await writeExclusive(staging, JSON.stringify(image));
+      await link(staging, manifestPath);
+      created.push(manifestPath);
+      await unlink(staging);
       signal?.throwIfAborted();
     } catch (error) {
       await Promise.all(created.map(path => unlink(path).catch(() => {})));

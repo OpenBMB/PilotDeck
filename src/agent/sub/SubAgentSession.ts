@@ -117,6 +117,14 @@ export class SubAgentSession {
     const startedAt = Date.now();
 
     const messages = this.buildInitialMessages();
+    const parentArtifacts = await this.options.parentDependencies.prepareSubagentArtifacts?.({
+      parentSessionId: this.options.parentSessionId,
+      subagentSessionId: this.options.subagentSessionId,
+      abortSignal: this.options.abortSignal,
+    });
+    if (parentArtifacts?.length) {
+      messages[0]!.content.push({ type: "text", text: `Attachments inherited from the parent and available in this session:\n${parentArtifacts.map(artifact => artifact.description).join("\n")}` });
+    }
     const subRegistry = this.buildScopedRegistry();
     const subDependencies = this.cloneDependencies(subRegistry);
     const subConfig = this.buildConfig();
