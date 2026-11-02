@@ -12,7 +12,7 @@ import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiag
 import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } from './notifications';
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, readAppearanceSettings, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
-import { resolveConfigHome, readConfiguration, writeConfiguration } from '@pilotdeck/config';
+import { resolveConfigHome, readConfiguration, writeConfiguration, redactDiagnostic } from '@pilotdeck/config';
 import { createFilePicker } from './filePicker';
 import { ComputerUseController } from './computerUse';
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen, Notification } from "electron";
@@ -112,7 +112,7 @@ class RuntimeManager {
     private readonly runtimeRoot: string,
     private readonly nodeBinary: string,
   ) {
-    app.setAppLogsPath(path.join(app.getPath("userData"), "logs"));
+    app.setAppLogsPath(path.join(resolveConfigHome(), "logs"));
     this.logPath = path.join(app.getPath("logs"), "runtime.log");
   }
 
@@ -198,6 +198,8 @@ class RuntimeManager {
       PILOTDECK_SKIP_BROWSER_OPEN: "1",
       PILOTDECK_SKIP_DEFAULT_PROJECT: "1",
       PILOTDECK_RUNTIME_SUPERVISED: "1",
+      PILOTDECK_LOG_PATH: this.logPath,
+      PILOTDECK_LOG_CAPTURED: "1",
       PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
     }, this.runtimeRoot, this.nodeBinary, bundledGit);
     this.commonEnv = commonEnv;
@@ -534,7 +536,7 @@ class RuntimeManager {
   }
 
   private log(message: string): void {
-    const line = `${new Date().toISOString()} ${message}${os.EOL}`;
+    const line = `${new Date().toISOString()} ${redactDiagnostic(message)}${os.EOL}`;
     this.logStream?.write(line);
     if (!app.isPackaged) process.stdout.write(line);
   }
@@ -741,7 +743,7 @@ async function startRuntimeAndLoad(): Promise<void> {
     const info = await ensureRuntime();
     await loadRuntimeUrl(info);
   } catch (error) {
-    const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+    const detail = new RuntimeProcessDiagnostics('desktop', runtime?.getLogPath() || path.join(resolveConfigHome(), 'logs/runtime.log')).failure(error instanceof Error ? error.stack ?? error.message : String(error));
     publishRuntimeStatus({
       phase: "error",
       message: "PilotDeck failed to start.",
@@ -971,6 +973,7 @@ function waitForPortOrProcessExit(
       if (settled) return;
       settled = true;
       child.off("managed-exit", onExit);
+      child.off("error", onError);
       callback();
     };
     const onExit = (code: number | null, signal: NodeJS.Signals | null, startupError?: string) => {
@@ -979,6 +982,8 @@ function waitForPortOrProcessExit(
       });
     };
     child.once("managed-exit", onExit);
+    const onError = (error: Error) => finish(() => reject(error));
+    child.once("error", onError);
     waitForPort(port, host, timeoutMs)
       .then(() => finish(resolve))
       .catch((error) => finish(() => reject(error)));

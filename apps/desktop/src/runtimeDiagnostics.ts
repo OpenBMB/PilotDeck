@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
+import { classifyRuntimeError, redactDiagnostic } from '@pilotdeck/config';
 
 const MAX_STDERR_CHARS = 16_384;
 const MAX_EXCERPT_CHARS = 4_000;
@@ -85,6 +86,7 @@ export class RuntimeProcessDiagnostics {
     // on Windows. Classify only when the child actually reported the cause.
     const oom = /FATAL ERROR:[^\r\n]*(?:heap out of memory|process out of memory)/i.test(evidence);
     const assertion = /Assertion failed:|Check failed:|# Fatal error in /i.test(evidence);
+    const diagnosticCode = classifyRuntimeError(new Error(detail), evidence);
     const category = oom ? 'OUT_OF_MEMORY' : assertion ? 'NATIVE_FAILURE' : 'PROCESS_FAILED';
     const cause = oom ? 'Node.js ran out of memory.'
       : assertion ? 'The runtime reported a native fatal error or assertion.' : '';
@@ -93,6 +95,7 @@ export class RuntimeProcessDiagnostics {
     const excerpt = fatal && !tail.includes(fatal) ? `${fatal}\n…\n${tail}` : tail;
     return redactDiagnostic([
       `[${this.name.toUpperCase()}_${category}] phase=${this.phase} diagnostic=${this.id}`,
+      `Error code: ${diagnosticCode}`,
       detail,
       cause,
       excerpt,
@@ -103,9 +106,3 @@ export class RuntimeProcessDiagnostics {
   }
 }
 
-function redactDiagnostic(value: string): string {
-  return value
-    .replace(/(Bearer\s+)[\w.+/~=-]+/gi, '$1[redacted]')
-    .replace(/((?:api[_-]?key|access[_-]?token|auth[_-]?token|token|password|secret)["']?\s*[:=]\s*["']?)[^\s,"'\r\n]+/gi, '$1[redacted]')
-    .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[redacted]@');
-}

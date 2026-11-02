@@ -7,7 +7,7 @@ import 'katex/dist/katex.min.css'
 
 // Initialize i18n
 import { initializePreferencePersistence } from './lib/preferencePersistence'
-import { registerUiDiagnostics } from './lib/uiDiagnostics'
+import { registerUiDiagnostics, recordUiDiagnostic } from './lib/uiDiagnostics'
 import { registerDynamicImportReloadHandler } from './utils/reloadOnChunkError'
 import { installDesktopFilePicker } from './lib/desktopFilePicker'
 
@@ -33,4 +33,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>,
 )
 }
-void mountApplication();
+void mountApplication().catch(error => {
+  const diagnostic = recordUiDiagnostic('bootstrap-failed', { errorName: error?.name || 'Error' });
+  const root = document.getElementById('root');
+  if (root) root.textContent = `${diagnostic.code} · diagnostic=${diagnostic.diagnosticId}\nRuntime log: ~/.pilotdeck/logs/runtime.log\n${error?.message || 'Interface failed to load'}`;
+});

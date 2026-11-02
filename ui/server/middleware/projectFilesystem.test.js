@@ -11,7 +11,7 @@ import { isPathInsideOrEqual } from '../utils/pathSafety.js';
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from '../services/workspaceFileUpload.js';
 
 let root, home, workspace, server, url, env;
-const source = await fs.readFile(new URL('../index.js', import.meta.url), 'utf8');
+const source = await fs.readFile(new URL('../application.js', import.meta.url), 'utf8');
 
 // Mount the production handlers without starting the gateway, database or UI.
 function mountReportedHandlers(app, authenticateToken, requireRealProjectFilesystem) {

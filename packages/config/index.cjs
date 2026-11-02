@@ -125,6 +125,7 @@ function withLock(file, operation) {
 }
 
 function writeUnlocked(file, value) {
+  require('./errors.cjs').registerDiagnosticSecrets(value);
   const temporary = `${file}.${randomUUID()}.tmp`;
   const content = '# PilotDeck user configuration\n' + YAML.stringify(value, { indent: 2, lineWidth: 100, aliasDuplicateObjects: false });
   let handle;
@@ -178,6 +179,7 @@ function readConfiguration(file, options = {}) {
     catch { issue('', 'Configuration normalization failed; using defaults.'); value = clone(defaults); }
   }
   const migrated = Boolean(source && source !== file);
+  require('./errors.cjs').registerDiagnosticSecrets(value);
   const changed = JSON.stringify(originalValue) !== JSON.stringify(value);
   if (writable && options.repair !== false && (source || options.create !== false) && (migrated || diagnostics.length || changed || !source)) {
     try {
@@ -206,4 +208,4 @@ function updateConfiguration(file, update, options = {}) {
   });
 }
 
-module.exports = { resolveConfigHome, defaultPilotConfiguration, normalizeMcpConfiguration, readConfiguration, writeConfiguration, updateConfiguration, recoverValues };
+module.exports = { resolveConfigHome, defaultPilotConfiguration, normalizeMcpConfiguration, readConfiguration, writeConfiguration, updateConfiguration, recoverValues, ...require('./errors.cjs') };

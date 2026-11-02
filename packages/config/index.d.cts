@@ -22,3 +22,6 @@ export function readConfiguration<T = Record<string, unknown>>(file: string, opt
 export function writeConfiguration<T>(file: string, value: T): T;
 export function updateConfiguration<T>(file: string, update: (current: T) => T, options?: ReadOptions<T>): T;
 export function recoverValues<T>(value: unknown, defaults: T, issue: (field: string, message: string) => void, prefix?: string): T;
+export function classifyRuntimeError(error: unknown, evidence?: string, status?: number): string;
+export function redactDiagnostic(value: unknown): string;
+export function registerDiagnosticSecrets(value: unknown): void;
