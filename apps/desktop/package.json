@@ -164,6 +164,7 @@
       "uninstallerIcon": "resources/icons/installer-icon.ico",
       "include": "resources/installer.nsh",
       "installerLanguages": ["en_US", "zh_CN"],
+      "createDesktopShortcut": false,
       "allowToChangeInstallationDirectory": true
     },
     "portable": {

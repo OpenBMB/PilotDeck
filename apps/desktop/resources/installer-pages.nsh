@@ -12,8 +12,19 @@ LangString PD_FilesReady 1033 "Files ready. Replacing installation and updating 
 LangString PD_FilesReady 2052 "文件已准备完成，正在替换程序并更新注册信息……"
 LangString PD_UnableComplete 1033 "Unable to complete installation. See details below and run the installer again."
 LangString PD_UnableComplete 2052 "无法完成安装。请查看下方详情后重新运行安装程序。"
+LangString PD_DesktopShortcut 1033 "Create a desktop shortcut"
+LangString PD_DesktopShortcut 2052 "创建桌面快捷方式"
+LangString PD_StartApplication 1033 "Start PilotDeck"
+LangString PD_StartApplication 2052 "启动 PilotDeck"
+LangString PD_ShortcutFailed 1033 "PilotDeck was installed, but the desktop shortcut could not be created. You can open PilotDeck from the Start menu."
+LangString PD_ShortcutFailed 2052 "PilotDeck 已安装，但无法创建桌面快捷方式。你可以从开始菜单启动 PilotDeck。"
 
 !ifdef BUILD_UNINSTALLER
+  ; Creation is deferred to the finish-page checkbox, but the normal
+  ; uninstaller must still remove the shortcut owned by this application.
+  !ifdef DO_NOT_CREATE_DESKTOP_SHORTCUT
+    !undef DO_NOT_CREATE_DESKTOP_SHORTCUT
+  !endif
   Var PDUnHome
   !macro customUnWelcomePage
     !insertmacro MUI_UNPAGE_WELCOME

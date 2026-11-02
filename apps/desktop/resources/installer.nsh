@@ -141,12 +141,31 @@ FunctionEnd
   Exec '"$WINDIR\explorer.exe" "$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
 !macroend
 
+!macro PilotDeckDesktopShortcut directory
+  CreateShortCut "${directory}\${PRODUCT_NAME}.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0 "" "" "${PRODUCT_NAME}"
+  ${IfNot} ${Errors}
+    WinShell::SetLnkAUMI "${directory}\${PRODUCT_NAME}.lnk" "${APP_ID}"
+  ${EndIf}
+!macroend
+
 !macro customFinishPage
   Function StartApp
     !insertmacro PilotDeckStartApp
   FunctionEnd
 
+  Function PilotDeckCreateDesktopShortcut
+    ClearErrors
+    !insertmacro PilotDeckDesktopShortcut "$DESKTOP"
+    ${If} ${Errors}
+      MessageBox MB_OK|MB_ICONINFORMATION "$(PD_ShortcutFailed)" /SD IDOK
+    ${EndIf}
+  FunctionEnd
+
   !define MUI_FINISHPAGE_RUN
+  !define MUI_FINISHPAGE_RUN_TEXT "$(PD_StartApplication)"
   !define MUI_FINISHPAGE_RUN_FUNCTION "StartApp"
+  !define MUI_FINISHPAGE_SHOWREADME
+  !define MUI_FINISHPAGE_SHOWREADME_TEXT "$(PD_DesktopShortcut)"
+  !define MUI_FINISHPAGE_SHOWREADME_FUNCTION "PilotDeckCreateDesktopShortcut"
   !insertmacro MUI_PAGE_FINISH
 !macroend
