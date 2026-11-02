@@ -5,12 +5,14 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { readConfiguration, writeConfiguration } from '@pilotdeck/config';
 import type { ComputerUsePermission, ComputerUseStatus } from '../../../ui/shared/computerUse';
 
 const execute = promisify(execFile);
 export const COMPUTER_USE_SERVER_ID = 'pilotdeck-computer-use';
 type Options = {
   directory: string;
+  legacyDirectory?: string;
   resources: string;
   bundleId: string;
   permissions: () => { accessibility: boolean; screenRecording: boolean } | undefined;
@@ -36,13 +38,15 @@ export class ComputerUseController {
 
   constructor(private readonly options: Options) {
     fs.mkdirSync(options.directory, { recursive: true, mode: 0o700 });
-    this.mcpConfigPath = path.join(options.directory, 'mcp.json');
-    this.settingsPath = path.join(options.directory, 'settings.json');
+    this.mcpConfigPath = path.join(options.directory, 'mcp.yaml');
+    this.settingsPath = path.join(options.directory, 'settings.yaml');
     this.binary = path.join(options.resources, process.platform === 'darwin' ? 'PilotDeck Computer Use.app/Contents/MacOS/cua-driver'
       : process.platform === 'win32' ? 'cua-driver.exe' : 'cua-driver');
     let enabled = false;
     let version = 'unknown';
-    try { enabled = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8')).enabled === true; } catch { /* off by default */ }
+    enabled = readConfiguration(this.settingsPath, { defaults: { enabled: false }, create: false, legacyPaths: [
+      ...(options.legacyDirectory ? [path.join(options.legacyDirectory, 'settings.json')] : []), path.join(options.directory, 'settings.json'),
+    ] }).value.enabled;
     try { version = JSON.parse(fs.readFileSync(path.join(options.resources, 'manifest.json'), 'utf8')).version; } catch { /* build not prepared */ }
     this.state = { enabled, phase: 'disabled', available: fs.existsSync(this.binary), version, platform: process.platform };
     if (process.platform === 'darwin') {
@@ -244,6 +248,11 @@ export class ComputerUseController {
   }
 
   private writeJson(file: string, value: unknown): void {
+    if (file.endsWith('.yaml')) {
+      const previous = readConfiguration(file, { defaults: {}, create: false, repair: false }).value;
+      if (fs.existsSync(file) && JSON.stringify(previous) === JSON.stringify(value)) return;
+      writeConfiguration(file, value); return;
+    }
     const content = JSON.stringify(value, null, 2);
     if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) return;
     const temporary = `${file}.${randomUUID()}.tmp`;

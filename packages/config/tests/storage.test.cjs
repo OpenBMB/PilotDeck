@@ -92,6 +92,12 @@ test('home override expands tilde and update returns persisted values', t => {
   assert.equal(readConfiguration(file).value.name, 'saved');
 });
 
+test('create false returns defaults without creating a document', t => {
+  const root = fixture(t), file = path.join(root, 'not-created.yaml');
+  assert.deepEqual(readConfiguration(file, { defaults: { enabled: false }, create: false }).value, { enabled: false });
+  assert.equal(fs.existsSync(file), false);
+});
+
 test('future schema versions are readable but never automatically rewritten or updated', t => {
   const root = fixture(t), file = path.join(root, 'settings.yaml');
   const raw = 'schemaVersion: 9\nenabled: future-value\nsecret: retained\n';

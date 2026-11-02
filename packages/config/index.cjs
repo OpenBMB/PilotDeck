@@ -179,7 +179,7 @@ function readConfiguration(file, options = {}) {
   }
   const migrated = Boolean(source && source !== file);
   const changed = JSON.stringify(originalValue) !== JSON.stringify(value);
-  if (writable && options.repair !== false && (migrated || diagnostics.length || changed || (!source && options.create !== false))) {
+  if (writable && options.repair !== false && (source || options.create !== false) && (migrated || diagnostics.length || changed || !source)) {
     try {
       const target = writeTarget(file);
       withLock(target, () => {
