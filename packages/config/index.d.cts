@@ -25,3 +25,4 @@ export function recoverValues<T>(value: unknown, defaults: T, issue: (field: str
 export function classifyRuntimeError(error: unknown, evidence?: string, status?: number): string;
 export function redactDiagnostic(value: unknown): string;
 export function registerDiagnosticSecrets(value: unknown): void;
+export function restrictConfigurationDirectory(directory: string): void;

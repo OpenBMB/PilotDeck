@@ -3,6 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { randomUUID, createHash } = require('node:crypto');
 const YAML = require('yaml');
+const { restrictConfigurationDirectory } = require('./privateDirectory.cjs');
 
 const warned = new Set();
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -56,6 +57,7 @@ function normalizeMcpConfiguration(value, issue = () => {}) {
 }
 
 function report(diagnostics, options, code, file, key, message) {
+  if (diagnostics.length >= 256) return;
   const issue = { code, path: file, field: key || '', message, recoverable: true };
   diagnostics.push(issue);
   if (options.onDiagnostic) options.onDiagnostic(issue);
@@ -88,6 +90,24 @@ function recoverValues(value, defaults, issue, prefix = '') {
   return clone(defaults);
 }
 
+function boundedConfiguration(value, issue) {
+  const ancestors = new WeakSet(); let count = 0;
+  function visit(item, key, depth) {
+    if (++count > 100_000 || depth > 40 || item && typeof item === 'object' && ancestors.has(item)) {
+      issue(key, 'Cyclic or excessively nested configuration field; using its default.'); return undefined;
+    }
+    if (!item || typeof item !== 'object') return item;
+    ancestors.add(item);
+    const result = Array.isArray(item) ? item.map((entry, index) => visit(entry, `${key}.${index}`, depth + 1) ?? null)
+      : Object.fromEntries(Object.entries(item).flatMap(([field, entry]) => {
+        const next = visit(entry, key ? `${key}.${field}` : field, depth + 1);
+        return next === undefined ? [] : [[field, next]];
+      }));
+    ancestors.delete(item); return result;
+  }
+  return visit(value, '', 0);
+}
+
 function backup(file, raw, target) {
   const directory = path.join(path.dirname(target), 'backups', 'configuration');
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -98,6 +118,8 @@ function backup(file, raw, target) {
 }
 
 function withLock(file, operation) {
+  const home = resolveConfigHome(), relative = path.relative(home, file);
+  if (relative && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative)) restrictConfigurationDirectory(home);
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const lock = `${file}.lock`, token = randomUUID(), deadline = Date.now() + 5_000;
   let handle;
@@ -155,6 +177,7 @@ function readConfiguration(file, options = {}) {
   let raw = '', value = {}, writable = true;
   if (source) {
     try {
+      if (fs.statSync(source).size > 8 * 1024 * 1024) throw Object.assign(new Error('Configuration exceeds the 8 MiB limit.'), { code: 'PD_CONFIG_TOO_LARGE' });
       raw = fs.readFileSync(source, 'utf8');
       if (/\.json$/i.test(source)) value = JSON.parse(raw);
       else {
@@ -167,12 +190,13 @@ function readConfiguration(file, options = {}) {
       report(diagnostics, options, 'PD_CONFIG_READ', source, '', 'Could not read configuration; using available defaults.');
     }
   }
+  const issue = (key, message) => report(diagnostics, options, 'PD_CONFIG_FIELD', file, key, message);
+  value = boundedConfiguration(value, issue);
   const originalValue = value;
   if (record(value) && typeof value.schemaVersion === 'number' && value.schemaVersion > 1) {
     writable = false;
     report(diagnostics, options, 'PD_CONFIG_VERSION', file, 'schemaVersion', 'Configuration was written by a newer version; preserving its original bytes.');
   }
-  const issue = (key, message) => report(diagnostics, options, 'PD_CONFIG_FIELD', file, key, message);
   value = recoverValues(value, defaults, issue);
   if (options.normalize) {
     try { value = options.normalize(value, issue); }
@@ -208,4 +232,4 @@ function updateConfiguration(file, update, options = {}) {
   });
 }
 
-module.exports = { resolveConfigHome, defaultPilotConfiguration, normalizeMcpConfiguration, readConfiguration, writeConfiguration, updateConfiguration, recoverValues, ...require('./errors.cjs') };
+module.exports = { resolveConfigHome, defaultPilotConfiguration, normalizeMcpConfiguration, readConfiguration, writeConfiguration, updateConfiguration, recoverValues, restrictConfigurationDirectory, ...require('./errors.cjs') };
