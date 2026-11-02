@@ -31,6 +31,7 @@
     "dist:linux:rpm:x64": "node scripts/check-linux-build-host.mjs x64 rpm && umask 022 && PILOTDECK_DESKTOP_NODE_ARCH=x64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --linux rpm --x64 --config.electronDist=node_modules/electron/dist --publish never && node scripts/normalize-linux-rpm-artifact.mjs x64"
   },
   "dependencies": {
+    "@pilotdeck/config": "workspace:*",
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@
     "node": ">=22.13.0 <23"
   },
   "workspaces": [
+    "packages/*",
     "apps/desktop",
     "ui"
   ],
@@ -42,6 +43,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@pilotdeck/config": "workspace:*",
     "@google/genai": "^2.10.0",
     "@larksuiteoapi/node-sdk": "^1.65.0",
     "@modelcontextprotocol/sdk": "^1.29.0",

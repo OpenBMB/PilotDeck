@@ -1,0 +1,10 @@
+{
+  "name": "@pilotdeck/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.cjs",
+  "types": "index.d.cts",
+  "files": ["index.cjs", "index.d.cts"],
+  "dependencies": { "yaml": "2.9.0" },
+  "scripts": { "test": "node --test tests/*.test.cjs" }
+}

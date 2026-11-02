@@ -201,7 +201,7 @@ function createRuntimeDependencies(rootPackage, uiPackage) {
     if (!name.startsWith("@types/")) {
       dependencies[name] = name === "edgeclaw-memory-core"
         ? "file:../../../src/context/memory/edgeclaw-memory-core"
-        : version;
+        : name === '@pilotdeck/config' ? 'file:../../../packages/config' : version;
     }
   }
   for (const name of uiServerDependencies) {
