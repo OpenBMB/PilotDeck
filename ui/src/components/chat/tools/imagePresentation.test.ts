@@ -26,10 +26,16 @@ it('retains a running deliverable tool record independently of its pending image
   expect(items.find(item => item.imageArtifact)?.message.renderKey).toBe('image-artifact-draw');
 });
 
+it('falls back to the ordinary tool record when a completed image result has no attachment identity', () => {
+  const completed = { ...base, toolInput: { purpose: 'deliverable' }, toolResult: { content: 'Image attached' } };
+  expect(isImageDeliverable(completed)).toBe(false);
+  expect(buildRenderableMessageItems([completed]).some(item => item.imageArtifact)).toBe(false);
+});
+
 it.each(['generate_image', 'edit_image'])('keeps only successful deliverables outside the completed %s trace', toolName => {
   const asset: ChatMessage = { ...base, id: 'asset', toolName, toolInput: { purpose: 'intermediate' }, toolResult: { content: 'asset' } };
   const failed: ChatMessage = { ...base, id: 'failed', toolName, toolInput: { purpose: 'deliverable' }, toolResult: { content: 'timeout', isError: true } };
-  const delivered: ChatMessage = { ...base, id: 'delivered', toolName, toolInput: { purpose: 'deliverable', output_path: 'logo.png' }, toolResult: { content: 'image' } };
+  const delivered: ChatMessage = { ...base, id: 'delivered', toolName, toolInput: { purpose: 'deliverable', output_path: 'logo.png' }, toolResult: { content: 'image', toolUseResult: { imageGeneration: { imageId: 'image', sessionId: 'session' } } } };
   const messages: ChatMessage[] = [
     { ...base, id: 'user', type: 'user', isToolUse: false, content: 'Build a site and show its logo separately' },
     asset, failed, delivered,

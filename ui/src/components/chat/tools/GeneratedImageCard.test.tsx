@@ -32,6 +32,14 @@ it('stops animating on historical unfinished calls', () => {
   expect(screen.getAllByText('imageGeneration.interrupted').length).toBeGreaterThan(0);
 });
 
+it('keeps a successful result without image metadata as an inspectable tool instead of a drawing placeholder', () => {
+  const { container } = render(<UnifiedToolCall message={{ ...message, toolResult: { content: 'Image attached' } }} createDiff={() => []} running />);
+  expect(container.querySelector('.generated-image-card')).toBeNull();
+  fireEvent.click(container.querySelector('.tool-call button[aria-expanded]')!);
+  expect(screen.getByText('Image attached')).toBeTruthy();
+  expect(container.querySelector('.generated-image-card')).toBeNull();
+});
+
 it('shows intermediate images only after the user opens the ordinary tool details', async () => {
   URL.createObjectURL = vi.fn(() => 'blob:asset'); URL.revokeObjectURL = vi.fn();
   const asset = { ...message, toolInput: { purpose: 'intermediate' }, toolResult: { content: 'internal image metadata', toolUseResult: { imageGeneration: { imageId: 'asset-1', sessionId: 'session-1', width: 24, height: 16, mimeType: 'image/png', purpose: 'intermediate', savedTo: '/project/assets/hero.png' } } } };
@@ -48,7 +56,7 @@ it('keeps the image outside and the tool record inside the collapsed trace', () 
   const messages: ChatMessage[] = [
     { ...message, id: 'user', type: 'user', isToolUse: false, content: 'draw' },
     { ...message, id: 'shell', toolId: 'shell', toolName: 'Bash', toolResult: { content: 'ok' } },
-    { ...message, toolResult: { content: 'image attached' } },
+    { ...message, toolResult: { content: 'image attached', toolUseResult: { imageGeneration: { imageId: 'image', sessionId: 'session' } } } },
     { ...message, id: 'answer', type: 'assistant', isToolUse: false, content: 'done' },
   ];
   const items = foldCompletedTurns(messages, buildRenderableMessageItems(messages), false);

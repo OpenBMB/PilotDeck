@@ -117,7 +117,7 @@ test("generated images persist outside the project, remain session-scoped, and c
     await assert.rejects(() => store.get("session-b", image.imageId));
     const saved = await tools[2]!.execute({ image_id: image.imageId, output_path: "assets/cat.jpg" }, ctx);
     assert.equal(calls.length, 1);
-    assert.ok(saved.content.some(item => item.type === "file" && item.path.endsWith("assets/cat.jpg")));
+    assert.ok(!saved.content.some(item => item.type === "file"), "saving does not deliver the image again");
     assert.equal((saved.data as { imageGeneration: GeneratedImage }).imageGeneration.purpose, "intermediate");
     assert.equal((await sharp(await readFile(join(cwd, "assets/cat.jpg"))).metadata()).format, "jpeg");
     await assert.rejects(() => tools[2]!.execute({ image_id: image.imageId, output_path: "assets/cat.jpg" }, ctx), /already exists/);

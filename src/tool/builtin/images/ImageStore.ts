@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
-import { join, resolve, relative, isAbsolute } from "node:path";
+import { mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
+import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import sharp from "sharp";
 
 export type ImagePurpose = "intermediate" | "deliverable";
@@ -21,19 +21,38 @@ export class ImageStore {
     if (!mimeType || !meta.width || !meta.height) throw new Error("The image service returned unsupported or invalid image data.");
     const imageId = randomUUID();
     const dir = this.directory(sessionId);
-    await mkdir(dir, { recursive: true, mode: 0o700 });
     const image: GeneratedImage = { imageId, sessionId, mimeType, width: meta.width, height: meta.height, bytes: bytes.length, purpose,
       path: join(dir, `${imageId}.${meta.format === "jpeg" ? "jpg" : meta.format}`) };
-    const manifestPath = join(dir, `${imageId}.json`);
+    await this.persist(image, bytes, signal);
+    return image;
+  }
+  /** Copy an explicitly inherited asset; never fall back to other sessions on lookup. */
+  async inherit(sourceSessionId: string, imageId: string, targetSessionId: string): Promise<GeneratedImage> {
+    const source = await this.get(sourceSessionId, imageId);
+    const extension = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as Record<string, string>)[source.mimeType];
+    if (!extension) throw new Error("Invalid image MIME type.");
+    const image = { ...source, sessionId: targetSessionId, path: join(this.directory(targetSessionId), `${imageId}.${extension}`) };
+    await this.persist(image, await readFile(source.path));
+    return image;
+  }
+  private async persist(image: GeneratedImage, bytes: Buffer, signal?: AbortSignal): Promise<void> {
+    await mkdir(dirname(image.path), { recursive: true, mode: 0o700 });
+    const manifestPath = join(this.directory(image.sessionId), `${image.imageId}.json`);
+    const created: string[] = [];
+    const writeExclusive = async (file: string, content: Buffer | string) => {
+      const handle = await open(file, "wx", 0o600);
+      created.push(file);
+      try { await handle.writeFile(content, { signal }); }
+      finally { await handle.close(); }
+    };
     try {
-      await writeFile(image.path, bytes, { flag: "wx", mode: 0o600, signal });
-      await writeFile(manifestPath, JSON.stringify(image), { flag: "wx", mode: 0o600, signal });
+      await writeExclusive(image.path, bytes);
+      await writeExclusive(manifestPath, JSON.stringify(image));
       signal?.throwIfAborted();
     } catch (error) {
-      await Promise.all([image.path, manifestPath].map(path => unlink(path).catch(() => {})));
+      await Promise.all(created.map(path => unlink(path).catch(() => {})));
       throw error;
     }
-    return image;
   }
   async get(sessionId: string, imageId: string): Promise<GeneratedImage> {
     if (!/^[0-9a-f-]{36}$/.test(imageId)) throw new Error("Invalid image ID.");

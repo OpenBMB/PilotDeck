@@ -5,6 +5,12 @@ export type ImagePurpose = 'intermediate' | 'deliverable';
 
 export const isDrawingTool = (name: string) => name === 'generate_image' || name === 'edit_image';
 
+export function hasImageAttachment(message: ChatMessage): boolean {
+  const image = objectValue(objectValue(message.toolResult?.toolUseResult).imageGeneration);
+  return typeof image.imageId === 'string' && image.imageId.length > 0
+    && typeof image.sessionId === 'string' && image.sessionId.length > 0;
+}
+
 /** Read the same durable choice during execution and history replay. */
 export function imagePurpose(message: ChatMessage): ImagePurpose {
   const input = objectValue(message.toolInput);
@@ -20,5 +26,6 @@ export function imagePurpose(message: ChatMessage): ImagePurpose {
 
 export function isImageDeliverable(message: ChatMessage): boolean {
   return Boolean(message.isToolUse && isDrawingTool(String(message.toolName))
-    && !message.toolResult?.isError && imagePurpose(message) === 'deliverable');
+    && !message.toolResult?.isError && imagePurpose(message) === 'deliverable'
+    && (!message.toolResult || hasImageAttachment(message)));
 }

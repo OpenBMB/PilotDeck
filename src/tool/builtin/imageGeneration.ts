@@ -59,12 +59,16 @@ async function publish(image: GeneratedImage, path: string, context: PilotDeckTo
   });
 }
 
-function result(image: GeneratedImage): PilotDeckToolExecutionOutput {
+function result(image: GeneratedImage, deliver = true): PilotDeckToolExecutionOutput {
   return {
     content: [
       { type: "text", text: `Image is attached to this conversation. image_id: ${image.imageId}. purpose: ${image.purpose ?? "deliverable"}. ${image.width}x${image.height}. `
         + (image.savedTo ? `Saved to ${image.savedTo}.` : `Stored as a durable session attachment at ${image.path}; no project file was created. Use this local attachment path for document/PPT scripts. Use save_generated_image to save it later without regenerating.`) },
-      ...(image.savedTo ? [{ type: "file" as const, path: image.savedTo, mimeType: extname(image.savedTo).toLowerCase() === ".png" ? "image/png" : extname(image.savedTo).toLowerCase() === ".webp" ? "image/webp" : "image/jpeg" }] : []),
+      // Hosts without the Web image card need a standard attachment event.
+      // Deliver the original once, independently of optional project export.
+      ...(deliver && image.purpose !== "intermediate"
+        ? [{ type: "file" as const, path: image.path, mimeType: image.mimeType }]
+        : []),
     ],
     data: { imageGeneration: image },
   };
@@ -147,7 +151,7 @@ export function createImageGenerationTools(options: ImageToolOptions): PilotDeck
       enabled(options);
       const image = await options.store.get(context.sessionId, input.image_id);
       image.savedTo = await publish(image, input.output_path, context);
-      return result(image);
+      return result(image, false);
     },
   } as PilotDeckToolDefinition<SaveInput>];
 }
