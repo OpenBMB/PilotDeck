@@ -7,7 +7,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { createYamlConfiguration } from './yamlConfiguration.js';
 import { userConfigurationDirectory } from '../services/userConfiguration.js';
-import { readConfiguration, writeConfiguration } from '@pilotdeck/config';
+import { readConfiguration, writeConfiguration, updateConfiguration, resolveConfigHome } from '@pilotdeck/config';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -240,21 +240,13 @@ const userDb = {
   },
 
   updateGitConfig: (userId, gitName, gitEmail) => {
-    try {
-      const stmt = db.prepare('UPDATE users SET git_name = ?, git_email = ? WHERE id = ?');
-      stmt.run(gitName, gitEmail, userId);
-    } catch (err) {
-      throw err;
-    }
+    writeConfiguration(path.join(userConfigurationDirectory(userId), 'git.yaml'), { name: gitName || '', email: gitEmail || '' });
   },
-
-  getGitConfig: (userId) => {
-    try {
-      const row = db.prepare('SELECT git_name, git_email FROM users WHERE id = ?').get(userId);
-      return row;
-    } catch (err) {
-      throw err;
-    }
+  getGitConfig: userId => {
+    const file = path.join(userConfigurationDirectory(userId), 'git.yaml');
+    const old = fs.existsSync(file) ? null : db.prepare('SELECT git_name, git_email FROM users WHERE id = ?').get(userId);
+    const value = readConfiguration(file, { defaults: { name: old?.git_name || '', email: old?.git_email || '' } }).value;
+    return { git_name: value.name, git_email: value.email };
   },
 
   completeOnboarding: (userId) => {
@@ -371,85 +363,40 @@ const notificationPreferencesDb = {
   },
 };
 
+const oldPushSubscriptions = () => yamlConfig.legacy('SELECT * FROM push_subscriptions').map(({preferences_json, ...row}) => {
+  let preferences = {}; try { preferences = JSON.parse(preferences_json || '{}'); } catch { /* Invalid legacy options. */ }
+  return { ...row, preferences };
+});
 const pushSubscriptionsDb = {
   saveSubscription: (userId, endpoint, keysP256dh, keysAuth, preferences = {}) => {
-    try {
-      db.prepare(
-        `INSERT INTO push_subscriptions (user_id, endpoint, keys_p256dh, keys_auth, preferences_json)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(endpoint) DO UPDATE SET
-           user_id = excluded.user_id,
-           keys_p256dh = excluded.keys_p256dh,
-           keys_auth = excluded.keys_auth,
-           preferences_json = excluded.preferences_json`
-      ).run(userId, endpoint, keysP256dh, keysAuth, JSON.stringify(preferences));
-    } catch (err) {
-      throw err;
-    }
+    yamlConfig.update('pushSubscriptions', rows => {
+      const previous = rows.find(row => row.endpoint === endpoint);
+      const row = { id: previous?.id || Math.max(0, ...rows.map(item => item.id)) + 1, user_id: userId, endpoint, keys_p256dh: keysP256dh, keys_auth: keysAuth, preferences };
+      return [...rows.filter(item => item.endpoint !== endpoint), row];
+    }, oldPushSubscriptions);
   },
-
-  getSubscriptions: (userId) => {
-    try {
-      return db.prepare('SELECT endpoint, keys_p256dh, keys_auth, preferences_json FROM push_subscriptions WHERE user_id = ?').all(userId);
-    } catch (err) {
-      throw err;
-    }
-  },
-
-  removeSubscription: (endpoint, userId) => {
-    try {
-      if (userId === undefined) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
-      else db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, userId);
-    } catch (err) {
-      throw err;
-    }
-  },
-
-  removeAllForUser: (userId) => {
-    try {
-      db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
-    } catch (err) {
-      throw err;
-    }
-  }
+  getSubscriptions: userId => yamlConfig.read('pushSubscriptions', oldPushSubscriptions).filter(row => row.user_id === userId)
+    .map(row => ({ endpoint: row.endpoint, keys_p256dh: row.keys_p256dh, keys_auth: row.keys_auth, preferences_json: JSON.stringify(row.preferences || {}) })),
+  removeSubscription: (endpoint, userId) => { yamlConfig.update('pushSubscriptions', rows => rows.filter(row => row.endpoint !== endpoint || userId !== undefined && row.user_id !== userId), oldPushSubscriptions); },
+  removeAllForUser: userId => { yamlConfig.update('pushSubscriptions', rows => rows.filter(row => row.user_id !== userId), oldPushSubscriptions); },
 };
 
 // Session custom names database operations
+function sessionNameConfiguration() {
+  const file = path.join(resolveConfigHome(), 'session-names.yaml');
+  const options = { defaults: { names: [] } };
+  if (!fs.existsSync(file)) {
+    readConfiguration(file, { defaults: { names: yamlConfig.legacy('SELECT session_id, provider, custom_name FROM session_names') } });
+  }
+  return { read: () => readConfiguration(file, options).value.names.filter(row => row && typeof row.session_id === 'string' && typeof row.provider === 'string' && typeof row.custom_name === 'string'),
+    update: change => updateConfiguration(file, value => ({ ...value, names: change(value.names || []) }), options) };
+}
 const sessionNamesDb = {
-  // Set (insert or update) a custom session name
-  setName: (sessionId, provider, customName) => {
-    db.prepare(`
-      INSERT INTO session_names (session_id, provider, custom_name)
-      VALUES (?, ?, ?)
-      ON CONFLICT(session_id, provider)
-      DO UPDATE SET custom_name = excluded.custom_name, updated_at = CURRENT_TIMESTAMP
-    `).run(sessionId, provider, customName);
-  },
-
-  // Get a single custom session name
-  getName: (sessionId, provider) => {
-    const row = db.prepare(
-      'SELECT custom_name FROM session_names WHERE session_id = ? AND provider = ?'
-    ).get(sessionId, provider);
-    return row?.custom_name || null;
-  },
-
-  // Batch lookup — returns Map<sessionId, customName>
-  getNames: (sessionIds, provider) => {
-    if (!sessionIds.length) return new Map();
-    const placeholders = sessionIds.map(() => '?').join(',');
-    const rows = db.prepare(
-      `SELECT session_id, custom_name FROM session_names
-       WHERE session_id IN (${placeholders}) AND provider = ?`
-    ).all(...sessionIds, provider);
-    return new Map(rows.map(r => [r.session_id, r.custom_name]));
-  },
-
-  // Delete a custom session name
+  setName: (sessionId, provider, customName) => { sessionNameConfiguration().update(rows => [...rows.filter(row => row.session_id !== sessionId || row.provider !== provider), { session_id: sessionId, provider, custom_name: customName }]); },
+  getName: (sessionId, provider) => sessionNameConfiguration().read().find(row => row.session_id === sessionId && row.provider === provider)?.custom_name || null,
+  getNames: (sessionIds, provider) => new Map(sessionNameConfiguration().read().filter(row => row.provider === provider && sessionIds.includes(row.session_id)).map(row => [row.session_id, row.custom_name])),
   deleteName: (sessionId, provider) => {
-    return db.prepare(
-      'DELETE FROM session_names WHERE session_id = ? AND provider = ?'
-    ).run(sessionId, provider).changes > 0;
+    let removed = false; sessionNameConfiguration().update(rows => rows.filter(row => { const match = row.session_id === sessionId && row.provider === provider; removed ||= match; return !match; })); return removed;
   },
 };
 

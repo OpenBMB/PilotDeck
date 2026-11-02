@@ -20,9 +20,9 @@ export function createYamlConfiguration(db, home = () => resolveConfigHome()) {
       } else if (Array.isArray(shape)) {
         value[section] = value[section].filter((row, index) => {
           const valid = row && typeof row === 'object' && Number.isSafeInteger(row.id) && Number.isSafeInteger(row.user_id)
-            && (section === 'apiKeys' ? typeof row.api_key === 'string' : typeof row.credential_value === 'string');
+            && (section === 'apiKeys' ? typeof row.api_key === 'string' : section === 'pushSubscriptions' ? typeof row.endpoint === 'string' && typeof row.keys_auth === 'string' && typeof row.keys_p256dh === 'string' : typeof row.credential_value === 'string');
           if (!valid) issue(`${section}.${index}`, 'Invalid credential record; ignoring this record.');
-          if (valid && row.is_active !== 0 && row.is_active !== 1) { row.is_active = 0; issue(`${section}.${index}.is_active`, 'Invalid active flag; disabling this credential.'); }
+          if (valid && section !== 'pushSubscriptions' && row.is_active !== 0 && row.is_active !== 1) { row.is_active = 0; issue(`${section}.${index}.is_active`, 'Invalid active flag; disabling this credential.'); }
           return valid;
         });
       }

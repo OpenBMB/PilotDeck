@@ -9,6 +9,8 @@
 import { promises as fsPromises } from 'fs';
 import path from 'path';
 import os from 'os';
+import { resolveConfigHome } from '@pilotdeck/config';
+import { parse as parseYaml } from 'yaml';
 
 /**
  * Check if task-master-ai MCP server is configured
@@ -29,7 +31,7 @@ export async function detectTaskMasterMCPServer() {
         for (const filepath of configPaths) {
             try {
                 const fileContent = await fsPromises.readFile(filepath, 'utf8');
-                configData = JSON.parse(fileContent);
+                configData = parseYaml(fileContent);
                 configPath = filepath;
                 break;
             } catch (error) {
@@ -162,7 +164,7 @@ export async function getAllMCPServers() {
         for (const filepath of configPaths) {
             try {
                 const fileContent = await fsPromises.readFile(filepath, 'utf8');
-                configData = JSON.parse(fileContent);
+                configData = parseYaml(fileContent);
                 configPath = filepath;
                 break;
             } catch (error) {
