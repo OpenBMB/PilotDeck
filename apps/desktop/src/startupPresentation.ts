@@ -3,6 +3,18 @@ export const startupProgress: Record<string, number> = {
   starting: 8, config: 22, server: 45, gateway: 78, ready: 96, awaiting_configuration: 96,
 };
 
+export type StartupTiming = { phase: string; progress?: number; startedAt?: number; phaseStartedAt?: number; completed?: boolean };
+
+// A bounded estimate within a stage, never a promise of remaining time.
+// Shared timestamps preserve the same position across document transitions.
+export function startupVisualProgress(status: StartupTiming, now = Date.now()): number {
+  if (status.completed) return 100;
+  const base = Math.max(8, Math.min(96, status.progress || 8));
+  const ceiling = base < 22 ? 20 : base < 45 ? 43 : base < 78 ? 76 : base < 96 ? 94 : 99;
+  const elapsed = Math.max(0, now - (status.phaseStartedAt || now));
+  return base + (ceiling - base) * (1 - Math.exp(-elapsed / 18000));
+}
+
 const messages = {
   en: {
     starting: 'Starting PilotDeck…', config: 'Preparing your workspace…', server: 'Starting PilotDeck…',

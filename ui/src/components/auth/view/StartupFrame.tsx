@@ -1,10 +1,14 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import { startupStyle } from '../../../../../apps/desktop/src/startupStyle';
 
-export default function StartupFrame({ children, error = false }: { children: ReactNode; error?: boolean }) {
-  return <div className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground" style={{ paddingTop: 'calc(1.5rem + var(--desktop-caption-height, 0px))' }}>
-    <main className={`w-full text-center ${error ? 'max-w-[440px]' : 'max-w-[360px]'}`}>
-      <div aria-hidden="true" className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-xl bg-foreground text-3xl font-bold text-background">P</div>
-      <h1 className="mb-6 text-2xl font-bold leading-8">PilotDeck</h1>
+export default function StartupFrame({ children, error = false, complete = false, leaving = false }: { children: ReactNode; error?: boolean; complete?: boolean; leaving?: boolean }) {
+  const elapsed = Date.now() - (window.__pilotdeckStartupState?.startedAt || Date.now() - 1000);
+  return <div className="pd-startup-screen" data-error={error} data-complete={complete} data-leaving={leaving} style={{
+    '--startup-bg': 'hsl(var(--background))', '--startup-fg': 'hsl(var(--foreground))', '--startup-line': 'hsl(var(--border))', '--startup-muted': 'hsl(var(--muted-foreground))', animationDelay: `-${elapsed}ms`,
+  } as CSSProperties}>
+    <style>{startupStyle}</style>
+    <main>
+      <h1 className="pd-startup-brand">PilotDeck</h1>
       {children}
     </main>
   </div>;

@@ -1,21 +1,30 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { startupLabels } from '../../../../../apps/desktop/src/startupPresentation';
+import { startupLabels, startupVisualProgress, type StartupTiming } from '../../../../../apps/desktop/src/startupPresentation';
 import StartupFrame from './StartupFrame';
 
-export default function AuthLoadingScreen({ gateway = false }: { gateway?: boolean }) {
+export default function AuthLoadingScreen({ gateway = false, finishing = false, complete = false, leaving = false }: { gateway?: boolean; finishing?: boolean; complete?: boolean; leaving?: boolean }) {
   const { i18n } = useTranslation();
   const [status, setStatus] = useState(() => window.pilotdeckDesktop?.getRuntimeStatus?.());
+  const [now, setNow] = useState(Date.now);
   useEffect(() => window.pilotdeckDesktop?.onRuntimeStatus(setStatus), []);
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 400); return () => clearInterval(timer); }, []);
   const labels = startupLabels(i18n.resolvedLanguage || i18n.language);
-  const phase = status?.phase === 'ready' ? 'ready' : gateway ? 'gateway' : status?.phase || 'starting';
-  const progress = Math.max(gateway ? 78 : 8, status?.progress || 0);
-  return <StartupFrame>
+  const previous = window.__pilotdeckStartupState;
+  const phase = finishing || complete ? 'ready' : gateway ? 'gateway' : status?.phase || previous?.phase || 'starting';
+  const live = status?.phase === phase ? status : undefined;
+  const earlier = previous && !previous.completed && (!live?.startedAt || live.startedAt === previous.startedAt) ? previous : undefined;
+  const progress = Math.max(finishing ? 96 : gateway ? 78 : 8, live?.progress || 0, earlier?.progress || 0);
+  const timing: StartupTiming = { phase, progress, completed: complete,
+    startedAt: live?.startedAt || earlier?.startedAt || now,
+    phaseStartedAt: live?.phaseStartedAt || (earlier?.phase === phase ? earlier.phaseStartedAt : now) || now };
+  if (previous) window.__pilotdeckStartupState = timing;
+  return <StartupFrame complete={complete} leaving={leaving}>
     <div role="status">
-      <div role="progressbar" aria-label="PilotDeck" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} className="h-1 overflow-hidden rounded-full bg-border">
-        <div className="h-full rounded-full bg-foreground transition-[width] duration-500 motion-reduce:transition-none" style={{ width: progress + '%' }} />
+      <div role="progressbar" aria-label="PilotDeck" aria-valuemin={0} aria-valuemax={100} aria-valuenow={complete ? 100 : progress} className="pd-startup-track">
+        <div className="pd-startup-bar" style={{ width: startupVisualProgress(timing, now) + '%' }} />
       </div>
-      <p className="mt-4 text-sm leading-5 text-muted-foreground">{labels[phase as keyof typeof labels] || labels.starting}</p>
+      <p className="pd-startup-message">{labels[phase as keyof typeof labels] || labels.starting}</p>
     </div>
   </StartupFrame>;
 }

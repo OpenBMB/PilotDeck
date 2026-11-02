@@ -63,6 +63,8 @@ type RuntimeStatus = {
   logPath?: string;
   error?: string;
   progress?: number;
+  startedAt?: number;
+  phaseStartedAt?: number;
 };
 
 let mainWindow: BrowserWindow | null = null;
@@ -730,6 +732,8 @@ function publishRuntimeStatus(status: RuntimeStatus): void {
   const restarting = status.phase === 'starting' || status.phase === 'gateway' && ['error', 'ready', 'stopped'].includes(lastRuntimeStatus?.phase ?? '');
   const previous = restarting ? 0 : lastRuntimeStatus?.progress ?? 0;
   status.progress = Math.max(previous, startupProgress[status.phase] ?? previous);
+  status.startedAt = restarting ? Date.now() : lastRuntimeStatus?.startedAt ?? Date.now();
+  status.phaseStartedAt = restarting || status.phase !== lastRuntimeStatus?.phase ? Date.now() : lastRuntimeStatus?.phaseStartedAt ?? Date.now();
   lastRuntimeStatus = status;
   sendRuntimeStatus(status);
 }

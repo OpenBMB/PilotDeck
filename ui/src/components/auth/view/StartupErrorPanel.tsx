@@ -28,7 +28,7 @@ export default function StartupErrorPanel({ error, logPath, onRetry, children }:
     finally { setBusy(false); }
   };
   return <StartupFrame error>
-    <section role="alert" className="rounded-xl border border-border p-6 text-left">
+    <section role="alert" className="pd-startup-failure">
       <h2 className="text-lg font-semibold leading-[26px]">{labels.failed}</h2>
       <p className="my-3 text-sm leading-[22px]">{failure.reason}</p>
       <p className="text-xs leading-[18px] text-muted-foreground">{failure.code}</p>

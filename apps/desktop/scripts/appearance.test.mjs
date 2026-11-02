@@ -11,10 +11,12 @@ const lightSource = fs.readFileSync(new URL('../src/lightAppearance.ts', import.
 const lightMod = { exports: {} };
 new Function('module', 'exports', ts.transpileModule(lightSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(lightMod, lightMod.exports);
 const preferencesMod = { exports: {} };
+const styleMod = { exports: {} };
+new Function('module', 'exports', ts.transpileModule(fs.readFileSync(new URL('../src/startupStyle.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(styleMod, styleMod.exports);
 const startupMod = { exports: {} };
 new Function('module', 'exports', ts.transpileModule(fs.readFileSync(new URL('../src/startupPresentation.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(startupMod, startupMod.exports);
 new Function('module', 'exports', ts.transpileModule(fs.readFileSync(new URL('../src/interfacePreferences.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(preferencesMod, preferencesMod.exports);
-new Function('module', 'exports', 'require', compiled)(mod, mod.exports, id => id === './startupPresentation' ? startupMod.exports : id === './lightAppearance' ? lightMod.exports : id === './interfacePreferences' ? preferencesMod.exports : require(id));
+new Function('module', 'exports', 'require', compiled)(mod, mod.exports, id => id === './startupStyle' ? styleMod.exports : id === './startupPresentation' ? startupMod.exports : id === './lightAppearance' ? lightMod.exports : id === './interfacePreferences' ? preferencesMod.exports : require(id));
 const { normalizeAppearance, renderLoadingHtml, startupText } = mod.exports;
 
 test('missing and malformed appearance uses system theme and OS language', () => {
@@ -37,8 +39,8 @@ test('startup UI translates controls without exposing technical details while lo
 test('custom startup canvas is validated and dark palette retains its original values', () => {
   const appearance = normalizeAppearance({ language: 'en', themeMode: 'light', lightAppearance: { preset: 'rose' } });
   assert.equal(appearance.lightAppearance.version, 2);
-  assert.match(renderLoadingHtml(appearance), /--bg:\s*#faedf2/);
-  assert.match(renderLoadingHtml(appearance), /--bg:\s*#0a0a0a/);
+  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#faedf2/);
+  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#0a0a0a/);
 });
 
 test('legacy solid panels migrate without losing desktop background assets or custom colors', () => {
@@ -58,12 +60,13 @@ test('native startup script preserves progress and presents the classified cause
   assert.doesNotMatch(html, /\x08/);
   const nodes = new Map();
   const get = id => {
-    if (!nodes.has(id)) nodes.set(id, { textContent: '', style: {}, classList: { toggle() {} }, parentElement: { setAttribute() {} }, addEventListener() {} });
+    if (!nodes.has(id)) nodes.set(id, { textContent: '', style: {}, dataset: {}, classList: { toggle() {} }, parentElement: { setAttribute() {} }, addEventListener() {} });
     return nodes.get(id);
   };
   let update;
   const desktop = { onRuntimeStatus(callback) { update = callback; }, getRuntimeStatus() { return { phase: 'gateway', progress: 78 }; } };
-  new Function('window', 'document', html.match(/<script>([\s\S]*?)<\/script>/)[1])({ pilotdeckDesktop: desktop }, { getElementById: get });
+  const browser = { pilotdeckDesktop: desktop };
+  new Function('window', 'document', html.match(/<script>([\s\S]*?)<\/script>/)[1])(browser, { getElementById: get, querySelector: () => get('heading') });
   assert.equal(get('bar').style.width, '78%');
   update({ phase: 'server', progress: 45 }); assert.equal(get('bar').style.width, '78%');
   update({ phase: 'error', error: 'Error code: PD_RUNTIME_OUT_OF_MEMORY\nnative-private-stack', logPath: 'C:/logs/runtime.log' });
@@ -71,4 +74,5 @@ test('native startup script preserves progress and presents the classified cause
   assert.match(get('reason').textContent, /内存不足/);
   assert.equal(get('log').textContent, '运行日志: C:/logs/runtime.log');
   assert.ok([...nodes.values()].every(node => !node.textContent.includes('native-private-stack')));
+  browser.__pilotdeckStartupCleanup();
 });

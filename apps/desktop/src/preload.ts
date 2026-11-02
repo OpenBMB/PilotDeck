@@ -14,6 +14,8 @@ type RuntimeStatus = {
   logPath?: string;
   error?: string;
   progress?: number;
+  startedAt?: number;
+  phaseStartedAt?: number;
 };
 
 contextBridge.exposeInMainWorld("pilotdeckDesktop", {

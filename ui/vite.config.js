@@ -65,15 +65,9 @@ export default defineConfig(({ mode }) => {
       transformIndexHtml(html) {
         // The same shell is painted before the application bundle is evaluated.
         // React replaces it with the matching frame after its imports complete.
-        const page = renderLoadingHtml({ language: 'en', themeMode: 'system' });
-        // The native page owns body; the Web shell owns #root until React mounts.
-        const style = page.match(/<style>([\s\S]*?)<\/style>/)[1].replace('body{', '#root{width:100%;');
-        let body = page.match(/<body>([\s\S]*?)<\/body>/)[1];
-        body = body.replace(/^const labels=.*;$/m, `const languages=${JSON.stringify({ en: startupLabels('en'), 'zh-CN': startupLabels('zh-CN') })};\nconst appearance=window.pilotdeckDesktop?.getAppearance?.();\nconst language=appearance?.language||localStorage.getItem('userLanguage')||(navigator.language.startsWith('zh')?'zh-CN':'en');\nconst labels=languages[language]||languages.en;`);
-        body = body.replace("window.pilotdeckDesktop?.onRuntimeStatus(update);", "window.__pilotdeckStartupCleanup=window.pilotdeckDesktop?.onRuntimeStatus(update);window.__pilotdeckStartupUpdate=update;");
-        body = body.replace("let progress=8;", `document.documentElement.dataset.theme=appearance?.themeMode||localStorage.getItem('themeMode')||'system';\nif(!document.documentElement.classList.contains('dark'))document.documentElement.style.setProperty('--bg',getComputedStyle(document.documentElement).backgroundColor);\ndocument.getElementById('message').textContent=labels.starting;document.getElementById('retry').textContent=labels.restart;document.getElementById('saveLog').textContent=labels.save;document.querySelector('#failure h2').textContent=labels.failed;\nlet progress=8;`);
-        body = body.replace('window.pilotdeckDesktop?.retryRuntime()', "window.pilotdeckDesktop?.retryRuntime ? window.pilotdeckDesktop.retryRuntime() : window.location.reload()");
-        body = body.replace('<script>', '<script>(()=>{').replace('</script>', '})();</script>');
+        const page = renderLoadingHtml({ language: 'en', themeMode: 'system' }, true);
+        const style = page.match(/<style>([\s\S]*?)<\/style>/)[1];
+        const body = page.match(/<body[^>]*>([\s\S]*?)<\/body>/)[1];
         return html.replace('<div id="root"></div>', () => `<div id="root"><style>${style}</style>${body}</div>`);
       },
     }, {

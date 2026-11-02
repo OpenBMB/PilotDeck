@@ -40,7 +40,7 @@ function authValue(overrides = {}) {
 
 afterEach(() => {
   cleanup();
-  delete window.pilotdeckDesktop;
+  delete window.pilotdeckDesktop; delete window.__pilotdeckStartupState;
 });
 
 describe('ProtectedRoute runtime states', () => {
