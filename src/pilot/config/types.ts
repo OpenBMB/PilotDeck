@@ -141,6 +141,7 @@ export type PilotWebSearchConfig = import("./webSearchConfig.js").WebSearchConfi
 
 export type PilotToolsConfig = {
   webSearch?: PilotWebSearchConfig;
+  imageGeneration?: import("./imageGenerationConfig.js").ImageGenerationConfig;
 };
 
 export type PilotProxyConfig = {

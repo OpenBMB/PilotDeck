@@ -519,11 +519,9 @@ function ChatInterfaceV2({
       setRunMode(result.runMode === 'ask' ? 'ask' : result.mode === 'plan' || result.runMode === 'plan' ? 'plan' : 'agent');
 
       if (typeof window.refreshProjects === 'function') {
-        try {
-          await window.refreshProjects();
-        } catch {
-          // Keep the fork usable even if the sidebar refresh races/fails.
-        }
+        // A completed fork is usable immediately; a slow full sidebar scan
+        // must not block navigation or leave every fork button disabled.
+        void Promise.resolve().then(() => window.refreshProjects?.()).catch(() => {});
       }
 
       const forkDraft = typeof result.prefillText === 'string'

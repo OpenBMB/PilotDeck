@@ -15,6 +15,7 @@ import {
 } from "../../model/index.js";
 import type { AgentError } from "../../agent/index.js";
 import { contentToText } from "../../tool/index.js";
+import type { PilotDeckToolResult } from "../../tool/protocol/result.js";
 import type { SessionRouter } from "../SessionRouter.js";
 import { GatewayElicitationBus } from "../elicitation/GatewayElicitationBus.js";
 import { GatewayPermissionBus } from "../permission/GatewayPermissionBus.js";
@@ -2011,36 +2012,7 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
             }]
           : [],
       );
-      const attachments = event.result.content.flatMap((item): GatewayEvent[] => {
-        if (item.type === "image" && event.result.toolName !== "read_file") {
-          return [{
-            type: "assistant_attachment",
-            attachment: {
-              type: "image",
-              mimeType: item.mimeType,
-              content: item.data,
-              bytes: item.bytes,
-              name: `${safeGatewayPathPart(event.result.toolName)}-${safeGatewayPathPart(event.result.toolCallId)}.${extensionForMime(item.mimeType)}`,
-              source: "tool_result",
-              metadata: { toolCallId: event.result.toolCallId, toolName: event.result.toolName },
-            },
-          }];
-        }
-        if (item.type === "file") {
-          return [{
-            type: "assistant_attachment",
-            attachment: {
-              type: "file",
-              path: item.path,
-              mimeType: item.mimeType,
-              name: item.path.split(/[\\/]/).pop(),
-              source: "tool_result",
-              metadata: { toolCallId: event.result.toolCallId, toolName: event.result.toolName, description: item.description },
-            },
-          }];
-        }
-        return [];
-      });
+      const attachments = toolResultAttachments(event.result);
 
       return [
         {
@@ -2270,8 +2242,11 @@ function mapAgentEventForTurn(event: AgentEvent, runId: string): GatewayEvent[] 
           resultLineCount: lines.length,
           resultBytes: Buffer.byteLength(fullText, "utf-8"),
           ...(event.result.type === "error" && { errorCode: event.result.error.code }),
+          ...(event.result.type === "success" && event.result.data
+            ? { data: sanitizeGatewayToolData(event.result.data) }
+            : {}),
         },
-      }];
+      }, ...toolResultAttachments(event.result)];
     }
     case "subagent_status":
       return [{
@@ -2332,6 +2307,39 @@ function limitGatewayToolResultPreview(text: string): string {
   const headLength = Math.ceil(available / 2);
   const tailLength = Math.floor(available / 2);
   return `${text.slice(0, headLength)}${marker}${text.slice(-tailLength)}`;
+}
+
+function toolResultAttachments(result: PilotDeckToolResult): GatewayEvent[] {
+  return result.content.flatMap((item): GatewayEvent[] => {
+    if (item.type === "image" && result.toolName !== "read_file") {
+      return [{
+        type: "assistant_attachment",
+        attachment: {
+          type: "image",
+          mimeType: item.mimeType,
+          content: item.data,
+          bytes: item.bytes,
+          name: `${safeGatewayPathPart(result.toolName)}-${safeGatewayPathPart(result.toolCallId)}.${extensionForMime(item.mimeType)}`,
+          source: "tool_result",
+          metadata: { toolCallId: result.toolCallId, toolName: result.toolName },
+        },
+      }];
+    }
+    if (item.type === "file") {
+      return [{
+        type: "assistant_attachment",
+        attachment: {
+          type: "file",
+          path: item.path,
+          mimeType: item.mimeType,
+          name: item.path.split(/[\\/]/).pop(),
+          source: "tool_result",
+          metadata: { toolCallId: result.toolCallId, toolName: result.toolName, description: item.description },
+        },
+      }];
+    }
+    return [];
+  });
 }
 
 function sanitizeGatewayToolData(value: unknown): Record<string, unknown> {

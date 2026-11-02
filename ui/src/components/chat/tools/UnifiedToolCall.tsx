@@ -1,3 +1,5 @@
+import GeneratedImageCard from './GeneratedImageCard';
+import { hasImageAttachment, isDrawingTool, isImageDeliverable } from './imagePresentation';
 import { useMemo, useState } from 'react';
 import { Check, ChevronRight, FileText, Globe, Loader2, Pencil, Search, Terminal, Wrench, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -88,7 +90,8 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
             : inputDetails ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="input" contentOnly createDiff={createDiff} onFileOpen={onFileOpen} selectedProject={selectedProject} />
             : <pre className="mb-3 whitespace-pre-wrap break-words font-mono">{isRead ? file : isSkill ? target : displayText(Object.keys(input).length ? input : message.toolInput)}</pre>}
           {!externalError && (result ? <>
-            {!result.isError && (resultDetails || hasFileList) ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="result" contentOnly onFileOpen={onFileOpen} selectedProject={selectedProject} />
+            {!result.isError && isDrawingTool(name) && hasImageAttachment(message) && !isImageDeliverable(message) ? <GeneratedImageCard message={message} running={running} />
+              : !result.isError && (resultDetails || hasFileList) ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="result" contentOnly onFileOpen={onFileOpen} selectedProject={selectedProject} />
               : <pre className="whitespace-pre-wrap break-words font-mono">{output || t('toolDisplay.noOutput')}</pre>}
           </> : <span className="text-neutral-400">{t(active ? 'toolDisplay.executing' : 'toolDisplay.noResult')}</span>)}
         </ToolDetails>}

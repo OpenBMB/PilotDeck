@@ -194,6 +194,46 @@ function renderPane(options: {
   return render(createPaneElement(options));
 }
 
+it.each(['generate_image', 'edit_image'])('keeps the %s record in the completed trace while retaining exactly one image', async toolName => {
+  const fetchImage = vi.spyOn(api, 'authenticatedFetch').mockResolvedValue({
+    ok: true, blob: async () => new Blob(['image'], { type: 'image/png' }),
+  } as Response);
+  const previousCreate = URL.createObjectURL;
+  const previousRevoke = URL.revokeObjectURL;
+  URL.createObjectURL = vi.fn(() => 'blob:delivered-image');
+  URL.revokeObjectURL = vi.fn();
+  try {
+    const now = new Date().toISOString();
+    const user: ChatMessage = { id: 'image-user', type: 'user', timestamp: now, content: 'Draw a house' };
+    const pending: ChatMessage = { id: 'image-tool', toolId: 'image-tool', type: 'assistant', timestamp: now, content: '', isToolUse: true, toolName,
+      toolInput: { prompt: 'A blue house', purpose: 'deliverable' } };
+    const view = renderPane({ messages: [user, pending], isAssistantWorking: true });
+    const surface = view.container.querySelector('.generated-image-surface');
+    expect(surface?.getAttribute('aria-busy')).toBe('true');
+    const complete: ChatMessage[] = [user, { ...pending, toolResult: { content: 'image_id: image-1', toolUseResult: { imageGeneration: {
+      imageId: 'image-1', sessionId: 'session-1', width: 24, height: 16, mimeType: 'image/png', purpose: 'deliverable',
+    } } } }, { id: 'image-answer', type: 'assistant', timestamp: now, content: 'Your picture is ready' }];
+    view.rerender(createPaneElement({ messages: complete }));
+    await waitFor(() => expect(screen.getByRole('img', { name: 'imageGeneration.image' }).getAttribute('src')).toBe('blob:delivered-image'));
+    fireEvent.load(screen.getByRole('img', { name: 'imageGeneration.image' }));
+    expect(view.container.querySelector('.generated-image-surface')).toBe(surface);
+    fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
+    const record = screen.getByRole('button', { name: `toolDisplay.done.tool ${toolName}` });
+    fireEvent.click(record);
+    expect(screen.getByText(/A blue house/)).toBeTruthy();
+    expect(screen.getByText('image_id: image-1')).toBeTruthy();
+    expect(view.container.querySelectorAll('.generated-image-card')).toHaveLength(1);
+    view.rerender(createPaneElement({ messages: complete.map(message => ({ ...message })) }));
+    expect(view.container.querySelectorAll('.generated-image-card')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: `toolDisplay.done.tool ${toolName}` })).toBeTruthy();
+    expect(fetchImage).toHaveBeenCalledTimes(1);
+  } finally {
+    fetchImage.mockRestore();
+    URL.createObjectURL = previousCreate;
+    URL.revokeObjectURL = previousRevoke;
+  }
+});
+
 function SessionPaneHarness({
   sessionId,
   messages,

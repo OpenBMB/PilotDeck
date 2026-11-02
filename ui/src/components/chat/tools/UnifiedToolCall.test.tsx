@@ -33,6 +33,17 @@ describe('UnifiedToolCall', () => {
     expect(screen.getByText('Failed')).toBeTruthy();
     expect(screen.getByText('exit 1: test failed')).toBeTruthy();
   });
+  it.each(['intermediate', 'deliverable'])('folds a failed %s image into the ordinary neutral tool row', purpose => {
+    const { container } = render(view({ ...message, toolName: 'generate_image', toolInput: { prompt: 'a cat', purpose }, toolResult: { isError: true, content: 'TOOL_ERROR: image generation timed out' } }));
+    expect(container.querySelector('.generated-image-card')).toBeNull();
+    expect(container.querySelector('.text-red-500')).toBeNull();
+    expect(screen.queryByText('Failed')).toBeNull();
+    expect(screen.queryByText(/TOOL_ERROR/)).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Tool generate_image' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(screen.getByText(/TOOL_ERROR/)).toBeTruthy();
+  });
   it('treats historical calls without a result as unknown, not running', () => {
     const { container } = render(view(message));
     fireEvent.click(screen.getByRole('button', { name: 'Command Build app' }));
