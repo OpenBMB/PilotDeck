@@ -38,7 +38,7 @@ function deferred() {
 
 describe('getProjects', () => {
     beforeAll(async () => {
-        process.env.PILOT_HOME = '/tmp/pilotdeck-project-sort-test';
+        process.env.PILOT_HOME = path.resolve('/tmp/pilotdeck-project-sort-test');
         testWorkspacesRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-projects-test-'));
         process.env.WORKSPACES_ROOT = testWorkspacesRoot;
     });
@@ -177,6 +177,29 @@ describe('getProjects', () => {
             summary.resolve({ sessionCount: 0, createdAt: 100 });
             await projectsPromise;
         }
+    });
+
+    it('bounds concurrent project previews instead of loading projects serially or all at once', async () => {
+        gateway.listProjects.mockResolvedValue({ projects: Array.from({ length: 12 }, (_, index) => ({
+            projectKey: path.resolve(`/workspace/project-${index}`), sessionCount: 1,
+        })) });
+        const release = deferred();
+        let active = 0;
+        let maxActive = 0;
+        gateway.listSessions.mockImplementation(async ({ projectKey }) => {
+            if (projectKey === process.env.PILOT_HOME) return { sessions: [] };
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            await release.promise;
+            active -= 1;
+            return { sessions: [{ sessionId: 'saved', lastModified: 1 }] };
+        });
+        const pending = getProjects();
+        try {
+            await vi.waitFor(() => expect(active).toBe(4));
+        } finally { release.resolve(); }
+        expect(await pending).toHaveLength(13);
+        expect(maxActive).toBe(4);
     });
 });
 

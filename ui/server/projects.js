@@ -212,68 +212,72 @@ async function getProjects(progressCallback = null) {
     const dedupedProjects = [...byId.values()];
     const total = dedupedProjects.length;
 
-    const result = [];
-    for (let index = 0; index < dedupedProjects.length; index += 1) {
-        const project = dedupedProjects[index];
-        const fullPath = project.fullPath || project.projectKey;
-        const name = project.__projectId || createProjectId(fullPath);
-        rememberProjectDirectory(name, fullPath);
+    const result = new Array(total);
+    let nextProject = 0;
+    await Promise.all(Array.from({ length: Math.min(4, total) }, async () => {
+        while (nextProject < total) {
+            const index = nextProject++;
+            const project = dedupedProjects[index];
+            const fullPath = project.fullPath || project.projectKey;
+            const name = project.__projectId || createProjectId(fullPath);
+            rememberProjectDirectory(name, fullPath);
 
-        if (progressCallback) {
-            progressCallback({
-                phase: 'loading',
-                processed: index,
-                total,
-                current: name,
-            });
-        }
+            if (progressCallback) {
+                progressCallback({
+                    phase: 'loading',
+                    processed: index,
+                    total,
+                    current: name,
+                });
+            }
 
-        let sessionsResult;
-        let sessionPreviewSucceeded = true;
-        try {
-            sessionsResult = await withPilotDeckGatewayReadRetry(
-                (gateway) => gateway.listSessions({ projectKey: fullPath, limit: 5 }),
+            let sessionsResult;
+            let sessionPreviewSucceeded = true;
+            try {
+                sessionsResult = await withPilotDeckGatewayReadRetry(
+                    (gateway) => gateway.listSessions({ projectKey: fullPath, limit: 5 }),
+                );
+            } catch (error) {
+                if (isGatewayUnavailableError(error)) throw error;
+                sessionsResult = { sessions: [] };
+                sessionPreviewSucceeded = false;
+            }
+            const sessions = (sessionsResult.sessions || []).map((session) =>
+                toLegacySession(session, name),
             );
-        } catch (error) {
-            if (isGatewayUnavailableError(error)) throw error;
-            sessionsResult = { sessions: [] };
-            sessionPreviewSucceeded = false;
+            applyCustomSessionNames(sessions, 'claude');
+            const latestSessionActivity = (sessionsResult.sessions || []).reduce(
+                (latest, session) => Math.max(latest, Number(session.lastModified) || 0),
+                0,
+            );
+            const projectCreatedAt = project.createdAt ?? await readProjectCreatedAt(name);
+
+            const taskmaster = await detectTaskMaster(fullPath).catch(() => ({
+                hasTaskmaster: false,
+            }));
+
+            result[index] = {
+                name,
+                displayName: projectDisplayName(fullPath),
+                fullPath,
+                path: fullPath,
+                // A project's activity is the newest interaction in one of its
+                // sessions. For an untouched project, use its registration
+                // directory creation time instead of a mutable summary time.
+                lastActivity: latestSessionActivity > 0
+                    ? latestSessionActivity
+                    : sessionPreviewSucceeded && (project.sessionCount ?? sessions.length) === 0
+                        ? projectCreatedAt
+                        : project.lastActivity,
+                sessions,
+                sessionMeta: {
+                    total: project.sessionCount ?? sessions.length,
+                    hasMore: (project.sessionCount ?? sessions.length) > sessions.length,
+                },
+                taskmaster,
+            };
         }
-        const sessions = (sessionsResult.sessions || []).map((session) =>
-            toLegacySession(session, name),
-        );
-        applyCustomSessionNames(sessions, 'claude');
-        const latestSessionActivity = (sessionsResult.sessions || []).reduce(
-            (latest, session) => Math.max(latest, Number(session.lastModified) || 0),
-            0,
-        );
-        const projectCreatedAt = project.createdAt ?? await readProjectCreatedAt(name);
-
-        const taskmaster = await detectTaskMaster(fullPath).catch(() => ({
-            hasTaskmaster: false,
-        }));
-
-        result.push({
-            name,
-            displayName: projectDisplayName(fullPath),
-            fullPath,
-            path: fullPath,
-            // A project's activity is the newest interaction in one of its
-            // sessions. For an untouched project, use its registration
-            // directory creation time instead of a mutable summary time.
-            lastActivity: latestSessionActivity > 0
-                ? latestSessionActivity
-                : sessionPreviewSucceeded && (project.sessionCount ?? sessions.length) === 0
-                    ? projectCreatedAt
-                    : project.lastActivity,
-            sessions,
-            sessionMeta: {
-                total: project.sessionCount ?? sessions.length,
-                hasMore: (project.sessionCount ?? sessions.length) > sessions.length,
-            },
-            taskmaster,
-        });
-    }
+    }));
 
     if (progressCallback) {
         progressCallback({ phase: 'done', processed: total, total });
