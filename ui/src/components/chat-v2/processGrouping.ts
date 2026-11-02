@@ -41,6 +41,8 @@ export type ProcessRunAttachment = {
 };
 
 export type RenderableMessageItem = {
+  /** A separate image surface; the original tool call remains in the process. */
+  imageArtifact?: true;
   turnTrace?: { id: string; durationMs: number; items: RenderableMessageItem[] };
   message: ChatMessage;
   originalIndex: number;
@@ -337,7 +339,7 @@ function isPermissionToolError(message: ChatMessage): boolean {
 function isUserVisibleTool(message: ChatMessage): boolean {
   if (!message.isToolUse) return false;
   const toolName = String(message.toolName || '');
-  return isImageDeliverable(message) || USER_VISIBLE_TOOL_NAMES.has(toolName);
+  return USER_VISIBLE_TOOL_NAMES.has(toolName);
 }
 
 export function isProcessMessage(message: ChatMessage): boolean {
@@ -769,6 +771,16 @@ export function buildRenderableMessageItems(
     if (message.isAgentActivitySummary) {
       return;
     }
+    if (isImageDeliverable(message)) {
+      const callKey = message.toolId || message.toolCallId || message.id || String(originalIndex);
+      syntheticItems.push({
+        imageArtifact: true,
+        message: { ...message, renderKey: `image-artifact-${callKey}` },
+        originalIndex: originalIndex + 0.001,
+        beforeRunAttachment: null, afterRunAttachment: null,
+        beforeProcessAttachments: [], afterProcessAttachments: [],
+      });
+    }
     if (
       liveTurn &&
       originalIndex >= liveTurn.start &&
@@ -943,10 +955,10 @@ export function foldCompletedTurns(
       beforeProcessAttachments: [], afterProcessAttachments: [],
     });
     const traceItems: RenderableMessageItem[] = [];
-    const imageItems = turnItems.filter(item => isImageDeliverable(item.message));
+    const imageItems = turnItems.filter(item => item.imageArtifact);
     for (const item of turnItems) {
-      // Only delivered images stay outside the trace. Assets and failed
-      // attempts follow the same process folding as every ordinary tool.
+      // Only the image surface stays outside. Every original tool call,
+      // including delivered images, remains available in the trace.
       if (imageItems.includes(item)) continue;
       if (item.message.type !== 'user' && item !== finalItem) {
         traceItems.push({ ...item, beforeRunAttachment: null, afterRunAttachment: null });

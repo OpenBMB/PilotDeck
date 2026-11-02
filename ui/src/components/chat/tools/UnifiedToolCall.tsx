@@ -69,7 +69,6 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
     {isShell && shell.exitCode !== undefined && <span>· {t('toolDisplay.exitCode', { code: shell.exitCode })}</span>}
     {typeof duration === 'number' && duration >= 0 && <span>· {(duration / 1000).toFixed(1)}s</span>}
   </> : <span>{t(active ? 'toolDisplay.executing' : externalError ? 'toolDisplay.actionRequired' : 'toolDisplay.noResult')}</span>;
-  if (isImageDeliverable(message)) return <GeneratedImageCard message={message} running={running} />;
   return (
     <div className="tool-call min-w-0 py-1" data-tool-id={message.toolId}>
       <div className="flex min-w-0 items-center gap-2 text-[13px] leading-6 text-neutral-500 dark:text-neutral-400">
@@ -91,7 +90,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
             : inputDetails ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="input" contentOnly createDiff={createDiff} onFileOpen={onFileOpen} selectedProject={selectedProject} />
             : <pre className="mb-3 whitespace-pre-wrap break-words font-mono">{isRead ? file : isSkill ? target : displayText(Object.keys(input).length ? input : message.toolInput)}</pre>}
           {!externalError && (result ? <>
-            {!result.isError && isDrawingTool(name) ? <GeneratedImageCard message={message} running={running} />
+            {!result.isError && isDrawingTool(name) && !isImageDeliverable(message) ? <GeneratedImageCard message={message} running={running} />
               : !result.isError && (resultDetails || hasFileList) ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="result" contentOnly onFileOpen={onFileOpen} selectedProject={selectedProject} />
               : <pre className="whitespace-pre-wrap break-words font-mono">{output || t('toolDisplay.noOutput')}</pre>}
           </> : <span className="text-neutral-400">{t(active ? 'toolDisplay.executing' : 'toolDisplay.noResult')}</span>)}

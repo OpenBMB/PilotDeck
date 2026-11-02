@@ -13,7 +13,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 it('keeps drawing in the main conversation and replaces the same animated surface when the image loads', async () => {
   URL.createObjectURL = vi.fn(() => 'blob:test'); URL.revokeObjectURL = vi.fn();
-  expect(isProcessMessage(message)).toBe(false);
+  expect(isProcessMessage(message)).toBe(true);
   const { container, rerender } = render(<GeneratedImageCard message={message} running />);
   const surface = container.querySelector('.generated-image-surface');
   expect(surface?.getAttribute('aria-busy')).toBe('true');
@@ -44,7 +44,7 @@ it('shows intermediate images only after the user opens the ordinary tool detail
   expect(container.textContent).not.toContain('internal image metadata');
 });
 
-it('keeps generated image cards outside the collapsed trace when a turn completes', () => {
+it('keeps the image outside and the tool record inside the collapsed trace', () => {
   const messages: ChatMessage[] = [
     { ...message, id: 'user', type: 'user', isToolUse: false, content: 'draw' },
     { ...message, id: 'shell', toolId: 'shell', toolName: 'Bash', toolResult: { content: 'ok' } },
@@ -52,6 +52,9 @@ it('keeps generated image cards outside the collapsed trace when a turn complete
     { ...message, id: 'answer', type: 'assistant', isToolUse: false, content: 'done' },
   ];
   const items = foldCompletedTurns(messages, buildRenderableMessageItems(messages), false);
-  expect(items.some(item => item.message.toolName === 'generate_image')).toBe(true);
-  expect(items.flatMap(item => item.turnTrace?.items ?? []).some(item => item.message.toolName === 'generate_image')).toBe(false);
+  expect(items.filter(item => item.imageArtifact)).toHaveLength(1);
+  const details = items.flatMap(item => item.turnTrace?.items ?? []).flatMap(item => [
+    item.message, ...[...item.beforeProcessAttachments, ...item.afterProcessAttachments].flatMap(attachment => attachment.processDetailMessages),
+  ]);
+  expect(details.some(message => message.toolName === 'generate_image')).toBe(true);
 });
