@@ -3,6 +3,9 @@ import { parse as parseYaml } from 'yaml';
 import { parseServers, stringifyServers } from './mcpServerForm';
 
 describe('MCP YAML editing', () => {
+  it('accepts an empty editor as an empty server list', () => {
+    expect(parseServers('')).toEqual({ servers: [] });
+  });
   it('reads legacy JSON and serializes YAML without losing headers or arguments', () => {
     const legacy = JSON.stringify({ mcpServers: { local: { command: 'node', args: ['server.js'], env: { TOKEN: 'test-token' } } } });
     const forms = parseServers(legacy);
