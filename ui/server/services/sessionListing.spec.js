@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, writeFile, appendFile, readFile, rename, utimes, rm, unlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, appendFile, readFile, rename, symlink, utimes, rm, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -10,6 +10,7 @@ vi.mock('../../../src/session/storage/SessionLiteReader.js', async (importOrigin
 import { readSessionLite } from '../../../src/session/storage/SessionLiteReader.js';
 import { getPilotProjectChatDir } from '../../../src/pilot/paths.js';
 import { listProjectSessions } from '../../../src/session/storage/SessionList.js';
+import { listSessionFiles } from '../../../src/session/storage/SessionCatalog.js';
 import { listWebProjects, describeWebProject } from '../../../src/web/server/listProjects.js';
 
 let root, pilotHome, projectRoot, chatDir;
@@ -96,5 +97,18 @@ describe('large project history paging', () => {
     expect((await describeWebProject(projectRoot, { pilotHome })).sessionCount).toBe(1);
     expect((await listProjectSessions({ pilotHome, projectRoot, limit: 5 }))[0].summary).toBe('Existing history');
     expect(await readFile(join(markedDirectory, 'chats', 'web_saved.jsonl'), 'utf8')).toBe(original);
+  });
+
+  it('rejects traversal and project directory links outside the configured history root', async () => {
+    await transcript('web_saved', 'Existing history', 1_780_000_000);
+    const outside = join(root, 'outside');
+    await mkdir(join(outside, 'chats'), { recursive: true });
+    await writeFile(join(outside, 'chats', 'private.jsonl'), 'private');
+    expect(await listSessionFiles(pilotHome, join(outside, 'chats'))).toEqual([]);
+    expect(await listSessionFiles(pilotHome, join(pilotHome, 'projects', '..', '..', 'outside', 'chats'))).toEqual([]);
+    const linked = join(pilotHome, 'projects', 'linked');
+    await symlink(outside, linked, process.platform === 'win32' ? 'junction' : 'dir');
+    expect(await listSessionFiles(pilotHome, join(linked, 'chats'))).toEqual([]);
+    expect((await listProjectSessions({ pilotHome, projectRoot, limit: 5 }))[0].summary).toBe('Existing history');
   });
 });

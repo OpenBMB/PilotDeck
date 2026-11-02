@@ -34,7 +34,7 @@ export type ListProjectSessionsOptions = {
 
 export async function listProjectSessions(options: ListProjectSessionsOptions): Promise<SessionInfo[]> {
   const chatDir = getPilotProjectChatDir(options.projectRoot, options.pilotHome);
-  const files = (await listSessionFiles(chatDir))
+  const files = (await listSessionFiles(options.pilotHome, chatDir))
     .filter((file) => options.includeInternal || !isInternalSession(file.sessionId));
   const sessions: SessionInfo[] = [];
   const offset = Math.max(0, options.offset ?? 0);

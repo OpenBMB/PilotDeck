@@ -178,7 +178,7 @@ async function summarizeProject(
     const chatDir = projectStorageDir
       ? resolve(projectStorageDir, "chats")
       : getPilotProjectChatDir(projectRoot, options.pilotHome);
-    const files = (await listSessionFiles(chatDir)).filter((file) => !isInternalSession(file.sessionId));
+    const files = (await listSessionFiles(options.pilotHome, chatDir)).filter((file) => !isInternalSession(file.sessionId));
     sessionCount = files.length;
     lastActivity = files[0]?.mtime;
   } catch {
