@@ -1,4 +1,20 @@
 {
+  "runtimeLogs": {
+    "title": "系统运行日志",
+    "description": "保存排查问题所需的日志，并设置保留时长。",
+    "retention": "日志保留时长",
+    "retentionHint": "保存后立即生效，过期的每日日志和崩溃报告会自动清理。",
+    "days1": "1 天",
+    "days3": "3 天",
+    "days7": "1 周（默认）",
+    "days30": "1 个月",
+    "days90": "3 个月",
+    "location": "日志位置",
+    "save": "保存运行日志",
+    "saved": "运行日志已保存",
+    "saveFailed": "日志保存失败，请尝试其他位置。",
+    "preferenceFailed": "日志保留设置保存失败。"
+  },
   "systemNotifications": {
     "title": "通知",
     "enabled": "启用系统通知",

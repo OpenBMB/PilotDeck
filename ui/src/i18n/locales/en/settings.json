@@ -1,4 +1,20 @@
 {
+  "runtimeLogs": {
+    "title": "Runtime logs",
+    "description": "Save logs for troubleshooting and control how long they are kept.",
+    "retention": "Keep logs for",
+    "retentionHint": "Applies immediately. Expired daily logs and crash reports are removed automatically.",
+    "days1": "1 day",
+    "days3": "3 days",
+    "days7": "1 week (default)",
+    "days30": "1 month",
+    "days90": "3 months",
+    "location": "Log location",
+    "save": "Save runtime logs",
+    "saved": "Runtime logs saved",
+    "saveFailed": "Could not save the logs. Try another location.",
+    "preferenceFailed": "Could not save the log retention preference."
+  },
   "systemNotifications": {
     "title": "Notifications",
     "enabled": "Enable system notifications",

@@ -8492,3 +8492,11 @@
 :where(.pilotdeck-settings-app) .general-notification-settings-button:hover { background: rgba(127, 127, 127, .08); }
 :where(.pilotdeck-settings-app) .general-notification-settings-button:disabled { opacity: .5; cursor: default; }
 :where(.pilotdeck-settings-app) .general-notification-help { padding: 0 24px 18px; font-size: 13px; color: inherit; opacity: .75; }
+
+/* Runtime logs use one readable row, including on narrow settings windows. */
+:where(.pilotdeck-settings-app) .runtime-logs-section { margin-bottom: 20px; }
+:where(.pilotdeck-settings-app) .runtime-logs-content { padding: 18px 24px 22px; display: flex; flex-direction: column; gap: 16px; }
+:where(.pilotdeck-settings-app) .runtime-logs-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+:where(.pilotdeck-settings-app) .runtime-logs-select { width: 190px; flex-shrink: 0; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--settings-panel-background, transparent); color: inherit; }
+:where(.pilotdeck-settings-app) .runtime-logs-actions button { padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+@media(max-width: 760px) { :where(.pilotdeck-settings-app) .runtime-logs-row { align-items: flex-start; flex-direction: column; gap: 12px; } }
