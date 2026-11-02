@@ -5,7 +5,15 @@ import { releaseStartupShell } from '../startupShell';
 // Complete and fade the loading frame once, including very fast local starts.
 export default function StartupReady({ children }: { children: ReactNode }) {
   const [stage, setStage] = useState(() => window.__pilotdeckStartupState && !window.__pilotdeckStartupState.completed ? 'waiting' : 'done');
-  useLayoutEffect(() => { if (stage === 'done') releaseStartupShell(); }, [stage]);
+  useLayoutEffect(() => {
+    if (stage === 'done') { releaseStartupShell(); return; }
+    const root = document.getElementById('root');
+    if (!root) return;
+    const wasInert = Boolean(root.inert);
+    root.inert = true;
+    root.dataset.pilotdeckStartup = stage;
+    return () => { root.inert = wasInert; delete root.dataset.pilotdeckStartup; };
+  }, [stage]);
   useEffect(() => {
     if (stage === 'done') return;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -17,7 +25,7 @@ export default function StartupReady({ children }: { children: ReactNode }) {
     return () => timers.forEach(clearTimeout);
   }, []);
   return <>
-    <div aria-hidden={stage !== 'done' ? true : undefined} style={{ display: 'contents', visibility: stage === 'waiting' ? 'hidden' : 'visible', pointerEvents: stage !== 'done' ? 'none' : undefined }}>{children}</div>
+    {children}
     {stage !== 'done' && <AuthLoadingScreen finishing complete={stage !== 'waiting'} leaving={stage === 'leaving'} />}
   </>;
 }

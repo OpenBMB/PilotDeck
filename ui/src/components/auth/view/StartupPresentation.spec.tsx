@@ -10,7 +10,7 @@ import { startupVisualProgress } from '../../../../../apps/desktop/src/startupPr
 import { renderLoadingHtml } from '../../../../../apps/desktop/src/appearance';
 import { releaseStartupShell } from '../startupShell';
 
-afterEach(() => { cleanup(); releaseStartupShell(); vi.useRealTimers(); delete window.pilotdeckDesktop; delete window.__pilotdeckStartupState; });
+afterEach(() => { cleanup(); document.getElementById('root')?.remove(); releaseStartupShell(); vi.useRealTimers(); delete window.pilotdeckDesktop; delete window.__pilotdeckStartupState; });
 
 it('moves slowly inside a stage, remains bounded and resumes at the same position after handoff', () => {
   const status = { phase: 'gateway', progress: 78, phaseStartedAt: 1000 };
@@ -24,16 +24,24 @@ it('finishes and fades smoothly even when a client is ready immediately', async 
   const i18n = await createTestI18n();
   vi.useFakeTimers();
   window.__pilotdeckStartupState = { phase: 'starting', progress: 8, startedAt: Date.now(), phaseStartedAt: Date.now() };
-  render(<I18nextProvider i18n={i18n}><StartupReady><div>workspace ready</div></StartupReady></I18nextProvider>);
-  expect(screen.getByText('workspace ready').closest('[aria-hidden=true]')).toBeTruthy();
+  const root = document.createElement('div'); root.id = 'root'; document.body.append(root);
+  render(<I18nextProvider i18n={i18n}><StartupReady><main className="desktop-prototype-shell">workspace ready</main></StartupReady></I18nextProvider>, { container: root });
+  const workspace = screen.getByText('workspace ready');
+  expect(workspace.parentElement).toBe(root);
+  expect(root.inert).toBe(true);
+  expect(root.dataset.pilotdeckStartup).toBe('waiting');
   expect(screen.queryByText('P')).toBeNull();
   act(() => vi.advanceTimersByTime(200));
+  expect(workspace.parentElement).toBe(root);
   expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
   act(() => vi.advanceTimersByTime(240));
   expect(document.querySelector('[data-leaving=true]')).toBeTruthy();
   act(() => vi.advanceTimersByTime(180));
   expect(screen.getByText('workspace ready')).toBeTruthy();
-  expect(screen.getByText('workspace ready').closest('[aria-hidden=true]')).toBeNull();
+  expect(screen.getByText('workspace ready')).toBe(workspace);
+  expect(workspace.parentElement).toBe(root);
+  expect(root.inert).toBe(false);
+  expect(root.dataset.pilotdeckStartup).toBeUndefined();
 });
 
 it('keeps the same painted HTML shell and progress node through React loading, Gateway and workspace handoffs', async () => {
