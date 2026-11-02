@@ -1,5 +1,5 @@
 import { readdir, lstat, realpath } from "node:fs/promises";
-import { join, resolve, relative, isAbsolute, sep } from "node:path";
+import { join, resolve, relative, isAbsolute, basename, dirname, sep } from "node:path";
 
 export type SessionFile = {
   path: string;
@@ -27,22 +27,28 @@ export function listSessionFiles(pilotHome: string, chatDir: string): Promise<Se
   const projectsRoot = resolve(pilotHome, 'projects');
   const directory = resolve(chatDir);
   if (!isProjectChatDirectory(projectsRoot, directory)) return Promise.resolve([]);
+  const projectId = basename(dirname(directory));
+  if (projectId === '.' || projectId === '..') return Promise.resolve([]);
   const key = `${projectsRoot}\0${directory}`;
   const running = scans.get(key);
   if (running) return running;
-  const scan = scanSessionFiles(projectsRoot, directory).finally(() => {
+  const scan = scanSessionFiles(projectsRoot, projectId).finally(() => {
     if (scans.get(key) === scan) scans.delete(key);
   });
   scans.set(key, scan);
   return scan;
 }
 
-async function scanSessionFiles(projectsRoot: string, chatDir: string): Promise<SessionFile[]> {
-  const [canonicalRoot, canonicalDirectory] = await Promise.all([
-    realpath(projectsRoot).catch(() => null), realpath(chatDir).catch(() => null),
-  ]);
+async function scanSessionFiles(projectsRoot: string, projectId: string): Promise<SessionFile[]> {
+  const canonicalRoot = await realpath(projectsRoot).catch(() => null);
+  if (!canonicalRoot) return [];
+  // Build from the trusted storage root and a single project-name component;
+  // never send the caller's arbitrary path to a filesystem operation.
+  const directory = join(canonicalRoot, projectId, 'chats');
+  if (!directory.startsWith(canonicalRoot + sep)) return [];
+  const canonicalDirectory = await realpath(directory).catch(() => null);
   // A legacy name is allowed; a project/chats symlink escaping PilotHome is not.
-  if (!canonicalRoot || !canonicalDirectory || !isProjectChatDirectory(canonicalRoot, canonicalDirectory)) return [];
+  if (!canonicalDirectory || !isProjectChatDirectory(canonicalRoot, canonicalDirectory)) return [];
   const entries = await readdir(canonicalDirectory, { withFileTypes: true }).catch(() => []);
   // Ignore subagent subdirectories, empty/unreadable files and symbolic links.
   const names = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"));
