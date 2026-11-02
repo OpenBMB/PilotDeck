@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Download } from 'lucide-react';
 import type { ChatMessage } from '../types/types';
 import { authenticatedFetch } from '../../../utils/api';
 import ImageLightbox from '../view/subcomponents/ImageLightbox';
@@ -51,8 +52,10 @@ export default function GeneratedImageCard({ message, running }: { message: Chat
       {url && <button type="button" className={`generated-image-preview ${loaded ? 'is-loaded' : ''}`} onClick={() => setExpanded(true)} aria-label={t('imageGeneration.enlarge')}>
         <img src={url} alt={t('imageGeneration.image')} onLoad={() => setLoaded(true)} onError={() => { setLoadError(true); setLoaded(false); }} />
       </button>}
+      {loaded && url && <a className="generated-image-download" href={url} download={`image-${image?.imageId}.${image?.mimeType === 'image/jpeg' ? 'jpg' : image?.mimeType.split('/')[1] || 'png'}`} aria-label={t('imageGeneration.download')} title={t('imageGeneration.download')}>
+        <Download size={18} aria-hidden="true" />
+      </a>}
     </div>
-    <div className="generated-image-footer"><span>{status}</span>{loaded && url && <a href={url} download={`image-${image?.imageId}.${image?.mimeType === 'image/jpeg' ? 'jpg' : image?.mimeType.split('/')[1] || 'png'}`}>{t('imageGeneration.download')}</a>}</div>
     {failed && <p className="generated-image-error">{String(message.toolResult?.content || '')}</p>}
     {image?.savedTo && <p className="generated-image-path">{t('imageGeneration.saved', { path: image.savedTo })}</p>}
     {expanded && url && <ImageLightbox images={[{ data: url, name: t('imageGeneration.image') }]} startIndex={0} onClose={() => setExpanded(false)} />}
