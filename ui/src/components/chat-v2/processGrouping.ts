@@ -3,6 +3,7 @@ import type { ChatMessage, ChatRunMode } from '../chat/types/types';
 import { isReadOnlyModeToolDeny } from '../chat/utils/chatPermissions';
 import type { ProcessTraceMetric, ProcessTraceStep } from './ProcessTrace';
 import { formatProcessDuration } from './processTraceUtils';
+import { isImageDeliverable } from '../chat/tools/imagePresentation';
 
 export type ProcessAttachmentImage = {
   data: string;
@@ -99,8 +100,6 @@ type ProcessCounts = {
 };
 
 const USER_VISIBLE_TOOL_NAMES = new Set([
-  'generate_image',
-  'edit_image',
   'AskUserQuestion',
   'ExitPlanMode',
   'ExitPlanModeV2',
@@ -338,7 +337,7 @@ function isPermissionToolError(message: ChatMessage): boolean {
 function isUserVisibleTool(message: ChatMessage): boolean {
   if (!message.isToolUse) return false;
   const toolName = String(message.toolName || '');
-  return USER_VISIBLE_TOOL_NAMES.has(toolName);
+  return isImageDeliverable(message) || USER_VISIBLE_TOOL_NAMES.has(toolName);
 }
 
 export function isProcessMessage(message: ChatMessage): boolean {
@@ -370,7 +369,7 @@ function isExpandableProcessMessage(message: ChatMessage): boolean {
     return false;
   }
   const toolName = String(message.toolName || '');
-  if (!toolName || toolName === 'Task' || USER_VISIBLE_TOOL_NAMES.has(toolName)) {
+  if (!toolName || toolName === 'Task' || isUserVisibleTool(message)) {
     return false;
   }
   return true;
@@ -944,11 +943,10 @@ export function foldCompletedTurns(
       beforeProcessAttachments: [], afterProcessAttachments: [],
     });
     const traceItems: RenderableMessageItem[] = [];
-    const imageItems = turnItems.filter(item => item.message.isToolUse
-      && ['generate_image', 'edit_image'].includes(String(item.message.toolName)));
+    const imageItems = turnItems.filter(item => isImageDeliverable(item.message));
     for (const item of turnItems) {
-      // Generated images are conversation artifacts, including after the
-      // enclosing turn is folded. Keep the pending card's identity and place.
+      // Only delivered images stay outside the trace. Assets and failed
+      // attempts follow the same process folding as every ordinary tool.
       if (imageItems.includes(item)) continue;
       if (item.message.type !== 'user' && item !== finalItem) {
         traceItems.push({ ...item, beforeRunAttachment: null, afterRunAttachment: null });

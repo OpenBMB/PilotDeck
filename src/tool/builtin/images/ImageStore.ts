@@ -3,9 +3,10 @@ import { mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
 import { join, resolve, relative, isAbsolute } from "node:path";
 import sharp from "sharp";
 
+export type ImagePurpose = "intermediate" | "deliverable";
 export type GeneratedImage = {
   imageId: string; sessionId: string; mimeType: string; width: number; height: number;
-  bytes: number; path: string; savedTo?: string;
+  bytes: number; path: string; savedTo?: string; purpose?: ImagePurpose;
 };
 
 /** Durable session attachments. Never stored below the user's project. */
@@ -14,14 +15,14 @@ export class ImageStore {
   private directory(sessionId: string): string {
     return join(resolve(this.root), createHash("sha256").update(sessionId).digest("hex"));
   }
-  async save(sessionId: string, bytes: Buffer, signal?: AbortSignal): Promise<GeneratedImage> {
+  async save(sessionId: string, bytes: Buffer, signal?: AbortSignal, purpose: ImagePurpose = "deliverable"): Promise<GeneratedImage> {
     const meta = await sharp(bytes, { limitInputPixels: 100_000_000 }).metadata();
     const mimeType = ({ png: "image/png", jpeg: "image/jpeg", webp: "image/webp" } as Record<string, string>)[meta.format ?? ""];
     if (!mimeType || !meta.width || !meta.height) throw new Error("The image service returned unsupported or invalid image data.");
     const imageId = randomUUID();
     const dir = this.directory(sessionId);
     await mkdir(dir, { recursive: true, mode: 0o700 });
-    const image: GeneratedImage = { imageId, sessionId, mimeType, width: meta.width, height: meta.height, bytes: bytes.length,
+    const image: GeneratedImage = { imageId, sessionId, mimeType, width: meta.width, height: meta.height, bytes: bytes.length, purpose,
       path: join(dir, `${imageId}.${meta.format === "jpeg" ? "jpg" : meta.format}`) };
     const manifestPath = join(dir, `${imageId}.json`);
     try {

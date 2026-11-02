@@ -79,6 +79,12 @@ test("image generation requires an explicit opt-in, including already-created to
   current = { ...current, enabled: true };
   const registry = createBuiltinRegistry({ imageGeneration: options });
   assert.ok(registry.has("generate_image"));
+  for (const name of ["generate_image", "edit_image"]) {
+    const tool = registry.get(name)!;
+    assert.ok((tool.inputSchema.required as string[]).includes("purpose"));
+    assert.deepEqual((tool.inputSchema.properties as Record<string, { enum?: string[] }>).purpose!.enum, ["intermediate", "deliverable"]);
+    assert.equal((await tool.validateInput!({ prompt: "cat", purpose: "unknown" }, context("/project", "/home"))).ok, false);
+  }
   current = { ...current, enabled: false };
   await assert.rejects(() => registry.get("generate_image")!.execute({ prompt: "cat" }, context("/project", "/home")), /disabled/);
 });
@@ -96,25 +102,33 @@ test("generated images persist outside the project, remain session-scoped, and c
       return new Response(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
     } });
     const ctx = context(cwd, home);
-    const generated = await tools[0]!.execute({ prompt: "a cat" }, ctx);
+    const generated = await tools[0]!.execute({ prompt: "a cat", purpose: "intermediate" }, ctx);
     const image = (generated.data as { imageGeneration: GeneratedImage }).imageGeneration;
     assert.deepEqual(await readdir(cwd), []);
     assert.ok(!generated.content.some(item => item.type === "file"));
     assert.deepEqual(await readFile(image.path), png);
+    assert.equal(image.purpose, "intermediate");
+    assert.equal((await store.get(ctx.sessionId, image.imageId)).purpose, "intermediate");
     assert.equal(calls[0]?.url, "https://images.example/v1/images/generations");
     assert.equal(JSON.parse(String(calls[0]?.init?.body)).model, "image-model");
+    assert.equal(JSON.parse(String(calls[0]?.init?.body)).purpose, undefined);
     assert.equal(resolvePilotDeckWorkspacePath(image.path, ctx, { mustExist: true, allowRegisteredReadFiles: true }).ok, true);
     assert.equal(resolvePilotDeckWorkspacePath(image.path, { ...ctx, sessionId: "session-b" }, { mustExist: true, allowRegisteredReadFiles: true }).ok, false);
     await assert.rejects(() => store.get("session-b", image.imageId));
     const saved = await tools[2]!.execute({ image_id: image.imageId, output_path: "assets/cat.jpg" }, ctx);
     assert.equal(calls.length, 1);
     assert.ok(saved.content.some(item => item.type === "file" && item.path.endsWith("assets/cat.jpg")));
+    assert.equal((saved.data as { imageGeneration: GeneratedImage }).imageGeneration.purpose, "intermediate");
     assert.equal((await sharp(await readFile(join(cwd, "assets/cat.jpg"))).metadata()).format, "jpeg");
     await assert.rejects(() => tools[2]!.execute({ image_id: image.imageId, output_path: "assets/cat.jpg" }, ctx), /already exists/);
     await assert.rejects(() => tools[2]!.execute({ image_id: image.imageId, output_path: "../escape.png" }, ctx), /outside/);
     await symlink(home, join(cwd, "escape"));
     await assert.rejects(() => tools[2]!.execute({ image_id: image.imageId, output_path: "escape/escape.png" }, ctx), /outside|not allowed/);
-    await tools[1]!.execute({ prompt: "make it blue", image_ids: [image.imageId] }, ctx);
+    const edited = await tools[1]!.execute({ prompt: "make it blue", purpose: "deliverable", image_ids: [image.imageId], output_path: "assets/edited.png" }, ctx);
+    const editedImage = (edited.data as { imageGeneration: GeneratedImage }).imageGeneration;
+    assert.equal(editedImage.purpose, "deliverable");
+    assert.ok(editedImage.savedTo?.endsWith("assets/edited.png"));
+    assert.equal((await store.get(ctx.sessionId, editedImage.imageId)).purpose, "deliverable");
     assert.equal(calls[1]?.url, "https://images.example/v1/images/edits");
     assert.ok(calls[1]?.init?.body instanceof FormData);
     assert.ok((calls[1]!.init!.body as FormData).get("image") instanceof Blob);
