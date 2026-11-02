@@ -13,7 +13,7 @@ const args = process.argv.slice(2), option = (name, fallback) => args.includes(n
 const root = path.resolve(option('--root', path.join(path.dirname(fileURLToPath(import.meta.url)), '..')));
 const samples = Number(option('--samples', '3'));
 const fault = option('--fault');
-const faultNames = ['abort', 'oom', 'module-missing', 'config-invalid', 'web-module-missing'];
+const faultNames = ['abort', 'oom', 'module-missing', 'config-invalid', 'web-module-missing', 'slow-start'];
 if (fault && (!args.includes('--desktop') || !faultNames.includes(fault))) throw new Error('Fault injection requires --desktop and a supported --fault.');
 const artifacts = option('--artifacts') ? path.resolve(option('--artifacts')) : null;
 if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
@@ -66,6 +66,12 @@ try {
     if (fault === 'module-missing') fs.writeFileSync(gatewayEntry, "await import('./injected-missing-module.js');\n");
     if (fault === 'web-module-missing') fs.writeFileSync(path.join(runtime,'ui/server/index.js'), "await import('./injected-missing-web-module.js');\n");
     if (fault === 'config-invalid') fs.writeFileSync(path.join(home,'pilotdeck.yaml'), 'agent: [unterminated\n');
+    if (fault === 'slow-start') {
+      for (const entry of [gatewayEntry, path.join(runtime, 'ui/server/index.js')]) {
+        const source = fs.readFileSync(entry, 'utf8').replace(/^#![^\n]*\n/, '');
+        fs.writeFileSync(entry, `await new Promise(resolve => setTimeout(resolve, 20000));\n${source}`);
+      }
+    }
     const wrapper = path.join(temporary, 'desktop.cjs');
     const userData = path.join(temporary, 'electron-profile'); fs.mkdirSync(userData);
     fs.writeFileSync(path.join(userData,'appearance.json'), '{"language":"zh-CN","themeMode":"light"}\n');
