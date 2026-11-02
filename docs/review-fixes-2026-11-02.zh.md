@@ -35,3 +35,22 @@ Docker 的忽略规则会直接决定 COPY 可访问的文件，依据 [Docker b
 当前 Windows 主机没有 Docker 引擎和可用 WSL 发行版，因此完整镜像构建、Linux 已安装 launcher 校验、macOS/ARM64 实机结果以本轮 PR CI 为准，不用本地单元测试代替。推送后检查全部八个桌面 job、Docker 与 CodeQL 的新结果。
 
 原始本地日志保存在忽略的 `artifacts/review-fixes-2026-11-02/`。未纳入原先无关的图标修改、输出目录和脚本。
+
+## 跟进 CI 暴露的后续问题及进度条反馈
+
+第一轮修复提交 `002af441` 后，Docker 实际镜像构建及 bootstrap 导入、Checks、三个平台的 Checkpoints 均通过，macOS arm64 也通过了完整打包。继续运行的任务还暴露出以下问题，已继续修复：
+
+- Windows 的完整 NSIS 端到端夹具使用默认的全部语言，而产品仅支持英文和简体中文，导致其他语言缺少自定义 LangString，触发 warning 6040。夹具现在直接采用产品 `installerLanguages`，保留编译器警告检查。
+- CodeQL 七项告警降到一项，剩余项位于 canonical path 校验之前的 realpath 参数。现在从可信存储根目录及 basename 项目分量构造操作路径，并在 filesystem 调用前直接检查范围，随后仍验证 canonical 路径和目录层级。没有抑制或豁免告警，处理方式参考 [CodeQL 路径注入说明](https://codeql.github.com/codeql-query-help/javascript/js-path-injection/)。
+- Linux 后续 UI 夹具加载超时在 Windows 也能稳定复现：真实 preload 新增了同步启动状态读取，但旧测试宿主没有对应 IPC handler。补齐后导航恢复；完整界面测试随后发现 `display: contents` 启动包装层仍改变 DOM 父子层级，导致首次配置页的 desktop CSS 失效。改为保留原页面层级，通过 root 上的临时状态及 inert 管理交互，转场后清理。新增回归断言各阶段都保留同一页面节点及其父层级。
+
+用户进一步反馈安装进度“一卡一卡”。提取进度原来被一秒一次的文字/ETA 更新节流，进度控件又强制使用经典样式。现在进度按解码器更新及时发送，文字日志仍限频；累计进度控件继承原生控件样式、扩展样式及主题，不强制颜色。卸载页移除额外的控件样式覆盖，使用 NSIS 原生进度。行为依据 [Windows Progress Bar 控件文档](https://learn.microsoft.com/en-us/windows/win32/controls/progress-bar-control-styles)。没有加入与实际安装量无关的虚构百分比。
+
+后续本地验证：
+
+- 完整 Windows NSIS 静默安装、交互覆盖/升级、两类取消、拒绝/批准移动和卸载通过；增加原生样式和主题一致性断言，同一解码器测试中的可观察进度更新约由 8–9 次提高到 17 次。
+- 安装事务、回滚、损坏归档、Unicode 路径、暂时锁定和组件保留测试通过；安装/卸载脚本编译通过。
+- 冷缓存 Vite + 真实 Electron 的完整桌面 chrome 测试通过，未调整超时或布局断言；启动组件相关 34 项回归通过。
+- 核心历史回归 25 项通过，目录边界/无模型历史回归通过。
+
+完整新一轮 CI 和最终安装包仍须使用最新提交验证，不以 `002af441` 的部分成功替代最新结果。
