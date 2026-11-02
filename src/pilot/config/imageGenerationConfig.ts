@@ -16,4 +16,3 @@ export function imageApiBaseUrl(value = DEFAULT_IMAGE_BASE_URL): string {
   url.pathname = url.pathname.replace(/\/+$/, "").replace(/\/images\/(?:generations|edits)$/, "");
   return url.toString().replace(/\/+$/, "");
 }
-
