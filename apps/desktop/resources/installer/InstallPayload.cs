@@ -42,11 +42,19 @@ internal static class InstallPayload
         return (int)Math.Min(86395, Math.Max(5, Math.Ceiling(elapsed * (100 - percent) / percent / 5) * 5));
     }
 
+    static string lastStatus;
     static void Status(string message, int? percent)
     {
-        Console.WriteLine(message);
+        if (message != lastStatus) Console.WriteLine(message);
+        lastStatus = message;
         if (label == IntPtr.Zero) return;
         SendMessage(label, 0x000C, IntPtr.Zero, message); // WM_SETTEXT
+        UpdateProgress(percent);
+    }
+
+    static void UpdateProgress(int? percent)
+    {
+        if (bar == IntPtr.Zero) return;
         if (percent.HasValue && percent.Value > displayedProgress)
         {
             displayedProgress = Math.Max(percent.Value, SendMessage(bar, 0x0408, IntPtr.Zero, IntPtr.Zero).ToInt32() / 10);
@@ -105,13 +113,16 @@ internal static class InstallPayload
             double lastAdvance = 0, lastDisplay = -1;
             try
             {
-                while (!worker.WaitForExit(200))
+                while (!worker.WaitForExit(50))
                 {
                     CheckCancellation();
                     int percent;
                     lock (ProgressLock) percent = progress;
                     double elapsed = clock.Elapsed.TotalSeconds;
                     if (percent != last) { last = percent; lastAdvance = elapsed; }
+                    // Let the native bar follow decoder updates immediately;
+                    // the human-readable ETA/log line still refreshes once a second.
+                    UpdateProgress(percent * 90 / 100);
                     if (elapsed - lastDisplay < 1) continue;
                     lastDisplay = elapsed;
                     int? eta = RemainingSeconds(elapsed, percent, elapsed - lastAdvance);
@@ -126,7 +137,7 @@ internal static class InstallPayload
                 string error = errors.GetAwaiter().GetResult();
                 if (worker.ExitCode != 0) throw new IOException("7-Zip extraction failed (" + worker.ExitCode + "): " + error);
                 CheckCancellation();
-                Console.WriteLine("Extraction completed in " + clock.Elapsed.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture) + " s.");
+                Console.WriteLine(Text("Extraction completed in ", "解压已完成，耗时 ") + clock.Elapsed.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture) + Text(" s.", " 秒。"));
             }
             finally
             {
@@ -274,7 +285,7 @@ internal static class InstallPayload
             if (!commitOnly)
             {
                 Directory.CreateDirectory(payload);
-                Console.WriteLine("Staging on the destination volume: " + stage);
+                Console.WriteLine(Text("Preparing files on the installation volume: ", "正在安装目标磁盘上准备文件：") + stage);
                 Extract(Path.GetFullPath(args[0]), Path.GetFullPath(args[1]), payload);
                 if (prepareOnly)
                 {
@@ -323,7 +334,7 @@ internal static class InstallPayload
                     if (!hasRecovery) RetryFileOperation(() => { if (Directory.Exists(stage)) Directory.Delete(stage, true); }, 5);
                 }
             }
-            catch (Exception error) { Console.WriteLine("Temporary files retained at " + stage + ": " + error.Message); }
+            catch (Exception error) { Console.WriteLine(Text("Temporary files retained at ", "临时文件已保留在 ") + stage + ": " + error.Message); }
         }
     }
 }

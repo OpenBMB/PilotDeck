@@ -13,6 +13,7 @@ import {
   resolveCatalogProviderDefaultUrl,
 } from '../../../src/model/config/providerCredentialScope.js';
 import { findModelReferences } from './modelReferences.js';
+import { normalizeLogRetentionDays, setRuntimeLogRetention } from '@pilotdeck/config';
 
 // Source of truth: ~/.pilotdeck/pilotdeck.yaml. The disk format and the
 // "internal" config object are the same V2 schema — no more adapter layer.
@@ -139,6 +140,7 @@ export function buildDefaultPilotDeckConfig() {
         serverPort: 3001,
         vitePort: 5173,
         apiTimeoutMs: 120000,
+        logRetentionDays: 7,
         databasePath: path.join(PILOT_HOME_DIR, 'auth.db'),
         workspacesRoot: os.homedir(),
       },
@@ -158,6 +160,9 @@ export function buildDefaultPilotDeckConfig() {
 export function normalizePilotDeckConfig(input) {
   const source = isRecord(input) ? input : {};
   const normalized = deepMerge(buildDefaultPilotDeckConfig(), source);
+  if (isRecord(normalized.webui?.runtime)) {
+    normalized.webui.runtime.logRetentionDays = normalizeLogRetentionDays(normalized.webui.runtime.logRetentionDays);
+  }
   // A bare YAML `cron:` has the same defaults as an omitted section.
   normalized.cron ??= { enabled: true };
   // Older configured sections implied enabled. Do not let new-user defaults
@@ -732,6 +737,10 @@ export function buildRuntimeEnv(config) {
 
 export function applyConfigToProcessEnv(config) {
   Object.assign(process.env, buildRuntimeEnv(config));
+  const days = setRuntimeLogRetention(config?.webui?.runtime?.logRetentionDays);
+  if (process.connected && typeof process.send === 'function') {
+    process.send({ type: 'pilotdeck:log-retention', days }, () => {});
+  }
 }
 
 // ─── Memory service options ──────────────────────────────────────────────────

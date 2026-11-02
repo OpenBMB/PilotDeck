@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+import { webRuntimeLogging } from './runtimeBootstrap.js';
 // Configure paths before evaluating services with persistent storage.
 import { assertRequiredPilotDeckEnv } from './load-env.js';
+import { createErrorDiagnostics, handleUnexpectedError } from './middleware/errorDiagnostics.js';
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from './services/workspaceFileUpload.js';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
 import { createSessionNotificationRegistry } from './session-notifications.js';
@@ -514,6 +516,7 @@ const wss = new WebSocketServer({
 app.locals.wss = wss;
 
 app.use(cors({ exposedHeaders: ['X-Refreshed-Token', 'x-pilotdeck-request-id', 'x-pilotdeck-version', 'x-pilotdeck-user-id', 'x-pilotdeck-project-id', 'x-pilotdeck-session-id', 'x-pilotdeck-request-headers-mode', 'Retry-After', 'RateLimit', 'RateLimit-Policy'] }));
+app.use('/api', createErrorDiagnostics(webRuntimeLogging.logPath));
 app.use('/api', requestLimiters.ingress);
 // Keep the dashboard's guard and protected routes in one mounted chain.
 const memoryDashboardRouter = express.Router();
@@ -597,8 +600,8 @@ app.get('/api/projects/files', authenticateToken, async (req, res) => {
 // Projects API Routes (protected)
 app.use('/api/projects', authenticateToken, projectsRoutes);
 app.use('/api/search', authenticateToken, searchRoutes);
-// Populate the independent search index without holding up server readiness.
-void searchRoutes.warm().catch(error => console.warn('[Search] Index warm-up:', error.message));
+// SearchWorkerClient starts on the first search. Warming here scans every
+// workspace and transcript while the initial project list is competing for I/O.
 
 // Git API Routes (protected)
 app.use('/api/git', authenticateToken, gitRoutes);
@@ -635,6 +638,16 @@ app.use('/api/usage', authenticateToken, createUsageRouter());
 
 // PilotDeck unified YAML config routes (protected)
 app.use('/api/config', authenticateToken, configRoutes);
+app.get('/api/diagnostics/logs', authenticateToken, (_req, res, next) => {
+  res.download(webRuntimeLogging.logPath, 'PilotDeck-runtime.log', error => { if (error) next(error); });
+});
+app.get('/api/diagnostics/location', authenticateToken, (_req, res) => res.json({ logPath: webRuntimeLogging.logPath }));
+app.post('/api/diagnostics/ui', authenticateToken, (req, res) => {
+    const { diagnosticId, code, event, errorName } = req.body || {};
+    if (!/^[\da-f-]{36}$/i.test(diagnosticId || '') || !/^PD_UI_[A-Z_]+$/.test(code || '')) return res.status(400).json({ error: 'Invalid UI diagnostic' });
+    console.warn(`[${code}] diagnostic=${diagnosticId} event=${String(event || '').replace(/[^\w-]/g, '').slice(0, 80)} errorName=${String(errorName || '').replace(/[^\w-]/g, '').slice(0, 80)}`);
+    res.json({ received: true });
+});
 
 // Versioned onboarding API. It remains behind the global /api API-key gate
 // and the same JWT middleware as the rest of the local UI server.
@@ -3773,9 +3786,10 @@ async function startServer() {
         process.on('SIGTERM', () => void gracefulShutdown());
         process.on('SIGINT', () => void gracefulShutdown());
     } catch (error) {
-        console.error('[ERROR] Failed to start server:', error);
+        webRuntimeLogging.report(error);
         process.exit(1);
     }
 }
 
+app.use(handleUnexpectedError);
 startServer();

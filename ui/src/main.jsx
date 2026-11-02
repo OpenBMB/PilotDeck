@@ -1,14 +1,12 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
 import '@fontsource-variable/inter'
 import './index.css'
 import './light-appearance.css'
 import 'katex/dist/katex.min.css'
 
 // Initialize i18n
-import './i18n/config.js'
-import { registerUiDiagnostics } from './lib/uiDiagnostics'
+import { registerUiDiagnostics, recordUiDiagnostic } from './lib/uiDiagnostics'
 import { registerDynamicImportReloadHandler } from './utils/reloadOnChunkError'
 import { installDesktopFilePicker } from './lib/desktopFilePicker'
 
@@ -23,8 +21,20 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Install recovery handlers before importing the application.
+async function mountApplication() {
+await import('./i18n/config.js');
+const { default: App } = await import('./App.tsx');
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,
 )
+}
+void mountApplication().catch(error => {
+  const diagnostic = recordUiDiagnostic('bootstrap-failed', { errorName: error?.name || 'Error' });
+  const root = document.getElementById('root');
+  const status = window.pilotdeckDesktop?.getRuntimeStatus?.();
+  if (window.__pilotdeckStartupUpdate) window.__pilotdeckStartupUpdate({ phase: 'error', error: diagnostic.code, logPath: status?.logPath || '~/.pilotdeck/logs/runtime.log' });
+  else if (root) root.textContent = `${diagnostic.code}\nRuntime log: ${status?.logPath || '~/.pilotdeck/logs/runtime.log'}`;
+});

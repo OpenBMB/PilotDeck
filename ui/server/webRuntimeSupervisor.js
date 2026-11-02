@@ -31,11 +31,12 @@ export function getRuntimeCommands(mode, uiRoot = UI_ROOT) {
   const sourceGateway = path.join(repoRoot, 'src', 'cli', 'pilotdeck.ts');
   const builtGateway = path.join(repoRoot, 'dist', 'src', 'cli', 'pilotdeck.js');
   const packagedRuntime = existsSync(builtGateway) && !existsSync(sourceGateway);
+  const serverEntry = path.join(uiRoot, 'server', existsSync(path.join(uiRoot, 'server/supervisedBootstrap.js')) ? 'supervisedBootstrap.js' : 'index.js');
   const commands = [
     {
       name: 'server',
       command: process.execPath,
-      args: [...(packagedRuntime ? [] : ['--import', 'tsx']), path.join(uiRoot, 'server', 'index.js')],
+      args: [...(packagedRuntime ? [] : ['--import', 'tsx']), serverEntry],
       cwd: uiRoot,
       ipc: true,
       critical: true,

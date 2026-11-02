@@ -82,6 +82,7 @@ export type PilotDeckConfig = {
       serverPort?: number;
       vitePort?: number;
       apiTimeoutMs?: number;
+      logRetentionDays?: number;
       databasePath?: string;
       workspacesRoot?: string;
     };

@@ -1,5 +1,6 @@
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
+const { nativeProcessHost } = require('./nativeProcessHost.cjs');
 // Includes PowerShell cold startup. Query failures remain explicit; no PID-only fallback.
 const WINDOWS_QUERY_TIMEOUT_MS = 30_000;
 // The guardian and Job holder each need a query on a cold CI host.
@@ -13,7 +14,8 @@ function windowsProcesses(pids, run = execFileSync) {
   const onError = pids ? 'if (!$item.HasExited) { throw }' : '';
   const command = `$ErrorActionPreference='Stop'; $items=@(${source}); $result=@(foreach($item in $items) { try { [pscustomobject]@{ ProcessId=$item.Id; Birth=$item.StartTime.ToUniversalTime().ToString('o') } } catch { ${onError} } finally { $item.Dispose() } }); ConvertTo-Json -InputObject $result -Compress`;
   try {
-    const stdout = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command],
+    const native = run === execFileSync ? nativeProcessHost() : null;
+    const stdout = run(native || 'powershell.exe', native ? ['identity', ...(pids || []).map(String)] : ['-NoProfile', '-NonInteractive', '-Command', command],
       { timeout: WINDOWS_QUERY_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, windowsHide: true, encoding: 'utf8' });
     const parsed = JSON.parse(stdout || '[]');
     return (Array.isArray(parsed) ? parsed : [parsed]).map(row => {

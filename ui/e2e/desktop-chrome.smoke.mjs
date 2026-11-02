@@ -435,6 +435,14 @@ try {
   completedOnboarding = false;
   await page.reload();
   await expect(page.locator('.desktop-prototype-shell')).toBeVisible();
+  // Visibility starts during the loading screen's fade. Measure only after
+  // that transition releases the real page and its first layout is painted.
+  await expect(page.locator('#root')).not.toHaveAttribute('data-pilotdeck-startup');
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+  });
   if (mac) {
     await expect(page.locator('html')).not.toHaveAttribute('data-desktop-toolbar');
     await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('width', `${await page.evaluate(() => innerWidth)}px`);
@@ -453,6 +461,12 @@ try {
       contentClientHeight: content.clientHeight,
     };
   });
+  if (onboardingGeometry.contentScrollHeight > onboardingGeometry.contentClientHeight + 1) {
+    console.error('Onboarding layout overflow:', onboardingGeometry, await page.locator('.content-page').evaluate(el => ({
+      rect: el.getBoundingClientRect().toJSON(), transform: getComputedStyle(el).transform,
+      animations: el.getAnimations().map(animation => ({ state: animation.playState, time: animation.currentTime })),
+    })));
+  }
   expect(onboardingGeometry.scrollHeight).toBeLessThanOrEqual(onboardingGeometry.viewportHeight + 1);
   expect(onboardingGeometry.shellBottom).toBeLessThanOrEqual(onboardingGeometry.viewportHeight + 1);
   expect(onboardingGeometry.contentScrollHeight).toBeLessThanOrEqual(onboardingGeometry.contentClientHeight + 1);

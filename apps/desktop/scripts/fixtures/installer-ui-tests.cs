@@ -14,6 +14,7 @@ class InstallerUiTests
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] static extern int GetWindowStyle(IntPtr window, int index);
+    [DllImport("uxtheme.dll")] static extern IntPtr GetWindowTheme(IntPtr window);
     [DllImport("user32.dll")] static extern IntPtr GetDlgItem(IntPtr parent, int id);
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
     [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
@@ -93,6 +94,9 @@ class InstallerUiTests
                             var className = new StringBuilder(256);
                             GetClassName(bar, className, className.Capacity);
                             if (className.ToString() != "msctls_progress32") continue;
+                            var nativeBar = GetDlgItem(child, 1004);
+                            Check((GetWindowStyle(bar, -16) & 0x1f) == (GetWindowStyle(nativeBar, -16) & 0x1f), "Progress uses stock NSIS control styles");
+                            Check((GetWindowTheme(bar) != IntPtr.Zero) == (GetWindowTheme(nativeBar) != IntPtr.Zero), "Progress preserves the native theme/animation");
                             onInstallPage = true;
                             sawProgress = true;
                             int position = SendMessage(bar, 0x0408, IntPtr.Zero, IntPtr.Zero).ToInt32();

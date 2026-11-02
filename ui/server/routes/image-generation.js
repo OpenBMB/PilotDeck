@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'node:path';
-import sharp from 'sharp';
 import { resolvePilotHome } from '../utils/pilotPaths.js';
 import { ImageStore } from '../../../src/tool/builtin/images/ImageStore.js';
 import { imageApiBaseUrl } from '../../../src/pilot/config/imageGenerationConfig.js';
@@ -34,6 +33,7 @@ export function createImageGenerationRouter({ store = new ImageStore(path.join(r
         const bytes = await requestOpenAIImage({ enabled: true, apiKey, baseUrl, model: submitted.model.trim() },
           { prompt: 'A simple blue circle on a plain white background, no text.' },
           { signal: controller.signal, fetchImpl });
+        const { default: sharp } = await import("sharp");
         const image = sharp(bytes, { limitInputPixels: 100_000_000 });
         const metadata = await image.metadata();
         if (!['png', 'jpeg', 'webp'].includes(metadata.format) || !metadata.width || !metadata.height) throw new Error('The image service returned unsupported or invalid image data.');
