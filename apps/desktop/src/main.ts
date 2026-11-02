@@ -218,7 +218,14 @@ class RuntimeManager {
     );
     this.serverProcess = server;
     server.on("message", (message) => this.handleServerMessage(message));
-    await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath);
+    try {
+      await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const detail = this.processDiagnostics.get(server)?.failure(message) ?? message;
+      this.log(detail);
+      throw Object.assign(new Error(detail, { cause: error }), { name: 'RuntimeStartupError' });
+    }
     this.processDiagnostics.get(server)?.markReady();
 
     this.info = {
@@ -742,7 +749,9 @@ async function startRuntimeAndLoad(): Promise<void> {
     const info = await ensureRuntime();
     await loadRuntimeUrl(info);
   } catch (error) {
-    const detail = new RuntimeProcessDiagnostics("desktop", runtime?.getLogPath() || path.join(app.getPath("logs"), "runtime.log")).failure(error instanceof Error ? error.stack ?? error.message : String(error));
+    const detail = error instanceof Error && error.name === 'RuntimeStartupError'
+      ? error.message
+      : new RuntimeProcessDiagnostics("desktop", runtime?.getLogPath() || path.join(app.getPath("logs"), "runtime.log")).failure(error instanceof Error ? error.stack ?? error.message : String(error));
     publishRuntimeStatus({
       phase: "error",
       message: "PilotDeck failed to start.",

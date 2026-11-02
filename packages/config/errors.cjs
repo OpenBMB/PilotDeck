@@ -27,7 +27,7 @@ function classifyRuntimeError(error, evidence = '', status, depth = 0) {
   if (/Assertion failed:|Check failed:|# Fatal error in /i.test(text)) return 'PD_RUNTIME_NATIVE_FAILURE';
   if (code === 'EADDRINUSE' || /EADDRINUSE/.test(text)) return 'PD_NETWORK_PORT_IN_USE';
   if (['EACCES', 'EPERM'].includes(code) || /\b(EACCES|EPERM)\b/.test(text)) return 'PD_FILESYSTEM_PERMISSION';
-  if (['ENOENT', 'MODULE_NOT_FOUND', 'ERR_MODULE_NOT_FOUND'].includes(code) || /\bENOENT\b/.test(text)) return 'PD_RESOURCE_NOT_FOUND';
+  if (['ENOENT', 'MODULE_NOT_FOUND', 'ERR_MODULE_NOT_FOUND'].includes(code) || /\b(?:ENOENT|MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND)\b/.test(text)) return 'PD_RESOURCE_NOT_FOUND';
   if (code === 'ERR_DLOPEN_FAILED') return 'PD_RUNTIME_NATIVE_FAILURE';
   if (code === 'ENOSPC' || /\bENOSPC\b/.test(text)) return 'PD_FILESYSTEM_FULL';
   if (['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(code) || /timed? ?out|timeout|deadline exceeded/i.test(text)) return 'PD_RUNTIME_TIMEOUT';

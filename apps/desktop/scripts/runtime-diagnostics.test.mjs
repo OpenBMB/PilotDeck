@@ -25,6 +25,17 @@ test('exit 134 without evidence remains an unknown process failure', () => {
   assert.doesNotMatch(detail, /OUT_OF_MEMORY/);
 });
 
+test('a real missing module is classified from Node stderr', { timeout: 30_000 }, async () => {
+  const diagnostics = new RuntimeProcessDiagnostics('gateway', '/logs/runtime.log');
+  const child = spawnManaged(process.execPath, ['--input-type=module', '-e', "await import('pilotdeck-test-module-that-does-not-exist');"], { stdio: ['ignore','pipe','pipe'] });
+  child.stdout.resume(); child.stderr.on('data', chunk => diagnostics.captureStderr(chunk));
+  try {
+    const [code, signal] = await waitForManagedEvent(child, child, 'managed-exit');
+    assert.equal(code, 1);
+    assert.match(diagnostics.exited(code,signal), /PD_RESOURCE_NOT_FOUND/);
+  } finally { await stopProcessTree(child); child.stdout.destroy(); child.stderr.destroy(); }
+});
+
 test('split UTF-8 and fatal output survives a long native stack and is bounded', () => {
   const diagnostics = new RuntimeProcessDiagnostics('gateway', '/logs/runtime.log');
   const message = Buffer.from('中文\nFATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\n');
