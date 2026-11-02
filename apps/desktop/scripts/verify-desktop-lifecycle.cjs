@@ -6,6 +6,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const ts = require('typescript');
+const { copyDesktopFixtureDependencies } = require('./desktop-fixture-dependencies.cjs');
 
 if (!['win32', 'darwin'].includes(process.platform) && !(process.platform === 'linux' && process.argv.slice(2).length && process.argv.slice(2).every(arg => arg === 'notification-badge'))) {
   throw new Error('Run lifecycle checks on Windows/macOS, or notification-badge under a Linux display server.');
@@ -30,9 +31,7 @@ async function verify(scenario) {
       const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
       fs.writeFileSync(path.join(root, 'dist', file.replace(/\.ts$/, '.js')), compiled);
     }
-    for (const file of ['processTree.js', 'processIdentity.cjs', 'processScope.cjs', 'processGuardian.cjs', 'processJobHost.cjs', 'processJob.ps1']) {
-      fs.copyFileSync(path.resolve(desktop, '../../ui/server/utils', file), path.join(utils, file));
-    }
+    copyDesktopFixtureDependencies(root, runtime);
     const treeFile = path.join(utils, 'processTree.js');
     fs.writeFileSync(treeFile, fs.readFileSync(treeFile, 'utf8').replace(
       'export const spawnManaged = scopes.spawnManaged;',
