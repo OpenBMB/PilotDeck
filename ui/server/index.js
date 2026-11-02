@@ -117,6 +117,7 @@ import modelsRoutes, { createSessionModelHandlers } from './routes/models.js';
 import settingsRoutes from './routes/settings.js';
 import { createUsageRouter } from './routes/usage.js';
 import configRoutes from './routes/config.js';
+import preferencesRoutes from './routes/preferences.js';
 import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
 import {
@@ -633,6 +634,7 @@ app.use('/api/usage', authenticateToken, createUsageRouter());
 
 // PilotDeck unified YAML config routes (protected)
 app.use('/api/config', authenticateToken, configRoutes);
+app.use('/api/preferences', authenticateToken, preferencesRoutes);
 
 // Versioned onboarding API. It remains behind the global /api API-key gate
 // and the same JWT middleware as the rest of the local UI server.
