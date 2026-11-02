@@ -1,4 +1,5 @@
 import { ImageStore } from "../tool/builtin/images/ImageStore.js";
+import { createSubagentImageInheritance } from "./subagentImageInheritance.js";
 import { acquireWorkspaceOperation, operationContext } from "../session/checkpoints/WorkspaceCoordinator.js";
 import { runWorkspaceFileOperation } from "../session/checkpoints/workspaceFileOperation.js";
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
@@ -1395,6 +1396,7 @@ class ProjectRuntimeRegistry {
       now: this.options.now,
       eventEmitter: eventBuf.emitter,
       drainEvents: eventBuf.drain,
+      inheritSubagentToolResult: createSubagentImageInheritance(new ImageStore(resolve(this.options.pilotHome, "generated-images"))),
       tokenAccounting: runtime.tokenAccounting,
       getModelMaxContextTokens: (provider, model) => resolveRoutedModelMaxContextTokens({
         modelRuntime: runtime.model,

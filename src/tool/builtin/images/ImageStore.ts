@@ -11,6 +11,7 @@ export type GeneratedImage = {
 
 /** Durable session attachments. Never stored below the user's project. */
 export class ImageStore {
+  private readonly inheritance = new Map<string, Promise<GeneratedImage>>();
   constructor(readonly root: string) {}
   private directory(sessionId: string): string {
     return join(resolve(this.root), createHash("sha256").update(sessionId).digest("hex"));
@@ -34,6 +35,32 @@ export class ImageStore {
     const image = { ...source, sessionId: targetSessionId, path: join(this.directory(targetSessionId), `${imageId}.${extension}`) };
     await this.persist(image, await readFile(source.path));
     return image;
+  }
+  /** Idempotent handoff; serialize replays and verify any existing original before reusing it. */
+  async inheritOnce(sourceSessionId: string, imageId: string, targetSessionId: string): Promise<GeneratedImage> {
+    const key = JSON.stringify([targetSessionId, imageId]);
+    const pending = this.inheritance.get(key);
+    if (pending) {
+      await pending.catch(() => {});
+      return this.inheritOnce(sourceSessionId, imageId, targetSessionId);
+    }
+    const operation = (async () => {
+      const source = await this.get(sourceSessionId, imageId);
+      let existing: GeneratedImage;
+      try { existing = await this.get(targetSessionId, imageId); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        return this.inherit(sourceSessionId, imageId, targetSessionId);
+      }
+      if (existing.mimeType !== source.mimeType || existing.width !== source.width || existing.height !== source.height
+        || !(await readFile(existing.path)).equals(await readFile(source.path))) {
+        throw new Error("Inherited image conflicts with the existing session attachment.");
+      }
+      return existing;
+    })();
+    this.inheritance.set(key, operation);
+    try { return await operation; }
+    finally { if (this.inheritance.get(key) === operation) this.inheritance.delete(key); }
   }
   private async persist(image: GeneratedImage, bytes: Buffer, signal?: AbortSignal): Promise<void> {
     await mkdir(dirname(image.path), { recursive: true, mode: 0o700 });
