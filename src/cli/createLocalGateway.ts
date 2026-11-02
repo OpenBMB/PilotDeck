@@ -1,3 +1,4 @@
+import { ImageStore } from "../tool/builtin/images/ImageStore.js";
 import { acquireWorkspaceOperation, operationContext } from "../session/checkpoints/WorkspaceCoordinator.js";
 import { runWorkspaceFileOperation } from "../session/checkpoints/workspaceFileOperation.js";
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
@@ -1014,6 +1015,10 @@ class ProjectRuntimeRegistry {
       ? resolveWebSearchConfig(snapshot.config.tools.webSearch)
       : undefined;
     const tools = createBuiltinRegistry({
+      imageGeneration: {
+        store: new ImageStore(resolve(this.options.pilotHome, "generated-images")),
+        getConfig: () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration,
+      },
       backgroundTasks: { runtime: backgroundTasks },
       readSkill: {
         loader: (name) => pluginRuntime.loadSkillPrompt(name),

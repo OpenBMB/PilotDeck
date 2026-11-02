@@ -113,6 +113,7 @@ import mcpUtilsRoutes from './routes/mcp-utils.js';
 import commandsRoutes from './routes/commands.js';
 import skillsRoutes from './routes/skills.js';
 import uploadsRoutes from './routes/uploads.js';
+import imageGenerationRoutes from './routes/image-generation.js';
 import modelsRoutes, { createSessionModelHandlers } from './routes/models.js';
 import settingsRoutes from './routes/settings.js';
 import { createUsageRouter } from './routes/usage.js';
@@ -625,6 +626,7 @@ app.use('/api/commands', authenticateToken, commandsRoutes);
 // project-level .pilotdeck/skills/ via PilotDeck plugin runtime.
 app.use('/api/skills', authenticateToken, skillsRoutes);
 app.use('/api/uploads', authenticateToken, uploadsRoutes);
+app.use('/api/image-generation', authenticateToken, imageGenerationRoutes);
 app.use('/api/models', authenticateToken, modelsRoutes);
 
 // Settings API Routes (protected)

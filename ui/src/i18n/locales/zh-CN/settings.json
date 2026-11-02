@@ -1,4 +1,18 @@
 {
+  "imageGeneration": {
+  "enabled": "启用图像生成",
+  "defaultOff": "默认关闭。关闭后不向模型提供绘图工具。请先填写并保存配置。",
+  "apiKey": "API 密钥",
+  "apiKeyHint": "密钥保存在本地，仅由后端用于请求鉴权。",
+  "baseUrl": "API 地址",
+  "baseUrlHint": "使用 OpenAI Images 接口，例如 https://api.openai.com/v1。",
+  "model": "模型名称",
+  "modelHint": "填写服务端提供的生图模型名称，与聊天模型分别配置。",
+  "check": "检查连接",
+  "checking": "正在检查…",
+  "connected": "连接成功。此检查不会生成图片，未验证模型的生图能力。",
+  "connectionFailed": "连接失败，请检查地址、密钥和服务可用性。"
+},
   "systemNotifications": {
     "title": "通知",
     "enabled": "启用系统通知",
@@ -91,6 +105,7 @@
       "agentRoute": "路由",
       "agentMemory": "记忆",
       "agentResident": "常驻",
+      "imageGeneration": "图像生成",
       "agentSearch": "搜索",
       "agentSchedule": "定时任务",
       "integrations": "外部集成",
@@ -112,6 +127,7 @@
       "agentRoute": "按任务复杂度选择模型，在保证效果的基础上节省token成本。",
       "agentMemory": "持续整理并记住项目重要信息，在后续任务中自动使用。",
       "agentResident": "在用户离开后持续关注工作区变化，并在合适时机主动推进任务与同步进展。",
+      "imageGeneration": "让智能体在对话和项目工作中生成、编辑图片。",
       "agentSearch": "让智能体能够检索实时网页信息，为回答补充最新内容与外部事实。",
       "agentSchedule": "按设定的时间自动唤起智能体执行任务，无需你持续在线。",
       "integrations": "连接常用通讯工具，让智能体可以从飞书、微信与企业微信接收消息并回复。",
@@ -131,6 +147,7 @@
       "agentRoute": "智能体 / 路由",
       "agentMemory": "智能体 / 记忆",
       "agentResident": "智能体 / 常驻",
+      "imageGeneration": "图像生成",
       "agentSearch": "智能体 / 搜索",
       "agentSchedule": "智能体 / 定时任务",
       "integrations": "外部集成",

@@ -99,6 +99,8 @@ type ProcessCounts = {
 };
 
 const USER_VISIBLE_TOOL_NAMES = new Set([
+  'generate_image',
+  'edit_image',
   'AskUserQuestion',
   'ExitPlanMode',
   'ExitPlanModeV2',
@@ -942,7 +944,12 @@ export function foldCompletedTurns(
       beforeProcessAttachments: [], afterProcessAttachments: [],
     });
     const traceItems: RenderableMessageItem[] = [];
+    const imageItems = turnItems.filter(item => item.message.isToolUse
+      && ['generate_image', 'edit_image'].includes(String(item.message.toolName)));
     for (const item of turnItems) {
+      // Generated images are conversation artifacts, including after the
+      // enclosing turn is folded. Keep the pending card's identity and place.
+      if (imageItems.includes(item)) continue;
       if (item.message.type !== 'user' && item !== finalItem) {
         traceItems.push({ ...item, beforeRunAttachment: null, afterRunAttachment: null });
       } else if (item.beforeProcessAttachments.length || item.afterProcessAttachments.length) {
@@ -966,6 +973,7 @@ export function foldCompletedTurns(
       message: { id, type: 'assistant', content: '', timestamp: last!.timestamp },
       turnTrace: { id, durationMs: getTurnRunDurationMs(messages, turn) ?? 0, items: traceItems },
     });
+    result.push(...imageItems.map(clean));
     result.push(clean(finalItem));
   }
   return result;

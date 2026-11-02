@@ -1,4 +1,16 @@
 {
+  "imageGeneration": {
+  "drawing": "Drawing…",
+  "loading": "Loading image…",
+  "complete": "Image generated",
+  "failed": "Drawing failed",
+  "loadFailed": "Image could not be loaded. Reopen this chat.",
+  "interrupted": "Drawing stopped",
+  "enlarge": "Enlarge image",
+  "image": "Generated image",
+  "download": "Download original",
+  "saved": "Saved to {{path}}"
+},
   "attachmentPreview": {
     "imageNote": "Static preview. Download the original for full resolution and animation.",
     "sheetTruncated": "Spreadsheet preview shows up to 200 rows and 50 columns per sheet. Download for the complete workbook.",

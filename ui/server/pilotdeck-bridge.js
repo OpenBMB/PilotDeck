@@ -1041,7 +1041,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     ...(event.toolName === 'ask_user_question' && event.data
                         ? { toolUseResult: event.data }
                         : {}),
-                    ...(isSearchToolName(event.toolName) && event.data
+                    ...((isSearchToolName(event.toolName) || ['generate_image', 'edit_image', 'save_generated_image'].includes(event.toolName)) && event.data
                         ? { toolUseResult: event.data }
                         : {}),
                 }),

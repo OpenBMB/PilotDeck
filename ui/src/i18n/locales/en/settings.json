@@ -1,4 +1,18 @@
 {
+  "imageGeneration": {
+  "enabled": "Enable image generation",
+  "defaultOff": "Off by default. Drawing tools are hidden from the model when disabled. Save your configuration first.",
+  "apiKey": "API key",
+  "apiKeyHint": "Stored locally and used only by the backend for authentication.",
+  "baseUrl": "API address",
+  "baseUrlHint": "An OpenAI Images API base address, such as https://api.openai.com/v1.",
+  "model": "Model",
+  "modelHint": "The image model offered by your service, configured separately from chat.",
+  "check": "Check connection",
+  "checking": "Checking…",
+  "connected": "Connected. No image was generated; image model capability has not been verified.",
+  "connectionFailed": "Connection failed. Check the address, key, and service availability."
+},
   "systemNotifications": {
     "title": "Notifications",
     "enabled": "Enable system notifications",
@@ -91,6 +105,7 @@
       "agentRoute": "Route",
       "agentMemory": "Memory",
       "agentResident": "Always-On",
+      "imageGeneration": "Image generation",
       "agentSearch": "Search",
       "agentSchedule": "Scheduled Tasks",
       "integrations": "Integrations",
@@ -112,6 +127,7 @@
       "agentRoute": "Configure agent routing, model tiers, and fallbacks.",
       "agentMemory": "Manage memory, summarization intervals, and project memory data.",
       "agentResident": "Keep watching workspace changes after you leave, and advance work or sync progress at the right time.",
+      "imageGeneration": "Let agents generate and edit images in conversations and projects.",
       "agentSearch": "Let agents retrieve real-time web information and add current external facts to their answers.",
       "agentSchedule": "Wake agents automatically at scheduled times to run tasks without requiring you to stay online.",
       "integrations": "Connect Feishu, WeChat, and WeCom message channels.",
@@ -131,6 +147,7 @@
       "agentRoute": "Agents / Route",
       "agentMemory": "Agents / Memory",
       "agentResident": "Agents / Always-On",
+      "imageGeneration": "Image generation",
       "agentSearch": "Agents / Search",
       "agentSchedule": "Agents / Scheduled Tasks",
       "integrations": "Integrations",

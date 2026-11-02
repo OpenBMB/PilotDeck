@@ -1,3 +1,4 @@
+import GeneratedImageCard, { isDrawingTool } from "./GeneratedImageCard";
 import { useMemo, useState } from 'react';
 import { Check, ChevronRight, FileText, Globe, Loader2, Pencil, Search, Terminal, Wrench, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -67,6 +68,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
     {isShell && shell.exitCode !== undefined && <span>· {t('toolDisplay.exitCode', { code: shell.exitCode })}</span>}
     {typeof duration === 'number' && duration >= 0 && <span>· {(duration / 1000).toFixed(1)}s</span>}
   </> : <span>{t(active ? 'toolDisplay.executing' : externalError ? 'toolDisplay.actionRequired' : 'toolDisplay.noResult')}</span>;
+  if (isDrawingTool(name)) return <GeneratedImageCard message={message} running={running} />;
   return (
     <div className="tool-call min-w-0 py-1" data-tool-id={message.toolId}>
       <div className="flex min-w-0 items-center gap-2 text-[13px] leading-6 text-neutral-500 dark:text-neutral-400">

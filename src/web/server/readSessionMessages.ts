@@ -666,7 +666,7 @@ function flushBlock(
       const errorCode = readToolResultErrorCode(block.raw);
       const toolName = readToolResultToolName(block.raw);
       const planData = readPlanData(block.raw);
-      const searchData = readSearchToolData(block.raw);
+      const presentationData = readToolPresentationData(block.raw);
       const resultImages: NonNullable<WebMessage["images"]> = [];
       for (const sub of block.content) {
         if (sub.type === "image") {
@@ -686,7 +686,7 @@ function flushBlock(
         ok: !block.isError,
         text: resultText,
         ...(errorCode ? { errorCode } : {}),
-        ...(planData || searchData ? { payload: planData ?? searchData } : {}),
+        ...(planData || presentationData ? { payload: planData ?? presentationData } : {}),
         ...(resultImages.length > 0 ? { images: resultImages } : {}),
         source: "history",
       });
@@ -1282,10 +1282,10 @@ function readPlanData(raw: unknown): Record<string, unknown> | undefined {
   };
 }
 
-function readSearchToolData(raw: unknown): Record<string, unknown> | undefined {
+function readToolPresentationData(raw: unknown): Record<string, unknown> | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const record = raw as { toolName?: unknown; data?: unknown };
-  if (!isSearchToolName(record.toolName)) return undefined;
+  if (!isSearchToolName(record.toolName) && !["generate_image", "edit_image", "save_generated_image"].includes(String(record.toolName))) return undefined;
   return record.data && typeof record.data === "object"
     ? record.data as Record<string, unknown>
     : undefined;
