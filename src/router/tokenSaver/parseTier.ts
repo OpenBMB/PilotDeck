@@ -10,7 +10,14 @@ export function parseTier(judgeOutput: string, knownTiers: string[]): string | u
     if (found) return found;
   }
 
-  for (const tier of knownTiers) {
+  const exact = knownTiers.find(t => t.toLowerCase() === cleaned.toLowerCase());
+  if (exact) return exact;
+
+  // Longest tiers first: `-` is a word boundary, so a shorter tier that is a
+  // word-prefix of a hyphenated tier (e.g. "fast" vs "fast-pro") would
+  // otherwise match inside the longer name.
+  const byLength = [...knownTiers].sort((a, b) => b.length - a.length);
+  for (const tier of byLength) {
     const pattern = new RegExp(`\\b${escapeRegex(tier)}\\b`, "i");
     if (pattern.test(cleaned)) {
       return tier;
