@@ -542,6 +542,7 @@ export class MemoryRepository {
 
   private init(): void {
     this.db.exec(`
+      PRAGMA busy_timeout = 5000;
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS l0_sessions (
         l0_index_id TEXT PRIMARY KEY,
