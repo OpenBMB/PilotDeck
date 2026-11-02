@@ -105,6 +105,15 @@ describe('ProtectedRoute runtime states', () => {
     expect(screen.queryByText('Model configuration unavailable')).toBeNull();
   });
 
+  it('keeps the runtime log location outside the scrollable stack trace', async () => {
+    const i18n = await createTestI18n();
+    const logPath = 'C:\\用户\\PilotDeck\\logs\\runtime.log';
+    mocks.auth = authValue({ gatewayRuntime: { state: 'error', error: `${'native frame\n'.repeat(100)}Runtime log: ${logPath}` } });
+    render(<I18nextProvider i18n={i18n}><MemoryRouter><ProtectedRoute><div>application</div></ProtectedRoute></MemoryRouter></I18nextProvider>);
+    const location = screen.getByText(`Runtime log: ${logPath}`);
+    expect(location.parentElement?.className).toBe('space-y-4');
+  });
+
   it.each([
     '/settings/models/test',
     '/settings/models/test/',
@@ -156,6 +165,19 @@ describe('ProtectedRoute runtime states', () => {
     mocks.auth = authValue({ modelConfiguration: { state: 'invalid', errors: ['bad provider'] }, gatewayRuntime: { state: 'stopped' } });
     render(<MemoryRouter><ProtectedRoute><div>application</div></ProtectedRoute></MemoryRouter>);
     expect(screen.getByRole('link', { name: 'openModelSettings' }).getAttribute('href')).toBe('/settings/models');
+  });
+
+  it('shows configuration diagnostics without changing the configuration', async () => {
+    const i18n = await createTestI18n();
+    const openRuntimeLog = vi.fn();
+    Object.defineProperty(window, 'pilotdeckDesktop', { configurable: true, value: { getRuntimeInfo: vi.fn().mockResolvedValue({ logPath: '/logs/runtime.log' }), openRuntimeLog } });
+    mocks.auth = authValue({ modelConfiguration: { state: 'invalid', errors: ['Invalid YAML'], configPath: '/config/pilotdeck.yaml', revision: 'original' }, gatewayRuntime: { state: 'stopped' } });
+    render(<I18nextProvider i18n={i18n}><MemoryRouter><ProtectedRoute><div>application</div></ProtectedRoute></MemoryRouter></I18nextProvider>);
+    expect(screen.getByText('PD_CONFIG_INVALID')).toBeTruthy();
+    expect(screen.getByText('Configuration file: /config/pilotdeck.yaml')).toBeTruthy();
+    expect(await screen.findByText('Runtime log: /logs/runtime.log')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open runtime log' }));
+    expect(openRuntimeLog).toHaveBeenCalledOnce();
   });
 
   it('enters the application only after both states are ready', () => {

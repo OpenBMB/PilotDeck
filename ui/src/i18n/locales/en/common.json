@@ -698,6 +698,8 @@
     "gatewayFailed": "Gateway unavailable",
     "gatewayUnavailable": "The local Gateway stopped or could not start. Your model configuration is saved.",
     "openRuntimeLog": "Open runtime log",
+    "runtimeLogLocation": "Runtime log",
+    "configurationFile": "Configuration file",
     "gatewayRetryHint": "The Web UI will stay available while you retry.",
     "requiredFields": "Please fill in all fields.",
     "usernameLength": "Username must be at least 3 characters long.",
