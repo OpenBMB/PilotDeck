@@ -12,6 +12,8 @@ const require = createRequire(import.meta.url);
 const args = process.argv.slice(2), option = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
 const root = path.resolve(option('--root', path.join(path.dirname(fileURLToPath(import.meta.url)), '..')));
 const samples = Number(option('--samples', '3'));
+const sessionCount = Number(option('--sessions', '0'));
+if (!Number.isInteger(sessionCount) || sessionCount < 0 || sessionCount > 10000) throw new Error('Use 0–10000 sessions.');
 const fault = option('--fault');
 const faultNames = ['abort', 'oom', 'module-missing', 'config-invalid', 'web-module-missing', 'slow-start'];
 if (fault && (!args.includes('--desktop') || !faultNames.includes(fault))) throw new Error('Fault injection requires --desktop and a supported --fault.');
@@ -54,6 +56,16 @@ try {
   }
   const { spawnManaged, stopProcessTree } = await import(pathToFileURL(path.join(runtime, 'ui/server/utils/processTree.js')));
   const home = path.join(temporary, 'profile'); fs.mkdirSync(home);
+  if (sessionCount) {
+    const { getPilotProjectChatDir } = await import(pathToFileURL(path.join(runtime, 'dist/src/pilot/paths.js')));
+    const chats = getPilotProjectChatDir(home, home);
+    fs.mkdirSync(chats, { recursive: true });
+    fs.writeFileSync(path.join(chats, '..', '.cwd'), home);
+    for (let i = 0; i < sessionCount; i++) {
+      const metadata = JSON.stringify({ type: 'session_metadata', metadata: { title: `Saved conversation ${i}`, isSnapshot: true } });
+      fs.writeFileSync(path.join(chats, `web_s_${i}.jsonl`), metadata + '\n');
+    }
+  }
   fs.writeFileSync(path.join(home, 'pilotdeck.yaml'), 'schemaVersion: 1\nagent:\n  model: test/one\nmodel:\n  providers:\n    test:\n      protocol: openai\n      url: http://127.0.0.1:1/v1\n      apiKey: benchmark-no-network\n      models:\n        one: {}\ntelemetry:\n  enabled: false\n');
   fs.writeFileSync(path.join(home, 'mcp.json'), '{"mcpServers":{}}\n');
   fs.writeFileSync(path.join(home, 'permissions.json'), '{"skipPermissions":false}\n');
@@ -142,10 +154,14 @@ Module._load=function(request,...rest){const loaded=original.call(this,request,.
       const webMs = Math.round(performance.now() - start);
       await beginGateway();
       if (server.connected) server.send({ type: 'pilotdeck:gateway-state', state: 'ready' });
-      const row = { sample, profile: sample === 0 ? 'first-start' : 'existing', overlap, webMs, totalMs: Math.round(performance.now() - start) };
+      const row = { sample, profile: sample === 0 ? 'first-start' : 'existing', sessionCount, overlap, webMs, totalMs: Math.round(performance.now() - start) };
+      const projectRequestStarted = performance.now();
       const response = await fetch(`http://127.0.0.1:${serverPort}/api/projects`, { signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error(`Web/Gateway integration check failed (${response.status}).`);
-      await response.json(); row.usableMs = Math.round(performance.now() - start);
+      const projects = await response.json(); row.usableMs = Math.round(performance.now() - start);
+      row.projectsMs = Math.round(performance.now() - projectRequestStarted);
+      if (sessionCount && !projects.some(project => project.name === 'general' && project.sessionMeta?.total === sessionCount && project.sessions.length === Math.min(5, sessionCount))) throw new Error('Large-history HTTP integration check failed.');
+      if (sessionCount && fs.existsSync(path.join(home, 'search', 'global-v1.sqlite'))) throw new Error('Startup unexpectedly launched the full search index.');
       for (const [name, original] of Object.entries(originalConfiguration)) {
         if (fs.readFileSync(path.join(home,name),'utf8') !== original) throw new Error(`Existing configuration was rewritten: ${name}`);
       }

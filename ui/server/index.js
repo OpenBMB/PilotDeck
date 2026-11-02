@@ -600,8 +600,8 @@ app.get('/api/projects/files', authenticateToken, async (req, res) => {
 // Projects API Routes (protected)
 app.use('/api/projects', authenticateToken, projectsRoutes);
 app.use('/api/search', authenticateToken, searchRoutes);
-// Populate the independent search index without holding up server readiness.
-void searchRoutes.warm().catch(error => console.warn('[Search] Index warm-up:', error.message));
+// SearchWorkerClient starts on the first search. Warming here scans every
+// workspace and transcript while the initial project list is competing for I/O.
 
 // Git API Routes (protected)
 app.use('/api/git', authenticateToken, gitRoutes);
