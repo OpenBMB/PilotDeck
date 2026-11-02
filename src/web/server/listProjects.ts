@@ -4,13 +4,13 @@
  * Source of truth: the `projects/` directory under `pilotHome`.
  * Each subdirectory is a project ID; we surface its derived name + the
  * encoded `fullPath` we can recover from the ID. Where possible we also
- * include the session count via `listProjectSessions`.
+ * count stored sessions using file attributes without opening transcripts.
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { resolve, basename } from "node:path";
-import { listProjectSessions } from "../../session/index.js";
-import { createProjectId } from "../../pilot/index.js";
+import { listSessionFiles, isInternalSession } from "../../session/storage/SessionCatalog.js";
+import { createProjectId, getPilotProjectChatDir } from "../../pilot/index.js";
 import type { WebListProjectsResult, WebProjectSummary } from "../client/protocol.js";
 
 export type ListWebProjectsOptions = {
@@ -175,12 +175,12 @@ async function summarizeProject(
     }
   }
   try {
-    const sessions = await listProjectSessions({
-      projectRoot,
-      pilotHome: options.pilotHome,
-    });
-    sessionCount = sessions.length;
-    lastActivity = sessions[0]?.lastModified;
+    const chatDir = projectStorageDir
+      ? resolve(projectStorageDir, "chats")
+      : getPilotProjectChatDir(projectRoot, options.pilotHome);
+    const files = (await listSessionFiles(chatDir)).filter((file) => !isInternalSession(file.sessionId));
+    sessionCount = files.length;
+    lastActivity = files[0]?.mtime;
   } catch {
     sessionCount = 0;
   }
