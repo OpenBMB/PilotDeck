@@ -9,8 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package manifests first for layer caching.
-# Root and UI are the only workspaces needed by the Web image.
+# Include the shared diagnostics workspace before resolving workspace links.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
+COPY packages/config/ packages/config/
 # NOTE: edgeclaw-memory-core is consumed via a local `file:` dependency.
 # Copy the full directory before install so pnpm snapshots complete sources/types.
 COPY src/context/memory/edgeclaw-memory-core/ src/context/memory/edgeclaw-memory-core/
@@ -29,7 +30,7 @@ RUN npm install -g pnpm@10.32.1 \
 COPY src/ src/
 COPY scripts/ scripts/
 COPY ui/ ui/
-COPY apps/desktop/src/lightAppearance.ts apps/desktop/src/interfacePreferences.ts apps/desktop/src/
+COPY apps/desktop/src/lightAppearance.ts apps/desktop/src/interfacePreferences.ts apps/desktop/src/appearance.ts apps/desktop/src/startupPresentation.ts apps/desktop/src/startupStyle.ts apps/desktop/src/
 COPY skills/ skills/
 
 # Build edgeclaw-memory-core (src/ → lib/)
@@ -57,6 +58,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /build/package.json /build/pnpm-lock.yaml ./
 COPY --from=builder /build/tsconfig.json ./
 COPY --from=builder /build/node_modules/ node_modules/
+# pnpm's workspace links still point here in the runtime image.
+COPY --from=builder /build/packages/config/ packages/config/
 COPY --from=builder /build/dist/ dist/
 COPY --from=builder /build/src/ src/
 COPY --from=builder /build/scripts/ scripts/
