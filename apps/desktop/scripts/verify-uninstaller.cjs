@@ -35,7 +35,6 @@ InstallDir "${target}"
 ShowUninstDetails show
 !insertmacro customUnWelcomePage
 !insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro customUninstallPage
 !insertmacro MUI_UNPAGE_FINISH
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
@@ -54,12 +53,12 @@ SectionEnd
   const log = execFileSync(binary.path,['-V4','-INPUTCHARSET','UTF8','-'],{cwd:path.join(lib,'templates/nsis'),input:script,env:{...process.env,...binary.env},encoding:'utf8',maxBuffer:10*1024*1024});
   fs.writeFileSync(path.join(directory,'compile.log'),log);
   assert.match(log, /MessageBox: 292:.*pilotdeck_keep_personal_data/, 'fallback retains data by default');
-  assert.match(log, /CreateDialog|nsDialogs|CreateControl/, 'native custom data page is compiled');
-  assert.match(log, /LangString: "PD_UnKeep" 2052/, 'Chinese resources are included');
+  assert.match(log, /MUI_UNPAGE_WELCOME/, 'native uninstall welcome page is compiled');
+  assert.match(log, /LangString: "PD_UnFallback" 2052/, 'Chinese resources are included');
   assert.ok(log.includes('TestParameter'),'update flag guard is compiled');
   assert.ok(fs.statSync(output).size>0);
   execFileSync(output,['/S',`/D=${target}`],{windowsHide:true,timeout:30000});
   assert.ok(fs.existsSync(path.join(target,'uninstall-fixture.exe')));
-  assert.ok(fs.readFileSync(path.join(target,'uninstall-fixture.exe')).includes(Buffer.from('保留个人数据（推荐）','utf16le')), 'Chinese text survives compilation without encoding corruption');
+  assert.ok(fs.readFileSync(path.join(target,'uninstall-fixture.exe')).includes(Buffer.from('选择“否”将保留个人数据。','utf16le')), 'Chinese text survives compilation without encoding corruption');
   console.log(`PASS: uninstall macro compiles with update/silent guards; harmless fixture: ${target}`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

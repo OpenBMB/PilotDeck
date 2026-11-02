@@ -9,11 +9,8 @@
     Push $0
     Push $1
     SetShellVarContext current
-    ${If} $PDUnPageShown != "1"
-      MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "$(PD_UnFallback)" IDNO pilotdeck_keep_personal_data
-      StrCpy $PDUnClean "1"
-    ${EndIf}
-    ${If} $PDUnClean == "1"
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "$(PD_UnFallback)" IDNO pilotdeck_keep_personal_data
+
       IfFileExists "$INSTDIR\resources\node\node.exe" 0 pilotdeck_cleanup_unavailable
       IfFileExists "$INSTDIR\resources\uninstall-data.cjs" 0 pilotdeck_cleanup_unavailable
       nsExec::ExecToStack '"$INSTDIR\resources\node\node.exe" "$INSTDIR\resources\uninstall-data.cjs" --profile "$PROFILE" --app-data "$APPDATA" --local-app-data "$LOCALAPPDATA" --pilot-home "$PDUnHome"'
@@ -21,9 +18,7 @@
       Pop $1
       StrCmp $0 "0" pilotdeck_keep_personal_data
       pilotdeck_cleanup_unavailable:
-        StrCpy $PDUnClean "partial"
         MessageBox MB_OK|MB_ICONINFORMATION "$(PD_UnPartial)"
-    ${EndIf}
     pilotdeck_keep_personal_data:
     ${If} $installMode == "all"
       SetShellVarContext all
@@ -82,17 +77,11 @@ Function PilotDeckInstallPageShow
   System::Free $2
   IntOp $5 $5 - $3
   IntOp $6 $6 - $4
-  ; A slim, continuous bar instead of the old segmented native control.
-  IntOp $7 $6 / 3
-  IntOp $6 $6 - $7
-  IntOp $6 $6 / 2
-  IntOp $4 $4 + $6
-  StrCpy $6 $7
+  ; Mirror the full-size native bar; only its cumulative value is managed.
   ShowWindow $1 0
-  System::Call 'user32::CreateWindowEx(i 0, t "msctls_progress32", t "", i 0x50000001, i r3, i r4, i r5, i r6, p r0, p 1136, p 0, p 0) p .r2'
+  System::Call 'user32::CreateWindowEx(i 0, t "msctls_progress32", t "", i 0x50800000, i r3, i r4, i r5, i r6, p r0, p 1136, p 0, p 0) p .r2'
   System::Call 'uxtheme::SetWindowTheme(p r2, w "", w "")'
-  SendMessage $2 0x0409 0 0x171717
-  SendMessage $2 0x2001 0 0xEEEEEE
+  SendMessage $2 0x0409 0 0x00BB00
   StrCpy $PilotDeckProgress $2
   SendMessage $PilotDeckProgress 0x0406 0 1000
   GetDlgItem $1 $HWNDPARENT 2
@@ -157,5 +146,7 @@ FunctionEnd
     !insertmacro PilotDeckStartApp
   FunctionEnd
 
-  !insertmacro PilotDeckFinishPage
+  !define MUI_FINISHPAGE_RUN
+  !define MUI_FINISHPAGE_RUN_FUNCTION "StartApp"
+  !insertmacro MUI_PAGE_FINISH
 !macroend

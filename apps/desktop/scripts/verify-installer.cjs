@@ -49,7 +49,6 @@ const { build } = require(path.join(projectDir, 'package.json'));
 !include "MUI2.nsh"
 !insertmacro customPageAfterChangeDir
 !insertmacro MUI_PAGE_INSTFILES
-!insertmacro customWelcomePage
 !insertmacro customFinishPage
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
