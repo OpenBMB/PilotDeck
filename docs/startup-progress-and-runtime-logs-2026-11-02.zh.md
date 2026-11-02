@@ -32,7 +32,7 @@ webui:
 
 | 场景 | 结果 |
 | --- | --- |
-| 慢阶段观察 | 仅测试副本中对 Web/Gateway 各延迟 20 秒，用于观察原生、HTML、React 三段衔接；生产启动未增加等待 |
+| 慢阶段观察 | 仅测试副本中对 Web/Gateway 及 App 脚本响应各延迟 20 秒，用于观察原生、HTML、React 三段衔接；生产启动未增加等待 |
 | 真实 Gateway OOM | 16 MiB 测试堆限制触发，界面显示可用内存不足、PD_RUNTIME_OUT_OF_MEMORY，隐藏原始堆栈 |
 | Web 缺失模块 | 服务不可用时原生页面正确显示 PD_RESOURCE_NOT_FOUND，仍能调用系统保存对话框 |
 | 恢复启动 | 还原测试副本的 Web 入口，点击重新启动进入工作区，Gateway ready |
@@ -43,7 +43,7 @@ webui:
 | 实时清理 | 经现有配置接口改为 1 天，桌面父进程立即删除过期测试归档，保留不相关用户文件；恢复为 30 后重新读取正确 |
 | Web 日志下载 | 认证接口返回 200，内容包含本次故障证据 |
 
-截图、日志和 JSON 验证证据在工作区 `artifacts/startup-progress-2026-11-02/`（不提交运行日志）。`final-progress/` 为最终进度截图，`oom/`、`web-module-missing/`、`config-invalid/` 为对应故障证据。
+截图、日志和 JSON 验证证据在工作区 `artifacts/startup-progress-2026-11-02/`（不提交运行日志）。`html-handoff/` 为最终原生与 Gateway 进度截图，`oom/`、`web-module-missing/`、`config-invalid/` 为对应故障证据。Web 首屏的居中样式限定在 `#root`，避免嵌入 HTML 时受 body 布局影响。
 
 ## 自动检查
 

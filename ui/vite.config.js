@@ -66,7 +66,8 @@ export default defineConfig(({ mode }) => {
         // The same shell is painted before the application bundle is evaluated.
         // React replaces it with the matching frame after its imports complete.
         const page = renderLoadingHtml({ language: 'en', themeMode: 'system' });
-        const style = page.match(/<style>([\s\S]*?)<\/style>/)[1];
+        // The native page owns body; the Web shell owns #root until React mounts.
+        const style = page.match(/<style>([\s\S]*?)<\/style>/)[1].replace('body{', '#root{width:100%;');
         let body = page.match(/<body>([\s\S]*?)<\/body>/)[1];
         body = body.replace(/^const labels=.*;$/m, `const languages=${JSON.stringify({ en: startupLabels('en'), 'zh-CN': startupLabels('zh-CN') })};\nconst appearance=window.pilotdeckDesktop?.getAppearance?.();\nconst language=appearance?.language||localStorage.getItem('userLanguage')||(navigator.language.startsWith('zh')?'zh-CN':'en');\nconst labels=languages[language]||languages.en;`);
         body = body.replace("window.pilotdeckDesktop?.onRuntimeStatus(update);", "window.__pilotdeckStartupCleanup=window.pilotdeckDesktop?.onRuntimeStatus(update);window.__pilotdeckStartupUpdate=update;");

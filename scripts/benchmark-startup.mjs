@@ -71,6 +71,11 @@ try {
         const source = fs.readFileSync(entry, 'utf8').replace(/^#![^\n]*\n/, '');
         fs.writeFileSync(entry, `await new Promise(resolve => setTimeout(resolve, 20000));\n${source}`);
       }
+      const webEntry = path.join(runtime, 'ui/server/index.js');
+      const webSource = fs.readFileSync(webEntry, 'utf8');
+      if (!webSource.includes('const app = express();')) throw new Error('Web fixture injection point changed');
+      fs.writeFileSync(webEntry, webSource.replace('const app = express();', `const app = express();
+app.use((req, res, next) => { if (/^\\/assets\\/App-[^/]+\\.js$/.test(req.path)) setTimeout(next, 20000); else next(); });`));
     }
     const wrapper = path.join(temporary, 'desktop.cjs');
     const userData = path.join(temporary, 'electron-profile'); fs.mkdirSync(userData);
