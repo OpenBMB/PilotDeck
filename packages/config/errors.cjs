@@ -31,6 +31,7 @@ function classifyRuntimeError(error, evidence = '', status) {
   if (status === 404) return 'PD_RESOURCE_NOT_FOUND';
   if (status === 409) return 'PD_OPERATION_CONFLICT';
   if (status === 429) return 'PD_RATE_LIMITED';
+  if (status === 502 || status === 503 || status === 504) return 'PD_SERVICE_UNAVAILABLE';
   if (status >= 400 && status < 500) return 'PD_REQUEST_INVALID';
   if (/exited|process.*failed|spawn/i.test(text)) return 'PD_RUNTIME_PROCESS_FAILED';
   return 'PD_UNEXPECTED_ERROR';

@@ -30,7 +30,7 @@ async function port() {
   const value = server.address().port; await new Promise(resolve => server.close(resolve)); return value;
 }
 try {
-  copy('dist/src'); copy('src/extension/plugins/builtin', 'dist/src/extension/plugins/builtin');
+  copy('dist/src'); copy('src/extension/plugins/builtin', 'dist/src/extension/plugins/builtin'); copy('skills');
   copy('ui/server'); copy('ui/shared'); copy('ui/public'); copy('scripts/check-node-runtime.mjs'); copy('scripts/computer-use'); copy('scripts/lib');
   if (fs.existsSync(path.join(root, 'resources/cua-driver'))) copy('resources/cua-driver');
   fs.writeFileSync(path.join(runtime, 'package.json'), '{"type":"module"}\n');
@@ -49,6 +49,22 @@ try {
   const { spawnManaged, stopProcessTree } = await import(pathToFileURL(path.join(runtime, 'ui/server/utils/processTree.js')));
   const home = path.join(temporary, 'profile'); fs.mkdirSync(home);
   fs.writeFileSync(path.join(home, 'pilotdeck.yaml'), 'schemaVersion: 1\nagent:\n  model: test/one\nmodel:\n  providers:\n    test:\n      protocol: openai\n      url: http://127.0.0.1:1/v1\n      apiKey: benchmark-no-network\n      models:\n        one: {}\ntelemetry:\n  enabled: false\n');
+  if (args.includes('--desktop')) {
+    const wrapper = path.join(temporary, 'desktop.cjs');
+    // Electron's package export is an executable path under Node; inside Electron
+    // use its built-in module and isolate userData before loading the main entry.
+    fs.writeFileSync(wrapper, `const {app}=require('electron');app.setPath('userData',${JSON.stringify(path.join(temporary, 'electron-profile'))});require(${JSON.stringify(path.join(root, 'apps/desktop/dist/main.js'))});`);
+    const executable = require(path.join(root, 'apps/desktop/node_modules/electron'));
+    const env = { ...process.env, PILOT_HOME: home, PILOTDECK_CONFIG_PATH: path.join(home,'pilotdeck.yaml'), PILOTDECK_DESKTOP_RUNTIME_ROOT: runtime, PILOTDECK_DESKTOP_NODE: process.execPath, PILOTDECK_SKIP_DEFAULT_PROJECT: '1' };
+    delete env.ELECTRON_RUN_AS_NODE;
+    const launcher = path.join(temporary, 'desktop-launcher.cjs');
+    fs.writeFileSync(launcher, `const child=require('node:child_process').spawn(${JSON.stringify(executable)},[${JSON.stringify(wrapper)}],{stdio:'inherit',windowsHide:false});child.on('exit',code=>process.exit(code??1));`);
+    const child = spawnManaged(process.execPath, [launcher], { env, cwd: root, stdio: ['ignore','pipe','pipe'], windowsHide: true });
+    child.stdout.on('data', data => process.stdout.write(data)); child.stderr.on('data', data => process.stderr.write(data));
+    console.log(JSON.stringify({ runtime, home, desktopPid: child.pid }));
+    try { await new Promise(resolve => setTimeout(resolve, Number(option('--hold-ms', '55000')))); }
+    finally { await stopProcessTree(child); }
+  } else {
   const results = [];
   for (let sample = 0; sample < samples; sample++) {
     const serverPort = await port(), gatewayPort = await port(), children = [];
@@ -72,11 +88,15 @@ try {
       const webMs = Math.round(performance.now() - start);
       await launch(path.join(runtime, 'dist/src/cli/pilotdeck.js'), runtime, ['server'], 'pilotdeck:gateway-ready');
       const row = { sample, profile: sample === 0 ? 'first-start' : 'existing', webMs, totalMs: Math.round(performance.now() - start) };
+      const response = await fetch(`http://127.0.0.1:${serverPort}/api/projects`, { signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) throw new Error(`Web/Gateway integration check failed (${response.status}).`);
+      await response.json(); row.usableMs = Math.round(performance.now() - start);
       results.push(row); console.log(JSON.stringify(row));
     } finally { for (const child of children.reverse()) await stopProcessTree(child); }
   }
   const summary = { root, node: process.version, platform: `${process.platform}-${process.arch}`, samples: results };
   const output = option('--output'); if (output) fs.writeFileSync(path.resolve(output), JSON.stringify(summary, null, 2) + '\n');
+  }
 } finally {
   // This absolute directory is created by mkdtemp above and is never supplied by
   // a caller. Junction cleanup removes only the junctions, never their targets.

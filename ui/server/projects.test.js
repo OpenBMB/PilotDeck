@@ -114,7 +114,7 @@ describe('getProjects', () => {
         ]);
         expect(projects.find((project) => project.name === 'general')).toMatchObject({
             kind: 'general',
-            fullPath: process.env.PILOT_HOME,
+            fullPath: path.resolve(process.env.PILOT_HOME),
             workspaceCwd: path.join(testWorkspacesRoot, 'general'),
             capabilities: {
                 files: false,
@@ -166,11 +166,11 @@ describe('getProjects', () => {
         const projectsPromise = getProjects();
         try {
             await vi.waitFor(() => expect(gateway.listSessions).toHaveBeenCalledWith({
-                projectKey: process.env.PILOT_HOME,
+                projectKey: path.resolve(process.env.PILOT_HOME),
                 limit: 5,
             }));
             expect(gateway.describeProject).toHaveBeenCalledWith({
-                projectKey: process.env.PILOT_HOME,
+                projectKey: path.resolve(process.env.PILOT_HOME),
             });
         } finally {
             sessions.resolve({ sessions: [] });

@@ -1,3 +1,4 @@
+import { parse as parseYaml } from 'yaml';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { findCatalogProviderById } from '../../shared/catalogProviders';
@@ -42,7 +43,7 @@ it('does not persist a cancelled new MCP server when saving an existing server',
   fireEvent.click(scope.getByRole('button', { name: 'settingsPage.actions.save' }));
   await waitFor(() => expect(mocks.fetch.mock.calls.some(([, o]) => o?.method === 'PUT')).toBe(true));
   const put = mocks.fetch.mock.calls.find(([, o]) => o?.method === 'PUT')!;
-  expect(Object.keys(JSON.parse(JSON.parse(put[1].body).raw).mcpServers)).toEqual(['existing']);
+  expect(Object.keys(parseYaml(JSON.parse(put[1].body).raw).mcpServers)).toEqual(['existing']);
 });
 it('preserves retry settings saved while the service form was open', async () => {
   const config: import('./view/modelPool/types').PilotDeckConfig = { agent: { model: 'custom/model' }, model: { providers: { custom: { retry: { requestMaxRetries: 2 }, models: { model: {} } } } }, webui: { runtime: { serverPort: 3001 } } };
