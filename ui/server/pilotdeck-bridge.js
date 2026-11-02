@@ -1038,12 +1038,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                               planSummary: event.data.planSummary,
                           }
                         : {}),
-                    ...(event.toolName === 'ask_user_question' && event.data
-                        ? { toolUseResult: event.data }
-                        : {}),
-                    ...(isSearchToolName(event.toolName) && event.data
-                        ? { toolUseResult: event.data }
-                        : {}),
+                    ...toolPresentationFields(event.toolName, event.data),
                 }),
             ];
         }
@@ -1409,6 +1404,12 @@ function createSubagentStatusFrames(event, base) {
     return frames;
 }
 
+function toolPresentationFields(toolName, data) {
+    return data && (isSearchToolName(toolName) || ['ask_user_question', 'generate_image', 'edit_image', 'save_generated_image'].includes(toolName))
+        ? { toolUseResult: data }
+        : {};
+}
+
 function createSubagentDetailFrames(event, base, detail) {
     const subagentId = String(detail.subagentId || '');
     if (!subagentId) return null;
@@ -1470,6 +1471,7 @@ function createSubagentDetailFrames(event, base, detail) {
                 content: detail.content || detail.preview || '',
                 isError: detail.ok === false,
                 ...(detail.errorCode ? { errorCode: detail.errorCode } : {}),
+                ...toolPresentationFields(detail.toolName, detail.data),
             })];
         }
         case 'subagent_model_error':

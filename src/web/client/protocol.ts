@@ -65,6 +65,7 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
       toolCallId: string;
       ok: boolean;
       resultPreview?: string;
+      data?: Record<string, unknown>;
       /** Mirrors `GatewayEvent.tool_call_finished.errorCode`. */
       errorCode?: string;
       /**

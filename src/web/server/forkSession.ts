@@ -8,7 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { chmod, cp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { platform } from "node:process";
 import type { CanonicalContentBlock, CanonicalMessage } from "../../model/index.js";
@@ -24,6 +24,7 @@ import type {
   AgentTranscriptEntry,
 } from "../../session/transcript/TranscriptEntry.js";
 import type { WebAgentRunMode, WebGatewayMode, WebForkSessionInput, WebForkSessionResult } from "../client/protocol.js";
+import { ImageStore, type GeneratedImage } from "../../tool/builtin/images/ImageStore.js";
 
 export type ForkWebSessionOptions = {
   projectRoot: string;
@@ -432,6 +433,72 @@ async function copySessionAuxDirs(sourceSessionDir: string, targetSessionDir: st
   }
 }
 
+/** Inherited image IDs become assets owned by the new conversation, including
+ * images referenced by compact snapshots and retained child transcripts. */
+class ForkImageInheritance {
+  private readonly images = new Map<string, GeneratedImage>();
+  constructor(private readonly store: ImageStore, private readonly targetSessionId: string) {}
+
+  async rewrite(entries: AgentTranscriptEntry[]): Promise<AgentTranscriptEntry[]> {
+    const blocks = new Map<CanonicalContentBlock, CanonicalContentBlock>();
+    const references: Array<Extract<CanonicalContentBlock, { type: "tool_result" }>> = [];
+    for (const entry of entries) mapTranscriptEntryMessages(entry, message => {
+      for (const block of message.content) if (block.type === "tool_result") references.push(block);
+      return message;
+    });
+    for (const block of references) {
+      const raw = block.raw as { toolName?: string; data?: { imageGeneration?: GeneratedImage } } | undefined;
+      if (!raw || !["generate_image", "edit_image", "save_generated_image"].includes(raw.toolName ?? "")) continue;
+      const original = raw.data?.imageGeneration;
+      if (!original || typeof original.imageId !== "string" || typeof original.sessionId !== "string") continue;
+      let inherited = this.images.get(original.imageId);
+      if (!inherited) {
+        inherited = await this.store.inherit(original.sessionId, original.imageId, this.targetSessionId);
+        this.images.set(original.imageId, inherited);
+      }
+      // Only rewrite this host-produced tool result, not arbitrary user text.
+      const rewritten = replaceImagePath(block, original.path, inherited.path) as typeof block;
+      const rewrittenRaw = rewritten.raw as typeof raw;
+      rewrittenRaw.data = { ...rewrittenRaw.data, imageGeneration: { ...original, ...inherited } };
+      blocks.set(block, rewritten);
+    }
+    return entries.map(entry => mapTranscriptEntryMessages(entry, message => ({
+      ...message, content: message.content.map(block => blocks.get(block) ?? block),
+    })));
+  }
+
+  async rewriteSubagents(entries: AgentTranscriptEntry[], chatDir: string, targetSessionDir: string, cutoff: string): Promise<void> {
+    const visited = new Set<string>();
+    for (const entry of entries) {
+      if (entry.type !== "subagent_started" || !entry.transcriptRelativePath) continue;
+      const transcriptPath = resolve(chatDir, entry.transcriptRelativePath);
+      const rel = relative(targetSessionDir, transcriptPath);
+      if (!rel || rel.startsWith("..") || isAbsolute(rel) || visited.has(transcriptPath)) continue;
+      if (!(await pathExists(transcriptPath))) continue;
+      const realRelative = relative(await realpath(targetSessionDir), await realpath(transcriptPath));
+      if (!realRelative || realRelative.startsWith("..") || isAbsolute(realRelative)) throw new Error("Child transcript resolves outside the copied session.");
+      visited.add(transcriptPath);
+      const child = await readTranscript(transcriptPath);
+      // A fork must not inherit child output produced after its fork point.
+      const carried = child.entries.filter(item => !(Date.parse(item.createdAt) > Date.parse(cutoff)));
+      const rewritten = await this.rewrite(carried);
+      await writeFile(transcriptPath, rewritten.map(item => JSON.stringify(item) + "\n").join(""), "utf8");
+    }
+  }
+
+  async rollback(): Promise<void> {
+    await Promise.all([...this.images.values()].flatMap(image => [image.path, join(dirname(image.path), image.imageId + ".json")])
+      .map(file => unlink(file).catch(() => {})));
+  }
+}
+
+function replaceImagePath(value: unknown, from: string, to: string): unknown {
+  if (typeof value === "string") return from ? value.split(from).join(to) : value;
+  if (Array.isArray(value)) return value.map(item => replaceImagePath(item, from, to));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceImagePath(item, from, to)]));
+  return value;
+}
+
 export class ForkSessionError extends Error {
   constructor(
     readonly code: string,
@@ -476,7 +543,7 @@ export async function forkWebSession(
   const newSafeId = sanitizeSessionIdForPath(newSessionKey);
   const newTranscriptPath = resolve(chatDir, `${newSafeId}.jsonl`);
   const newSessionDir = resolve(chatDir, newSafeId);
-  const preserved = retargetEntriesToSession(preservedSourceEntries, {
+  let preserved = retargetEntriesToSession(preservedSourceEntries, {
     sessionId: newSessionKey,
     sourceSafeId,
     targetSafeId: newSafeId,
@@ -487,6 +554,14 @@ export async function forkWebSession(
   await mkdir(chatDir, { recursive: true, mode: 0o700 });
   await mkdir(newSessionDir, { recursive: true, mode: 0o700 });
   await copySessionAuxDirs(sourceSessionDir, newSessionDir);
+  const images = new ForkImageInheritance(new ImageStore(join(options.pilotHome, "generated-images")), newSessionKey);
+  try {
+    preserved = await images.rewrite(preserved);
+    await images.rewriteSubagents(preserved, chatDir, newSessionDir, forkPoint.target.createdAt);
+  } catch (error) {
+    await images.rollback();
+    throw new ForkSessionError("fork_image_unavailable", `Could not inherit session images: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   const preservedLines = preserved.map((entry) => `${JSON.stringify(entry)}\n`).join("");
   const lastPreserved = preserved[preserved.length - 1];
@@ -523,8 +598,13 @@ export async function forkWebSession(
   };
 
   const body = preservedLines + `${JSON.stringify(metadataEntry)}\n`;
-  await writeFile(newTranscriptPath, body, { encoding: "utf8", mode: 0o600 });
-  await chmod(dirname(newTranscriptPath), 0o700);
+  try {
+    await writeFile(newTranscriptPath, body, { encoding: "utf8", mode: 0o600 });
+    await chmod(dirname(newTranscriptPath), 0o700);
+  } catch (error) {
+    await images.rollback();
+    throw error;
+  }
 
   return {
     newSessionKey,

@@ -118,6 +118,14 @@ export class SubAgentSession {
     const startedAt = Date.now();
 
     const messages = this.buildInitialMessages();
+    const parentArtifacts = await this.options.parentDependencies.prepareSubagentArtifacts?.({
+      parentSessionId: this.options.parentSessionId,
+      subagentSessionId: this.options.subagentSessionId,
+      abortSignal: this.options.abortSignal,
+    });
+    if (parentArtifacts?.length) {
+      messages[0]!.content.push({ type: "text", text: `Attachments inherited from the parent and available in this session:\n${parentArtifacts.map(artifact => artifact.description).join("\n")}` });
+    }
     const subRegistry = this.buildScopedRegistry();
     const subDependencies = this.cloneDependencies(subRegistry);
     const subConfig = this.buildConfig();
@@ -131,6 +139,7 @@ export class SubAgentSession {
     });
 
     let last: AgentLoopRunResult | undefined;
+    const inheritedArtifacts = new Map<string, string>();
     const turnId = `${this.options.subagentId}-t0`;
     if (this.options.sidechainTranscript) {
       await this.options.sidechainTranscript.recordAcceptedInput(
@@ -156,6 +165,14 @@ export class SubAgentSession {
         break;
       }
       const event = next.value;
+      if (event.type === "tool_result") {
+        const artifact = await this.options.parentDependencies.inheritSubagentToolResult?.({
+          parentSessionId: this.options.parentSessionId,
+          subagentSessionId: this.options.subagentSessionId,
+          result: event.result,
+        });
+        if (artifact) inheritedArtifacts.set(artifact.key, artifact.description);
+      }
       this.forwardActivity(event);
       if (
         this.options.sidechainTranscript &&
@@ -182,12 +199,20 @@ export class SubAgentSession {
         `SubAgentSession: subagent turn failed (${last.result.stopReason})${details ? `: ${details}` : ""}`,
       );
     }
+    const finalArtifacts = await this.options.parentDependencies.finalizeSubagentArtifacts?.({
+      parentSessionId: this.options.parentSessionId,
+      subagentSessionId: this.options.subagentSessionId,
+      abortSignal: this.options.abortSignal,
+    });
+    for (const artifact of finalArtifacts ?? []) inheritedArtifacts.set(artifact.key, artifact.description);
     const text = extractFinalAssistantText(last.messages);
     const parsed = parseSummary(text);
     return {
       subagentId: this.options.subagentId,
       definitionId: this.options.definition.id,
-      markdown: text,
+      markdown: inheritedArtifacts.size
+        ? `${text}\n\nAttachments available in the parent session:\n${[...inheritedArtifacts.values()].join("\n")}`
+        : text,
       parsed,
       usage: last.result.usage,
       turns: last.result.turns,
@@ -335,6 +360,9 @@ export class SubAgentSession {
       getModelSupportsPromptCache: this.options.parentDependencies.getModelSupportsPromptCache,
       getSubagentModels: this.options.parentDependencies.getSubagentModels,
       subagentTranscript: this.options.parentDependencies.subagentTranscript,
+      prepareSubagentArtifacts: this.options.parentDependencies.prepareSubagentArtifacts,
+      inheritSubagentToolResult: this.options.parentDependencies.inheritSubagentToolResult,
+      finalizeSubagentArtifacts: this.options.parentDependencies.finalizeSubagentArtifacts,
       eventEmitter: (event) => { this.forwardDescendantActivity(event); },
       // Child tools contribute to the parent's active checkpoint and lease;
       // only the parent TurnRunner opens and closes that turn boundary.

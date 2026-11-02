@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AttachmentPreview from '../chat/view/subcomponents/AttachmentPreview';
 import ImageLightbox from '../chat/view/subcomponents/ImageLightbox';
 import ChatInterfaceV2 from './ChatInterfaceV2';
+import { api } from '../../utils/api';
 
 vi.mock('../chat/utils/rasterizeAttachmentImage', () => ({ rasterizeAttachmentImage: vi.fn(async () => new Blob(['pixels'], { type: 'image/png' })) }));
 
@@ -12,6 +13,7 @@ const queueMocks = vi.hoisted(() => ({
   useSessionInputQueue: vi.fn(),
   useChatSessionState: vi.fn(),
   handleAbortSession: vi.fn(),
+  messagesPane: vi.fn(),
 }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
@@ -95,7 +97,7 @@ vi.mock('../chat/hooks/useChatComposerState', () => ({
   }),
 }));
 
-vi.mock('./MessagesPaneV2', () => ({ default: () => <div data-testid="messages-pane" /> }));
+vi.mock('./MessagesPaneV2', () => ({ default: (props: unknown) => { queueMocks.messagesPane(props); return <div data-testid="messages-pane" />; } }));
 vi.mock('./ComposerV2', () => ({
   default: ({ queueTray }: { queueTray?: React.ReactNode }) => (
     <div data-testid="composer">{queueTray}</div>
@@ -123,6 +125,23 @@ const emptyQueue = () => ({
 });
 
 describe('ChatInterfaceV2 queue integration', () => {
+  it('opens a completed fork without waiting for a stalled sidebar refresh', async () => {
+    queueMocks.useChatSessionState.mockReturnValue(createChatSessionState({ isLoading: false }));
+    queueMocks.useSessionInputQueue.mockReturnValue(emptyQueue());
+    const refresh = vi.fn(() => new Promise<void>(() => {}));
+    vi.stubGlobal('refreshProjects', refresh);
+    const fork = vi.spyOn(api, 'forkSession').mockResolvedValue({ ok: true, json: async () => ({ newSessionId: 'web:fork', prefillText: 'Continue drawing' }) } as Response);
+    const navigate = vi.fn();
+    try {
+      render(<ChatInterfaceV2 {...({ selectedProject: { name: 'PilotDeck', fullPath: '/workspace/PilotDeck' },
+        selectedSession: { id: 'web:s_queue' }, ws: { readyState: WebSocket.OPEN }, sendMessage: vi.fn(), onNavigateToSession: navigate,
+      } as any)} />);
+      await act(async () => { void queueMocks.messagesPane.mock.calls.at(-1)![0].onFork({ entryId: 'entry', type: 'user', content: 'Continue drawing' }); });
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith('web:fork'));
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(queueMocks.messagesPane.mock.calls.at(-1)![0].forkDisabled).toBe(false);
+    } finally { fork.mockRestore(); }
+  });
   it.each(['draft', 'sent'])('closes the %s preview with Escape without stopping the active reply', (kind) => {
     queueMocks.useChatSessionState.mockReturnValue(createChatSessionState());
     queueMocks.useSessionInputQueue.mockReturnValue(emptyQueue());

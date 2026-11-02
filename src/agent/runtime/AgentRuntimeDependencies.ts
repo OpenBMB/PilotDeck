@@ -6,6 +6,7 @@ import type {
   PilotDeckToolFileHistorySink,
   PilotDeckToolScheduler,
   ToolRegistry,
+  PilotDeckToolResult,
 } from "../../tool/index.js";
 import type { PlanFileManager } from "../../tool/builtin/planFile.js";
 import type { PlanTodoStateManager } from "./PlanTodoState.js";
@@ -118,6 +119,24 @@ export type AgentRuntimeDependencies = {
   lifecycle?: LifecycleRuntime;
   /** C3 sidechain transcript hooks (optional). */
   subagentTranscript?: AgentSubagentTranscriptHooks;
+  /** Snapshot parent attachments into the child before its first model request. */
+  prepareSubagentArtifacts?: (args: {
+    parentSessionId: string;
+    subagentSessionId: string;
+    abortSignal?: AbortSignal;
+  }) => Promise<{ key: string; description: string }[]>;
+  /** Complete trusted child-scope artifact handoff, including nested outputs. */
+  finalizeSubagentArtifacts?: (args: {
+    parentSessionId: string;
+    subagentSessionId: string;
+    abortSignal?: AbortSignal;
+  }) => Promise<{ key: string; description: string }[]>;
+  /** Register child tool artifacts in the trusted parent scope before returning its report. */
+  inheritSubagentToolResult?: (args: {
+    parentSessionId: string;
+    subagentSessionId: string;
+    result: PilotDeckToolResult;
+  }) => Promise<{ key: string; description: string } | undefined>;
   /**
    * Elicitation channel — wired into the per-tool `PilotDeckToolRuntimeContext`
    * so `ask_user_question` (B1) can drive the gateway. When omitted, the

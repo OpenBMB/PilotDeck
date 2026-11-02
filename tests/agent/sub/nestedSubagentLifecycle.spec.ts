@@ -18,12 +18,14 @@ async function runNested(cancelLeaf: boolean) {
   const started: Array<{ sessionId: string; subagentSessionId?: string; subagentType: string }> = [];
   const completed: Array<{ subagentType: string; errored?: boolean }> = [];
   const turns = new Map<string, number>();
+  const finalized: string[] = [];
   const routes: Array<{ role: string; provider: string; model: string }> = [];
   const registry = new ToolRegistry();
   registry.register(createAgentTool());
   const dependencies: AgentRuntimeDependencies = {
     tools: { registry, scheduler: new ConcurrentToolScheduler(new ToolRuntime(registry, new PermissionRuntime()), registry) },
     eventEmitter: event => { events.push(event); },
+    finalizeSubagentArtifacts: async ({ subagentSessionId }) => { finalized.push(subagentSessionId); return []; },
     getSubagentModels: () => [{ id: "specialist/reviewer", provider: "specialist", model: "reviewer",
       description: "Review evidence", modelMultimodal: { input: ["text"] }, maxContextTokens: 16000, maxOutputTokens: 2000 }],
     subagentTranscript: {
@@ -72,11 +74,12 @@ async function runNested(cancelLeaf: boolean) {
     const next = await generator.next();
     if (next.done) { result = next.value; break; }
   }
-  return { events, started, completed, result, routes };
+  return { events, started, completed, result, routes, finalized };
 }
 
 test("nested lifecycle reaches the root while transcripts retain their parent session", async () => {
-  const { events, started, completed, routes } = await runNested(false);
+  const { events, started, completed, routes, finalized } = await runNested(false);
+  assert.equal(finalized.length, 2, "both successful child levels finalize their artifacts");
   assert.equal(started.length, 2);
   assert.equal(completed.length, 2);
   assert.ok(completed.every(entry => !entry.errored));
@@ -102,7 +105,8 @@ test("nested lifecycle reaches the root while transcripts retain their parent se
 });
 
 test("cancelling nested work stops both child levels and records failure", async () => {
-  const { events, started, completed, result } = await runNested(true);
+  const { events, started, completed, result, finalized } = await runNested(true);
+  assert.deepEqual(finalized, [], "aborted children must not finalize their artifact snapshots");
   assert.equal(started.length, 2);
   assert.equal(result.result.type, "aborted");
   assert.equal(completed.length, 2);

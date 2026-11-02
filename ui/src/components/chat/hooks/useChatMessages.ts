@@ -179,7 +179,7 @@ function convertSingleMessage(
         ? {
             content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content),
             isError: Boolean(tr.isError),
-            toolUseResult: (tr as any).toolUseResult,
+            toolUseResult: tr.toolUseResult,
             errorCode: (tr as any).errorCode,
             resultPath: (tr as any).resultPath,
             ...(toolResultImages && toolResultImages.length > 0 ? { images: toolResultImages } : {}),

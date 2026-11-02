@@ -6,6 +6,7 @@ import { useScrollFollow } from '../chat/hooks/useScrollFollow';
 import type { Project, SessionProvider } from '../../types/app';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRowV2 from './MessageRowV2';
+import GeneratedImageCard from '../chat/tools/GeneratedImageCard';
 import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
 import {
   buildRenderableMessageItems,
@@ -195,7 +196,7 @@ export default function SubagentDetailMessageFlow({
   const hasOpenEndedLiveProcessGroup = liveProcessGroups.some((group) => group.isRunning);
   const shouldRenderBottomLiveStatus = isRunning && !hasOpenEndedLiveProcessGroup && !streamingThinkingContent;
   const keyedMessagesForSearch = useMemo<SearchableChatMessageInput[]>(() => {
-    return keyedItems.map((item) => (
+    return keyedItems.filter(item => !item.imageArtifact).map((item) => (
       {
         message: item.message,
         messageKey: item.itemKey,
@@ -353,7 +354,9 @@ export default function SubagentDetailMessageFlow({
                   data-message-key={item.itemKey}
                   data-message-timestamp={item.message.timestamp ? String(item.message.timestamp) : undefined}
                 >
-                  <MessageRowV2
+                  {item.imageArtifact ? (
+                    <GeneratedImageCard message={item.message} running={isRunning} />
+                  ) : <MessageRowV2
                     message={item.message}
                     prevMessage={previousMessage}
                     nextMessage={nextMessage}
@@ -369,7 +372,7 @@ export default function SubagentDetailMessageFlow({
                     onProcessExpandedChange={handleProcessExpandedChange}
                     isToolSectionExpanded={isToolSectionExpanded}
                     onToolSectionExpandedChange={handleToolSectionExpandedChange}
-                  />
+                  />}
                 </div>
                 {anchoredLiveGroups.length > 0 ? (
                   <div className="flex min-w-0 flex-col gap-2">

@@ -1,3 +1,5 @@
+import { ImageStore } from "../tool/builtin/images/ImageStore.js";
+import { createSubagentImageInheritance, createSubagentImagePreparation, createSubagentImageFinalization } from "./subagentImageInheritance.js";
 import { acquireWorkspaceOperation, operationContext } from "../session/checkpoints/WorkspaceCoordinator.js";
 import { runWorkspaceFileOperation } from "../session/checkpoints/workspaceFileOperation.js";
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
@@ -1016,6 +1018,10 @@ class ProjectRuntimeRegistry {
       ? resolveWebSearchConfig(snapshot.config.tools.webSearch)
       : undefined;
     const tools = createBuiltinRegistry({
+      imageGeneration: {
+        store: new ImageStore(resolve(this.options.pilotHome, "generated-images")),
+        getConfig: () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration,
+      },
       backgroundTasks: { runtime: backgroundTasks },
       readSkill: {
         loader: (name) => pluginRuntime.loadSkillPrompt(name),
@@ -1384,6 +1390,7 @@ class ProjectRuntimeRegistry {
     const memoryResolver = runtime.memory;
     const now = this.options.now;
     const eventBuf = createAgentEventBuffer();
+    const imageStore = new ImageStore(resolve(this.options.pilotHome, "generated-images"));
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
       getSubagentModels: () => listSubagentModels(runtime.snapshot.config.model, runtime.snapshot.config.router),
@@ -1393,6 +1400,10 @@ class ProjectRuntimeRegistry {
       now: this.options.now,
       eventEmitter: eventBuf.emitter,
       drainEvents: eventBuf.drain,
+      inheritSubagentToolResult: createSubagentImageInheritance(imageStore),
+      finalizeSubagentArtifacts: createSubagentImageFinalization(imageStore),
+      prepareSubagentArtifacts: createSubagentImagePreparation(imageStore,
+        () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration?.enabled === true),
       tokenAccounting: runtime.tokenAccounting,
       getModelMaxContextTokens: (provider, model) => resolveRoutedModelMaxContextTokens({
         modelRuntime: runtime.model,
