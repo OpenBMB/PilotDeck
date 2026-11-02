@@ -28,17 +28,6 @@ LangString PD_ShortcutFailed 2052 "PilotDeck 已安装，但无法创建桌面�
   Var PDUnHome
   !macro customUnWelcomePage
     !insertmacro MUI_UNPAGE_WELCOME
-    !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.PilotDeckNativeProgress
-    Function un.PilotDeckNativeProgress
-      FindWindow $0 "#32770" "" $HWNDPARENT
-      GetDlgItem $1 $0 1004
-      System::Call 'uxtheme::SetWindowTheme(p r1, w "", w "")'
-      System::Call 'user32::GetWindowLong(p r1, i -16) i.r2'
-      IntOp $2 $2 & 0xFFFFFFFE
-      IntOp $2 $2 | 0x00800000
-      System::Call 'user32::SetWindowLong(p r1, i -16, i r2)'
-      SendMessage $1 0x0409 0 0x00BB00
-    FunctionEnd
   !macroend
   LangString PD_UnClearHelp 1033 "Deletes all files in $PDUnHome, including credentials and conversations, plus this user's client settings and caches. Back up files you want to keep."
   LangString PD_UnClearHelp 2052 "将删除 $PDUnHome 中的全部文件（包括密钥和会话），以及当前用户的客户端设置和缓存。请提前备份需要保留的文件。"

@@ -49,6 +49,12 @@ internal static class InstallPayload
         lastStatus = message;
         if (label == IntPtr.Zero) return;
         SendMessage(label, 0x000C, IntPtr.Zero, message); // WM_SETTEXT
+        UpdateProgress(percent);
+    }
+
+    static void UpdateProgress(int? percent)
+    {
+        if (bar == IntPtr.Zero) return;
         if (percent.HasValue && percent.Value > displayedProgress)
         {
             displayedProgress = Math.Max(percent.Value, SendMessage(bar, 0x0408, IntPtr.Zero, IntPtr.Zero).ToInt32() / 10);
@@ -107,13 +113,16 @@ internal static class InstallPayload
             double lastAdvance = 0, lastDisplay = -1;
             try
             {
-                while (!worker.WaitForExit(200))
+                while (!worker.WaitForExit(50))
                 {
                     CheckCancellation();
                     int percent;
                     lock (ProgressLock) percent = progress;
                     double elapsed = clock.Elapsed.TotalSeconds;
                     if (percent != last) { last = percent; lastAdvance = elapsed; }
+                    // Let the native bar follow decoder updates immediately;
+                    // the human-readable ETA/log line still refreshes once a second.
+                    UpdateProgress(percent * 90 / 100);
                     if (elapsed - lastDisplay < 1) continue;
                     lastDisplay = elapsed;
                     int? eta = RemainingSeconds(elapsed, percent, elapsed - lastAdvance);
