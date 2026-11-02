@@ -12,6 +12,12 @@ const require = createRequire(import.meta.url);
 const args = process.argv.slice(2), option = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
 const root = path.resolve(option('--root', path.join(path.dirname(fileURLToPath(import.meta.url)), '..')));
 const samples = Number(option('--samples', '3'));
+const fault = option('--fault');
+const faultNames = ['abort', 'oom', 'module-missing', 'config-invalid', 'web-module-missing'];
+if (fault && (!args.includes('--desktop') || !faultNames.includes(fault))) throw new Error('Fault injection requires --desktop and a supported --fault.');
+const artifacts = option('--artifacts') ? path.resolve(option('--artifacts')) : null;
+if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
+if (artifacts && args.includes('--desktop')) fs.rmSync(path.join(artifacts,'stop'), { force: true });
 if (!Number.isInteger(samples) || samples < 1 || samples > 20) throw new Error('Use 1–20 samples.');
 if (!fs.existsSync(path.join(root, 'dist/src/cli/pilotdeck.js'))) throw new Error('Compile the checkout first.');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-benchmark-'));
@@ -54,10 +60,20 @@ try {
   fs.writeFileSync(path.join(home, 'weixin-credentials.json'), '{"baseUrl":"http://127.0.0.1:1","botToken":"fixture-secret","accountId":"fixture"}\n');
   const originalConfiguration = Object.fromEntries(['pilotdeck.yaml','mcp.json','permissions.json','weixin-credentials.json'].map(name => [name,fs.readFileSync(path.join(home,name),'utf8')]));
   if (args.includes('--desktop')) {
+    const gatewayEntry = path.join(runtime, 'dist/src/cli/pilotdeck.js');
+    if (fault === 'abort') fs.writeFileSync(gatewayEntry, "process.stderr.write('Startup fault test: deliberate process.abort()\\n');process.abort();\n");
+    if (fault === 'oom') fs.writeFileSync(gatewayEntry, 'const retained=[];while(true)retained.push(new Array(65536).fill(42));\n');
+    if (fault === 'module-missing') fs.writeFileSync(gatewayEntry, "await import('./injected-missing-module.js');\n");
+    if (fault === 'web-module-missing') fs.writeFileSync(path.join(runtime,'ui/server/index.js'), "await import('./injected-missing-web-module.js');\n");
+    if (fault === 'config-invalid') fs.writeFileSync(path.join(home,'pilotdeck.yaml'), 'agent: [unterminated\n');
     const wrapper = path.join(temporary, 'desktop.cjs');
+    const userData = path.join(temporary, 'electron-profile'); fs.mkdirSync(userData);
+    fs.writeFileSync(path.join(userData,'appearance.json'), '{"language":"zh-CN","themeMode":"light"}\n');
     // Electron's package export is an executable path under Node; inside Electron
     // use its built-in module and isolate userData before loading the main entry.
-    fs.writeFileSync(wrapper, `const {app}=require('electron');app.setPath('userData',${JSON.stringify(path.join(temporary, 'electron-profile'))});require(${JSON.stringify(path.join(root, 'apps/desktop/dist/main.js'))});`);
+    const oomHook = fault === 'oom' ? `const Module=require('node:module'),original=Module._load;
+Module._load=function(request,...rest){const loaded=original.call(this,request,...rest);if(String(request).replaceAll('\\\\','/').endsWith('/ui/server/utils/processTree.js'))return {...loaded,spawnManaged(command,argv,...options){return loaded.spawnManaged(command,argv.includes(${JSON.stringify(gatewayEntry)})?['--max-old-space-size=16',...argv]:argv,...options)}};return loaded};` : '';
+    fs.writeFileSync(wrapper, `const {app}=require('electron');app.setPath('userData',${JSON.stringify(userData)});${oomHook}\nrequire(${JSON.stringify(path.join(root, 'apps/desktop/dist/main.js'))});`);
     const executable = require(path.join(root, 'apps/desktop/node_modules/electron'));
     const env = { ...process.env, PILOT_HOME: home, PILOTDECK_CONFIG_PATH: path.join(home,'pilotdeck.yaml'), PILOTDECK_DESKTOP_RUNTIME_ROOT: runtime, PILOTDECK_DESKTOP_NODE: process.execPath, PILOTDECK_SKIP_DEFAULT_PROJECT: '1' };
     delete env.ELECTRON_RUN_AS_NODE;
@@ -65,9 +81,21 @@ try {
     fs.writeFileSync(launcher, `const child=require('node:child_process').spawn(${JSON.stringify(executable)},[${JSON.stringify(wrapper)}],{stdio:'inherit',windowsHide:false});child.on('exit',code=>process.exit(code??1));`);
     const child = spawnManaged(process.execPath, [launcher], { env, cwd: root, stdio: ['ignore','pipe','pipe'], windowsHide: true });
     child.stdout.on('data', data => process.stdout.write(data)); child.stderr.on('data', data => process.stderr.write(data));
-    console.log(JSON.stringify({ runtime, home, desktopPid: child.pid }));
-    try { await new Promise(resolve => setTimeout(resolve, Number(option('--hold-ms', '55000')))); }
-    finally { await stopProcessTree(child); }
+    const info = { runtime, home, userData, fault: fault || null, desktopPid: child.pid };
+    console.log(JSON.stringify(info));
+    if (artifacts) fs.writeFileSync(path.join(artifacts,'instance.json'), JSON.stringify(info,null,2)+'\n');
+    try { await new Promise(resolve => {
+      const timer = setTimeout(finish, Number(option('--hold-ms', '55000')));
+      const poll = setInterval(() => { if (artifacts && fs.existsSync(path.join(artifacts,'stop'))) finish(); }, 200);
+      function finish() { clearTimeout(timer); clearInterval(poll); resolve(); }
+    }); }
+    finally {
+      await stopProcessTree(child);
+      if (artifacts) {
+        const logs = path.join(userData,'logs');
+        if (fs.existsSync(logs)) fs.cpSync(logs,path.join(artifacts,'logs'),{recursive:true});
+      }
+    }
   } else {
   const results = [];
   for (let sample = 0; sample < samples; sample++) {
