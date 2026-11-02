@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveGatewayTokenPath } from "../gateway/server/authToken.js";
+import { readGatewayAuthTokenSync } from "../gateway/server/authToken.js";
 import type {
   TelemetryDeploymentMode,
   TelemetryRuntimeContext,
@@ -42,13 +42,8 @@ function resolveInstallationId(
   pilotHome: string | undefined,
   env: Record<string, string | undefined>,
 ): string {
-  const tokenPath = resolveGatewayTokenPath({ pilotHome, env });
-  if (existsSync(tokenPath)) {
-    const token = readFileSync(tokenPath, "utf8").trim();
-    if (token) {
-      return hashStableId(token);
-    }
-  }
+  const token = readGatewayAuthTokenSync({ pilotHome, env });
+  if (token) return hashStableId(token);
   const fallbackSeed = `${process.platform}:${process.arch}:${env.HOME ?? "unknown-home"}`;
   return hashStableId(fallbackSeed);
 }

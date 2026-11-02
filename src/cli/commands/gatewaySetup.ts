@@ -4,9 +4,12 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-const PILOT_HOME = process.env.PILOT_HOME || join(homedir(), ".pilotdeck");
+import { resolveConfigHome } from "@pilotdeck/config";
+import { readWeixinCredentials, writeWeixinCredentials, weixinCredentialsPath } from "../../adapters/channel/weixin/credentials.js";
+
+const PILOT_HOME = resolveConfigHome();
+const WEIXIN_CREDS_PATH = weixinCredentialsPath();
 const PILOTDECK_YAML_PATH = process.env.PILOTDECK_CONFIG_PATH || join(PILOT_HOME, "pilotdeck.yaml");
-const WEIXIN_CREDS_PATH = join(PILOT_HOME, "weixin-credentials.json");
 
 const FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal";
 const LARK_TOKEN_URL = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal";
@@ -582,11 +585,7 @@ async function setupWeixin(rl: ReturnType<typeof createInterface>): Promise<void
 
 function loadWeixinCredentials(): { accountId: string; baseUrl: string; botToken: string } | null {
   try {
-    if (!existsSync(WEIXIN_CREDS_PATH)) return null;
-    const raw = readFileSync(WEIXIN_CREDS_PATH, "utf-8");
-    const data = JSON.parse(raw);
-    if (!data.baseUrl || !data.botToken || !data.accountId) return null;
-    return data;
+    return readWeixinCredentials();
   } catch {
     return null;
   }
@@ -597,8 +596,7 @@ function saveWeixinCredentials(creds: {
   botToken: string;
   accountId: string;
 }): void {
-  mkdirSync(join(homedir(), ".pilotdeck"), { recursive: true });
-  writeFileSync(WEIXIN_CREDS_PATH, JSON.stringify(creds, null, 2), "utf-8");
+  writeWeixinCredentials(creds);
 }
 
 function enableWeixinConfig(): void {

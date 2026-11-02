@@ -5,6 +5,9 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { createYamlConfiguration } from './yamlConfiguration.js';
+import { userConfigurationDirectory } from '../services/userConfiguration.js';
+import { readConfiguration, writeConfiguration } from '@pilotdeck/config';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -61,6 +64,7 @@ if (DB_PATH !== LEGACY_DB_PATH && !fs.existsSync(DB_PATH) && fs.existsSync(LEGAC
 
 // Create database connection
 const db = new Database(DB_PATH);
+const yamlConfig = createYamlConfiguration(db);
 
 // app_config must exist before any other module imports (auth.js reads the JWT secret at load time).
 // runMigrations() also creates this table, but it runs too late for existing installations
@@ -272,143 +276,57 @@ const userDb = {
   }
 };
 
-// API Keys database operations
+// Legacy tables are imported once per section. Empty lists are authoritative:
+// deleting a key must never resurrect it from the old database on next launch.
+const oldApiKeys = () => yamlConfig.legacy('SELECT * FROM api_keys');
+const oldCredentials = () => yamlConfig.legacy('SELECT * FROM user_credentials');
 const apiKeysDb = {
-  // Generate a new API key
-  generateApiKey: () => {
-    return 'ck_' + crypto.randomBytes(32).toString('hex');
-  },
-
-  // Create a new API key
+  generateApiKey: () => 'ck_' + crypto.randomBytes(32).toString('hex'),
   createApiKey: (userId, keyName) => {
-    try {
-      const apiKey = apiKeysDb.generateApiKey();
-      const stmt = db.prepare('INSERT INTO api_keys (user_id, key_name, api_key) VALUES (?, ?, ?)');
-      const result = stmt.run(userId, keyName, apiKey);
-      return { id: result.lastInsertRowid, keyName, apiKey };
-    } catch (err) {
-      throw err;
-    }
+    const apiKey = apiKeysDb.generateApiKey();
+    const row = yamlConfig.insert('apiKeys', { user_id: userId, key_name: keyName, api_key: apiKey, last_used: null }, oldApiKeys);
+    return { id: row.id, keyName, apiKey };
   },
-
-  // Get all API keys for a user
-  getApiKeys: (userId) => {
-    try {
-      const rows = db.prepare('SELECT id, key_name, api_key, created_at, last_used, is_active FROM api_keys WHERE user_id = ? ORDER BY created_at DESC').all(userId);
-      return rows;
-    } catch (err) {
-      throw err;
-    }
+  getApiKeys: userId => yamlConfig.read('apiKeys', oldApiKeys).filter(row => row.user_id === userId).sort((a,b) => b.id-a.id),
+  validateApiKey: apiKey => {
+    const key = yamlConfig.read('apiKeys', oldApiKeys).find(row => row.api_key === apiKey && row.is_active === 1);
+    if (!key) return undefined;
+    const user = db.prepare('SELECT id, username FROM users WHERE id = ? AND is_active = 1').get(key.user_id);
+    if (!user) return undefined;
+    yamlConfig.update('apiKeys', rows => rows.map(row => row.id === key.id ? { ...row, last_used: new Date().toISOString() } : row));
+    return { ...user, api_key_id: key.id };
   },
-
-  // Validate API key and get user
-  validateApiKey: (apiKey) => {
-    try {
-      const row = db.prepare(`
-        SELECT u.id, u.username, ak.id as api_key_id
-        FROM api_keys ak
-        JOIN users u ON ak.user_id = u.id
-        WHERE ak.api_key = ? AND ak.is_active = 1 AND u.is_active = 1
-      `).get(apiKey);
-
-      if (row) {
-        // Update last_used timestamp
-        db.prepare('UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = ?').run(row.api_key_id);
-      }
-
-      return row;
-    } catch (err) {
-      throw err;
-    }
+  deleteApiKey: (userId, id) => {
+    let removed = false;
+    yamlConfig.update('apiKeys', rows => rows.filter(row => { const match = row.id === Number(id) && row.user_id === userId; removed ||= match; return !match; }), oldApiKeys);
+    return removed;
   },
-
-  // Delete an API key
-  deleteApiKey: (userId, apiKeyId) => {
-    try {
-      const stmt = db.prepare('DELETE FROM api_keys WHERE id = ? AND user_id = ?');
-      const result = stmt.run(apiKeyId, userId);
-      return result.changes > 0;
-    } catch (err) {
-      throw err;
-    }
+  toggleApiKey: (userId, id, active) => {
+    let changed = false;
+    yamlConfig.update('apiKeys', rows => rows.map(row => { if (row.id !== Number(id) || row.user_id !== userId) return row; changed = true; return { ...row, is_active: active ? 1 : 0 }; }), oldApiKeys);
+    return changed;
   },
-
-  // Toggle API key active status
-  toggleApiKey: (userId, apiKeyId, isActive) => {
-    try {
-      const stmt = db.prepare('UPDATE api_keys SET is_active = ? WHERE id = ? AND user_id = ?');
-      const result = stmt.run(isActive ? 1 : 0, apiKeyId, userId);
-      return result.changes > 0;
-    } catch (err) {
-      throw err;
-    }
-  }
 };
-
-// User credentials database operations (for GitHub tokens, GitLab tokens, etc.)
 const credentialsDb = {
-  // Create a new credential
   createCredential: (userId, credentialName, credentialType, credentialValue, description = null) => {
-    try {
-      const stmt = db.prepare('INSERT INTO user_credentials (user_id, credential_name, credential_type, credential_value, description) VALUES (?, ?, ?, ?, ?)');
-      const result = stmt.run(userId, credentialName, credentialType, credentialValue, description);
-      return { id: result.lastInsertRowid, credentialName, credentialType };
-    } catch (err) {
-      throw err;
-    }
+    const row = yamlConfig.insert('credentials', { user_id: userId, credential_name: credentialName, credential_type: credentialType, credential_value: credentialValue, description }, oldCredentials);
+    return { id: row.id, credentialName, credentialType };
   },
-
-  // Get all credentials for a user, optionally filtered by type
-  getCredentials: (userId, credentialType = null) => {
-    try {
-      let query = 'SELECT id, credential_name, credential_type, description, created_at, is_active FROM user_credentials WHERE user_id = ?';
-      const params = [userId];
-
-      if (credentialType) {
-        query += ' AND credential_type = ?';
-        params.push(credentialType);
-      }
-
-      query += ' ORDER BY created_at DESC';
-
-      const rows = db.prepare(query).all(...params);
-      return rows;
-    } catch (err) {
-      throw err;
-    }
+  getCredentials: (userId, type = null) => yamlConfig.read('credentials', oldCredentials)
+    .filter(row => row.user_id === userId && (!type || row.credential_type === type)).sort((a,b) => b.id-a.id)
+    .map(({ credential_value, ...row }) => row),
+  getActiveCredential: (userId, type) => yamlConfig.read('credentials', oldCredentials)
+    .filter(row => row.user_id === userId && row.credential_type === type && row.is_active === 1).sort((a,b) => b.id-a.id)[0]?.credential_value || null,
+  deleteCredential: (userId, id) => {
+    let removed = false;
+    yamlConfig.update('credentials', rows => rows.filter(row => { const match = row.id === Number(id) && row.user_id === userId; removed ||= match; return !match; }), oldCredentials);
+    return removed;
   },
-
-  // Get active credential value for a user by type (returns most recent active)
-  getActiveCredential: (userId, credentialType) => {
-    try {
-      const row = db.prepare('SELECT credential_value FROM user_credentials WHERE user_id = ? AND credential_type = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1').get(userId, credentialType);
-      return row?.credential_value || null;
-    } catch (err) {
-      throw err;
-    }
+  toggleCredential: (userId, id, active) => {
+    let changed = false;
+    yamlConfig.update('credentials', rows => rows.map(row => { if (row.id !== Number(id) || row.user_id !== userId) return row; changed = true; return { ...row, is_active: active ? 1 : 0 }; }), oldCredentials);
+    return changed;
   },
-
-  // Delete a credential
-  deleteCredential: (userId, credentialId) => {
-    try {
-      const stmt = db.prepare('DELETE FROM user_credentials WHERE id = ? AND user_id = ?');
-      const result = stmt.run(credentialId, userId);
-      return result.changes > 0;
-    } catch (err) {
-      throw err;
-    }
-  },
-
-  // Toggle credential active status
-  toggleCredential: (userId, credentialId, isActive) => {
-    try {
-      const stmt = db.prepare('UPDATE user_credentials SET is_active = ? WHERE id = ? AND user_id = ?');
-      const result = stmt.run(isActive ? 1 : 0, credentialId, userId);
-      return result.changes > 0;
-    } catch (err) {
-      throw err;
-    }
-  }
 };
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
@@ -440,44 +358,17 @@ const normalizeNotificationPreferences = (value) => {
 };
 
 const notificationPreferencesDb = {
-  getPreferences: (userId) => {
-    try {
-      const row = db.prepare('SELECT preferences_json FROM user_notification_preferences WHERE user_id = ?').get(userId);
-      if (!row) {
-        const defaults = normalizeNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
-        db.prepare(
-          'INSERT INTO user_notification_preferences (user_id, preferences_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)'
-        ).run(userId, JSON.stringify(defaults));
-        return defaults;
-      }
-
-      let parsed;
-      try {
-        parsed = JSON.parse(row.preferences_json);
-      } catch {
-        parsed = DEFAULT_NOTIFICATION_PREFERENCES;
-      }
-      return normalizeNotificationPreferences(parsed);
-    } catch (err) {
-      throw err;
-    }
+  getPreferences: userId => {
+    let legacy;
+    try { legacy = JSON.parse(db.prepare('SELECT preferences_json FROM user_notification_preferences WHERE user_id = ?').get(userId)?.preferences_json || 'null'); } catch { /* Invalid legacy data uses defaults. */ }
+    const file = path.join(userConfigurationDirectory(userId), 'notifications.yaml');
+    return readConfiguration(file, { defaults: fs.existsSync(file) ? DEFAULT_NOTIFICATION_PREFERENCES : normalizeNotificationPreferences(legacy), normalize: normalizeNotificationPreferences }).value;
   },
-
   updatePreferences: (userId, preferences) => {
-    try {
-      const normalized = normalizeNotificationPreferences(preferences);
-      db.prepare(
-        `INSERT INTO user_notification_preferences (user_id, preferences_json, updated_at)
-         VALUES (?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(user_id) DO UPDATE SET
-           preferences_json = excluded.preferences_json,
-           updated_at = CURRENT_TIMESTAMP`
-      ).run(userId, JSON.stringify(normalized));
-      return normalized;
-    } catch (err) {
-      throw err;
-    }
-  }
+    const value = normalizeNotificationPreferences(preferences);
+    writeConfiguration(path.join(userConfigurationDirectory(userId), 'notifications.yaml'), value);
+    return value;
+  },
 };
 
 const pushSubscriptionsDb = {
@@ -578,30 +469,11 @@ function applyCustomSessionNames(sessions, provider) {
 }
 
 // App config database operations
+const oldAppConfig = () => Object.fromEntries(yamlConfig.legacy('SELECT key, value FROM app_config').map(row => [row.key, row.value]));
 const appConfigDb = {
-  get: (key) => {
-    try {
-      const row = db.prepare('SELECT value FROM app_config WHERE key = ?').get(key);
-      return row?.value || null;
-    } catch (err) {
-      return null;
-    }
-  },
-
-  set: (key, value) => {
-    db.prepare(
-      'INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
-    ).run(key, value);
-  },
-
-  getOrCreateJwtSecret: () => {
-    let secret = appConfigDb.get('jwt_secret');
-    if (!secret) {
-      secret = crypto.randomBytes(64).toString('hex');
-      appConfigDb.set('jwt_secret', secret);
-    }
-    return secret;
-  }
+  get: key => yamlConfig.read('app', oldAppConfig)[key] || null,
+  set: (key, value) => { yamlConfig.update('app', current => ({ ...current, [key]: value }), oldAppConfig); },
+  getOrCreateJwtSecret: () => yamlConfig.update('app', current => ({ ...current, jwt_secret: current.jwt_secret || crypto.randomBytes(64).toString('hex') }), oldAppConfig).jwt_secret,
 };
 
 // Backward compatibility - keep old names pointing to new system
@@ -625,6 +497,7 @@ const githubTokensDb = {
 
 export {
   db,
+  yamlConfig,
   initializeDatabase,
   userDb,
   apiKeysDb,
