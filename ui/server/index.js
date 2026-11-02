@@ -119,7 +119,6 @@ import modelsRoutes, { createSessionModelHandlers } from './routes/models.js';
 import settingsRoutes from './routes/settings.js';
 import { createUsageRouter } from './routes/usage.js';
 import configRoutes from './routes/config.js';
-import preferencesRoutes from './routes/preferences.js';
 import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
 import {
@@ -637,7 +636,6 @@ app.use('/api/usage', authenticateToken, createUsageRouter());
 
 // PilotDeck unified YAML config routes (protected)
 app.use('/api/config', authenticateToken, configRoutes);
-app.use('/api/preferences', authenticateToken, preferencesRoutes);
 app.get('/api/diagnostics/location', authenticateToken, (_req, res) => res.json({ logPath: webRuntimeLogging.logPath }));
 app.post('/api/diagnostics/ui', authenticateToken, (req, res) => {
     const { diagnosticId, code, event, errorName } = req.body || {};
