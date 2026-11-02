@@ -4,6 +4,8 @@ const { classifyRuntimeError, registerDiagnosticSecrets, redactDiagnostic } = re
 test('classifies evidence and OS errors with a stable unknown fallback', () => {
   for (const [error, evidence, status, expected] of [
     [{ code: 'EADDRINUSE' }, '', undefined, 'PD_NETWORK_PORT_IN_USE'],
+    [new Error('fetch failed', { cause: { code: 'ENOTFOUND' } }), '', undefined, 'PD_NETWORK_UNAVAILABLE'],
+    [{ name: 'PilotConfigError', code: 'CONFIG_AGENT_MODEL_INVALID' }, '', undefined, 'PD_CONFIG_INVALID'],
     [{ code: 'ENOENT' }, '', undefined, 'PD_RESOURCE_NOT_FOUND'],
     [{ code: 'EACCES' }, '', undefined, 'PD_FILESYSTEM_PERMISSION'],
     [{ code: 'ENOSPC' }, '', undefined, 'PD_FILESYSTEM_FULL'],
@@ -19,4 +21,5 @@ test('redacts registered secrets, authorization and key-shaped fields without lo
   registerDiagnosticSecrets({ apiKey: 'multiline\nvalue-123', privateKey: 'opaque-secret' });
   const safe = redactDiagnostic('multiline\nvalue-123 opaque-secret Authorization: Bearer abcdef token=another-secret https://user:password@example.test');
   for (const secret of ['value-123', 'opaque-secret', 'abcdef', 'another-secret', 'user:password']) assert.ok(!safe.includes(secret));
+  assert.ok(!redactDiagnostic('https://example.test/api?key=api-query-secret&token=another-query-secret').includes('query-secret'));
 });

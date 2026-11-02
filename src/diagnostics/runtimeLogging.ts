@@ -27,7 +27,14 @@ export function installRuntimeLogging(service: string, redactOutput = true): Run
   }
   const report = (error: unknown, phase = 'startup') => {
     const id = randomUUID(), code = classifyRuntimeError(error);
-    const detail = redactDiagnostic(error instanceof Error ? error.stack || error.message : error);
+    const chain: string[] = [], seen = new Set<unknown>();
+    let current = error;
+    while (current && !seen.has(current) && chain.length < 8) {
+      seen.add(current);
+      chain.push(current instanceof Error ? `${current.stack || current.message}${'code' in current ? `\nOriginal code: ${String(current.code)}` : ''}` : String(current));
+      current = current instanceof Error ? current.cause : undefined;
+    }
+    const detail = redactDiagnostic(chain.length ? chain.join('\nCaused by: ') : error);
     const text = `[${code}] service=${service} phase=${phase} diagnostic=${id}\n${detail}\nRuntime log: ${logPath}${!writable && !captured ? ' (file unavailable; see process stderr)' : ''}`;
     console.error(text); return text;
   };

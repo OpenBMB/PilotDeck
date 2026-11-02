@@ -10,12 +10,18 @@ function redactDiagnostic(value) {
   let text = String(value);
   for (const secret of secrets) if (text.includes(secret)) text = text.split(secret).join('[redacted]');
   return text.replace(/((?:Bearer|Basic)\s+)[\w.+/~=-]+/gi, '$1[redacted]')
+    .replace(/([?&](?:api[_-]?key|key|token|access_token|secret)=)[^&#\s]+/gi, '$1[redacted]')
     .replace(/((?:api[_-]?key|access[_-]?token|auth[_-]?token|token|password|secret|private[_-]?key)["']?\s*[:=]\s*["']?)[^\s,"'\r\n]+/gi, '$1[redacted]')
     .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[redacted]@');
 }
-function classifyRuntimeError(error, evidence = '', status) {
+function classifyRuntimeError(error, evidence = '', status, depth = 0) {
   const code = typeof error?.code === 'string' ? error.code : '';
   if (/^PD_[A-Z0-9_]+$/.test(code)) return code;
+  if (error?.name === 'PilotConfigError' || error?.name === 'ModelConfigError') return 'PD_CONFIG_INVALID';
+  if (depth < 4 && error?.cause && error.cause !== error) {
+    const cause = classifyRuntimeError(error.cause, evidence, status, depth + 1);
+    if (cause !== 'PD_UNEXPECTED_ERROR') return cause;
+  }
   const text = `${error?.message || error || ''}\n${evidence}`;
   if (/FATAL ERROR:[^\r\n]*(?:heap out of memory|process out of memory)/i.test(text)) return 'PD_RUNTIME_OUT_OF_MEMORY';
   if (/Assertion failed:|Check failed:|# Fatal error in /i.test(text)) return 'PD_RUNTIME_NATIVE_FAILURE';

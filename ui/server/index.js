@@ -1,7 +1,7 @@
 #!/usr/bin/env node
+import { webRuntimeLogging } from './runtimeBootstrap.js';
 // Configure paths before evaluating services with persistent storage.
 import { assertRequiredPilotDeckEnv } from './load-env.js';
-import { webRuntimeLogging } from './runtimeBootstrap.js';
 import { createErrorDiagnostics, handleUnexpectedError } from './middleware/errorDiagnostics.js';
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from './services/workspaceFileUpload.js';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
