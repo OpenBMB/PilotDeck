@@ -103,12 +103,12 @@ describe('reported project root injection', () => {
     it.each([false, true])('rejects canonical home overlaps with a symlinked PILOT_HOME=%s', async (aliasHome) => {
         if (aliasHome) {
             const homeAlias = path.join(root, 'configured-home-alias');
-            await fs.symlink(home, homeAlias, 'dir');
+            await fs.symlink(home, homeAlias, process.platform === 'win32' ? 'junction' : 'dir');
             env.PILOT_HOME = homeAlias;
         }
         for (const [id, location] of [['parent', root], ['home', home], ['child', path.join(home, 'projects')]]) {
             const alias = path.join(root, `${id}-alias`);
-            await fs.symlink(location, alias, 'dir');
+            await fs.symlink(location, alias, process.platform === 'win32' ? 'junction' : 'dir');
             await fs.mkdir(path.join(home, 'projects', id));
             await fs.writeFile(path.join(home, 'projects', id, '.cwd'), aliasHome ? location : alias);
             for (const args of [
@@ -134,7 +134,7 @@ describe('reported project root injection', () => {
 
     it('allows registered symlink aliases of ordinary workspaces', async () => {
         const alias = path.join(root, 'workspace-alias');
-        await fs.symlink(workspace, alias, 'dir');
+        await fs.symlink(workspace, alias, process.platform === 'win32' ? 'junction' : 'dir');
         await fs.writeFile(path.join(home, 'projects/demo/.cwd'), alias);
         expect((await (await request('demo', '/file?filePath=normal.txt')).json()).content).toBe('normal');
         expect((await request('demo', '/file', 'PUT', { filePath: 'normal.txt', content: 'edited' })).status).toBe(200);
@@ -175,9 +175,10 @@ describe('reported project root injection', () => {
         expect(await fs.readFile(path.join(workspace, 'large.csv'), 'utf8')).toBe(updated);
     });
 
-    it('saves through a file symlink without replacing it', async () => {
+    it('saves through a file symlink without replacing it', async (context) => {
         const alias = path.join(workspace, 'alias.txt');
-        await fs.symlink(path.join(workspace, 'normal.txt'), alias, 'file');
+        try { await fs.symlink(path.join(workspace, 'normal.txt'), alias, 'file'); }
+        catch (error) { if (error.code === 'EPERM') { context.skip('File symlinks require Windows Developer Mode or a privileged token.'); return; } throw error; }
         const loaded = await (await request('demo', '/file?filePath=alias.txt')).json();
         expect((await request('demo', '/file', 'PUT', { filePath: 'alias.txt', content: 'linked edit', expectedHash: loaded.hash })).status).toBe(200);
         expect((await fs.lstat(alias)).isSymbolicLink()).toBe(true);

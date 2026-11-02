@@ -11,6 +11,7 @@ import { ImElicitationHelper } from "../protocol/ImElicitationHelper.js";
 import { ImPermissionHelper } from "../protocol/ImPermissionHelper.js";
 import { executeChannelCommand } from "../protocol/ChannelCommandRegistry.js";
 import WebSocket from "ws";
+import { resolveConfigHome } from '@pilotdeck/config';
 
 const DEFAULT_WS_URL = "wss://openws.work.weixin.qq.com";
 const APP_CMD_SUBSCRIBE = "aibot_subscribe";
@@ -1588,13 +1589,19 @@ function mediaTypeForDeliverableExt(ext: string): WeComMediaType {
   return "file";
 }
 
-function isDeniedDeliverablePath(path: string): boolean {
+export function isDeniedDeliverablePath(path: string): boolean {
   const normalized = resolve(path);
   const home = homedir();
-  const pilotHome = process.env.PILOT_HOME || join(home, ".pilotdeck");
+  const pilotHome = resolveConfigHome();
   if (pathUnder(normalized, join(home, ".ssh"))) return true;
   if (pathUnder(normalized, join(pilotHome, "server-token"))) return true;
   if (pathUnder(normalized, join(pilotHome, "pilotdeck.yaml"))) return true;
+  for (const directory of ["credentials", "backups", "computer-use", "users"]) {
+    if (pathUnder(normalized, join(pilotHome, directory))) return true;
+  }
+  for (const file of ["mcp.yaml", "mcp.json", "weixin-credentials.json", "permissions.yaml"]) {
+    if (pathUnder(normalized, join(pilotHome, file))) return true;
+  }
 
   const lowerBase = basename(normalized).toLowerCase();
   if (DENIED_BASENAMES.has(lowerBase)) return true;
