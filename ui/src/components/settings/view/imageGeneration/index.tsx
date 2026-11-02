@@ -1,62 +1,131 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Image, KeyRound, Link, Pencil, Plug, Save, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, KeyRound, Link, Plug, Save, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { usePilotDeckConfig } from '../../../../hooks/usePilotDeckConfig';
+import { usePilotDeckConfig, type ConfigSaveResult } from '../../../../hooks/usePilotDeckConfig';
 import { authenticatedFetch } from '../../../../utils/api';
 import { ConfigSaveError, SettingsToggle } from '../../shared/view';
 import { GeneralSettingsIcon } from '../../shared/view/GeneralSettingsPrimitives';
 import { configToYamlString, safeParseYaml } from '../modelPool/utils/configYaml';
 import type { PilotDeckConfig } from '../modelPool/types';
-import { DEFAULT_IMAGE_BASE_URL } from '../../../../../../src/pilot/config/imageGenerationConfig.js';
+import { DEFAULT_IMAGE_BASE_URL, imageApiBaseUrl, type ImageGenerationConfig } from '../../../../../../src/pilot/config/imageGenerationConfig.js';
 
-export function ImageGenerationForm({ config, onChange }: { config: PilotDeckConfig; onChange: (config: PilotDeckConfig) => void }) {
+type Field = 'apiKey' | 'baseUrl' | 'model';
+type Draft = Record<Field, string>;
+const fields: Field[] = ['apiKey', 'baseUrl', 'model'];
+const draftOf = (config: ImageGenerationConfig): Draft => ({
+  apiKey: '', baseUrl: config.baseUrl || DEFAULT_IMAGE_BASE_URL, model: config.model || '',
+});
+function address(value?: string) {
+  try { return imageApiBaseUrl(value); } catch { return value?.trim(); }
+}
+
+export function ImageGenerationForm({ config, onChange }: {
+  config: PilotDeckConfig;
+  onChange: (config: PilotDeckConfig) => void | Promise<ConfigSaveResult>;
+}) {
   const { t } = useTranslation('settings');
   const current = config.tools?.imageGeneration ?? {};
-  const [draft, setDraft] = useState({ ...current, baseUrl: current.baseUrl || DEFAULT_IMAGE_BASE_URL });
-  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => draftOf(current));
+  const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
+  const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState('');
-  useEffect(() => { if (!editing) setDraft({ ...current, baseUrl: current.baseUrl || DEFAULT_IMAGE_BASE_URL }); }, [current.apiKey, current.baseUrl, current.model, current.enabled, editing]);
-  const commit = (value: typeof current) => onChange({ ...config, tools: { ...config.tools, imageGeneration: value } });
-  const ready = Boolean(current.apiKey?.trim() && current.model?.trim());
+  const probe = useRef<AbortController | null>(null);
+  const resetTest = () => {
+    probe.current?.abort(); probe.current = null;
+    setChecking(false); setStatus('');
+  };
+  useEffect(() => {
+    setDraft(draftOf(current)); setErrors({}); resetTest();
+  }, [current.apiKey, current.baseUrl, current.model]);
+  useEffect(() => () => { probe.current?.abort(); }, []);
+
+  const sameAddress = address(draft.baseUrl) === address(current.baseUrl);
+  const dirty = Boolean(draft.apiKey.trim()) || !sameAddress || draft.model.trim() !== (current.model || '').trim();
+  const validate = (credentialsRequired: boolean): ImageGenerationConfig | null => {
+    const nextErrors: Partial<Record<Field, string>> = {};
+    let baseUrl = draft.baseUrl.trim() || DEFAULT_IMAGE_BASE_URL;
+    try { baseUrl = imageApiBaseUrl(baseUrl); } catch { nextErrors.baseUrl = 'imageGeneration.invalidAddress'; }
+    const apiKey = draft.apiKey.trim() || (sameAddress ? current.apiKey : undefined);
+    const model = draft.model.trim();
+    if (credentialsRequired) {
+      if (!apiKey || (!sameAddress && apiKey === '********')) nextErrors.apiKey = sameAddress ? 'imageGeneration.keyRequired' : 'imageGeneration.newKeyRequired';
+      if (!model) nextErrors.model = 'imageGeneration.modelRequired';
+    }
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) {
+      document.getElementById('image-' + fields.find(field => nextErrors[field]))?.focus();
+      return null;
+    }
+    return { ...current, apiKey, baseUrl, model };
+  };
+  const commit = async (value: ImageGenerationConfig) => {
+    resetTest(); setSaving(true);
+    try { await onChange({ ...config, tools: { ...config.tools, imageGeneration: value } }); }
+    catch { setStatus(t('imageGeneration.saveFailed')); }
+    finally { setSaving(false); }
+  };
+  const save = () => {
+    const value = validate(current.enabled === true);
+    if (value) void commit(value);
+  };
+  const toggle = (enabled: boolean) => {
+    // Turning off must also work with incomplete, unsaved form fields.
+    const value = enabled ? validate(true) : current;
+    if (value) void commit({ ...value, enabled });
+  };
   const check = async () => {
-    setChecking(true); setStatus('');
+    resetTest();
+    const value = validate(true);
+    if (!value) return;
+    const controller = new AbortController();
+    probe.current = controller;
+    setChecking(true);
     try {
-      const response = await authenticatedFetch('/api/image-generation/test', { method: 'POST', body: JSON.stringify(current) });
+      const response = await authenticatedFetch('/api/image-generation/test', {
+        method: 'POST', body: JSON.stringify(value), signal: controller.signal, suppressServerErrorToast: true,
+      });
       const body = await response.json();
-      setStatus(body.ok ? t('imageGeneration.connected') : t('imageGeneration.connectionFailed'));
-    } catch { setStatus(t('imageGeneration.connectionFailed')); }
-    finally { setChecking(false); }
+      if (probe.current !== controller) return;
+      setStatus(response.ok && body.ok
+        ? t('imageGeneration.connected', { seconds: (body.latencyMs / 1000).toFixed(1) })
+        : t('imageGeneration.connectionFailed', { error: body.error || t('imageGeneration.unknownError') }));
+    } catch (error) {
+      if (probe.current === controller) setStatus(t('imageGeneration.connectionFailed', {
+        error: error instanceof Error ? error.message : t('imageGeneration.unknownError'),
+      }));
+    } finally {
+      if (probe.current === controller) { probe.current = null; setChecking(false); }
+    }
   };
   return <>
     <section className="route-card route-enable-card search-enable-card">
-      <div className="route-card-heading"><span className="route-heading-icon"><GeneralSettingsIcon icon={Image} /></span><div><h2>{t('imageGeneration.enabled')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('imageGeneration.defaultOff')}</p></div></div>
-      <SettingsToggle checked={current.enabled === true} ariaLabel={t('imageGeneration.enabled')} disabled={!ready && current.enabled !== true}
-        onChange={value => { commit({ ...current, enabled: value }); setStatus(''); }} suppressNextSaveToast />
+      <div className="route-card-heading"><span className="route-heading-icon"><GeneralSettingsIcon icon={Image} /></span><h2>{t('imageGeneration.enabled')}</h2></div>
+      <SettingsToggle checked={current.enabled === true} ariaLabel={t('imageGeneration.enabled')} disabled={saving}
+        onChange={toggle} suppressNextSaveToast />
     </section>
     <section className="search-card" aria-label={t('settingsPage.menu.imageGeneration')}>
       <div className="search-config-body">
-        {(['apiKey', 'baseUrl', 'model'] as const).map(field => <div className="search-setting-row" key={field}>
-          <div className="search-setting-copy"><label htmlFor={`image-${field}`}>{t(`imageGeneration.${field}`)}</label><p>{t(`imageGeneration.${field}Hint`)}</p></div>
+        {fields.map(field => <div className="search-setting-row" key={field}>
+          <div className="search-setting-copy"><label htmlFor={'image-' + field}>{t('imageGeneration.' + field)}</label><p>{t('imageGeneration.' + field + 'Hint')}</p></div>
           <div className="search-control-area"><div className="search-input-wrap">
             <GeneralSettingsIcon icon={field === 'apiKey' ? KeyRound : field === 'baseUrl' ? Link : Image} />
-            <input id={`image-${field}`} type={field === 'apiKey' ? 'password' : 'text'} autoComplete="off" spellCheck={false} disabled={!editing}
-              value={draft[field] ?? ''} placeholder={field === 'baseUrl' ? DEFAULT_IMAGE_BASE_URL : ''}
-              onChange={event => { setDraft({ ...draft, [field]: event.target.value }); setStatus(''); }} />
-          </div></div>
+            <input id={'image-' + field} type={field === 'apiKey' ? 'password' : 'text'} autoComplete="off" spellCheck={false} disabled={saving}
+              aria-invalid={Boolean(errors[field])} aria-describedby={errors[field] ? 'image-' + field + '-error' : undefined}
+              value={draft[field]} placeholder={field === 'apiKey' && current.apiKey && sameAddress ? '********' : field === 'baseUrl' ? DEFAULT_IMAGE_BASE_URL : ''}
+              onChange={event => { setDraft({ ...draft, [field]: event.target.value }); setErrors(previous => ({ ...previous, [field]: undefined })); resetTest(); }}
+              onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && dirty) save(); }} />
+          </div>{errors[field] && <p id={'image-' + field + '-error'} role="alert" className="mt-1 text-sm text-destructive">{t(errors[field]!)}</p>}</div>
         </div>)}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5">
         <span role="status" className="text-sm text-muted-foreground">{status}</span>
         <div className="flex gap-2">
-          {editing ? <>
-            <button className="button secondary compact" type="button" onClick={() => setEditing(false)}><GeneralSettingsIcon icon={X} />{t('settingsPage.actions.cancel')}</button>
-            <button className="button primary compact" type="button" disabled={current.enabled === true && ((!draft.apiKey?.trim() && (!current.apiKey || draft.baseUrl !== (current.baseUrl || DEFAULT_IMAGE_BASE_URL))) || !draft.model?.trim())}
-              onClick={() => { commit({ ...draft, apiKey: draft.apiKey?.trim() || ((draft.baseUrl || DEFAULT_IMAGE_BASE_URL) === (current.baseUrl || DEFAULT_IMAGE_BASE_URL) ? current.apiKey : undefined), model: draft.model?.trim(), baseUrl: draft.baseUrl?.trim() || DEFAULT_IMAGE_BASE_URL, enabled: current.enabled === true }); setEditing(false); }}><GeneralSettingsIcon icon={Save} />{t('settingsPage.actions.save')}</button>
-          </> : <>
-            <button className="button secondary compact" type="button" onClick={() => { setDraft({ ...current, baseUrl: current.baseUrl || DEFAULT_IMAGE_BASE_URL, apiKey: current.apiKey === '********' ? '' : current.apiKey }); setEditing(true); }}><GeneralSettingsIcon icon={Pencil} />{t('settingsPage.actions.edit')}</button>
-            <button className="button secondary compact" type="button" disabled={checking || !current.apiKey} onClick={() => void check()}><GeneralSettingsIcon icon={Plug} />{t(checking ? 'imageGeneration.checking' : 'imageGeneration.check')}</button>
+          {dirty && <>
+            <button className="button secondary compact" type="button" disabled={saving} onClick={() => { setDraft(draftOf(current)); setErrors({}); resetTest(); }}><GeneralSettingsIcon icon={X} />{t('settingsPage.actions.cancel')}</button>
+            <button className="button primary compact" type="button" disabled={saving} onClick={save}><GeneralSettingsIcon icon={Save} />{t('settingsPage.actions.save')}</button>
           </>}
+          <button className="button secondary compact" type="button" disabled={checking || saving} onClick={() => void check()}><GeneralSettingsIcon icon={Plug} />{t(checking ? 'imageGeneration.checking' : 'imageGeneration.check')}</button>
         </div>
       </div>
     </section>
@@ -69,5 +138,5 @@ export default function ImageGenerationSettings() {
   const { t } = useTranslation('settings');
   if (loading) return <div role="status">{t('pilotDeckConfig.loading')}</div>;
   if (!config) return <div>{t('settingsPage.invalidYaml.agentSearch')}</div>;
-  return <div className="search-page-content"><ConfigSaveError error={error} /><ImageGenerationForm config={config} onChange={next => void commitRaw(configToYamlString(next))} /></div>;
+  return <div className="search-page-content"><ConfigSaveError error={error} /><ImageGenerationForm config={config} onChange={next => commitRaw(configToYamlString(next))} /></div>;
 }

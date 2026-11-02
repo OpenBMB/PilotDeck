@@ -1,17 +1,22 @@
 {
   "imageGeneration": {
   "enabled": "Enable image generation",
-  "defaultOff": "Off by default. Drawing tools are hidden from the model when disabled. Save your configuration first.",
   "apiKey": "API key",
-  "apiKeyHint": "Stored locally and used only by the backend for authentication.",
+  "apiKeyHint": "Stored locally. Leave blank to keep the saved key.",
   "baseUrl": "API address",
   "baseUrlHint": "An OpenAI Images API base address, such as https://api.openai.com/v1.",
   "model": "Model",
   "modelHint": "The image model offered by your service, configured separately from chat.",
-  "check": "Check connection",
-  "checking": "Checking…",
-  "connected": "Connected. No image was generated; image model capability has not been verified.",
-  "connectionFailed": "Connection failed. Check the address, key, and service availability."
+  "check": "Test connection",
+  "checking": "Generating test image…",
+  "connected": "Test succeeded. A valid image was generated in {{seconds}} seconds.",
+  "connectionFailed": "Test failed: {{error}}",
+  "unknownError": "Check the address, key, and service availability.",
+  "invalidAddress": "Enter a valid HTTP or HTTPS API address.",
+  "keyRequired": "Enter an API key.",
+  "newKeyRequired": "Enter the API key again after changing the API address.",
+  "modelRequired": "Enter an image model name.",
+  "saveFailed": "Could not save. Please try again."
 },
   "systemNotifications": {
     "title": "Notifications",

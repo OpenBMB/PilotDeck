@@ -126,15 +126,17 @@ test('image tools appear only after opt-in and disappear from the next request i
     },
   });
   t.after(async () => { local.dispose(); await rm(home, { recursive: true, force: true }); });
-  for (const enabled of [false, true, false]) {
+  for (const [round, enabled] of [false, true, false, true].entries()) {
     await writeFile(configPath, BASE + `\ntools: { imageGeneration: { enabled: ${enabled}, apiKey: image-key, model: image-model } }\n`);
-    for await (const event of local.gateway.submitTurn({ projectKey: home, sessionKey: 'web:image-toggle', channelKey: 'web', message: 'hello' })) {
-      assert.notEqual(event.type, 'error');
-    }
-    const request = requests.at(-1)!;
-    for (const name of ['generate_image', 'edit_image', 'save_generated_image']) {
-      assert.equal(request.tools?.some(tool => tool.name === name), enabled, name);
-      if (!enabled) assert.ok(!request.systemPrompt?.includes(name));
+    for (const sessionKey of ['web:image-toggle', 'web:image-toggle-fresh-' + round]) {
+      for await (const event of local.gateway.submitTurn({ projectKey: home, sessionKey, channelKey: 'web', message: 'hello' })) {
+        assert.notEqual(event.type, 'error');
+      }
+      const request = requests.at(-1)!;
+      for (const name of ['generate_image', 'edit_image', 'save_generated_image']) {
+        assert.equal(request.tools?.some(tool => tool.name === name), enabled, sessionKey + ': ' + name);
+        if (!enabled) assert.ok(!request.systemPrompt?.includes(name));
+      }
     }
   }
 });
