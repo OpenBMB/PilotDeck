@@ -1,3 +1,4 @@
+import { FormData } from "undici";
 import { networkFetch } from "../../../network/fetch.js";
 import { resolveApiKey } from "../../../model/config/resolveCredentials.js";
 import { imageApiBaseUrl, type ImageGenerationConfig } from "../../../pilot/config/imageGenerationConfig.js";
@@ -40,6 +41,8 @@ export async function requestOpenAIImage(config: ImageGenerationConfig, input: I
     ...(input.background ? { background: input.background } : {}) };
   let body: string | FormData;
   if (input.references?.length) {
+    // networkFetch uses undici.fetch, which requires its own FormData implementation.
+    // Node's built-in FormData can otherwise be serialized as "[object FormData]".
     const form = new FormData();
     for (const [name, value] of Object.entries(fields)) form.append(name, String(value));
     for (const [index, image] of input.references.entries()) {
@@ -49,7 +52,8 @@ export async function requestOpenAIImage(config: ImageGenerationConfig, input: I
   } else { headers["content-type"] = "application/json"; body = JSON.stringify(fields); }
   try {
     const response = await networkFetch(`${base}/images/${input.references?.length ? "edits" : "generations"}`, {
-      method: "POST", headers, body, redirect: "error",
+      // DOM BodyInit does not include undici's separate FormData type.
+      method: "POST", headers, body: body as BodyInit, redirect: "error",
     }, { signal, fetchImpl: options.fetchImpl, retry: { maxRetries: 0 } });
     const text = (await boundedBytes(response, response.ok ? MAX_IMAGE_BYTES * 1.4 : 8192, signal)).toString("utf8");
     if (!response.ok) {

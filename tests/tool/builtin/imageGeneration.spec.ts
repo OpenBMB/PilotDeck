@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { FormData } from "undici";
 import sharp from "sharp";
 import { ImageStore, type GeneratedImage } from "../../../src/tool/builtin/images/ImageStore.js";
 import { createImageGenerationTools } from "../../../src/tool/builtin/imageGeneration.js";
@@ -18,6 +21,53 @@ function context(cwd: string, home: string): PilotDeckToolRuntimeContext {
     permissionContext: { mode: "default", cwd, additionalWorkingDirectories: [], rules: { allow: [], deny: [], ask: [] }, canPrompt: true, bypassAvailable: true } };
 }
 const config = { enabled: true, apiKey: "secret-test-key", baseUrl: "https://images.example/v1", model: "image-model" };
+
+test("image requests transmit JSON and multipart data through the production HTTP transport", async () => {
+  const received: Array<{ path?: string; contentType: string; body: Buffer }> = [];
+  const result = Buffer.from("image-response");
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    received.push({ path: request.url, contentType: request.headers["content-type"] ?? "", body: Buffer.concat(chunks) });
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ data: [{ b64_json: result.toString("base64") }] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+  const reference = { bytes: Buffer.from([0, 255, 10, 13, 128]), mimeType: "image/jpeg" };
+  try {
+    assert.deepEqual(await requestOpenAIImage({ ...config, baseUrl }, { prompt: "画一只猫" }), result);
+    assert.equal(received[0]?.path, "/v1/images/generations");
+    assert.equal(received[0]?.contentType, "application/json");
+    assert.deepEqual(JSON.parse(received[0]!.body.toString()), { model: config.model, prompt: "画一只猫", n: 1 });
+
+    for (const references of [[reference], [reference, { bytes: Buffer.from("second image"), mimeType: "image/png" }]]) {
+      assert.deepEqual(await requestOpenAIImage({ ...config, baseUrl }, {
+        prompt: "把背景改成蓝色", references, size: "1536x1024", quality: "high", background: "opaque",
+      }), result);
+      const request = received.at(-1)!;
+      assert.equal(request.path, "/v1/images/edits");
+      assert.match(request.contentType, /^multipart\/form-data; boundary=/);
+      const form = await new Request(baseUrl, { method: "POST", headers: { "content-type": request.contentType }, body: new Uint8Array(request.body) }).formData();
+      assert.equal(form.get("model"), config.model);
+      assert.equal(form.get("prompt"), "把背景改成蓝色");
+      assert.equal(form.get("n"), "1");
+      assert.equal(form.get("size"), "1536x1024");
+      assert.equal(form.get("quality"), "high");
+      assert.equal(form.get("background"), "opaque");
+      const files = form.getAll(references.length === 1 ? "image" : "image[]") as File[];
+      assert.equal(files.length, references.length);
+      for (const [index, file] of files.entries()) {
+        assert.equal(file.type, references[index]!.mimeType);
+        assert.equal(file.name, `reference-${index}.${index === 0 ? "jpg" : "png"}`);
+        assert.deepEqual(Buffer.from(await file.arrayBuffer()), references[index]!.bytes);
+      }
+    }
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
 
 test("image generation requires an explicit opt-in, including already-created tool closures", async () => {
   const diagnostics: PilotConfigDiagnostic[] = [];
