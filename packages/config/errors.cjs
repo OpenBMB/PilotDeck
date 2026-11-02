@@ -23,7 +23,14 @@ function classifyRuntimeError(error, evidence = '', status, depth = 0) {
     if (cause !== 'PD_UNEXPECTED_ERROR') return cause;
   }
   const text = `${error?.message || error || ''}\n${evidence}`;
-  if (/FATAL ERROR:[^\r\n]*(?:heap out of memory|process out of memory)/i.test(text)) return 'PD_RUNTIME_OUT_OF_MEMORY';
+  const lines = text.toLowerCase().split(/[\r\n\u2028\u2029]/);
+  // Scan each line once. Repeated markers must not restart an unbounded regexp
+  // search across the same suffix of a log or remote error response.
+  if (lines.some(line => {
+    const start = line.indexOf('fatal error:');
+    return start !== -1 && (line.indexOf('heap out of memory', start + 12) !== -1
+      || line.indexOf('process out of memory', start + 12) !== -1);
+  })) return 'PD_RUNTIME_OUT_OF_MEMORY';
   if (/Assertion failed:|Check failed:|# Fatal error in /i.test(text)) return 'PD_RUNTIME_NATIVE_FAILURE';
   if (code === 'EADDRINUSE' || /EADDRINUSE/.test(text)) return 'PD_NETWORK_PORT_IN_USE';
   if (['EACCES', 'EPERM'].includes(code) || /\b(EACCES|EPERM)\b/.test(text)) return 'PD_FILESYSTEM_PERMISSION';
@@ -39,7 +46,10 @@ function classifyRuntimeError(error, evidence = '', status, depth = 0) {
   if (status === 429) return 'PD_RATE_LIMITED';
   if (status === 502 || status === 503 || status === 504) return 'PD_SERVICE_UNAVAILABLE';
   if (status >= 400 && status < 500) return 'PD_REQUEST_INVALID';
-  if (/exited|process.*failed|spawn/i.test(text)) return 'PD_RUNTIME_PROCESS_FAILED';
+  if (/exited|spawn/i.test(text) || lines.some(line => {
+    const start = line.indexOf('process');
+    return start !== -1 && line.indexOf('failed', start + 7) !== -1;
+  })) return 'PD_RUNTIME_PROCESS_FAILED';
   return 'PD_UNEXPECTED_ERROR';
 }
 module.exports = { registerDiagnosticSecrets, redactDiagnostic, classifyRuntimeError };
