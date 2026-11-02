@@ -98,6 +98,18 @@ describe('first-run background config writes', () => {
 });
 
 describe('readPilotDeckConfigFile fallback behavior', () => {
+    it('recovers startup fields and keeps the original file in a backup', () => {
+        const raw = 'schemaVersion: 1\nagent: bad\nmodel: false\nwebui:\n  runtime:\n    serverPort: -9\n';
+        const file = useTempConfig(raw);
+        const record = readPilotDeckConfigFile({ recover: true });
+        expect(record.parseError).toBeNull();
+        expect(record.config.agent.model).toBe('');
+        expect(record.config.webui.runtime.serverPort).toBe(3001);
+        expect(record.diagnostics.length).toBeGreaterThan(0);
+        const backups = join(dirname(file), 'backups', 'configuration');
+        expect(readdirSync(backups).some(name => readFileSync(join(backups, name), 'utf8') === raw)).toBe(true);
+        expect(readPilotDeckConfigFile().parseError).toBeNull();
+    });
     it('uses built-in Office preview by default', () => {
         expect(buildDefaultPilotDeckConfig().webui.officePreview).toEqual({
             service: 'builtin',
@@ -274,7 +286,7 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         expect(onWriteCommitted).not.toHaveBeenCalled();
     });
 
-    it('atomically updates a symlink target without replacing the symlink', async () => {
+    it('atomically updates a symlink target without replacing the symlink', async ({ skip }) => {
         const dir = mkdtempSync(join(tmpdir(), 'pilotdeck-config-symlink-test-'));
         tempDirs.push(dir);
         const managedDir = join(dir, 'managed');
@@ -282,7 +294,8 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         const targetPath = join(managedDir, 'pilotdeck.yaml');
         const configPath = join(dir, 'pilotdeck.yaml');
         writeFileSync(targetPath, 'schemaVersion: 1\ncustomEnv:\n  VALUE: first\n', 'utf8');
-        symlinkSync(targetPath, configPath);
+        try { symlinkSync(targetPath, configPath); }
+        catch (error) { if (error.code === 'EPERM') return skip('This Windows account cannot create file symlinks.'); throw error; }
         process.env.PILOTDECK_CONFIG_PATH = configPath;
 
         const loaded = readPilotDeckConfigFile();

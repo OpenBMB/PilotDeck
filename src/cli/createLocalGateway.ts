@@ -71,7 +71,7 @@ import { UsageCounter, withUsageCounter } from "../model/usage/UsageCounter.js";
 import { createDefaultPermissionContext, type PermissionRule } from "../permission/index.js";
 import {
   ensureWritableDirectory,
-  loadPilotConfig,
+  loadPilotConfigRecovering as loadPilotConfig,
   resolvePilotHome,
   resolveProjectStorageId,
   resolveRuntimeArtifactFallbackDir,

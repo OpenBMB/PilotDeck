@@ -14,6 +14,7 @@ export interface ReadOptions<T> {
   create?: boolean;
 }
 export function resolveConfigHome(env?: Record<string, string | undefined>): string;
+export function defaultPilotConfiguration(env?: Record<string, string | undefined>): Record<string, unknown>;
 export function readConfiguration<T = Record<string, unknown>>(file: string, options?: ReadOptions<T>): {
   value: T; diagnostics: ConfigurationDiagnostic[]; migrated: boolean; source: string | null; path: string;
 };

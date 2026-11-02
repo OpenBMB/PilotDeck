@@ -15,7 +15,7 @@ import {
   type SkillMigrationItem,
   type SkillMigrationSourceKind,
 } from "../extension/skills/index.js";
-import { loadPilotConfig, resolvePilotHome } from "../pilot/index.js";
+import { loadPilotConfigRecovering as loadPilotConfig, resolvePilotHome } from "../pilot/index.js";
 import { createLocalGateway } from "./createLocalGateway.js";
 import { startPilotDeckServer } from "./pilotdeckServer.js";
 import { installGlobalProxy, reinstallGlobalProxy } from "./proxy.js";

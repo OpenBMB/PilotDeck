@@ -8,10 +8,27 @@ const warned = new Set();
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
 const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const writeTarget = file => { try { return fs.realpathSync(file); } catch { return path.resolve(file); } };
 
 function resolveConfigHome(env = process.env) {
   const home = env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck');
   return path.resolve(home === '~' ? os.homedir() : home.startsWith('~/') ? path.join(os.homedir(), home.slice(2)) : home);
+}
+
+function defaultPilotConfiguration(env = process.env) {
+  return {
+    schemaVersion: 1,
+    agent: { model: '', params: {}, subagents: { default: 'inherit', params: {} } },
+    model: { providers: {} },
+    memory: { enabled: false, reasoningMode: 'answer_first', autoIndexIntervalMinutes: 30, autoDreamIntervalMinutes: 60,
+      captureStrategy: 'last_turn', includeAssistant: true, maxMessageChars: 6000, heartbeatBatchSize: 30 },
+    router: { enabled: false }, tools: { webSearch: { enabled: false } }, alwaysOn: { projects: {} },
+    cron: { enabled: true }, adapters: { feishu: { enabled: false }, weixin: { enabled: false }, wecom: { enabled: false } },
+    webui: { runtime: { host: '0.0.0.0', serverPort: 3001, vitePort: 5173, apiTimeoutMs: 120000,
+      databasePath: path.join(resolveConfigHome(env), 'auth.db'), workspacesRoot: os.homedir() },
+      officePreview: { service: 'builtin', binaryPath: '' } },
+    telemetry: { enabled: false },
+  };
 }
 
 function report(diagnostics, options, code, file, key, message) {
@@ -102,7 +119,8 @@ function writeUnlocked(file, value) {
 }
 
 function writeConfiguration(file, value) {
-  return withLock(path.resolve(file), () => writeUnlocked(path.resolve(file), value));
+  file = writeTarget(file);
+  return withLock(file, () => writeUnlocked(file, value));
 }
 
 function readConfiguration(file, options = {}) {
@@ -139,12 +157,13 @@ function readConfiguration(file, options = {}) {
   const changed = JSON.stringify(originalValue) !== JSON.stringify(value);
   if (writable && options.repair !== false && (migrated || diagnostics.length || changed || (!source && options.create !== false))) {
     try {
-      withLock(file, () => {
+      const target = writeTarget(file);
+      withLock(target, () => {
         // Another process may already have migrated this file. Never overwrite it.
         if (migrated && fs.existsSync(file)) return;
         if (source) backup(source, raw, file);
         if (source === file && fs.readFileSync(file, 'utf8') !== raw) return;
-        writeUnlocked(file, value);
+        writeUnlocked(target, value);
       });
     } catch { report(diagnostics, options, 'PD_CONFIG_WRITE', file, '', 'Could not persist recovered configuration; continuing with in-memory defaults.'); }
   }
@@ -152,7 +171,7 @@ function readConfiguration(file, options = {}) {
 }
 
 function updateConfiguration(file, update, options = {}) {
-  file = path.resolve(file);
+  file = writeTarget(file);
   return withLock(file, () => {
     const loaded = readConfiguration(file, { ...options, repair: false, create: false });
     if (loaded.diagnostics.some(issue => issue.code === 'PD_CONFIG_VERSION')) {
@@ -163,4 +182,4 @@ function updateConfiguration(file, update, options = {}) {
   });
 }
 
-module.exports = { resolveConfigHome, readConfiguration, writeConfiguration, updateConfiguration, recoverValues };
+module.exports = { resolveConfigHome, defaultPilotConfiguration, readConfiguration, writeConfiguration, updateConfiguration, recoverValues };

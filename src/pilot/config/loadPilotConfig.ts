@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { parseDocument } from "yaml";
+import { readConfiguration, recoverValues, defaultPilotConfiguration } from '@pilotdeck/config';
 import { parseAlwaysOnConfig } from "../../always-on/config/parseAlwaysOnConfig.js";
 import { parseCronConfig } from "../../cron/config/parseCronConfig.js";
 import { parseModelConfig } from "../../model/config/parseModelConfig.js";
@@ -39,6 +40,100 @@ export function resolvePilotConfigPath(options: PilotConfigLoadOptions = {}): st
 }
 
 export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConfigSnapshot {
+  return parseLoadedConfig(options);
+}
+
+/** Startup/reload boundary. Strict validation remains available above for editors. */
+export function loadPilotConfigRecovering(options: PilotConfigLoadOptions = {}): PilotConfigSnapshot {
+  const file = resolvePilotConfigPath(options);
+  const issues: PilotConfigDiagnostic[] = [];
+  const loaded = readConfiguration<Record<string, unknown>>(file, {
+    defaults: {}, create: false, repair: false,
+    onDiagnostic: issue => issues.push({ code: issue.code, severity: 'warning', message: issue.message, path: issue.field, source: { kind: 'default', path: file }, recoverable: true }),
+  });
+  const recovered = recoverPilotConfig(loaded.value, options);
+  if (existsSync(file) && JSON.stringify(loaded.value) !== JSON.stringify(recovered.raw)) {
+    readConfiguration(file, { defaults: {}, create: false, normalize: () => recovered.raw,
+      onDiagnostic: issue => issues.push({ code: issue.code, severity: 'warning', message: issue.message, path: issue.field, recoverable: true }) });
+  } else if (issues.length && existsSync(file)) {
+    readConfiguration(file, { defaults: {}, create: false, onDiagnostic: () => {} });
+  }
+  const diagnostics = [...issues, ...recovered.snapshot.diagnostics];
+  for (const issue of diagnostics) if (issue.recoverable && issue.severity !== 'info') {
+    console.warn(`[${issue.code}] ${file} (${issue.path || 'root'}): ${issue.message}`);
+  }
+  return { ...recovered.snapshot, diagnostics };
+}
+
+export function recoverPilotConfig(value: unknown, options: PilotConfigLoadOptions = {}): { raw: Record<string, unknown>; snapshot: PilotConfigSnapshot } {
+  const raw: Record<string, unknown> = isRecord(value) ? structuredClone(value) : {};
+  const warnings: PilotConfigDiagnostic[] = [];
+  const env = { ...(options.env ?? process.env) };
+  const defaults: Record<string, unknown> = { schemaVersion: 1, agent: { model: '' }, model: { providers: {} } };
+  for (const field of ['agent', 'model']) if (raw[field] !== undefined && !isRecord(raw[field])) {
+    warnings.push({ code: 'PD_CONFIG_FIELD', severity: 'warning', path: field, message: `Invalid ${field}; using its default value.`, recoverable: true });
+  }
+  raw.agent = isRecord(raw.agent) ? raw.agent : { model: '' };
+  raw.model = isRecord(raw.model) ? raw.model : { providers: {} };
+  if (raw.webui !== undefined) raw.webui = recoverValues(raw.webui, defaultPilotConfiguration(env).webui,
+    field => warnings.push({ code: 'PD_CONFIG_FIELD', severity: 'warning', path: `webui.${field}`, message: 'Invalid UI setting; using its default value.', recoverable: true }));
+  for (const [section, key, min, max, fallback] of [
+    ['gateway', 'port', 0, 65535, 18789], ['gateway', 'idleSessionTimeoutMinutes', 0, Number.MAX_SAFE_INTEGER, 30],
+    ['gateway', 'idleSweepIntervalSeconds', 0, Number.MAX_SAFE_INTEGER, 60], ['gateway', 'maxPerSessionMcpInstances', 1, 10000, 5],
+  ] as const) {
+    const item = raw[section];
+    if (isRecord(item) && item[key] !== undefined && (typeof item[key] !== 'number' || !Number.isFinite(item[key]) || item[key] < min || item[key] > max)) {
+      item[key] = fallback;
+      warnings.push({ code: 'PD_CONFIG_FIELD', severity: 'warning', path: `${section}.${key}`, message: 'Invalid numeric setting; using its default value.', recoverable: true });
+    }
+  }
+  if (isRecord(raw.webui) && isRecord(raw.webui.runtime)) for (const [key, fallback] of [['serverPort', 3001], ['vitePort', 5173], ['apiTimeoutMs', 120000]] as const) {
+    const value = raw.webui.runtime[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || (key !== 'apiTimeoutMs' && value > 65535)) raw.webui.runtime[key] = fallback;
+  }
+  const reset = (field: string) => {
+    const keys = field.split('.');
+    let cursor = raw, fallback: unknown = defaults;
+    for (const key of keys.slice(0, -1)) {
+      if (!isRecord(cursor[key])) cursor[key] = {};
+      cursor = cursor[key] as Record<string, unknown>;
+      fallback = isRecord(fallback) ? fallback[key] : undefined;
+    }
+    const key = keys.at(-1)!;
+    const replacement = isRecord(fallback) ? fallback[key] : undefined;
+    if (replacement === undefined) delete cursor[key]; else cursor[key] = structuredClone(replacement);
+  };
+  for (let attempt = 0; attempt < 128; attempt++) {
+    try {
+      const snapshot = parseLoadedConfig({ ...options, env }, raw);
+      return { raw, snapshot: { ...snapshot, diagnostics: [...warnings, ...snapshot.diagnostics] } };
+    } catch (error) {
+      const configError = error instanceof PilotConfigError ? error : null;
+      const fatal = configError?.diagnostics.filter(issue => issue.severity === 'fatal') ?? [];
+      const inferred = error instanceof Error ? error.message.match(/\b(?:agent|model|memory|router|gateway|adapters|alwaysOn|cron|tools|proxy|extension)(?:\.[A-Za-z_][\w-]*)+/)?.[0] : undefined;
+      const fields = fatal.map(issue => issue.path).filter((field): field is string => Boolean(field && !field.includes('\\') && !field.includes('/')));
+      if (!fields.length && inferred) fields.push(inferred);
+      if (!fields.length) {
+        const code = configError?.code ?? '';
+        const section = ['memory', 'router', 'gateway', 'adapters', 'alwaysOn', 'cron', 'tools', 'proxy', 'extension', 'agent', 'model']
+          .find(name => code.toLowerCase().replaceAll('_', '').includes(name.toLowerCase()));
+        fields.push(section ?? 'model');
+      }
+      for (const field of new Set(fields)) {
+        // Environment overrides are inputs, not values to persist in the YAML.
+        if (field === 'agent.model' && env.PILOT_AGENT_MODEL) delete env.PILOT_AGENT_MODEL;
+        else reset(field);
+        warnings.push({ code: configError?.code ?? 'PD_CONFIG_FIELD', severity: 'warning', path: field,
+          message: `Invalid ${field}; using its default value.`, recoverable: true });
+      }
+    }
+  }
+  // A large or mutually inconsistent document still cannot prevent the UI from booting.
+  const snapshot = parseLoadedConfig({ ...options, env: { ...env, PILOT_AGENT_MODEL: undefined } }, defaults);
+  return { raw: defaults, snapshot: { ...snapshot, diagnostics: [...warnings, ...snapshot.diagnostics] } };
+}
+
+function parseLoadedConfig(options: PilotConfigLoadOptions, recoveredRaw?: Record<string, unknown>): PilotConfigSnapshot {
   const env = options.env ?? process.env;
   const loadedAt = new Date();
   const diagnostics: PilotConfigDiagnostic[] = [];
@@ -56,7 +151,8 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
   }
 
   const defaultConfigPath = resolvePilotConfigPath(options);
-  const defaultConfig = readYamlSource(defaultConfigPath, "default", 10, loadedAt, diagnostics, sources);
+  const defaultConfig = recoveredRaw ?? readYamlSource(defaultConfigPath, "default", 10, loadedAt, diagnostics, sources);
+  if (recoveredRaw && existsSync(defaultConfigPath)) sources.push({ kind: 'default', priority: 10, loadedAt, path: defaultConfigPath });
 
   const envConfig = readEnvOverrides(env);
   if (envConfig) {
@@ -94,8 +190,18 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
   }
   throwConfigErrorIfFatal(diagnostics);
 
-  const model = parseModel(rawConfig.model, env, diagnostics);
-  const agent = parseAgent(rawConfig.agent, model, diagnostics);
+  const unconfigured = recoveredRaw && isRecord(rawConfig.model) && isRecord(rawConfig.model.providers)
+    && Object.keys(rawConfig.model.providers).length === 0;
+  const model = unconfigured ? { providers: {} } : parseModel(rawConfig.model, env, diagnostics);
+  let agent: PilotAgentConfig;
+  if (recoveredRaw && isRecord(rawConfig.agent) && (!rawConfig.agent.model || !Object.keys(model.providers).length)) {
+    const [provider, definition] = Object.entries(model.providers)[0] ?? [];
+    const modelId = definition ? Object.keys(definition.models)[0] : '';
+    const selected = provider && modelId ? `${provider}/${modelId}` : '';
+    agent = selected ? parseAgent({ ...rawConfig.agent, model: selected }, model, diagnostics)
+      : { model: { id: '', provider: '', model: '' } };
+    rawConfig.agent.model = selected;
+  } else agent = parseAgent(rawConfig.agent, model, diagnostics);
   const extension = parseExtension(rawConfig.extension, diagnostics);
   const memory = parseMemoryConfig(rawConfig.memory, diagnostics, getPilotMemoryRootDir(pilotHome), model);
   const gateway = parseGatewayConfig(rawConfig.gateway, diagnostics);

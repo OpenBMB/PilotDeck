@@ -1,4 +1,4 @@
-export { loadPilotConfig } from "./loadPilotConfig.js";
+export { loadPilotConfig, loadPilotConfigRecovering, recoverPilotConfig } from "./loadPilotConfig.js";
 export {
   createPilotConfigStore,
   type PilotConfigListener,
