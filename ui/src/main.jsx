@@ -25,8 +25,6 @@ if ('serviceWorker' in navigator) {
 async function mountApplication() {
 await import('./i18n/config.js');
 const { default: App } = await import('./App.tsx');
-window.__pilotdeckStartupCleanup?.();
-delete window.__pilotdeckStartupUpdate;
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />

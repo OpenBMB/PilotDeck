@@ -16,9 +16,9 @@
     "days30": "1 个月",
     "days90": "3 个月",
     "location": "日志位置",
-    "save": "保存运行日志",
-    "saved": "运行日志已保存",
-    "saveFailed": "日志保存失败，请尝试其他位置。",
+    "save": "下载运行日志",
+    "saved": "运行日志已下载",
+    "saveFailed": "日志下载失败，请尝试其他位置。",
     "preferenceFailed": "日志保留设置保存失败。"
   },
   "imageGeneration": {

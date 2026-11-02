@@ -7,8 +7,10 @@ import AuthLoadingScreen from './AuthLoadingScreen';
 import StartupErrorPanel from './StartupErrorPanel';
 import StartupReady from './StartupReady';
 import { startupVisualProgress } from '../../../../../apps/desktop/src/startupPresentation';
+import { renderLoadingHtml } from '../../../../../apps/desktop/src/appearance';
+import { releaseStartupShell } from '../startupShell';
 
-afterEach(() => { cleanup(); vi.useRealTimers(); delete window.pilotdeckDesktop; delete window.__pilotdeckStartupState; });
+afterEach(() => { cleanup(); releaseStartupShell(); vi.useRealTimers(); delete window.pilotdeckDesktop; delete window.__pilotdeckStartupState; });
 
 it('moves slowly inside a stage, remains bounded and resumes at the same position after handoff', () => {
   const status = { phase: 'gateway', progress: 78, phaseStartedAt: 1000 };
@@ -25,13 +27,40 @@ it('finishes and fades smoothly even when a client is ready immediately', async 
   render(<I18nextProvider i18n={i18n}><StartupReady><div>workspace ready</div></StartupReady></I18nextProvider>);
   expect(screen.getByText('workspace ready').closest('[aria-hidden=true]')).toBeTruthy();
   expect(screen.queryByText('P')).toBeNull();
-  act(() => vi.advanceTimersByTime(650));
+  act(() => vi.advanceTimersByTime(200));
   expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
   act(() => vi.advanceTimersByTime(240));
   expect(document.querySelector('[data-leaving=true]')).toBeTruthy();
   act(() => vi.advanceTimersByTime(180));
   expect(screen.getByText('workspace ready')).toBeTruthy();
   expect(screen.getByText('workspace ready').closest('[aria-hidden=true]')).toBeNull();
+});
+
+it('keeps the same painted HTML shell and progress node through React loading, Gateway and workspace handoffs', async () => {
+  const i18n = await createTestI18n();
+  vi.useFakeTimers();
+  const html = renderLoadingHtml({ language: 'en', themeMode: 'light' }, true);
+  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)![1];
+  const shell = document.createElement('div'); shell.id = 'pilotdeck-startup-shell';
+  shell.innerHTML = body; document.body.append(shell);
+  for (const script of shell.querySelectorAll('script')) new Function('window', 'document', 'navigator', 'localStorage', 'getComputedStyle', script.textContent!)(window, document, navigator, localStorage, getComputedStyle);
+  const bar = document.getElementById('bar')!, brand = shell.querySelector('h1')!;
+  window.__pilotdeckStartupState!.startedAt = Date.now() - 2000;
+  const loading = render(<I18nextProvider i18n={i18n}><AuthLoadingScreen /></I18nextProvider>);
+  loading.rerender(<I18nextProvider i18n={i18n}><AuthLoadingScreen gateway /></I18nextProvider>);
+  expect(document.getElementById('bar')).toBe(bar);
+  expect(shell.querySelectorAll('.pd-startup-brand')).toHaveLength(1);
+  expect(bar.parentElement!.getAttribute('aria-valuenow')).toBe('78');
+  loading.unmount();
+  render(<I18nextProvider i18n={i18n}><StartupReady><div>ready workspace</div></StartupReady></I18nextProvider>);
+  act(() => vi.advanceTimersByTime(0));
+  expect(document.getElementById('bar')).toBe(bar); expect(brand.isConnected).toBe(true);
+  expect(bar.style.width).toBe('100%');
+  act(() => vi.advanceTimersByTime(240));
+  expect(document.getElementById('startup')!.dataset.leaving).toBe('true');
+  act(() => vi.advanceTimersByTime(180));
+  expect(document.getElementById('pilotdeck-startup-shell')).toBeNull();
+  expect(screen.getByText('ready workspace').closest('[aria-hidden=true]')).toBeNull();
 });
 
 it('never restarts the progress bar when a browser Gateway finishes loading', async () => {
@@ -70,16 +99,16 @@ it.each([
   expect(screen.getByText(reason)).toBeTruthy();
   expect(screen.queryByText(/secret-stack-details/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Restart' })); expect(retry).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole('button', { name: 'Save runtime logs' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Download runtime logs' }));
   await waitFor(() => expect(saveRuntimeLogs).toHaveBeenCalledOnce());
-  expect(screen.queryByText('Runtime logs saved')).toBeNull();
+  expect(screen.queryByText('Runtime logs downloaded')).toBeNull();
 });
 
 it('reports a native save failure without closing the error screen', async () => {
   Object.defineProperty(window, 'pilotdeckDesktop', { configurable: true, value: { saveRuntimeLogs: vi.fn().mockRejectedValue(new Error('EACCES')) } });
   const i18n = await createTestI18n();
   render(<I18nextProvider i18n={i18n}><StartupErrorPanel error="code=134 signal=null" onRetry={vi.fn()} /></I18nextProvider>);
-  fireEvent.click(screen.getByRole('button', { name: 'Save runtime logs' }));
-  expect(await screen.findByText('Could not save the logs. Try another location.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Download runtime logs' }));
+  expect(await screen.findByText('Could not download the logs. Try another location.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Restart' })).toBeTruthy();
 });

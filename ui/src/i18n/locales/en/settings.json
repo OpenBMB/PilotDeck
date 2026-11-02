@@ -16,9 +16,9 @@
     "days30": "1 month",
     "days90": "3 months",
     "location": "Log location",
-    "save": "Save runtime logs",
-    "saved": "Runtime logs saved",
-    "saveFailed": "Could not save the logs. Try another location.",
+    "save": "Download runtime logs",
+    "saved": "Runtime logs downloaded",
+    "saveFailed": "Could not download the logs. Try another location.",
     "preferenceFailed": "Could not save the log retention preference."
   },
   "imageGeneration": {

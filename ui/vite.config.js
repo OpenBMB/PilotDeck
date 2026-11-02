@@ -64,11 +64,11 @@ export default defineConfig(({ mode }) => {
       name: 'continuous-startup-shell',
       transformIndexHtml(html) {
         // The same shell is painted before the application bundle is evaluated.
-        // React replaces it with the matching frame after its imports complete.
+        // Keep it outside React's root so phase changes never replace the frame.
         const page = renderLoadingHtml({ language: 'en', themeMode: 'system' }, true);
         const style = page.match(/<style>([\s\S]*?)<\/style>/)[1];
         const body = page.match(/<body[^>]*>([\s\S]*?)<\/body>/)[1];
-        return html.replace('<div id="root"></div>', () => `<div id="root"><style>${style}</style>${body}</div>`);
+        return html.replace('<div id="root"></div>', () => `<div id="pilotdeck-startup-shell"><style>${style}</style>${body}</div><div id="root"></div>`);
       },
     }, {
       name: 'appearance-first-paint',

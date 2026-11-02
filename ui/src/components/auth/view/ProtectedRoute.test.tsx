@@ -93,10 +93,10 @@ describe('ProtectedRoute runtime states', () => {
     expect(retryGateway).toHaveBeenCalledTimes(1);
     expect(screen.getByText('PilotDeck could not start')).toBeTruthy();
     if (desktop) {
-      fireEvent.click(screen.getByRole('button', { name: 'Save runtime logs' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Download runtime logs' }));
       expect(saveRuntimeLogs).toHaveBeenCalledTimes(1);
     } else {
-      expect(screen.getByRole('button', { name: 'Save runtime logs' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Download runtime logs' })).toBeTruthy();
     }
   });
 
@@ -179,7 +179,7 @@ describe('ProtectedRoute runtime states', () => {
     expect(screen.getByText('PD_CONFIG_INVALID')).toBeTruthy();
     expect(screen.getByText('The model configuration could not be read. Check it in Settings and try again.')).toBeTruthy();
     expect(await screen.findByText('Runtime log: /logs/runtime.log')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Save runtime logs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Download runtime logs' }));
     expect(saveRuntimeLogs).toHaveBeenCalledOnce();
   });
 

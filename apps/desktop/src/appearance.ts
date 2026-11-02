@@ -61,17 +61,20 @@ const web=${web};
 const languages=${JSON.stringify({ en: startupLabels('en'), 'zh-CN': startupLabels('zh-CN') })};
 const saved=key=>{try{return localStorage.getItem(key)}catch{return null}};
 const appearance=web?(window.pilotdeckDesktop?.getAppearance?.()||{language:saved('userLanguage')||(navigator.language.startsWith('zh')?'zh-CN':'en'),themeMode:saved('themeMode')||saved('theme')||'system'}):${JSON.stringify({ language: appearance.language, themeMode: appearance.themeMode })};
-const labels=languages[appearance.language]||languages.en;
+let labels=languages[appearance.language]||languages.en;
 if(web){document.documentElement.dataset.theme=appearance.themeMode;if(!document.documentElement.classList.contains('dark'))document.documentElement.style.setProperty('--startup-bg',getComputedStyle(document.documentElement).backgroundColor)}
 const root=document.getElementById('startup'),bar=document.getElementById('bar'),message=document.getElementById('message');
 const visualProgress=${startupVisualProgress.toString()};
 let current={phase:'starting',progress:8,startedAt:Date.now(),phaseStartedAt:Date.now()};
+let animationStart=0;
 function draw(){bar.style.width=visualProgress(current)+'%';bar.parentElement.setAttribute('aria-valuenow',String(current.progress||8))}
 function update(status){
  if(!status)return;
  const reset=status.phase==='starting'&&current.phase!=='starting';
  current={...status,progress:reset?8:Math.max(current.progress||8,status.progress||8),startedAt:status.startedAt||(reset?Date.now():current.startedAt),phaseStartedAt:status.phaseStartedAt||(status.phase===current.phase?current.phaseStartedAt:Date.now())};
- window.__pilotdeckStartupState=current;root.dataset.error=String(status.phase==='error');draw();
+ if(status.language)labels=languages[status.language]||languages.en;
+ if(animationStart!==current.startedAt){animationStart=current.startedAt;root.style.setProperty('--startup-animation-offset',-(Date.now()-animationStart)+'ms')}
+ window.__pilotdeckStartupState=current;root.dataset.error=String(status.phase==='error');root.dataset.complete=String(!!status.completed);root.dataset.leaving=String(!!status.leaving);draw();
  if(status.phase==='error'){
   const code=(status.error||'').match(/\\bPD_[A-Z_]+\\b/)?.[0]||'PD_RUNTIME_PROCESS_FAILED';
   document.getElementById('reason').textContent=labels[code]||labels.unknown;

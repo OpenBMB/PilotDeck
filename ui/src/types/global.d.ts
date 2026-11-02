@@ -9,6 +9,8 @@ export {};
 declare global {
   interface Window {
     __pilotdeckStartupState?: { phase: string; progress?: number; startedAt?: number; phaseStartedAt?: number; completed?: boolean };
+    __pilotdeckStartupUpdate?: (state: NonNullable<Window['__pilotdeckStartupState']> & { language?: string; leaving?: boolean; error?: string; logPath?: string }) => void;
+    __pilotdeckStartupCleanup?: () => void;
     __ROUTER_BASENAME__?: string;
     refreshProjects?: () => void | Promise<void>;
     openSettings?: (tab?: string) => void;

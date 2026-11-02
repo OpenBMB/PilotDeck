@@ -19,8 +19,8 @@ const messages = {
   en: {
     starting: 'Starting PilotDeck…', config: 'Preparing your workspace…', server: 'Starting PilotDeck…',
     gateway: 'Starting Gateway…', ready: 'Opening your workspace…', awaiting_configuration: 'Opening your workspace…',
-    failed: 'PilotDeck could not start', restart: 'Restart', save: 'Save runtime logs', saved: 'Runtime logs saved',
-    saveFailed: 'Could not save the logs. Try another location.', log: 'Runtime log',
+    failed: 'PilotDeck could not start', restart: 'Restart', save: 'Download runtime logs', saved: 'Runtime logs downloaded',
+    saveFailed: 'Could not download the logs. Try another location.', log: 'Runtime log',
     PD_RUNTIME_OUT_OF_MEMORY: 'There was not enough memory to start the service.',
     PD_RUNTIME_NATIVE_FAILURE: 'The local service stopped because of an internal runtime error.',
     PD_RESOURCE_NOT_FOUND: 'A required application file is missing. Reinstall PilotDeck and try again.',
@@ -30,13 +30,13 @@ const messages = {
     PD_RUNTIME_TIMEOUT: 'The local service took too long to start.',
     PD_CONFIG_INVALID: 'The model configuration could not be read. Check it in Settings and try again.',
     PD_CONFIG_STATUS_UNAVAILABLE: 'PilotDeck could not check the model configuration. Try restarting.',
-    unknown: 'The local service stopped unexpectedly. Restart PilotDeck, or save the logs to help investigate.',
+    unknown: 'The local service stopped unexpectedly. Restart PilotDeck, or download the logs to help investigate.',
   },
   'zh-CN': {
     starting: '正在启动 PilotDeck…', config: '正在准备工作区…', server: '正在启动 PilotDeck…',
     gateway: '正在启动 Gateway…', ready: '即将进入 PilotDeck…', awaiting_configuration: '即将进入 PilotDeck…',
-    failed: 'PilotDeck 启动遇到问题', restart: '重新启动', save: '保存运行日志', saved: '运行日志已保存',
-    saveFailed: '日志保存失败，请尝试其他位置。', log: '运行日志',
+    failed: 'PilotDeck 启动遇到问题', restart: '重新启动', save: '下载运行日志', saved: '运行日志已下载',
+    saveFailed: '日志下载失败，请尝试其他位置。', log: '运行日志',
     PD_RUNTIME_OUT_OF_MEMORY: '可用内存不足，服务无法启动。',
     PD_RUNTIME_NATIVE_FAILURE: '本地服务发生内部运行错误。',
     PD_RESOURCE_NOT_FOUND: '缺少必要的程序文件，请重新安装 PilotDeck 后再试。',
@@ -46,7 +46,7 @@ const messages = {
     PD_RUNTIME_TIMEOUT: '本地服务启动超时，请重试。',
     PD_CONFIG_INVALID: '模型配置无法读取，请在设置中检查后重试。',
     PD_CONFIG_STATUS_UNAVAILABLE: '暂时无法检查模型配置，请尝试重新启动。',
-    unknown: '本地服务意外停止，请重新启动；若仍然失败，可保存日志用于排查。',
+    unknown: '本地服务意外停止，请重新启动；若仍然失败，可下载日志用于排查。',
   },
 };
 

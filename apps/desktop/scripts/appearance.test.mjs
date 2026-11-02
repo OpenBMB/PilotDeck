@@ -28,7 +28,7 @@ test('startup UI translates controls without exposing technical details while lo
   const html = renderLoadingHtml({ language: 'zh-CN', themeMode: 'dark' });
   assert.match(html, /lang="zh-CN" data-theme="dark"/);
   assert.match(html, />重新启动<\/button>/);
-  assert.match(html, />保存运行日志<\/button>/);
+  assert.match(html, />下载运行日志<\/button>/);
   assert.equal(startupText('Checking local configuration...', 'zh-CN'), '正在检查本地配置…');
   assert.equal(startupText('EACCES: /custom/path', 'zh-CN'), 'EACCES: /custom/path');
   const light = renderLoadingHtml({ language: 'en', themeMode: 'light' });
@@ -60,15 +60,15 @@ test('native startup script preserves progress and presents the classified cause
   assert.doesNotMatch(html, /\x08/);
   const nodes = new Map();
   const get = id => {
-    if (!nodes.has(id)) nodes.set(id, { textContent: '', style: {}, dataset: {}, classList: { toggle() {} }, parentElement: { setAttribute() {} }, addEventListener() {} });
+    if (!nodes.has(id)) nodes.set(id, { textContent: '', style: { setProperty() {} }, dataset: {}, classList: { toggle() {} }, parentElement: { setAttribute() {} }, addEventListener() {} });
     return nodes.get(id);
   };
   let update;
   const desktop = { onRuntimeStatus(callback) { update = callback; }, getRuntimeStatus() { return { phase: 'gateway', progress: 78 }; } };
   const browser = { pilotdeckDesktop: desktop };
   new Function('window', 'document', html.match(/<script>([\s\S]*?)<\/script>/)[1])(browser, { getElementById: get, querySelector: () => get('heading') });
-  assert.equal(get('bar').style.width, '78%');
-  update({ phase: 'server', progress: 45 }); assert.equal(get('bar').style.width, '78%');
+  assert.ok(parseFloat(get('bar').style.width) >= 78 && parseFloat(get('bar').style.width) < 79);
+  update({ phase: 'server', progress: 45 }); assert.ok(parseFloat(get('bar').style.width) >= 78);
   update({ phase: 'error', error: 'Error code: PD_RUNTIME_OUT_OF_MEMORY\nnative-private-stack', logPath: 'C:/logs/runtime.log' });
   assert.equal(get('code').textContent, 'PD_RUNTIME_OUT_OF_MEMORY');
   assert.match(get('reason').textContent, /内存不足/);

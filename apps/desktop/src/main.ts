@@ -711,7 +711,8 @@ async function createOrShowWindow(): Promise<void> {
     updateApplicationMenu();
   });
 
-  await mainWindow.webContents.session.clearCache();
+  // Hashed assets and revalidated HTML already handle software updates.
+  // Clearing the entire HTTP cache here made every window start a cold load.
   startupPageUrl = `data:text/html;charset=utf-8,${encodeURIComponent(renderLoadingHtml(readAppearance()))}`;
   await mainWindow.loadURL(startupPageUrl);
   if (lastRuntimeStatus) {
@@ -1369,9 +1370,9 @@ ipcMain.handle('pilotdeck:save-runtime-logs', async event => {
   const logPath = runtime?.getLogPath() ?? lastRuntimeStatus?.logPath;
   if (!logPath) throw new Error('No runtime logs available');
   const result = await dialog.showSaveDialog(mainWindow, {
-    title: readAppearance().language === 'zh-CN' ? '保存运行日志' : 'Save runtime logs',
+    title: readAppearance().language === 'zh-CN' ? '下载运行日志' : 'Download runtime logs',
     defaultPath: path.join(app.getPath('downloads'), `PilotDeck-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.log`),
-    filters: [{ name: 'Runtime logs', extensions: ['log'] }],
+    filters: [{ name: readAppearance().language === 'zh-CN' ? '运行日志' : 'Runtime logs', extensions: ['log'] }],
   });
   if (result.canceled || !result.filePath) return { canceled: true };
   await exportRuntimeLogs(logPath, result.filePath);

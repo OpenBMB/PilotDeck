@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useLayoutEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { startupFailure, startupLabels } from '../../../../../apps/desktop/src/startupPresentation';
 import StartupFrame from './StartupFrame';
 import { saveRuntimeLogs } from '../../../utils/runtimeLogExport';
+import { hideStartupShell } from '../startupShell';
 
 export default function StartupErrorPanel({ error, logPath, onRetry, children }: {
   error: string; logPath?: string | null; onRetry: () => void | Promise<void>; children?: ReactNode;
@@ -11,10 +12,11 @@ export default function StartupErrorPanel({ error, logPath, onRetry, children }:
   const language = i18n.resolvedLanguage || i18n.language;
   const labels = startupLabels(language), failure = startupFailure(error, language);
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState('');
+  useLayoutEffect(hideStartupShell, []);
   const save = async () => {
     setBusy(true); setNotice('');
     try {
-      const result = await saveRuntimeLogs();
+      const result = await saveRuntimeLogs(labels.log);
       if (!result.canceled) setNotice(labels.saved);
     } catch { setNotice(labels.saveFailed); }
     finally { setBusy(false); }

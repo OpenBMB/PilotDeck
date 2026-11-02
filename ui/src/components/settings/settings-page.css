@@ -7841,6 +7841,7 @@
 
 :where(.pilotdeck-settings-app) .agent-retry-field input,
 :where(.pilotdeck-settings-app) .advanced-service-field input,
+:where(.pilotdeck-settings-app) .runtime-logs-select,
 :where(.pilotdeck-settings-app) .advanced-environment-form input,
 :where(.pilotdeck-settings-app) .advanced-environment-item input {
   width: 100%;
@@ -7858,6 +7859,7 @@
 
 :where(.pilotdeck-settings-app) .agent-retry-field input:focus,
 :where(.pilotdeck-settings-app) .advanced-service-field input:focus,
+:where(.pilotdeck-settings-app) .runtime-logs-select:focus,
 :where(.pilotdeck-settings-app) .advanced-environment-form input:focus,
 :where(.pilotdeck-settings-app) .advanced-environment-item input:focus {
   border-color: var(--pd-accent, rgb(146, 148, 233));
@@ -7866,6 +7868,7 @@
 
 :where(.pilotdeck-settings-app) .agent-retry-field input:disabled,
 :where(.pilotdeck-settings-app) .advanced-service-field input:disabled,
+:where(.pilotdeck-settings-app) .runtime-logs-select:disabled,
 :where(.pilotdeck-settings-app) .advanced-environment-form input:disabled {
   border-color: rgb(226, 227, 234);
   background: rgb(250, 250, 250);
@@ -7874,12 +7877,14 @@
 }
 
 :where(.pilotdeck-settings-app) .advanced-settings-page .agent-retry-field input:disabled,
-:where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:disabled {
+:where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:disabled,
+:where(.pilotdeck-settings-app) .advanced-settings-page .runtime-logs-select:disabled {
   color: var(--settings-panel-muted, rgb(160, 164, 178));
 }
 
 :where(.pilotdeck-settings-app) .advanced-settings-page .agent-retry-field input:not(:disabled),
-:where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:not(:disabled) {
+:where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:not(:disabled),
+:where(.pilotdeck-settings-app) .advanced-settings-page .runtime-logs-select:not(:disabled) {
   color: var(--settings-panel-ink, rgb(52, 56, 70));
 }
 
@@ -7933,6 +7938,7 @@
 }
 
 :where(.pilotdeck-settings-app) .advanced-service-field input,
+:where(.pilotdeck-settings-app) .runtime-logs-select,
 :where(.pilotdeck-settings-app) .advanced-environment-form input,
 :where(.pilotdeck-settings-app) .advanced-environment-item input {
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
@@ -8189,6 +8195,7 @@
 :where(.pilotdeck-settings-app) .advanced-settings-page .agent-retry-field input,
 :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-copy strong,
 :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input,
+:where(.pilotdeck-settings-app) .advanced-settings-page .runtime-logs-select,
 :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-environment-item code,
 :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-environment-item input,
 :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-environment-item > span,
@@ -8380,6 +8387,7 @@
 
 .dark :where(.pilotdeck-settings-app) .agent-retry-field input,
 .dark :where(.pilotdeck-settings-app) .advanced-service-field input,
+.dark :where(.pilotdeck-settings-app) .runtime-logs-select,
 .dark :where(.pilotdeck-settings-app) .advanced-environment-form input,
 .dark :where(.pilotdeck-settings-app) .advanced-environment-item input {
   border-color: #3a3a4a;
@@ -8389,6 +8397,7 @@
 
 .dark :where(.pilotdeck-settings-app) .advanced-settings-page .agent-retry-field input:disabled,
 .dark :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:disabled,
+.dark :where(.pilotdeck-settings-app) .advanced-settings-page .runtime-logs-select:disabled,
 .dark :where(.pilotdeck-settings-app) .advanced-environment-form input:disabled {
   border-color: #343442;
   background: #181820;
@@ -8397,7 +8406,8 @@
 }
 
 .dark :where(.pilotdeck-settings-app) .advanced-settings-page .agent-retry-field input:not(:disabled),
-.dark :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:not(:disabled) {
+.dark :where(.pilotdeck-settings-app) .advanced-settings-page .advanced-service-field input:not(:disabled),
+.dark :where(.pilotdeck-settings-app) .advanced-settings-page .runtime-logs-select:not(:disabled) {
   color: #f4f4f5;
 }
 
@@ -8497,6 +8507,6 @@
 :where(.pilotdeck-settings-app) .runtime-logs-section { margin-bottom: 20px; }
 :where(.pilotdeck-settings-app) .runtime-logs-content { padding: 18px 24px 22px; display: flex; flex-direction: column; gap: 16px; }
 :where(.pilotdeck-settings-app) .runtime-logs-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-:where(.pilotdeck-settings-app) .runtime-logs-select { width: 190px; flex-shrink: 0; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--settings-panel-background, transparent); color: inherit; }
-:where(.pilotdeck-settings-app) .runtime-logs-actions button { padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+:where(.pilotdeck-settings-app) .runtime-logs-select { width: 190px; flex-shrink: 0; }
+
 @media(max-width: 760px) { :where(.pilotdeck-settings-app) .runtime-logs-row { align-items: flex-start; flex-direction: column; gap: 12px; } }

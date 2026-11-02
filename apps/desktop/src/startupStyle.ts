@@ -1,13 +1,13 @@
 // Shared by the native page, the pre-bundle HTML and React on every platform.
 export const startupStyle = `
-.pd-startup-screen{position:fixed;inset:var(--desktop-caption-height,0px) 0 0;z-index:50;display:grid;place-items:center;box-sizing:border-box;padding:24px;background:var(--startup-bg,#fff);color:var(--startup-fg,#171717);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;animation:pd-startup-enter .28s ease-out both;transition:opacity .18s ease,transform .18s ease}
+.pd-startup-screen{position:fixed;inset:var(--desktop-caption-height,0px) 0 0;z-index:50;display:grid;place-items:center;box-sizing:border-box;padding:24px;background:var(--startup-bg,#fff);color:var(--startup-fg,#171717);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;opacity:1;transition:opacity .18s ease,transform .18s ease}
 .pd-startup-screen[data-leaving=true]{animation:none;opacity:0;transform:translateY(-4px);pointer-events:none}
 .pd-startup-screen main{width:min(360px,100%);margin:0;text-align:center}
 .pd-startup-screen[data-error=true] main{width:min(440px,100%)}
 .pd-startup-brand{margin:0 0 28px;font-size:32px;font-weight:500;line-height:1.2;letter-spacing:-.045em}
 .pd-startup-track{height:4px;overflow:hidden;border-radius:8px;background:var(--startup-line,#e5e5e5)}
 .pd-startup-bar{position:relative;height:100%;border-radius:8px;background:var(--startup-fg,#171717);overflow:hidden;transition:width 1.1s cubic-bezier(.22,.61,.36,1)}
-.pd-startup-bar:after{content:"";position:absolute;inset:0;width:45%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.42),transparent);animation:pd-startup-glide 2.8s ease-in-out infinite}
+.pd-startup-bar:after{content:"";position:absolute;inset:0;width:45%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.42),transparent);animation:pd-startup-glide 2.8s ease-in-out infinite;animation-delay:var(--startup-animation-offset,0s)}
 .pd-startup-screen[data-complete=true] .pd-startup-bar{transition-duration:.24s}
 .pd-startup-message{margin:18px 0 0;font-size:14px;line-height:22px;color:var(--startup-muted,#737373)}
 .pd-startup-failure{border:1px solid var(--startup-line,#e5e5e5);border-radius:12px;padding:24px;text-align:center;animation:pd-startup-enter .2s ease-out both}
