@@ -13,8 +13,6 @@ import {
   resolveCatalogProviderDefaultUrl,
 } from '../../../src/model/config/providerCredentialScope.js';
 import { findModelReferences } from './modelReferences.js';
-import { readConfiguration, defaultPilotConfiguration, resolveConfigHome } from '@pilotdeck/config';
-import { recoverPilotConfig } from '../../../src/pilot/config/loadPilotConfig.js';
 
 // Source of truth: ~/.pilotdeck/pilotdeck.yaml. The disk format and the
 // "internal" config object are the same V2 schema — no more adapter layer.
@@ -34,6 +32,9 @@ import { recoverPilotConfig } from '../../../src/pilot/config/loadPilotConfig.js
 // flows through verbatim — the gateway-side PilotConfigStore owns those
 // schemas. UI server just round-trips them.
 
+const CONFIG_VERSION = 1;
+const PILOT_HOME_DIR = process.env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck');
+const DEFAULT_CONFIG_PATH = path.join(PILOT_HOME_DIR, 'pilotdeck.yaml');
 const MASK = '********';
 const ENV_REFERENCE_PATTERN = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
@@ -103,7 +104,53 @@ function deepMerge(base, override) {
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
 export function buildDefaultPilotDeckConfig() {
-  return defaultPilotConfiguration(process.env);
+  return {
+    schemaVersion: CONFIG_VERSION,
+    agent: {
+      model: '',
+      params: {},
+      subagents: { default: 'inherit', params: {} },
+    },
+    model: {
+      providers: {},
+    },
+    memory: {
+      enabled: false,
+      reasoningMode: 'answer_first',
+      autoIndexIntervalMinutes: 30,
+      autoDreamIntervalMinutes: 60,
+      captureStrategy: 'last_turn',
+      includeAssistant: true,
+      maxMessageChars: 6000,
+      heartbeatBatchSize: 30,
+    },
+    router: { enabled: false },
+    tools: { webSearch: { enabled: false } },
+    alwaysOn: { projects: {} },
+    cron: { enabled: true },
+    adapters: {
+      feishu: { enabled: false },
+      weixin: { enabled: false },
+      wecom: { enabled: false },
+    },
+    webui: {
+      runtime: {
+        host: '0.0.0.0',
+        serverPort: 3001,
+        vitePort: 5173,
+        apiTimeoutMs: 120000,
+        databasePath: path.join(PILOT_HOME_DIR, 'auth.db'),
+        workspacesRoot: os.homedir(),
+      },
+      officePreview: {
+        service: 'builtin',
+        binaryPath: '',
+      },
+    },
+    telemetry: {
+      enabled: false,
+    },
+  };
 }
 
 // Fill in missing sections and migrate legacy Office preview settings into the
@@ -727,10 +774,10 @@ export function getPilotDeckConfigPath() {
   if (process.env.PILOTDECK_CONFIG_PATH?.trim()) {
     return process.env.PILOTDECK_CONFIG_PATH.trim();
   }
-  return path.join(resolveConfigHome(process.env), 'pilotdeck.yaml');
+  return DEFAULT_CONFIG_PATH;
 }
 
-export function readPilotDeckConfigFile(options = {}) {
+export function readPilotDeckConfigFile() {
   const configPath = getPilotDeckConfigPath();
   if (!fs.existsSync(configPath)) {
     return {
@@ -742,26 +789,22 @@ export function readPilotDeckConfigFile(options = {}) {
       parseError: null,
     };
   }
-  if (!options.recover) {
-    let raw = '';
-    try {
-      raw = fs.readFileSync(configPath, 'utf8');
-      const parsed = parseYaml(raw) || {};
-      return { exists: true, configPath, raw, config: normalizePilotDeckConfig(parsed), rawYaml: parsed, parseError: null };
-    } catch (error) {
-      return { exists: true, configPath, raw, config: buildDefaultPilotDeckConfig(), rawYaml: null,
-        parseError: error instanceof Error ? error.message : String(error) };
-    }
+  const raw = fs.readFileSync(configPath, 'utf8');
+  let parsed;
+  try {
+    parsed = parseYaml(raw) || {};
+  } catch (error) {
+    return {
+      exists: true,
+      configPath,
+      raw,
+      config: buildDefaultPilotDeckConfig(),
+      rawYaml: null,
+      parseError: error instanceof Error ? error.message : String(error),
+    };
   }
-  const record = readConfiguration(configPath, { defaults: {}, repair: false, create: false });
-  const recovered = recoverPilotConfig(record.value, { configPath, env: process.env });
-  const config = normalizePilotDeckConfig(recovered.raw);
-  // Recovery backs up original bytes and retains healthy siblings and credentials.
-  const repaired = readConfiguration(configPath, { defaults: {}, create: false, normalize: () => config });
-  let raw = '';
-  try { raw = fs.readFileSync(configPath, 'utf8'); } catch { /* Read-only or unavailable configuration is recoverable. */ }
-  return { exists: true, configPath, raw, config, rawYaml: repaired.value, parseError: null,
-    diagnostics: [...record.diagnostics, ...recovered.snapshot.diagnostics, ...repaired.diagnostics] };
+  const config = normalizePilotDeckConfig(parsed);
+  return { exists: true, configPath, raw, config, rawYaml: parsed, parseError: null };
 }
 
 export function configRevision(raw) {

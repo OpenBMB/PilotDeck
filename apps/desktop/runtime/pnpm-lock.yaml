@@ -2308,9 +2308,7 @@ snapshots:
       semver: 7.8.5
       tar: 7.5.22
 
-  '@pilotdeck/config@file:../../../packages/config':
-    dependencies:
-      yaml: 2.9.0
+  '@pilotdeck/config@file:../../../packages/config': {}
 
   '@playwright/mcp@0.0.75':
     dependencies:

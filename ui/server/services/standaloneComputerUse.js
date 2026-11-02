@@ -5,7 +5,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { readConfiguration, writeConfiguration } from '@pilotdeck/config';
 import { computerUseDirectory, computerUseMcpConfigPath } from './computerUsePaths.js';
 import { MAC_HOST_ID, resolveMacRuntime } from '../../../scripts/lib/mac-computer-use.mjs';
 import { probeMacPermissions } from './macComputerUsePermissions.js';
@@ -40,18 +39,18 @@ export class StandaloneComputerUseController {
     this.resumeAfterPermission = false;
     this.directory = computerUseDirectory(env);
     this.mcpConfigPath = computerUseMcpConfigPath(env);
-    this.settingsPath = path.join(this.directory, 'settings.yaml');
+    this.settingsPath = path.join(this.directory, 'settings.json');
     this.serial = Promise.resolve(); this.child = null; this.stopping = false; this.checkedAt = 0;
     fs.mkdirSync(this.directory, { recursive: true, mode: 0o700 });
     let enabled = false;
-    enabled = readConfiguration(this.settingsPath, { defaults: { enabled: false }, create: false, legacyPaths: [path.join(this.directory, 'settings.json')] }).value.enabled;
+    try { enabled = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8')).enabled === true; } catch { /* off by default */ }
     this.state = { enabled, phase: 'disabled', available: !!binary, version, platform };
     if (platform === 'darwin') {
       this.state.permissionOwner = managed ? 'PilotDeck Computer Use' : 'CuaDriver';
       this.state.permissions = { accessibility: null, screenRecording: null };
       if (binary) {
         const executable = fs.realpathSync(binary);
-        const bundleEnd = executable.replaceAll('\\', '/').indexOf('.app/Contents/MacOS/');
+        const bundleEnd = executable.indexOf('.app/Contents/MacOS/');
         if (bundleEnd >= 0) this.state.permissionAppPath = executable.slice(0, bundleEnd + 4);
       }
     }
@@ -307,7 +306,7 @@ export class StandaloneComputerUseController {
   async startNativeService() {
     if (this.platform === 'darwin') {
       const executable = fs.realpathSync(this.binary);
-      const bundle = executable.slice(0, executable.replaceAll('\\', '/').indexOf('.app/Contents/MacOS/') + 4);
+      const bundle = executable.slice(0, executable.indexOf('.app/Contents/MacOS/') + 4);
       if (!bundle.endsWith('.app')) throw new Error('The runtime is missing its native computer-use app bundle. Rebuild or redeploy PilotDeck.');
       const args = ['-n', '-g', '-a', bundle];
       const serve = ['serve', '--no-permissions-gate', '--permission-mode', 'standard'];
@@ -382,7 +381,7 @@ export class StandaloneComputerUseController {
   async requestBundledPermissions(permission) {
     this.stopPermissionRequests();
     const executable = fs.realpathSync(this.binary);
-    const bundle = executable.slice(0, executable.replaceAll('\\', '/').indexOf('.app/Contents/MacOS/') + 4);
+    const bundle = executable.slice(0, executable.indexOf('.app/Contents/MacOS/') + 4);
     if (!bundle.endsWith('.app')) throw new Error('The native computer-use app bundle is missing.');
     const resultFile = path.join(fs.realpathSync(os.tmpdir()), `pilotdeck-permissions-${process.pid}-${randomUUID()}.json`);
     fs.writeFileSync(resultFile, '', { mode: 0o600, flag: 'wx' });
@@ -417,16 +416,15 @@ export class StandaloneComputerUseController {
 
   adoptLegacyConfiguration() {
     if (!this.binary) return;
-    const file = path.join(path.dirname(this.directory), 'mcp.yaml');
+    const file = path.join(path.dirname(this.directory), 'mcp.json');
     let config;
-    try { config = readConfiguration(file, { defaults: { mcpServers: {} }, create: false,
-      legacyPaths: [file.replace(/\.yaml$/, '.json')] }).value; } catch { return; }
+    try { config = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return; }
     const legacy = config.mcpServers?.['cua-driver'];
     if (!legacy || JSON.stringify(legacy.args || []) !== '["mcp"]' || legacy.env || legacy.perSession) return;
     try { if (fs.realpathSync(legacy.command) !== fs.realpathSync(this.binary)) return; } catch { return; }
     // Adopt only the exact local POC configuration. Keep a recoverable copy and
     // preserve every other custom MCP server so the switch cannot leave a duplicate.
-    const backup = path.join(this.directory, 'legacy-mcp.backup.yaml');
+    const backup = path.join(this.directory, 'legacy-mcp.backup.json');
     if (!fs.existsSync(backup)) this.writeJson(backup, config);
     if (!fs.existsSync(this.settingsPath)) {
       this.state.enabled = true; this.writeJson(this.settingsPath, { enabled: true });
@@ -444,11 +442,6 @@ export class StandaloneComputerUseController {
   }
 
   writeJson(file, value) {
-    if (file.endsWith('.yaml')) {
-      const previous = readConfiguration(file, { defaults: {}, create: false, repair: false }).value;
-      if (fs.existsSync(file) && JSON.stringify(previous) === JSON.stringify(value)) return;
-      writeConfiguration(file, value); return;
-    }
     const content = JSON.stringify(value, null, 2);
     if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === content) return;
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });

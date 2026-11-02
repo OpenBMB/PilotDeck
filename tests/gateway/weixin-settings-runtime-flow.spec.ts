@@ -70,7 +70,7 @@ test("Gateway protocol exposes prepare_weixin_login RPC", () => {
   const wsConnection = readFileSync(join(process.cwd(), "src/gateway/server/GatewayWsConnection.ts"), "utf8");
   const remoteGateway = readFileSync(join(process.cwd(), "src/gateway/client/RemoteGateway.ts"), "utf8");
   const inProcessGateway = readFileSync(join(process.cwd(), "src/gateway/client/InProcessGateway.ts"), "utf8");
-  const pilotdeck = readFileSync(join(process.cwd(), "src/cli/pilotdeckMain.ts"), "utf8");
+  const pilotdeck = readFileSync(join(process.cwd(), "src/cli/pilotdeck.ts"), "utf8");
 
   assert.match(frames, /"prepare_weixin_login"/);
   assert.match(wsConnection, /case "prepare_weixin_login"/);

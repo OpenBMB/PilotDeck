@@ -1,5 +1,3 @@
-import { parse as parseYaml } from 'yaml';
-const parseStored = value => parseYaml(String(value));
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
@@ -58,7 +56,7 @@ function setup({ permissions = true, bundleId = 'cn.pilotdeck.desktop', permissi
   const controller = new mod.exports.ComputerUseController({ directory: path.join(root, 'settings'), resources, bundleId,
     permissions: () => ({ accessibility: permissions, screenRecording: permissions }), requestPermission: async () => {},
     permissionAppPath, revealPermissionApp: () => { reveals++; }, log: () => {} });
-  const servers = () => parseStored(fs.readFileSync(controller.mcpConfigPath, 'utf8')).mcpServers;
+  const servers = () => JSON.parse(fs.readFileSync(controller.mcpConfigPath, 'utf8')).mcpServers;
   return { root, resources, controller, servers, permissionAppPath, pidFile, reveals: () => reveals, cleanup: async () => {
     await controller.stop(); fs.rmSync(root, { recursive: true, force: true });
     if (originalDisplay === undefined) delete process.env.DISPLAY; else process.env.DISPLAY = originalDisplay;
@@ -124,7 +122,7 @@ test('publishes a private connection only after startup and removes it on disabl
     assert.deepEqual(f.servers(), {});
     assert.equal(await canConnect(endpoint), false);
     assert.equal(isAlive(pid), false);
-    assert.equal(parseStored(fs.readFileSync(path.join(f.root, 'settings', 'settings.yaml'))).enabled, false);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, 'settings', 'settings.json'))).enabled, false);
   } finally { await f.cleanup(); }
 });
 test('a crashed Driver loses its connection and manual reconnect uses a fresh generation', async () => {
@@ -157,7 +155,7 @@ test('shutdown preserves the preference but revokes the running connection', asy
     assert.deepEqual(f.servers(), {});
     assert.equal(await canConnect(endpoint), false);
     assert.equal(isAlive(pid), false);
-    assert.equal(parseStored(fs.readFileSync(path.join(f.root, 'settings', 'settings.yaml'))).enabled, true);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, 'settings', 'settings.json'))).enabled, true);
   } finally { await f.cleanup(); }
 });
 test('rejects a daemon with a different macOS permission owner', { skip: process.platform !== 'darwin' }, async () => {

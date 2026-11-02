@@ -10,11 +10,11 @@ import {
   updatePilotDeckConfig,
 } from '../services/pilotdeckConfig.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
-import { readWeixinCredentials } from '../../../src/adapters/channel/weixin/credentials.js';
 
 const router = express.Router();
 
 const PILOT_HOME = process.env.PILOT_HOME || join(homedir(), '.pilotdeck');
+const WEIXIN_CREDS = join(PILOT_HOME, 'weixin-credentials.json');
 const CHANNEL_RUNTIME_STATUS = join(PILOT_HOME, 'channels', 'runtime-status.json');
 
 const FEISHU_TOKEN_URL = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal';
@@ -62,8 +62,9 @@ function loadChannelRuntimeStatus() {
 
 function loadWeixinCredentials() {
   try {
-    const raw = readWeixinCredentials();
-    return raw?.accountId ? { accountId: raw.accountId } : null;
+    if (!existsSync(WEIXIN_CREDS)) return null;
+    const raw = JSON.parse(readFileSync(WEIXIN_CREDS, 'utf-8'));
+    return raw.accountId ? { accountId: raw.accountId } : null;
   } catch {
     return null;
   }

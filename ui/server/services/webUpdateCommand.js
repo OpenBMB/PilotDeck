@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, realpathSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { createWebUpdateService } from './webUpdateService.js';
-import { readConfiguration, resolveConfigHome } from '@pilotdeck/config';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const failure = (reason, message) => Object.assign(new Error(message), { reason });
@@ -33,8 +32,7 @@ async function localHeaders(env) {
   const db = new DatabaseSync(env.DATABASE_PATH, { readOnly: true });
   try {
     const user = db.prepare('SELECT id, username FROM users ORDER BY id LIMIT 1').get();
-    const secrets = readConfiguration(path.join(resolveConfigHome(env), 'credentials', 'web.yaml'), { create: false, repair: false }).value;
-    const secret = env.JWT_SECRET || secrets.app?.jwt_secret || db.prepare("SELECT value FROM app_config WHERE key = 'jwt_secret'").get()?.value;
+    const secret = env.JWT_SECRET || db.prepare("SELECT value FROM app_config WHERE key = 'jwt_secret'").get()?.value;
     if (!user || !secret) throw failure('authenticationRequired', 'Set up the Web user before updating through CLI/IM.');
     return { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.sign({ userId: user.id, username: user.username }, secret, { expiresIn: '2h' })}`,
       ...(env.API_KEY ? { 'x-api-key': env.API_KEY } : {}) };

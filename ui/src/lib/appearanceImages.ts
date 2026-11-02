@@ -1,5 +1,4 @@
 import { MAX_BACKGROUND_BYTES, isImageId } from './lightAppearance';
-import { authenticatedFetch } from '../utils/api';
 
 export function createBackgroundImageId(): string {
   // randomUUID is restricted to secure contexts; getRandomValues also works
@@ -59,9 +58,7 @@ export async function saveBackgroundImage(file: File): Promise<string> {
   const blob = await prepareBackgroundImage(file);
   if (window.pilotdeckDesktop?.saveAppearanceImage) return window.pilotdeckDesktop.saveAppearanceImage(new Uint8Array(await blob.arrayBuffer()));
   const id = createBackgroundImageId();
-  const response = await authenticatedFetch(`/api/preferences/images/${id}`, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: blob });
-  if (!response.ok) throw new Error('imageSaveFailed');
-  try { await imageTransaction('readwrite', store => store.put(blob, id)); } catch { /* Server copy is durable. */ }
+  await imageTransaction('readwrite', store => store.put(blob, id));
   return id;
 }
 export async function loadBackgroundImage(id: string): Promise<string> {
@@ -73,18 +70,12 @@ export async function loadBackgroundImage(id: string): Promise<string> {
     const blob = typeof bytes === 'string' ? await (await fetch(bytes)).blob() : new Blob([new Uint8Array(bytes)], { type: id.endsWith('.png') ? 'image/png' : 'image/webp' });
     return URL.createObjectURL(blob);
   }
-  const response = await authenticatedFetch(`/api/preferences/images/${id}`);
-  if (response.ok) return URL.createObjectURL(await response.blob());
   const blob = await imageTransaction('readonly', store => store.get(id));
   if (!(blob instanceof Blob)) throw new Error('imageMissing');
-  // Import backgrounds created by pre-YAML Web versions on first access.
-  if (response.status === 404) await authenticatedFetch(`/api/preferences/images/${id}`, { method: 'PUT', headers: { 'Content-Type': blob.type || 'image/png' }, body: blob });
   return URL.createObjectURL(blob);
 }
 export async function deleteBackgroundImage(id: string): Promise<void> {
   if (!isImageId(id)) return;
   if (window.pilotdeckDesktop?.deleteAppearanceImage) return window.pilotdeckDesktop.deleteAppearanceImage(id);
-  const response = await authenticatedFetch(`/api/preferences/images/${id}`, { method: 'DELETE' });
-  if (!response.ok) throw new Error('imageSaveFailed');
-  try { await imageTransaction('readwrite', store => store.delete(id)); } catch { /* Server copy was deleted. */ }
+  await imageTransaction('readwrite', store => store.delete(id));
 }

@@ -1,4 +1,3 @@
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { KeyValueRow, McpServerForm } from "../types/mcp";
 import { EMPTY_CONFIG } from "./constants";
 
@@ -48,7 +47,7 @@ export function formFromRaw(name: string, value: unknown, id = newId()): McpServ
 
 export function parseServers(raw: string): { servers: McpServerForm[]; error?: string } {
   try {
-    const parsed = parseYaml(raw || EMPTY_CONFIG);
+    const parsed = JSON.parse(raw || EMPTY_CONFIG);
     const mcpServers =
       parsed?.mcpServers &&
       typeof parsed.mcpServers === "object" &&
@@ -63,7 +62,7 @@ export function parseServers(raw: string): { servers: McpServerForm[]; error?: s
   } catch (error) {
     return {
       servers: [],
-      error: error instanceof Error ? error.message : "Invalid YAML",
+      error: error instanceof Error ? error.message : "Invalid JSON",
     };
   }
 }
@@ -102,5 +101,5 @@ export function stringifyServers(servers: McpServerForm[]): string {
       };
     }
   }
-  return stringifyYaml({ mcpServers });
+  return JSON.stringify({ mcpServers }, null, 2);
 }

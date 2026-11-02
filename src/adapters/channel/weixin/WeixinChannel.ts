@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { resolveConfigHome } from "@pilotdeck/config";
-import { readWeixinCredentials, writeWeixinCredentials, weixinCredentialsPath } from "./credentials.js";
+import { homedir } from "node:os";
 import { ILinkClient, loginWithQR, MessageItemType } from "weixin-ilink";
 import type { ClientOptions, GetUpdatesResp, WeixinMessage, LoginResult } from "weixin-ilink";
 import type { CronResultDelivery } from "../../../cron/index.js";
@@ -28,6 +28,7 @@ import {
 import { WeixinSessionMapper, type WeixinSessionMapperState } from "./WeixinSessionMapper.js";
 import { createVisibleErrorStatusDetail } from "../../../status/agentStatus.js";
 
+const CREDENTIALS_PATH = join(homedir(), ".pilotdeck", "weixin-credentials.json");
 const POLL_RETRY_DELAY_MS = 3000;
 const WEIXIN_ACTIVITY_DELAY_MS = 10 * 60 * 1000;
 const WEIXIN_ACTIVITY_UPDATE_THROTTLE_MS = 10 * 60 * 1000;
@@ -135,14 +136,14 @@ export class WeixinChannel implements ChannelAdapter {
   private currentLoginQrUrl: string | undefined;
 
   constructor(options: WeixinChannelOptions = {}) {
-    this.credentialsPath = options.credentialsPath ?? weixinCredentialsPath();
+    this.credentialsPath = options.credentialsPath ?? CREDENTIALS_PATH;
     this.mapper = options.mapper ?? new WeixinSessionMapper();
     this.liveReplyOptions = options.liveReplyOptions;
     this.clientFactory = options.clientFactory ?? ((clientOptions) => new ILinkClient(clientOptions) as unknown as WeixinIlinkClient);
     this.login = options.loginWithQR ?? loginWithQR;
     this.onStateChange = options.onStateChange;
     this.attachmentStore = new ImAttachmentStore({
-      rootDir: join(resolveConfigHome(), "im-attachments"),
+      rootDir: join(homedir(), ".pilotdeck", "im-attachments"),
       channelKey: this.channelKey,
       maxBytes: WEIXIN_MAX_ATTACHMENT_BYTES,
     });
@@ -969,7 +970,11 @@ export class WeixinChannel implements ChannelAdapter {
 
   private loadCredentials(): SavedCredentials | null {
     try {
-      return readWeixinCredentials(this.credentialsPath);
+      if (!existsSync(this.credentialsPath)) return null;
+      const raw = readFileSync(this.credentialsPath, "utf-8");
+      const data = JSON.parse(raw) as Partial<SavedCredentials>;
+      if (!data.baseUrl || !data.botToken || !data.accountId) return null;
+      return data as SavedCredentials;
     } catch {
       return null;
     }
@@ -977,7 +982,9 @@ export class WeixinChannel implements ChannelAdapter {
 
   private saveCredentials(creds: SavedCredentials): void {
     try {
-      writeWeixinCredentials(creds, this.credentialsPath);
+      const dir = join(homedir(), ".pilotdeck");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(this.credentialsPath, JSON.stringify(creds, null, 2), "utf-8");
     } catch (e) {
       this.logger?.error?.(`weixin: failed to save credentials: ${e}`);
     }

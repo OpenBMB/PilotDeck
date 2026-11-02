@@ -20,8 +20,7 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 // retired; ui/server boots even when the config file is missing.
 
 function applyDerivedRuntimeEnv() {
-  const { config, diagnostics = [], configPath } = readPilotDeckConfigFile({ recover: true });
-  for (const issue of diagnostics) console.warn(`[${issue.code}] ${configPath} (${issue.path || issue.field || 'root'}): ${issue.message}`);
+  const { config } = readPilotDeckConfigFile();
   applyConfigToProcessEnv(config);
 }
 

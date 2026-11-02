@@ -1,7 +1,7 @@
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { dirname } from "node:path";
 import { classifyConfigChanges, diffConfigSnapshots } from "./classifyChanges.js";
-import { loadPilotConfigRecovering as loadPilotConfig, resolvePilotConfigPath } from "./loadPilotConfig.js";
+import { loadPilotConfig, resolvePilotConfigPath } from "./loadPilotConfig.js";
 import {
   PilotConfigError,
   type PilotConfigDiagnostic,

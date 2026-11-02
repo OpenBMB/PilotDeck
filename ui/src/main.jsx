@@ -22,7 +22,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Resolve durable preferences before modules read language/editor settings.
+// Install recovery handlers before importing the application.
 async function mountApplication() {
 await initializePreferencePersistence();
 await import('./i18n/config.js');

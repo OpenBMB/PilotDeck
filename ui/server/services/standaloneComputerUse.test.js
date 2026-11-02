@@ -1,5 +1,3 @@
-import { parse as parseYaml } from 'yaml';
-const parseStored = value => parseYaml(String(value));
 // @vitest-environment node
 import fs from 'node:fs';
 import os from 'node:os';
@@ -51,7 +49,7 @@ function setup({ platform = 'darwin', running = true, grants = true, owner, vers
       return { binary: fs.realpathSync(binary), app: path.dirname(path.dirname(path.dirname(fs.realpathSync(binary)))),
         bundleId: 'cn.pilotdeck.computer-use', permissionOwner: 'PilotDeck Computer Use', probeSupported: true };
     } });
-  const descriptor = () => parseStored(fs.readFileSync(controller.mcpConfigPath, 'utf8')).mcpServers;
+  const descriptor = () => JSON.parse(fs.readFileSync(controller.mcpConfigPath, 'utf8')).mcpServers;
   return { home, env, binary, execute, child, spawn, controller, descriptor, probe,
     setGrants: value => { grants = value; controller.checkedAt = 0; },
     loseDaemon: () => { running = false; controller.checkedAt = 0; } };
@@ -64,7 +62,7 @@ describe('native computer use for Web and macOS desktop', () => {
       await service.initialize();
       const status = await service.setEnabled(true);
       expect(status).toMatchObject({ phase: 'ready', permissionOwner: 'PilotDeck Computer Use',
-        permissionAppPath: fs.realpathSync(binary).split(path.sep + 'Contents' + path.sep)[0], permissions: { accessibility: true, screenRecording: true } });
+        permissionAppPath: fs.realpathSync(binary).split('/Contents/')[0], permissions: { accessibility: true, screenRecording: true } });
       expect(execute.mock.calls.some(([command, args]) => command === 'open' && args.includes('permissions'))).toBe(false);
       expect(spawn).not.toHaveBeenCalled();
       expect(descriptor()['pilotdeck-computer-use'].args).toContain(controller.endpoint);
@@ -82,7 +80,7 @@ describe('native computer use for Web and macOS desktop', () => {
   });
   it('exposes and reveals its actual permission app without starting a Driver or requesting grants', async () => {
     const { controller, execute, binary, descriptor } = setup({ managed: true, running: false, grants: true });
-    const app = fs.realpathSync(binary).split(path.sep + 'Contents' + path.sep)[0];
+    const app = fs.realpathSync(binary).split('/Contents/')[0];
     expect(await controller.initialize()).toMatchObject({ permissionAppPath: app });
     execute.mockClear();
     expect(await controller.revealPermissionApp()).toMatchObject({ permissionAppPath: app, enabled: false });
@@ -118,7 +116,7 @@ describe('native computer use for Web and macOS desktop', () => {
     expect(await controller.initialize()).toMatchObject({ enabled: false, available: true });
     expect(await controller.setEnabled(true)).toMatchObject({ phase: 'ready', permissionOwner: 'PilotDeck Computer Use' });
     const open = execute.mock.calls.find(([command, args]) => command === 'open' && args.includes('serve'));
-    expect(open[1]).toContain(fs.realpathSync(binary).split(path.sep + 'Contents' + path.sep)[0]);
+    expect(open[1]).toContain(fs.realpathSync(binary).split('/Contents/')[0]);
     expect(open[1]).toContain('--stdin'); expect(open[1]).toContain(controller.endpoint);
     expect(descriptor()['pilotdeck-computer-use']).toBeTruthy(); await controller.stop(); expect(controller.livenessFd).toBeNull();
     expect(execute.mock.calls.some(([, args]) => args[0] === 'stop' && !args.includes(controller.endpoint))).toBe(false);
@@ -127,7 +125,7 @@ describe('native computer use for Web and macOS desktop', () => {
     const { controller, execute, binary } = setup({ managed: true, running: false, grants: false });
     await controller.requestPermission('screenRecording');
     const request = execute.mock.calls.find(([command, args]) => command === 'open' && args.includes('permissions'));
-    expect(request[1]).toContain(fs.realpathSync(binary).split(path.sep + 'Contents' + path.sep)[0]); expect(request[1]).toContain('screenRecording');
+    expect(request[1]).toContain(fs.realpathSync(binary).split('/Contents/')[0]); expect(request[1]).toContain('screenRecording');
     expect(request[1]).not.toContain('-W');
     expect(request[1]).toContain('--stdin'); expect(request[1]).toContain('--parent-liveness-stdio');
     const fifo = request[1][request[1].indexOf('--stdin') + 1];
@@ -176,22 +174,22 @@ describe('native computer use for Web and macOS desktop', () => {
     const { controller, home, binary, descriptor } = setup();
     const config = { mcpServers: { 'cua-driver': { command: binary, args: ['mcp'], callTimeoutMs: 60000 }, other: { command: 'custom', args: [] } } };
     fs.writeFileSync(path.join(home, 'mcp.json'), JSON.stringify(config)); await controller.initialize();
-    expect(parseStored(fs.readFileSync(path.join(home, 'computer-use/legacy-mcp.backup.yaml'), 'utf8'))).toEqual(config);
-    expect(parseStored(fs.readFileSync(path.join(home, 'mcp.yaml'), 'utf8')).mcpServers).toEqual({ other: config.mcpServers.other });
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'computer-use/legacy-mcp.backup.json'), 'utf8'))).toEqual(config);
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'mcp.json'), 'utf8')).mcpServers).toEqual({ other: config.mcpServers.other });
     expect(descriptor()['pilotdeck-computer-use']).toBeTruthy(); await controller.stop();
   });
   it('leaves custom external MCP endpoints alone', async () => {
     const { controller, home, binary } = setup();
     const config = { mcpServers: { 'cua-driver': { command: binary, args: ['mcp', '--socket', '/custom'] } } };
     fs.writeFileSync(path.join(home, 'mcp.json'), JSON.stringify(config)); await controller.initialize();
-    expect(parseStored(fs.readFileSync(path.join(home, 'mcp.json'), 'utf8'))).toEqual(config); await controller.stop();
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'mcp.json'), 'utf8'))).toEqual(config); await controller.stop();
   });
   it('starts and awaits exit of an owned Linux daemon, preserving enabled preferences on shutdown', async () => {
     const { controller, child, spawn, descriptor, home } = setup({ platform: 'linux', running: false });
     await controller.initialize(); expect(spawn).not.toHaveBeenCalled();
     expect((await controller.setEnabled(true)).phase).toBe('ready'); expect(spawn).toHaveBeenCalledTimes(1);
     await controller.stop(); expect(child.exitCode).toBe(0); expect(descriptor()).toEqual({});
-    expect(parseStored(fs.readFileSync(path.join(home, 'computer-use/settings.yaml'), 'utf8')).enabled).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'computer-use/settings.json'), 'utf8')).enabled).toBe(true);
   });
   it('keeps permission controls and reports a missing macOS Driver', async () => {
     const { controller } = setup({ binaryMissing: true });

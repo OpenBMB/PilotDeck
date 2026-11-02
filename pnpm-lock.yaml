@@ -131,11 +131,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  packages/config:
-    dependencies:
-      yaml:
-        specifier: 2.9.0
-        version: 2.9.0
+  packages/config: {}
 
   ui:
     dependencies:

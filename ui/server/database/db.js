@@ -5,9 +5,6 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { createYamlConfiguration } from './yamlConfiguration.js';
-import { userConfigurationDirectory } from '../services/userConfiguration.js';
-import { readConfiguration, writeConfiguration, updateConfiguration, resolveConfigHome } from '@pilotdeck/config';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -64,7 +61,6 @@ if (DB_PATH !== LEGACY_DB_PATH && !fs.existsSync(DB_PATH) && fs.existsSync(LEGAC
 
 // Create database connection
 const db = new Database(DB_PATH);
-const yamlConfig = createYamlConfiguration(db);
 
 // app_config must exist before any other module imports (auth.js reads the JWT secret at load time).
 // runMigrations() also creates this table, but it runs too late for existing installations
@@ -240,13 +236,21 @@ const userDb = {
   },
 
   updateGitConfig: (userId, gitName, gitEmail) => {
-    writeConfiguration(path.join(userConfigurationDirectory(userId), 'git.yaml'), { name: gitName || '', email: gitEmail || '' });
+    try {
+      const stmt = db.prepare('UPDATE users SET git_name = ?, git_email = ? WHERE id = ?');
+      stmt.run(gitName, gitEmail, userId);
+    } catch (err) {
+      throw err;
+    }
   },
-  getGitConfig: userId => {
-    const file = path.join(userConfigurationDirectory(userId), 'git.yaml');
-    const old = fs.existsSync(file) ? null : db.prepare('SELECT git_name, git_email FROM users WHERE id = ?').get(userId);
-    const value = readConfiguration(file, { defaults: { name: old?.git_name || '', email: old?.git_email || '' } }).value;
-    return { git_name: value.name, git_email: value.email };
+
+  getGitConfig: (userId) => {
+    try {
+      const row = db.prepare('SELECT git_name, git_email FROM users WHERE id = ?').get(userId);
+      return row;
+    } catch (err) {
+      throw err;
+    }
   },
 
   completeOnboarding: (userId) => {
@@ -268,57 +272,143 @@ const userDb = {
   }
 };
 
-// Legacy tables are imported once per section. Empty lists are authoritative:
-// deleting a key must never resurrect it from the old database on next launch.
-const oldApiKeys = () => yamlConfig.legacy('SELECT * FROM api_keys');
-const oldCredentials = () => yamlConfig.legacy('SELECT * FROM user_credentials');
+// API Keys database operations
 const apiKeysDb = {
-  generateApiKey: () => 'ck_' + crypto.randomBytes(32).toString('hex'),
+  // Generate a new API key
+  generateApiKey: () => {
+    return 'ck_' + crypto.randomBytes(32).toString('hex');
+  },
+
+  // Create a new API key
   createApiKey: (userId, keyName) => {
-    const apiKey = apiKeysDb.generateApiKey();
-    const row = yamlConfig.insert('apiKeys', { user_id: userId, key_name: keyName, api_key: apiKey, last_used: null }, oldApiKeys);
-    return { id: row.id, keyName, apiKey };
+    try {
+      const apiKey = apiKeysDb.generateApiKey();
+      const stmt = db.prepare('INSERT INTO api_keys (user_id, key_name, api_key) VALUES (?, ?, ?)');
+      const result = stmt.run(userId, keyName, apiKey);
+      return { id: result.lastInsertRowid, keyName, apiKey };
+    } catch (err) {
+      throw err;
+    }
   },
-  getApiKeys: userId => yamlConfig.read('apiKeys', oldApiKeys).filter(row => row.user_id === userId).sort((a,b) => b.id-a.id),
-  validateApiKey: apiKey => {
-    const key = yamlConfig.read('apiKeys', oldApiKeys).find(row => row.api_key === apiKey && row.is_active === 1);
-    if (!key) return undefined;
-    const user = db.prepare('SELECT id, username FROM users WHERE id = ? AND is_active = 1').get(key.user_id);
-    if (!user) return undefined;
-    yamlConfig.update('apiKeys', rows => rows.map(row => row.id === key.id ? { ...row, last_used: new Date().toISOString() } : row));
-    return { ...user, api_key_id: key.id };
+
+  // Get all API keys for a user
+  getApiKeys: (userId) => {
+    try {
+      const rows = db.prepare('SELECT id, key_name, api_key, created_at, last_used, is_active FROM api_keys WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+      return rows;
+    } catch (err) {
+      throw err;
+    }
   },
-  deleteApiKey: (userId, id) => {
-    let removed = false;
-    yamlConfig.update('apiKeys', rows => rows.filter(row => { const match = row.id === Number(id) && row.user_id === userId; removed ||= match; return !match; }), oldApiKeys);
-    return removed;
+
+  // Validate API key and get user
+  validateApiKey: (apiKey) => {
+    try {
+      const row = db.prepare(`
+        SELECT u.id, u.username, ak.id as api_key_id
+        FROM api_keys ak
+        JOIN users u ON ak.user_id = u.id
+        WHERE ak.api_key = ? AND ak.is_active = 1 AND u.is_active = 1
+      `).get(apiKey);
+
+      if (row) {
+        // Update last_used timestamp
+        db.prepare('UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = ?').run(row.api_key_id);
+      }
+
+      return row;
+    } catch (err) {
+      throw err;
+    }
   },
-  toggleApiKey: (userId, id, active) => {
-    let changed = false;
-    yamlConfig.update('apiKeys', rows => rows.map(row => { if (row.id !== Number(id) || row.user_id !== userId) return row; changed = true; return { ...row, is_active: active ? 1 : 0 }; }), oldApiKeys);
-    return changed;
+
+  // Delete an API key
+  deleteApiKey: (userId, apiKeyId) => {
+    try {
+      const stmt = db.prepare('DELETE FROM api_keys WHERE id = ? AND user_id = ?');
+      const result = stmt.run(apiKeyId, userId);
+      return result.changes > 0;
+    } catch (err) {
+      throw err;
+    }
   },
+
+  // Toggle API key active status
+  toggleApiKey: (userId, apiKeyId, isActive) => {
+    try {
+      const stmt = db.prepare('UPDATE api_keys SET is_active = ? WHERE id = ? AND user_id = ?');
+      const result = stmt.run(isActive ? 1 : 0, apiKeyId, userId);
+      return result.changes > 0;
+    } catch (err) {
+      throw err;
+    }
+  }
 };
+
+// User credentials database operations (for GitHub tokens, GitLab tokens, etc.)
 const credentialsDb = {
+  // Create a new credential
   createCredential: (userId, credentialName, credentialType, credentialValue, description = null) => {
-    const row = yamlConfig.insert('credentials', { user_id: userId, credential_name: credentialName, credential_type: credentialType, credential_value: credentialValue, description }, oldCredentials);
-    return { id: row.id, credentialName, credentialType };
+    try {
+      const stmt = db.prepare('INSERT INTO user_credentials (user_id, credential_name, credential_type, credential_value, description) VALUES (?, ?, ?, ?, ?)');
+      const result = stmt.run(userId, credentialName, credentialType, credentialValue, description);
+      return { id: result.lastInsertRowid, credentialName, credentialType };
+    } catch (err) {
+      throw err;
+    }
   },
-  getCredentials: (userId, type = null) => yamlConfig.read('credentials', oldCredentials)
-    .filter(row => row.user_id === userId && (!type || row.credential_type === type)).sort((a,b) => b.id-a.id)
-    .map(({ credential_value, ...row }) => row),
-  getActiveCredential: (userId, type) => yamlConfig.read('credentials', oldCredentials)
-    .filter(row => row.user_id === userId && row.credential_type === type && row.is_active === 1).sort((a,b) => b.id-a.id)[0]?.credential_value || null,
-  deleteCredential: (userId, id) => {
-    let removed = false;
-    yamlConfig.update('credentials', rows => rows.filter(row => { const match = row.id === Number(id) && row.user_id === userId; removed ||= match; return !match; }), oldCredentials);
-    return removed;
+
+  // Get all credentials for a user, optionally filtered by type
+  getCredentials: (userId, credentialType = null) => {
+    try {
+      let query = 'SELECT id, credential_name, credential_type, description, created_at, is_active FROM user_credentials WHERE user_id = ?';
+      const params = [userId];
+
+      if (credentialType) {
+        query += ' AND credential_type = ?';
+        params.push(credentialType);
+      }
+
+      query += ' ORDER BY created_at DESC';
+
+      const rows = db.prepare(query).all(...params);
+      return rows;
+    } catch (err) {
+      throw err;
+    }
   },
-  toggleCredential: (userId, id, active) => {
-    let changed = false;
-    yamlConfig.update('credentials', rows => rows.map(row => { if (row.id !== Number(id) || row.user_id !== userId) return row; changed = true; return { ...row, is_active: active ? 1 : 0 }; }), oldCredentials);
-    return changed;
+
+  // Get active credential value for a user by type (returns most recent active)
+  getActiveCredential: (userId, credentialType) => {
+    try {
+      const row = db.prepare('SELECT credential_value FROM user_credentials WHERE user_id = ? AND credential_type = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1').get(userId, credentialType);
+      return row?.credential_value || null;
+    } catch (err) {
+      throw err;
+    }
   },
+
+  // Delete a credential
+  deleteCredential: (userId, credentialId) => {
+    try {
+      const stmt = db.prepare('DELETE FROM user_credentials WHERE id = ? AND user_id = ?');
+      const result = stmt.run(credentialId, userId);
+      return result.changes > 0;
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  // Toggle credential active status
+  toggleCredential: (userId, credentialId, isActive) => {
+    try {
+      const stmt = db.prepare('UPDATE user_credentials SET is_active = ? WHERE id = ? AND user_id = ?');
+      const result = stmt.run(isActive ? 1 : 0, credentialId, userId);
+      return result.changes > 0;
+    } catch (err) {
+      throw err;
+    }
+  }
 };
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
@@ -350,53 +440,125 @@ const normalizeNotificationPreferences = (value) => {
 };
 
 const notificationPreferencesDb = {
-  getPreferences: userId => {
-    let legacy;
-    try { legacy = JSON.parse(db.prepare('SELECT preferences_json FROM user_notification_preferences WHERE user_id = ?').get(userId)?.preferences_json || 'null'); } catch { /* Invalid legacy data uses defaults. */ }
-    const file = path.join(userConfigurationDirectory(userId), 'notifications.yaml');
-    return readConfiguration(file, { defaults: fs.existsSync(file) ? DEFAULT_NOTIFICATION_PREFERENCES : normalizeNotificationPreferences(legacy), normalize: normalizeNotificationPreferences }).value;
+  getPreferences: (userId) => {
+    try {
+      const row = db.prepare('SELECT preferences_json FROM user_notification_preferences WHERE user_id = ?').get(userId);
+      if (!row) {
+        const defaults = normalizeNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
+        db.prepare(
+          'INSERT INTO user_notification_preferences (user_id, preferences_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)'
+        ).run(userId, JSON.stringify(defaults));
+        return defaults;
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(row.preferences_json);
+      } catch {
+        parsed = DEFAULT_NOTIFICATION_PREFERENCES;
+      }
+      return normalizeNotificationPreferences(parsed);
+    } catch (err) {
+      throw err;
+    }
   },
+
   updatePreferences: (userId, preferences) => {
-    const value = normalizeNotificationPreferences(preferences);
-    writeConfiguration(path.join(userConfigurationDirectory(userId), 'notifications.yaml'), value);
-    return value;
-  },
+    try {
+      const normalized = normalizeNotificationPreferences(preferences);
+      db.prepare(
+        `INSERT INTO user_notification_preferences (user_id, preferences_json, updated_at)
+         VALUES (?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(user_id) DO UPDATE SET
+           preferences_json = excluded.preferences_json,
+           updated_at = CURRENT_TIMESTAMP`
+      ).run(userId, JSON.stringify(normalized));
+      return normalized;
+    } catch (err) {
+      throw err;
+    }
+  }
 };
 
-const oldPushSubscriptions = () => yamlConfig.legacy('SELECT * FROM push_subscriptions').map(({preferences_json, ...row}) => {
-  let preferences = {}; try { preferences = JSON.parse(preferences_json || '{}'); } catch { /* Invalid legacy options. */ }
-  return { ...row, preferences };
-});
 const pushSubscriptionsDb = {
   saveSubscription: (userId, endpoint, keysP256dh, keysAuth, preferences = {}) => {
-    yamlConfig.update('pushSubscriptions', rows => {
-      const previous = rows.find(row => row.endpoint === endpoint);
-      const row = { id: previous?.id || Math.max(0, ...rows.map(item => item.id)) + 1, user_id: userId, endpoint, keys_p256dh: keysP256dh, keys_auth: keysAuth, preferences };
-      return [...rows.filter(item => item.endpoint !== endpoint), row];
-    }, oldPushSubscriptions);
+    try {
+      db.prepare(
+        `INSERT INTO push_subscriptions (user_id, endpoint, keys_p256dh, keys_auth, preferences_json)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(endpoint) DO UPDATE SET
+           user_id = excluded.user_id,
+           keys_p256dh = excluded.keys_p256dh,
+           keys_auth = excluded.keys_auth,
+           preferences_json = excluded.preferences_json`
+      ).run(userId, endpoint, keysP256dh, keysAuth, JSON.stringify(preferences));
+    } catch (err) {
+      throw err;
+    }
   },
-  getSubscriptions: userId => yamlConfig.read('pushSubscriptions', oldPushSubscriptions).filter(row => row.user_id === userId)
-    .map(row => ({ endpoint: row.endpoint, keys_p256dh: row.keys_p256dh, keys_auth: row.keys_auth, preferences_json: JSON.stringify(row.preferences || {}) })),
-  removeSubscription: (endpoint, userId) => { yamlConfig.update('pushSubscriptions', rows => rows.filter(row => row.endpoint !== endpoint || userId !== undefined && row.user_id !== userId), oldPushSubscriptions); },
-  removeAllForUser: userId => { yamlConfig.update('pushSubscriptions', rows => rows.filter(row => row.user_id !== userId), oldPushSubscriptions); },
+
+  getSubscriptions: (userId) => {
+    try {
+      return db.prepare('SELECT endpoint, keys_p256dh, keys_auth, preferences_json FROM push_subscriptions WHERE user_id = ?').all(userId);
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  removeSubscription: (endpoint, userId) => {
+    try {
+      if (userId === undefined) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+      else db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, userId);
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  removeAllForUser: (userId) => {
+    try {
+      db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
+    } catch (err) {
+      throw err;
+    }
+  }
 };
 
 // Session custom names database operations
-function sessionNameConfiguration() {
-  const file = path.join(resolveConfigHome(), 'session-names.yaml');
-  const options = { defaults: { names: [] } };
-  if (!fs.existsSync(file)) {
-    readConfiguration(file, { defaults: { names: yamlConfig.legacy('SELECT session_id, provider, custom_name FROM session_names') } });
-  }
-  return { read: () => readConfiguration(file, options).value.names.filter(row => row && typeof row.session_id === 'string' && typeof row.provider === 'string' && typeof row.custom_name === 'string'),
-    update: change => updateConfiguration(file, value => ({ ...value, names: change(value.names || []) }), options) };
-}
 const sessionNamesDb = {
-  setName: (sessionId, provider, customName) => { sessionNameConfiguration().update(rows => [...rows.filter(row => row.session_id !== sessionId || row.provider !== provider), { session_id: sessionId, provider, custom_name: customName }]); },
-  getName: (sessionId, provider) => sessionNameConfiguration().read().find(row => row.session_id === sessionId && row.provider === provider)?.custom_name || null,
-  getNames: (sessionIds, provider) => new Map(sessionNameConfiguration().read().filter(row => row.provider === provider && sessionIds.includes(row.session_id)).map(row => [row.session_id, row.custom_name])),
+  // Set (insert or update) a custom session name
+  setName: (sessionId, provider, customName) => {
+    db.prepare(`
+      INSERT INTO session_names (session_id, provider, custom_name)
+      VALUES (?, ?, ?)
+      ON CONFLICT(session_id, provider)
+      DO UPDATE SET custom_name = excluded.custom_name, updated_at = CURRENT_TIMESTAMP
+    `).run(sessionId, provider, customName);
+  },
+
+  // Get a single custom session name
+  getName: (sessionId, provider) => {
+    const row = db.prepare(
+      'SELECT custom_name FROM session_names WHERE session_id = ? AND provider = ?'
+    ).get(sessionId, provider);
+    return row?.custom_name || null;
+  },
+
+  // Batch lookup — returns Map<sessionId, customName>
+  getNames: (sessionIds, provider) => {
+    if (!sessionIds.length) return new Map();
+    const placeholders = sessionIds.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT session_id, custom_name FROM session_names
+       WHERE session_id IN (${placeholders}) AND provider = ?`
+    ).all(...sessionIds, provider);
+    return new Map(rows.map(r => [r.session_id, r.custom_name]));
+  },
+
+  // Delete a custom session name
   deleteName: (sessionId, provider) => {
-    let removed = false; sessionNameConfiguration().update(rows => rows.filter(row => { const match = row.session_id === sessionId && row.provider === provider; removed ||= match; return !match; })); return removed;
+    return db.prepare(
+      'DELETE FROM session_names WHERE session_id = ? AND provider = ?'
+    ).run(sessionId, provider).changes > 0;
   },
 };
 
@@ -416,19 +578,30 @@ function applyCustomSessionNames(sessions, provider) {
 }
 
 // App config database operations
-const oldAppConfig = () => Object.fromEntries(yamlConfig.legacy('SELECT key, value FROM app_config').map(row => [row.key, row.value]));
 const appConfigDb = {
-  get: key => yamlConfig.read('app', oldAppConfig)[key] || null,
-  set: (key, value) => { yamlConfig.update('app', current => ({ ...current, [key]: value }), oldAppConfig); },
-  getOrCreateJwtSecret: () => {
-    const existing = appConfigDb.get('jwt_secret');
-    if (existing) return existing;
-    try { return yamlConfig.update('app', current => ({ ...current, jwt_secret: current.jwt_secret || crypto.randomBytes(64).toString('hex') }), oldAppConfig).jwt_secret; }
-    catch {
-      console.warn('[PD_CONFIG_WRITE] credentials/web.yaml (app.jwt_secret): cannot save credentials; using a temporary secret until storage is writable. Login sessions will require renewal after restart.');
-      return crypto.randomBytes(64).toString('hex');
+  get: (key) => {
+    try {
+      const row = db.prepare('SELECT value FROM app_config WHERE key = ?').get(key);
+      return row?.value || null;
+    } catch (err) {
+      return null;
     }
   },
+
+  set: (key, value) => {
+    db.prepare(
+      'INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+    ).run(key, value);
+  },
+
+  getOrCreateJwtSecret: () => {
+    let secret = appConfigDb.get('jwt_secret');
+    if (!secret) {
+      secret = crypto.randomBytes(64).toString('hex');
+      appConfigDb.set('jwt_secret', secret);
+    }
+    return secret;
+  }
 };
 
 // Backward compatibility - keep old names pointing to new system
@@ -452,7 +625,6 @@ const githubTokensDb = {
 
 export {
   db,
-  yamlConfig,
   initializeDatabase,
   userDb,
   apiKeysDb,

@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
-import { parse as parseYaml } from 'yaml';
+import { mkdirSync, mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -58,8 +57,8 @@ describe('MCP config writable paths', () => {
     const config = await writeMcpConfigFile('global', raw, null);
 
     expect(config.path).toBe(getGlobalMcpConfigPath());
-    expect(config.path).toBe(join(process.env.PILOT_HOME, 'mcp.yaml'));
-    expect(parseYaml(readFileSync(config.path, 'utf8')).mcpServers.local.command).toBe('node');
+    expect(config.path).toBe(join(process.env.PILOT_HOME, 'mcp.json'));
+    expect(readFileSync(config.path, 'utf8')).toContain('"local"');
   });
 
   it('writes project MCP config under real projects', async () => {
@@ -72,19 +71,6 @@ describe('MCP config writable paths', () => {
       projectRoot,
     );
 
-    expect(config.path).toBe(join(projectRoot, '.pilotdeck', 'mcp.yaml'));
-  });
-
-  it('imports legacy JSON once and isolates malformed servers while retaining credentials', async () => {
-    mkdirSync(process.env.PILOT_HOME, { recursive: true });
-    const legacy = join(process.env.PILOT_HOME, 'mcp.json');
-    writeFileSync(legacy, JSON.stringify({ mcpServers: {
-      good: { command: 'node', env: { TOKEN: 'saved-secret' } }, bad: false,
-    } }));
-    const first = await readMcpConfigFile('global', null);
-    expect(first.config.mcpServers.good.env.TOKEN).toBe('saved-secret');
-    expect(first.config.mcpServers.bad).toBeUndefined();
-    writeFileSync(legacy, '{}');
-    expect((await readMcpConfigFile('global', null)).config.mcpServers.good.env.TOKEN).toBe('saved-secret');
+    expect(config.path).toBe(join(projectRoot, '.pilotdeck', 'mcp.json'));
   });
 });

@@ -55,7 +55,7 @@ it('keeps development identities separate and refuses signed candidates with a d
   await resolveMacRuntime({ ...opts, binary: prod.binary, version: '0.34.2' });
   const dev = f.make('dev', { version: '0.34.1', production: false });
   const runtime = await resolveMacRuntime({ ...opts, binary: dev.binary, version: '0.34.1' });
-  expect(runtime.bundleId).toBe(MAC_DEV_HOST_ID); expect(runtime.app).toContain(path.sep + 'development' + path.sep);
+  expect(runtime.bundleId).toBe(MAC_DEV_HOST_ID); expect(runtime.app).toContain('/development/');
   const invalid = f.make('invalid', { version: '0.34.1', production: true, invalid: true });
   await expect(resolveMacRuntime({ ...opts, binary: invalid.binary, version: '0.34.1' })).rejects.toThrow('Signature');
 });

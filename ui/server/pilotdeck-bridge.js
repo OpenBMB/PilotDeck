@@ -69,7 +69,6 @@ import { createNormalizedMessage } from './pilotdeck-message.js';
 import { readPermissionSettings } from './services/permissionSettings.js';
 import { createGatewayConnectionCache } from './services/gatewayConnectionCache.js';
 import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
-import { readGatewayAuthToken } from '../../src/gateway/server/authToken.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -78,7 +77,9 @@ const GENERAL_HOME = resolvePilotHome(process.env);
 
 const GATEWAY_URL =
     process.env.PILOTDECK_GATEWAY_URL || 'ws://127.0.0.1:18789/ws';
-const GATEWAY_TOKEN_PATH = process.env.PILOTDECK_GATEWAY_TOKEN_PATH;
+const GATEWAY_TOKEN_PATH =
+    process.env.PILOTDECK_GATEWAY_TOKEN_PATH ||
+    path.join(GENERAL_HOME, 'server-token');
 // Gateway starts only after model configuration is ready. Allow enough time
 // for a cold MCP startup before failing the first call.
 const GATEWAY_CONNECT_TIMEOUT_MS =
@@ -196,7 +197,6 @@ const gatewayNotificationHandlers = new Set();
 
 async function readGatewayToken() {
     try {
-        if (!GATEWAY_TOKEN_PATH) return (await readGatewayAuthToken()) || null;
         const raw = await fsPromises.readFile(GATEWAY_TOKEN_PATH, 'utf8');
         const trimmed = raw.trim();
         return trimmed || null;

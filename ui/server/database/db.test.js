@@ -21,10 +21,7 @@ it.each([false, true])('opens a user database before other services load (custom
     symlinkSync(fileURLToPath(new URL('../../node_modules', import.meta.url)), join(install, 'node_modules'), 'junction');
     const envUrl = new URL('../load-env.js', import.meta.url).href;
     writeFileSync(join(databaseDir, 'db.js'), readFileSync(new URL('./db.js', import.meta.url), 'utf8')
-      .replace("import '../load-env.js';", `import ${JSON.stringify(envUrl)};`)
-      .replace("from './yamlConfiguration.js'", `from ${JSON.stringify(new URL('./yamlConfiguration.js', import.meta.url).href)}`)
-      .replace("from '../services/userConfiguration.js'", `from ${JSON.stringify(new URL('../services/userConfiguration.js', import.meta.url).href)}`)
-      .replace("from '@pilotdeck/config'", `from ${JSON.stringify(new URL('../../../packages/config/index.cjs', import.meta.url).href)}`));
+      .replace("import '../load-env.js';", `import ${JSON.stringify(envUrl)};`));
     copyFileSync(new URL('./init.sql', import.meta.url), join(databaseDir, 'init.sql'));
     if (custom) writeFileSync(config, `webui:\n  runtime:\n    databasePath: ${JSON.stringify(database)}\n`);
     chmodSync(databaseDir, 0o555);

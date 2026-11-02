@@ -49,6 +49,10 @@ try {
   const { spawnManaged, stopProcessTree } = await import(pathToFileURL(path.join(runtime, 'ui/server/utils/processTree.js')));
   const home = path.join(temporary, 'profile'); fs.mkdirSync(home);
   fs.writeFileSync(path.join(home, 'pilotdeck.yaml'), 'schemaVersion: 1\nagent:\n  model: test/one\nmodel:\n  providers:\n    test:\n      protocol: openai\n      url: http://127.0.0.1:1/v1\n      apiKey: benchmark-no-network\n      models:\n        one: {}\ntelemetry:\n  enabled: false\n');
+  fs.writeFileSync(path.join(home, 'mcp.json'), '{"mcpServers":{}}\n');
+  fs.writeFileSync(path.join(home, 'permissions.json'), '{"skipPermissions":false}\n');
+  fs.writeFileSync(path.join(home, 'weixin-credentials.json'), '{"baseUrl":"http://127.0.0.1:1","botToken":"fixture-secret","accountId":"fixture"}\n');
+  const originalConfiguration = Object.fromEntries(['pilotdeck.yaml','mcp.json','permissions.json','weixin-credentials.json'].map(name => [name,fs.readFileSync(path.join(home,name),'utf8')]));
   if (args.includes('--desktop')) {
     const wrapper = path.join(temporary, 'desktop.cjs');
     // Electron's package export is an executable path under Node; inside Electron
@@ -91,6 +95,10 @@ try {
       const response = await fetch(`http://127.0.0.1:${serverPort}/api/projects`, { signal: AbortSignal.timeout(15_000) });
       if (!response.ok) throw new Error(`Web/Gateway integration check failed (${response.status}).`);
       await response.json(); row.usableMs = Math.round(performance.now() - start);
+      for (const [name, original] of Object.entries(originalConfiguration)) {
+        if (fs.readFileSync(path.join(home,name),'utf8') !== original) throw new Error(`Existing configuration was rewritten: ${name}`);
+      }
+      if (fs.existsSync(path.join(home,'mcp.yaml')) || fs.existsSync(path.join(home,'credentials/gateway.yaml'))) throw new Error('Unexpected configuration format migration.');
       results.push(row); console.log(JSON.stringify(row));
     } finally { for (const child of children.reverse()) await stopProcessTree(child); }
   }

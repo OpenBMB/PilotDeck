@@ -9,10 +9,10 @@ import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
 import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiagnostics';
+import { redactDiagnostic } from '@pilotdeck/config';
 import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } from './notifications';
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
-import { saveAppearancePatch, readAppearanceSettings, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
-import { resolveConfigHome, readConfiguration, writeConfiguration, redactDiagnostic } from '@pilotdeck/config';
+import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
 import { createFilePicker } from './filePicker';
 import { ComputerUseController } from './computerUse';
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen, Notification } from "electron";
@@ -112,7 +112,7 @@ class RuntimeManager {
     private readonly runtimeRoot: string,
     private readonly nodeBinary: string,
   ) {
-    app.setAppLogsPath(path.join(resolveConfigHome(), "logs"));
+    app.setAppLogsPath(path.join(app.getPath("userData"), "logs"));
     this.logPath = path.join(app.getPath("logs"), "runtime.log");
   }
 
@@ -140,13 +140,12 @@ class RuntimeManager {
       logPath: this.logPath,
     });
     const config = ensurePilotHome((message) => this.log(message));
-    const computerUseDirectory = path.join(config.pilotHome, 'computer-use');
+    const computerUseDirectory = path.join(app.getPath('userData'), 'computer-use');
     // macOS uses the same LaunchServices helper as standalone Web deployments.
     // Electron's own grants must not gate or request this helper's permissions.
     if (process.platform !== 'darwin') {
       this.computerUse = new ComputerUseController({
         directory: computerUseDirectory,
-        legacyDirectory: path.join(app.getPath('userData'), 'computer-use'),
         resources: app.isPackaged ? path.join(process.resourcesPath, 'runtime', 'resources', 'cua-driver') : path.join(__dirname, '..', '..', '..', 'resources', 'cua-driver'),
         bundleId: APP_ID,
         permissions: () => undefined,
@@ -186,7 +185,7 @@ class RuntimeManager {
       PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${gatewayPort}/ws`,
       PILOTDECK_DESKTOP: "1",
       PILOTDECK_COMPUTER_USE_DIRECTORY: computerUseDirectory,
-      PILOTDECK_COMPUTER_USE_MCP_CONFIG: path.join(computerUseDirectory, 'mcp.yaml'),
+      PILOTDECK_COMPUTER_USE_MCP_CONFIG: path.join(computerUseDirectory, 'mcp.json'),
       PILOTDECK_DESKTOP_VERSION: app.getVersion(),
       PILOTDECK_VERSION: app.getVersion(),
       PILOTDECK_DESKTOP_BUILD_TIME: buildMetadata.buildTime,
@@ -743,7 +742,7 @@ async function startRuntimeAndLoad(): Promise<void> {
     const info = await ensureRuntime();
     await loadRuntimeUrl(info);
   } catch (error) {
-    const detail = new RuntimeProcessDiagnostics('desktop', runtime?.getLogPath() || path.join(resolveConfigHome(), 'logs/runtime.log')).failure(error instanceof Error ? error.stack ?? error.message : String(error));
+    const detail = new RuntimeProcessDiagnostics("desktop", runtime?.getLogPath() || path.join(app.getPath("logs"), "runtime.log")).failure(error instanceof Error ? error.stack ?? error.message : String(error));
     publishRuntimeStatus({
       phase: "error",
       message: "PilotDeck failed to start.",
@@ -914,7 +913,9 @@ function readBuildMetadata(): BuildMetadata {
 }
 
 function ensurePilotHome(log: (message: string) => void): { pilotHome: string } {
-  const pilotHome = resolveConfigHome(process.env);
+  const pilotHome = process.env.PILOT_HOME
+    ? path.resolve(process.env.PILOT_HOME)
+    : path.join(os.homedir(), ".pilotdeck");
   fs.mkdirSync(pilotHome, { recursive: true });
   log(`PilotDeck home ready at ${pilotHome}`);
   return { pilotHome };
@@ -1019,11 +1020,14 @@ function getUpdateController() {
   updater.on("login", network.login);
   const downloadControl = installUpdateDownloadControl(updater);
   const { createDesktopReleaseService } = require(path.join(resolveRuntimeRoot(), "ui/server/services/desktopReleaseService.js"));
-  const routeCache = path.join(resolveConfigHome(), 'cache', 'update-route.yaml');
+  const routeCache = path.join(app.getPath("userData"), "update-route.json");
   const releaseService = createDesktopReleaseService({ repository, currentVersion: app.getVersion(), fetchImpl: network.fetch, probe: network.probe, checkDownload: network.checkDownload,
     routeStore: {
-      read: () => readConfiguration(routeCache, { defaults: {}, create: false, legacyPaths: [path.join(app.getPath('userData'), 'update-route.json')] }).value,
-      write: (record: unknown) => { writeConfiguration(routeCache, record); },
+      read: () => JSON.parse(fs.readFileSync(routeCache, "utf8")),
+      write: (record: unknown) => {
+        fs.writeFileSync(`${routeCache}.tmp`, JSON.stringify(record), "utf8");
+        fs.renameSync(`${routeCache}.tmp`, routeCache);
+      },
     },
   });
   updateController = createUpdateController({
@@ -1064,8 +1068,8 @@ const notifications = createDesktopNotifications({
   platform: process.platform,
   isForeground: isMainWindowForeground,
   supported: () => Notification.isSupported(),
-  read: () => readConfiguration(path.join(resolveConfigHome(), 'notifications.yaml'), { defaults: {}, legacyPaths: [path.join(app.getPath('userData'), 'notifications.json')] }).value,
-  save: value => { writeConfiguration(path.join(resolveConfigHome(), 'notifications.yaml'), value); },
+  read: () => { try { return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'notifications.json'), 'utf8')); } catch { return null; } },
+  save: value => fs.writeFileSync(path.join(app.getPath('userData'), 'notifications.json'), JSON.stringify(value)),
   create: payload => new Notification(nativeNotificationOptions(process.platform, payload)),
   setBadge: count => app.setBadgeCount(count),
   setTrayBadge: count => desktopTray?.setNotificationCount(count),
@@ -1114,7 +1118,7 @@ for (const [channel, action] of Object.entries({
 function readAppearance(): DesktopAppearance {
   const locale = app.isReady() ? app.getLocale() : 'en';
   try {
-    return readAppearanceSettings(app.getPath('userData'), resolveConfigHome(), locale);
+    return normalizeAppearance(JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "appearance.json"), "utf8")), locale);
   } catch { return normalizeAppearance(null, locale); }
 }
 
@@ -1267,7 +1271,7 @@ nativeTheme.on("updated", publishWindowState);
 ipcMain.handle("pilotdeck:set-appearance", (event, value: unknown) => {
   requireUpdateSender(event);
   const current = readAppearance();
-  const appearance = saveAppearancePatch(app.getPath('userData'), current, value, app.getLocale(), resolveConfigHome());
+  const appearance = saveAppearancePatch(app.getPath('userData'), current, value, app.getLocale());
   if (current.themeMode !== appearance.themeMode) nativeTheme.themeSource = appearance.themeMode;
   const paletteChanged = JSON.stringify(windowPalette(nativeTheme.shouldUseDarkColors, process.platform, current.lightAppearance)) !== JSON.stringify(windowPalette(nativeTheme.shouldUseDarkColors, process.platform, appearance.lightAppearance));
   if (paletteChanged || current.themeMode !== appearance.themeMode) publishWindowState();
@@ -1282,11 +1286,11 @@ ipcMain.handle('pilotdeck:appearance-capabilities', event => {
 });
 ipcMain.handle('pilotdeck:save-appearance-image', (event, bytes: unknown) => {
   requireUpdateSender(event);
-  return writeAppearanceImage(resolveConfigHome(), bytes, buffer => nativeImage.createFromBuffer(buffer).getSize());
+  return writeAppearanceImage(app.getPath('userData'), bytes, buffer => nativeImage.createFromBuffer(buffer).getSize());
 });
 ipcMain.handle('pilotdeck:read-appearance-image', async (event, id: unknown) => {
   requireUpdateSender(event);
-  const file = appearanceImagePath(resolveConfigHome(), id);
+  const file = appearanceImagePath(app.getPath('userData'), id);
   if ((await fs.promises.stat(file)).size > 10 * 1024 * 1024) throw new Error('Invalid background image');
   return new Uint8Array(await fs.promises.readFile(file));
 });
@@ -1294,7 +1298,7 @@ ipcMain.handle('pilotdeck:delete-appearance-image', (event, id: unknown) => {
   requireUpdateSender(event);
   // Never remove an image referenced by the last successfully saved configuration.
   if (readAppearance().lightAppearance?.background.imageId === id) return;
-  fs.rmSync(appearanceImagePath(resolveConfigHome(), id), { force: true });
+  fs.rmSync(appearanceImagePath(app.getPath('userData'), id), { force: true });
 });
 
 ipcMain.handle("pilotdeck:get-runtime-info", () => runtime?.getInfo());

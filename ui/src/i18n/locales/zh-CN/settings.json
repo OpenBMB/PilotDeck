@@ -730,7 +730,7 @@
   },
   "mcpConfig": {
     "title": "MCP 服务器",
-    "description": "编辑 PilotDeck MCP 配置。全局配置位于 ~/.pilotdeck/mcp.yaml；项目配置位于 .pilotdeck/mcp.yaml，同名服务器会覆盖全局配置。",
+    "description": "编辑 PilotDeck MCP 配置。全局配置位于 ~/.pilotdeck/mcp.json；项目配置位于 .pilotdeck/mcp.json，同名服务器会覆盖全局配置。",
     "project": "项目级配置对应的项目",
     "scopes": {
       "global": "全局",
@@ -752,8 +752,8 @@
     "addStdioServer": "添加 STDIO 服务器",
     "globalTitle": "全局 MCP 服务器",
     "projectTitle": "项目 MCP 服务器",
-    "globalLocation": "位于 ~/.pilotdeck/mcp.yaml，在所有项目中可用。",
-    "projectLocation": "位于 .pilotdeck/mcp.yaml，同名服务器会覆盖全局配置。",
+    "globalLocation": "位于 ~/.pilotdeck/mcp.json，在所有项目中可用。",
+    "projectLocation": "位于 .pilotdeck/mcp.json，同名服务器会覆盖全局配置。",
     "servers": "服务器",
     "projects": "项目",
     "searchServer": "搜索服务器",

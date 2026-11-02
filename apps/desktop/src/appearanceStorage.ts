@@ -1,30 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readConfiguration, updateConfiguration } from '@pilotdeck/config';
 import { normalizeAppearance, type DesktopAppearance } from './appearance';
 import { isImageId, MAX_BACKGROUND_BYTES } from './lightAppearance';
 
-export function readAppearanceSettings(userData: string, configHome: string, locale: string): DesktopAppearance {
-  const value = readConfiguration(path.join(configHome, 'appearance.yaml'), {
-    defaults: normalizeAppearance(null, locale), legacyPaths: [path.join(userData, 'appearance.json')],
-    normalize: value => normalizeAppearance(value, locale),
-  }).value;
-  const id = value.lightAppearance?.background.imageId;
-  if (isImageId(id)) {
-    const source = path.join(userData, 'appearance-images', id);
-    const target = path.join(configHome, 'appearance-images', id);
-    if (source !== target && fs.existsSync(source) && !fs.existsSync(target)) {
-      try { fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 }); fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL); }
-      catch { /* The legacy image stays available for a later migration attempt. */ }
-    }
-  }
-  return value;
-}
-
-export function saveAppearancePatch(userData: string, current: DesktopAppearance, value: unknown, locale: string, configHome = userData): DesktopAppearance {
+export function saveAppearancePatch(userData: string, current: DesktopAppearance, value: unknown, locale: string): DesktopAppearance {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid appearance');
-  return updateConfiguration(path.join(configHome, 'appearance.yaml'), stored => normalizeAppearance({ ...stored, ...value }, locale), { defaults: current });
+  const next = normalizeAppearance({ ...current, ...value }, locale);
+  fs.mkdirSync(userData, { recursive: true });
+  const target = path.join(userData, 'appearance.json');
+  const temporary = `${target}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(next), 'utf8');
+  fs.renameSync(temporary, target);
+  return next;
 }
 export function appearanceImagePath(userData: string, id: unknown): string {
   if (!isImageId(id)) throw new Error('Invalid background image id');

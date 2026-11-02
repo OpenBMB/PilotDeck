@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import ts from 'typescript';
-import { parse as parseYaml } from 'yaml';
 const require = createRequire(import.meta.url);
 const cache = new Map();
 function load(name) {
@@ -17,7 +16,7 @@ function load(name) {
   cache.set(name, mod.exports);
   return mod.exports;
 }
-const { saveAppearancePatch, readAppearanceSettings, appearanceImagePath, writeAppearanceImage } = load('appearanceStorage');
+const { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } = load('appearanceStorage');
 test('partial desktop updates retain light preferences and commit atomically', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-appearance-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -25,23 +24,10 @@ test('partial desktop updates retain light preferences and commit atomically', t
   const second = saveAppearancePatch(directory, first, { themeMode: 'dark' }, 'en');
   assert.equal(second.lightAppearance.preset, 'mint');
   assert.equal(second.themeMode, 'dark');
-  assert.deepEqual(parseYaml(fs.readFileSync(path.join(directory, 'appearance.yaml'), 'utf8')), second);
-  assert.equal(fs.existsSync(path.join(directory, 'appearance.yaml.lock')), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(directory, 'appearance.json'), 'utf8')), second);
+  assert.equal(fs.existsSync(path.join(directory, 'appearance.json.tmp')), false);
   assert.throws(() => saveAppearancePatch(directory, second, null, 'en'));
-  assert.deepEqual(parseYaml(fs.readFileSync(path.join(directory, 'appearance.yaml'), 'utf8')), second);
-});
-
-test('appearance migrates from legacy userData into PilotHome once', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-appearance-migration-'));
-  t.after(() => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); fs.rmSync(root, { recursive: true, force: true }); });
-  const old = path.join(root, 'old-user-data'), home = path.join(root, '.pilotdeck');
-  fs.mkdirSync(old);
-  fs.writeFileSync(path.join(old, 'appearance.json'), JSON.stringify({ language: 'zh-CN', themeMode: 'dark', interfacePreferences: { hardwareAcceleration: false } }));
-  const first = readAppearanceSettings(old, home, 'en');
-  assert.equal(first.language, 'zh-CN');
-  assert.equal(first.interfacePreferences.hardwareAcceleration, false);
-  fs.writeFileSync(path.join(old, 'appearance.json'), '{}');
-  assert.deepEqual(readAppearanceSettings(old, home, 'en'), first);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(directory, 'appearance.json'), 'utf8')), second);
 });
 test('image store rejects path traversal, wrong formats and excessive dimensions', () => {
   assert.throws(() => appearanceImagePath('test', '../secrets'));

@@ -4,7 +4,13 @@
   "private": true,
   "main": "index.cjs",
   "types": "index.d.cts",
-  "files": ["index.cjs", "index.d.cts", "errors.cjs", "privateDirectory.cjs"],
-  "dependencies": { "yaml": "2.9.0" },
-  "scripts": { "test": "node --test tests/*.test.cjs" }
+  "files": [
+    "index.cjs",
+    "index.d.cts",
+    "errors.cjs"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.cjs"
+  },
+  "description": "Runtime paths and diagnostic codes; no configuration storage or migration"
 }
