@@ -1,8 +1,7 @@
 # Context usage summary
 
-The composer ring opens a context panel inspired by DeepSeek Harness's
-[ContextMeter](https://github.com/deepseek-ai/deepseek-harness/blob/8bd073392eef6f54e921a093b95076248eb08cbb/packages/client/ui-conversation/src/client/skeleton/ContextMeter.tsx):
-the popover contains one usage header, a segmented bar and three token counts
+The composer ring opens a compact context-usage popover with one usage header,
+a segmented bar and three token counts
 for the system prompt, tool definitions and conversation messages. Gray,
 purple and blue swatches match the bar. Counts use compact K/M notation with
 `~` for estimates. The ring, percentage and bar use the same existing budget
