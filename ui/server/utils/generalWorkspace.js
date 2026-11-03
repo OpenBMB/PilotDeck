@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 
 import { isPathInsideOrEqual } from './pathSafety.js';
 import { resolvePilotHome } from './pilotPaths.js';
+import { migrateLegacyGeneralWorkspace } from './generalWorkspaceMigration.js';
 
 export const GENERAL_WORKSPACE_DIRECTORY_NAME = 'PilotDeck';
 
@@ -63,8 +64,8 @@ export function resolveGeneralWorkspaceDirectory(env = process.env, {
  * compatibility. Only the agent's execution cwd moves here, keeping config,
  * credentials, and transcript storage outside the workspace it may operate on.
  */
-export async function ensureGeneralWorkspaceDirectory(env = process.env) {
-    const candidate = resolveGeneralWorkspaceDirectory(env);
+export async function ensureGeneralWorkspaceDirectory(env = process.env, options = {}) {
+    const candidate = resolveGeneralWorkspaceDirectory(env, options);
     const pilotHome = resolvePilotHome(env);
 
     const existing = await fs.lstat(candidate).catch((error) => {
@@ -99,6 +100,12 @@ export async function ensureGeneralWorkspaceDirectory(env = process.env) {
         }),
     ]);
     assertSeparatedFromPilotHome(realCandidate, realPilotHome);
+    // The previous managed directory was <WORKSPACES_ROOT || home>/general,
+    // including ~/general on Windows before the move into Documents.
+    const homeDirectory = options.homeDirectory ?? os.homedir();
+    const legacyDirectory = path.resolve(expandHome(env.WORKSPACES_ROOT || homeDirectory, homeDirectory), 'general');
+    assertSeparatedFromPilotHome(legacyDirectory, pilotHome);
+    await migrateLegacyGeneralWorkspace({ source: legacyDirectory, destination: candidate, pilotHome: realPilotHome });
     await fs.chmod(candidate, 0o700).catch(() => {});
     return candidate;
 }

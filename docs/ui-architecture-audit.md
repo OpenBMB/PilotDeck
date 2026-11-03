@@ -93,3 +93,23 @@ A custom `WORKSPACES_ROOT` still selects a different parent directory. The
 default project-browsing root (home) uses the platform convention above.
 Session storage remains keyed by `PILOT_HOME`; sidebar folder actions open
 the current managed workspace even when older sessions have stale cwd metadata.
+
+Before publishing that cwd to the sidebar or dispatching a General turn, merge
+the previous `<WORKSPACES_ROOT || home>/general` directory into the new location.
+This also handles the Windows home-to-Documents move and an existing `PilotDeck`
+directory. Keep the original directory; copy missing files, reuse identical
+files, and preserve differing old versions as `name (from general).ext` (with
+numbered suffixes when needed). Merge directories and preserve file/directory
+collisions the same way. The new copy is independent of the original.
+
+Publish each complete file without overwriting an existing name. Interrupted
+copies cannot expose a partial file under its final name, and failed migrations
+remain retryable. The target filesystem must support atomic hard-link publication;
+otherwise preparation reports the error and retains the original data. Do not
+follow source links or destination junctions, copy special files, or allow a
+workspace to overlap `PILOT_HOME`. Retain a completion/conflict/skipped-entry
+report under `PILOT_HOME/migrations/general-workspace-v1-*.json`, outside the
+agent workspace. Repeated requests share the migration and completed work is
+not reimported on restart; removing the destination directory allows recovery
+from the retained legacy directory. Existing transcript/session identities remain
+unchanged.

@@ -10,7 +10,9 @@ const mock = await vi.hoisted(async () => {
 });
 vi.mock('./services/gatewayConnectionCache.js', () => ({ createGatewayConnectionCache: () => ({ get: async () => mock.gateway, invalidate: () => {} }) }));
 import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedInputForStorage, runChatViaGateway } from './pilotdeck-bridge.js';
-import { rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { createRequestContextMiddleware, withAuthenticatedRequest } from './middleware/requestContext.js';
@@ -188,5 +190,38 @@ it('ends a General send when workspace preflight fails before input acceptance',
     } finally {
         if (previousRoot === undefined) delete process.env.WORKSPACES_ROOT;
         else process.env.WORKSPACES_ROOT = previousRoot;
+    }
+});
+
+it('continues an existing General conversation with its old files in the migrated cwd', async () => {
+    const previousRoot = process.env.WORKSPACES_ROOT;
+    const root = await mkdtemp(path.join(os.tmpdir(), 'pilotdeck-general-turn-'));
+    const legacy = path.join(root, 'general');
+    const current = path.join(root, 'PilotDeck');
+    const sessionId = `web:general-migration-${randomUUID()}`;
+    const reads = [], frames = [];
+    await mkdir(legacy);
+    await writeFile(path.join(legacy, 'report.md'), 'report from an earlier conversation');
+    process.env.WORKSPACES_ROOT = root;
+    const gateway = {
+        async *submitTurn(input) {
+            reads.push({ cwd: input.workspaceCwd, report: await readFile(path.join(input.workspaceCwd, 'report.md'), 'utf8') });
+            yield { type: 'input_accepted', runId: input.runId };
+            yield { type: 'turn_completed', runId: input.runId, finishReason: 'completed', usage: {} };
+        },
+    };
+    try {
+        const result = await runChatViaGateway('Read report.md', {
+            projectPath: mock.home, sessionId, workspaceCwd: legacy,
+        }, { send: frame => frames.push(frame) }, 'pilotdeck', { getGateway: async () => gateway });
+        expect(result).toMatchObject({ sessionKey: sessionId, inputAccepted: true, sawTurnCompleted: true });
+        expect(reads).toEqual([{ cwd: current, report: 'report from an earlier conversation' }]);
+        expect(frames.some(frame => frame.kind === 'error')).toBe(false);
+        expect(await readFile(path.join(legacy, 'report.md'), 'utf8')).toBe('report from an earlier conversation');
+    } finally {
+        if (previousRoot === undefined) delete process.env.WORKSPACES_ROOT;
+        else process.env.WORKSPACES_ROOT = previousRoot;
+        expect(path.dirname(root)).toBe(path.resolve(os.tmpdir()));
+        await rm(root, { recursive: true, force: true });
     }
 });

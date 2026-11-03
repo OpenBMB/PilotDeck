@@ -24,6 +24,34 @@ afterEach(async () => {
     )));
 });
 describe('General workspace isolation', () => {
+    it.each(['win32', 'darwin', 'linux'])('migrates the previous default directory on %s before returning the new cwd', async (platform) => {
+        const root = await makeTemporaryRoot();
+        const homeDirectory = path.join(root, 'user home');
+        const documentsDirectory = path.join(root, 'redirected 文档');
+        const pilotHome = path.join(root, 'pilot-home');
+        await fs.mkdir(path.join(homeDirectory, 'general'), { recursive: true });
+        await fs.writeFile(path.join(homeDirectory, 'general', 'report.md'), 'legacy report');
+        const result = await ensureGeneralWorkspaceDirectory({ PILOT_HOME: pilotHome, WORKSPACES_ROOT: homeDirectory }, {
+            platform, homeDirectory, documentsDirectory,
+        });
+        expect(result).toBe(path.join(platform === 'win32' ? documentsDirectory : homeDirectory, 'PilotDeck'));
+        expect(await fs.readFile(path.join(result, 'report.md'), 'utf8')).toBe('legacy report');
+        expect(await fs.readFile(path.join(homeDirectory, 'general', 'report.md'), 'utf8')).toBe('legacy report');
+    });
+
+    it('merges a custom root with an already populated PilotDeck directory', async () => {
+        const root = await makeTemporaryRoot();
+        const workspacesRoot = path.join(root, 'custom');
+        await fs.mkdir(path.join(workspacesRoot, 'general'), { recursive: true });
+        await fs.mkdir(path.join(workspacesRoot, 'PilotDeck'));
+        await fs.writeFile(path.join(workspacesRoot, 'general', 'report.md'), 'legacy');
+        await fs.writeFile(path.join(workspacesRoot, 'PilotDeck', 'report.md'), 'current');
+        const result = await ensureGeneralWorkspaceDirectory({ PILOT_HOME: path.join(root, 'profile'), WORKSPACES_ROOT: workspacesRoot });
+        expect(result).toBe(path.join(workspacesRoot, 'PilotDeck'));
+        expect(await fs.readFile(path.join(result, 'report.md'), 'utf8')).toBe('current');
+        expect(await fs.readFile(path.join(result, 'report (from general).md'), 'utf8')).toBe('legacy');
+    });
+
     it.each(['darwin', 'linux'])('defaults to ~/PilotDeck on %s', (platform) => {
         const homeDirectory = path.resolve('fixture-user');
         expect(resolveGeneralWorkspaceDirectory({ PILOT_HOME: path.join(homeDirectory, '.pilotdeck') }, {
