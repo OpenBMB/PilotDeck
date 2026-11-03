@@ -8,6 +8,8 @@ import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
 import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiagnostics';
+import { withRuntimeCommandPath } from './runtimeEnvironment';
+import { findFreePort } from './startupNetwork';
 import { createRuntimeLogWriter, normalizeLogRetentionDays, redactDiagnostic, registerDiagnosticSecrets, setRuntimeLogRetention, type RuntimeLogWriter } from '@pilotdeck/config';
 import { startupProgress } from './startupPresentation';
 import { exportRuntimeLogs } from './runtimeLogExport';
@@ -193,7 +195,7 @@ class RuntimeManager {
     }
 
     const serverPort = await findFreePort(3001);
-    const gatewayPort = await findFreePort(18789);
+    const gatewayPort = await findFreePort(18789, [serverPort]);
     const bundledGit = resolveBundledGitPaths();
     if (bundledGit) {
       this.log(`Bundled Git Bash ready: ${bundledGit.bash}`);
@@ -238,7 +240,7 @@ class RuntimeManager {
       PILOTDECK_LOG_PATH: this.logPath,
       PILOTDECK_LOG_CAPTURED: "1",
       PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
-    }, this.runtimeRoot, this.nodeBinary, bundledGit);
+    }, this.runtimeRoot, this.nodeBinary, bundledGit, { packaged: app.isPackaged });
     this.commonEnv = commonEnv;
     this.pilotHome = config.pilotHome;
     this.gatewayPort = gatewayPort;
@@ -938,38 +940,6 @@ function hasBundledPlaywrightBrowser(runtimeRoot: string): boolean {
   });
 }
 
-function getPathEnvKey(env: NodeJS.ProcessEnv): string {
-  if (process.platform !== "win32") return "PATH";
-  return Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "Path";
-}
-
-function withRuntimeCommandPath(
-  env: NodeJS.ProcessEnv,
-  runtimeRoot: string,
-  nodeBinary: string,
-  bundledGit?: BundledGitPaths,
-): NodeJS.ProcessEnv {
-  const pathKey = getPathEnvKey(env);
-  const currentPath = env[pathKey] || "";
-  const entries = [
-    path.dirname(nodeBinary),
-    ...(bundledGit?.pathEntries ?? []),
-    path.join(runtimeRoot, "node_modules", ".bin"),
-    currentPath,
-  ].filter(Boolean);
-  const nextEnv: NodeJS.ProcessEnv = {
-    ...env,
-    [pathKey]: entries.join(path.delimiter),
-  };
-  if (bundledGit) {
-    nextEnv.PILOTDECK_GIT_BASH_PATH = bundledGit.bash;
-    nextEnv.PILOTDECK_GIT_PATH = bundledGit.git;
-    nextEnv.CHERE_INVOKING = nextEnv.CHERE_INVOKING || "1";
-    nextEnv.MSYSTEM = nextEnv.MSYSTEM || "MINGW64";
-  }
-  return nextEnv;
-}
-
 function readBuildMetadata(): BuildMetadata {
   const metadataPath = app.isPackaged
     ? path.join(process.resourcesPath, "build-metadata.json")
@@ -988,23 +958,6 @@ function ensurePilotHome(log: (message: string) => void): { pilotHome: string } 
   fs.mkdirSync(pilotHome, { recursive: true });
   log(`PilotDeck home ready at ${pilotHome}`);
   return { pilotHome };
-}
-
-function findFreePort(preferred: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", () => {
-      const fallback = 20000 + Math.floor(Math.random() * 40000);
-      findFreePort(fallback).then(resolve, reject);
-    });
-    server.once("listening", () => {
-      const address = server.address();
-      server.close(() => {
-        resolve(typeof address === "object" && address ? address.port : preferred);
-      });
-    });
-    server.listen(preferred, "127.0.0.1");
-  });
 }
 
 function waitForPort(port: number, host: string, timeoutMs: number): Promise<void> {
