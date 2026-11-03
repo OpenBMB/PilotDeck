@@ -576,7 +576,7 @@ export default function ComposerV2({
   const permissionTriggerRef = useRef<HTMLButtonElement>(null);
   const contextTriggerRef = useRef<HTMLButtonElement>(null);
   const addMenu = useFloatingPanel(isAddMenuOpen, addTriggerRef, () => setIsAddMenuOpen(false), { matchComposer: true });
-  const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 220 });
+  const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 280 });
   const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 256 });
   const fileMenu = useFloatingPanel(showFileDropdown, textareaRef, undefined, { matchComposer: true, maxHeight: 320 });
   const permissionSelectorDisabled = runMode === "plan";
@@ -1331,11 +1331,11 @@ export default function ComposerV2({
                           ? "cursor-not-allowed border-transparent text-neutral-400 opacity-45 dark:text-neutral-500"
                           : permissionMode === "bypassPermissions"
                             ? cn(
-                                "pd-composer-permission-bypass border-[#efd39f] bg-[#fff8e8] text-[#ad620b] hover:border-[#e5b968] hover:bg-[#fff2d3]",
+                                "pd-composer-permission-bypass border-[var(--pd-accent-border,#ddd6fe)] bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#6d28d9)] hover:bg-[var(--pd-accent-tint,#ede9fe)] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
                                 isPermissionMenuOpen &&
-                                  "border-[#e5b968] bg-[#fff2d3]",
+                                  "ring-1 ring-[var(--pd-accent-border,#ddd6fe)]",
                               )
-                            : "border-[var(--pd-border,#ddd9f3)] bg-[var(--pd-accent-soft,#f8f7ff)] text-[var(--pd-accent-strong,#5d58b6)] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
+                            : "border-transparent bg-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
                       )}
                       title={selectedPermissionLabel}
                       aria-label={selectedPermissionLabel}
@@ -1389,10 +1389,7 @@ export default function ComposerV2({
                               }}
                               className={cn(
                                 "relative grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-[5px] rounded-[7px] border-0 bg-transparent px-2 py-1 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] dark:text-neutral-200 dark:hover:bg-violet-950/40",
-                                isSelected &&
-                                  option.mode === "bypassPermissions"
-                                  ? "bg-[#fff2d8] text-[#b96708] hover:bg-[#fff2d8] dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-950/50"
-                                  : isSelected
+                                isSelected
                                     ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
                                     : "",
                               )}
@@ -1405,7 +1402,7 @@ export default function ComposerV2({
                                 <span className="block truncate text-[12px] font-semibold text-inherit">
                                   {label}
                                 </span>
-                                <span className="mt-0.5 block truncate text-[10px] text-[var(--pd-muted,#9294a0)] dark:text-neutral-400">
+                                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--pd-muted,#9294a0)] dark:text-neutral-400">
                                   {description}
                                 </span>
                               </span>

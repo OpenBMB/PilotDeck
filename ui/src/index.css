@@ -12,20 +12,6 @@
   }
 }
 
-/* Permission warning colors live outside Tailwind's layers so the dark theme
-   reliably overrides the light warning utilities on the same button. */
-.dark .pd-composer-permission-bypass {
-  border-color: rgb(146 64 14 / 0.72) !important;
-  background-color: rgb(69 26 3 / 0.4) !important;
-  color: #fcd34d !important;
-}
-
-.dark .pd-composer-permission-bypass:hover,
-.dark .pd-composer-permission-bypass[aria-expanded="true"] {
-  border-color: rgb(180 83 9 / 0.82) !important;
-  background-color: rgb(69 26 3 / 0.56) !important;
-}
-
 /* Composable global hover utilities. Kept outside cascade layers so they
    consistently override component-specific hover colors. */
 .hover-brand-text:hover:not(:disabled) {
@@ -2528,7 +2514,7 @@
     }
     .dark .pd-composer-container .pd-composer-permission-bypass:hover,
     .dark .pd-composer-container .pd-composer-permission-bypass[aria-expanded="true"] {
-      background-color: rgb(252 211 77 / 0.1) !important;
+      background-color: rgb(139 92 246 / 0.12) !important;
     }
   }
 
