@@ -49,3 +49,8 @@ published x64/ARM64 installers after each release (or via manual tag selection),
 verifies checksums, and uploads a JSON signature report even when signatures
 fail validation. Existing published installers need a new signed release;
 source changes cannot retroactively sign their bytes.
+
+The Daily Release completion trigger checks for a published release matching
+the source SHA regardless of the overall workflow result. A later OBS sync
+failure or cancellation therefore cannot suppress an audit of already-published
+installers. Runs that did not publish a matching release exit without downloading.

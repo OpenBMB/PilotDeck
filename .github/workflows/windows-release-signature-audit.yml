@@ -20,8 +20,9 @@ permissions:
   contents: read
 
 jobs:
+  # A published Release still needs auditing if a later OBS sync job fails.
+  # The download step checks for a matching published release on every result.
   verify:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -41,7 +42,8 @@ jobs:
             if (-not $release) { 'This run did not publish a release.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY; exit 0 }
             $env:RELEASE_TAG = $release.tag_name
           }
-          $releaseArgs = if ($env:RELEASE_TAG) { @($env:RELEASE_TAG) } else { @() }
+          $releaseArgs = @()
+          if ($env:RELEASE_TAG) { $releaseArgs = @($env:RELEASE_TAG) }
           gh release download @releaseArgs --pattern '*-win-*-setup.exe' --pattern SHA256SUMS.txt --dir audit
           if ($LASTEXITCODE -ne 0) { throw 'Cannot download published Windows installers.' }
           'downloaded=true' | Add-Content -LiteralPath $env:GITHUB_OUTPUT
