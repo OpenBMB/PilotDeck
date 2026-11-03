@@ -45,6 +45,8 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   );
   const ids = useMemo(() => Object.keys(providers), [providers]);
   const [selectedId, setSelectedId] = useState(ids[0] ?? "");
+  const [cardKey, setCardKey] = useState(0);
+  const [savingProvider, setSavingProvider] = useState<PendingProvider | null>(null);
   const [search, setSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedPending, setSelectedPending] = useState<boolean | null>(null);
@@ -56,13 +58,22 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
     [ids, pendingProvider],
   );
 
+  // A save may change the provider ID or turn a draft into a saved provider.
+  // Keep its editor/modal alive; reset only when selecting a different provider.
+  const selectProvider = (id: string) => {
+    if (id === selectedId) return;
+    setSelectedId(id);
+    setCardKey(key => key + 1);
+  };
+
   useEffect(() => {
     if (
       selectedId
-      && (ids.includes(selectedId) || pendingProvider?.id === selectedId)
+      && (ids.includes(selectedId) || pendingProvider?.id === selectedId || savingProvider?.id === selectedId)
     ) return;
     setSelectedId(pendingProvider?.id ?? ids[0] ?? "");
-  }, [ids, pendingProvider?.id, selectedId]);
+    setCardKey(key => key + 1);
+  }, [ids, pendingProvider?.id, savingProvider?.id, selectedId]);
 
   useEffect(() => {
     setSelectedPending(null);
@@ -107,16 +118,19 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
     }
     const targetId = trimmed || oldId;
     const nextConfig = patch(renamed.config, ["model", "providers", targetId], provider);
-    const result = await applyChange(
-      nextConfig,
-      targetId !== oldId
-        ? { providerRenames: [{ from: oldId, to: targetId }] }
-        : undefined,
-    );
-    if (result.ok && targetId !== oldId) {
-      setSelectedId(targetId);
+    setSavingProvider({ id: oldId, provider });
+    try {
+      const result = await applyChange(
+        nextConfig,
+        targetId !== oldId
+          ? { providerRenames: [{ from: oldId, to: targetId }] }
+          : undefined,
+      );
+      if (result.ok && targetId !== oldId) setSelectedId(targetId);
+      return result;
+    } finally {
+      setSavingProvider(null);
     }
-    return result;
   };
 
   const savePendingProvider = async (
@@ -141,6 +155,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   const discardPendingProvider = () => {
     setPendingProvider(null);
     setSelectedId(ids[0] ?? "");
+    setCardKey(key => key + 1);
   };
 
   const handleCatalogPick = (cp: CatalogProvider) => {
@@ -154,7 +169,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
         models: {},
       },
     });
-    setSelectedId(cp.id);
+    selectProvider(cp.id);
   };
 
   const handleCustom = () => {
@@ -170,7 +185,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
         models: {},
       },
     });
-    setSelectedId(id);
+    selectProvider(id);
   };
 
   const filteredIds = useMemo(() => {
@@ -191,7 +206,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   const selectedProvider = selectedIsPending
     ? pendingProvider.provider
     : selectedId
-      ? providers[selectedId]
+      ? providers[selectedId] ?? (savingProvider?.id === selectedId ? savingProvider.provider : undefined)
       : undefined;
   const selectedCatalog = selectedId ? findCatalogProviderById(selectedId) : undefined;
 
@@ -246,7 +261,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
                 key={id}
                 type="button"
                 className={`provider-row${id === selectedId ? " selected" : ""}`}
-                onClick={() => setSelectedId(id)}
+                onClick={() => selectProvider(id)}
               >
                 <ProviderAvatar providerId={id} catalogEntry={catalog} />
                 <span className="provider-row-copy">
@@ -272,7 +287,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
 
       {selectedId && selectedProvider ? (
         <ProviderCard
-          key={`${selectedId}:${selectedIsPending ? "new" : "saved"}`}
+          key={cardKey}
           providerId={selectedId}
           provider={selectedProvider}
           isNew={selectedIsPending}
