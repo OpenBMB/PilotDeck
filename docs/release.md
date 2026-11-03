@@ -27,9 +27,11 @@ Pull requests that touch shared, UI, Docker, or desktop code run the Web
 regression workflow. Desktop-related pull requests also compile and test the
 desktop shell.
 
-The Web test job temporarily excludes `ui/e2e/**` (Playwright tests are not
-Vitest tests) and the upstream `streamSmoother.test.ts` fake-timer test. Both are
-known baseline failures; all other UI/server tests remain in the merge gate.
+The Web test job uses separate client/jsdom and server/Node Vitest projects.
+They collect `ui/src` and `ui/server`; Playwright E2E tests use their own runner.
+Desktop updater tests run in the Desktop checks job with desktop dependencies.
+See [test selection and maintenance](testing.zh.md) for local commands and
+guidance on keeping regression coverage focused.
 
 ## Daily release policy
 
