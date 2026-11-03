@@ -35,6 +35,9 @@ InstallDir "${target}"
 ShowUninstDetails show
 !insertmacro customUnWelcomePage
 !insertmacro MUI_UNPAGE_INSTFILES
+!if "${'${MUI_INSTFILESPAGE_PROGRESSBAR}'}" != "smooth"
+  !error "Uninstall progress must retain the default Windows theme"
+!endif
 !insertmacro MUI_UNPAGE_FINISH
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
@@ -56,6 +59,7 @@ SectionEnd
   assert.match(log, /MUI_UNPAGE_WELCOME/, 'native uninstall welcome page is compiled');
   assert.match(log, /LangString: "PD_UnFallback" 2052/, 'Chinese resources are included');
   assert.ok(log.includes('TestParameter'),'update flag guard is compiled');
+  assert.doesNotMatch(log, /SetWindowTheme/, 'uninstall keeps Windows progress visual styles');
   assert.ok(fs.statSync(output).size>0);
   execFileSync(output,['/S',`/D=${target}`],{windowsHide:true,timeout:30000});
   assert.ok(fs.existsSync(path.join(target,'uninstall-fixture.exe')));

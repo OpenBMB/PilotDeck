@@ -1,8 +1,8 @@
 !include WinMessages.nsh
 
-; Keep electron-builder's native pages, fonts and progress controls.
-InstProgressFlags colored
-!define MUI_INSTFILESPAGE_PROGRESSBAR colored
+; Keep MUI's default themed progress control for installation AND removal.
+; "colored" opts into custom InstallColors and disables Windows visual styles,
+; including the green fill, inset border and moving highlight.
 
 LangString PD_InvalidUpdateLocation 1033 "The update destination does not match the current installation. The existing version was kept. Please run the installer manually."
 LangString PD_InvalidUpdateLocation 2052 "更新目标与当前安装位置不一致，现有版本已保留。请手动运行安装程序。"
