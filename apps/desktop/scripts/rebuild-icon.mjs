@@ -4,6 +4,7 @@
  * icon.ico        – full multi-res ICO (256..16) for app exe (rcedit)
  * installer-icon.ico – compact ICO (48/32/16 BMP only) for NSIS installer
  * icon.png        – 1024x1024 PNG for Linux / general use
+ * linux/          – standard PNG sizes installed into the Linux hicolor theme
  *
  * All ICO entries use BMP encoding (no PNG compression) for maximum
  * NSIS compatibility. NSIS 3.x cannot reliably use PNG-in-ICO for the
@@ -165,6 +166,14 @@ async function main() {
   const pngPath = join(ICONS_DIR, "icon.png");
   writeFileSync(pngPath, png);
   console.log(`Wrote ${pngPath} (${png.length} bytes)`);
+
+  // A single PNG is installed only at its original size by electron-builder.
+  // Supply the complete icon set for standard Linux launcher and HiDPI sizes.
+  const linuxIcons = join(ICONS_DIR, 'linux');
+  mkdirSync(linuxIcons, { recursive: true });
+  for (const size of [16, 32, 48, 64, 128, 256, 512]) {
+    await sharp(SOURCE).resize(size, size).png().toFile(join(linuxIcons, `${size}x${size}.png`));
+  }
 
   const icnsPath = join(ICONS_DIR, 'icon.icns');
   await writeIcns(SOURCE, icnsPath);

@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import sharp from 'sharp';
 
@@ -49,4 +53,26 @@ test('Windows ships an explicit Start/Search tile with a matching background and
   for (const name of ['Square150x150Logo', 'Square70x70Logo']) assert.ok(manifest.includes(`${name}="resources\\icons\\icon.png"`));
   const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url)));
   assert.ok(pkg.build.win.extraFiles.some(file => file.to === 'PilotDeck.VisualElementsManifest.xml'));
+});
+
+test('Linux packaging resolves full-canvas icons at every standard launcher size', async () => {
+  const require = createRequire(import.meta.url);
+  const builderRequire = createRequire(require.resolve('electron-builder/package.json'));
+  const { convertIcon } = builderRequire('app-builder-lib/out/util/iconConverter.js');
+  const desktop = fileURLToPath(new URL('../', import.meta.url));
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url)));
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-linux-icons-'));
+  try {
+    const { icons: resolved } = await convertIcon({ sources: [pkg.build.linux.icon], fallbackSources: [],
+      roots: [desktop], format: 'set', outDir: output });
+    assert.deepEqual(resolved.map(icon => icon.size), [16, 32, 48, 64, 128, 256, 512]);
+    for (const icon of resolved) {
+      const metadata = await sharp(icon.file).metadata();
+      assert.equal(metadata.width, icon.size);
+      await filledCanvas(icon.file);
+    }
+  } finally {
+    assert.ok(path.resolve(output).startsWith(path.resolve(os.tmpdir()) + path.sep));
+    fs.rmSync(output, { recursive: true, force: true });
+  }
 });

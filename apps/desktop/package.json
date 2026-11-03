@@ -121,7 +121,7 @@
     },
     "linux": {
       "category": "Development",
-      "icon": "resources/icons/icon.png",
+      "icon": "resources/icons/linux",
       "maintainer": "OpenBMB <contact@openbmb.cn>",
       "desktop": {
         "entry": {
