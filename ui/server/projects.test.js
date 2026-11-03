@@ -304,4 +304,13 @@ describe('deleteSession lifecycle', () => {
         await deleteSession(project, sessionId);
         await expect(fs.readFile(`${transcript}.context.json`)).rejects.toMatchObject({code: 'ENOENT'});
     });
+    it('keeps legacy raw session keys inside their own chat directory', async () => {
+        const outside = path.resolve(path.dirname(transcript), '../../outside.jsonl');
+        await fs.writeFile(outside, 'another session');
+        await fs.writeFile(`${outside}.context.json`, 'another context');
+        gateway.closeSession.mockResolvedValue(undefined);
+        await deleteSession(project, '../../outside');
+        expect(await fs.readFile(outside, 'utf8')).toBe('another session');
+        expect(await fs.readFile(`${outside}.context.json`, 'utf8')).toBe('another context');
+    });
 });

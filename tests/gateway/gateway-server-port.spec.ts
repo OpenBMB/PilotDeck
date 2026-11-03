@@ -31,7 +31,11 @@ test('exposes the actual ephemeral port rather than the requested zero', async (
 
 test('runtime activity is authenticated and distinguishes idle, active and unavailable counts', async () => {
   let count: number | undefined = 0;
-  const gateway = { describeServer: async () => ({ mode: 'in_process', activeTurnCount: count }) } as Gateway;
+  let failure = false;
+  const gateway = { describeServer: async () => {
+    if (failure) throw new Error('private runtime stack and filesystem details');
+    return { mode: 'in_process', activeTurnCount: count };
+  } } as Gateway;
   const server = await startGatewayServer({ gateway, port: 0, token: 'activity-test' });
   try {
     const url = `${server.url}/api/web/runtime/activity`;
@@ -43,5 +47,9 @@ test('runtime activity is authenticated and distinguishes idle, active and unava
       assert.equal(response.status, 200);
       assert.deepEqual(await response.json(), { activeTurnCount: value ?? null });
     }
+    failure = true;
+    const response = await fetch(url, { headers });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: { code: 'activity_unavailable', message: 'Runtime activity is temporarily unavailable.' } });
   } finally { await server.close(); }
 });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -37,7 +37,7 @@ test('latest snapshot is atomic, opt-in on history reads and invalidated by a re
     const input = (turnId: string) => JSON.stringify({ type: 'accepted_input', sessionId: 's', turnId,
       sequence: 1, createdAt: new Date().toISOString(), messages: request.messages }) + '\n';
     await writeFile(transcript, input('turn-1'));
-    assert.equal(await readModelContextSnapshot(transcript), null);
+    assert.equal(await readModelContextSnapshot(transcript, chatDir), null);
     await writeModelContextSnapshot(transcript, createModelContextSnapshot(request, 'turn-1'));
     const options = { projectRoot, pilotHome: home };
     assert.equal((await readWebSessionMessages({ sessionKey: 's' }, options)).modelContext, undefined);
@@ -45,7 +45,20 @@ test('latest snapshot is atomic, opt-in on history reads and invalidated by a re
     await writeFile(transcript, input('turn-2'));
     assert.equal((await readWebSessionMessages({ sessionKey: 's', includeModelContext: true }, options)).modelContext, null);
     await writeModelContextSnapshot(transcript, createModelContextSnapshot({ ...request, systemPrompt: 'Updated' }, 'turn-2'));
-    assert.equal((await readModelContextSnapshot(transcript))?.systemPrompt, 'Updated');
+    assert.equal((await readModelContextSnapshot(transcript, chatDir))?.systemPrompt, 'Updated');
+    await assert.rejects(readModelContextSnapshot(transcript, join(home, 'different-storage')), /outside session storage/);
     assert.ok((await readFile(`${transcript}.context.json`, 'utf8')).includes('Updated'));
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
+test('snapshot reads reject a symlinked directory escaping session storage', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'pilotdeck-context-boundary-'));
+  try {
+    const root = join(home, 'sessions');
+    const outside = join(home, 'outside');
+    await mkdir(root); await mkdir(outside);
+    await writeModelContextSnapshot(join(outside, 's.jsonl'), createModelContextSnapshot(request, 'turn-1'));
+    await symlink(outside, join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+    await assert.rejects(readModelContextSnapshot(join(root, 'linked', 's.jsonl'), root), /resolves outside/);
   } finally { await rm(home, { recursive: true, force: true }); }
 });

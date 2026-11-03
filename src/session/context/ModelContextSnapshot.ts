@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
 import type { CanonicalContentBlock, CanonicalMessage, CanonicalModelRequest, CanonicalToolSchema, CanonicalToolResultContentBlock } from '../../model/index.js';
 import type { ContextBreakdown } from '../../context/budget/TokenBudgetManager.js';
 
@@ -52,9 +53,15 @@ export async function writeModelContextSnapshot(transcriptPath: string, snapshot
   } finally { await unlink(temporary).catch(() => {}); }
 }
 
-export async function readModelContextSnapshot(transcriptPath: string): Promise<ModelContextSnapshot | null> {
+export async function readModelContextSnapshot(transcriptPath: string, snapshotRoot: string): Promise<ModelContextSnapshot | null> {
+  const root = resolve(snapshotRoot);
+  const target = resolve(`${transcriptPath}.context.json`);
+  if (!target.startsWith(`${root}${sep}`)) throw new Error('Context snapshot is outside session storage.');
   try {
-    const value = JSON.parse(await readFile(`${transcriptPath}.context.json`, 'utf8')) as ModelContextSnapshot;
+    const canonicalRoot = await realpath(root);
+    const canonicalTarget = await realpath(target);
+    if (!canonicalTarget.startsWith(`${canonicalRoot}${sep}`)) throw new Error('Context snapshot resolves outside session storage.');
+    const value = JSON.parse(await readFile(canonicalTarget, 'utf8')) as ModelContextSnapshot;
     return value && value.version === 1 && typeof value.turnId === 'string' && typeof value.systemPrompt === 'string'
       && Array.isArray(value.tools) && Array.isArray(value.messages) ? value : null;
   } catch (error) {

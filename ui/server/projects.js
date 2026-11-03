@@ -546,15 +546,13 @@ async function deleteSession(projectName, sessionId, _options = {}) {
         // raw form (legacy files written before the sanitize fix).
         const safeId = sanitizeSessionIdForPath(sessionId);
         const filenames = safeId === sessionId ? [sessionId] : [safeId, sessionId];
+        const projectsRoot = path.resolve(pilotHome, 'projects');
+        const chatDirectory = path.resolve(projectsRoot, projectId, 'chats');
+        if (!chatDirectory.startsWith(`${projectsRoot}${path.sep}`)) throw new Error('Invalid session storage directory.');
         let removed = false;
         for (const name of filenames) {
-            const transcript = path.join(
-                pilotHome,
-                'projects',
-                projectId,
-                'chats',
-                `${name}.jsonl`,
-            );
+            const transcript = path.resolve(chatDirectory, `${name}.jsonl`);
+            if (!transcript.startsWith(`${chatDirectory}${path.sep}`)) continue;
             try {
                 await fs.unlink(transcript);
                 removed = true;
@@ -563,7 +561,9 @@ async function deleteSession(projectName, sessionId, _options = {}) {
                     throw error;
                 }
             }
-            await fs.rm(`${transcript}.context.json`, { force: true });
+            const snapshot = path.resolve(`${transcript}.context.json`);
+            if (!snapshot.startsWith(`${projectsRoot}${path.sep}`)) throw new Error('Invalid context snapshot path.');
+            await fs.rm(snapshot, { force: true });
         }
         await fs.rm(path.join(pilotHome, 'projects', projectId, 'pending-inputs', `${safeId}.json`), { force: true });
         deleted = true;

@@ -63,7 +63,7 @@ export async function readWebSessionMessages(
   const entries = activeTranscriptEntries(allEntries);
   let modelContext: Awaited<ReturnType<typeof readModelContextSnapshot>> = null;
   if (input.includeModelContext) {
-    const context = await readModelContextSnapshot(transcriptPath);
+    const context = await readModelContextSnapshot(transcriptPath, resolve(options.pilotHome, 'projects'));
     for (let index = entries.length - 1; context && index >= 0; index--) {
       if (entries[index].type !== 'accepted_input') continue;
       if (context.turnId === entries[index].turnId) modelContext = context;

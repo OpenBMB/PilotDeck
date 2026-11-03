@@ -40,8 +40,8 @@ export async function handleWebApiRequest(
     try {
       const info = await options.gateway.describeServer();
       sendJson(response, 200, { activeTurnCount: info.activeTurnCount ?? null });
-    } catch (error) {
-      sendJson(response, 503, errorBody("activity_unavailable", error));
+    } catch {
+      sendJson(response, 503, { error: { code: 'activity_unavailable', message: 'Runtime activity is temporarily unavailable.' } });
     }
     return true;
   }
