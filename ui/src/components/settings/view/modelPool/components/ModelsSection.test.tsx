@@ -33,6 +33,80 @@ afterEach(() => {
 });
 
 describe("model provider drafts", () => {
+  it('does not clear a newer provider draft when an earlier draft save finishes', async () => {
+    let finishSave!: () => void;
+    const saved = vi.fn();
+    function Workspace() {
+      const [config, setConfig] = useState<PilotDeckConfig>({ model: { providers: {} } });
+      return <ModelsSection config={config} onChange={async next => {
+        saved(next);
+        if (saved.mock.calls.length === 1) await new Promise<void>(resolve => {
+          finishSave = () => { setConfig(next); resolve(); };
+        });
+        else setConfig(next);
+        return { ok: true };
+      }} />;
+    }
+    const addDraft = (initialId: string, name: string, key: string) => {
+      fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.panels.models.addProvider' }));
+      fireEvent.click(screen.getByRole('button', { name: /pilotDeckConfig\.panels\.models\.customProvider/ }));
+      fireEvent.change(screen.getByDisplayValue(initialId), { target: { value: name } });
+      fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.baseUrl'), { target: { value: 'https://proxy.test/v1' } });
+      fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.apiKey'), { target: { value: key } });
+    };
+    render(<Workspace />);
+    addDraft('provider1', 'first-new', 'first-key');
+    fireEvent.click(screen.getByRole('button', { name: 'actions.saveChanges' }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    addDraft('provider2', 'later-draft', 'later-key');
+    finishSave();
+    await screen.findByRole('button', { name: /^first-new/ });
+    expect(screen.getByDisplayValue('later-draft')).toBeTruthy();
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.apiKey') as HTMLInputElement).value).toBe('later-key');
+    expect(document.querySelector('.provider-row.selected')?.textContent).toContain('provider2');
+    expect(saved).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'actions.saveChanges' }));
+    await waitFor(() => expect(saved).toHaveBeenCalledTimes(2));
+    expect(saved.mock.calls[1][0].model.providers).toMatchObject({
+      'first-new': { apiKey: 'first-key' }, 'later-draft': { apiKey: 'later-key' },
+    });
+  });
+  it('does not replace another provider draft when a pending rename finishes', async () => {
+    let finishSave!: () => void;
+    const saved = vi.fn();
+    function Workspace() {
+      const [config, setConfig] = useState<PilotDeckConfig>({ model: { providers: {
+        first: { protocol: 'openai', url: 'https://first.test/v1', apiKey: 'first-key', models: { one: {} } },
+        second: { protocol: 'openai', url: 'https://second.test/v1', apiKey: 'second-key', models: { two: {} } },
+      } } });
+      return <ModelsSection config={config} onChange={async next => {
+        saved(next);
+        if (saved.mock.calls.length === 1) await new Promise<void>(resolve => {
+          finishSave = () => { setConfig(next); resolve(); };
+        });
+        else setConfig(next);
+        return { ok: true };
+      }} />;
+    }
+    render(<Workspace />);
+    fireEvent.click(screen.getByRole('button', { name: 'settingsPage.actions.edit' }));
+    fireEvent.change(screen.getByDisplayValue('first'), { target: { value: 'renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'actions.saveChanges' }));
+    await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: /^second/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'settingsPage.actions.edit' }));
+    fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.apiKey'), { target: { value: 'second-draft' } });
+    finishSave();
+    await waitFor(() => expect(screen.getByRole('button', { name: /^renamed/ })).toBeTruthy());
+    expect(document.querySelector('.provider-row.selected')?.textContent).toContain('second');
+    expect(screen.getByDisplayValue('second')).toBeTruthy();
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.apiKey') as HTMLInputElement).value).toBe('second-draft');
+    fireEvent.click(screen.getByRole('button', { name: 'actions.saveChanges' }));
+    await waitFor(() => expect(saved).toHaveBeenCalledTimes(2));
+    expect(saved.mock.calls[1][0].model.providers).toMatchObject({
+      renamed: { apiKey: 'first-key' }, second: { apiKey: 'second-draft' },
+    });
+  });
   it.each(['new', 'renamed'])('keeps the %s provider model dialog open through save, testing, cancellation and results', async mode => {
     let tasks: ConnectionTestTask[] = [];
     let nextTask = 0;

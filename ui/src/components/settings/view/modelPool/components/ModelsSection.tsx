@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   findCatalogProviderById,
@@ -46,6 +46,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   const ids = useMemo(() => Object.keys(providers), [providers]);
   const [selectedId, setSelectedId] = useState(ids[0] ?? "");
   const [cardKey, setCardKey] = useState(0);
+  const selectionGeneration = useRef(0);
   const [savingProvider, setSavingProvider] = useState<PendingProvider | null>(null);
   const [search, setSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -63,7 +64,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   const selectProvider = (id: string) => {
     if (id === selectedId) return;
     setSelectedId(id);
-    setCardKey(key => key + 1);
+    setCardKey(++selectionGeneration.current);
   };
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
       && (ids.includes(selectedId) || pendingProvider?.id === selectedId || savingProvider?.id === selectedId)
     ) return;
     setSelectedId(pendingProvider?.id ?? ids[0] ?? "");
-    setCardKey(key => key + 1);
+    setCardKey(++selectionGeneration.current);
   }, [ids, pendingProvider?.id, savingProvider?.id, selectedId]);
 
   useEffect(() => {
@@ -118,7 +119,9 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
     }
     const targetId = trimmed || oldId;
     const nextConfig = patch(renamed.config, ["model", "providers", targetId], provider);
-    setSavingProvider({ id: oldId, provider });
+    const owner = selectionGeneration.current;
+    const saving = { id: oldId, provider };
+    setSavingProvider(saving);
     try {
       const result = await applyChange(
         nextConfig,
@@ -126,10 +129,13 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
           ? { providerRenames: [{ from: oldId, to: targetId }] }
           : undefined,
       );
-      if (result.ok && targetId !== oldId) setSelectedId(targetId);
+      // A completed save must not take selection back from a newer editor.
+      if (result.ok && targetId !== oldId && selectionGeneration.current === owner) {
+        setSelectedId(current => current === oldId ? targetId : current);
+      }
       return result;
     } finally {
-      setSavingProvider(null);
+      setSavingProvider(current => current === saving ? null : current);
     }
   };
 
@@ -138,6 +144,8 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
     provider: V2Provider,
   ): Promise<{ ok: boolean; error?: string }> => {
     if (!pendingProvider) return { ok: false };
+    const draft = pendingProvider;
+    const owner = selectionGeneration.current;
     const targetId = newId.trim() || pendingProvider.id;
     if (providers[targetId]) {
       return { ok: false, error: t("pilotDeckConfig.panels.models.providerIdDuplicate") };
@@ -146,8 +154,10 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
       patch(config, ["model", "providers", targetId], provider),
     );
     if (result.ok) {
-      setPendingProvider(null);
-      setSelectedId(targetId);
+      setPendingProvider(current => current === draft ? null : current);
+      if (selectionGeneration.current === owner) {
+        setSelectedId(current => current === draft.id ? targetId : current);
+      }
     }
     return result;
   };
@@ -155,7 +165,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   const discardPendingProvider = () => {
     setPendingProvider(null);
     setSelectedId(ids[0] ?? "");
-    setCardKey(key => key + 1);
+    setCardKey(++selectionGeneration.current);
   };
 
   const handleCatalogPick = (cp: CatalogProvider) => {
