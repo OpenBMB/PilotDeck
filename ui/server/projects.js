@@ -557,13 +557,13 @@ async function deleteSession(projectName, sessionId, _options = {}) {
             );
             try {
                 await fs.unlink(transcript);
-                  await fs.rm(`${transcript}.context.json`, { force: true });
                 removed = true;
             } catch (error) {
                 if (error?.code !== 'ENOENT') {
                     throw error;
                 }
             }
+            await fs.rm(`${transcript}.context.json`, { force: true });
         }
         await fs.rm(path.join(pilotHome, 'projects', projectId, 'pending-inputs', `${safeId}.json`), { force: true });
         deleted = true;

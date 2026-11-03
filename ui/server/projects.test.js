@@ -272,6 +272,7 @@ describe('deleteSession lifecycle', () => {
         await fs.writeFile(path.join(projectDirectory, '.cwd'), project);
         transcript = path.join(projectDirectory, 'chats', sanitizeSessionIdForPath(sessionId) + '.jsonl');
         await fs.writeFile(transcript, 'original transcript');
+        await fs.writeFile(`${transcript}.context.json`, 'private context snapshot');
         gateway.closeSession.mockReset();
     });
     afterEach(async () => {
@@ -285,13 +286,22 @@ describe('deleteSession lifecycle', () => {
         const deletion = deleteSession(project, sessionId);
         await vi.waitFor(() => expect(gateway.closeSession).toHaveBeenCalledWith({sessionKey: sessionId, reason: 'session_deleted'}));
         expect(await fs.readFile(transcript, 'utf8')).toBe('original transcript');
+        expect(await fs.readFile(`${transcript}.context.json`, 'utf8')).toBe('private context snapshot');
         closing.resolve();
         expect(await deletion).toBe(true);
         await expect(fs.readFile(transcript)).rejects.toMatchObject({code: 'ENOENT'});
+        await expect(fs.readFile(`${transcript}.context.json`)).rejects.toMatchObject({code: 'ENOENT'});
     });
     it('leaves the transcript intact when the runtime cannot be closed', async () => {
         gateway.closeSession.mockRejectedValue(new Error('Gateway unavailable'));
         await expect(deleteSession(project, sessionId)).rejects.toThrow('Gateway unavailable');
         expect(await fs.readFile(transcript, 'utf8')).toBe('original transcript');
+        expect(await fs.readFile(`${transcript}.context.json`, 'utf8')).toBe('private context snapshot');
+    });
+    it('removes an orphaned snapshot even when the transcript is already missing', async () => {
+        gateway.closeSession.mockResolvedValue(undefined);
+        await fs.unlink(transcript);
+        await deleteSession(project, sessionId);
+        await expect(fs.readFile(`${transcript}.context.json`)).rejects.toMatchObject({code: 'ENOENT'});
     });
 });
