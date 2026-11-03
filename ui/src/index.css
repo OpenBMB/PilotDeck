@@ -22,14 +22,6 @@
   color: var(--brand-strong);
 }
 
-.hover-brand-surface:hover:not(:disabled) {
-  background: var(--pd-accent-soft, #f2f0ff);
-}
-
-.dark .hover-brand-surface:hover:not(:disabled) {
-  background: #262626;
-}
-
 @-webkit-keyframes spin {
   0% {
     -webkit-transform: rotate(0deg);
@@ -83,18 +75,6 @@
     --ring: 0 0% 30%;
     --radius: 0.5rem;
 
-    /* Nav design tokens — neutral light */
-    --nav-glass-bg: 0 0% 100% / 0.7;
-    --nav-glass-blur: 20px;
-    --nav-glass-saturate: 1.4;
-    --nav-tab-glow: 0 0% 9% / 0.05;
-    --nav-tab-ring: 0 0% 9% / 0.06;
-    --nav-float-shadow: 0 0% 0% / 0.05;
-    --nav-float-ring: 0 0% 90% / 0.6;
-    --nav-divider-color: 0 0% 90% / 0.6;
-    --nav-input-bg: 0 0% 96% / 0.6;
-    --nav-input-focus-ring: 0 0% 30% / 0.18;
-
     /* Document overlays retain a translucent fill so source text stays readable. */
     --file-search-highlight-bg: var(--search-match-bg);
     --file-search-highlight-border: color-mix(in srgb, var(--brand) 45%, transparent);
@@ -107,17 +87,6 @@
     --safe-area-inset-right: env(safe-area-inset-right);
     --safe-area-inset-bottom: env(safe-area-inset-bottom);
     --safe-area-inset-left: env(safe-area-inset-left);
-
-    /* Mobile navigation dimensions - Single source of truth */
-    /* Floating nav: ~52px bar + 8px bottom margin + 12px px-3 top spacing */
-    --mobile-nav-height: 52px;
-    --mobile-nav-padding: 20px;
-    --mobile-nav-total: calc(var(--mobile-nav-height) + var(--mobile-nav-padding) + env(safe-area-inset-bottom, 0px));
-
-    /* Header safe area dimensions */
-    --header-safe-area-top: env(safe-area-inset-top, 0px);
-    --header-base-padding: 8px;
-    --header-total-padding: calc(var(--header-safe-area-top) + var(--header-base-padding));
     color-scheme: light;
   }
 
@@ -152,18 +121,6 @@
     --border: 0 0% 15%;
     --input: 0 0% 25%;
     --ring: 0 0% 64%;
-
-    /* Nav design tokens — dark overrides */
-    --nav-glass-bg: 0 0% 9% / 0.7;
-    --nav-glass-blur: 24px;
-    --nav-glass-saturate: 1.2;
-    --nav-tab-glow: 0 0% 96% / 0.08;
-    --nav-tab-ring: 0 0% 96% / 0.06;
-    --nav-float-shadow: 0 0% 0% / 0.4;
-    --nav-float-ring: 0 0% 15% / 0.5;
-    --nav-divider-color: 0 0% 15% / 0.7;
-    --nav-input-bg: 0 0% 15% / 0.5;
-    --nav-input-focus-ring: 0 0% 96% / 0.12;
 
     /* V2 chrome tokens — match Tailwind dark:bg-neutral-950 / text-neutral-100 */
     --ink: #f5f5f5;
@@ -239,22 +196,6 @@
     }
   }
 
-  /* PWA mode detected by JavaScript - more reliable */
-  body.pwa-mode #root {
-    padding-left: var(--safe-area-inset-left);
-    padding-right: var(--safe-area-inset-right);
-    height: 100vh;
-    overflow: hidden;
-  }
-
-  /* Adjust fixed inset positioning in PWA mode */
-  body.pwa-mode .fixed.inset-0 {
-    top: var(--header-total-padding);
-    left: var(--safe-area-inset-left);
-    right: var(--safe-area-inset-right);
-    bottom: 0;
-  }
-
   /* Global transition defaults */
   button,
   a,
@@ -282,11 +223,6 @@
   /* Opacity transitions */
   .transition-opacity {
     transition: opacity 200ms ease-in-out;
-  }
-
-  /* Scale transitions for interactions */
-  .transition-scale {
-    transition: transform 100ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   /* Shadow transitions */
@@ -329,66 +265,6 @@
   textarea:focus-visible,
   select:focus-visible {
     transition: outline-offset 150ms ease-out, box-shadow 150ms ease-out;
-  }
-
-  /* Sidebar transitions */
-  .sidebar-transition {
-    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 300ms ease-in-out;
-  }
-
-  /* Nav glass surface — uses theme tokens */
-  .nav-glass {
-    background: hsl(var(--nav-glass-bg));
-    backdrop-filter: blur(var(--nav-glass-blur)) saturate(var(--nav-glass-saturate));
-    -webkit-backdrop-filter: blur(var(--nav-glass-blur)) saturate(var(--nav-glass-saturate));
-  }
-
-  /* Nav tab active pill glow — uses theme tokens */
-  .nav-tab-active {
-    box-shadow: 0 1px 8px hsl(var(--nav-tab-glow)),
-                0 0 0 1px hsl(var(--nav-tab-ring));
-  }
-
-  /* Floating mobile nav bar — uses theme tokens */
-  .mobile-nav-float {
-    box-shadow: 0 -1px 20px hsl(var(--nav-float-shadow)),
-                0 0 0 1px hsl(var(--nav-float-ring));
-  }
-
-  /* Subtle sidebar divider — uses theme tokens */
-  .nav-divider {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, hsl(var(--nav-divider-color)) 20%, hsl(var(--nav-divider-color)) 80%, transparent);
-  }
-
-  /* Nav search input surface — uses theme tokens */
-  .nav-search-input {
-    background: hsl(var(--nav-input-bg));
-    border: none;
-  }
-
-  .nav-search-input:focus-within {
-    background: hsl(var(--background));
-    box-shadow: 0 0 0 2px hsl(var(--nav-input-focus-ring));
-  }
-
-  /* Modal and dropdown transitions */
-  .modal-transition {
-    transition: opacity 200ms ease-in-out,
-                transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  /* Chat message transitions */
-  .message-transition {
-    transition: opacity 300ms ease-in-out,
-                transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  /* Height transitions for expanding elements */
-  .height-transition {
-    transition: height 200ms ease-in-out,
-                max-height 200ms ease-in-out;
   }
 
   .scrollbar-thin {
@@ -575,29 +451,6 @@
     -webkit-text-fill-color: rgb(75 85 99) !important;
   }
 
-  /* Custom class for chat input placeholder */
-  .chat-input-placeholder::placeholder {
-    color: rgb(156 163 175) !important;
-    opacity: 1 !important;
-  }
-
-  .dark .chat-input-placeholder::placeholder {
-    color: rgb(75 85 99) !important;
-    opacity: 1 !important;
-    -webkit-text-fill-color: rgb(75 85 99) !important;
-  }
-
-  .chat-input-placeholder::-webkit-input-placeholder {
-    color: rgb(156 163 175) !important;
-    opacity: 1 !important;
-  }
-
-  .dark .chat-input-placeholder::-webkit-input-placeholder {
-    color: rgb(75 85 99) !important;
-    opacity: 1 !important;
-    -webkit-text-fill-color: rgb(75 85 99) !important;
-  }
-
   /* WebKit specific placeholder styles */
   textarea::-webkit-input-placeholder {
     color: rgb(156 163 175) !important;
@@ -664,11 +517,6 @@
       touch-action: manipulation;
     }
 
-    /* Better mobile touch targets */
-    .mobile-touch-target {
-      @apply min-h-[44px] min-w-[44px];
-    }
-
     /* Chat message improvements */
     .chat-message.user {
       @apply justify-end;
@@ -681,12 +529,6 @@
     .chat-message.assistant > div,
     .chat-message.error > div {
       @apply w-full sm:max-w-[95%];
-    }
-
-    /* Session name truncation on mobile */
-    .session-name-mobile {
-      @apply truncate;
-      max-width: calc(100vw - 120px); /* Account for sidebar padding and buttons */
     }
 
     /* Enable text selection on mobile for terminal */
@@ -773,35 +615,6 @@
     }
   }
 
-  /* Safe area support for iOS devices */
-  .ios-bottom-safe {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  /* PWA specific header adjustments - uses CSS variables for consistency */
-  .pwa-header-safe {
-    padding-top: var(--header-base-padding);
-  }
-
-  /* When PWA mode is detected by JavaScript */
-  body.pwa-mode .pwa-header-safe {
-    /* Reset padding since #root already handles safe area */
-    padding-top: 0px !important;
-  }
-
-  /* For mobile PWA, add bottom padding for better spacing */
-  @media screen and (max-width: 768px) {
-    body.pwa-mode .pwa-header-safe {
-      padding-bottom: 8px;
-    }
-  }
-
-  @media screen and (max-width: 768px) {
-    .chat-input-mobile {
-      padding-bottom: calc(60px + env(safe-area-inset-bottom));
-    }
-  }
-
   /* Text wrapping improvements */
   .chat-message {
     word-wrap: break-word;
@@ -856,68 +669,6 @@
 
   .animate-spin {
     animation: spin 1s linear infinite;
-  }
-
-  /* Force hardware acceleration for smoother animation on mobile */
-  .loading-spinner {
-    animation: spin 1s linear infinite;
-    will-change: transform;
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-  }
-
-  /* Improved textarea styling */
-  .chat-input-placeholder {
-    display: block !important;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
-  }
-
-  /* Ensure container fits textarea tightly */
-  .chat-input-placeholder:not(:focus) {
-    height: auto;
-  }
-
-  .chat-input-placeholder::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .chat-input-placeholder::-webkit-scrollbar-track {
-    background: transparent;
-    margin: 8px 0;
-  }
-
-  .chat-input-placeholder::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.3);
-    border-radius: 3px;
-    transition: background-color 0.2s;
-  }
-
-  .chat-input-placeholder::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(156, 163, 175, 0.5);
-  }
-
-  .dark .chat-input-placeholder {
-    scrollbar-color: rgba(107, 114, 128, 0.3) transparent;
-  }
-
-  .dark .chat-input-placeholder::-webkit-scrollbar-thumb {
-    background-color: rgba(107, 114, 128, 0.3);
-  }
-
-  .dark .chat-input-placeholder::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(107, 114, 128, 0.5);
-  }
-
-  /* Enhanced box shadow when textarea expands */
-  .chat-input-expanded {
-    box-shadow: 0 -5px 15px -3px rgba(0, 0, 0, 0.1), 0 -4px 6px -2px rgba(0, 0, 0, 0.05);
-  }
-
-  .dark .chat-input-expanded {
-    box-shadow: 0 -5px 15px -3px rgba(0, 0, 0, 0.3), 0 -4px 6px -2px rgba(0, 0, 0, 0.2);
   }
 
   /* Fix focus ring offset color in dark mode */
@@ -975,25 +726,13 @@
   }
 
   /* Tool details chevron animation */
-  details[open] .details-chevron,
   details[open] summary svg[class*="group-open"] {
     transform: rotate(180deg);
   }
 
   /* Smooth chevron transition */
-  .details-chevron,
   summary svg[class*="transition-transform"] {
     transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  /* Settings content fade-in transition */
-  @keyframes settings-fade-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .settings-content-enter {
-    animation: settings-fade-in 150ms ease-out;
   }
 
   /* Search result highlight flash */
