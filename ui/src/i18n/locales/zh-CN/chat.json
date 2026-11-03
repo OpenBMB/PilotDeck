@@ -1,9 +1,10 @@
 {
   "context": {
-    "used": "上下文已用",
-    "systemPrompt": "系统提示词",
-    "tools": "工具定义",
-    "messages": "对话消息",
+    "title": "上下文预算",
+    "used": "已用",
+    "systemPrompt": "系统指令",
+    "tools": "工具说明",
+    "messages": "会话内容",
     "estimates": "分类 token 估算"
   },
   "conversationError": {

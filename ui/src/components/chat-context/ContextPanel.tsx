@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Layers3 } from 'lucide-react';
 import { authenticatedFetch } from '../../utils/api';
 import './context-panel.css';
 
@@ -53,11 +54,12 @@ export default function ContextPanel({ target, used, total, percent, percentLabe
   const occupied = total > 0 ? Math.max(0, Math.min(100, percent)) : 0;
   return <div className="pd-context-panel" aria-busy={loading}>
     <div className="pd-context-header">
-      <div><span className="pd-context-label">{t('context.used')}</span> <strong>{total > 0 ? percentLabel : '—'}</strong></div>
-      <span className="pd-context-total">{total > 0 ? `~${tokenFormat.format(used)} / ${tokenFormat.format(total)}` : '— / —'}</span>
+      <span className="pd-context-title"><Layers3 size={15} strokeWidth={1.7} aria-hidden="true" />{t('context.title')}</span>
+      <span className="pd-context-status"><span>{t('context.used')}</span><strong>{total > 0 ? percentLabel : '—'}</strong></span>
     </div>
+    <div className="pd-context-total"><span>{total > 0 ? `~${tokenFormat.format(used)} / ${tokenFormat.format(total)}` : '— / —'}</span><span className="pd-context-unit">tokens</span></div>
     <div className="pd-context-bar" role={total > 0 ? 'meter' : undefined}
-      aria-label={total > 0 ? t('context.used') : undefined} aria-hidden={total <= 0 || undefined}
+      aria-label={total > 0 ? t('context.title') : undefined} aria-hidden={total <= 0 || undefined}
       aria-valuemin={0} aria-valuemax={100} aria-valuenow={total > 0 ? occupied : undefined} aria-valuetext={total > 0 ? percentLabel : undefined}>
       <div className="pd-context-bar-fill" style={{ width: `${occupied}%` }}>
         {estimated > 0 ? sections.map((row, index) => (counts[index] ?? 0) > 0

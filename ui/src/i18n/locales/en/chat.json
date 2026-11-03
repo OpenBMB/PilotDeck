@@ -1,9 +1,10 @@
 {
   "context": {
-    "used": "Context used",
-    "systemPrompt": "System prompt",
-    "tools": "Tool definitions",
-    "messages": "Messages",
+    "title": "Context budget",
+    "used": "Used",
+    "systemPrompt": "System instructions",
+    "tools": "Tool descriptions",
+    "messages": "Conversation",
     "estimates": "Estimated token breakdown"
   },
   "conversationError": {
