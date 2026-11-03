@@ -115,9 +115,10 @@ it('retries an interrupted migration without publishing partial files or duplica
     const options = await fixture();
     await write(options.source, 'a.md', 'first file');
     await write(options.source, 'report.md', 'complete report');
+    const physicalDestination = await fs.realpath(options.destination);
     const link = fs.link.bind(fs);
     vi.spyOn(fs, 'link').mockImplementation(async (from, to) => {
-        if (to === path.join(options.destination, 'report.md')) throw Object.assign(new Error('fixture full disk'), { code: 'ENOSPC' });
+        if (to === path.join(physicalDestination, 'report.md')) throw Object.assign(new Error('fixture full disk'), { code: 'ENOSPC' });
         return link(from, to);
     });
     await expect(migrateLegacyGeneralWorkspace(options)).rejects.toMatchObject({ code: 'ENOSPC' });
@@ -201,4 +202,18 @@ it('preserves read-only files without leaving a Windows read-only staging file',
     expect(await fs.readdir(options.destination)).toEqual(['readonly.md']);
     expect(await read(options.destination, 'readonly.md')).toBe('read only');
     expect((await fs.stat(path.join(options.destination, 'readonly.md'))).mode & 0o222).toBe(0);
+});
+
+it.each([false, true])('resolves a redirected parent even when the profile is missing (%s)', async missingProfile => {
+    const options = await fixture();
+    const root = path.dirname(options.source);
+    const alias = path.join(root, 'redirected parent');
+    await fs.symlink(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    if (missingProfile) await fs.rmdir(options.pilotHome);
+    await write(options.source, 'report.md', 'old report');
+    const redirected = Object.fromEntries(Object.entries(options).map(([key, value]) => [key, path.join(alias, path.basename(value))]));
+    await migrateLegacyGeneralWorkspace(redirected);
+    expect(await read(options.destination, 'report.md')).toBe('old report');
+    expect(await manifests(options)).toHaveLength(1);
+    expect((await manifests(options))[0].destination).toBe(await fs.realpath(options.destination));
 });

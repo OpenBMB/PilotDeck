@@ -15,6 +15,15 @@ const identity = stat => ({ dev: stat.dev, ino: stat.ino, birthtimeMs: stat.birt
 const sameIdentity = (left, right) => left && right
     && left.dev === right.dev && left.ino === right.ino && left.birthtimeMs === right.birthtimeMs;
 
+async function physicalPath(file) {
+    try { return await fs.realpath(file); }
+    catch (error) {
+        const parent = path.dirname(file);
+        if (error.code !== 'ENOENT' || parent === file) throw error;
+        return path.join(await physicalPath(parent), path.basename(file));
+    }
+}
+
 async function openRegularFile(file, expected, root) {
     const realFile = await fs.realpath(file);
     if (!isPathInsideOrEqual(root, realFile)) throw unsafe('Legacy General file escapes its workspace.');
@@ -139,15 +148,17 @@ async function migrate({ source, destination, pilotHome }) {
     if (sourceStat.isSymbolicLink() || !sourceStat.isDirectory()) throw unsafe('Legacy General workspace is not a safe directory.');
     const destinationStat = await fs.lstat(destination);
     if (destinationStat.isSymbolicLink() || !destinationStat.isDirectory()) throw unsafe('New General workspace is not a safe directory.');
-    const [realSource, realDestination] = await Promise.all([fs.realpath(source), fs.realpath(destination)]);
-    for (const [left, right] of [[realSource, realDestination], [realSource, pilotHome], [realDestination, pilotHome]]) {
+    const [realSource, realDestination, realPilotHome] = await Promise.all([
+        fs.realpath(source), fs.realpath(destination), physicalPath(path.resolve(pilotHome)),
+    ]);
+    for (const [left, right] of [[realSource, realDestination], [realSource, realPilotHome], [realDestination, realPilotHome]]) {
         if (isPathInsideOrEqual(left, right) || isPathInsideOrEqual(right, left)) {
             throw unsafe('General migration directories must be separate from each other and PILOT_HOME.');
         }
     }
     const destinationIdentity = identity(await fs.stat(realDestination));
     const key = createHash('sha256').update(`${realSource}\0${realDestination}`).digest('hex').slice(0, 24);
-    const stateDirectory = path.join(pilotHome, 'migrations');
+    const stateDirectory = path.join(realPilotHome, 'migrations');
     const marker = path.join(stateDirectory, `general-workspace-v1-${key}.json`);
     const stateStat = await statOrNull(stateDirectory);
     if (stateStat && (stateStat.isSymbolicLink() || !stateStat.isDirectory())) throw unsafe('General migration state directory is unsafe.');
@@ -163,7 +174,7 @@ async function migrate({ source, destination, pilotHome }) {
     const report = { version: 1, source: realSource, destination: realDestination, destinationIdentity, copied: 0, conflicts: [], skipped: [] };
     await copyTree(realSource, realDestination, { source: realSource, destination: realDestination }, report);
     await fs.mkdir(stateDirectory, { recursive: true, mode: 0o700 });
-    await assertInside(pilotHome, stateDirectory);
+    await assertInside(realPilotHome, stateDirectory);
     const temporary = path.join(stateDirectory, `${key}-${randomUUID()}.tmp`);
     try {
         await fs.writeFile(temporary, JSON.stringify({ ...report, completedAt: new Date().toISOString() }, null, 2), { flag: 'wx', mode: 0o600 });
