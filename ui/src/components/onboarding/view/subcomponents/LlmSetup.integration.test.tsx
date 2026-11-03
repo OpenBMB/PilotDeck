@@ -2,7 +2,22 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import LlmConfigurationStep from './LlmConfigurationStep';
+import useLlmSetup from '../hooks/useLlmSetup';
+import ConnectionStep from './ConnectionStep';
+import ProviderStep from './ProviderStep';
+import '../Onboarding.css';
+
+// Exercise the real setup hook and steps together without shipping a test-only
+// composition as a production component.
+function LlmConfigurationStep({ onSaved }: { onSaved: () => void | Promise<void> }) {
+  const llm = useLlmSetup({ onSaved });
+  return (
+    <div className="onboarding-shell">
+      <ProviderStep llm={llm} onBack={() => undefined} onContinue={() => undefined} />
+      <ConnectionStep llm={llm} onBack={() => undefined} onContinue={llm.handleSave} />
+    </div>
+  );
+}
 
 const mocks = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),

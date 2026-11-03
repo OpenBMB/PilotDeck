@@ -78,8 +78,10 @@
 
 中间阶段完整回归用了 430.15 秒，末次复跑用了 610.80 秒。worker 数、超时参数、工作区及机器负载均会影响整体结果；本次不能证明完整仓库或 CI 已稳定加速，也不把墙钟差异归因于单一配置调整。上表交错子集测试才是本次环境优化的主要对照证据。慢速且易超时的系统集成测试需要独立调度和可控 fixture，而不是把整仓超时统一调大。
 
-另以 `ui/src/main.jsx` 为入口检查相对静态导入图，标记了 `VersionBadge`、`DesktopBuildInfo`、`restartUi` 等仅由测试引用的旧入口候选，应继续核对其他入口及动态注册，再决定删除或把测试迁到实际入口。`LlmConfigurationStep` 同样不在主入口图中，但它实际编排了仍在使用的 `ProviderStep`、`ConnectionStep` 和 `useLlmSetup`；其模型保存、凭据与取消行为测试应保留，可将编排壳迁到测试 fixture。`i18n/testInstance` 则是有意存在的测试工具，不能把“不在生产入口图中”直接等同于无价值。
+另以 `ui/src/main.jsx` 为入口检查相对静态导入图，再核对全仓引用、当前设置页面入口及动态加载方式，确认 `VersionBadge`、其独占的 `useGitVersion`／`restartUi`、`DesktopBuildInfo` 已没有生产调用；现有版本信息和更新行为由在用的设置页面实现。已删除这些旧实现及仅覆盖它们的三个测试文件。`LlmConfigurationStep` 的生产编排壳也已没有调用，但其测试实际验证仍在使用的 `ProviderStep`、`ConnectionStep` 和 `useLlmSetup`：将编排壳内联到 `LlmSetup.integration.test.tsx`，保留全部模型保存、凭据与取消场景。`i18n/testInstance` 是有意存在的测试工具，继续保留；不能把“不在生产入口图中”直接等同于无价值。
 
 较大的文件也需要区别对待：`ui/server/routes/config.test.js` 有 2,945 行，`MessagesPaneV2.render.test.tsx` 有 1,899 行，`useSessionStore.streaming.test.ts` 有 1,763 行。对它们更合适的后续工作是按配置保存／引用修复／消息投影等责任划分断言，复用小型 fixture，把组合输入下沉到纯函数或协议契约层，界面层只保留独有交互与关键连通流程。它们不应被进一步合并成更大的回归文件，也不能仅凭行数删掉时序、数据完整性或安全用例。
 
 运行时隔离还需继续完善：完整回归日志出现了用户目录中的 `auth.db` 路径，而 `ui/server/database/db.js` 在导入时会打开数据库并确保配置表存在。下一阶段应统一临时 profile／数据库目录，避免读取真实用户配置，也让需要真实 Git、HTTP、Python、文件链接权限的用例明确声明前提。此项尚未通过全局环境重写实施，不能声称本轮已经解决了全部测试隔离问题。
+
+合并 PR 前继续清理上述已确认的旧入口后，模型配置及当前 About 页共 47 个用例通过，UI 类型检查和生产构建通过。补充 Windows 禁用 PowerShell 的启动／子进程回收验收，以及 Linux 实际打包器解析各尺寸图标的回归后，桌面完整测试为 224 通过、9 个平台跳过。Linux 安装后的图标检查仍保留；修复方式是补齐标准尺寸的打包产物，而非放宽缺失图标的断言。
