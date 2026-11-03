@@ -248,7 +248,11 @@ export default function ProviderCard({
     const id = mid.trim();
     if (!id) return;
     if (draftProvider.models && id in draftProvider.models) return;
-    update({ models: { ...(draftProvider.models ?? {}), [id]: { capabilities: { ...DEFAULT_MODEL_TOKEN_LIMITS[protocol] } } } });
+    const catalog = catalogModelFor(effectiveCatalogEntry, id);
+    update({ models: { ...(draftProvider.models ?? {}), [id]: { capabilities: {
+      maxContextTokens: catalog?.maxContextTokens ?? DEFAULT_MODEL_TOKEN_LIMITS[protocol].maxContextTokens,
+      maxOutputTokens: catalog?.maxOutputTokens ?? DEFAULT_MODEL_TOKEN_LIMITS[protocol].maxOutputTokens,
+    } } } });
     setDraftCustomModelId(null);
   };
 

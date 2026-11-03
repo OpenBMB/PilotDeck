@@ -44,6 +44,25 @@ describe("ProviderCard custom model add", () => {
     vi.clearAllMocks();
   });
 
+  it.each(['anthropic/claude-fable', 'fable-alias'])('preserves catalog token limits when enabling %s', async (modelId) => {
+    mocks.fetchProviderModels.mockResolvedValue([{ id: modelId }]);
+    const onSave = vi.fn(async () => ({ ok: true }));
+    const catalog = { ...catalogEntry, models: [{ id: 'anthropic/claude-fable', displayName: 'Fable',
+      aliases: ['fable-alias'], maxContextTokens: 65536, maxOutputTokens: 8192 }] };
+    render(<ProviderCard providerId="openrouter" provider={{ protocol: 'openai', url: catalog.defaultUrl,
+      apiKey: 'key', models: {} }} catalogEntry={catalog} onSave={onSave} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'settingsPage.actions.edit' }));
+    fireEvent.click(await screen.findByRole('button', { name: modelId }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fable' }));
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens') as HTMLInputElement).value).toBe('65536');
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens') as HTMLInputElement).value).toBe('8192');
+    fireEvent.click(screen.getByRole('button', { name: 'confirmDialog.cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'actions.saveChanges' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('openrouter', expect.objectContaining({
+      models: { [modelId]: { capabilities: { maxContextTokens: 65536, maxOutputTokens: 8192 } } },
+    })));
+  });
+
   it.each(['aaa', 'file:///tmp/model'])('rejects malformed or unsupported provider URL %s before saving', (url) => {
     const onSave = vi.fn();
     render(<ProviderCard providerId="test" initialEditing provider={{ protocol: 'openai', url, apiKey: 'key', models: { model: {} } }} onSave={onSave} onRemove={vi.fn()} />);
