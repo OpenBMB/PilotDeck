@@ -40,6 +40,8 @@ jobs:
           dist/tests/agent/loop/context-cap.spec.js
           dist/tests/context/token-accounting-runtime.spec.js
           dist/tests/gateway/gateway-server-port.spec.js
+          dist/tests/gateway/background-runtime-reload.spec.js
+          dist/tests/agent/runtime-lease.spec.js
 
       - name: Test Web UI and server
         # Vitest projects collect only src/ and server/ tests; browser E2E has

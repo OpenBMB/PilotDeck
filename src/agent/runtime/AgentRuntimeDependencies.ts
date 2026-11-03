@@ -85,6 +85,7 @@ export type AgentSubagentTranscriptHooks = {
 };
 
 export type AgentRuntimeDependencies = {
+  acquireTurnResources?: () => () => void;
   router: AgentRouterRuntime;
   tools: {
     scheduler: PilotDeckToolScheduler;

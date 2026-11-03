@@ -98,6 +98,7 @@ export function createAgentSessionWithStorage(options: CreateAgentSessionOptions
   );
   return {
     session: new AgentSession({
+      acquireTurnResources: dependencies.acquireTurnResources,
       sessionId: options.sessionId,
       turnRunner,
       cwd: runtimeContext.cwd,

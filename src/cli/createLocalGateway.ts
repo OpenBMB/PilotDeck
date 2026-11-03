@@ -789,6 +789,7 @@ const DEFAULT_BROWSER_NAVIGATION_TIMEOUT_MS = 90_000;
 class ProjectRuntimeRegistry {
   private readonly runtimes = new Map<string, ProjectRuntime>();
   private readonly taskRuntimes = new Set<BackgroundTaskRuntime>();
+  private readonly taskRuntimeUsers = new Map<BackgroundTaskRuntime, number>();
   private usageCounter?: UsageCounter;
   private gateway?: InProcessGateway;
   /**
@@ -850,9 +851,9 @@ class ProjectRuntimeRegistry {
     for (const runtime of this.taskRuntimes) {
       const active = runtime.list({ status: ['pending', 'running'] }).length;
       count += active;
-      // Invalidating configuration can retire a runtime while its detached
-      // commands are still alive. Retain it until those commands have settled.
-      if (active === 0 && !current.has(runtime)) this.taskRuntimes.delete(runtime);
+      // A retired runtime can still create tasks from an in-flight turn, even
+      // while its task list is temporarily empty (including after completion).
+      if (active === 0 && !current.has(runtime) && !this.taskRuntimeUsers.has(runtime)) this.taskRuntimes.delete(runtime);
     }
     return count;
   }
@@ -1411,6 +1412,17 @@ class ProjectRuntimeRegistry {
     const imageStore = new ImageStore(resolve(this.options.pilotHome, "generated-images"));
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
+      acquireTurnResources: () => {
+        const tasks = runtime.backgroundTasks;
+        this.taskRuntimes.add(tasks);
+        this.taskRuntimeUsers.set(tasks, (this.taskRuntimeUsers.get(tasks) ?? 0) + 1);
+        return () => {
+          const remaining = (this.taskRuntimeUsers.get(tasks) ?? 1) - 1;
+          if (remaining > 0) this.taskRuntimeUsers.set(tasks, remaining);
+          else this.taskRuntimeUsers.delete(tasks);
+          this.activeBackgroundTaskCount();
+        };
+      },
       router: runtime.router,
       tools: { registry: sessionTools },
       lifecycle,
