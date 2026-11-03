@@ -195,6 +195,9 @@ test('completion snapshot refresh preserves the mounted thinking viewport and it
   await inner.evaluate((node) => { window.originalThinkingViewport = node; });
   await page.evaluate(() => window.streamLifecycle.finish());
   await expect.poll(() => requests).toBe(2);
+  const completedThinking = page.getByRole('button', { name: 'Thought process' });
+  await expect(completedThinking).toHaveAttribute('aria-expanded', 'false');
+  await completedThinking.click();
   await expect(inner).toBeVisible();
   expect(await inner.evaluate((node) => node === window.originalThinkingViewport)).toBe(true);
   finishFetch();

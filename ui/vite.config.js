@@ -62,7 +62,10 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react(), {
       name: 'continuous-startup-shell',
-      transformIndexHtml(html) {
+      transformIndexHtml(html, context) {
+        // Standalone component fixtures do not boot the application or dismiss
+        // its startup shell. Only the application's HTML entry owns that shell.
+        if (path.resolve(context.filename) !== path.join(__dirname, 'index.html')) return html;
         // The same shell is painted before the application bundle is evaluated.
         // Keep it outside React's root so phase changes never replace the frame.
         const page = renderLoadingHtml({ language: 'en', themeMode: 'system' }, true);

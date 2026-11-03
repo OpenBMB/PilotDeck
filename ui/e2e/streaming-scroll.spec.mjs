@@ -27,7 +27,7 @@ test('small upward gestures win over text streaming and explicit resume follows 
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
 });
 
-test('thinking retains its viewport, expansion and reading position through tools and completion', async ({ page }) => {
+test('thinking keeps its reading position through tools and remains available in the completed process', async ({ page }) => {
   await open(page);
   await page.evaluate((text) => window.streamFixture.think(text), lines(30));
   const thinking = page.getByRole('region', { name: 'Live thinking content' });
@@ -42,26 +42,36 @@ test('thinking retains its viewport, expansion and reading position through tool
   await page.waitForTimeout(500);
   expect(Math.abs(await top(thinking) - readingTop)).toBeLessThan(2);
   await page.evaluate(() => window.streamFixture.tool());
-  await expect(page.getByRole('button', { name: 'Thought process' })).toHaveAttribute('aria-expanded', 'true');
-  expect(Math.abs(await top(thinking) - readingTop)).toBeLessThan(2);
-  expect(Math.abs(await top(viewport(page)) - outerTop)).toBeLessThan(2);
-  await page.evaluate(() => { window.streamFixture.finishTool(); window.streamFixture.text('Final answer.'); window.streamFixture.complete(); });
+  const completedThinking = page.getByRole('button', { name: 'Thought process' });
+  await expect(completedThinking).toHaveAttribute('aria-expanded', 'false');
+  await completedThinking.click();
   await expect(thinking).toBeVisible();
   expect(Math.abs(await top(thinking) - readingTop)).toBeLessThan(2);
+  await expect.poll(() => top(viewport(page))).toBeCloseTo(outerTop, 0);
+  await page.evaluate(() => { window.streamFixture.finishTool(); window.streamFixture.text('Final answer.'); window.streamFixture.complete(); });
+  const completedProcess = page.getByRole('button', { name: /^Processed / });
+  await expect(completedProcess).toHaveAttribute('aria-expanded', 'false');
+  await completedProcess.click();
+  await page.getByRole('button', { name: 'Thought process' }).click();
+  await expect(thinking).toBeVisible();
+  await expect(thinking).toContainText('Thinking line 45');
   await page.screenshot({ path: test.info().outputPath('thinking-reading-position.png') });
 });
 
 test('web fetch has one status in plan mode and empty results finish it; parallel calls remain distinct', async ({ page }) => {
   await open(page);
   await page.evaluate(() => { window.streamFixture.setMode('plan'); window.streamFixture.tool(); });
-  await expect(page.locator('.process-live-status')).toHaveCount(1);
-  await expect(page.getByText('Fetching web content...', { exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Using https://example.com/fetch-1', exact: true })).toHaveCount(1);
   await page.evaluate(() => window.streamFixture.finishTool());
-  await expect(page.getByText('Fetching web content...', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Used https://example.com/fetch-1', exact: true })).toHaveCount(1);
   await page.evaluate(() => { window.streamFixture.tool('fetch-2'); window.streamFixture.tool('fetch-3'); window.streamFixture.finishTool('fetch-2'); });
-  await expect(page.getByText('Fetching web content...', { exact: true })).toHaveCount(1);
+  const waiting = page.getByRole('button', { name: 'Fetching web content...', exact: true });
+  await expect(waiting).toHaveCount(1);
+  await waiting.click();
+  await expect(page.getByRole('button', { name: /^Using https:\/\/example.com\/fetch-/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Used https://example.com/fetch-2', exact: true })).toHaveCount(1);
   await page.evaluate(() => window.streamFixture.finishTool('fetch-3'));
-  await expect(page.getByText('Fetching web content...', { exact: true })).toHaveCount(0);
+  await expect(waiting).toHaveCount(0);
 });
 
 test('stream updates do not repeatedly recenter an existing search match', async ({ page }) => {

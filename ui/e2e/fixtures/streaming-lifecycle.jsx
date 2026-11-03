@@ -9,6 +9,9 @@ import { useSubagentMessages } from '../../src/components/chat-v2/useSubagentMes
 import { useChatSessionState } from '../../src/components/chat/hooks/useChatSessionState';
 import { useSessionStore } from '../../src/stores/useSessionStore';
 import '../../src/index.css';
+import i18n from '../../src/i18n/config';
+
+i18n.changeLanguage('en');
 
 const params = new URLSearchParams(location.search);
 // Interactive, isolated event replay for timing bugs that are expensive to
