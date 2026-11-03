@@ -74,6 +74,7 @@ export type AuthContextValue = {
   token: string | null;
   isLoading: boolean;
   needsSetup: boolean;
+  authStatusError: string | null;
   hasCompletedOnboarding: boolean;
   modelConfiguration: ModelConfigurationState;
   gatewayRuntime: GatewayRuntimeState;
@@ -83,6 +84,7 @@ export type AuthContextValue = {
   logout: () => void;
   refreshOnboardingStatus: () => Promise<void>;
   retryGateway: () => Promise<void>;
+  retryAuthStatus: () => Promise<void>;
 };
 
 export type AuthProviderProps = {

@@ -30,6 +30,7 @@ const messages = {
     PD_RUNTIME_TIMEOUT: 'The local service took too long to start.',
     PD_CONFIG_INVALID: 'The model configuration could not be read. Check it in Settings and try again.',
     PD_CONFIG_STATUS_UNAVAILABLE: 'PilotDeck could not check the model configuration. Try restarting.',
+    PD_AUTH_STATUS_UNAVAILABLE: 'PilotDeck could not connect to the authentication service. Check the service and try again.',
     unknown: 'The local service stopped unexpectedly. Restart PilotDeck, or download the logs to help investigate.',
   },
   'zh-CN': {
@@ -46,6 +47,7 @@ const messages = {
     PD_RUNTIME_TIMEOUT: '本地服务启动超时，请重试。',
     PD_CONFIG_INVALID: '模型配置无法读取，请在设置中检查后重试。',
     PD_CONFIG_STATUS_UNAVAILABLE: '暂时无法检查模型配置，请尝试重新启动。',
+    PD_AUTH_STATUS_UNAVAILABLE: '暂时无法连接认证服务，请检查服务后重试。',
     unknown: '本地服务意外停止，请重新启动；若仍然失败，可下载日志用于排查。',
   },
 };
