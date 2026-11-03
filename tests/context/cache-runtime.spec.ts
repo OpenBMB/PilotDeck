@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
 import { MicroCompactionEngine } from "../../src/context/compaction/MicroCompactionEngine.js";
@@ -7,6 +10,8 @@ import { AutoCompactionPolicy } from "../../src/context/compaction/AutoCompactio
 import { TokenBudgetManager } from "../../src/context/budget/TokenBudgetManager.js";
 import type { CanonicalMessage, CanonicalToolSchema } from "../../src/model/index.js";
 import type { ContextPrepareInput } from "../../src/context/protocol/types.js";
+import { InstructionDiscovery } from "../../src/context/instructions/InstructionDiscovery.js";
+import { NullExtensionResolver } from "../../src/context/extension/ExtensionResolver.js";
 
 const tool: CanonicalToolSchema = {
   name: "read_file",
@@ -344,4 +349,191 @@ test("date notices preserve tool pairing and do not replace memory retrieval que
   assert.equal(rollover.messages[3].metadata?.purpose, "date_update");
   assert.deepEqual(queries, ["request", "request"]);
   assert.equal(messages.length, 3);
+});
+
+test("adopting an unchanged preview commits the date/cache exactly once", async () => {
+  const now = () => new Date("2026-09-10T12:00:00Z");
+  const runtime = new DefaultContextRuntime({ now });
+  const control = new DefaultContextRuntime({ now });
+  const preview = await runtime.prepareForModel(input({ previewOnly: true }));
+  assert.equal(preview.cachePlan?.generation, 0);
+  const adopted = await runtime.reusePreparedContext(preview, input());
+  assert.deepEqual(adopted, await control.prepareForModel(input()));
+  assert.equal(preview.cachePlan?.generation, 0, "adoption does not mutate a discarded preview");
+  assert.deepEqual(await runtime.reusePreparedContext(preview, input()), adopted);
+  assert.deepEqual(await runtime.prepareForModel(input()), adopted);
+});
+
+test("reuse rejects changed history, tools, prompts, provider and projection settings", async () => {
+  const runtime = new DefaultContextRuntime();
+  const preview = await runtime.prepareForModel(input({ previewOnly: true }));
+  for (const changed of [
+    { messages: [message("changed")] }, { tools: [{ ...tool, description: "new schema" }] },
+    { appendSystemPrompt: "new plan" }, { provider: "other" }, { maxMessages: 1 },
+    { permissionMode: "plan" }, { model: "other" },
+  ]) assert.equal(await runtime.reusePreparedContext(preview, input(changed)), undefined);
+});
+
+test("midnight invalidates a preview and rollover adoption appends the date notice once", async () => {
+  let now = new Date("2026-09-10T23:59:00Z");
+  const runtime = new DefaultContextRuntime({ now: () => now });
+  const first = await runtime.prepareForModel(input());
+  const beforeMidnight = await runtime.prepareForModel(input({ previewOnly: true }));
+  now = new Date("2026-09-11T00:01:00Z");
+  assert.equal(await runtime.reusePreparedContext(beforeMidnight, input()), undefined);
+  const rollover = await runtime.prepareForModel(input({ previewOnly: true }));
+  const adopted = (await runtime.reusePreparedContext(rollover, input()))!;
+  assert.equal(adopted.systemPrompt, first.systemPrompt);
+  assert.equal(dateUpdates(adopted).length, 1);
+  assert.deepEqual(await runtime.prepareForModel(input()), adopted);
+});
+
+test("adoption of a full-compaction preview rebuilds with the refreshed system date", async () => {
+  let now = new Date("2026-09-10T12:00:00Z");
+  const runtime = new DefaultContextRuntime({ now: () => now });
+  await runtime.prepareForModel(input());
+  now = new Date("2026-09-11T12:00:00Z");
+  const messages = checkpoint("summary");
+  const preview = await runtime.prepareForModel(input({ previewOnly: true, messages }));
+  assert.equal(promptDate(preview), "2026-09-10");
+  assert.equal(await runtime.reusePreparedContext(preview, input({ messages })), undefined);
+  assert.equal(promptDate(await runtime.prepareForModel(input({ messages }))), "2026-09-11");
+});
+
+test("adoption preserves a pending micro-compaction cache reset until formal use", async () => {
+  const runtime = new DefaultContextRuntime({ tokenBudget: new TokenBudgetManager(),
+    autoCompactionPolicy: new AutoCompactionPolicy(), microCompaction: new MicroCompactionEngine() });
+  const first = await runtime.prepareForModel(input());
+  const messages: CanonicalMessage[] = [message("inspect")];
+  for (let i = 0; i < 5; i++) messages.push(
+    { role: "assistant", content: [{ type: "tool_call", id: `read-${i}`, name: "read_file", input: {} }] },
+    { role: "user", content: [{ type: "tool_result", toolCallId: `read-${i}`, content: [{ type: "text", text: "source code\n".repeat(1000) }] }] },
+  );
+  let evaluations = 0;
+  const compact = await runtime.tryAutoCompact({ sessionId: input().sessionId, messages,
+    budgetEvaluator: async () => new TokenBudgetManager().snapshotFromTokens(++evaluations === 1 ? 8500 : 7000, 10000) });
+  assert.equal(compact.type, "compacted");
+  const preview = await runtime.prepareForModel(input({ previewOnly: true }));
+  assert.equal(preview.cachePlan?.generation, first.cachePlan?.generation);
+  await runtime.reusePreparedContext(preview, input({ previewOnly: true }));
+  const adopted = (await runtime.reusePreparedContext(preview, input()))!;
+  assert.equal(adopted.cachePlan?.generation, first.cachePlan!.generation + 1);
+  assert.deepEqual((await runtime.prepareForModel(input())).cachePlan, adopted.cachePlan);
+});
+
+test("new, changed and deleted instruction files invalidate a prepared snapshot", async t => {
+  const cwd = await mkdtemp(join(tmpdir(), "request-rules-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const runtime = new DefaultContextRuntime({ instructionDiscovery: new InstructionDiscovery(cwd, cwd, join(cwd, "home")) });
+  const options = input({ cwd });
+  const preview = () => runtime.prepareForModel({ ...options, previewOnly: true });
+  let prepared = await preview();
+  await writeFile(join(cwd, "PILOTDECK.md"), "new instruction");
+  assert.equal(await runtime.reusePreparedContext(prepared, options), undefined);
+  prepared = await preview();
+  await writeFile(join(cwd, "PILOTDECK.md"), "changed instruction");
+  assert.equal(await runtime.reusePreparedContext(prepared, options), undefined);
+  prepared = await preview();
+  await rm(join(cwd, "PILOTDECK.md"));
+  assert.equal(await runtime.reusePreparedContext(prepared, options), undefined);
+  prepared = await preview();
+  await mkdir(join(cwd, ".pilotdeck", "rules"), { recursive: true });
+  await writeFile(join(cwd, ".pilotdeck", "rules", "new.md"), "new rule");
+  assert.equal(await runtime.reusePreparedContext(prepared, options), undefined);
+});
+
+test("extension changes, intervening commits and cancellation invalidate previews", async () => {
+  const extension = new NullExtensionResolver();
+  const runtime = new DefaultContextRuntime({ extension });
+  let preview = await runtime.prepareForModel(input({ previewOnly: true }));
+  extension.listMcpInstructions = () => [{ serverName: "new", instructions: "new rules" }];
+  assert.equal(await runtime.reusePreparedContext(preview, input()), undefined);
+  preview = await runtime.prepareForModel(input({ previewOnly: true }));
+  await runtime.prepareForModel(input({ messages: [message("intervening request")] }));
+  assert.equal(await runtime.reusePreparedContext(preview, input()), undefined);
+  preview = await runtime.prepareForModel(input({ previewOnly: true }));
+  assert.equal(await runtime.reusePreparedContext(preview, input({ abortSignal: AbortSignal.abort() })), undefined);
+});
+
+test("a session commit while a preview awaits memory prevents adopting that stale preview", async () => {
+  let release!: () => void, entered!: () => void;
+  const waiting = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let calls = 0;
+  const runtime = new DefaultContextRuntime({ memoryResolver: {
+    retrieve: async () => { if (++calls === 1) { entered(); await gate; } return { diagnostics: [] }; },
+    captureTurn: async () => {},
+  } });
+  const pending = runtime.prepareForModel(input({ previewOnly: true }));
+  await waiting;
+  const currentInput = input({ messages: [message("new committed history")] });
+  const committed = await runtime.prepareForModel(currentInput);
+  release();
+  const stale = await pending;
+  assert.equal(await runtime.reusePreparedContext(stale, input()), undefined);
+  assert.deepEqual((await runtime.prepareForModel(currentInput)).cachePlan, committed.cachePlan);
+});
+
+test("cancellation during instruction revalidation does not commit a preview", async t => {
+  const cwd = await mkdtemp(join(tmpdir(), "request-abort-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const discovery = new InstructionDiscovery(cwd, cwd, join(cwd, "home"));
+  const controller = new AbortController();
+  const runtime = new DefaultContextRuntime({ instructionDiscovery: discovery });
+  const options = input({ cwd, abortSignal: controller.signal });
+  const preview = await runtime.prepareForModel({ ...options, previewOnly: true });
+  const discover = discovery.discover.bind(discovery);
+  discovery.discover = async () => { controller.abort(); return discover(); };
+  assert.equal(await runtime.reusePreparedContext(preview, options), undefined);
+  assert.equal(preview.cachePlan?.generation, 0);
+  assert.equal((await runtime.prepareForModel(input({ cwd }))).cachePlan?.generation, 1);
+});
+
+test("input changes during asynchronous reuse validation invalidate the snapshot", async t => {
+  const cwd = await mkdtemp(join(tmpdir(), "request-race-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const discovery = new InstructionDiscovery(cwd, cwd, join(cwd, "home"));
+  const runtime = new DefaultContextRuntime({ instructionDiscovery: discovery });
+  const preview = await runtime.prepareForModel(input({ cwd, previewOnly: true }));
+  let entered!: () => void, release!: () => void;
+  const waiting = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const discover = discovery.discover.bind(discovery);
+  discovery.discover = async () => { entered(); await gate; return discover(); };
+  const current = input({ cwd });
+  const pending = runtime.reusePreparedContext(preview, current);
+  await waiting;
+  current.messages = [message("changed while validating")];
+  release();
+  assert.equal(await pending, undefined);
+  assert.equal(preview.cachePlan?.generation, 0);
+});
+
+test("cancelling a new adoption signal during validation does not consume cache state", async t => {
+  const cwd = await mkdtemp(join(tmpdir(), "request-new-signal-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const discovery = new InstructionDiscovery(cwd, cwd, join(cwd, "home"));
+  const runtime = new DefaultContextRuntime({ instructionDiscovery: discovery });
+  const preview = await runtime.prepareForModel(input({ cwd, previewOnly: true }));
+  const controller = new AbortController();
+  const discover = discovery.discover.bind(discovery);
+  discovery.discover = async () => { controller.abort(); return discover(); };
+  assert.equal(await runtime.reusePreparedContext(preview, input({ cwd, abortSignal: controller.signal })), undefined);
+  assert.equal(preview.cachePlan?.generation, 0);
+  assert.equal((await runtime.prepareForModel(input({ cwd }))).cachePlan?.generation, 1);
+});
+
+test("a failed memory preview is rebuilt so formal preparation can recover", async () => {
+  let calls = 0;
+  const runtime = new DefaultContextRuntime({ memoryResolver: {
+    retrieve: async () => ++calls === 1
+      ? { diagnostics: [{ code: "memory_provider_error", severity: "warning", message: "temporary retrieval failure" }] }
+      : { systemContext: "recovered memory", diagnostics: [] },
+    captureTurn: async () => {},
+  } });
+  const preview = await runtime.prepareForModel(input({ previewOnly: true }));
+  assert.equal(await runtime.reusePreparedContext(preview, input()), undefined);
+  const prepared = await runtime.prepareForModel(input());
+  assert.equal(calls, 2);
+  assert.match(prepared.systemPrompt!, /recovered memory/);
 });

@@ -30,6 +30,8 @@ export type AgentContextCaptureTurnInput = ContextCaptureTurnInput;
 
 export type AgentContextRuntime = {
   prepareForModel(input: AgentContextPrepareInput): Promise<AgentPreparedContext>;
+  /** Optional snapshot reuse; runtimes without it retain the normal preparation path. */
+  reusePreparedContext?(prepared: AgentPreparedContext, input: AgentContextPrepareInput): Promise<AgentPreparedContext | undefined>;
   /**
    * Optional. Real implementations (e.g. `DefaultContextRuntime`) provide
    * this; minimal runtimes (`NullContextRuntime`) leave it undefined and the

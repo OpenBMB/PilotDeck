@@ -44,6 +44,8 @@ export type CountRequestInputOptions = {
   signal?: AbortSignal;
   useProviderCount?: boolean;
   calibration?: TokenCalibrationBaseline;
+  /** Owned by one model iteration; never shared across turns or requests. */
+  localEstimates?: Map<string, number>;
 };
 
 export type EvaluateRequestBudgetOptions = CountRequestInputOptions & {
@@ -74,7 +76,7 @@ export class TokenAccountingRuntime {
     request: CanonicalModelRequest,
     options: CountRequestInputOptions = {},
   ): Promise<TokenCountResult> {
-    const localEstimateTokens = this.estimateRequestInput(request);
+    const localEstimateTokens = this.estimateRequestInput(request, options.localEstimates);
     let estimatorError: string | undefined;
     if (options.useProviderCount !== false) {
       const cached = this.getCachedProviderCount(request);
@@ -167,11 +169,20 @@ export class TokenAccountingRuntime {
     return this.tokenBudget.estimateTextTokens(chunks.join(""));
   }
 
-  estimateRequestInput(request: CanonicalModelRequest): number {
+  estimateRequestInput(request: CanonicalModelRequest, localEstimates?: Map<string, number>): number {
+    // Only these fields enter the local tokenizer. Output caps, cache generation
+    // and route-specific provider counts/calibration must not change this sum.
+    const key = localEstimates && createHash("sha256").update(JSON.stringify({
+      messages: request.messages, systemPrompt: request.systemPrompt, tools: request.tools,
+    })).digest("hex");
+    const cached = key === undefined ? undefined : localEstimates?.get(key);
+    if (cached !== undefined) return cached;
     const messages = this.tokenBudget.estimateMessagesTokens(request.messages);
     const system = request.systemPrompt ? this.tokenBudget.estimateTextTokens(request.systemPrompt) : 0;
     const tools = estimateToolSchemas(this.tokenBudget, request.tools ?? []);
-    return messages + system + tools;
+    const tokens = messages + system + tools;
+    if (key !== undefined) localEstimates?.set(key, tokens);
+    return tokens;
   }
 
   private async countWithProvider(

@@ -132,6 +132,8 @@ export type ContextCaptureTurnInput = {
  */
 export interface ContextRuntime {
   prepareForModel(input: ContextPrepareInput): Promise<ModelContext>;
+  /** Revalidate a preparation and, unless previewOnly, commit its deferred state. */
+  reusePreparedContext?(prepared: ModelContext, input: ContextPrepareInput): Promise<ModelContext | undefined>;
   applyToolResults(input: ContextToolResultInput): Promise<ContextToolResultResult>;
   recoverFromModelError(input: ContextRecoveryInput): Promise<ContextRecoveryDecision>;
   /**
