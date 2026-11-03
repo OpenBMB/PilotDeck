@@ -57,13 +57,8 @@ const EDIT_RECONCILIATION_HINT = [
   'If the edited request calls for workspace changes, inspect existing files as needed and reconcile them with that request rather than assuming earlier work is correct.',
 ].join(' ');
 
-// V2 chat wrapper. Reuses all business-logic hooks from legacy
-// `ChatInterface` so streaming, file-mentions, slash commands, permissions,
-// ccr_output, task notifications, subagent containers, etc. all keep working
-// unchanged. The difference is purely in the rendered UI:
-//   · MessagesPaneV2 — markdown row layout, GPT-like reading width
-//   · ComposerV2     — card textarea + paperclip/at + arrow-up send
-//   · NO provider picker empty state, NO pill bar, NO gradient bubbles
+// Active chat surface. Shared session, streaming, composer and permission logic
+// lives in chat/hooks; this module owns how that state is presented.
 function ChatInterfaceV2({
   selectedProject: selectedProjectFromShell,
   selectedSession,
