@@ -452,7 +452,7 @@ describe('LlmConfigurationStep', () => {
       alwaysOn: { language: string };
     };
     expect(body.modelTestBindings).toBeUndefined();
-    expect(saved.model.providers.modelbest.models['gpt-5.6-luna']).toEqual({});
+    expect(saved.model.providers.modelbest.models['gpt-5.6-luna']).toEqual({capabilities:{maxContextTokens:262144,maxOutputTokens:32768}});
     expect(saved.alwaysOn.language).toBe(language);
     expect(calls.some((call) => call.url === '/api/config/test-connections')).toBe(false);
   });
@@ -657,6 +657,9 @@ model:
             input: [text]
         gpt-5.6-luna:
           maxTokens: 2048
+          capabilities:
+            maxContextTokens: 180000
+            maxOutputTokens: 8192
 agent:
   model: modelbest/gpt-5.6-luna
 `;
@@ -706,6 +709,7 @@ agent:
       });
       expect(models['gpt-5.6-luna']).toMatchObject({
         maxTokens: 2048,
+        capabilities: { maxContextTokens: 180000, maxOutputTokens: 8192 },
         multimodal: { input: ['text', 'image'] },
       });
     });

@@ -9,7 +9,7 @@ export const OPENAI_DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsJsonSchema: true,
   supportsSystemPrompt: true,
   supportsPromptCache: false,
-  maxContextTokens: 128000,
+  maxContextTokens: 262_144,
   maxOutputTokens: 32_768,
 };
 

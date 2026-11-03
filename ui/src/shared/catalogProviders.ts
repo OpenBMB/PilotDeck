@@ -27,12 +27,12 @@ export type ModelTokenLimits = {
   maxOutputTokens: number;
 };
 
-/** Mirrors the protocol defaults used by `src/model/config/parseModelConfig.ts`. */
+/** Defaults persisted for newly configured models; mirrors the engine's protocol defaults. */
 export const DEFAULT_MODEL_TOKEN_LIMITS: Record<CatalogProviderProtocol, ModelTokenLimits> = {
-  anthropic: { maxContextTokens: 200_000, maxOutputTokens: 32_768 },
-  openai: { maxContextTokens: 128_000, maxOutputTokens: 32_768 },
-  'openai-responses': { maxContextTokens: 128_000, maxOutputTokens: 32_768 },
-  google: { maxContextTokens: 1_048_576, maxOutputTokens: 32_768 },
+  anthropic: { maxContextTokens: 262_144, maxOutputTokens: 32_768 },
+  openai: { maxContextTokens: 262_144, maxOutputTokens: 32_768 },
+  'openai-responses': { maxContextTokens: 262_144, maxOutputTokens: 32_768 },
+  google: { maxContextTokens: 262_144, maxOutputTokens: 32_768 },
 };
 
 export type CatalogProvider = {

@@ -129,6 +129,7 @@ describe("ProviderCard custom model add", () => {
   });
 
   it("puts add-model first in candidates and enables a typed ID on enter", async () => {
+    const onSave = vi.fn(async () => ({ok:true}));
     render(
       <ProviderCard
         providerId="openrouter"
@@ -139,7 +140,7 @@ describe("ProviderCard custom model add", () => {
           models: { "already-on": {} },
         }}
         catalogEntry={catalogEntry}
-        onSave={vi.fn()}
+        onSave={onSave}
         onRemove={vi.fn()}
       />,
     );
@@ -167,6 +168,14 @@ describe("ProviderCard custom model add", () => {
     expect(screen.queryByPlaceholderText("pilotDeckConfig.panels.models.customModelIdPlaceholder")).toBeNull();
     expect(screen.getByText("my-custom-model")).toBeTruthy();
     expect(screen.getByRole("button", { name: "my-custom-model" })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name:'my-custom-model'}));
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens') as HTMLInputElement).value).toBe('262144');
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens') as HTMLInputElement).value).toBe('32768');
+    fireEvent.click(screen.getByRole('button', {name:'confirmDialog.cancel'}));
+    fireEvent.click(screen.getByRole('button', {name:'actions.saveChanges'}));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('openrouter', expect.objectContaining({models:expect.objectContaining({
+      'my-custom-model':{capabilities:{maxContextTokens:262144,maxOutputTokens:32768}},
+    })})));
   });
 });
 

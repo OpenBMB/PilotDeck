@@ -248,7 +248,7 @@ export default function ProviderCard({
     const id = mid.trim();
     if (!id) return;
     if (draftProvider.models && id in draftProvider.models) return;
-    update({ models: { ...(draftProvider.models ?? {}), [id]: {} } });
+    update({ models: { ...(draftProvider.models ?? {}), [id]: { capabilities: { ...DEFAULT_MODEL_TOKEN_LIMITS[protocol] } } } });
     setDraftCustomModelId(null);
   };
 
