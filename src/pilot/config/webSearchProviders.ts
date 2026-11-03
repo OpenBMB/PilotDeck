@@ -1,5 +1,5 @@
 /** Provider IDs are shared by YAML validation, the tool and settings. */
-export const WEB_SEARCH_PROVIDERS = ["deepseek", "glm", "tavily", "serper", "brave", "baidu", "bocha", "exa", "serpapi", "custom"] as const;
+export const WEB_SEARCH_PROVIDERS = ["deepseek", "glm", "tavily", "serper", "brave", "baidu", "bocha", "exa", "keenable", "serpapi", "custom"] as const;
 export type WebSearchProvider = typeof WEB_SEARCH_PROVIDERS[number];
 export const SERPAPI_ENGINES = ["google", "bing", "baidu", "duckduckgo", "yahoo", "yandex"] as const;
 export type SerpApiEngine = typeof SERPAPI_ENGINES[number];
@@ -13,6 +13,7 @@ export const WEB_SEARCH_ENDPOINTS: Record<Exclude<WebSearchProvider, "custom">, 
   baidu: "https://qianfan.baidubce.com/v2/ai_search/web_search",
   bocha: "https://api.bocha.cn/v1/web-search",
   exa: "https://api.exa.ai/search",
+  keenable: "https://api.keenable.ai/v1/search",
   serpapi: "https://serpapi.com/search.json",
 };
 export const WEB_SEARCH_DOCS: Record<Exclude<WebSearchProvider, "custom">, string> = {
@@ -24,6 +25,7 @@ export const WEB_SEARCH_DOCS: Record<Exclude<WebSearchProvider, "custom">, strin
   baidu: "https://ai.baidu.com/ai-doc/AppBuilder/pmaxd1hvy",
   bocha: "https://github.com/Bocha-Labs/bocha-skills/tree/main/bocha-web-search",
   exa: "https://exa.ai/docs/reference/search",
+  keenable: "https://keenable.ai/",
   serpapi: "https://serpapi.com/search-api",
 };
 export function isWebSearchProvider(value: unknown): value is WebSearchProvider {

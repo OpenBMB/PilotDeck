@@ -1521,6 +1521,7 @@
           "baidu": "百度 AI 搜索",
           "bocha": "博查 Web 搜索",
           "exa": "Exa",
+          "keenable": "Keenable",
           "serpapi": "SerpAPI",
           "docs": "API 文档与密钥申请",
           "docsHint": "查看{{provider}}帮助文档与密钥申请（新窗口打开）",
