@@ -43,11 +43,11 @@ export function conversationError(message: ChatMessage, t: TFunction) {
     : /\b(?:500|502|503|504|529)\b|overloaded|service unavailable|internal server error/i.test(evidence) ? 'server'
     : 'generic';
   const descriptor = message.contentI18n as { key?: string } | undefined;
+  const descriptorKey = typeof descriptor?.key === 'string' ? descriptor.key.replace(/^chat:/, '') : '';
   // These server messages are already concise. Model-request failures embed the
   // provider response and belong in the disclosure along with the raw details.
-  const concise = kind !== 'auth' && typeof descriptor?.key === 'string'
-    && descriptor.key.startsWith('agentStatus.')
-    && !descriptor.key.startsWith('agentStatus.modelRequestFailed.');
+  const concise = kind !== 'auth' && descriptorKey.startsWith('agentStatus.')
+    && !descriptorKey.startsWith('agentStatus.modelRequestFailed.');
   const title = concise ? translated(t, descriptor, t('conversationError.generic.title'))
     : t(`conversationError.${kind}.title`);
   const hint = concise ? translated(t, message.userHintI18n, text(message.userHint)) || t(`conversationError.${kind}.hint`)

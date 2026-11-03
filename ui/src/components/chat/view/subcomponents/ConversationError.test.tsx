@@ -60,11 +60,22 @@ it('redacts credentials in non-auth diagnostics while preserving the request ID'
   expect(error.details).not.toMatch(/private-bearer-value|private-json-value|private-password|private-query-value|multiword password/);
 });
 
-it('keeps classified server explanations and their localized hint', async () => {
+it.each(['', 'chat:'])('keeps classified server explanations and their localized hint with namespace %s', async namespace => {
   const i18n = await createTestI18n('zh-CN');
   const t = i18n.getFixedT('zh-CN', 'chat');
   const error = conversationError({ type: 'error', timestamp: 0, content: 'empty_response',
-    contentI18n: { key: 'agentStatus.emptyResponse.message' }, userHintI18n: { key: 'agentStatus.emptyResponse.hint' } }, t);
+    contentI18n: { key: `${namespace}agentStatus.emptyResponse.message` }, userHintI18n: { key: `${namespace}agentStatus.emptyResponse.hint` } }, t);
   expect(error.title).toBe(t('agentStatus.emptyResponse.message'));
   expect(error.hint).toBe(t('agentStatus.emptyResponse.hint'));
+});
+
+it('keeps namespaced model-request diagnostics behind the friendly summary', async () => {
+  const i18n = await createTestI18n();
+  const t = i18n.getFixedT('en', 'chat');
+  const error = conversationError({ type: 'error', timestamp: 0, content: 'HTTP 429: request_id=trace-123',
+    contentI18n: { key: 'chat:agentStatus.modelRequestFailed.message', params: { message: 'raw-provider-response' } },
+    userHintI18n: { key: 'chat:agentStatus.modelRequestFailed.actions.rateLimit' } }, t);
+  expect(error.title).toBe(t('conversationError.rateLimit.title'));
+  expect(error.title).not.toContain('raw-provider-response');
+  expect(error.details).toContain('trace-123');
 });
