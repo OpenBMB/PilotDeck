@@ -94,6 +94,10 @@ try {
   const contextTrigger = page.locator('.pd-composer-context-control > button');
   await contextTrigger.click();
   const context = page.getByRole('dialog', { name: 'Context window', exact: true });
+  await expect(context.getByRole('meter', { name: 'Context budget', exact: true })).toHaveAttribute('aria-valuenow', '45');
+  for (const label of ['System instructions', 'Tool descriptions', 'Conversation']) {
+    await expect(context.getByText(label, { exact: true })).toBeVisible();
+  }
   await expect(context.getByText('~2.2K', { exact: true })).toBeVisible();
   await expect(context.getByText('~117K / 262K', { exact: true })).toBeVisible();
   await expect(context.locator('dt')).toHaveCount(3);
@@ -113,7 +117,10 @@ try {
   await page.keyboard.press('Escape');
   await contextTrigger.click();
   const compactContext = page.getByRole('dialog', { name: '上下文窗口', exact: true });
-  await expect(compactContext.getByText('上下文已用', { exact: true })).toBeVisible();
+  await expect(compactContext.getByRole('meter', { name: '上下文预算', exact: true })).toHaveAttribute('aria-valuenow', '45');
+  for (const label of ['系统指令', '工具说明', '会话内容']) {
+    await expect(compactContext.getByText(label, { exact: true })).toBeVisible();
+  }
   await expect(compactContext.getByText('~65.5K', { exact: true })).toBeVisible();
   await expect(compactContext.getByText('45%', { exact: true })).toBeVisible();
   const compactBounds = await compactContext.boundingBox();
