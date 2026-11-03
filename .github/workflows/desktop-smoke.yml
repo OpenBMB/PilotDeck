@@ -91,6 +91,13 @@ jobs:
         run: pnpm --dir ui exec vitest run server/services/standaloneComputerUse.test.js
       - name: Test checkpoints, restore, Git operations and internal ignore rules
         run: pnpm run test:checkpoints
+      - name: Test General workspace upgrades and continued conversations
+        run: >-
+          pnpm --dir ui exec vitest run
+          server/utils/generalWorkspace.test.js
+          server/utils/generalWorkspaceMigration.test.js
+          server/projects.test.js
+          server/pilotdeck-bridge.sending.test.js
       - name: Test review UI and Windows path matching
         run: >-
           pnpm --dir ui exec vitest run
