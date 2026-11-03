@@ -48,6 +48,42 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     });
   });
 
+  it('ends a new send when preflight fails immediately after session creation', () => {
+    const sessionStore = createSessionStore();
+    const setIsLoading = vi.fn(), setCanAbortSession = vi.fn(), setActiveRunId = vi.fn();
+    const onSessionInactive = vi.fn();
+    renderHook(() => useChatRealtimeHandlers({
+      provider,
+      selectedProject: { name: 'general', fullPath: '/tmp/pilot-home' } as unknown as Project,
+      selectedSession: null,
+      currentSessionId: null,
+      setCurrentSessionId: noop,
+      setIsLoading,
+      setSessionRuntimeState: noop,
+      activeRunId: 'workspace-failed-start',
+      setActiveRunId,
+      setCanAbortSession,
+      setIsAborting: noop,
+      setClaudeStatus: noop,
+      setPilotDeckStatus: noop,
+      setTokenBudget: noop,
+      setPendingPermissionRequests: noop,
+      pendingViewSessionRef: { current: { sessionId: null, startedAt: Date.now() } },
+      onSessionInactive,
+      sessionStore,
+    }));
+    act(() => {
+      mocks.listener?.({ kind: 'session_created', sessionId: 'web:s_failed', newSessionId: 'web:s_failed', runId: 'workspace-failed-start' });
+      mocks.listener?.({ kind: 'error', sessionId: 'web:s_failed', runId: 'workspace-failed-start', terminal: true,
+        code: 'gateway_bridge_error', content: 'General workspace must be separate from PILOT_HOME.' });
+    });
+    expect(setIsLoading).toHaveBeenCalledWith(false);
+    expect(setCanAbortSession).toHaveBeenCalledWith(false);
+    expect(setActiveRunId).toHaveBeenCalledWith(null);
+    expect(onSessionInactive).toHaveBeenCalledWith('web:s_failed');
+    expect(sessionStore.appendRealtime).toHaveBeenCalledWith('web:s_failed', expect.objectContaining({ kind: 'error' }));
+  });
+
   it.each(['thinking', 'stream_delta'])('starts a separate %s block when compaction begins', (kind) => {
     const { result } = renderHook(() => useSessionStore());
     const sessionStore = result.current;

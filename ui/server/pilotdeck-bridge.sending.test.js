@@ -169,3 +169,24 @@ it('assigns a real ID before startup failure without acknowledging the input', a
     expect(frames.some(frame => frame.kind === 'error' && frame.terminal === true && frame.sessionId === result.sessionKey)).toBe(true);
     expect(frames.some(frame => frame.type === 'session-input-accepted')).toBe(false);
 });
+
+it('ends a General send when workspace preflight fails before input acceptance', async () => {
+    const previousRoot = process.env.WORKSPACES_ROOT;
+    process.env.WORKSPACES_ROOT = mock.home;
+    const frames = [];
+    const gateway = { submitTurn: vi.fn() };
+    try {
+        const result = await runChatViaGateway('fixture', { projectPath: mock.home, runId: 'workspace-failed-start' },
+            { send: frame => frames.push(frame) }, 'pilotdeck', { getGateway: async () => gateway });
+        expect(frames.find(frame => frame.kind === 'session_created')?.newSessionId).toBe(result.sessionKey);
+        expect(frames.find(frame => frame.kind === 'error')).toMatchObject({
+            terminal: true, sessionId: result.sessionKey, runId: 'workspace-failed-start',
+            content: 'General workspace must be separate from PILOT_HOME.',
+        });
+        expect(frames.some(frame => frame.type === 'session-input-accepted')).toBe(false);
+        expect(gateway.submitTurn).not.toHaveBeenCalled();
+    } finally {
+        if (previousRoot === undefined) delete process.env.WORKSPACES_ROOT;
+        else process.env.WORKSPACES_ROOT = previousRoot;
+    }
+});
