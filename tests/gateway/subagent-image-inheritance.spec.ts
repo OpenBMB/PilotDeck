@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import sharp from "sharp";
 import { createLocalGateway } from "../../src/cli/createLocalGateway.js";
-import { createSubagentImageInheritance, createSubagentImagePreparation } from "../../src/cli/subagentImageInheritance.js";
+import { createSubagentImageInheritance, createSubagentImagePreparation, createSubagentImageFinalization } from "../../src/cli/subagentImageInheritance.js";
 import { createModelRuntime, type CanonicalModelEvent, type CanonicalModelRequest } from "../../src/model/index.js";
 import { ImageStore, type GeneratedImage } from "../../src/tool/builtin/images/ImageStore.js";
 import type { PilotDeckToolSuccessResult } from "../../src/tool/index.js";
@@ -202,4 +202,27 @@ test("delegation snapshots only the parent's images, supports replay and exposes
   const signal = AbortSignal.abort();
   await assert.rejects(() => prepare({ ...args, subagentSessionId: "aborted-child", abortSignal: signal }), { name: "AbortError" });
   assert.deepEqual(await store.list("aborted-child"), []);
+});
+
+
+test("nested finalization validates existing images, isolates scopes and honors cancellation", async t => {
+  const root = await mkdtemp(join(tmpdir(), "nested-image-finalize-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: "blue" } }).png().toBuffer();
+  const store = new ImageStore(root);
+  const input = await store.save("parent", png);
+  await store.inheritOnce("parent", input.imageId, "child");
+  const output = await store.save("child", png);
+  const unrelated = await store.save("unrelated", png);
+  const finalize = createSubagentImageFinalization(store);
+  const args = { parentSessionId: "parent", subagentSessionId: "child" };
+  assert.deepEqual((await finalize(args)).map(image => image.key), [output.imageId]);
+  assert.deepEqual(await finalize(args), [], "idempotent handoff does not echo prepared inputs or repeat outputs");
+  await assert.rejects(() => store.get("parent", unrelated.imageId), /ENOENT/);
+  await assert.rejects(() => finalize({ ...args, parentSessionId: "cancelled", abortSignal: AbortSignal.abort() }), { name: "AbortError" });
+  assert.deepEqual(await store.list("cancelled"), []);
+  const inherited = await store.get("parent", output.imageId);
+  await writeFile(inherited.path, "conflict");
+  await assert.rejects(() => finalize(args), /conflicts/);
+  assert.equal(await readFile(inherited.path, "utf8"), "conflict");
 });

@@ -13,6 +13,7 @@ import {
   resolveCatalogProviderDefaultUrl,
 } from '../../../src/model/config/providerCredentialScope.js';
 import { findModelReferences } from './modelReferences.js';
+import { validateSubagentProfileSettings } from './subagentProfileSettings.js';
 import { normalizeLogRetentionDays, setRuntimeLogRetention } from '@pilotdeck/config';
 
 // Source of truth: ~/.pilotdeck/pilotdeck.yaml. The disk format and the
@@ -543,6 +544,7 @@ export function validatePilotDeckConfig(config) {
   }
 
   validateOptionalSubagentDefault(normalized, warnings);
+  validateSubagentProfileSettings(normalized, errors);
   validateRouterModelRefs(normalized, errors);
   validateGatewayConfig(normalized, errors, warnings);
   validateToolsConfig(normalized, errors, warnings);

@@ -1,5 +1,5 @@
 import { ImageStore } from "../tool/builtin/images/ImageStore.js";
-import { createSubagentImageInheritance, createSubagentImagePreparation } from "./subagentImageInheritance.js";
+import { createSubagentImageInheritance, createSubagentImagePreparation, createSubagentImageFinalization } from "./subagentImageInheritance.js";
 import { acquireWorkspaceOperation, operationContext } from "../session/checkpoints/WorkspaceCoordinator.js";
 import { runWorkspaceFileOperation } from "../session/checkpoints/workspaceFileOperation.js";
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
@@ -21,6 +21,8 @@ import {
   type CreateAgentSessionOptions,
 } from "../agent/index.js";
 import { resolveRoutedModelMaxContextTokens } from "../agent/runtime/modelContextWindow.js";
+import { listSubagentModels } from "../agent/sub/subagentModels.js";
+import { resolveSubagentProfiles } from "../agent/sub/subagentProfiles.js";
 import {
   AutoCompactionPolicy,
   CompactionEngine,
@@ -1391,6 +1393,7 @@ class ProjectRuntimeRegistry {
     const imageStore = new ImageStore(resolve(this.options.pilotHome, "generated-images"));
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
+      getSubagentModels: () => listSubagentModels(runtime.snapshot.config.model, runtime.snapshot.config.router),
       router: runtime.router,
       tools: { registry: sessionTools },
       lifecycle,
@@ -1398,6 +1401,7 @@ class ProjectRuntimeRegistry {
       eventEmitter: eventBuf.emitter,
       drainEvents: eventBuf.drain,
       inheritSubagentToolResult: createSubagentImageInheritance(imageStore),
+      finalizeSubagentArtifacts: createSubagentImageFinalization(imageStore),
       prepareSubagentArtifacts: createSubagentImagePreparation(imageStore,
         () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration?.enabled === true),
       tokenAccounting: runtime.tokenAccounting,
@@ -1683,6 +1687,13 @@ class ProjectRuntimeRegistry {
       permissionMode,
       jsonSelfCorrect: true,
       ...(subagentRuntimeModel ? { subagentModel: subagentRuntimeModel } : {}),
+      // Global nesting cap for the `agent` tool; defaults to 1 (no nesting).
+      maxSubagentDepth: agent.subagents?.maxDepth ?? 1,
+      // Resolved profiles (builtins merged with configured customs) only when
+      // profiles are configured; omitted keeps native builtin-only behavior.
+      ...(agent.subagents?.profiles !== undefined
+        ? { subagentProfiles: resolveSubagentProfiles(agent.subagents.profiles) }
+        : {}),
       subagentTimeoutMs: agent.subagents?.timeoutMs,
       maxContextTokens,
       maxOutputTokens,

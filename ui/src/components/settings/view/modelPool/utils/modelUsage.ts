@@ -8,6 +8,8 @@ function routeName(value: string, t: TFunction): string {
 export function usageLabel(path: string, t: TFunction): string {
   if (path === "agent.model") return t('common:modelUsage.primaryModel');
   if (path === "agent.subagents.default") return t('common:modelUsage.subagentModel');
+  const profile = /^agent\.subagents\.profiles\.([^.]+)\.model$/.exec(path);
+  if (profile) return t('common:modelUsage.subagentProfileModel', { profile: profile[1] });
   if (path === "memory.model") return t('common:modelUsage.memoryModel');
 
   const scenario = /^router\.scenarios\.([^.]+)$/.exec(path);

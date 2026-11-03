@@ -37,3 +37,22 @@ export function createSubagentImageInheritance(store: ImageStore): NonNullable<A
     return describeImage(inherited);
   };
 }
+
+/** Nested reports contain text, not trusted image metadata. Read the runtime-owned
+ * child store instead, completing each edge before its report reaches its parent.
+ * Existing images are verified idempotently but are not reported/delivered again.
+ */
+export function createSubagentImageFinalization(store: ImageStore): NonNullable<AgentRuntimeDependencies["finalizeSubagentArtifacts"]> {
+  return async ({ parentSessionId, subagentSessionId, abortSignal }) => {
+    abortSignal?.throwIfAborted();
+    const existing = new Set((await store.list(parentSessionId)).map(image => image.imageId));
+    const inherited = [];
+    for (const image of await store.list(subagentSessionId)) {
+      abortSignal?.throwIfAborted();
+      const registered = await store.inheritOnce(subagentSessionId, image.imageId, parentSessionId);
+      if (!existing.has(image.imageId)) inherited.push(describeImage(registered));
+    }
+    abortSignal?.throwIfAborted();
+    return inherited;
+  };
+}

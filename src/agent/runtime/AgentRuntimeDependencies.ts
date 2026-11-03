@@ -16,6 +16,7 @@ import type { TokenAccountingRuntime } from "../../context/index.js";
 import type { RouterRuntime } from "../../router/index.js";
 import type { AgentEvent, AgentEventEmitter } from "../protocol/events.js";
 import type { ModelProtocol } from "../../model/index.js";
+import type { SubagentModel } from "../sub/subagentModels.js";
 
 /**
  * Narrow view of the router that the agent loop actually consumes. Tests can
@@ -110,6 +111,8 @@ export type AgentRuntimeDependencies = {
   getModelProtocol?: (provider: string) => ModelProtocol | undefined;
   /** Resolve prompt-cache support for the concrete provider/model. */
   getModelSupportsPromptCache?: (provider: string, model: string) => boolean | undefined;
+  /** Available configured models for explicit subagent selection and model-facing guidance. */
+  getSubagentModels?: () => SubagentModel[];
   now?: () => Date;
   uuid?: () => string;
   auditRecorder?: PilotDeckToolAuditRecorder;
@@ -118,6 +121,12 @@ export type AgentRuntimeDependencies = {
   subagentTranscript?: AgentSubagentTranscriptHooks;
   /** Snapshot parent attachments into the child before its first model request. */
   prepareSubagentArtifacts?: (args: {
+    parentSessionId: string;
+    subagentSessionId: string;
+    abortSignal?: AbortSignal;
+  }) => Promise<{ key: string; description: string }[]>;
+  /** Complete trusted child-scope artifact handoff, including nested outputs. */
+  finalizeSubagentArtifacts?: (args: {
     parentSessionId: string;
     subagentSessionId: string;
     abortSignal?: AbortSignal;
