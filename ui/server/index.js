@@ -3656,7 +3656,7 @@ function listenWithPortFallback(srv, preferredPort, host) {
 }
 
 async function ensureLocalUserWhenAuthDisabled() {
-    if (!DISABLE_LOCAL_AUTH || userDb.hasUsers()) {
+    if ((!IS_PLATFORM && !DISABLE_LOCAL_AUTH) || userDb.hasUsers()) {
         return;
     }
     const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);

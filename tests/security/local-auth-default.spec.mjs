@@ -47,3 +47,22 @@ for (const value of ['1', 'true']) {
     assert.equal(loadAuth(value).authenticateWebSocket(null).userId, 1);
   });
 }
+
+const serverSource = await fs.readFile(new URL('../../ui/server/index.js', import.meta.url), 'utf8');
+const initializeUserSource = serverSource.match(/async function ensureLocalUserWhenAuthDisabled\(\) \{[\s\S]*?\n\}/)[0];
+for (const [platform, disabled, hasUsers, expected] of [
+  [true, false, false, 1], [false, true, false, 1],
+  [false, false, false, 0], [true, false, true, 0], [false, true, true, 0],
+]) {
+  test(`built-in user initialization: platform=${platform}, bypass=${disabled}, existing=${hasUsers}`, async () => {
+    let created = 0;
+    const initialize = new Function('IS_PLATFORM', 'DISABLE_LOCAL_AUTH', 'userDb', 'bcrypt', 'crypto', 'console', 'c',
+      initializeUserSource + '\nreturn ensureLocalUserWhenAuthDisabled;')(
+      platform, disabled, { hasUsers: () => hasUsers, createUser: () => { created++; } },
+      { hash: async () => 'random-password-hash' }, { randomBytes: () => ({ toString: () => 'random-password' }) },
+      { log() {} }, { info: value => value },
+    );
+    await initialize();
+    assert.equal(created, expected);
+  });
+}
