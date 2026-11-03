@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor, type RenderOptions } from '@testing-library/react';
+import { I18nextProvider } from 'react-i18next';
+import { createTestI18n } from '../../i18n/testInstance';
+import enSidebar from '../../i18n/locales/en/sidebar.json';
+import zhSidebar from '../../i18n/locales/zh-CN/sidebar.json';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../types/app';
 import SidebarV2 from './SidebarV2';
@@ -34,7 +38,7 @@ const project: Project = {
   sessions: [],
 };
 
-function renderSidebar(selectedProject: Project | null, extra?: Partial<ComponentProps<typeof SidebarV2>>) {
+function renderSidebar(selectedProject: Project | null, extra?: Partial<ComponentProps<typeof SidebarV2>>, options?: RenderOptions) {
   const props: ComponentProps<typeof SidebarV2> = {
     projects: [general, project],
     selectedProject,
@@ -52,12 +56,13 @@ function renderSidebar(selectedProject: Project | null, extra?: Partial<Componen
     ...extra,
   };
 
-  return render(<SidebarV2 {...props} />);
+  return render(<SidebarV2 {...props} />, options);
 }
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  delete window.pilotdeckDesktop;
 });
 
 describe('SidebarV2 layout', () => {
@@ -258,4 +263,94 @@ it('shows waiting questions and approvals ahead of running and unread indicators
   expect(view.container.querySelector('[data-session-indicator="question"]')?.getAttribute('aria-label')).toMatch(/Waiting for your answer|等待你回答/);
   expect(view.container.querySelector('[data-session-indicator="approval"]')?.getAttribute('aria-label')).toMatch(/Waiting for approval|等待你审批/);
   expect(screen.queryByTestId('running-indicator')).toBeNull();
+});
+
+describe('desktop working-directory actions', () => {
+  async function localizedOptions(language = 'en'): Promise<RenderOptions> {
+    const i18n = await createTestI18n(language);
+    i18n.addResourceBundle('en', 'sidebar', enSidebar);
+    i18n.addResourceBundle('zh-CN', 'sidebar', zhSidebar);
+    return { wrapper: ({ children }) => <I18nextProvider i18n={i18n}>{children}</I18nextProvider> };
+  }
+  it.each([
+    ['win32', 'en', 'Open in File Explorer'], ['win32', 'zh-CN', '在文件资源管理器中打开'],
+    ['darwin', 'en', 'Open in Finder'], ['darwin', 'zh-CN', '在 Finder 中打开'],
+    ['linux', 'en', 'Open in File Manager'], ['linux', 'zh-CN', '在文件管理器中打开'],
+  ])('opens the session working directory on %s in %s', async (platform, language, label) => {
+    const openDirectory = vi.fn().mockResolvedValue(true);
+    window.pilotdeckDesktop = { platform, openDirectory } as never;
+    const withSessions = { ...project, sessions: [{ id: 'native', title: 'Native chat', cwd: '/worktree/space 中文' }] };
+    const onSelectSession = vi.fn();
+    renderSidebar(withSessions, { projects: [withSessions], onSelectSession }, await localizedOptions(language));
+    fireEvent.contextMenu(screen.getByText('Native chat'), { clientX: 100, clientY: 100 });
+    fireEvent.click(screen.getByRole('menuitem', { name: label }));
+    await waitFor(() => expect(openDirectory).toHaveBeenCalledWith('/worktree/space 中文'));
+    expect(onSelectSession).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('opens the project directory when a conversation has no recorded cwd', async () => {
+    const openDirectory = vi.fn().mockResolvedValue(true);
+    window.pilotdeckDesktop = { platform: 'win32', openDirectory } as never;
+    const withSessions = { ...project, sessions: [{ id: 'fallback', title: 'Fallback chat' }] };
+    renderSidebar(withSessions, { projects: [withSessions] }, await localizedOptions());
+    fireEvent.contextMenu(screen.getByText('Fallback chat'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Open in File Explorer|在文件资源管理器中打开/ }));
+    await waitFor(() => expect(openDirectory).toHaveBeenCalledWith(project.fullPath));
+    fireEvent.contextMenu(screen.getByText('PilotDeck'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Open in File Explorer|在文件资源管理器中打开/ }));
+    await waitFor(() => expect(openDirectory).toHaveBeenCalledTimes(2));
+  });
+
+  it('uses the General workspace instead of its transcript/config directory', async () => {
+    const openDirectory = vi.fn().mockResolvedValue(true);
+    window.pilotdeckDesktop = { platform: 'darwin', openDirectory } as never;
+    const withSessions = { ...general, workspaceCwd: '/managed/workspace', sessions: [{ id: 'general-chat', title: 'General chat', cwd: general.fullPath }] };
+    renderSidebar(withSessions, { projects: [withSessions] }, await localizedOptions());
+    fireEvent.contextMenu(screen.getByText('General chat'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Open in Finder|在 Finder 中打开/ }));
+    await waitFor(() => expect(openDirectory).toHaveBeenCalledWith('/managed/workspace'));
+  });
+
+  it('keeps native file manager actions out of the browser', () => {
+    renderSidebar(project);
+    fireEvent.contextMenu(screen.getByText('PilotDeck'));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(2);
+  });
+
+  it('inherits the parent working directory for a background conversation', async () => {
+    const openDirectory = vi.fn().mockResolvedValue(true);
+    window.pilotdeckDesktop = { platform: 'linux', openDirectory } as never;
+    const withSessions: Project = { ...project, sessions: [
+      { id: 'parent', title: 'Parent chat', cwd: '/worktree/parent' },
+      { id: 'background', title: 'Background chat', parentSessionId: 'parent', sessionKind: 'background_task' },
+    ] };
+    renderSidebar(withSessions, { projects: [withSessions] }, await localizedOptions());
+    fireEvent.contextMenu(screen.getByText('Background chat'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in File Manager' }));
+    await waitFor(() => expect(openDirectory).toHaveBeenCalledWith('/worktree/parent'));
+  });
+
+  it('hides the action when General has no working directory', async () => {
+    window.pilotdeckDesktop = { platform: 'darwin', openDirectory: vi.fn() } as never;
+    const withSessions = { ...general, sessions: [{ id: 'legacy', title: 'Legacy general chat', cwd: general.fullPath }] };
+    renderSidebar(withSessions, { projects: [withSessions] }, await localizedOptions());
+    fireEvent.contextMenu(screen.getByText('Legacy general chat'));
+    expect(screen.queryByRole('menuitem', { name: 'Open in Finder' })).toBeNull();
+  });
+
+  it.each([false, 'reject'])('reports a localized failure when opening returns %s', async failure => {
+    const openDirectory = failure === false ? vi.fn().mockResolvedValue(false) : vi.fn().mockRejectedValue(new Error('missing'));
+    window.pilotdeckDesktop = { platform: 'win32', openDirectory } as never;
+    const toast = vi.fn();
+    window.addEventListener('pilotdeck:toast', toast);
+    try {
+      renderSidebar(project, undefined, await localizedOptions(failure === false ? 'en' : 'zh-CN'));
+      fireEvent.contextMenu(screen.getByText('PilotDeck'));
+      fireEvent.click(screen.getByRole('menuitem', { name: /Open in File Explorer|在文件资源管理器中打开/ }));
+      await waitFor(() => expect(toast).toHaveBeenCalledOnce());
+      expect(toast.mock.calls[0][0].detail).toMatchObject({ kind: 'error' });
+      expect(toast.mock.calls[0][0].detail.message).toMatch(/Could not open the working directory|无法打开工作目录/);
+    } finally { window.removeEventListener('pilotdeck:toast', toast); }
+  });
 });

@@ -16,6 +16,7 @@ import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } fr
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
 import { createFilePicker } from './filePicker';
+import { openDesktopDirectory } from './openDirectory';
 import { ComputerUseController } from './computerUse';
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen, Notification } from "electron";
 import { DebUpdater, MacUpdater, NsisUpdater, RpmUpdater } from "electron-updater";
@@ -1370,6 +1371,10 @@ ipcMain.handle("pilotdeck:open-runtime-log", async () => {
   if (logPath) {
     await shell.openPath(logPath);
   }
+});
+ipcMain.handle('pilotdeck:open-directory', (event, directory: unknown) => {
+  requireUpdateSender(event);
+  return openDesktopDirectory(directory, folder => shell.openPath(folder));
 });
 ipcMain.handle("pilotdeck:pick-folder", async () => {
   const owner = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;

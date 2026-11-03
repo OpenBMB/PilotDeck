@@ -17,6 +17,7 @@ let state = { ...emptyMenuState };
 let appearance = { language: 'en', themeMode: 'dark' };
 let checks = 0;
 let menuRequests = [];
+const openedDirectories = [];
 let captionMenu;
 let aboutDialogs = [], copiedVersion = '', openedWebsite = '';
 function menuTemplate() {
@@ -53,6 +54,8 @@ ipcMain.on('pilotdeck:get-window-state', e => { e.returnValue = { fullscreen: wi
 ipcMain.handle('pilotdeck:set-appearance', (_e, value) => { appearance = value; nativeTheme.themeSource = value.themeMode; publish(); refresh(); });
 ipcMain.handle('pilotdeck:menu-state', (_e, value) => { state = normalizeMenuState(value); refresh(); });
 ipcMain.handle('pilotdeck:get-runtime-info', () => null);
+// Record native folder requests without launching the user's file manager.
+ipcMain.handle('pilotdeck:open-directory', (_event, directory) => { openedDirectories.push(directory); return true; });
 // The shared pre-bundle startup page reads this synchronously, just like the
 // production shell. A missing handler leaves Chromium waiting during navigation.
 ipcMain.on('pilotdeck:get-runtime-status', event => {
@@ -70,7 +73,7 @@ ipcMain.handle('pilotdeck:show-menu', (_e, request) => {
   return captionMenu.show(request);
 });
 nativeTheme.on('updated', publish);
-global.chromeTest = { loaded: () => loaded, state: () => state, checks: () => checks, menuRequests: () => menuRequests, closeMenu: () => captionMenu?.close(), refreshMenu: refresh,
+global.chromeTest = { loaded: () => loaded, state: () => state, checks: () => checks, menuRequests: () => menuRequests, closeMenu: () => captionMenu?.close(), refreshMenu: refresh, openedDirectories: () => openedDirectories,
   about: () => ({ dialogs: aboutDialogs, copiedVersion, openedWebsite }) };
 app.whenReady().then(async () => {
   nativeTheme.themeSource = 'dark';

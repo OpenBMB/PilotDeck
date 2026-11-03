@@ -69,5 +69,6 @@ contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   retryRuntime: () => ipcRenderer.invoke("pilotdeck:retry-runtime"),
   openRuntimeLog: () => ipcRenderer.invoke("pilotdeck:open-runtime-log"),
   pickFolder: () => ipcRenderer.invoke("pilotdeck:pick-folder"),
+  openDirectory: (directory: string) => ipcRenderer.invoke('pilotdeck:open-directory', directory) as Promise<boolean>,
   pickFiles: (request: FilePickerRequest) => ipcRenderer.invoke('pilotdeck:pick-files', request) as Promise<FilePickerResult>,
 });

@@ -84,6 +84,13 @@ try {
   await page.goto('http://127.0.0.1:5187/p/demo/c/chrome-review');
   await expect(page.locator('.app-shell')).toBeVisible({ timeout: 60000 });
   await expect.poll(() => app.evaluate(() => global.chromeTest.state().ready)).toBe(true);
+  const nativeFolderLabel = mac ? 'Open in Finder' : process.platform === 'win32' ? 'Open in File Explorer' : 'Open in File Manager';
+  await page.locator('[data-sidebar-v2-root]').getByText('Native title review', { exact: true }).click({ button: 'right' });
+  const folderMenu = page.getByRole('menu', { name: 'Context menu', exact: true });
+  await expect(folderMenu.getByRole('menuitem', { name: nativeFolderLabel, exact: true })).toBeVisible();
+  await folderMenu.screenshot({ path: path.join(artifactDir, `${platformName}-sidebar-folder-menu-en.png`) });
+  await folderMenu.getByRole('menuitem', { name: nativeFolderLabel, exact: true }).click();
+  await expect.poll(() => app.evaluate(() => global.chromeTest.openedDirectories().at(-1))).toBe('/fixture/demo');
   const contextTrigger = page.locator('.pd-composer-context-control > button');
   await contextTrigger.click();
   const context = page.getByRole('dialog', { name: 'Context window', exact: true });
@@ -99,6 +106,11 @@ try {
   await page.reload();
   await expect(page.locator('.app-shell')).toBeVisible();
   await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await page.locator('[data-sidebar-v2-root]').getByText('Native title review', { exact: true }).click({ button: 'right' });
+  const folderMenuZh = page.getByRole('menu', { name: '操作菜单', exact: true });
+  await expect(folderMenuZh.getByRole('menuitem', { name: mac ? '在 Finder 中打开' : process.platform === 'win32' ? '在文件资源管理器中打开' : '在文件管理器中打开', exact: true })).toBeVisible();
+  await folderMenuZh.screenshot({ path: path.join(artifactDir, `${platformName}-sidebar-folder-menu-zh.png`) });
+  await page.keyboard.press('Escape');
   await contextTrigger.click();
   const compactContext = page.getByRole('dialog', { name: '上下文窗口', exact: true });
   await expect(compactContext.getByText('上下文已用', { exact: true })).toBeVisible();

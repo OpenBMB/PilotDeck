@@ -182,6 +182,7 @@ export interface ProjectDiscoveryContextResponse {
 }
 
 export interface ProjectSession {
+  cwd?: string;
   id: string;
   title?: string;
   summary?: string;
