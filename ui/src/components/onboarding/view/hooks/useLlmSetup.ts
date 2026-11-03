@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { authenticatedFetch } from '../../../../utils/api';
-import { DEFAULT_MODEL_TOKEN_LIMITS, findCatalogProviderByUrl, type CatalogProvider, type CatalogProviderProtocol } from '../../../../shared/catalogProviders';
+import { findCatalogProviderByUrl, type CatalogProvider, type CatalogProviderProtocol } from '../../../../shared/catalogProviders';
+import { resolveModelTokenLimits } from '../../../../shared/modelTokenLimits';
 import { fetchProviderModels, fetchRemoteDefaultModels, type ApiModelListItem } from '../../../../shared/modelListApi';
 import { CUSTOM_PROVIDER_ID, DEFAULT_PROVIDER, MAX_ONBOARDING_MODELS, RESERVED_CUSTOM_PROVIDER_IDS } from '../constants';
 import { hasUsableApiKey, providerIdFromEndpoint, requiresApiKey, uniqueModelIds } from '../llmSetupUtils';
@@ -476,7 +477,7 @@ export default function useLlmSetup({ onSaved }: UseLlmSetupOptions = {}): LlmSe
               return [id, {
                 ...existingModel,
                 ...(!Object.prototype.hasOwnProperty.call(existingModels, id)
-                  ? { capabilities: { ...DEFAULT_MODEL_TOKEN_LIMITS[protocol] } }
+                  ? { capabilities: resolveModelTokenLimits(providerId, id, protocol, catalogModel) }
                   : {}),
                 ...(typeof supportsImage === 'boolean'
                   ? { multimodal: { ...existingMultimodal, input: supportsImage ? ['text', 'image'] : ['text'] } }

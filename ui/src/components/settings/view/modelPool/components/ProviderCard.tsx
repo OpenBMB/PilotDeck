@@ -10,9 +10,7 @@ import {
   type CatalogProvider,
   type CatalogProviderProtocol,
 } from "../../../../../shared/catalogProviders";
-import {
-  DEFAULT_MODEL_TOKEN_LIMITS,
-} from "../../../../../shared/catalogProviders";
+import { resolveModelTokenLimits } from "../../../../../shared/modelTokenLimits";
 import {
   fetchProviderModels,
   type ApiModelListItem,
@@ -249,10 +247,9 @@ export default function ProviderCard({
     if (!id) return;
     if (draftProvider.models && id in draftProvider.models) return;
     const catalog = catalogModelFor(effectiveCatalogEntry, id);
-    update({ models: { ...(draftProvider.models ?? {}), [id]: { capabilities: {
-      maxContextTokens: catalog?.maxContextTokens ?? DEFAULT_MODEL_TOKEN_LIMITS[protocol].maxContextTokens,
-      maxOutputTokens: catalog?.maxOutputTokens ?? DEFAULT_MODEL_TOKEN_LIMITS[protocol].maxOutputTokens,
-    } } } });
+    update({ models: { ...(draftProvider.models ?? {}), [id]: {
+      capabilities: resolveModelTokenLimits(trimmedProviderId, id, protocol, catalog),
+    } } });
     setDraftCustomModelId(null);
   };
 
@@ -318,8 +315,7 @@ export default function ProviderCard({
     const stored = readCapabilities(draftProvider.models?.[modelId])[key];
     if (typeof stored === "number" && stored > 0) return stored;
     const catalog = catalogModelFor(effectiveCatalogEntry, modelId);
-    if (typeof catalog?.[key] === "number") return catalog[key];
-    return DEFAULT_MODEL_TOKEN_LIMITS[protocol][key];
+    return resolveModelTokenLimits(trimmedProviderId, modelId, protocol, catalog)[key];
   };
 
   const modelLabel = (modelId: string) =>

@@ -63,6 +63,41 @@ describe("ProviderCard custom model add", () => {
     })));
   });
 
+  it.each(['gpt-4.1', 'vendor/claude-sonnet-4.5'])('uses engine catalog limits for custom proxy model %s', async modelId => {
+    const limits = modelId === 'gpt-4.1'
+      ? { maxContextTokens: 1047576, maxOutputTokens: 32768 }
+      : { maxContextTokens: 200000, maxOutputTokens: 8192 };
+    mocks.fetchProviderModels.mockResolvedValue([{ id: modelId }]);
+    const onSave = vi.fn(async () => ({ ok: true }));
+    render(<ProviderCard providerId="private-proxy" provider={{ protocol: 'openai', url: 'https://proxy.test/v1',
+      apiKey: 'key', models: {} }} onSave={onSave} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'settingsPage.actions.edit' }));
+    fireEvent.click(await screen.findByRole('button', { name: modelId }));
+    fireEvent.click(screen.getByRole('button', { name: modelId }));
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens') as HTMLInputElement).value).toBe(String(limits.maxContextTokens));
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens') as HTMLInputElement).value).toBe(String(limits.maxOutputTokens));
+    expect((screen.getByRole('checkbox', { name: 'pilotDeckConfig.panels.models.modelSettings.imageInput' }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'confirmDialog.cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'actions.saveChanges' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('private-proxy', expect.objectContaining({
+      models: { [modelId]: { capabilities: limits } },
+    })));
+  });
+
+  it('shows inherited proxy limits without replacing explicit model settings or saving on open', () => {
+    const onSave = vi.fn();
+    render(<ProviderCard providerId="proxy" provider={{ protocol: 'openai', url: 'https://proxy.test/v1', apiKey: 'key',
+      models: { 'gpt-4.1': {}, 'claude-sonnet-4-5-20250929': { capabilities: { maxContextTokens: 180000, maxOutputTokens: 4096 } } },
+    }} onSave={onSave} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'gpt-4.1' }));
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens') as HTMLInputElement).value).toBe('1047576');
+    fireEvent.click(screen.getByRole('button', { name: 'confirmDialog.cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'claude-sonnet-4-5-20250929' }));
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens') as HTMLInputElement).value).toBe('180000');
+    expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens') as HTMLInputElement).value).toBe('4096');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it.each(['aaa', 'file:///tmp/model'])('rejects malformed or unsupported provider URL %s before saving', (url) => {
     const onSave = vi.fn();
     render(<ProviderCard providerId="test" initialEditing provider={{ protocol: 'openai', url, apiKey: 'key', models: { model: {} } }} onSave={onSave} onRemove={vi.fn()} />);

@@ -1,7 +1,7 @@
 /**
  * UI-side mirror of the provider catalog in `src/model/catalog/providers.ts`.
- * Kept here as a hand-curated subset because the UI bundle can't reach into
- * the engine catalog (different tsconfig / build root).
+ * Kept here as a hand-curated subset for the provider picker. Model token
+ * limits are resolved against the engine catalog by modelTokenLimits.ts.
  *
  * Keep this in sync with the engine catalog when adding providers/models.
  * Token limits are used as the settings placeholders, so they must match the

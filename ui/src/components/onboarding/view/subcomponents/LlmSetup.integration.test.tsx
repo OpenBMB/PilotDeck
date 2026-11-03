@@ -101,6 +101,37 @@ describe('LlmConfigurationStep', () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ['OpenAI', 'openai', 'gpt-4.1', 1047576, 32768],
+    ['Custom', 'private-proxy', 'vendor/claude-sonnet-4.5', 200000, 8192],
+  ] as const)('preserves known model limits when onboarding %s', async (providerName, providerId, modelId, context, output) => {
+    let savedRaw = '';
+    const onSaved = vi.fn();
+    const originalFetch = mocks.authenticatedFetch.getMockImplementation()!;
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config') {
+        if (init?.method === 'PUT') savedRaw = JSON.parse(String(init.body)).raw;
+        return { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return originalFetch(url, init);
+    });
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(await screen.findByRole('button', { name: providerName }));
+    if (providerName === 'Custom') {
+      fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: providerId } });
+      fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://proxy.test/v1' } });
+    }
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'test-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: modelId } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(parseYaml(savedRaw).model.providers[providerId].models[modelId].capabilities).toEqual({
+      maxContextTokens: context, maxOutputTokens: output,
+    });
+  });
+
   it('fetches Ollama models through the no-key provider path without also running catalog fallback', async () => {
     render(<LlmConfigurationStep onSaved={vi.fn()} />);
 
