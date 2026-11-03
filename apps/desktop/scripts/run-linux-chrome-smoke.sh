@@ -10,6 +10,8 @@ fi
 
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$repo_root"
+# Match the desktop launcher: this isolated Vite fixture has no auth server.
+export PILOTDECK_DISABLE_LOCAL_AUTH=1
 export PILOTDECK_CHROME_OZONE="$mode"
 export PILOTDECK_CHROME_DISABLE_SANDBOX=1
 export PILOTDECK_CHROME_DISABLE_GPU=1
