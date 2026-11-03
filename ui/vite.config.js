@@ -150,7 +150,24 @@ export default defineConfig(({ mode }) => {
       }
     },
     test: {
-      environment: 'jsdom',
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: 'server',
+            environment: 'node',
+            include: ['server/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'client',
+            environment: 'jsdom',
+            include: ['src/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+          },
+        },
+      ],
       server: {
         deps: {
           inline: ['react', 'react-dom']

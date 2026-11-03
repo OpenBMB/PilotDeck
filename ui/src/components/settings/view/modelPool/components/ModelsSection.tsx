@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   findCatalogProviderById,
@@ -45,6 +45,9 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   );
   const ids = useMemo(() => Object.keys(providers), [providers]);
   const [selectedId, setSelectedId] = useState(ids[0] ?? "");
+  const [cardKey, setCardKey] = useState(0);
+  const selectionGeneration = useRef(0);
+  const [savingProvider, setSavingProvider] = useState<PendingProvider | null>(null);
   const [search, setSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedPending, setSelectedPending] = useState<boolean | null>(null);
@@ -56,13 +59,22 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
     [ids, pendingProvider],
   );
 
+  // A save may change the provider ID or turn a draft into a saved provider.
+  // Keep its editor/modal alive; reset only when selecting a different provider.
+  const selectProvider = (id: string) => {
+    if (id === selectedId) return;
+    setSelectedId(id);
+    setCardKey(++selectionGeneration.current);
+  };
+
   useEffect(() => {
     if (
       selectedId
-      && (ids.includes(selectedId) || pendingProvider?.id === selectedId)
+      && (ids.includes(selectedId) || pendingProvider?.id === selectedId || savingProvider?.id === selectedId)
     ) return;
     setSelectedId(pendingProvider?.id ?? ids[0] ?? "");
-  }, [ids, pendingProvider?.id, selectedId]);
+    setCardKey(++selectionGeneration.current);
+  }, [ids, pendingProvider?.id, savingProvider?.id, selectedId]);
 
   useEffect(() => {
     setSelectedPending(null);
@@ -107,16 +119,24 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
     }
     const targetId = trimmed || oldId;
     const nextConfig = patch(renamed.config, ["model", "providers", targetId], provider);
-    const result = await applyChange(
-      nextConfig,
-      targetId !== oldId
-        ? { providerRenames: [{ from: oldId, to: targetId }] }
-        : undefined,
-    );
-    if (result.ok && targetId !== oldId) {
-      setSelectedId(targetId);
+    const owner = selectionGeneration.current;
+    const saving = { id: oldId, provider };
+    setSavingProvider(saving);
+    try {
+      const result = await applyChange(
+        nextConfig,
+        targetId !== oldId
+          ? { providerRenames: [{ from: oldId, to: targetId }] }
+          : undefined,
+      );
+      // A completed save must not take selection back from a newer editor.
+      if (result.ok && targetId !== oldId && selectionGeneration.current === owner) {
+        setSelectedId(current => current === oldId ? targetId : current);
+      }
+      return result;
+    } finally {
+      setSavingProvider(current => current === saving ? null : current);
     }
-    return result;
   };
 
   const savePendingProvider = async (
@@ -124,6 +144,8 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
     provider: V2Provider,
   ): Promise<{ ok: boolean; error?: string }> => {
     if (!pendingProvider) return { ok: false };
+    const draft = pendingProvider;
+    const owner = selectionGeneration.current;
     const targetId = newId.trim() || pendingProvider.id;
     if (providers[targetId]) {
       return { ok: false, error: t("pilotDeckConfig.panels.models.providerIdDuplicate") };
@@ -132,8 +154,10 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
       patch(config, ["model", "providers", targetId], provider),
     );
     if (result.ok) {
-      setPendingProvider(null);
-      setSelectedId(targetId);
+      setPendingProvider(current => current === draft ? null : current);
+      if (selectionGeneration.current === owner) {
+        setSelectedId(current => current === draft.id ? targetId : current);
+      }
     }
     return result;
   };
@@ -141,6 +165,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   const discardPendingProvider = () => {
     setPendingProvider(null);
     setSelectedId(ids[0] ?? "");
+    setCardKey(++selectionGeneration.current);
   };
 
   const handleCatalogPick = (cp: CatalogProvider) => {
@@ -154,7 +179,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
         models: {},
       },
     });
-    setSelectedId(cp.id);
+    selectProvider(cp.id);
   };
 
   const handleCustom = () => {
@@ -170,7 +195,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
         models: {},
       },
     });
-    setSelectedId(id);
+    selectProvider(id);
   };
 
   const filteredIds = useMemo(() => {
@@ -191,7 +216,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
   const selectedProvider = selectedIsPending
     ? pendingProvider.provider
     : selectedId
-      ? providers[selectedId]
+      ? providers[selectedId] ?? (savingProvider?.id === selectedId ? savingProvider.provider : undefined)
       : undefined;
   const selectedCatalog = selectedId ? findCatalogProviderById(selectedId) : undefined;
 
@@ -246,7 +271,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
                 key={id}
                 type="button"
                 className={`provider-row${id === selectedId ? " selected" : ""}`}
-                onClick={() => setSelectedId(id)}
+                onClick={() => selectProvider(id)}
               >
                 <ProviderAvatar providerId={id} catalogEntry={catalog} />
                 <span className="provider-row-copy">
@@ -272,7 +297,7 @@ export default function ModelsSection({ config, onChange, onServerConfig }: Mode
 
       {selectedId && selectedProvider ? (
         <ProviderCard
-          key={`${selectedId}:${selectedIsPending ? "new" : "saved"}`}
+          key={cardKey}
           providerId={selectedId}
           provider={selectedProvider}
           isNew={selectedIsPending}

@@ -3,9 +3,9 @@
 // retaining ordinary, hidden PowerShell startup and file-backed diagnostics.
 const { spawn } = require('node:child_process');
 const path = require('node:path');
-const { nativeProcessHost } = require('./nativeProcessHost.cjs');
+const { nativeProcessHost, windowsPowerShellPath } = require('./nativeProcessHost.cjs');
 const native = nativeProcessHost();
-const holder = spawn(native || 'powershell.exe', native ? ['job', ...process.argv.slice(2)] : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+const holder = spawn(native || windowsPowerShellPath(), native ? ['job', ...process.argv.slice(2)] : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
   '-File', path.join(__dirname, 'processJob.ps1'), ...process.argv.slice(2)], {
   stdio: 'inherit', windowsHide: true,
 });

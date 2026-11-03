@@ -74,7 +74,6 @@ Function PilotDeckInstallPageShow
   ; classic control. Windows retains its normal progress transition animation.
   System::Call 'user32::GetWindowLong(p r1, i -16) i.r7'
   System::Call 'user32::GetWindowLong(p r1, i -20) i.r8'
-  System::Call 'uxtheme::GetWindowTheme(p r1) p.r9'
   System::Call '*(i, i, i, i) p .r2'
   System::Call 'user32::GetWindowRect(p r1, p r2)'
   System::Call 'user32::MapWindowPoints(p 0, p r0, p r2, i 2)'
@@ -85,9 +84,6 @@ Function PilotDeckInstallPageShow
   ; Mirror the full-size native bar; only its cumulative value is managed.
   ShowWindow $1 0
   System::Call 'user32::CreateWindowEx(i r8, t "msctls_progress32", t "", i r7, i r3, i r4, i r5, i r6, p r0, p 1136, p 0, p 0) p .r2'
-  ${If} $9 == 0
-    System::Call 'uxtheme::SetWindowTheme(p r2, w "", w "")'
-  ${EndIf}
   StrCpy $PilotDeckProgress $2
   SendMessage $PilotDeckProgress 0x0406 0 1000
   GetDlgItem $1 $HWNDPARENT 2

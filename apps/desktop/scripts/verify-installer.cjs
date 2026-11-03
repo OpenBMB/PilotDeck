@@ -50,6 +50,9 @@ const { build } = require(path.join(projectDir, 'package.json'));
 !include "MUI2.nsh"
 !insertmacro customPageAfterChangeDir
 !insertmacro MUI_PAGE_INSTFILES
+!if "${'${MUI_INSTFILESPAGE_PROGRESSBAR}'}" != "smooth"
+  !error "Installation progress must retain the default Windows theme"
+!endif
 !insertmacro customFinishPage
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
@@ -68,6 +71,7 @@ SectionEnd
     assert.ok(compiledLog.includes('"MUI_FINISHPAGE_SHOWREADME_FUNCTION"="PilotDeckCreateDesktopShortcut"'), 'the native finish checkbox calls desktop shortcut creation');
     assert.match(compiledLog, /LangString: "PD_DesktopShortcut" 2052/, 'desktop shortcut checkbox has a Chinese label');
     assert.ok(!compiledLog.includes('MUI_FINISHPAGE_RUN_NOTCHECKED'), 'run checkbox keeps the native checked default');
+    assert.doesNotMatch(compiledLog, /SetWindowTheme/, 'no progress control opts out of Windows visual styles');
 
     assert.ok(fs.statSync(path.join(root, 'installer.exe')).size > 0);
     console.log('PASS: NSIS compiles; interactive and silent --force-run paths both expand to explorer.exe');

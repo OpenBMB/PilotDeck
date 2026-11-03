@@ -2,7 +2,22 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import LlmConfigurationStep from './LlmConfigurationStep';
+import useLlmSetup from '../hooks/useLlmSetup';
+import ConnectionStep from './ConnectionStep';
+import ProviderStep from './ProviderStep';
+import '../Onboarding.css';
+
+// Exercise the real setup hook and steps together without shipping a test-only
+// composition as a production component.
+function LlmConfigurationStep({ onSaved }: { onSaved: () => void | Promise<void> }) {
+  const llm = useLlmSetup({ onSaved });
+  return (
+    <div className="onboarding-shell">
+      <ProviderStep llm={llm} onBack={() => undefined} onContinue={() => undefined} />
+      <ConnectionStep llm={llm} onBack={() => undefined} onContinue={llm.handleSave} />
+    </div>
+  );
+}
 
 const mocks = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
@@ -84,6 +99,37 @@ describe('LlmConfigurationStep', () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it.each([
+    ['OpenAI', 'openai', 'gpt-4.1', 1047576, 32768],
+    ['Custom', 'private-proxy', 'vendor/claude-sonnet-4.5', 200000, 8192],
+  ] as const)('preserves known model limits when onboarding %s', async (providerName, providerId, modelId, context, output) => {
+    let savedRaw = '';
+    const onSaved = vi.fn();
+    const originalFetch = mocks.authenticatedFetch.getMockImplementation()!;
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config') {
+        if (init?.method === 'PUT') savedRaw = JSON.parse(String(init.body)).raw;
+        return { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return originalFetch(url, init);
+    });
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(await screen.findByRole('button', { name: providerName }));
+    if (providerName === 'Custom') {
+      fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: providerId } });
+      fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://proxy.test/v1' } });
+    }
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'test-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: modelId } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(parseYaml(savedRaw).model.providers[providerId].models[modelId].capabilities).toEqual({
+      maxContextTokens: context, maxOutputTokens: output,
+    });
   });
 
   it('fetches Ollama models through the no-key provider path without also running catalog fallback', async () => {
@@ -452,7 +498,7 @@ describe('LlmConfigurationStep', () => {
       alwaysOn: { language: string };
     };
     expect(body.modelTestBindings).toBeUndefined();
-    expect(saved.model.providers.modelbest.models['gpt-5.6-luna']).toEqual({});
+    expect(saved.model.providers.modelbest.models['gpt-5.6-luna']).toEqual({capabilities:{maxContextTokens:262144,maxOutputTokens:32768}});
     expect(saved.alwaysOn.language).toBe(language);
     expect(calls.some((call) => call.url === '/api/config/test-connections')).toBe(false);
   });
@@ -657,6 +703,9 @@ model:
             input: [text]
         gpt-5.6-luna:
           maxTokens: 2048
+          capabilities:
+            maxContextTokens: 180000
+            maxOutputTokens: 8192
 agent:
   model: modelbest/gpt-5.6-luna
 `;
@@ -706,6 +755,7 @@ agent:
       });
       expect(models['gpt-5.6-luna']).toMatchObject({
         maxTokens: 2048,
+        capabilities: { maxContextTokens: 180000, maxOutputTokens: 8192 },
         multimodal: { input: ['text', 'image'] },
       });
     });

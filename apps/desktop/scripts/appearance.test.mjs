@@ -60,7 +60,7 @@ test('native startup script preserves progress and presents the classified cause
   assert.doesNotMatch(html, /\x08/);
   const nodes = new Map();
   const get = id => {
-    if (!nodes.has(id)) nodes.set(id, { textContent: '', style: { setProperty() {} }, dataset: {}, classList: { toggle() {} }, parentElement: { setAttribute() {} }, addEventListener() {} });
+    if (!nodes.has(id)) nodes.set(id, { textContent: '', style: { setProperty() {} }, dataset: {}, classList: { toggle() {} }, parentElement: { setAttribute() {} }, addEventListener() {}, getBoundingClientRect() {} });
     return nodes.get(id);
   };
   let update;

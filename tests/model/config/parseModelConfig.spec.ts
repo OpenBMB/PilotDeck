@@ -145,8 +145,8 @@ test("official openai and anthropic catalog models default to supporting speed",
   assert.equal(config.providers.anthropic.models["claude-sonnet-4-5-20250929"].capabilities.supportsSpeed, true);
 });
 
-test("all protocol defaults enable thinking for undeclared models", () => {
-  for (const protocol of ["openai", "anthropic", "google"] as const) {
+test("all protocol defaults use 256K context, 32K output and enable thinking for undeclared models", () => {
+  for (const protocol of ["openai", "openai-responses", "anthropic", "google"] as const) {
     const config = parseModelConfig({
       providers: {
         [`custom-${protocol}`]: {
@@ -162,6 +162,8 @@ test("all protocol defaults enable thinking for undeclared models", () => {
       true,
       protocol,
     );
+    assert.equal(config.providers[`custom-${protocol}`].models["undeclared-model"].capabilities.maxContextTokens, 262_144, protocol);
+    assert.equal(config.providers[`custom-${protocol}`].models["undeclared-model"].capabilities.maxOutputTokens, 32_768, protocol);
   }
 });
 

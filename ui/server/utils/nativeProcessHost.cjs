@@ -5,6 +5,10 @@ const { execFileSync } = require('node:child_process');
 const { resolveConfigHome } = require('@pilotdeck/config');
 let resolved;
 
+function windowsPowerShellPath() {
+  return path.join(process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+}
+
 function nativeProcessHost() {
   if (process.platform !== 'win32' || process.env.PILOTDECK_NATIVE_PROCESS_HOST === '0') return null;
   if (resolved !== undefined) return resolved;
@@ -19,7 +23,10 @@ function nativeProcessHost() {
   // into PilotHome, then reuse it across launches and upgrades of identical code.
   const framework = process.arch === 'ia32' ? 'Framework' : 'Framework64';
   const compiler = path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', framework, 'v4.0.30319', 'csc.exe');
-  if (!fs.existsSync(compiler)) return resolved = null; // Keep the verified PowerShell fallback.
+  if (!fs.existsSync(compiler)) {
+    console.warn('[PD_PROCESS_HOST_FALLBACK] Native process host is not bundled and the compiler is unavailable; using PowerShell.');
+    return resolved = null;
+  }
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const temporary = path.join(directory, `${randomUUID()}.exe`);
   try {
@@ -32,4 +39,4 @@ function nativeProcessHost() {
   } finally { fs.rmSync(temporary, { force: true }); }
   return resolved;
 }
-module.exports = { nativeProcessHost };
+module.exports = { nativeProcessHost, windowsPowerShellPath };

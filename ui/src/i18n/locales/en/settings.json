@@ -1136,7 +1136,11 @@
           "cancelTest": "Cancel",
           "textRequest": "Text request",
           "imageRequest": "Image request",
-          "imageNotDescribed": "Could not confirm whether this model supports image input. Please verify and set this manually."
+          "imageNotDescribed": "Could not confirm whether this model supports image input. Please verify and set this manually.",
+          "saveAndTest": "Save and test",
+          "invalidTokenLimits": "Enter token limits as positive whole numbers.",
+          "otherTestRunning": "The connection test for {{provider}} {{model}} has not finished. Wait or cancel the previous test.",
+          "cancelPreviousTest": "Cancel previous test"
         },
         "title": "Model Pool",
         "description": "Centrally manage model providers, connection credentials, and available models. Enabled models are used by agents, routing, and memory.",

@@ -1,4 +1,20 @@
 {
+  "conversationError": {
+    "label": "Request failed",
+    "details": "Error details",
+    "authDetails": "The provider's raw authentication response is not displayed in this conversation. Check your API key and access permissions.",
+    "generic": { "title": "This request could not be completed", "hint": "Try again or choose another model in this conversation. Expand the details if the problem continues." },
+    "auth": { "title": "The model service could not authenticate this request", "hint": "Check this provider's API key and access permissions in the model pool." },
+    "billing": { "title": "The model service has insufficient credit or quota", "hint": "Check your provider account's credit and quota, or choose another model in this conversation." },
+    "rateLimit": { "title": "The model service is limiting requests", "hint": "Try again later, reduce concurrent requests, or choose another model in this conversation." },
+    "context": { "title": "This conversation exceeds the model's context capacity", "hint": "Send /compact, start a new conversation, or choose a model with a larger context. Configure each model's context limit in the model pool." },
+    "payload": { "title": "This request is too large", "hint": "Use fewer attachments or shorter content, or compact the conversation before trying again." },
+    "filtered": { "title": "The model service could not process this content", "hint": "Adjust your request and try again. Check the provider's content policy if the problem continues." },
+    "model": { "title": "The selected model is unavailable", "hint": "Choose another model in this conversation, or check its name and access permissions in the model pool." },
+    "timeout": { "title": "The model took too long to respond", "hint": "Check your connection and try again. For repeated timeouts, adjust the model's timeout settings or choose another model." },
+    "network": { "title": "The connection to the model service was interrupted", "hint": "Check your network, proxy, and provider URL before sending the request again." },
+    "server": { "title": "The model service is temporarily unavailable", "hint": "Try again later or choose another model in this conversation." }
+  },
   "imageGeneration": {
   "drawing": "Drawing…",
   "loading": "Loading image…",

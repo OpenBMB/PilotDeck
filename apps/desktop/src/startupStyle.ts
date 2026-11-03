@@ -1,6 +1,6 @@
 // Shared by the native page, the pre-bundle HTML and React on every platform.
 export const startupStyle = `
-#root[data-pilotdeck-startup="waiting"] > :not(.pd-startup-screen){visibility:hidden}
+#root[data-pilotdeck-startup="complete"] > :not(.pd-startup-screen){visibility:hidden}
 .pd-startup-screen{position:fixed;inset:var(--desktop-caption-height,0px) 0 0;z-index:50;display:grid;place-items:center;box-sizing:border-box;padding:24px;background:var(--startup-bg,#fff);color:var(--startup-fg,#171717);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;opacity:1;transition:opacity .18s ease,transform .18s ease}
 .pd-startup-screen[data-leaving=true]{animation:none;opacity:0;transform:translateY(-4px);pointer-events:none}
 .pd-startup-screen main{width:min(360px,100%);margin:0;text-align:center}

@@ -1,6 +1,6 @@
 import { startupLabels, startupVisualProgress } from './startupPresentation';
 import { startupStyle } from './startupStyle';
-import { normalizeLightAppearance, deriveLightColors, type LightAppearance } from './lightAppearance';
+import { LIGHT_PRESETS, normalizeLightAppearance, deriveLightColors, type LightAppearance } from './lightAppearance';
 import { normalizeInterfacePreferences, type InterfacePreferences } from './interfacePreferences';
 export type DesktopAppearance = { language: 'en' | 'zh-CN'; themeMode: 'light' | 'dark' | 'system'; lightAppearance?: LightAppearance; interfacePreferences?: InterfacePreferences };
 
@@ -62,7 +62,16 @@ const languages=${JSON.stringify({ en: startupLabels('en'), 'zh-CN': startupLabe
 const saved=key=>{try{return localStorage.getItem(key)}catch{return null}};
 const appearance=web?(window.pilotdeckDesktop?.getAppearance?.()||{language:saved('userLanguage')||(navigator.language.startsWith('zh')?'zh-CN':'en'),themeMode:saved('themeMode')||saved('theme')||'system'}):${JSON.stringify({ language: appearance.language, themeMode: appearance.themeMode })};
 let labels=languages[appearance.language]||languages.en;
-if(web){document.documentElement.dataset.theme=appearance.themeMode;if(!document.documentElement.classList.contains('dark'))document.documentElement.style.setProperty('--startup-bg',getComputedStyle(document.documentElement).backgroundColor)}
+if(web){
+ document.documentElement.dataset.theme=appearance.themeMode;
+ // The application's default canvas is lavender. Keep the startup canvas the
+ // same as the native document, even after the application's CSS has loaded.
+ let preference=appearance.lightAppearance;try{preference??=JSON.parse(saved('pilotdeck-light-appearance-v1')||'null')}catch{}
+ const presets=${JSON.stringify(LIGHT_PRESETS)};
+ const background=preference?.preset==='custom'?preference.custom?.background:preference?.preset!=='default'?presets[preference?.preset]?.background:null;
+ const dark=appearance.themeMode==='dark'||appearance.themeMode==='system'&&window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+ document.documentElement.style.setProperty('--startup-bg',dark?'#0a0a0a':/^#[0-9a-f]{6}$/i.test(background)?background:'#ffffff');
+}
 const root=document.getElementById('startup'),bar=document.getElementById('bar'),message=document.getElementById('message');
 const visualProgress=${startupVisualProgress.toString()};
 let current={phase:'starting',progress:8,startedAt:Date.now(),phaseStartedAt:Date.now()};
@@ -71,10 +80,11 @@ function draw(){bar.style.width=visualProgress(current)+'%';bar.parentElement.se
 function update(status){
  if(!status)return;
  const reset=status.phase==='starting'&&current.phase!=='starting';
- current={...status,progress:reset?8:Math.max(current.progress||8,status.progress||8),startedAt:status.startedAt||(reset?Date.now():current.startedAt),phaseStartedAt:status.phaseStartedAt||(status.phase===current.phase?current.phaseStartedAt:Date.now())};
+ const finishing=current.completed&&!reset&&status.phase!=='error'&&status.phase!=='stopped';
+ current={...status,completed:!!(status.completed||finishing),leaving:!!(status.leaving||finishing&&current.leaving),progress:reset?8:Math.max(current.progress||8,status.progress||8),startedAt:status.startedAt||(reset?Date.now():current.startedAt),phaseStartedAt:status.phaseStartedAt||(status.phase===current.phase?current.phaseStartedAt:Date.now())};
  if(status.language)labels=languages[status.language]||languages.en;
  if(animationStart!==current.startedAt){animationStart=current.startedAt;root.style.setProperty('--startup-animation-offset',-(Date.now()-animationStart)+'ms')}
- window.__pilotdeckStartupState=current;root.dataset.error=String(status.phase==='error');root.dataset.complete=String(!!status.completed);root.dataset.leaving=String(!!status.leaving);draw();
+ window.__pilotdeckStartupState=current;root.dataset.error=String(status.phase==='error');root.dataset.complete=String(current.completed);root.dataset.leaving=String(current.leaving);draw();
  if(status.phase==='error'){
   const code=(status.error||'').match(/\\bPD_[A-Z_]+\\b/)?.[0]||'PD_RUNTIME_PROCESS_FAILED';
   document.getElementById('reason').textContent=labels[code]||labels.unknown;
@@ -83,7 +93,11 @@ function update(status){
  }else message.textContent=labels[status.phase]||labels.starting;
 }
 message.textContent=labels.starting;document.querySelector('#failure h2').textContent=labels.failed;document.getElementById('retry').textContent=labels.restart;document.getElementById('saveLog').textContent=labels.save;
+// Seed the real position before enabling transitions. A new document must not
+// animate from the template's 8% after the native loading page nearly finished.
+bar.style.transition='none';
 const unsubscribe=window.pilotdeckDesktop?.onRuntimeStatus(update);update(window.pilotdeckDesktop?.getRuntimeStatus?.()||current);
+bar.getBoundingClientRect();bar.style.transition='';
 const timer=setInterval(draw,400);window.__pilotdeckStartupCleanup=()=>{clearInterval(timer);unsubscribe?.()};window.__pilotdeckStartupUpdate=update;
 document.getElementById('retry').addEventListener('click',()=>window.pilotdeckDesktop?.retryRuntime?window.pilotdeckDesktop.retryRuntime():window.location.reload());
 document.getElementById('saveLog').addEventListener('click',async()=>{
