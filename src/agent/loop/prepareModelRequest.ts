@@ -41,7 +41,7 @@ export type ModelRequestPreparationDependencies = {
   getPromptAddendum?: () => string | undefined;
   getPlanDirectoryPath?: () => string | undefined;
   /** Omitted by silent budget previews; the caller owns lifecycle delivery. */
-  onInstructionsLoaded?: (hasSystemPrompt: boolean) => void;
+  onInstructionsLoaded?: (hasSystemPrompt: boolean) => void | Promise<void>;
 };
 
 /** Assemble one request from current capabilities; routing and recovery stay in AgentLoop. */
@@ -59,7 +59,7 @@ export async function prepareModelRequest(
 
 export type PreparedModelRequest = {
   request: CanonicalModelRequest;
-  commit(finalRequest?: CanonicalModelRequest): void;
+  commit(finalRequest?: CanonicalModelRequest): void | Promise<void>;
 };
 
 /** One candidate's external inputs, reused across budget and selected-route projections. */
@@ -95,7 +95,7 @@ export async function prepareModelRequestAttempt(
           let committed = false;
           let committedFingerprint: string | undefined;
           let generation: number | undefined;
-          return { request, commit(finalRequest = request) {
+          return { request, async commit(finalRequest = request) {
             input.abortSignal?.throwIfAborted();
             if (committed && committedFingerprint === finalRequest.cachePlan?.fingerprint) {
               if (finalRequest.cachePlan && generation !== undefined) finalRequest.cachePlan.generation = generation;
@@ -107,8 +107,9 @@ export async function prepareModelRequestAttempt(
             request.cacheBreakpoints = finalRequest.cacheBreakpoints;
             generation = finalRequest.cachePlan?.generation;
             committedFingerprint = finalRequest.cachePlan?.fingerprint;
-            if (!committed) dependencies.onInstructionsLoaded?.(!!finalRequest.systemPrompt);
+            const notifyInstructions = !committed;
             committed = true;
+            if (notifyInstructions) await dependencies.onInstructionsLoaded?.(!!finalRequest.systemPrompt);
           } };
         })();
         projections.set(key, projection);
@@ -159,7 +160,7 @@ async function finishRequest(config: ModelRequestConfig, dependencies: ModelRequ
   prepared: ModelContext, media?: ReturnType<typeof materializeMediaReferences>): Promise<CanonicalModelRequest> {
   input.abortSignal?.throwIfAborted();
   const systemPrompt = prepared.systemPrompt ?? config.systemPrompt;
-  dependencies.onInstructionsLoaded?.(!!systemPrompt);
+  await dependencies.onInstructionsLoaded?.(!!systemPrompt);
 
   const materialized = await (media ?? materializeMediaReferences(prepared.messages, { signal: input.abortSignal }));
   input.abortSignal?.throwIfAborted();
