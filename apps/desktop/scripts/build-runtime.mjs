@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import {
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -11,6 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import fileCopy from './copy-files.cjs';
 import { dirname, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,7 @@ import {
   resolvePlaywrightMirrorMode,
 } from "./download-playwright-browsers.mjs";
 
+const { copyFilesSync: cpSync } = fileCopy;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, "..");
 const repoRoot = resolve(desktopRoot, "..", "..");

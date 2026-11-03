@@ -110,12 +110,13 @@ jobs:
       - name: Verify Windows tray and quit confirmation
         run: node --test apps/desktop/scripts/desktop-lifecycle.test.mjs
 
-      - name: Verify Windows startup environments and local ports
+      - name: Verify Windows startup environments, local ports and Unicode paths
         run: >-
           node --test
           apps/desktop/scripts/runtime-environment.test.mjs
           apps/desktop/scripts/windows-node-options.test.mjs
           apps/desktop/scripts/startup-network.test.mjs
+          apps/desktop/scripts/copy-files.test.mjs
 
       - name: Verify Windows signing policy
         run: node --test apps/desktop/scripts/windows-signing.test.mjs

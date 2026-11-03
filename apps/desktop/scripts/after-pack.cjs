@@ -1,6 +1,5 @@
 const {
   chmodSync,
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -8,6 +7,7 @@ const {
   realpathSync,
   rmSync,
 } = require("node:fs");
+const { copyFilesSync: cpSync } = require('./copy-files.cjs');
 const { execFileSync } = require("node:child_process");
 const { dirname, join, resolve } = require("node:path");
 

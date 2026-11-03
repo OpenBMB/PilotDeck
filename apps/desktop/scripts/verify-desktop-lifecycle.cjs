@@ -12,7 +12,8 @@ if (!['win32', 'darwin'].includes(process.platform) && !(process.platform === 'l
   throw new Error('Run lifecycle checks on Windows/macOS, or notification-badge under a Linux display server.');
 }
 async function verify(scenario) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-tray-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), process.platform === 'win32'
+    ? 'pilotdeck-tray-test-用户 with spaces & (app)-' : 'pilotdeck-tray-test-'));
   try {
     const desktop = path.resolve(__dirname, '..');
     const runtime = path.join(root, 'runtime');
