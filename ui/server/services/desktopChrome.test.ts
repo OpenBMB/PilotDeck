@@ -7,7 +7,6 @@ const ipc = vi.hoisted(() => ({
 }));
 import { installWindowChrome } from '../../../apps/desktop/src/preloadChrome';
 import { isRendererEditingShortcut, windowChromeOptions } from '../../../apps/desktop/src/windowChrome';
-import { linuxCaptionAction, linuxCaptionEntries } from '../../../apps/desktop/src/linuxCaptionMenu';
 
 it('reserves only plain editing shortcuts for the renderer, leaving macOS fullscreen native', () => {
   const input = { key: 'f', meta: true, control: false, shift: false, alt: false, isComposing: false };
@@ -28,23 +27,6 @@ it('uses native caption controls with an opaque matching background on each plat
   expect(windowChromeOptions('win32', true)).toMatchObject({ titleBarOverlay: { color: '#171717', symbolColor: '#e5e5e5' } });
   expect(windowChromeOptions('linux', false)).toMatchObject({ titleBarStyle: 'hidden', titleBarOverlay: { height: 32, color: '#f4f4f5', symbolColor: '#262626' } });
   expect(windowChromeOptions('linux', true)).toMatchObject({ titleBarOverlay: { color: '#171717', symbolColor: '#e5e5e5' } });
-});
-it('Linux popup accepts only visible enabled actions in known menu sections', () => {
-  const template = [{ id: 'menu-file', submenu: [
-    { id: 'open', label: '打开', accelerator: 'CmdOrCtrl+O' },
-    { id: 'disabled', label: '不可用', enabled: false },
-    { type: 'separator' as const },
-    { id: 'hidden', label: '隐藏', visible: false },
-  ] }];
-  expect(linuxCaptionEntries(template, 'menu-file')).toMatchObject([
-    { index: 0, id: 'open', label: '打开', accelerator: 'Ctrl+O', enabled: true },
-    { index: 1, id: 'disabled', enabled: false },
-    { index: 2, type: 'separator', enabled: false },
-  ]);
-  expect(linuxCaptionEntries(template, 'unknown')).toEqual([]);
-  expect(linuxCaptionAction(template, 'menu-file', 0)?.id).toBe('open');
-  for (const index of [1, 2, 3, -1, 0.5, '0']) expect(linuxCaptionAction(template, 'menu-file', index)).toBeUndefined();
-  expect(linuxCaptionAction(template, 'unknown', 0)).toBeUndefined();
 });
 it('Windows caption initializes its saved language, follows language/fullscreen changes and opens native menus', async () => {
   document.documentElement.lang = 'en';

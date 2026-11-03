@@ -4,7 +4,6 @@ import { commandEnabled, emptyMenuState, normalizeMenuState, type DesktopCommand
 import { isRendererEditingShortcut, windowChromeOptions, windowPalette, WINDOWS_CAPTION_HEIGHT } from "./windowChrome";
 import { desktopAboutInfo, desktopAboutInformation, presentDesktopAbout } from "./desktopAbout";
 import { WindowsCaptionMenu, type CaptionMenuRequest } from "./windowsCaptionMenu";
-import { linuxCaptionAction, linuxCaptionEntries } from "./linuxCaptionMenu";
 import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
@@ -130,6 +129,21 @@ class RuntimeManager {
 
   getLogPath(): string {
     return this.logPath;
+  }
+
+  async hasRunningTasks(): Promise<boolean> {
+    if (!this.gatewayProcess || this.gatewayProcess.exitCode !== null) return false;
+    if (this.gatewayState.state !== 'ready' || !this.pilotHome || !this.gatewayPort) return true;
+    try {
+      const token = fs.readFileSync(path.join(this.pilotHome, 'server-token'), 'utf8').trim();
+      const response = await fetch(`http://127.0.0.1:${this.gatewayPort}/api/web/runtime/activity`, {
+        headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(2_000),
+      });
+      if (!response.ok) return true;
+      const activity = await response.json() as { activeTurnCount?: unknown };
+      // Unknown state must retain the confirmation instead of risking a task.
+      return activity.activeTurnCount !== 0;
+    } catch { return true; }
   }
 
   async start(): Promise<RuntimeInfo> {
@@ -1235,41 +1249,6 @@ function updateApplicationMenu(): void {
   }
 }
 
-function activateLinuxMenuRole(role: string, owner: BrowserWindow): void {
-  const contents = owner.webContents;
-  switch (role) {
-    case "undo": contents.undo(); break;
-    case "redo": contents.redo(); break;
-    case "cut": contents.cut(); break;
-    case "copy": contents.copy(); break;
-    case "paste": contents.paste(); break;
-    case "selectAll": contents.selectAll(); break;
-    case "resetZoom": contents.setZoomLevel(0); break;
-    case "zoomIn": contents.setZoomLevel(contents.getZoomLevel() + 1); break;
-    case "zoomOut": contents.setZoomLevel(contents.getZoomLevel() - 1); break;
-    case "togglefullscreen": owner.setFullScreen(!owner.isFullScreen()); break;
-    case "reload": contents.reload(); break;
-    case "close": owner.close(); break;
-    case "quit": void lifecycle.requestQuit(); break;
-    case "about": void showDesktopAbout(owner).catch(error => console.error("Desktop about dialog failed", error)); break;
-  }
-}
-
-ipcMain.handle("pilotdeck:linux-menu-items", (event, id: unknown) => {
-  requireCaptionSender(event);
-  return process.platform === "linux" ? linuxCaptionEntries(desktopMenuTemplate(), id) : [];
-});
-
-ipcMain.handle("pilotdeck:linux-menu-activate", (event, request?: { id?: unknown; index?: unknown }) => {
-  requireCaptionSender(event);
-  if (process.platform !== "linux" || !mainWindow || mainWindow.isDestroyed()) return false;
-  const item = linuxCaptionAction(desktopMenuTemplate(), request?.id, request?.index);
-  if (!item) return false;
-  if (item.role) activateLinuxMenuRole(item.role, mainWindow);
-  else (item.click as (() => void) | undefined)?.();
-  return true;
-});
-
 function publishWindowState(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const dark = nativeTheme.shouldUseDarkColors;
@@ -1310,7 +1289,7 @@ ipcMain.handle("pilotdeck:menu-state", (event, state: unknown) => {
 const captionMenus = new WeakMap<BrowserWindow, WindowsCaptionMenu>();
 ipcMain.handle("pilotdeck:show-menu", (event, request?: CaptionMenuRequest) => {
   requireCaptionSender(event);
-  if (process.platform !== "win32") return;
+  if (process.platform !== "win32" && process.platform !== "linux") return;
   const owner = mainWindow!;
   let menus = captionMenus.get(owner);
   if (!menus) {
@@ -1417,8 +1396,7 @@ if (process.platform === "win32") {
 
 const lifecycle = createDesktopLifecycle({
   platform: process.platform,
-  shouldConfirm: () => app.isReady() && (process.platform === "darwin" || process.platform === "win32"
-    || (process.platform === "linux" && Boolean(mainWindow && !mainWindow.isDestroyed()))),
+  shouldConfirm: () => runtime?.hasRunningTasks() ?? false,
   canHide: () => process.platform === "darwin" || Boolean(desktopTray?.available()),
   isQuitting: () => isQuitting,
   setQuitting: value => { isQuitting = value; desktopTray?.setQuitting(value); },

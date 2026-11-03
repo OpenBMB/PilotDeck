@@ -36,6 +36,15 @@ export async function handleWebApiRequest(
   }
 
   const match = PROJECT_RE.exec(url.pathname);
+  if (url.pathname === "/api/web/runtime/activity" && request.method === "GET") {
+    try {
+      const info = await options.gateway.describeServer();
+      sendJson(response, 200, { activeTurnCount: info.activeTurnCount ?? null });
+    } catch (error) {
+      sendJson(response, 503, errorBody("activity_unavailable", error));
+    }
+    return true;
+  }
   if (url.pathname === "/api/web/projects" && request.method === "GET") {
     const result = await options.gateway.listProjects();
     sendJson(response, 200, result);

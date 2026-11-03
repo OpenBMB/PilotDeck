@@ -6,7 +6,6 @@ const os = require('node:os');
 const { isRendererEditingShortcut, windowChromeOptions, windowPalette, WINDOWS_CAPTION_HEIGHT } = require('../../dist/windowChrome');
 const { buildApplicationMenu } = require('../../dist/applicationMenu');
 const { WindowsCaptionMenu } = require('../../dist/windowsCaptionMenu');
-const { linuxCaptionEntries, linuxCaptionAction } = require('../../dist/linuxCaptionMenu');
 const { normalizeMenuState, emptyMenuState, commandEnabled } = require('../../dist/desktopCommands');
 const { desktopAboutInfo, presentDesktopAbout } = require('../../dist/desktopAbout');
 const profile = process.env.PILOTDECK_CHROME_PROFILE || fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-chrome-'));
@@ -69,35 +68,6 @@ ipcMain.handle('pilotdeck:show-menu', (_e, request) => {
   menuRequests.push(request || { id: 'all' });
   captionMenu ||= new WindowsCaptionMenu(window, menuTemplate, items => Menu.buildFromTemplate(items), () => screen.getCursorScreenPoint());
   return captionMenu.show(request);
-});
-ipcMain.handle('pilotdeck:linux-menu-items', (_e, id) => {
-  if (process.platform !== 'linux') return [];
-  menuRequests.push({ id });
-  return linuxCaptionEntries(menuTemplate(), id);
-});
-ipcMain.handle('pilotdeck:linux-menu-activate', (_e, request) => {
-  if (process.platform !== 'linux') return false;
-  const item = linuxCaptionAction(menuTemplate(), request?.id, request?.index);
-  if (!item) return false;
-  if (item.role) {
-    const contents = window.webContents;
-    switch (item.role) {
-      case 'undo': contents.undo(); break;
-      case 'redo': contents.redo(); break;
-      case 'cut': contents.cut(); break;
-      case 'copy': contents.copy(); break;
-      case 'paste': contents.paste(); break;
-      case 'selectAll': contents.selectAll(); break;
-      case 'resetZoom': contents.setZoomLevel(0); break;
-      case 'zoomIn': contents.setZoomLevel(contents.getZoomLevel() + 1); break;
-      case 'zoomOut': contents.setZoomLevel(contents.getZoomLevel() - 1); break;
-      case 'togglefullscreen': window.setFullScreen(!window.isFullScreen()); break;
-      case 'reload': contents.reload(); break;
-      case 'close': window.close(); break;
-      case 'quit': app.quit(); break;
-    }
-  } else item.click?.();
-  return true;
 });
 nativeTheme.on('updated', publish);
 global.chromeTest = { loaded: () => loaded, state: () => state, checks: () => checks, menuRequests: () => menuRequests, closeMenu: () => captionMenu?.close(), refreshMenu: refresh,

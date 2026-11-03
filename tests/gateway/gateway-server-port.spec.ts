@@ -28,3 +28,20 @@ test('exposes the actual ephemeral port rather than the requested zero', async (
     assert.ok(health.headers.get('x-pilotdeck-version'));
   } finally { await server.close(); }
 });
+
+test('runtime activity is authenticated and distinguishes idle, active and unavailable counts', async () => {
+  let count: number | undefined = 0;
+  const gateway = { describeServer: async () => ({ mode: 'in_process', activeTurnCount: count }) } as Gateway;
+  const server = await startGatewayServer({ gateway, port: 0, token: 'activity-test' });
+  try {
+    const url = `${server.url}/api/web/runtime/activity`;
+    assert.equal((await fetch(url)).status, 401);
+    const headers = { Authorization: 'Bearer activity-test' };
+    for (const value of [0, 3, undefined]) {
+      count = value;
+      const response = await fetch(url, { headers });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { activeTurnCount: value ?? null });
+    }
+  } finally { await server.close(); }
+});

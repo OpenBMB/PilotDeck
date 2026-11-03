@@ -913,6 +913,7 @@ export class InProcessGateway implements Gateway {
       mode: "in_process",
       sessionCount: this.router.sessionCount(),
       ...this.options.serverInfo,
+      activeTurnCount: this.turnCompletions.size,
       capabilities,
     };
   }

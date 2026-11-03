@@ -53,10 +53,16 @@ async function verify(scenario) {
     `);
     fs.mkdirSync(path.join(runtime, 'dist', 'src', 'cli'), { recursive: true });
     fs.writeFileSync(path.join(runtime, 'dist', 'src', 'cli', 'pilotdeck.js'), `
-      import net from 'node:net';
+      import http from 'node:http';
       import fs from 'node:fs';
+      import path from 'node:path';
+      fs.writeFileSync(path.join(process.env.PILOT_HOME, 'server-token'), 'fixture-token');
       fs.writeFileSync(process.env.PILOTDECK_TRAY_TEST_PID + '.gateway', String(process.pid));
-      net.createServer(socket => socket.end()).listen(Number(process.env.PILOTDECK_GATEWAY_PORT), '127.0.0.1');
+      http.createServer((req, res) => {
+        if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401); res.end(); return; }
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({activeTurnCount: process.env.PILOTDECK_TEST_SCENARIO === 'idle-quit' ? 0 : 1}));
+      }).listen(Number(process.env.PILOTDECK_GATEWAY_PORT), '127.0.0.1');
     `);
     const services = path.join(runtime, 'ui', 'server', 'services');
     fs.mkdirSync(services, { recursive: true });
@@ -106,7 +112,7 @@ async function verify(scenario) {
 }
 (async () => {
   const scenarios = process.argv.slice(2);
-  for (const scenario of scenarios.length ? scenarios : ['normal', 'notification-badge', 'slow-quit', 'startup-quit', 'stop-failure', 'update', 'update-recovery', ...(process.platform === 'darwin' ? ['shutdown'] : [])]) {
+  for (const scenario of scenarios.length ? scenarios : ['idle-quit', 'normal', 'notification-badge', 'slow-quit', 'startup-quit', 'stop-failure', 'update', 'update-recovery', ...(process.platform === 'darwin' ? ['shutdown'] : [])]) {
     await verify(scenario);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

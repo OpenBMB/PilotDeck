@@ -156,58 +156,17 @@ try {
     await expect(caption.locator('button')).toHaveCount(5);
     await expect(caption).toHaveCSS('background-color', 'rgb(23, 23, 23)');
     await expect(page.locator('.project-sidebar')).toHaveCSS('background-color', 'rgb(10, 10, 10)');
-    // Win32 owns its popup; Linux draws the same menu template in the preload
-    // so it follows the app theme on GTK desktops with different system themes.
-    await caption.getByRole('button', { name: 'File', exact: true }).click();
-    await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe('menu-file');
-    const linuxPopup = page.locator('#pilotdeck-linux-popup');
-    if (process.platform === 'linux') {
-      await expect(linuxPopup).toBeVisible();
-      await expect(linuxPopup.locator('.panel')).toHaveCSS('background-color', 'rgb(37, 37, 37)');
-      await expect(linuxPopup.locator('[data-action="new-project"]')).toContainText('New Project');
-      await page.screenshot({ path: path.join(artifactDir, `${platformName}-dark-popup.png`) });
-      for (const [key, selector, label] of [
-        ['f', '[data-action="new-project"]', 'New Project'],
-        ['e', '[data-index="0"]', 'Undo'],
-        ['v', '[data-action="toggle-sidebar"]', 'Show Sidebar'],
-        ['g', '[data-action="chat"]', 'Conversation'],
-        ['h', '[data-action="help-docs"]', 'Documentation'],
-      ]) {
-        await page.keyboard.press('Escape');
-        await page.keyboard.press(`Alt+${key}`);
-        await expect(linuxPopup).toBeVisible();
-        await expect(linuxPopup.locator('.panel')).toHaveCSS('background-color', 'rgb(37, 37, 37)');
-        await expect(linuxPopup.locator(selector)).toContainText(label);
-        expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMenuBarVisible())).toBe(false);
-      }
+    // Both platforms delegate popup rendering and keyboard navigation to Electron.
+    for (const [label, id] of [['File', 'menu-file'], ['Edit', 'menu-edit'], ['View', 'menu-view']]) {
+      await caption.getByRole('button', { name: label, exact: true }).click();
+      await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe(id);
+      await expect(caption.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-expanded', 'true');
+      await app.evaluate(() => global.chromeTest.closeMenu());
     }
-    await caption.getByRole('button', { name: 'Edit', exact: true }).hover();
-    await expect(caption.getByRole('button', { name: 'Edit', exact: true })).toHaveAttribute('aria-expanded', 'true');
-    if (process.platform === 'linux') await expect(linuxPopup.locator('.entry')).toContainText(['Undo', 'Redo', 'Cut', 'Copy', 'Paste', 'Select All', 'Find…']);
-    await caption.getByRole('button', { name: 'View', exact: true }).click();
-    await expect(caption.getByRole('button', { name: 'View', exact: true })).toHaveAttribute('aria-expanded', 'true');
-    // Product state can rebuild the application menu while its popup is open.
-    await app.evaluate(() => global.chromeTest.refreshMenu());
-    if (process.platform === 'linux') {
-      await expect(linuxPopup.locator('[data-action="toggle-sidebar"]')).toBeVisible();
-      await page.keyboard.press('Escape');
-      await expect(linuxPopup).toBeHidden();
-    } else await app.evaluate(() => global.chromeTest.closeMenu());
-    await expect(caption.getByRole('button', { name: 'File', exact: true })).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press('F10');
-    await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe(process.platform === 'linux' ? 'menu-file' : 'all');
-    if (process.platform === 'linux') {
-      await expect(linuxPopup.locator('.entry:not(:disabled)').first()).toBeFocused();
-      await page.keyboard.press('ArrowRight');
-      await expect(linuxPopup.locator('.panel')).toHaveAttribute('aria-label', 'Edit');
-      await page.keyboard.press('Escape');
-      await caption.getByRole('button', { name: 'View', exact: true }).click();
-      await linuxPopup.getByRole('menuitem', { name: 'Zoom In' }).click();
-      await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomLevel())).toBe(1);
-      await caption.getByRole('button', { name: 'View', exact: true }).click();
-      await linuxPopup.getByRole('menuitem', { name: 'Actual Size' }).click();
-      await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomLevel())).toBe(0);
-    } else await app.evaluate(() => global.chromeTest.closeMenu());
+    await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe('all');
+    await app.evaluate(() => global.chromeTest.closeMenu());
+    await expect(page.locator('#pilotdeck-linux-popup')).toHaveCount(0);
   }
   const command = async id => {
     await expect.poll(() => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu().getMenuItemById(id)?.enabled, id)).toBe(true);
@@ -248,10 +207,7 @@ try {
     await page.evaluate(() => window.pilotdeckDesktop.setAppearance({ language: 'en', themeMode: 'dark' }));
     await page.reload();
   }
-  if (process.platform === 'linux') {
-    await page.locator('#pilotdeck-window-caption').getByRole('button', { name: 'File', exact: true }).click();
-    await page.locator('#pilotdeck-linux-popup').locator('[data-action="new-project"]').click();
-  } else await command('new-project');
+  await command('new-project');
   await expect(page.locator('.create-workspace-dialog')).toBeVisible();
   await expect.poll(() => app.evaluate(() => global.chromeTest.state().blocked)).toBe(true);
   await page.keyboard.press('Escape');
@@ -352,17 +308,7 @@ try {
     await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', 'rgb(244, 244, 245)');
     await verifyOriginalContentStyle();
     await expect(page.locator('.project-sidebar')).toHaveCSS('background-image', 'linear-gradient(rgb(251, 250, 255), rgb(244, 243, 255) 58%, rgb(240, 244, 255))');
-    if (process.platform === 'linux') {
-      const popup = page.locator('#pilotdeck-linux-popup');
-      const caption = page.locator('#pilotdeck-window-caption');
-      await caption.getByRole('button', { name: 'File', exact: true }).click();
-      await expect(popup.locator('.panel')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-      await page.screenshot({ path: path.join(artifactDir, `${platformName}-light-popup.png`) });
-      await page.evaluate(() => window.pilotdeckDesktop.setAppearance({ language: 'en', themeMode: 'dark' }));
-      await expect(popup.locator('.panel')).toHaveCSS('background-color', 'rgb(37, 37, 37)');
-      await page.evaluate(() => window.pilotdeckDesktop.setAppearance({ language: 'en', themeMode: 'light' }));
-      await expect(popup.locator('.panel')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-    }
+
     // Exercise the actual i18n instance, including persistence across reload.
     await page.evaluate(async () => { const { default: i18n } = await import('/src/i18n/config.js'); await i18n.changeLanguage('zh-CN'); });
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
@@ -372,24 +318,7 @@ try {
       Menu.getApplicationMenu().getMenuItemById('new-conversation').label,
       Menu.getApplicationMenu().getMenuItemById('help-docs').label,
     ])).toEqual(['新对话', '使用文档']);
-    if (process.platform === 'linux') {
-      const popup = page.locator('#pilotdeck-linux-popup');
-      for (const [id, selector, label] of [
-        ['menu-file', '[data-action="new-project"]', '新建项目'],
-        ['menu-edit', '[data-index="0"]', '撤销'],
-        ['menu-view', '[data-action="toggle-sidebar"]', '显示侧栏'],
-        ['menu-go', '[data-action="chat"]', '对话'],
-        ['menu-help', '[data-action="help-docs"]', '使用文档'],
-      ]) {
-        await page.keyboard.press('Escape');
-        await page.locator(`#pilotdeck-window-caption button[data-menu="${id}"]`).click();
-        await expect(popup.locator('.panel')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-        await expect(popup.locator(selector)).toContainText(label);
-      }
-      await page.screenshot({ path: path.join(artifactDir, `${platformName}-light-zh-popup.png`) });
-      await page.keyboard.press('Escape');
-      await expect(popup).toBeHidden();
-    }
+
     await page.reload();
     await expect(page.locator('.app-shell')).toBeVisible();
     await expect(page.locator('#pilotdeck-window-caption button')).toHaveText(['文件', '编辑', '查看', '前往', '帮助']);
