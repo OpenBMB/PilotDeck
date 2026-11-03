@@ -20,7 +20,10 @@ it.each([
   const t = i18n.getFixedT('zh-CN', 'chat');
   const error = conversationError({ type: 'error', content, timestamp: 0 }, t);
   expect(error.title).toBe(t(`conversationError.${kind}.title`));
-  expect(error.details).toBe(content);
+  if (kind === 'auth') {
+    expect(error.details).toContain('HTTP 401');
+    expect(error.details).not.toContain('invalid_api_key');
+  } else expect(error.details).toBe(content);
 });
 
 it.each(['current', 'legacy'])('keeps raw diagnostic details collapsed in the %s chat renderer', async renderer => {
@@ -33,9 +36,28 @@ it.each(['current', 'legacy'])('keeps raw diagnostic details collapsed in the %s
   const disclosure = document.querySelector('details')!;
   expect(disclosure.open).toBe(false);
   expect(disclosure.querySelector('pre')!.textContent).toBe(message.content);
-  fireEvent.click(screen.getByText('Show error details'));
+  fireEvent.click(screen.getByText('Error details'));
   expect(disclosure.open).toBe(true);
   expect(disclosure.querySelector('pre')!.textContent).toContain('diagnostic-123');
+});
+
+it('keeps an unrecognized echoed credential out of authentication diagnostics', async () => {
+  const i18n = await createTestI18n();
+  const error = conversationError({ type: 'error', timestamp: 0, errorCode: 'AUTH',
+    content: '401 Incorrect API key provided: secret-with-no-known-prefix',
+    details: { request: { apiKey: 'another-private-value' } } }, i18n.getFixedT('en', 'chat'));
+  expect(error.code).toBe('AUTH');
+  expect(error.details).toContain('HTTP 401');
+  expect(JSON.stringify(error)).not.toMatch(/secret-with-no-known-prefix|another-private-value/);
+});
+
+it('redacts credentials in non-auth diagnostics while preserving the request ID', async () => {
+  const i18n = await createTestI18n();
+  const content = '503 request_id=trace-123\nAuthorization: Bearer private-bearer-value\n{"api_key":"private-json-value","password":"private multiword password"}\nhttps://user:private-password@example.invalid/v1?token=private-query-value';
+  const error = conversationError({ type: 'error', timestamp: 0, errorCode: 'PROVIDER_UNAVAILABLE', content }, i18n.getFixedT('en', 'chat'));
+  expect(error.details).toContain('trace-123');
+  expect(error.details).toContain('[redacted]');
+  expect(error.details).not.toMatch(/private-bearer-value|private-json-value|private-password|private-query-value|multiword password/);
 });
 
 it('keeps classified server explanations and their localized hint', async () => {

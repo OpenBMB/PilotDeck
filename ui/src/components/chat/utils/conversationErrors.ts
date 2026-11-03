@@ -14,6 +14,18 @@ function translated(t: TFunction, descriptor: unknown, fallback: string): string
   return t(key, { ...(params && typeof params === 'object' ? params : {}), defaultValue: fallback });
 }
 
+// Provider diagnostics can contain request headers or a URL with credentials.
+// Keep useful status/request IDs while keeping those values out of the DOM.
+function redactCredentials(value: string): string {
+  return value
+    .replace(/\b(Bearer|Basic)\s+[^\s"',;]+/gi, '$1 [redacted]')
+    .replace(/(["']?\b(?:api[_-]?key|x-api-key|access[_-]?token|refresh[_-]?token|password|authorization)["']?\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s"'&,;}]+)/gi,
+      (_match, label: string, value: string) => label + (/^["']/.test(value) ? `${value[0]}[redacted]${value[0]}` : '[redacted]'))
+    .replace(/([?&](?:api[_-]?key|access[_-]?token|token|key)=)[^&#\s"']+/gi, '$1[redacted]')
+    .replace(/(https?:\/\/)[^/\s@]+@/gi, '$1[redacted]@')
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted]');
+}
+
 // Prefer the server's classified action; older providers only supply raw text.
 export function conversationError(message: ChatMessage, t: TFunction) {
   const raw = text(message.content).trim();
@@ -33,15 +45,21 @@ export function conversationError(message: ChatMessage, t: TFunction) {
   const descriptor = message.contentI18n as { key?: string } | undefined;
   // These server messages are already concise. Model-request failures embed the
   // provider response and belong in the disclosure along with the raw details.
-  const concise = typeof descriptor?.key === 'string'
+  const concise = kind !== 'auth' && typeof descriptor?.key === 'string'
     && descriptor.key.startsWith('agentStatus.')
     && !descriptor.key.startsWith('agentStatus.modelRequestFailed.');
   const title = concise ? translated(t, descriptor, t('conversationError.generic.title'))
     : t(`conversationError.${kind}.title`);
   const hint = concise ? translated(t, message.userHintI18n, text(message.userHint)) || t(`conversationError.${kind}.hint`)
     : t(`conversationError.${kind}.hint`);
-  const code = text(message.errorCode);
+  const suppliedCode = text(message.errorCode);
+  const code = /^[A-Z][A-Z0-9_:-]{1,63}$/i.test(suppliedCode) && !/^sk-/i.test(suppliedCode) ? suppliedCode : undefined;
   const originalHint = translated(t, message.userHintI18n, text(message.userHint));
-  const details = [raw, originalHint !== hint && !raw.includes(originalHint) ? originalHint : '', code && !raw.includes(code) ? code : '', text(message.details)].filter(Boolean).join('\n\n');
-  return { title, hint, details };
+  const status = raw.match(/\b(?:401|403)\b/)?.[0];
+  // Authentication responses can echo arbitrary partial keys without a
+  // recognizable format, so masking known key patterns is insufficient.
+  const details = kind === 'auth'
+    ? [code, status && `HTTP ${status}`, t('conversationError.authDetails')].filter(Boolean).join('\n\n')
+    : redactCredentials([raw, originalHint !== hint && !raw.includes(originalHint) ? originalHint : '', code && !raw.includes(code) ? code : '', text(message.details)].filter(Boolean).join('\n\n'));
+  return { title: redactCredentials(title), hint: redactCredentials(hint), details, code };
 }

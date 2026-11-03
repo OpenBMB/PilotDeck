@@ -14,7 +14,8 @@ export async function mountPreview() {
     <div className="space-y-5">{[
       'HTTP 429 Too Many Requests\nrequest_id=local-preview-123\n{"error":{"code":"rate_limit_exceeded","message":"Requests exceeded the current provider limit"}}',
       'context_length_exceeded: maximum context length exceeded',
-      '401 invalid_api_key', 'ECONNRESET socket hang up',
-    ].map((content, index) => <ConversationError key={index} message={{ type: 'error', content, timestamp: 0 }} />)}</div>
+      '401 invalid_api_key: demo-auth-value-not-for-display', 'ECONNRESET socket hang up',
+    ].map((content, index) => <ConversationError key={index} message={{ type: 'error', content, timestamp: 0,
+      errorCode: ['RATE_LIMIT', 'CONTEXT_LENGTH_EXCEEDED', 'AUTH', 'ECONNRESET'][index] }} />)}</div>
   </main></I18nextProvider>);
 }
