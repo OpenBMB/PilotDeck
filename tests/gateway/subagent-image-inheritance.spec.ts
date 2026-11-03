@@ -16,11 +16,12 @@ import { createProjectId } from "../../src/pilot/index.js";
 
 test("same-chat parent saves and edits parallel child images by ID, including after gateway restart", async t => {
   const root = await mkdtemp(join(tmpdir(), "subagent-images-"));
+  let local: ReturnType<typeof createLocalGateway>;
   const home = join(root, "home"), workspace = join(root, "workspace");
   await mkdir(home); await mkdir(workspace); await mkdir(join(home, "skills"));
   const registration = join(home, "projects", createProjectId(workspace));
   await mkdir(registration, { recursive: true }); await writeFile(join(registration, ".cwd"), workspace);
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.after(async () => { local?.dispose(); await rm(root, { recursive: true, force: true }); });
   const png = await sharp({ create: { width: 24, height: 16, channels: 3, background: "blue" } }).png().toBuffer();
   const requests: { path: string; reference?: Buffer }[] = [];
   const server = createServer(async (req, res) => {
@@ -88,7 +89,7 @@ model:
           assert.equal(ids.length, 2, "host appends both registered image IDs even when child report omits them");
           for (const id of ids) {
             const image = await new ImageStore(join(home, "generated-images")).get("web:parent", id);
-            assert.ok(JSON.stringify(inherited).includes(image.path), "model receives parent-owned attachment paths before its next call");
+            assert.ok(JSON.stringify(inherited).includes(JSON.stringify(image.path).slice(1, -1)), "model receives parent-owned attachment paths before its next call");
           }
           calls = ids.map((id, i) => ({ id: `parent-save-${i}`, name: "save_generated_image", input: { image_id: id, output_path: `parent-${i}.png` } }));
           calls.push({ id: "parent-edit", name: "edit_image", input: { image_ids: [ids[0]], prompt: "red circle", purpose: "deliverable" } });
@@ -104,8 +105,7 @@ model:
       async complete() { return { role: "assistant" as const, content: [{ type: "text" as const, text: '{"title":"Image QA"}' }], finishReason: "stop" as const }; },
     }),
   };
-  let local = createLocalGateway(options);
-  t.after(() => local.dispose());
+  local = createLocalGateway(options);
   const submit = async (message: string, sessionKey = "web:parent") => {
     const events: GatewayEvent[] = [];
     for await (const event of local.gateway.submitTurn({ projectKey: workspace, sessionKey, channelKey: "web", mode: "bypassPermissions", message })) events.push(event);

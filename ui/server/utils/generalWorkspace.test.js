@@ -69,7 +69,7 @@ describe('General workspace isolation', () => {
             fs.mkdir(workspacesRoot),
             fs.mkdir(linkTarget),
         ]);
-        await fs.symlink(linkTarget, path.join(workspacesRoot, 'general'));
+        await fs.symlink(linkTarget, path.join(workspacesRoot, 'general'), process.platform === 'win32' ? 'junction' : 'dir');
 
         await expect(ensureGeneralWorkspaceDirectory({
             PILOT_HOME: pilotHome,
