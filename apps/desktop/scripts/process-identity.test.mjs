@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import path from 'node:path';
 import identities from '../../../ui/server/utils/processIdentity.cjs';
 import { waitForManagedEvent } from './process-test-helpers.mjs';
 
 test('Windows startup queries only requested PIDs without CIM enumeration', () => {
-  const result = identities.windowsProcesses([123,456,123], (_command,args,options) => {
+  const result = identities.windowsProcesses([123,456,123], (command,args,options) => {
+    assert.equal(command, path.join(process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'));
     assert.match(args.at(-1), /@\(123,456\)/);
     assert.match(args.at(-1), /GetProcessById/);
     assert.doesNotMatch(args.at(-1), /Get-CimInstance|GetProcesses\(\)/);
@@ -13,6 +15,13 @@ test('Windows startup queries only requested PIDs without CIM enumeration', () =
     return '[{"ProcessId":123,"Birth":"2026-09-07T12:34:56.1234567Z"}]';
   });
   assert.deepEqual(result,[{pid:123,birth:'2026-09-07T12:34:56.1234567Z'}]);
+});
+
+test('blocked PowerShell explains the fallback failure and preserves the Windows error code', () => {
+  assert.throws(() => identities.windowsProcesses([123], () => {
+    throw Object.assign(new Error('spawnSync powershell.exe EPERM'), { code: 'EPERM' });
+  }), error => error.code === 'EPERM' && /PowerShell fallback.*EPERM/.test(error.message)
+    && /native process helper is not in use/.test(error.message));
 });
 test('Windows query timeout is explicit and never fabricates ownership', () => {
   assert.throws(()=>identities.windowsProcesses([123],()=>{throw Object.assign(new Error('spawn timed out'),{code:'ETIMEDOUT'});}), {code:'ETIMEDOUT',message:'Windows process identity query timed out after 30000 ms'});
