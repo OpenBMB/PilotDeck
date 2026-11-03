@@ -5,7 +5,7 @@ import ModelSettingsModal from './ModelSettingsModal';
 vi.mock('react-i18next', () => ({useTranslation: () => ({t:(key:string)=>key})}));
 afterEach(cleanup);
 const initial = {maxOutputTokens:8192,maxContextTokens:128000,supportsImage:false};
-const props = () => ({modelId:'one',initial,testDisabled:false,onTest:vi.fn(),onCancelTest:vi.fn(),onSave:vi.fn(async()=>({ok:true})),onClose:vi.fn()});
+const props = () => ({modelId:'one',initial,testDisabled:false,onTest:vi.fn(async (_patch?: typeof initial) => ({ok:true})),onCancelTest:vi.fn(),onSave:vi.fn(async()=>({ok:true})),onClose:vi.fn()});
 const task = (imageInput: string) => ({id:'task',modelId:'one',providerId:'HXAPI',status:'success' as const,result:{models:[{modelId:'one',textInput:'supported',imageInput}]}});
 it('does not overwrite a manual choice made while testing or by repeated polling', () => {
   const p = props();
@@ -65,4 +65,37 @@ it('restricts advanced formats to the selected request protocol', () => {
   render(<ModelSettingsModal {...props()} protocol="anthropic" />);
   const select = screen.getByLabelText('pilotDeckConfig.panels.models.modelSettings.thinkingFormat') as HTMLSelectElement;
   expect([...select.options].map(option=>option.value)).toEqual(['provider','anthropic','server-default']);
+});
+
+it('tests saved settings directly, and explicitly saves changed values before testing', async () => {
+  const p = props();
+  render(<ModelSettingsModal {...p} />);
+  fireEvent.click(screen.getByRole('button', {name:'pilotDeckConfig.panels.models.testConnection'}));
+  await waitFor(() => expect(p.onTest).toHaveBeenCalledWith(undefined));
+  await waitFor(() => expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens') as HTMLInputElement).disabled).toBe(false));
+  fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens'), {target:{value:'180000'}});
+  fireEvent.click(screen.getByRole('button', {name:'pilotDeckConfig.panels.models.modelSettings.saveAndTest'}));
+  await waitFor(() => expect(p.onTest).toHaveBeenLastCalledWith({...initial, maxContextTokens:180000, thinking:{state:'default',efforts:[],format:'provider'}}));
+  expect(p.onSave).not.toHaveBeenCalled();
+  expect(p.onClose).not.toHaveBeenCalled();
+});
+
+it('explains invalid limits and does not submit a test until corrected', () => {
+  const p = props();
+  render(<ModelSettingsModal {...p} />);
+  fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens'), {target:{value:'0'}});
+  const button = screen.getByRole('button', {name:'pilotDeckConfig.panels.models.modelSettings.saveAndTest'}) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  expect(button.getAttribute('aria-describedby')).toBe(screen.getByText('pilotDeckConfig.panels.models.modelSettings.invalidTokenLimits').id);
+  fireEvent.click(button);
+  expect(p.onTest).not.toHaveBeenCalled();
+});
+
+it('keeps the draft open when saving before a test fails', async () => {
+  const p = {...props(),onTest:vi.fn(async()=>({ok:false,error:'Save conflict'}))};
+  render(<ModelSettingsModal {...p} saveBeforeTest />);
+  fireEvent.click(screen.getByRole('button', {name:'pilotDeckConfig.panels.models.modelSettings.saveAndTest'}));
+  await screen.findByRole('alert');
+  expect(screen.getByText('Save conflict')).toBeTruthy();
+  expect(p.onClose).not.toHaveBeenCalled();
 });

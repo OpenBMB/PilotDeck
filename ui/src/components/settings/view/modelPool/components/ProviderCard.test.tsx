@@ -283,4 +283,72 @@ describe("ProviderCard connection badge", () => {
     fireEvent.click(screen.getByRole('button',{name:'one'}));
     expect((screen.getByRole('checkbox', {name:'pilotDeckConfig.panels.models.modelSettings.imageInput'}) as HTMLInputElement).checked).toBe(false);
   });
+
+  it.each(['existing', 'new', 'renamed'])('allows a complete %s provider to save its current settings before testing', async (mode) => {
+    let finishSave!: (value: {ok:boolean}) => void;
+    const onSave = vi.fn(() => new Promise<{ok:boolean}>(resolve => { finishSave = resolve; }));
+    const provider = {protocol:'openai' as const,url:'https://example.test/v1',apiKey:'old-key',models:{one:{},two:{capabilities:{maxOutputTokens:2048}}}};
+    render(<ProviderCard providerId="test-provider" provider={provider} initialEditing isNew={mode === 'new'} onSave={onSave} onRemove={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.apiKey'), {target:{value:'updated-key'}});
+    if (mode === 'renamed') fireEvent.change(screen.getByDisplayValue('test-provider'), {target:{value:'renamed-provider'}});
+    fireEvent.click(screen.getByRole('button', {name:'one'}));
+    fireEvent.change(screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens'), {target:{value:'180000'}});
+    const button = screen.getByRole('button', {name:'pilotDeckConfig.panels.models.modelSettings.saveAndTest'}) as HTMLButtonElement;
+    await waitFor(() => expect(button.disabled).toBe(false));
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith(mode === 'renamed' ? 'renamed-provider' : 'test-provider', expect.objectContaining({
+      apiKey:'updated-key',models:expect.objectContaining({one:expect.objectContaining({capabilities:expect.objectContaining({maxContextTokens:180000})}),two:provider.models.two}),
+    }));
+    expect(mocks.authenticatedFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+    finishSave({ok:true});
+    await waitFor(() => expect(mocks.authenticatedFetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1));
+    expect(JSON.parse(mocks.authenticatedFetch.mock.calls.find(([, options]) => options?.method === 'POST')![1].body)).toEqual({providerId:mode === 'renamed' ? 'renamed-provider' : 'test-provider',modelId:'one'});
+  });
+
+  it('does not test stale configuration after a failed save', async () => {
+    const onSave = vi.fn(async () => ({ok:false,error:'Configuration conflict'}));
+    render(<ProviderCard providerId="test-provider" provider={{protocol:'openai',url:'https://example.test/v1',apiKey:'key',models:{one:{}}}} initialEditing onSave={onSave} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', {name:'one'}));
+    const button = screen.getByRole('button', {name:'pilotDeckConfig.panels.models.modelSettings.saveAndTest'}) as HTMLButtonElement;
+    await waitFor(() => expect(button.disabled).toBe(false));
+    fireEvent.click(button);
+    await screen.findByRole('alert');
+    expect(screen.getByRole('alert').textContent).toContain('Configuration conflict');
+    expect(mocks.authenticatedFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+
+  it('explains missing credentials instead of silently disabling a test', async () => {
+    render(<ProviderCard providerId="test-provider" provider={{protocol:'openai',url:'https://example.test/v1',apiKey:'',models:{one:{}}}} onSave={vi.fn()} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', {name:'one'}));
+    expect((screen.getByRole('button', {name:'pilotDeckConfig.panels.models.testConnection'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('pilotDeckConfig.panels.models.providerApiKeyRequired')).toBeTruthy();
+  });
+
+  it('lets the user cancel an unfinished test from another provider and then test this model', async () => {
+    let tasks = [{id:'previous',providerId:'previous-provider',status:'manual'}];
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url.endsWith('/previous/cancel')) tasks = [{...tasks[0],status:'cancelled'}];
+      return {ok:true,json:async()=>({tasks})};
+    });
+    render(<ProviderCard providerId="test-provider" provider={{protocol:'openai',url:'https://example.test/v1',apiKey:'key',models:{one:{}}}} onSave={vi.fn()} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', {name:'one'}));
+    await screen.findByText('pilotDeckConfig.panels.models.modelSettings.otherTestRunning');
+    const button = screen.getByRole('button', {name:'pilotDeckConfig.panels.models.testConnection'}) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', {name:'pilotDeckConfig.panels.models.modelSettings.cancelPreviousTest'}));
+    await waitFor(() => expect(button.disabled).toBe(false));
+    expect(mocks.authenticatedFetch).toHaveBeenCalledWith('/api/config/connection-test-tasks/previous/cancel', expect.objectContaining({method:'POST'}));
+  });
+
+  it('recovers the test button after a temporary status request failure', async () => {
+    mocks.authenticatedFetch.mockRejectedValueOnce(new Error('Offline'));
+    render(<ProviderCard providerId="test-provider" provider={{protocol:'openai',url:'https://example.test/v1',apiKey:'key',models:{one:{}}}} onSave={vi.fn()} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', {name:'one'}));
+    await screen.findByText('pilotDeckConfig.panels.models.testStatusUnavailable');
+    const button = screen.getByRole('button', {name:'pilotDeckConfig.panels.models.testConnection'}) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    await waitFor(() => expect(button.disabled).toBe(false), {timeout:3000});
+  });
 });

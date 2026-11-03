@@ -1136,7 +1136,11 @@
           "cancelTest": "取消测试",
           "textRequest": "文本请求",
           "imageRequest": "图片请求",
-          "imageNotDescribed": "未能确认此模型是否支持图片输入，请手动确认并设置。"
+          "imageNotDescribed": "未能确认此模型是否支持图片输入，请手动确认并设置。",
+          "saveAndTest": "保存并测试",
+          "invalidTokenLimits": "请将 Token 上限填写为大于 0 的整数。",
+          "otherTestRunning": "{{provider}} {{model}} 的连接测试尚未结束，请等待或取消上一次测试。",
+          "cancelPreviousTest": "取消上一次测试"
         },
         "title": "模型池",
         "description": "集中管理模型提供商、连接凭据和可用模型。已启用模型将供智能体、路由和记忆功能使用。",
