@@ -50,6 +50,11 @@ export class HookRuntime {
     return this.callbackExecutor;
   }
 
+  hasHooks(input: HookRuntimeRunInput): boolean {
+    if (this.run !== HookRuntime.prototype.run) return true;
+    return !this.matchHooks(input).next().done;
+  }
+
   async run(input: HookRuntimeRunInput): Promise<HookRuntimeRunResult> {
     const effects: PilotDeckHookEffect[] = [];
     const events: PilotDeckHookExecutionEvent[] = [];
