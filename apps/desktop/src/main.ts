@@ -140,9 +140,9 @@ class RuntimeManager {
         headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(2_000),
       });
       if (!response.ok) return true;
-      const activity = await response.json() as { activeTurnCount?: unknown };
+      const activity = await response.json() as { activeTaskCount?: unknown };
       // Unknown state must retain the confirmation instead of risking a task.
-      return activity.activeTurnCount !== 0;
+      return activity.activeTaskCount !== 0;
     } catch { return true; }
   }
 

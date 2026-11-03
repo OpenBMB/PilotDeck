@@ -3,6 +3,8 @@ import { Server } from 'node:http';
 import test from 'node:test';
 import { startGatewayServer } from '../../src/gateway/server/GatewayServer.js';
 import type { Gateway } from '../../src/gateway/protocol/types.js';
+import { InProcessGateway } from '../../src/gateway/client/InProcessGateway.js';
+import type { SessionRouter } from '../../src/gateway/SessionRouter.js';
 
 test('exposes port 80 even though URL normalization omits the default HTTP port', async context => {
   // Simulate a successful bind without requiring a privileged or free port 80.
@@ -34,7 +36,7 @@ test('runtime activity is authenticated and distinguishes idle, active and unava
   let failure = false;
   const gateway = { describeServer: async () => {
     if (failure) throw new Error('private runtime stack and filesystem details');
-    return { mode: 'in_process', activeTurnCount: count };
+    return { mode: 'in_process', activeTaskCount: count };
   } } as Gateway;
   const server = await startGatewayServer({ gateway, port: 0, token: 'activity-test' });
   try {
@@ -45,11 +47,22 @@ test('runtime activity is authenticated and distinguishes idle, active and unava
       count = value;
       const response = await fetch(url, { headers });
       assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { activeTurnCount: value ?? null });
+      assert.deepEqual(await response.json(), { activeTaskCount: value ?? null });
     }
     failure = true;
     const response = await fetch(url, { headers });
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), { error: { code: 'activity_unavailable', message: 'Runtime activity is temporarily unavailable.' } });
   } finally { await server.close(); }
+});
+
+test('detached background tasks keep quit confirmation active even between agent turns', async () => {
+  let backgroundTasks = 2;
+  const gateway = new InProcessGateway({ sessionCount: () => 0 } as SessionRouter, {
+    activeBackgroundTaskCount: () => backgroundTasks,
+  });
+  assert.equal((await gateway.describeServer()).activeTurnCount, 0);
+  assert.equal((await gateway.describeServer()).activeTaskCount, 2);
+  backgroundTasks = 0;
+  assert.equal((await gateway.describeServer()).activeTaskCount, 0);
 });

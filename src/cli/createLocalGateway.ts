@@ -395,6 +395,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     };
   };
   const gateway = new InProcessGateway(router, {
+    activeBackgroundTaskCount: () => registry.activeBackgroundTaskCount(),
     funasrInstallCommand: getPilotDeckInstallCommand(),
     now,
     serverInfo: { mode: "in_process", projectKey: projectRoot },
@@ -787,6 +788,7 @@ const DEFAULT_BROWSER_NAVIGATION_TIMEOUT_MS = 90_000;
 
 class ProjectRuntimeRegistry {
   private readonly runtimes = new Map<string, ProjectRuntime>();
+  private readonly taskRuntimes = new Set<BackgroundTaskRuntime>();
   private usageCounter?: UsageCounter;
   private gateway?: InProcessGateway;
   /**
@@ -840,6 +842,19 @@ class ProjectRuntimeRegistry {
 
   setGateway(gateway: InProcessGateway): void {
     this.gateway = gateway;
+  }
+
+  activeBackgroundTaskCount(): number {
+    const current = new Set([...this.runtimes.values()].map(runtime => runtime.backgroundTasks));
+    let count = 0;
+    for (const runtime of this.taskRuntimes) {
+      const active = runtime.list({ status: ['pending', 'running'] }).length;
+      count += active;
+      // Invalidating configuration can retire a runtime while its detached
+      // commands are still alive. Retain it until those commands have settled.
+      if (active === 0 && !current.has(runtime)) this.taskRuntimes.delete(runtime);
+    }
+    return count;
   }
 
   private emitBackgroundTaskCompletion(event: BackgroundTaskCompletionEvent): void {
@@ -946,6 +961,7 @@ class ProjectRuntimeRegistry {
       }
       this.runtimes.clear();
     }
+    this.activeBackgroundTaskCount();
   }
 
   /**
@@ -1010,8 +1026,12 @@ class ProjectRuntimeRegistry {
     });
     const backgroundTasks = new BackgroundTaskRuntime({
       now: this.options.now,
-      onCompletion: (event) => this.emitBackgroundTaskCompletion(event),
+      onCompletion: (event) => {
+        this.activeBackgroundTaskCount();
+        this.emitBackgroundTaskCompletion(event);
+      },
     });
+    this.taskRuntimes.add(backgroundTasks);
     const webSearchConfig = snapshot.config.tools?.webSearch
       ? resolveWebSearchConfig(snapshot.config.tools.webSearch)
       : undefined;

@@ -128,6 +128,7 @@ export type InProcessGatewayOptions = {
   now?: () => Date;
   uuid?: () => string;
   serverInfo?: Partial<GatewayServerInfo>;
+  activeBackgroundTaskCount?: () => number;
   cron?: GatewayCronController;
   /**
    * Web Phase 2 — pluggable session-history reader. Wired by
@@ -914,6 +915,7 @@ export class InProcessGateway implements Gateway {
       sessionCount: this.router.sessionCount(),
       ...this.options.serverInfo,
       activeTurnCount: this.turnCompletions.size,
+      activeTaskCount: this.turnCompletions.size + (this.options.activeBackgroundTaskCount?.() ?? 0),
       capabilities,
     };
   }

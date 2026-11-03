@@ -61,7 +61,7 @@ async function verify(scenario) {
       http.createServer((req, res) => {
         if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401); res.end(); return; }
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({activeTurnCount: process.env.PILOTDECK_TEST_SCENARIO === 'idle-quit' ? 0 : 1}));
+        res.end(JSON.stringify({activeTaskCount: process.env.PILOTDECK_TEST_SCENARIO === 'idle-quit' ? 0 : 1}));
       }).listen(Number(process.env.PILOTDECK_GATEWAY_PORT), '127.0.0.1');
     `);
     const services = path.join(runtime, 'ui', 'server', 'services');
