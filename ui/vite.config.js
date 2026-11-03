@@ -51,8 +51,8 @@ export default defineConfig(({ mode }) => {
   ]
 
   const disableLocalAuth =
-    env.PILOTDECK_DISABLE_LOCAL_AUTH !== '0' &&
-    env.PILOTDECK_DISABLE_LOCAL_AUTH !== 'false'
+    env.PILOTDECK_DISABLE_LOCAL_AUTH === '1' ||
+    env.PILOTDECK_DISABLE_LOCAL_AUTH === 'true'
 
   return {
     define: {
