@@ -9,9 +9,10 @@ export const IS_PLATFORM = process.env.VITE_IS_PLATFORM === 'true';
 
 /**
  * When true, skip JWT login/register in the web UI (single-user local mode).
- * Set PILOTDECK_DISABLE_LOCAL_AUTH=0 or false to require username/password again.
+ * Authentication is required by default. Only explicit 1/true enables bypass.
+ * Use bypass only behind a trusted access boundary.
  * @type {boolean}
  */
 export const DISABLE_LOCAL_AUTH =
-  process.env.PILOTDECK_DISABLE_LOCAL_AUTH !== '0' &&
-  process.env.PILOTDECK_DISABLE_LOCAL_AUTH !== 'false';
+  process.env.PILOTDECK_DISABLE_LOCAL_AUTH === '1' ||
+  process.env.PILOTDECK_DISABLE_LOCAL_AUTH === 'true';
