@@ -302,10 +302,10 @@ describe('desktop working-directory actions', () => {
     await waitFor(() => expect(openDirectory).toHaveBeenCalledTimes(2));
   });
 
-  it('uses the General workspace instead of its transcript/config directory', async () => {
+  it.each([general.fullPath, '/previous/general'])('uses the current General workspace instead of stale cwd %s', async (cwd) => {
     const openDirectory = vi.fn().mockResolvedValue(true);
     window.pilotdeckDesktop = { platform: 'darwin', openDirectory } as never;
-    const withSessions = { ...general, workspaceCwd: '/managed/workspace', sessions: [{ id: 'general-chat', title: 'General chat', cwd: general.fullPath }] };
+    const withSessions = { ...general, workspaceCwd: '/managed/workspace', sessions: [{ id: 'general-chat', title: 'General chat', cwd }] };
     renderSidebar(withSessions, { projects: [withSessions] }, await localizedOptions());
     fireEvent.contextMenu(screen.getByText('General chat'));
     fireEvent.click(screen.getByRole('menuitem', { name: /Open in Finder|在 Finder 中打开/ }));

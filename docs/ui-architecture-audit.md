@@ -84,3 +84,12 @@ extractions when a component gains a distinct responsibility (for example,
 context inspection) and colocate its tests. Backend session protocol versions,
 database migrations, provider API versions and asset variants are independent
 of the UI generations and must not be removed by a `v1`/`v2` text search.
+
+General conversations use a managed `PilotDeck` working directory: the system
+Documents folder on Windows, and the user's home directory on macOS/Linux.
+Windows desktop passes Electron's known Documents folder to the server;
+standalone Web resolves the same system folder, including redirected folders.
+A custom `WORKSPACES_ROOT` still selects a different parent directory. The
+default project-browsing root (home) uses the platform convention above.
+Session storage remains keyed by `PILOT_HOME`; sidebar folder actions open
+the current managed workspace even when older sessions have stale cwd metadata.

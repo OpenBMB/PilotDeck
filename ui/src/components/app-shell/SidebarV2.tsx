@@ -199,9 +199,10 @@ const contextMenuPosition = (event: MouseEvent, nativeFolders: boolean) => {
 
 function workingDirectory(project: Project, session?: ProjectSession): string | undefined {
   const cwd = session?.cwd || project.sessions?.find(candidate => candidate.id === session?.parentSessionId)?.cwd;
-  // General's fullPath is its transcript/config identity, not its workspace.
+  // General always executes in the current managed workspace. Older session
+  // cwd metadata may still point at its previous location or config identity.
   if (isGeneralProject(project)) {
-    return cwd && cwd !== project.fullPath ? cwd : project.workspaceCwd;
+    return project.workspaceCwd;
   }
   return cwd || project.workspaceCwd || project.fullPath;
 }

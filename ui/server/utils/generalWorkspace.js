@@ -1,15 +1,30 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import { isPathInsideOrEqual } from './pathSafety.js';
 import { resolvePilotHome } from './pilotPaths.js';
 
-export const GENERAL_WORKSPACE_DIRECTORY_NAME = 'general';
+export const GENERAL_WORKSPACE_DIRECTORY_NAME = 'PilotDeck';
 
-function expandHome(input) {
-    if (input === '~') return os.homedir();
-    if (input.startsWith('~/')) return path.resolve(os.homedir(), input.slice(2));
+let windowsDocumentsDirectory;
+function resolveWindowsDocumentsDirectory(homeDirectory) {
+    if (windowsDocumentsDirectory === undefined) {
+        try {
+            // The known folder may be redirected (for example to OneDrive).
+            windowsDocumentsDirectory = execFileSync('powershell.exe', [
+                '-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+                "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); [Environment]::GetFolderPath('MyDocuments')",
+            ], { encoding: 'utf8', windowsHide: true, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        } catch { windowsDocumentsDirectory = ''; }
+    }
+    return windowsDocumentsDirectory || path.join(homeDirectory, 'Documents');
+}
+
+function expandHome(input, homeDirectory) {
+    if (input === '~') return homeDirectory;
+    if (input.startsWith('~/')) return path.resolve(homeDirectory, input.slice(2));
     return path.resolve(input);
 }
 function assertSeparatedFromPilotHome(candidate, pilotHome) {
@@ -23,8 +38,19 @@ function assertSeparatedFromPilotHome(candidate, pilotHome) {
     }
 }
 
-export function resolveGeneralWorkspaceDirectory(env = process.env) {
-    const workspacesRoot = expandHome(env.WORKSPACES_ROOT || os.homedir());
+export function resolveGeneralWorkspaceDirectory(env = process.env, {
+    platform = process.platform,
+    homeDirectory = os.homedir(),
+    documentsDirectory = env.PILOTDECK_DOCUMENTS_DIRECTORY,
+} = {}) {
+    const configuredRoot = env.WORKSPACES_ROOT ? expandHome(env.WORKSPACES_ROOT, homeDirectory) : null;
+    // WORKSPACES_ROOT historically defaults to the user's home for project
+    // browsing. Only a custom root overrides the managed General location.
+    const workspacesRoot = configuredRoot && path.relative(homeDirectory, configuredRoot) !== ''
+        ? configuredRoot
+        : platform === 'win32'
+            ? documentsDirectory || resolveWindowsDocumentsDirectory(homeDirectory)
+            : homeDirectory;
     const candidate = path.resolve(workspacesRoot, GENERAL_WORKSPACE_DIRECTORY_NAME);
     assertSeparatedFromPilotHome(candidate, resolvePilotHome(env));
     return candidate;

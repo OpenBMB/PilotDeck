@@ -221,6 +221,7 @@ class RuntimeManager {
       PILOTDECK_GATEWAY_PORT: String(gatewayPort),
       PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${gatewayPort}/ws`,
       PILOTDECK_DESKTOP: "1",
+      ...(process.platform === 'win32' ? { PILOTDECK_DOCUMENTS_DIRECTORY: app.getPath('documents') } : {}),
       PILOTDECK_COMPUTER_USE_DIRECTORY: computerUseDirectory,
       PILOTDECK_COMPUTER_USE_MCP_CONFIG: path.join(computerUseDirectory, 'mcp.json'),
       PILOTDECK_DESKTOP_VERSION: app.getVersion(),
