@@ -1,4 +1,21 @@
 {
+  "context": {
+    "systemPrompt": "System prompt",
+    "tools": "Tool definitions",
+    "messages": "Messages",
+    "estimates": "Breakdown uses local token estimates; total usage follows the reported budget.",
+    "loading": "Loading context…",
+    "loadError": "Could not load context. Refresh to try again.",
+    "empty": "No request snapshot yet. Send a message to capture context.",
+    "inspect": "Inspect context",
+    "refresh": "Refresh context",
+    "search": "Search context",
+    "copy": "Copy section",
+    "noContent": "Empty section",
+    "noResults": "No matching content",
+    "lastRequest": "Latest assembled request, before provider formatting. Refresh after the next model step to see changes.",
+    "mediaOmitted": "Binary media is shown as a placeholder."
+  },
   "conversationError": {
     "label": "Request failed",
     "details": "Error details",

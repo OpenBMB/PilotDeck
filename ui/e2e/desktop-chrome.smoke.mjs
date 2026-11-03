@@ -42,6 +42,7 @@ try {
     const url = new URL(route.request().url());
     let body = {};
     if (url.pathname === '/api/projects') body = projects;
+    else if (url.pathname === '/api/auth/status') body = { authDisabled: true, needsSetup: false };
     else if (url.pathname === '/api/search/global') {
       searchRequests.push(route.request().postDataJSON());
       body = {
@@ -52,7 +53,17 @@ try {
     }
     else if (url.pathname.includes('onboarding-status')) body = { hasCompletedOnboarding: completedOnboarding };
     else if (url.pathname === '/api/settings/permissions') body = { success: true, permissions: { skipPermissions: false, allowedTools: [], deniedTools: [] } };
-    else if (url.pathname.includes('/messages')) body = { messages: [], hasMore: false, total: 0 };
+    else if (url.pathname.includes('/token-usage')) body = { used: 6000, total: 32000, effectiveTotal: 32000, state: 'ok' };
+    else if (url.pathname.includes('/messages')) body = { messages: [], hasMore: false, total: 0,
+      tokenUsage: { used: 6000, total: 32000, effectiveTotal: 32000, state: 'ok' },
+      ...(url.searchParams.get('includeModelContext') === 'true' ? { modelContext: {
+        capturedAt: '2026-11-03T09:00:00Z', provider: 'fixture', model: 'context-review',
+        systemPrompt: 'You are PilotDeck. Help the user work in the current project.\n\nFollow workspace instructions and use tools when needed.',
+        tools: [{ name: 'read_file', description: 'Read a file in the workspace', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } }],
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'Inspect this project and explain its architecture.' }] }],
+        breakdown: { systemTokens: 1000, toolsTokens: 2000, messageTokens: 3000 }, mediaOmitted: false,
+      } } : {}),
+    };
     else if (url.pathname.includes('/sessions')) body = { sessions: projects[1].sessions, hasMore: false, total: 1 };
     else if (url.pathname.includes('/files')) body = [];
     else if (url.pathname.includes('models')) body = { models: [] };
@@ -77,6 +88,25 @@ try {
   await page.goto('http://127.0.0.1:5187/p/demo/c/chrome-review');
   await expect(page.locator('.app-shell')).toBeVisible({ timeout: 60000 });
   await expect.poll(() => app.evaluate(() => global.chromeTest.state().ready)).toBe(true);
+  const contextTrigger = page.locator('.pd-composer-context-control > button');
+  await contextTrigger.click();
+  const context = page.getByRole('dialog', { name: 'Context window', exact: true });
+  await expect(context.getByText('~1,000', { exact: true })).toBeVisible();
+  await page.screenshot({ path: path.join(artifactDir, `${platformName}-context-breakdown.png`) });
+  await context.getByRole('button', { name: 'Inspect context', exact: true }).click();
+  await expect(context.locator('pre')).toContainText('You are PilotDeck.');
+  await page.screenshot({ path: path.join(artifactDir, `${platformName}-context-system.png`) });
+  await context.getByRole('tab', { name: 'Tool definitions (1)', exact: true }).click();
+  await context.locator('summary', { hasText: 'read_file' }).click();
+  await expect(context.locator('pre')).toContainText('inputSchema');
+  await page.screenshot({ path: path.join(artifactDir, `${platformName}-context-tools.png`) });
+  await context.getByRole('tab', { name: 'Messages (1)', exact: true }).click();
+  await context.locator('summary', { hasText: '1 · user' }).click();
+  await expect(context.locator('pre')).toContainText('Inspect this project');
+  await context.getByRole('searchbox').fill('does-not-exist');
+  await expect(context.getByText('No matching content', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(context).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('data-desktop-platform', process.platform);
   if (mac) await expect(page.locator('html')).toHaveAttribute('data-desktop-integrated', '');
   const geometry = await page.locator('.app-shell').evaluate(el => ({

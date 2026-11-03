@@ -1,0 +1,26 @@
+.pd-context-panel { margin-top: 12px; }
+.pd-context-bar { display: flex; height: 6px; overflow: hidden; border-radius: 4px; background: rgb(128 128 128 / .12); }
+.pd-context-system { background: #8b83d7; }
+.pd-context-tools { background: #6da8b5; }
+.pd-context-messages { background: #b8a58b; }
+.pd-context-legend { margin: 12px 0 8px; display: grid; gap: 7px; }
+.pd-context-legend > div { display: flex; justify-content: space-between; gap: 12px; }
+.pd-context-legend dt { display: flex; align-items: center; gap: 8px; }
+.pd-context-legend dd { margin: 0; font-variant-numeric: tabular-nums; }
+.pd-context-swatch { width: 7px; height: 7px; border-radius: 2px; }
+.pd-context-caption { display: flex; gap: 5px; margin: 8px 0; font-size: 11px; line-height: 1.5; color: #737373; overflow-wrap: anywhere; }
+.dark .pd-context-caption { color: #a3a3a3; }
+.pd-context-actions { display: flex; justify-content: space-between; border-top: 1px solid rgb(128 128 128 / .16); padding-top: 8px; }
+.pd-context-panel button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border-radius: 5px; padding: 4px 5px; }
+.pd-context-panel button:hover:not(:disabled) { background: rgb(128 128 128 / .12); }
+.pd-context-panel button:disabled { opacity: .45; cursor: default; }
+.pd-context-panel button:focus-visible, .pd-context-search input:focus-visible, .pd-context-content:focus-visible { outline: 2px solid var(--pd-accent, #8b83d7); outline-offset: 1px; }
+.pd-context-tabs { display: flex; gap: 3px; border-bottom: 1px solid rgb(128 128 128 / .16); padding: 4px 0 7px; }
+.pd-context-tabs button { flex: 1; font-size: 11px; }
+.pd-context-tabs button[aria-selected="true"] { color: var(--pd-accent-strong, #6d28d9); background: var(--pd-accent-soft, #f5f3ff); }
+.dark .pd-context-tabs button[aria-selected="true"] { color: #ddd6fe; background: rgb(139 92 246 / .16); }
+.pd-context-search { display: flex; align-items: center; gap: 5px; padding: 6px 0; }
+.pd-context-search input { flex: 1; width: 0; border: 0; background: transparent; padding: 4px; font-size: 12px; }
+.pd-context-content { max-height: 240px; overflow: auto; overscroll-behavior: contain; border-radius: 6px; background: rgb(128 128 128 / .06); padding: 8px; }
+.pd-context-content summary { cursor: pointer; padding: 4px 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 11px; }
+.pd-context-content pre { margin: 4px 0 12px; font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }

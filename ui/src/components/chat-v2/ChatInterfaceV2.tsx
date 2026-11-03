@@ -810,6 +810,11 @@ function ChatInterfaceV2({
       isInputQueuePaused={inputQueue.queueState.paused}
       onResumeInputQueue={handleResumeInputQueue}
       tokenBudget={tokenBudget}
+      contextTarget={(selectedSession?.id || currentSessionId) && selectedProject ? {
+        sessionId: selectedSession?.id || currentSessionId!,
+        projectPath: selectedProject.fullPath || selectedProject.path || selectedProject.name,
+        ...sessionRequestParams,
+      } : undefined}
       modelCatalog={modelCatalog}
       modelSelection={modelSelection}
       isModelCatalogLoading={isModelCatalogLoading}

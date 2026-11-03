@@ -7,6 +7,7 @@ import { countTokens } from "./tokenizer.js";
 import { effectiveInputContextTokens } from "./effectiveContext.js";
 
 export type TokenWarningState = "ok" | "warning" | "blocking";
+export type ContextBreakdown = { systemTokens: number; toolsTokens: number; messageTokens: number };
 
 export type TokenBudgetSnapshot = {
   tokens: number;

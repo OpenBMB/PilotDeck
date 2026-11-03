@@ -45,6 +45,7 @@ router.get('/:sessionId/messages', async (req, res) => {
     const result = await withPilotDeckGatewayReadRetry((gateway) => gateway.readSessionMessages({
       sessionKey: sessionId,
       projectKey: projectPath,
+      ...(req.query.includeModelContext === 'true' ? { includeModelContext: true } : {}),
       limit: limit ?? undefined,
       cursor: offset > 0 ? String(offset) : undefined,
       ...(typeof req.query.sessionKind === 'string' && req.query.sessionKind
@@ -64,6 +65,7 @@ router.get('/:sessionId/messages', async (req, res) => {
 
     return res.json({
       messages,
+      ...(req.query.includeModelContext === 'true' ? { modelContext: result.modelContext ?? null } : {}),
       ...(result.stream ? { stream: { active: result.stream.active, runId: result.stream.runId,
         messages: result.stream.events.flatMap(event => gatewayEventToFrames(event, sessionId, 'pilotdeck')),
       } } : {}),

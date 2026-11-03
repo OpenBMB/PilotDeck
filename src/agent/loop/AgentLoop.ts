@@ -1,4 +1,5 @@
 import { TurnTimeline } from "../stream/TurnTimeline.js";
+import { createModelContextSnapshot, type ModelContextSnapshot } from '../../session/context/ModelContextSnapshot.js';
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -141,6 +142,7 @@ export type AgentLoopInput = {
   modelOverride?: import("../protocol/input.js").AgentModelOverride;
   abortSignal?: AbortSignal;
   onDurableMessage?: (message: CanonicalMessage) => void | Promise<void>;
+  onModelContext?: (snapshot: ModelContextSnapshot) => void | Promise<void>;
   onAgentStatusMessage?: (status: AgentStatusMessage) => void | Promise<void>;
   onCompactPersisted?: (input: {
     boundary: AgentControlBoundaryTranscriptEntry["boundary"];
@@ -652,6 +654,12 @@ export class AgentLoop {
         ? this.dependencies.router.materializeRequest(decision, request)
         : { ...request, provider: decision.provider, model: decision.model };
       const requestInputEstimate = this.dependencies.tokenAccounting?.estimateRequestInput?.(calibrationRequest);
+      if (input.onModelContext) {
+        try {
+          await input.onModelContext(createModelContextSnapshot(calibrationRequest, input.turnId,
+            this.dependencies.tokenAccounting?.estimateRequestBreakdown?.(calibrationRequest)));
+        } catch (error) { console.warn('[pilotdeck] Could not save context inspection snapshot:', error); }
+      }
       const calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
       const assembler = createModelMessageAssemblerState(randomUUID());
       let executedRequest: { provider: string; model: string; fingerprint?: string } | undefined;

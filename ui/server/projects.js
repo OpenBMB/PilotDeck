@@ -557,6 +557,7 @@ async function deleteSession(projectName, sessionId, _options = {}) {
             );
             try {
                 await fs.unlink(transcript);
+                  await fs.rm(`${transcript}.context.json`, { force: true });
                 removed = true;
             } catch (error) {
                 if (error?.code !== 'ENOENT') {

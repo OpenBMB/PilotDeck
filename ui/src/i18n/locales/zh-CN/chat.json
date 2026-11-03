@@ -1,4 +1,21 @@
 {
+  "context": {
+    "systemPrompt": "系统提示词",
+    "tools": "工具定义",
+    "messages": "对话消息",
+    "estimates": "分类数量为本地估算，总用量以已报告的上下文预算为准。",
+    "loading": "正在加载上下文…",
+    "loadError": "无法加载上下文，请刷新重试。",
+    "empty": "暂无请求快照，发送消息后即可查看。",
+    "inspect": "查看上下文",
+    "refresh": "刷新上下文",
+    "search": "搜索上下文",
+    "copy": "复制当前分类",
+    "noContent": "此分类为空",
+    "noResults": "没有匹配的内容",
+    "lastRequest": "展示最近一次组装的请求，尚未经模型服务商格式转换。下一次模型请求后可刷新查看变化。",
+    "mediaOmitted": "二进制媒体以占位文本显示。"
+  },
   "conversationError": {
     "label": "请求未完成",
     "details": "错误详情",

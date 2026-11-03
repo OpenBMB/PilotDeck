@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import ContextPanel, { type ContextTarget } from '../chat-context/ContextPanel';
 import { useFloatingPanel } from "../ui/useFloatingPanel";
 import { useModelMenuLayout } from "./useModelMenuLayout";
 import { useTranslation } from "react-i18next";
@@ -17,7 +18,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleGauge,
   HelpCircle,
   ListChecks,
   Loader2,
@@ -158,6 +158,7 @@ export type ComposerV2Props = {
   onResumeInputQueue?: () => void;
   isSubmitPending?: boolean;
   tokenBudget?: Record<string, unknown> | null;
+  contextTarget?: ContextTarget;
   modelCatalog: ChatModelCatalogItem[];
   modelSelection: ChatModelSelection | null;
   isModelCatalogLoading?: boolean;
@@ -514,6 +515,7 @@ export default function ComposerV2({
   onResumeInputQueue,
   isSubmitPending = false,
   tokenBudget,
+  contextTarget,
   modelCatalog,
   modelSelection,
   isModelCatalogLoading = false,
@@ -577,7 +579,7 @@ export default function ComposerV2({
   const contextTriggerRef = useRef<HTMLButtonElement>(null);
   const addMenu = useFloatingPanel(isAddMenuOpen, addTriggerRef, () => setIsAddMenuOpen(false), { matchComposer: true });
   const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 280 });
-  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 256 });
+  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 360, maxHeight: 660 });
   const fileMenu = useFloatingPanel(showFileDropdown, textareaRef, undefined, { matchComposer: true, maxHeight: 320 });
   const permissionSelectorDisabled = runMode === "plan";
   const [workspaceMenuForceOpen, setWorkspaceMenuForceOpen] = useState(false);
@@ -1744,14 +1746,20 @@ export default function ComposerV2({
                       )}
                       title={contextStatusTitle}
                       aria-label={contextStatusTitle}
+                      aria-haspopup="dialog"
                       aria-expanded={isContextPopoverOpen}
                     >
-                      <CircleGauge className="h-4 w-4" strokeWidth={1.75} />
+                      <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true">
+                        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+                        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2"
+                          strokeDasharray={`${Math.min(100, contextStatus.displayTotal > 0 ? contextStatus.used / contextStatus.displayTotal * 100 : 0) * 0.377} 37.7`} transform="rotate(-90 8 8)" />
+                      </svg>
                       <span>{contextStatus.known ? contextStatus.percentLabel : "--"}</span>
                     </button>
                     {isContextPopoverOpen ? createPortal(
                       <div ref={contextMenu.panelRef} style={contextMenu.style}
-                        role="status"
+                        role="dialog"
+                        aria-label={t('input.contextStatusTitle', { defaultValue: 'Context window' })}
                         className="overflow-y-auto overscroll-contain rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
                       >
                         <div className="mb-1 flex items-center justify-between gap-2">
@@ -1791,6 +1799,7 @@ export default function ComposerV2({
                             })}
                           </div>
                         )}
+                        <ContextPanel target={contextTarget} used={contextStatus.used} total={contextStatus.displayTotal} />
                       </div>, document.body
                     ) : null}
                   </div>

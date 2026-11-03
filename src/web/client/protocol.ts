@@ -329,6 +329,7 @@ export type WebSessionPermissionGrant = {
 };
 
 export type WebReadSessionMessagesInput = {
+  includeModelContext?: boolean;
   sessionKey: string;
   projectKey?: string;
   sessionKind?: "background_task";
@@ -340,6 +341,7 @@ export type WebReadSessionMessagesInput = {
 };
 
 export type WebReadSessionMessagesResult = {
+  modelContext?: import('../../session/context/ModelContextSnapshot.js').ModelContextSnapshot | null;
   /** History plus an absolute active-turn baseline captured after the disk read. */
   stream?: GatewayActiveTurnSnapshot;
   messages: import("./webMessage.js").WebMessage[];
