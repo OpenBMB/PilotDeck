@@ -42,6 +42,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [token, setToken] = useState<string | null>(() => readStoredToken());
   const [isLoading, setIsLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [authStatusError, setAuthStatusError] = useState<string | null>(null);
   const [modelConfiguration, setModelConfiguration] = useState<ModelConfigurationState>({ state: 'loading' });
   const [gatewayRuntime, setGatewayRuntime] = useState<GatewayRuntimeState>({ state: 'unmanaged' });
   const [error, setError] = useState<string | null>(null);
@@ -174,18 +175,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
+      setAuthStatusError(null);
 
       const statusResponse = await api.auth.status();
       const statusPayload = await parseJsonSafely<AuthStatusPayload>(statusResponse);
+      if (!statusResponse.ok || !statusPayload) {
+        throw new Error(AUTH_ERROR_MESSAGES.authStatusCheckFailed);
+      }
 
-      if (statusPayload?.authDisabled) {
+      if (statusPayload.authDisabled === true) {
         setUser({ username: 'local' });
         setNeedsSetup(false);
         await checkOnboardingStatus();
         return;
       }
 
-      if (statusPayload?.needsSetup) {
+      if (typeof statusPayload.needsSetup !== 'boolean') {
+        throw new Error(AUTH_ERROR_MESSAGES.authStatusCheckFailed);
+      }
+
+      if (statusPayload.needsSetup) {
         setNeedsSetup(true);
         return;
       }
@@ -198,14 +207,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const userResponse = await api.auth.user();
       if (!userResponse.ok) {
-        clearSession();
-        return;
+        if (userResponse.status === 401 || userResponse.status === 403) {
+          clearSession();
+          return;
+        }
+        throw new Error(AUTH_ERROR_MESSAGES.authStatusCheckFailed);
       }
 
       const userPayload = await parseJsonSafely<AuthUserPayload>(userResponse);
       if (!userPayload?.user) {
-        clearSession();
-        return;
+        throw new Error(AUTH_ERROR_MESSAGES.authStatusCheckFailed);
       }
 
       setUser(userPayload.user);
@@ -213,6 +224,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (caughtError) {
       console.error('[Auth] Auth status check failed:', caughtError);
       setError(AUTH_ERROR_MESSAGES.authStatusCheckFailed);
+      setAuthStatusError('PD_AUTH_STATUS_UNAVAILABLE');
     } finally {
       setIsLoading(false);
     }
@@ -299,6 +311,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       token,
       isLoading,
       needsSetup,
+      authStatusError,
       hasCompletedOnboarding: modelConfiguration.state === 'ready' || modelConfiguration.state === 'empty',
       modelConfiguration,
       gatewayRuntime,
@@ -308,9 +321,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       logout,
       refreshOnboardingStatus,
       retryGateway,
+      retryAuthStatus: checkAuthStatus,
     }),
     [
       error,
+      authStatusError,
+      checkAuthStatus,
       isLoading,
       login,
       logout,

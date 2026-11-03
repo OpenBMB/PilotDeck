@@ -1,4 +1,5 @@
 import { agentError, normalizeAgentError } from "../protocol/errors.js";
+import { writeModelContextSnapshot } from '../../session/context/ModelContextSnapshot.js';
 import type { AgentEvent } from "../protocol/events.js";
 import type { AgentInput, AgentModelOverride } from "../protocol/input.js";
 import type { AgentRunMode } from "../protocol/input.js";
@@ -289,6 +290,9 @@ export class TurnRunner {
             unacknowledgedSteers.delete(itemId);
           },
           onDurableMessage: (msg) => this.transcript.recordDurableMessage(options.sessionId, options.turnId, msg),
+          onModelContext: this.runtimeContext.transcriptPath
+            ? snapshot => writeModelContextSnapshot(this.runtimeContext.transcriptPath, snapshot)
+            : undefined,
           onAgentStatusMessage: async (status) => {
             if (isVisibleFailureStatus(status)) {
               hasRecordedVisibleFailureStatus = true;

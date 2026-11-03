@@ -26,6 +26,7 @@ import {
 import { listProjectSessions, readTranscript, type SessionInfo } from "../../session/index.js";
 import type { AgentTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import { activeTranscriptEntries } from "../../session/transcript/CompactSnapshot.js";
+import { readModelContextSnapshot } from '../../session/context/ModelContextSnapshot.js';
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { getPilotProjectChatDir } from "../../pilot/index.js";
 import { sanitizeSessionIdForPath } from "../../session/storage/ProjectSessionStorage.js";
@@ -60,6 +61,15 @@ export async function readWebSessionMessages(
   });
   const { entries: allEntries } = await readTranscript(transcriptPath);
   const entries = activeTranscriptEntries(allEntries);
+  let modelContext: Awaited<ReturnType<typeof readModelContextSnapshot>> = null;
+  if (input.includeModelContext) {
+    const context = await readModelContextSnapshot(transcriptPath, resolve(options.pilotHome, 'projects'));
+    for (let index = entries.length - 1; context && index >= 0; index--) {
+      if (entries[index].type !== 'accepted_input') continue;
+      if (context.turnId === entries[index].turnId) modelContext = context;
+      break;
+    }
+  }
   const webReplay = extractWebVisibleMessages(entries);
   const entryTimestamps = webReplay.timestamps;
   const entryIds = webReplay.entryIds;
@@ -109,6 +119,7 @@ export async function readWebSessionMessages(
   const slice = allMessages.slice(offset, sliceEnd);
 
   return {
+    ...(input.includeModelContext ? { modelContext } : {}),
     messages: slice,
     nextCursor:
       input.limit && offset + slice.length < allMessages.length

@@ -15,9 +15,10 @@ import type { GatewayEvent } from "../../src/gateway/protocol/types.js";
 for (const source of ["parent", "sibling"] as const) {
   test(`${source}-generated image survives restart and is edited/saved by a new child using its original ID`, async t => {
     const root = await mkdtemp(join(tmpdir(), "parent-image-delegation-"));
+    let local: ReturnType<typeof createLocalGateway>;
     const home = join(root, "home"), workspace = join(root, "workspace");
     await mkdir(home); await mkdir(workspace); await mkdir(join(home, "skills"));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    t.after(async () => { local?.dispose(); await rm(root, { recursive: true, force: true }); });
     const registration = join(home, "projects", createProjectId(workspace));
     await mkdir(registration, { recursive: true }); await writeFile(join(registration, ".cwd"), workspace);
     const png = await sharp({ create: { width: 24, height: 16, channels: 3, background: "blue" } }).png().toBuffer();
@@ -111,8 +112,7 @@ model:
         async complete() { return { role: "assistant" as const, content: [{ type: "text" as const, text: '{"title":"Image delegation"}' }], finishReason: "stop" as const }; },
       }),
     };
-    let local = createLocalGateway(options);
-    t.after(() => local.dispose());
+    local = createLocalGateway(options);
     const submit = async (message: string) => {
       const events: GatewayEvent[] = [];
       for await (const event of local.gateway.submitTurn({ projectKey: workspace, sessionKey: sessionId, channelKey: "web", mode: "bypassPermissions", message })) events.push(event);

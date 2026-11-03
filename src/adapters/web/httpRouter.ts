@@ -36,6 +36,15 @@ export async function handleWebApiRequest(
   }
 
   const match = PROJECT_RE.exec(url.pathname);
+  if (url.pathname === "/api/web/runtime/activity" && request.method === "GET") {
+    try {
+      const info = await options.gateway.describeServer();
+      sendJson(response, 200, { activeTaskCount: info.activeTaskCount ?? null });
+    } catch {
+      sendJson(response, 503, { error: { code: 'activity_unavailable', message: 'Runtime activity is temporarily unavailable.' } });
+    }
+    return true;
+  }
   if (url.pathname === "/api/web/projects" && request.method === "GET") {
     const result = await options.gateway.listProjects();
     sendJson(response, 200, result);

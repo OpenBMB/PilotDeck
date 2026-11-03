@@ -2,7 +2,7 @@ import type { BrowserWindow, MessageBoxOptions, MessageBoxReturnValue } from 'el
 
 type Options = {
   platform: NodeJS.Platform;
-  shouldConfirm: () => boolean;
+  shouldConfirm: () => boolean | Promise<boolean>;
   canHide: () => boolean;
   isQuitting: () => boolean;
   setQuitting: (value: boolean) => void;
@@ -57,7 +57,7 @@ export function createDesktopLifecycle(options: Options) {
 
   async function requestQuit(bypassConfirmation = false) {
     if (phase === 'stopping' || phase === 'ready' || phase === 'disposed') return;
-    if (bypassConfirmation || options.isQuitting() || !options.shouldConfirm()) {
+    if (bypassConfirmation || options.isQuitting()) {
       await stop();
       return;
     }
@@ -65,6 +65,9 @@ export function createDesktopLifecycle(options: Options) {
     phase = 'confirming';
     const attempt = ++generation;
     try {
+      const shouldConfirm = await options.shouldConfirm();
+      if (attempt !== generation || options.isQuitting()) return;
+      if (!shouldConfirm) { await stop(); return; }
       await restore();
       const owner = options.getWindow();
       if (attempt !== generation || options.isQuitting() || !owner || owner.isDestroyed()) return;

@@ -58,6 +58,9 @@
       }
     ],
     "asar": true,
+    "electronFuses": {
+      "enableNodeOptionsEnvironmentVariable": false
+    },
     "npmRebuild": false,
     "buildDependenciesFromSource": false,
     "afterPack": "scripts/after-pack.cjs",

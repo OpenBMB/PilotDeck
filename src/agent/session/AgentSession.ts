@@ -23,6 +23,8 @@ import {
 } from "./SteerMailbox.js";
 
 export type AgentSessionOptions = {
+  /** Hold runtime resources until the complete turn generator has closed. */
+  acquireTurnResources?: () => () => void;
   sessionId: string;
   turnRunner: TurnRunner;
   cwd?: string;
@@ -51,6 +53,13 @@ export class AgentSession {
   }
 
   async *submit(input: AgentInput, submitOptions: AgentSubmitOptions = {}): AsyncGenerator<AgentEvent, void, unknown> {
+    const release = this.options.acquireTurnResources?.();
+    try {
+      yield* this.submitTurn(input, submitOptions);
+    } finally { release?.(); }
+  }
+
+  private async *submitTurn(input: AgentInput, submitOptions: AgentSubmitOptions): AsyncGenerator<AgentEvent, void, unknown> {
     const turnId = submitOptions.turnId ?? this.nextId();
     this.state.status = "running";
     this.state.currentTurnId = turnId;

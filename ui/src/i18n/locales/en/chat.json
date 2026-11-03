@@ -1,4 +1,12 @@
 {
+  "context": {
+    "title": "Context budget",
+    "used": "Used",
+    "systemPrompt": "System instructions",
+    "tools": "Tool descriptions",
+    "messages": "Conversation",
+    "estimates": "Estimated token breakdown"
+  },
   "conversationError": {
     "label": "Request failed",
     "details": "Error details",
@@ -387,13 +395,9 @@
     "clearInput": "Clear input",
     "scrollToBottom": "Scroll to bottom",
     "contextStatusTitle": "Context window",
-    "contextStatusUsed": "{{used}} tokens used out of {{total}}.",
     "contextStatus": "{{percentLabel}} used. {{used}} tokens used out of {{total}}. Auto compact runs near the limit.",
     "contextStatusBlocking": "{{percentLabel}} used. {{used}} tokens used out of {{total}}. Auto compact ran, but the context is still at the protection threshold.",
-    "contextStatusAutoCompact": "Auto compact runs when the conversation approaches the configured limit.",
-    "contextStatusBlockingBody": "Compaction ran, but the context is still at the protection threshold.",
     "contextStatusUnknown": "Context usage unknown. It will appear after the next model response.",
-    "contextStatusUnknownBody": "No token budget has been reported yet. It will appear after the next model response.",
     "permissions": {
       "default": "Default Permissions",
       "defaultDescription": "Ask before risky operations",

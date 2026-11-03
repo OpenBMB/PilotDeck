@@ -395,6 +395,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     };
   };
   const gateway = new InProcessGateway(router, {
+    activeBackgroundTaskCount: () => registry.activeBackgroundTaskCount(),
     funasrInstallCommand: getPilotDeckInstallCommand(),
     now,
     serverInfo: { mode: "in_process", projectKey: projectRoot },
@@ -787,6 +788,8 @@ const DEFAULT_BROWSER_NAVIGATION_TIMEOUT_MS = 90_000;
 
 class ProjectRuntimeRegistry {
   private readonly runtimes = new Map<string, ProjectRuntime>();
+  private readonly taskRuntimes = new Set<BackgroundTaskRuntime>();
+  private readonly taskRuntimeUsers = new Map<BackgroundTaskRuntime, number>();
   private usageCounter?: UsageCounter;
   private gateway?: InProcessGateway;
   /**
@@ -840,6 +843,19 @@ class ProjectRuntimeRegistry {
 
   setGateway(gateway: InProcessGateway): void {
     this.gateway = gateway;
+  }
+
+  activeBackgroundTaskCount(): number {
+    const current = new Set([...this.runtimes.values()].map(runtime => runtime.backgroundTasks));
+    let count = 0;
+    for (const runtime of this.taskRuntimes) {
+      const active = runtime.list({ status: ['pending', 'running'] }).length;
+      count += active;
+      // A retired runtime can still create tasks from an in-flight turn, even
+      // while its task list is temporarily empty (including after completion).
+      if (active === 0 && !current.has(runtime) && !this.taskRuntimeUsers.has(runtime)) this.taskRuntimes.delete(runtime);
+    }
+    return count;
   }
 
   private emitBackgroundTaskCompletion(event: BackgroundTaskCompletionEvent): void {
@@ -946,6 +962,7 @@ class ProjectRuntimeRegistry {
       }
       this.runtimes.clear();
     }
+    this.activeBackgroundTaskCount();
   }
 
   /**
@@ -1010,8 +1027,12 @@ class ProjectRuntimeRegistry {
     });
     const backgroundTasks = new BackgroundTaskRuntime({
       now: this.options.now,
-      onCompletion: (event) => this.emitBackgroundTaskCompletion(event),
+      onCompletion: (event) => {
+        this.activeBackgroundTaskCount();
+        this.emitBackgroundTaskCompletion(event);
+      },
     });
+    this.taskRuntimes.add(backgroundTasks);
     const webSearchConfig = snapshot.config.tools?.webSearch
       ? resolveWebSearchConfig(snapshot.config.tools.webSearch)
       : undefined;
@@ -1391,6 +1412,17 @@ class ProjectRuntimeRegistry {
     const imageStore = new ImageStore(resolve(this.options.pilotHome, "generated-images"));
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
+      acquireTurnResources: () => {
+        const tasks = runtime.backgroundTasks;
+        this.taskRuntimes.add(tasks);
+        this.taskRuntimeUsers.set(tasks, (this.taskRuntimeUsers.get(tasks) ?? 0) + 1);
+        return () => {
+          const remaining = (this.taskRuntimeUsers.get(tasks) ?? 1) - 1;
+          if (remaining > 0) this.taskRuntimeUsers.set(tasks, remaining);
+          else this.taskRuntimeUsers.delete(tasks);
+          this.activeBackgroundTaskCount();
+        };
+      },
       router: runtime.router,
       tools: { registry: sessionTools },
       lifecycle,

@@ -8,6 +8,7 @@ import LoginForm from './LoginForm';
 import ModelConfigurationErrorScreen from './ModelConfigurationErrorScreen';
 import SetupForm from './SetupForm';
 import StartupReady from './StartupReady';
+import StartupErrorPanel from './StartupErrorPanel';
 
 type ProtectedRouteProps = {
   children: ReactNode;
@@ -19,14 +20,20 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     user,
     isLoading,
     needsSetup,
+    authStatusError,
     modelConfiguration,
     gatewayRuntime,
     refreshOnboardingStatus,
     retryGateway,
+    retryAuthStatus,
   } = useAuth();
 
   if (isLoading) {
     return <AuthLoadingScreen />;
+  }
+
+  if (authStatusError) {
+    return <StartupErrorPanel error={authStatusError} onRetry={retryAuthStatus} />;
   }
 
   if (needsSetup) {

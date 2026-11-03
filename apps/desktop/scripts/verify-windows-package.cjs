@@ -46,6 +46,10 @@ const bcrypt = runtimeRequire('bcrypt');
 assert.equal(bcrypt.compareSync('windows-smoke', bcrypt.hashSync('windows-smoke', 4)), true);
 
 async function main() {
+  const { getCurrentFuseWire, FuseV1Options } = createRequire(require.resolve('electron-builder'))('@electron/fuses');
+  const fuses = await getCurrentFuseWire(path.join(appRoot, 'PilotDeck.exe'));
+  assert.equal(String.fromCharCode(fuses[FuseV1Options.EnableNodeOptionsEnvironmentVariable]), '0',
+    'Packaged Electron must ignore global NODE_OPTIONS before JavaScript startup');
   const runtime = path.join(resources, 'runtime');
   const installer = path.join(runtime, 'scripts/install-asr.mjs');
   assert.ok(fs.statSync(installer).size > 0, 'packaged FunASR installer must be present');

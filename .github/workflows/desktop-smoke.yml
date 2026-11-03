@@ -4,14 +4,17 @@ on:
   pull_request:
     paths:
       - apps/desktop/**
+      - packages/**
       - src/**
       - tests/**
       - scripts/**
+      - resources/**
       - ui/**
       - skills/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      - tsconfig.json
       - .github/workflows/desktop-*.yml
       - .github/workflows/release.yml
       - .github/workflows/release-retry.yml
@@ -20,10 +23,33 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  changes:
+    name: Select native packaging checks
+    runs-on: ubuntu-latest
+    outputs:
+      packaging: ${{ steps.paths.outputs.packaging }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+      - id: paths
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node apps/desktop/scripts/classify-ci-changes.mjs "$BASE_SHA" "$HEAD_SHA"
+
   checkpoint-regression:
     name: Checkpoints (${{ matrix.os }})
     strategy:
@@ -65,6 +91,13 @@ jobs:
         run: pnpm --dir ui exec vitest run server/services/standaloneComputerUse.test.js
       - name: Test checkpoints, restore, Git operations and internal ignore rules
         run: pnpm run test:checkpoints
+      - name: Test General workspace upgrades and continued conversations
+        run: >-
+          pnpm --dir ui exec vitest run
+          server/utils/generalWorkspace.test.js
+          server/utils/generalWorkspaceMigration.test.js
+          server/projects.test.js
+          server/pilotdeck-bridge.sending.test.js
       - name: Test review UI and Windows path matching
         run: >-
           pnpm --dir ui exec vitest run
@@ -115,15 +148,22 @@ jobs:
           server/services/desktopAutoUpdate.test.ts
           server/services/jsonReleaseProvider.test.ts
 
-  # PRs exercise the same native packages and updater feeds as releases.
+  # Packaging changes and manual runs exercise every release target. Ordinary
+  # app changes still receive the fast cross-platform and static checks above.
   linux:
     name: Linux
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.packaging == 'true'
     uses: ./.github/workflows/desktop-linux.yml
 
   macos:
     name: macOS
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.packaging == 'true'
     uses: ./.github/workflows/desktop-macos.yml
 
   windows:
     name: Windows
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.packaging == 'true'
     uses: ./.github/workflows/desktop-windows.yml

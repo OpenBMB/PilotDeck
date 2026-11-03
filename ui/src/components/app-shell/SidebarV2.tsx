@@ -33,7 +33,7 @@ import {
 } from '../../lib/customNames';
 import pilotdeckLogoDark from '../../assets/pilotdeck-wordmark-dark.png';
 import pilotdeckLogoLight from '../../assets/pilotdeck-wordmark-light.png';
-import { compareProjectsBySidebarOrder } from './appShellSelection';
+import { compareProjectsBySidebarOrder, isGeneralProject } from './appShellSelection';
 
 const asTimestamp = (value: unknown): number => {
   if (typeof value === 'number') return value;
@@ -188,14 +188,24 @@ const CONTEXT_MENU_WIDTH = 176;
 const CONTEXT_MENU_HEIGHT = 88;
 const CONTEXT_MENU_MARGIN = 8;
 
-const contextMenuPosition = (event: MouseEvent) => {
-  const maxX = window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN;
-  const maxY = window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN;
+const contextMenuPosition = (event: MouseEvent, nativeFolders: boolean) => {
+  const maxX = window.innerWidth - (nativeFolders ? 256 : CONTEXT_MENU_WIDTH) - CONTEXT_MENU_MARGIN;
+  const maxY = window.innerHeight - (nativeFolders ? 120 : CONTEXT_MENU_HEIGHT) - CONTEXT_MENU_MARGIN;
   return {
     x: Math.max(CONTEXT_MENU_MARGIN, Math.min(event.clientX, maxX)),
     y: Math.max(CONTEXT_MENU_MARGIN, Math.min(event.clientY, maxY)),
   };
 };
+
+function workingDirectory(project: Project, session?: ProjectSession): string | undefined {
+  const cwd = session?.cwd || project.sessions?.find(candidate => candidate.id === session?.parentSessionId)?.cwd;
+  // General always executes in the current managed workspace. Older session
+  // cwd metadata may still point at its previous location or config identity.
+  if (isGeneralProject(project)) {
+    return project.workspaceCwd;
+  }
+  return cwd || project.workspaceCwd || project.fullPath;
+}
 
 function SectionHeading({
   title,
@@ -288,6 +298,8 @@ export default function SidebarV2({
 }: SidebarV2Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const desktopOpenDirectory = window.pilotdeckDesktop?.openDirectory;
+  const desktopPlatform = window.pilotdeckDesktop?.platform;
   useCustomNamesVersion();
   const safeProjects = useMemo(() => (Array.isArray(projects) ? projects : []), [projects]);
 
@@ -606,7 +618,7 @@ export default function SidebarV2({
       if (isGeneral || renamingProject === project.name) return;
       event.preventDefault();
       event.stopPropagation();
-      const position = contextMenuPosition(event);
+      const position = contextMenuPosition(event, Boolean(desktopOpenDirectory));
       setContextMenu({
         kind: 'project',
         project,
@@ -614,7 +626,7 @@ export default function SidebarV2({
         y: position.y,
       });
     },
-    [renamingProject],
+    [renamingProject, desktopOpenDirectory],
   );
 
   const openSessionContextMenu = useCallback(
@@ -622,7 +634,7 @@ export default function SidebarV2({
       if (renamingSession === session.id) return;
       event.preventDefault();
       event.stopPropagation();
-      const position = contextMenuPosition(event);
+      const position = contextMenuPosition(event, Boolean(desktopOpenDirectory));
       setContextMenu({
         kind: 'session',
         project,
@@ -631,7 +643,7 @@ export default function SidebarV2({
         y: position.y,
       });
     },
-    [renamingSession],
+    [renamingSession, desktopOpenDirectory],
   );
 
   const beginRenameProject = useCallback((project: Project) => {
@@ -681,6 +693,20 @@ export default function SidebarV2({
       requestDeleteSession(contextMenu.project, contextMenu.session);
     }
   }, [contextMenu, requestDeleteProject, requestDeleteSession]);
+
+  const contextDirectory = contextMenu
+    ? workingDirectory(contextMenu.project, contextMenu.kind === 'session' ? contextMenu.session : undefined)
+    : undefined;
+  const handleContextOpenDirectory = async () => {
+    setContextMenu(null);
+    if (!contextDirectory || !desktopOpenDirectory) return;
+    try {
+      if (await desktopOpenDirectory(contextDirectory)) return;
+    } catch { /* Surface the same localized error for missing paths and IPC errors. */ }
+    window.dispatchEvent(new CustomEvent('pilotdeck:toast', { detail: {
+      kind: 'error', message: t('sidebar:contextMenu.openDirectoryFailed'),
+    } }));
+  };
 
   const commitProjectRename = useCallback(() => {
     if (!renamingProject) return;
@@ -1420,11 +1446,18 @@ export default function SidebarV2({
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
           className={cn(
-            'fixed z-50 w-44 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg',
+            'fixed z-50 max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-1 shadow-lg',
             'dark:border-neutral-700 dark:bg-neutral-900',
           )}
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{ left: contextMenu.x, top: contextMenu.y, width: desktopOpenDirectory ? 256 : CONTEXT_MENU_WIDTH, maxHeight: 'calc(100vh - 16px)' }}
         >
+          {desktopOpenDirectory && contextDirectory ? (
+            <button type="button" role="menuitem" onClick={() => void handleContextOpenDirectory()}
+              className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-neutral-800 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800">
+              <Folder className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />
+              <span>{t(`sidebar:contextMenu.${desktopPlatform === 'darwin' ? 'openInFinder' : desktopPlatform === 'win32' ? 'openInFileExplorer' : 'openInFileManager'}`)}</span>
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"

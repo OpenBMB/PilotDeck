@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import ContextPanel, { type ContextTarget } from '../chat-context/ContextPanel';
 import { useFloatingPanel } from "../ui/useFloatingPanel";
 import { useModelMenuLayout } from "./useModelMenuLayout";
 import { useTranslation } from "react-i18next";
@@ -17,7 +18,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleGauge,
   HelpCircle,
   ListChecks,
   Loader2,
@@ -158,6 +158,7 @@ export type ComposerV2Props = {
   onResumeInputQueue?: () => void;
   isSubmitPending?: boolean;
   tokenBudget?: Record<string, unknown> | null;
+  contextTarget?: ContextTarget;
   modelCatalog: ChatModelCatalogItem[];
   modelSelection: ChatModelSelection | null;
   isModelCatalogLoading?: boolean;
@@ -514,6 +515,7 @@ export default function ComposerV2({
   onResumeInputQueue,
   isSubmitPending = false,
   tokenBudget,
+  contextTarget,
   modelCatalog,
   modelSelection,
   isModelCatalogLoading = false,
@@ -576,8 +578,8 @@ export default function ComposerV2({
   const permissionTriggerRef = useRef<HTMLButtonElement>(null);
   const contextTriggerRef = useRef<HTMLButtonElement>(null);
   const addMenu = useFloatingPanel(isAddMenuOpen, addTriggerRef, () => setIsAddMenuOpen(false), { matchComposer: true });
-  const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 220 });
-  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 256 });
+  const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 280 });
+  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 320, maxHeight: 240 });
   const fileMenu = useFloatingPanel(showFileDropdown, textareaRef, undefined, { matchComposer: true, maxHeight: 320 });
   const permissionSelectorDisabled = runMode === "plan";
   const [workspaceMenuForceOpen, setWorkspaceMenuForceOpen] = useState(false);
@@ -1331,11 +1333,11 @@ export default function ComposerV2({
                           ? "cursor-not-allowed border-transparent text-neutral-400 opacity-45 dark:text-neutral-500"
                           : permissionMode === "bypassPermissions"
                             ? cn(
-                                "pd-composer-permission-bypass border-[#efd39f] bg-[#fff8e8] text-[#ad620b] hover:border-[#e5b968] hover:bg-[#fff2d3]",
+                                "pd-composer-permission-bypass border-[var(--pd-accent-border,#ddd6fe)] bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#6d28d9)] hover:bg-[var(--pd-accent-tint,#ede9fe)] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
                                 isPermissionMenuOpen &&
-                                  "border-[#e5b968] bg-[#fff2d3]",
+                                  "ring-1 ring-[var(--pd-accent-border,#ddd6fe)]",
                               )
-                            : "border-[var(--pd-border,#ddd9f3)] bg-[var(--pd-accent-soft,#f8f7ff)] text-[var(--pd-accent-strong,#5d58b6)] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
+                            : "border-transparent bg-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
                       )}
                       title={selectedPermissionLabel}
                       aria-label={selectedPermissionLabel}
@@ -1389,10 +1391,7 @@ export default function ComposerV2({
                               }}
                               className={cn(
                                 "relative grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-[5px] rounded-[7px] border-0 bg-transparent px-2 py-1 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] dark:text-neutral-200 dark:hover:bg-violet-950/40",
-                                isSelected &&
-                                  option.mode === "bypassPermissions"
-                                  ? "bg-[#fff2d8] text-[#b96708] hover:bg-[#fff2d8] dark:bg-amber-950/50 dark:text-amber-300 dark:hover:bg-amber-950/50"
-                                  : isSelected
+                                isSelected
                                     ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
                                     : "",
                               )}
@@ -1405,7 +1404,7 @@ export default function ComposerV2({
                                 <span className="block truncate text-[12px] font-semibold text-inherit">
                                   {label}
                                 </span>
-                                <span className="mt-0.5 block truncate text-[10px] text-[var(--pd-muted,#9294a0)] dark:text-neutral-400">
+                                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--pd-muted,#9294a0)] dark:text-neutral-400">
                                   {description}
                                 </span>
                               </span>
@@ -1747,53 +1746,24 @@ export default function ComposerV2({
                       )}
                       title={contextStatusTitle}
                       aria-label={contextStatusTitle}
+                      aria-haspopup="dialog"
                       aria-expanded={isContextPopoverOpen}
                     >
-                      <CircleGauge className="h-4 w-4" strokeWidth={1.75} />
+                      <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true">
+                        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+                        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2"
+                          strokeDasharray={`${Math.min(100, contextStatus.percent) * 0.377} 37.7`} transform="rotate(-90 8 8)" />
+                      </svg>
                       <span>{contextStatus.known ? contextStatus.percentLabel : "--"}</span>
                     </button>
                     {isContextPopoverOpen ? createPortal(
                       <div ref={contextMenu.panelRef} style={contextMenu.style}
-                        role="status"
-                        className="overflow-y-auto overscroll-contain rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
+                        role="dialog"
+                        aria-label={t('input.contextStatusTitle', { defaultValue: 'Context window' })}
+                        className="pd-context-popover"
                       >
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                            {t("input.contextStatusTitle", { defaultValue: "Context window" })}
-                          </span>
-                          <span className="font-medium tabular-nums">
-                            {contextStatus.known ? contextStatus.percentLabel : "--"}
-                          </span>
-                        </div>
-                        {contextStatus.known ? (
-                          <>
-                            <div className="text-neutral-500 dark:text-neutral-400">
-                              {t("input.contextStatusUsed", {
-                                used: contextStatus.used.toLocaleString(),
-                                total: contextStatus.displayTotal.toLocaleString(),
-                                defaultValue: `${contextStatus.used.toLocaleString()} tokens used out of ${contextStatus.displayTotal.toLocaleString()}.`,
-                              })}
-                            </div>
-                            <div className="mt-2 text-neutral-500 dark:text-neutral-400">
-                              {t("input.contextStatusAutoCompact", {
-                                defaultValue: "Auto compact runs when the conversation approaches the configured limit.",
-                              })}
-                            </div>
-                            {contextStatus.state === "blocking" ? (
-                              <div className="mt-2 text-red-600 dark:text-red-300">
-                                {t("input.contextStatusBlockingBody", {
-                                  defaultValue: "Compaction ran, but the context is still over the limit.",
-                                })}
-                              </div>
-                            ) : null}
-                          </>
-                        ) : (
-                          <div className="text-neutral-500 dark:text-neutral-400">
-                            {t("input.contextStatusUnknownBody", {
-                              defaultValue: "No token budget has been reported yet. It will appear after the next model response.",
-                            })}
-                          </div>
-                        )}
+                        <ContextPanel target={contextTarget} used={contextStatus.used} total={contextStatus.displayTotal}
+                          percent={contextStatus.percent} percentLabel={contextStatus.percentLabel} />
                       </div>, document.body
                     ) : null}
                   </div>

@@ -10,7 +10,7 @@ import { startupVisualProgress } from '../../../../../apps/desktop/src/startupPr
 import { renderLoadingHtml } from '../../../../../apps/desktop/src/appearance';
 import { releaseStartupShell } from '../startupShell';
 
-afterEach(() => { cleanup(); document.getElementById('root')?.remove(); releaseStartupShell(); vi.useRealTimers(); delete window.pilotdeckDesktop; delete window.__pilotdeckStartupState; });
+afterEach(() => { cleanup(); document.getElementById('root')?.remove(); releaseStartupShell(); vi.useRealTimers(); vi.restoreAllMocks(); delete window.pilotdeckDesktop; delete window.__pilotdeckStartupState; });
 
 it('moves slowly inside a stage, remains bounded and resumes at the same position after handoff', () => {
   const status = { phase: 'gateway', progress: 78, phaseStartedAt: 1000 };
@@ -67,6 +67,7 @@ it.each([
 
 it('seeds desktop progress before enabling the first Web transition', () => {
   const now = Date.now();
+  vi.spyOn(Date, 'now').mockReturnValue(now);
   const status = { phase: 'gateway', progress: 78, startedAt: now - 10000, phaseStartedAt: now - 5000 };
   window.pilotdeckDesktop = { getRuntimeStatus: () => status, onRuntimeStatus: () => () => {} } as never;
   const html = renderLoadingHtml({ language: 'en', themeMode: 'light' }, true);

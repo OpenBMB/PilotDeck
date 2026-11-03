@@ -1559,8 +1559,8 @@ function createBridgeFailureStatusEvent({ event, message, userHint, scope = 'tur
     };
 }
 
-function sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider) {
-    for (const frame of gatewayEventToFrames(statusEvent, sessionKey, provider)) {
+function sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider, runId) {
+    for (const frame of gatewayEventToFrames({ ...statusEvent, runId }, sessionKey, provider)) {
         writer.send(frame);
     }
 }
@@ -1608,11 +1608,6 @@ export async function runChatViaGateway(
     );
     const projectKey = options.projectPath || options.cwd || GENERAL_HOME;
     const isGeneralConversation = path.resolve(projectKey) === path.resolve(GENERAL_HOME);
-    // Never trust a browser-provided cwd for General. Its transcript identity
-    // stays under PILOT_HOME, but every turn executes in the managed workspace.
-    const workspaceCwd = isGeneralConversation
-        ? await ensureGeneralWorkspaceDirectory(process.env)
-        : options.workspaceCwd;
     const channelKey = 'web';
 
     const incoming = options.sessionId || options.sessionKey;
@@ -1674,6 +1669,14 @@ export async function runChatViaGateway(
             }));
             return { sessionKey, runId, inputAccepted, sawTurnCompleted, sawGatewayError: true };
         }
+
+        // Resolve preflight resources after announcing the session and inside
+        // the terminal-error boundary, so a workspace failure cannot leave a
+        // new conversation permanently waiting for input acceptance.
+        // General always executes in its managed workspace, ignoring browser cwd.
+        const workspaceCwd = isGeneralConversation
+            ? await ensureGeneralWorkspaceDirectory(process.env)
+            : options.workspaceCwd;
 
         const stream = gw.submitTurn({
             sessionKey,
@@ -1814,7 +1817,7 @@ export async function runChatViaGateway(
                 detail: statusEvent.detail,
             });
             state.hasVisibleFailureStatus = true;
-            sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider);
+            sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider, runId);
         }
     } catch (error) {
         turnFinishReason = 'gateway_bridge_error';
@@ -1855,7 +1858,7 @@ export async function runChatViaGateway(
             });
         }
         state.hasVisibleFailureStatus = true;
-        sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider);
+        sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider, runId);
     } finally {
         if (state.pendingGatewayRunId === runId) {
             setPendingGatewayRun(state, undefined);

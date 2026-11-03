@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { buildTurnEnvironment } from "../../src/agent/loop/AgentLoop.js";
 
 test("turn environment provides an isolated PilotDeck-owned work directory", () => {
-  const cwd = "/workspace/project";
+  const cwd = resolve('/workspace/project');
   const env = buildTurnEnvironment(
     { PATH: "/custom/bin", KEEP_ME: "yes" },
     cwd,
@@ -32,7 +32,8 @@ test("turn environment inherits the process environment when no override is conf
     const env = buildTurnEnvironment(undefined, "/workspace/project", "session", "turn");
 
     assert.equal(env[markerName], "inherited");
-    assert.equal(env.PATH, process.env.PATH);
+    const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH';
+    assert.equal(env[pathKey], process.env[pathKey]);
   } finally {
     if (previousMarker === undefined) {
       delete process.env[markerName];

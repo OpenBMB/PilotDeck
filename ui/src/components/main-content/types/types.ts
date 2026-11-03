@@ -97,11 +97,6 @@ export type MainContentStateViewProps = {
   onMenuClick: () => void;
 };
 
-export type MobileMenuButtonProps = {
-  onMenuClick: () => void;
-  compact?: boolean;
-};
-
 export type TaskMasterPanelProps = {
   isVisible: boolean;
 };

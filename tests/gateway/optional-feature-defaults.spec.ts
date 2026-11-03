@@ -122,6 +122,9 @@ test('image tools appear only after opt-in and disappear from the next request i
           yield { type: 'text_delta', text: 'ok' };
           yield { type: 'message_end', finishReason: 'stop' };
         },
+        async complete() {
+          return { role: 'assistant' as const, content: [{ type: 'text' as const, text: '{"title":"Image toggle"}' }], finishReason: 'stop' as const };
+        },
       };
     },
   });

@@ -27,8 +27,8 @@ let browser;
 try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   for (const [name, desktop, dark, reduced] of [
-    ['web-light', false, false, false], ['web-dark', false, true, false],
     ['desktop-light', true, false, false], ['desktop-dark', true, true, false],
+    ['web-light', false, false, false], ['web-dark', false, true, false],
     ['desktop-reduced-motion', true, false, true],
   ]) {
     const context = await browser.newContext({ colorScheme: dark ? 'dark' : 'light', reducedMotion: reduced ? 'reduce' : 'no-preference', serviceWorkers: 'block' });
@@ -57,6 +57,8 @@ try {
             window.startupSamples.push({
               background: getComputedStyle(frame).backgroundColor,
               progress: bar.getBoundingClientRect().width / track.width * 100,
+              trackTop: track.top,
+              leaving: frame.dataset.leaving === 'true',
               sameBar: bar === firstBar, frames: document.querySelectorAll('.pd-startup-screen').length,
             });
           }
@@ -67,7 +69,8 @@ try {
       await page.route('**/api/**', async route => {
         const pathname = new URL(route.request().url()).pathname;
         let body = {};
-        if (pathname.includes('onboarding-status')) {
+        if (pathname === '/api/auth/status') body = { authDisabled: true };
+        else if (pathname.includes('onboarding-status')) {
           await new Promise(resolve => setTimeout(resolve, 300));
           body = { configuration: { state: 'ready', modelRef: 'fixture/model', revision: '' }, gateway: { state: 'ready' } };
         } else if (pathname === '/api/projects') body = [];
@@ -89,6 +92,20 @@ try {
         await expect(page.locator('#startup')).toHaveCSS('background-color', expected);
         if (desktop) expect(await page.locator('#bar').evaluate(bar => bar.getBoundingClientRect().width / bar.parentElement.getBoundingClientRect().width * 100)).toBeGreaterThanOrEqual(96);
         await page.screenshot({ path: path.join(artifacts, `${name}-before-react.png`) });
+        if (desktop) {
+          const before = await page.locator('.pd-startup-track').boundingBox();
+          // Preload installs the caption after the initial HTML can paint.
+          // Its new inset must not move the already-visible loading bar.
+          await page.evaluate(() => {
+            document.documentElement.style.setProperty('--desktop-caption-height', '32px');
+            const caption = document.createElement('div');
+            caption.id = 'startup-caption-fixture';
+            caption.style.cssText = 'position:fixed;inset:0 0 auto;height:32px;z-index:10000';
+            document.body.append(caption);
+          });
+          const after = await page.locator('.pd-startup-track').boundingBox();
+          expect(Math.abs(after.y - before.y), 'caption appearance must preserve the progress bar Y position').toBeLessThanOrEqual(.25);
+        }
       } finally { releaseApp(); }
       await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible({ timeout: 30000 });
       await expect(page.locator('.pd-startup-screen')).toHaveCount(0);
@@ -98,12 +115,13 @@ try {
         expect(samples[i].background).toBe(dark ? 'rgb(10, 10, 10)' : 'rgb(255, 255, 255)');
         expect(samples[i].sameBar).toBe(true);
         expect(samples[i].frames).toBe(1);
+        expect(Math.abs(samples[i].trackTop - samples[0].trackTop), 'loading bar must stay vertically fixed through caption, React handoff and fade-out').toBeLessThanOrEqual(.5);
         if (i) expect(samples[i].progress).toBeGreaterThanOrEqual(samples[i - 1].progress - 0.1);
       }
       expect(errors).toEqual([]);
       await fs.writeFile(path.join(artifacts, `${name}.json`), JSON.stringify(samples, null, 2));
       await page.screenshot({ path: path.join(artifacts, `${name}-workspace.png`) });
-      console.log(`PASS ${name}: ${samples.length} painted samples, one frame/bar, stable canvas, progress never restarts`);
+      console.log(`PASS ${name}: ${samples.length} painted samples, one frame/bar, stable canvas/Y position, progress never restarts`);
     } finally { await context.close(); }
   }
 } finally {

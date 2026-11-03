@@ -6,6 +6,9 @@ import { useScrollFollow } from '../../src/components/chat/hooks/useScrollFollow
 import { normalizedToChatMessages } from '../../src/components/chat/hooks/useChatMessages';
 import { useSessionStore } from '../../src/stores/useSessionStore';
 import '../../src/index.css';
+import i18n from '../../src/i18n/config';
+
+i18n.changeLanguage('en');
 
 const sid = 'scroll-fixture';
 const timestamp = '2026-09-05T00:00:00.000Z';

@@ -41,10 +41,12 @@ router.get('/:sessionId/messages', async (req, res) => {
       ? parseInt(limitParam, 10)
       : null;
     const offset = parseInt(req.query.offset || '0', 10);
+    const includeModelContext = req.query.includeModelContext === 'true' || req.query.includeModelContext === 'summary';
 
     const result = await withPilotDeckGatewayReadRetry((gateway) => gateway.readSessionMessages({
       sessionKey: sessionId,
       projectKey: projectPath,
+      ...(includeModelContext ? { includeModelContext: true } : {}),
       limit: limit ?? undefined,
       cursor: offset > 0 ? String(offset) : undefined,
       ...(typeof req.query.sessionKind === 'string' && req.query.sessionKind
@@ -64,6 +66,8 @@ router.get('/:sessionId/messages', async (req, res) => {
 
     return res.json({
       messages,
+      ...(req.query.includeModelContext === 'true' ? { modelContext: result.modelContext ?? null } : {}),
+      ...(req.query.includeModelContext === 'summary' ? { contextBreakdown: result.modelContext?.breakdown ?? null } : {}),
       ...(result.stream ? { stream: { active: result.stream.active, runId: result.stream.runId,
         messages: result.stream.events.flatMap(event => gatewayEventToFrames(event, sessionId, 'pilotdeck')),
       } } : {}),

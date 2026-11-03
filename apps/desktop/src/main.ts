@@ -4,11 +4,12 @@ import { commandEnabled, emptyMenuState, normalizeMenuState, type DesktopCommand
 import { isRendererEditingShortcut, windowChromeOptions, windowPalette, WINDOWS_CAPTION_HEIGHT } from "./windowChrome";
 import { desktopAboutInfo, desktopAboutInformation, presentDesktopAbout } from "./desktopAbout";
 import { WindowsCaptionMenu, type CaptionMenuRequest } from "./windowsCaptionMenu";
-import { linuxCaptionAction, linuxCaptionEntries } from "./linuxCaptionMenu";
 import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
 import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiagnostics';
+import { withRuntimeCommandPath } from './runtimeEnvironment';
+import { findFreePort } from './startupNetwork';
 import { createRuntimeLogWriter, normalizeLogRetentionDays, redactDiagnostic, registerDiagnosticSecrets, setRuntimeLogRetention, type RuntimeLogWriter } from '@pilotdeck/config';
 import { startupProgress } from './startupPresentation';
 import { exportRuntimeLogs } from './runtimeLogExport';
@@ -17,6 +18,7 @@ import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } fr
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
 import { createFilePicker } from './filePicker';
+import { openDesktopDirectory } from './openDirectory';
 import { ComputerUseController } from './computerUse';
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, clipboard, screen, Notification } from "electron";
 import { DebUpdater, MacUpdater, NsisUpdater, RpmUpdater } from "electron-updater";
@@ -132,6 +134,21 @@ class RuntimeManager {
     return this.logPath;
   }
 
+  async hasRunningTasks(): Promise<boolean> {
+    if (!this.gatewayProcess || this.gatewayProcess.exitCode !== null) return false;
+    if (this.gatewayState.state !== 'ready' || !this.pilotHome || !this.gatewayPort) return true;
+    try {
+      const token = fs.readFileSync(path.join(this.pilotHome, 'server-token'), 'utf8').trim();
+      const response = await fetch(`http://127.0.0.1:${this.gatewayPort}/api/web/runtime/activity`, {
+        headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(2_000),
+      });
+      if (!response.ok) return true;
+      const activity = await response.json() as { activeTaskCount?: unknown };
+      // Unknown state must retain the confirmation instead of risking a task.
+      return activity.activeTaskCount !== 0;
+    } catch { return true; }
+  }
+
   async start(): Promise<RuntimeInfo> {
     this.stopping = false;
     // Read only the new preference from the existing YAML. Broken configuration
@@ -178,7 +195,7 @@ class RuntimeManager {
     }
 
     const serverPort = await findFreePort(3001);
-    const gatewayPort = await findFreePort(18789);
+    const gatewayPort = await findFreePort(18789, [serverPort]);
     const bundledGit = resolveBundledGitPaths();
     if (bundledGit) {
       this.log(`Bundled Git Bash ready: ${bundledGit.bash}`);
@@ -206,6 +223,7 @@ class RuntimeManager {
       PILOTDECK_GATEWAY_PORT: String(gatewayPort),
       PILOTDECK_GATEWAY_URL: `ws://127.0.0.1:${gatewayPort}/ws`,
       PILOTDECK_DESKTOP: "1",
+      ...(process.platform === 'win32' ? { PILOTDECK_DOCUMENTS_DIRECTORY: app.getPath('documents') } : {}),
       PILOTDECK_COMPUTER_USE_DIRECTORY: computerUseDirectory,
       PILOTDECK_COMPUTER_USE_MCP_CONFIG: path.join(computerUseDirectory, 'mcp.json'),
       PILOTDECK_DESKTOP_VERSION: app.getVersion(),
@@ -222,7 +240,7 @@ class RuntimeManager {
       PILOTDECK_LOG_PATH: this.logPath,
       PILOTDECK_LOG_CAPTURED: "1",
       PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
-    }, this.runtimeRoot, this.nodeBinary, bundledGit);
+    }, this.runtimeRoot, this.nodeBinary, bundledGit, { packaged: app.isPackaged });
     this.commonEnv = commonEnv;
     this.pilotHome = config.pilotHome;
     this.gatewayPort = gatewayPort;
@@ -922,38 +940,6 @@ function hasBundledPlaywrightBrowser(runtimeRoot: string): boolean {
   });
 }
 
-function getPathEnvKey(env: NodeJS.ProcessEnv): string {
-  if (process.platform !== "win32") return "PATH";
-  return Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "Path";
-}
-
-function withRuntimeCommandPath(
-  env: NodeJS.ProcessEnv,
-  runtimeRoot: string,
-  nodeBinary: string,
-  bundledGit?: BundledGitPaths,
-): NodeJS.ProcessEnv {
-  const pathKey = getPathEnvKey(env);
-  const currentPath = env[pathKey] || "";
-  const entries = [
-    path.dirname(nodeBinary),
-    ...(bundledGit?.pathEntries ?? []),
-    path.join(runtimeRoot, "node_modules", ".bin"),
-    currentPath,
-  ].filter(Boolean);
-  const nextEnv: NodeJS.ProcessEnv = {
-    ...env,
-    [pathKey]: entries.join(path.delimiter),
-  };
-  if (bundledGit) {
-    nextEnv.PILOTDECK_GIT_BASH_PATH = bundledGit.bash;
-    nextEnv.PILOTDECK_GIT_PATH = bundledGit.git;
-    nextEnv.CHERE_INVOKING = nextEnv.CHERE_INVOKING || "1";
-    nextEnv.MSYSTEM = nextEnv.MSYSTEM || "MINGW64";
-  }
-  return nextEnv;
-}
-
 function readBuildMetadata(): BuildMetadata {
   const metadataPath = app.isPackaged
     ? path.join(process.resourcesPath, "build-metadata.json")
@@ -972,23 +958,6 @@ function ensurePilotHome(log: (message: string) => void): { pilotHome: string } 
   fs.mkdirSync(pilotHome, { recursive: true });
   log(`PilotDeck home ready at ${pilotHome}`);
   return { pilotHome };
-}
-
-function findFreePort(preferred: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", () => {
-      const fallback = 20000 + Math.floor(Math.random() * 40000);
-      findFreePort(fallback).then(resolve, reject);
-    });
-    server.once("listening", () => {
-      const address = server.address();
-      server.close(() => {
-        resolve(typeof address === "object" && address ? address.port : preferred);
-      });
-    });
-    server.listen(preferred, "127.0.0.1");
-  });
 }
 
 function waitForPort(port: number, host: string, timeoutMs: number): Promise<void> {
@@ -1235,41 +1204,6 @@ function updateApplicationMenu(): void {
   }
 }
 
-function activateLinuxMenuRole(role: string, owner: BrowserWindow): void {
-  const contents = owner.webContents;
-  switch (role) {
-    case "undo": contents.undo(); break;
-    case "redo": contents.redo(); break;
-    case "cut": contents.cut(); break;
-    case "copy": contents.copy(); break;
-    case "paste": contents.paste(); break;
-    case "selectAll": contents.selectAll(); break;
-    case "resetZoom": contents.setZoomLevel(0); break;
-    case "zoomIn": contents.setZoomLevel(contents.getZoomLevel() + 1); break;
-    case "zoomOut": contents.setZoomLevel(contents.getZoomLevel() - 1); break;
-    case "togglefullscreen": owner.setFullScreen(!owner.isFullScreen()); break;
-    case "reload": contents.reload(); break;
-    case "close": owner.close(); break;
-    case "quit": void lifecycle.requestQuit(); break;
-    case "about": void showDesktopAbout(owner).catch(error => console.error("Desktop about dialog failed", error)); break;
-  }
-}
-
-ipcMain.handle("pilotdeck:linux-menu-items", (event, id: unknown) => {
-  requireCaptionSender(event);
-  return process.platform === "linux" ? linuxCaptionEntries(desktopMenuTemplate(), id) : [];
-});
-
-ipcMain.handle("pilotdeck:linux-menu-activate", (event, request?: { id?: unknown; index?: unknown }) => {
-  requireCaptionSender(event);
-  if (process.platform !== "linux" || !mainWindow || mainWindow.isDestroyed()) return false;
-  const item = linuxCaptionAction(desktopMenuTemplate(), request?.id, request?.index);
-  if (!item) return false;
-  if (item.role) activateLinuxMenuRole(item.role, mainWindow);
-  else (item.click as (() => void) | undefined)?.();
-  return true;
-});
-
 function publishWindowState(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const dark = nativeTheme.shouldUseDarkColors;
@@ -1310,7 +1244,7 @@ ipcMain.handle("pilotdeck:menu-state", (event, state: unknown) => {
 const captionMenus = new WeakMap<BrowserWindow, WindowsCaptionMenu>();
 ipcMain.handle("pilotdeck:show-menu", (event, request?: CaptionMenuRequest) => {
   requireCaptionSender(event);
-  if (process.platform !== "win32") return;
+  if (process.platform !== "win32" && process.platform !== "linux") return;
   const owner = mainWindow!;
   let menus = captionMenus.get(owner);
   if (!menus) {
@@ -1392,6 +1326,10 @@ ipcMain.handle("pilotdeck:open-runtime-log", async () => {
     await shell.openPath(logPath);
   }
 });
+ipcMain.handle('pilotdeck:open-directory', (event, directory: unknown) => {
+  requireUpdateSender(event);
+  return openDesktopDirectory(directory, folder => shell.openPath(folder));
+});
 ipcMain.handle("pilotdeck:pick-folder", async () => {
   const owner = BrowserWindow.getFocusedWindow() ?? mainWindow ?? undefined;
   const result = owner
@@ -1417,8 +1355,7 @@ if (process.platform === "win32") {
 
 const lifecycle = createDesktopLifecycle({
   platform: process.platform,
-  shouldConfirm: () => app.isReady() && (process.platform === "darwin" || process.platform === "win32"
-    || (process.platform === "linux" && Boolean(mainWindow && !mainWindow.isDestroyed()))),
+  shouldConfirm: () => runtime?.hasRunningTasks() ?? false,
   canHide: () => process.platform === "darwin" || Boolean(desktopTray?.available()),
   isQuitting: () => isQuitting,
   setQuitting: value => { isQuitting = value; desktopTray?.setQuitting(value); },

@@ -387,6 +387,10 @@ export type GatewayServerInfo = {
   protocolVersion?: string;
   projectKey?: string;
   sessionCount?: number;
+  /** Agent turns across all channels, including cron, until cleanup ends. */
+  activeTurnCount?: number;
+  /** Agent turns plus pending/running background shell and monitor tasks. */
+  activeTaskCount?: number;
   capabilities?: GatewayCapability[];
 };
 

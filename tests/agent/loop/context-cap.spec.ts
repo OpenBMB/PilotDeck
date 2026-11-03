@@ -7,6 +7,7 @@ import type { AgentRuntimeConfig } from "../../../src/agent/runtime/AgentRuntime
 import type { AgentRouterRuntime, AgentRuntimeDependencies } from "../../../src/agent/runtime/AgentRuntimeDependencies.js";
 import { TokenBudgetManager } from "../../../src/context/budget/TokenBudgetManager.js";
 import { requestFingerprint } from "../../../src/model/streaming/requestFingerprint.js";
+import type { ModelContextSnapshot } from '../../../src/session/context/ModelContextSnapshot.js';
 import { createDefaultPermissionContext } from "../../../src/permission/protocol/types.js";
 import { ToolRegistry } from "../../../src/tool/registry/ToolRegistry.js";
 import type { CanonicalMessage, CanonicalModelEvent } from "../../../src/model/protocol/canonical.js";
@@ -127,9 +128,11 @@ test("agent loop respects agent maxContextTokens before and after routing", asyn
   const loop = new AgentLoop(config, dependencies);
 
   const events: AgentEvent[] = [];
+  const contexts: ModelContextSnapshot[] = [];
   for await (const event of loop.run({
     sessionId: "session-1",
     turnId: "turn-1",
+    onModelContext: snapshot => { contexts.push(snapshot); },
     messages: [
       {
         role: "user",
@@ -144,6 +147,9 @@ test("agent loop respects agent maxContextTokens before and after routing", asyn
   assert.equal(budgetEvaluations[0]!.maxContextTokens, 8_000);
   assert.equal(budgetEvaluations[0]!.reservedOutputTokens, 32_768);
   assert.ok(events.some((event) => event.type === "context_budget"));
+  assert.equal(contexts.length, 1);
+  assert.equal(contexts[0].model, 'model-b', 'inspection follows routing rather than the default model');
+  assert.equal(contexts[0].messages[0].content[0].type, 'text');
 });
 
 test("main agent loop ignores matching subagent baseline caps", async () => {

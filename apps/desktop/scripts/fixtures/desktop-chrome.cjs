@@ -6,7 +6,6 @@ const os = require('node:os');
 const { isRendererEditingShortcut, windowChromeOptions, windowPalette, WINDOWS_CAPTION_HEIGHT } = require('../../dist/windowChrome');
 const { buildApplicationMenu } = require('../../dist/applicationMenu');
 const { WindowsCaptionMenu } = require('../../dist/windowsCaptionMenu');
-const { linuxCaptionEntries, linuxCaptionAction } = require('../../dist/linuxCaptionMenu');
 const { normalizeMenuState, emptyMenuState, commandEnabled } = require('../../dist/desktopCommands');
 const { desktopAboutInfo, presentDesktopAbout } = require('../../dist/desktopAbout');
 const profile = process.env.PILOTDECK_CHROME_PROFILE || fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-chrome-'));
@@ -18,6 +17,7 @@ let state = { ...emptyMenuState };
 let appearance = { language: 'en', themeMode: 'dark' };
 let checks = 0;
 let menuRequests = [];
+const openedDirectories = [];
 let captionMenu;
 let aboutDialogs = [], copiedVersion = '', openedWebsite = '';
 function menuTemplate() {
@@ -54,6 +54,8 @@ ipcMain.on('pilotdeck:get-window-state', e => { e.returnValue = { fullscreen: wi
 ipcMain.handle('pilotdeck:set-appearance', (_e, value) => { appearance = value; nativeTheme.themeSource = value.themeMode; publish(); refresh(); });
 ipcMain.handle('pilotdeck:menu-state', (_e, value) => { state = normalizeMenuState(value); refresh(); });
 ipcMain.handle('pilotdeck:get-runtime-info', () => null);
+// Record native folder requests without launching the user's file manager.
+ipcMain.handle('pilotdeck:open-directory', (_event, directory) => { openedDirectories.push(directory); return true; });
 // The shared pre-bundle startup page reads this synchronously, just like the
 // production shell. A missing handler leaves Chromium waiting during navigation.
 ipcMain.on('pilotdeck:get-runtime-status', event => {
@@ -70,37 +72,8 @@ ipcMain.handle('pilotdeck:show-menu', (_e, request) => {
   captionMenu ||= new WindowsCaptionMenu(window, menuTemplate, items => Menu.buildFromTemplate(items), () => screen.getCursorScreenPoint());
   return captionMenu.show(request);
 });
-ipcMain.handle('pilotdeck:linux-menu-items', (_e, id) => {
-  if (process.platform !== 'linux') return [];
-  menuRequests.push({ id });
-  return linuxCaptionEntries(menuTemplate(), id);
-});
-ipcMain.handle('pilotdeck:linux-menu-activate', (_e, request) => {
-  if (process.platform !== 'linux') return false;
-  const item = linuxCaptionAction(menuTemplate(), request?.id, request?.index);
-  if (!item) return false;
-  if (item.role) {
-    const contents = window.webContents;
-    switch (item.role) {
-      case 'undo': contents.undo(); break;
-      case 'redo': contents.redo(); break;
-      case 'cut': contents.cut(); break;
-      case 'copy': contents.copy(); break;
-      case 'paste': contents.paste(); break;
-      case 'selectAll': contents.selectAll(); break;
-      case 'resetZoom': contents.setZoomLevel(0); break;
-      case 'zoomIn': contents.setZoomLevel(contents.getZoomLevel() + 1); break;
-      case 'zoomOut': contents.setZoomLevel(contents.getZoomLevel() - 1); break;
-      case 'togglefullscreen': window.setFullScreen(!window.isFullScreen()); break;
-      case 'reload': contents.reload(); break;
-      case 'close': window.close(); break;
-      case 'quit': app.quit(); break;
-    }
-  } else item.click?.();
-  return true;
-});
 nativeTheme.on('updated', publish);
-global.chromeTest = { loaded: () => loaded, state: () => state, checks: () => checks, menuRequests: () => menuRequests, closeMenu: () => captionMenu?.close(), refreshMenu: refresh,
+global.chromeTest = { loaded: () => loaded, state: () => state, checks: () => checks, menuRequests: () => menuRequests, closeMenu: () => captionMenu?.close(), refreshMenu: refresh, openedDirectories: () => openedDirectories,
   about: () => ({ dialogs: aboutDialogs, copiedVersion, openedWebsite }) };
 app.whenReady().then(async () => {
   nativeTheme.themeSource = 'dark';
