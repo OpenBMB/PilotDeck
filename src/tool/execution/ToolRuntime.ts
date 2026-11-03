@@ -52,6 +52,7 @@ export class ToolRuntime {
                 readFileState: runtimeContext.readFileState,
                 writeSnapshots: runtimeContext.writeSnapshots,
                 executeTool: runtimeContext.executeTool,
+                workspaceReady: runtimeContext.workspaceReady,
               });
             },
         };
@@ -78,6 +79,16 @@ export class ToolRuntime {
 
     if (runtimeContext.abortSignal?.aborted) {
       return this.errorResult(call.id, toolName, "tool_aborted", "Tool execution was aborted.", startedAt, runtimeContext);
+    }
+
+    // Includes shell/Python, plugins, subagent launch and background task launch.
+    // Gate even read-only tools: their hooks can still run arbitrary commands.
+    try {
+      await runtimeContext.workspaceReady?.();
+      runtimeContext.abortSignal?.throwIfAborted();
+    } catch (error) {
+      return this.errorResult(call.id, toolName, runtimeContext.abortSignal?.aborted ? "tool_aborted" : "tool_execution_failed",
+        error instanceof Error ? error.message : "Workspace protection is not ready.", startedAt, runtimeContext);
     }
 
     if (!tool) {
