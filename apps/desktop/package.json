@@ -111,6 +111,7 @@
     },
     "win": {
       "icon": "resources/icons/icon.ico",
+      "extraFiles": [{ "from": "resources/PilotDeck.VisualElementsManifest.xml", "to": "PilotDeck.VisualElementsManifest.xml" }],
       "legalTrademarks": "Copyright \u00a9 OpenBMB",
       "target": [
         {

@@ -3,7 +3,7 @@
  *
  * icon.ico        – full multi-res ICO (256..16) for app exe (rcedit)
  * installer-icon.ico – compact ICO (48/32/16 BMP only) for NSIS installer
- * icon.png        – 256x256 PNG for macOS / general use
+ * icon.png        – 1024x1024 PNG for Linux / general use
  *
  * All ICO entries use BMP encoding (no PNG compression) for maximum
  * NSIS compatibility. NSIS 3.x cannot reliably use PNG-in-ICO for the
@@ -22,7 +22,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ICONS_DIR = join(__dirname, "..", "resources", "icons");
 const SOURCE = join(ICONS_DIR, "icon-source.png");
 
-const ICO_SIZES = [256, 128, 64, 48, 32, 16];
+const ICO_SIZES = [256, 128, 96, 64, 48, 40, 32, 24, 20, 16];
 
 async function makeIcon(size) {
   const buf = await sharp(SOURCE)
@@ -135,7 +135,6 @@ async function main() {
   console.log("Generating icons from", SOURCE);
 
   const icoEntries = [];
-  let png256 = null;
 
   for (const size of ICO_SIZES) {
     const { rgba, size: s } = await makeIcon(size);
@@ -146,11 +145,6 @@ async function main() {
     icoEntries.push({ size, data: bmpData });
     console.log(`  ${size}x${size}: ${bmpData.length} bytes (BMP)`);
 
-    if (size === 256) {
-      png256 = await sharp(rgba, { raw: { width: s, height: s, channels: 4 } })
-        .png()
-        .toBuffer();
-    }
   }
 
   // Write full icon.ico (all sizes, for app exe via rcedit)
@@ -160,16 +154,17 @@ async function main() {
   console.log(`Wrote ${icoPath} (${icoBuf.length} bytes)`);
 
   // Write compact installer-icon.ico (48/32/16 only, for NSIS installer)
-  const installerEntries = icoEntries.filter((e) => e.size <= 48);
+  const installerEntries = icoEntries.filter((e) => [48, 32, 16].includes(e.size));
   const installerIcoPath = join(ICONS_DIR, "installer-icon.ico");
   const installerIcoBuf = buildIco(installerEntries);
   writeFileSync(installerIcoPath, installerIcoBuf);
   console.log(`Wrote ${installerIcoPath} (${installerIcoBuf.length} bytes)`);
 
-  // Write icon.png (256x256 with transparency)
+  // Keep the complete canonical canvas at high DPI; never add a white plate.
+  const png = await sharp(SOURCE).resize(1024, 1024).png().toBuffer();
   const pngPath = join(ICONS_DIR, "icon.png");
-  writeFileSync(pngPath, png256);
-  console.log(`Wrote ${pngPath} (${png256.length} bytes)`);
+  writeFileSync(pngPath, png);
+  console.log(`Wrote ${pngPath} (${png.length} bytes)`);
 
   const icnsPath = join(ICONS_DIR, 'icon.icns');
   await writeIcns(SOURCE, icnsPath);
