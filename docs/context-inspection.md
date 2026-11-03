@@ -7,6 +7,13 @@ purple and blue swatches match the bar. Counts use compact K/M notation with
 `~` for estimates. The ring, percentage and bar use the same existing budget
 percentage; the header retains the full model context-window total.
 
+The card uses the active brand tint, a fine border and soft shadow, with
+aligned tabular counts in light/dark themes. The occupied bar contains its
+segment separators, so they cannot inflate the reported usage width. An
+accessible meter exposes the percentage; overflowing usage remains bounded
+visually while its text retains `100%+`. Keyboard dismissal returns focus to
+the trigger, and reduced-motion mode disables the opacity entrance.
+
 The popover has no inspector, tabs, search, copy/refresh controls or explanatory
 paragraphs. Opening it, changing sessions or receiving updated token usage
 fetches the category estimates. Missing/loading/unavailable estimates display

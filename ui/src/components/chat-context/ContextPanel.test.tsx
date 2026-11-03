@@ -18,6 +18,8 @@ it('shows compact usage and three category estimates without the detailed inspec
   await screen.findByText('~2.2K');
   expect(screen.getByText('~10.2K')).toBeTruthy();
   expect(screen.getByText('~65.5K')).toBeTruthy();
+  expect(screen.getByRole('meter').getAttribute('aria-valuenow')).toBe('45');
+  expect(screen.getByRole('meter').getAttribute('aria-valuetext')).toBe('45%');
   expect(view.container.querySelectorAll('dt')).toHaveLength(3);
   expect(view.container.querySelectorAll('button, input, pre, details')).toHaveLength(0);
   const url = new URL(mocks.fetch.mock.calls[0][0], 'http://local');
@@ -49,4 +51,15 @@ it('uses a quiet unknown state before a session or budget exists', () => {
   expect(mocks.fetch).not.toHaveBeenCalled();
   expect(screen.getByText('— / —')).toBeTruthy();
   expect([...container.querySelectorAll('dd')].map(row => row.textContent)).toEqual(['—', '—', '—']);
+  expect(screen.queryByRole('meter')).toBeNull();
+});
+
+it('clamps an overflowing budget and preserves zero category estimates', async () => {
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ contextBreakdown: { systemTokens: 0, toolsTokens: 0, messageTokens: 300000 } }) });
+  const { container } = render(<ContextPanel target={{ sessionId: 'full', projectPath: '/p' }} used={300000} total={262144} percent={114} percentLabel="100%+" />);
+  await screen.findByText('~300K');
+  expect(screen.getAllByText('~0')).toHaveLength(2);
+  expect(screen.getByRole('meter').getAttribute('aria-valuenow')).toBe('100');
+  expect(screen.getByRole('meter').getAttribute('aria-valuetext')).toBe('100%+');
+  expect(container.querySelector('.pd-context-bar-fill')?.children).toHaveLength(1);
 });

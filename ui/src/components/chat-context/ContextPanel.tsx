@@ -56,10 +56,14 @@ export default function ContextPanel({ target, used, total, percent, percentLabe
       <div><span className="pd-context-label">{t('context.used')}</span> <strong>{total > 0 ? percentLabel : '—'}</strong></div>
       <span className="pd-context-total">{total > 0 ? `~${tokenFormat.format(used)} / ${tokenFormat.format(total)}` : '— / —'}</span>
     </div>
-    <div className="pd-context-bar" aria-hidden="true">
-      {estimated > 0 ? sections.map((row, index) => <span key={row.label} className={`pd-context-${row.color}`}
-        style={{ width: `${occupied * (counts[index] ?? 0) / estimated}%` }} />)
-        : <span className="pd-context-messages" style={{ width: `${occupied}%` }} />}
+    <div className="pd-context-bar" role={total > 0 ? 'meter' : undefined}
+      aria-label={total > 0 ? t('context.used') : undefined} aria-hidden={total <= 0 || undefined}
+      aria-valuemin={0} aria-valuemax={100} aria-valuenow={total > 0 ? occupied : undefined} aria-valuetext={total > 0 ? percentLabel : undefined}>
+      <div className="pd-context-bar-fill" style={{ width: `${occupied}%` }}>
+        {estimated > 0 ? sections.map((row, index) => (counts[index] ?? 0) > 0
+          ? <span key={row.label} className={`pd-context-${row.color}`} style={{ flexGrow: counts[index]! }} /> : null)
+          : <span className="pd-context-messages" style={{ flexGrow: 1 }} />}
+      </div>
     </div>
     <dl className="pd-context-legend" aria-label={t('context.estimates')}>
       {sections.map((row, index) => <div key={row.label}>
