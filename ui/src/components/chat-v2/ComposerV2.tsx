@@ -579,7 +579,7 @@ export default function ComposerV2({
   const contextTriggerRef = useRef<HTMLButtonElement>(null);
   const addMenu = useFloatingPanel(isAddMenuOpen, addTriggerRef, () => setIsAddMenuOpen(false), { matchComposer: true });
   const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 280 });
-  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 360, maxHeight: 660 });
+  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 320, maxHeight: 240 });
   const fileMenu = useFloatingPanel(showFileDropdown, textareaRef, undefined, { matchComposer: true, maxHeight: 320 });
   const permissionSelectorDisabled = runMode === "plan";
   const [workspaceMenuForceOpen, setWorkspaceMenuForceOpen] = useState(false);
@@ -1752,7 +1752,7 @@ export default function ComposerV2({
                       <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true">
                         <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
                         <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2"
-                          strokeDasharray={`${Math.min(100, contextStatus.displayTotal > 0 ? contextStatus.used / contextStatus.displayTotal * 100 : 0) * 0.377} 37.7`} transform="rotate(-90 8 8)" />
+                          strokeDasharray={`${Math.min(100, contextStatus.percent) * 0.377} 37.7`} transform="rotate(-90 8 8)" />
                       </svg>
                       <span>{contextStatus.known ? contextStatus.percentLabel : "--"}</span>
                     </button>
@@ -1760,46 +1760,10 @@ export default function ComposerV2({
                       <div ref={contextMenu.panelRef} style={contextMenu.style}
                         role="dialog"
                         aria-label={t('input.contextStatusTitle', { defaultValue: 'Context window' })}
-                        className="overflow-y-auto overscroll-contain rounded-lg border border-neutral-200 bg-white p-3 text-left text-[12px] leading-5 text-neutral-700 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
+                        className="pd-context-popover"
                       >
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                            {t("input.contextStatusTitle", { defaultValue: "Context window" })}
-                          </span>
-                          <span className="font-medium tabular-nums">
-                            {contextStatus.known ? contextStatus.percentLabel : "--"}
-                          </span>
-                        </div>
-                        {contextStatus.known ? (
-                          <>
-                            <div className="text-neutral-500 dark:text-neutral-400">
-                              {t("input.contextStatusUsed", {
-                                used: contextStatus.used.toLocaleString(),
-                                total: contextStatus.displayTotal.toLocaleString(),
-                                defaultValue: `${contextStatus.used.toLocaleString()} tokens used out of ${contextStatus.displayTotal.toLocaleString()}.`,
-                              })}
-                            </div>
-                            <div className="mt-2 text-neutral-500 dark:text-neutral-400">
-                              {t("input.contextStatusAutoCompact", {
-                                defaultValue: "Auto compact runs when the conversation approaches the configured limit.",
-                              })}
-                            </div>
-                            {contextStatus.state === "blocking" ? (
-                              <div className="mt-2 text-red-600 dark:text-red-300">
-                                {t("input.contextStatusBlockingBody", {
-                                  defaultValue: "Compaction ran, but the context is still over the limit.",
-                                })}
-                              </div>
-                            ) : null}
-                          </>
-                        ) : (
-                          <div className="text-neutral-500 dark:text-neutral-400">
-                            {t("input.contextStatusUnknownBody", {
-                              defaultValue: "No token budget has been reported yet. It will appear after the next model response.",
-                            })}
-                          </div>
-                        )}
-                        <ContextPanel target={contextTarget} used={contextStatus.used} total={contextStatus.displayTotal} />
+                        <ContextPanel target={contextTarget} used={contextStatus.used} total={contextStatus.displayTotal}
+                          percent={contextStatus.percent} percentLabel={contextStatus.percentLabel} />
                       </div>, document.body
                     ) : null}
                   </div>

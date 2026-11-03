@@ -1,20 +1,10 @@
 {
   "context": {
+    "used": "上下文已用",
     "systemPrompt": "系统提示词",
     "tools": "工具定义",
     "messages": "对话消息",
-    "estimates": "分类数量为本地估算，总用量以已报告的上下文预算为准。",
-    "loading": "正在加载上下文…",
-    "loadError": "无法加载上下文，请刷新重试。",
-    "empty": "暂无请求快照，发送消息后即可查看。",
-    "inspect": "查看上下文",
-    "refresh": "刷新上下文",
-    "search": "搜索上下文",
-    "copy": "复制当前分类",
-    "noContent": "此分类为空",
-    "noResults": "没有匹配的内容",
-    "lastRequest": "展示最近一次组装的请求，尚未经模型服务商格式转换。下一次模型请求后可刷新查看变化。",
-    "mediaOmitted": "二进制媒体以占位文本显示。"
+    "estimates": "分类 token 估算"
   },
   "conversationError": {
     "label": "请求未完成",
@@ -386,13 +376,9 @@
     "clearInput": "清空输入",
     "scrollToBottom": "滚动到底部",
     "contextStatusTitle": "上下文窗口",
-    "contextStatusUsed": "已用 {{used}} / {{total}} tokens。",
     "contextStatus": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。接近上限时会自动压缩上下文。",
     "contextStatusBlocking": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。已执行压缩，但上下文仍处于保护阈值。",
-    "contextStatusAutoCompact": "接近配置上限时会自动压缩上下文。",
-    "contextStatusBlockingBody": "已执行压缩，但上下文仍处于保护阈值。",
     "contextStatusUnknown": "上下文用量未知，将在下次模型响应后显示。",
-    "contextStatusUnknownBody": "尚未上报 token 用量，会在下一次模型响应后显示。",
     "permissions": {
       "default": "默认权限",
       "defaultDescription": "需要风险操作时先询问",

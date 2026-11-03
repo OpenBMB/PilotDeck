@@ -53,16 +53,12 @@ try {
     }
     else if (url.pathname.includes('onboarding-status')) body = { hasCompletedOnboarding: completedOnboarding };
     else if (url.pathname === '/api/settings/permissions') body = { success: true, permissions: { skipPermissions: false, allowedTools: [], deniedTools: [] } };
-    else if (url.pathname.includes('/token-usage')) body = { used: 6000, total: 32000, effectiveTotal: 32000, state: 'ok' };
+    else if (url.pathname.includes('/token-usage')) body = { used: 117000, total: 262144, effectiveTotal: 262144, state: 'ok' };
     else if (url.pathname.includes('/messages')) body = { messages: [], hasMore: false, total: 0,
-      tokenUsage: { used: 6000, total: 32000, effectiveTotal: 32000, state: 'ok' },
-      ...(url.searchParams.get('includeModelContext') === 'true' ? { modelContext: {
-        capturedAt: '2026-11-03T09:00:00Z', provider: 'fixture', model: 'context-review',
-        systemPrompt: 'You are PilotDeck. Help the user work in the current project.\n\nFollow workspace instructions and use tools when needed.',
-        tools: [{ name: 'read_file', description: 'Read a file in the workspace', inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } }],
-        messages: [{ role: 'user', content: [{ type: 'text', text: 'Inspect this project and explain its architecture.' }] }],
-        breakdown: { systemTokens: 1000, toolsTokens: 2000, messageTokens: 3000 }, mediaOmitted: false,
-      } } : {}),
+      tokenUsage: { used: 117000, total: 262144, effectiveTotal: 262144, state: 'ok' },
+      ...(url.searchParams.get('includeModelContext') === 'summary' ? {
+        contextBreakdown: { systemTokens: 2200, toolsTokens: 10200, messageTokens: 65500 },
+      } : {}),
     };
     else if (url.pathname.includes('/sessions')) body = { sessions: projects[1].sessions, hasMore: false, total: 1 };
     else if (url.pathname.includes('/files')) body = [];
@@ -91,22 +87,31 @@ try {
   const contextTrigger = page.locator('.pd-composer-context-control > button');
   await contextTrigger.click();
   const context = page.getByRole('dialog', { name: 'Context window', exact: true });
-  await expect(context.getByText('~1,000', { exact: true })).toBeVisible();
+  await expect(context.getByText('~2.2K', { exact: true })).toBeVisible();
+  await expect(context.getByText('~117K / 262K', { exact: true })).toBeVisible();
+  await expect(context.locator('dt')).toHaveCount(3);
+  await expect(context.locator('button, input, pre, details')).toHaveCount(0);
   await page.screenshot({ path: path.join(artifactDir, `${platformName}-context-breakdown.png`) });
-  await context.getByRole('button', { name: 'Inspect context', exact: true }).click();
-  await expect(context.locator('pre')).toContainText('You are PilotDeck.');
-  await page.screenshot({ path: path.join(artifactDir, `${platformName}-context-system.png`) });
-  await context.getByRole('tab', { name: 'Tool definitions (1)', exact: true }).click();
-  await context.locator('summary', { hasText: 'read_file' }).click();
-  await expect(context.locator('pre')).toContainText('inputSchema');
-  await page.screenshot({ path: path.join(artifactDir, `${platformName}-context-tools.png`) });
-  await context.getByRole('tab', { name: 'Messages (1)', exact: true }).click();
-  await context.locator('summary', { hasText: '1 · user' }).click();
-  await expect(context.locator('pre')).toContainText('Inspect this project');
-  await context.getByRole('searchbox').fill('does-not-exist');
-  await expect(context.getByText('No matching content', { exact: true })).toBeVisible();
+  await context.screenshot({ path: path.join(artifactDir, `${platformName}-context-summary-dark.png`) });
   await page.keyboard.press('Escape');
   await expect(context).toHaveCount(0);
+  await page.evaluate(() => window.pilotdeckDesktop.setAppearance({ language: 'zh-CN', themeMode: 'light' }));
+  await page.reload();
+  await expect(page.locator('.app-shell')).toBeVisible();
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await contextTrigger.click();
+  const compactContext = page.getByRole('dialog', { name: '上下文窗口', exact: true });
+  await expect(compactContext.getByText('上下文已用', { exact: true })).toBeVisible();
+  await expect(compactContext.getByText('~65.5K', { exact: true })).toBeVisible();
+  await expect(compactContext.getByText('45%', { exact: true })).toBeVisible();
+  const compactBounds = await compactContext.boundingBox();
+  expect(compactBounds.width).toBeLessThanOrEqual(320);
+  expect(compactBounds.height).toBeLessThan(200);
+  await compactContext.screenshot({ path: path.join(artifactDir, `${platformName}-context-summary-light-zh.png`) });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.pilotdeckDesktop.setAppearance({ language: 'en', themeMode: 'dark' }));
+  await page.reload();
+  await expect(page.locator('.app-shell')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-desktop-platform', process.platform);
   if (mac) await expect(page.locator('html')).toHaveAttribute('data-desktop-integrated', '');
   const geometry = await page.locator('.app-shell').evaluate(el => ({
