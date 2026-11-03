@@ -39,9 +39,11 @@ try {
       await page.addInitScript(({ desktop, dark }) => {
         localStorage.setItem('themeMode', dark ? 'dark' : 'light');
         localStorage.setItem('userLanguage', 'en');
+        const runtimeStartedAt = Date.now() - 6000;
+        const phaseStartedAt = Date.now() - 1000;
         if (desktop) window.pilotdeckDesktop = {
           getAppearance: () => ({ language: 'en', themeMode: dark ? 'dark' : 'light' }),
-          getRuntimeStatus: () => ({ phase: 'ready', progress: 96, startedAt: Date.now() - 6000, phaseStartedAt: Date.now() - 1000 }),
+          getRuntimeStatus: () => ({ phase: 'ready', progress: 96, startedAt: runtimeStartedAt, phaseStartedAt }),
           onRuntimeStatus: () => () => {},
         };
         window.startupSamples = [];
