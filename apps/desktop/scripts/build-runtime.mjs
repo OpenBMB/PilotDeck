@@ -14,6 +14,7 @@ import {
 import { dirname, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import {
   resolvePlaywrightBrowserSet,
   resolvePlaywrightInstallMode,
@@ -201,7 +202,7 @@ function createRuntimeDependencies(rootPackage, uiPackage) {
     if (!name.startsWith("@types/")) {
       dependencies[name] = name === "edgeclaw-memory-core"
         ? "file:../../../src/context/memory/edgeclaw-memory-core"
-        : version;
+        : name === '@pilotdeck/config' ? 'file:../../../packages/config' : version;
     }
   }
   for (const name of uiServerDependencies) {
@@ -261,6 +262,12 @@ function prepareRuntimeTree(installEnv = process.env) {
     skipBuildArtifact,
   );
   copyFiltered(resolve(repoRoot, "ui", "server"), resolve(runtimeRoot, "ui", "server"), skipBuildArtifact);
+  if (process.platform === "win32") {
+    const require = createRequire(import.meta.url);
+    const helper = require(resolve(repoRoot, "ui/server/utils/nativeProcessHost.cjs")).nativeProcessHost();
+    if (!helper) throw new Error("Windows desktop builds require the native process host compiler.");
+    cpSync(helper, resolve(runtimeRoot, "ui/server/utils", helper.split(/[\\/]/).pop()));
+  }
   copyFiltered(resolve(repoRoot, "ui", "shared"), resolve(runtimeRoot, "ui", "shared"), skipBuildArtifact);
   copyFiltered(resolve(repoRoot, "ui", "public"), resolve(runtimeRoot, "ui", "public"), () => true);
   copyFiltered(resolve(repoRoot, "ui", "dist"), resolve(runtimeRoot, "ui", "dist"), () => true);

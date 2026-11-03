@@ -31,6 +31,7 @@
     "dist:linux:rpm:x64": "node scripts/check-linux-build-host.mjs x64 rpm && umask 022 && PILOTDECK_DESKTOP_NODE_ARCH=x64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --linux rpm --x64 --config.electronDist=node_modules/electron/dist --publish never && node scripts/normalize-linux-rpm-artifact.mjs x64"
   },
   "dependencies": {
+    "@pilotdeck/config": "workspace:*",
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
@@ -61,6 +62,10 @@
     "buildDependenciesFromSource": false,
     "afterPack": "scripts/after-pack.cjs",
     "extraResources": [
+      {
+        "from": "resources/uninstall-data.cjs",
+        "to": "uninstall-data.cjs"
+      },
       {
         "from": "resources/node",
         "to": "node"
@@ -117,6 +122,18 @@
       "category": "Development",
       "icon": "resources/icons/icon.png",
       "maintainer": "OpenBMB <contact@openbmb.cn>",
+      "desktop": {
+        "entry": {
+          "Actions": "Uninstall;"
+        },
+        "desktopActions": {
+          "Uninstall": {
+            "Name": "Uninstall PilotDeck",
+            "Name[zh_CN]": "卸载 PilotDeck",
+            "Exec": "pilotdeck-desktop --uninstall"
+          }
+        }
+      },
       "syncDesktopName": true,
       "target": ["deb"]
     },
@@ -149,6 +166,8 @@
       "installerIcon": "resources/icons/installer-icon.ico",
       "uninstallerIcon": "resources/icons/installer-icon.ico",
       "include": "resources/installer.nsh",
+      "installerLanguages": ["en_US", "zh_CN"],
+      "createDesktopShortcut": false,
       "allowToChangeInstallationDirectory": true
     },
     "portable": {

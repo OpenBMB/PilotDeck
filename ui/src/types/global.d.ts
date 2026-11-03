@@ -8,6 +8,9 @@ export {};
 
 declare global {
   interface Window {
+    __pilotdeckStartupState?: { phase: string; progress?: number; startedAt?: number; phaseStartedAt?: number; completed?: boolean };
+    __pilotdeckStartupUpdate?: (state: NonNullable<Window['__pilotdeckStartupState']> & { language?: string; leaving?: boolean; error?: string; logPath?: string }) => void;
+    __pilotdeckStartupCleanup?: () => void;
     __ROUTER_BASENAME__?: string;
     refreshProjects?: () => void | Promise<void>;
     openSettings?: (tab?: string) => void;
@@ -17,6 +20,10 @@ declare global {
     switchProject?: (projectName: string) => boolean;
     pilotdeckDesktop?: {
       platform?: string;
+      getUninstallStatus?: () => Promise<{ supported: boolean }>;
+      uninstall?: () => Promise<{ canceled: boolean }>;
+      getRuntimeStatus?: () => { phase: string; message: string; progress?: number; startedAt?: number; phaseStartedAt?: number; logPath?: string; error?: string } | null;
+      saveRuntimeLogs?: () => Promise<{ canceled: boolean }>;
       getNotificationStatus?: () => Promise<DesktopNotificationStatus & { preferences: NotificationPreferences }>;
       setNotificationPreferences?: (value: NotificationPreferences) => Promise<NotificationPreferences>;
       showNotification?: (value: SystemNotification) => Promise<boolean>;
@@ -55,6 +62,9 @@ declare global {
         message: string;
         logPath?: string;
         error?: string;
+        progress?: number;
+        startedAt?: number;
+        phaseStartedAt?: number;
       }) => void) => () => void;
       retryRuntime: () => Promise<void>;
       openRuntimeLog: () => Promise<void>;

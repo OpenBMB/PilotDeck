@@ -1594,11 +1594,14 @@ class ProjectRuntimeRegistry {
   }
 
   async listSessions(input: ListSessionsInput): Promise<ListSessionsResult> {
-    const runtime = this.resolve(input.projectKey);
+    // Browsing history must not activate every project's model/plugins/tools.
+    // Build the agent runtime only when a session is actually used.
+    const projectRoot = resolve(input.projectKey ?? this.options.fallbackProjectRoot);
     const offset = input.cursor ? Number.parseInt(input.cursor, 10) : 0;
     const safeOffset = Number.isFinite(offset) ? offset : 0;
     const sessions = await listProjectSessions({
-      ...runtime.projectStorage,
+      projectRoot,
+      pilotHome: this.options.pilotHome,
       limit: input.limit,
       offset: safeOffset,
     });

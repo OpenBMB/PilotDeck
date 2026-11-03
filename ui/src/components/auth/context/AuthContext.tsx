@@ -114,6 +114,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
+  // Desktop already pushes process readiness. Do not wait for the next HTTP
+  // poll to reveal a workspace whose Gateway has finished starting.
+  useEffect(() => {
+    if (modelConfiguration.state !== 'ready') return;
+    const update = (status: ReturnType<NonNullable<NonNullable<Window['pilotdeckDesktop']>['getRuntimeStatus']>>) => {
+      if (status?.phase === 'ready') setGatewayRuntime({ state: 'ready' });
+      else if (status?.phase === 'gateway') setGatewayRuntime({ state: 'starting' });
+    };
+    update(window.pilotdeckDesktop?.getRuntimeStatus?.() ?? null);
+    return window.pilotdeckDesktop?.onRuntimeStatus?.(update);
+  }, [modelConfiguration.state]);
+
   useEffect(() => {
     if (
       (modelConfiguration.state !== 'ready' && modelConfiguration.state !== 'empty')

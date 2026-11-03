@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 import { getConnectableHost, normalizeLoopbackHost } from './shared/networkHosts.js'
 import { LIGHT_PRESETS } from '../apps/desktop/src/lightAppearance'
+import { renderLoadingHtml } from '../apps/desktop/src/appearance'
+import { startupLabels } from '../apps/desktop/src/startupPresentation'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -59,6 +61,16 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_DISABLE_LOCAL_AUTH': JSON.stringify(disableLocalAuth ? 'true' : 'false'),
     },
     plugins: [react(), {
+      name: 'continuous-startup-shell',
+      transformIndexHtml(html) {
+        // The same shell is painted before the application bundle is evaluated.
+        // Keep it outside React's root so phase changes never replace the frame.
+        const page = renderLoadingHtml({ language: 'en', themeMode: 'system' }, true);
+        const style = page.match(/<style>([\s\S]*?)<\/style>/)[1];
+        const body = page.match(/<body[^>]*>([\s\S]*?)<\/body>/)[1];
+        return html.replace('<div id="root"></div>', () => `<div id="pilotdeck-startup-shell"><style>${style}</style>${body}</div><div id="root"></div>`);
+      },
+    }, {
       name: 'appearance-first-paint',
       transformIndexHtml() {
         // Inline and synchronous: even a slow app bundle must not flash the

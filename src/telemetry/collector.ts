@@ -43,12 +43,13 @@ export function createTelemetryCollector(
   if (input.enabled != null) {
     config.enabled = input.enabled;
   }
-  const runtimeContext = resolveTelemetryRuntimeContext({ env, pilotHome: input.pilotHome });
+  let runtimeContext: TelemetryRuntimeContext | undefined;
   const sender = new TelemetrySender(config, { fetchImpl: input.fetchImpl });
 
   return {
     track(eventName, properties = {}, context = {}) {
       if (!config.enabled) return;
+      runtimeContext ??= resolveTelemetryRuntimeContext({ env, pilotHome: input.pilotHome });
       sender.enqueue(buildEvent({
         eventName,
         properties: sanitizeProperties(properties),

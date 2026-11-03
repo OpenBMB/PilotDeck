@@ -1,23 +1,45 @@
 {
+  "uninstall": {
+    "title": "卸载 PilotDeck",
+    "description": "先选择是否保留个人数据，再由系统确认卸载应用。",
+    "systemHint": "请使用系统包管理器卸载应用，个人数据将保留。",
+    "failed": "卸载未完成，个人数据已保留。"
+  },
+  "runtimeLogs": {
+    "title": "系统运行日志",
+    "description": "保存排查问题所需的日志，并设置保留时长。",
+    "retention": "日志保留时长",
+    "retentionHint": "保存后立即生效，过期的每日日志和崩溃报告会自动清理。",
+    "days1": "1 天",
+    "days3": "3 天",
+    "days7": "1 周（默认）",
+    "days30": "1 个月",
+    "days90": "3 个月",
+    "location": "日志位置",
+    "save": "下载运行日志",
+    "saved": "运行日志已下载",
+    "saveFailed": "日志下载失败，请尝试其他位置。",
+    "preferenceFailed": "日志保留设置保存失败。"
+  },
   "imageGeneration": {
-  "enabled": "启用图像生成",
-  "apiKey": "API 密钥",
-  "apiKeyHint": "密钥保存在本地，留空保留已保存的密钥。",
-  "baseUrl": "API 地址",
-  "baseUrlHint": "使用 OpenAI Images 接口，例如 https://api.openai.com/v1。",
-  "model": "模型名称",
-  "modelHint": "填写服务端提供的生图模型名称，与聊天模型分别配置。",
-  "check": "测试连接",
-  "checking": "正在生成测试图片…",
-  "connected": "测试成功，已生成有效图片（耗时 {{seconds}} 秒）。",
-  "connectionFailed": "测试失败：{{error}}",
-  "unknownError": "请检查地址、密钥和服务可用性。",
-  "invalidAddress": "请填写有效的 HTTP 或 HTTPS API 地址。",
-  "keyRequired": "请填写 API 密钥。",
-  "newKeyRequired": "更换 API 地址后，请重新填写密钥。",
-  "modelRequired": "请填写图像模型名称。",
-  "saveFailed": "保存失败，请重试。"
-},
+    "enabled": "启用图像生成",
+    "apiKey": "API 密钥",
+    "apiKeyHint": "密钥保存在本地，留空保留已保存的密钥。",
+    "baseUrl": "API 地址",
+    "baseUrlHint": "使用 OpenAI Images 接口，例如 https://api.openai.com/v1。",
+    "model": "模型名称",
+    "modelHint": "填写服务端提供的生图模型名称，与聊天模型分别配置。",
+    "check": "测试连接",
+    "checking": "正在生成测试图片…",
+    "connected": "测试成功，已生成有效图片（耗时 {{seconds}} 秒）。",
+    "connectionFailed": "测试失败：{{error}}",
+    "unknownError": "请检查地址、密钥和服务可用性。",
+    "invalidAddress": "请填写有效的 HTTP 或 HTTPS API 地址。",
+    "keyRequired": "请填写 API 密钥。",
+    "newKeyRequired": "更换 API 地址后，请重新填写密钥。",
+    "modelRequired": "请填写图像模型名称。",
+    "saveFailed": "保存失败，请重试。"
+  },
   "systemNotifications": {
     "title": "通知",
     "enabled": "启用系统通知",
@@ -846,64 +868,64 @@
       "form": "表单",
       "rawYaml": "原始 YAML"
     },
-	    "actions": {
-	      "opening": "正在打开...",
-	      "revealFile": "在访达中显示",
-	      "revealFileMac": "在访达中显示",
-	      "revealFileWindows": "在资源管理器中显示",
-	      "revealFileGeneric": "在文件管理器中显示",
-	      "refresh": "刷新",
-	      "reloadCurrent": "重新加载当前配置",
-	      "saving": "保存中...",
-	      "saveAndReload": "保存并重新加载当前配置",
-	      "saveAndReloadShort": "保存并重载",
-	      "remove": "移除",
-	      "removeModel": "移除模型",
-	      "add": "添加",
-	      "dismiss": "忽略",
-	      "showDetails": "展开配置详情",
-	      "hideDetails": "收起配置详情"
-	    },
-	    "status": {
-	      "unsavedChanges": "未保存更改",
-	      "noUnsavedChanges": "无未保存更改",
-	      "fixYamlInFilesystem": "请在文件系统中修复配置文件后刷新。",
-	      "fixYamlInRawEditor": "请先修复下方原始 YAML，然后保存以重新启用表单设置。",
-	      "subsystems": {
-	        "pending": "等待配置解析。",
-	        "processEnv": {
-	          "label": "进程环境",
-	          "applied": "原生设置已应用到当前进程。"
-	        },
-	        "memory": {
-	          "label": "记忆",
-	          "enabled": "记忆服务已启用。",
-	          "disabled": "memory.enabled 为 false。"
-	        },
-	        "router": {
-	          "label": "路由 (CCR)",
-	          "enabled": "路由看板使用原生记录。",
-	          "disabled": "router.enabled 为 false。"
-	        },
-	        "gateway": {
-	          "label": "网关",
-	          "enabled": "网关已启用。",
-	          "disabled": "gateway.enabled 为 false。"
-	        }
-	      }
-	    },
-	    "rawYaml": {
-	      "configValid": "配置有效",
-	      "unsaved": "（未保存）",
-	      "configInvalid": "配置存在校验错误",
-	      "configInvalidSeeBelow": "配置存在校验错误——见下方",
-	      "errors": "错误",
-	      "warnings": "警告",
-	      "yamlParseError": "配置文件 YAML 解析失败。请修复下方原始 YAML 后保存。",
-	      "yamlParseErrorWithDetail": "配置文件 YAML 解析失败：{{error}}",
-	      "cannotParse": "无法解析配置文件 YAML。请修复上方原始 YAML 后保存，以恢复表单设置。",
-	      "rawYaml": "原始 YAML"
-	    },
+    "actions": {
+      "opening": "正在打开...",
+      "revealFile": "在访达中显示",
+      "revealFileMac": "在访达中显示",
+      "revealFileWindows": "在资源管理器中显示",
+      "revealFileGeneric": "在文件管理器中显示",
+      "refresh": "刷新",
+      "reloadCurrent": "重新加载当前配置",
+      "saving": "保存中...",
+      "saveAndReload": "保存并重新加载当前配置",
+      "saveAndReloadShort": "保存并重载",
+      "remove": "移除",
+      "removeModel": "移除模型",
+      "add": "添加",
+      "dismiss": "忽略",
+      "showDetails": "展开配置详情",
+      "hideDetails": "收起配置详情"
+    },
+    "status": {
+      "unsavedChanges": "未保存更改",
+      "noUnsavedChanges": "无未保存更改",
+      "fixYamlInFilesystem": "请在文件系统中修复配置文件后刷新。",
+      "fixYamlInRawEditor": "请先修复下方原始 YAML，然后保存以重新启用表单设置。",
+      "subsystems": {
+        "pending": "等待配置解析。",
+        "processEnv": {
+          "label": "进程环境",
+          "applied": "原生设置已应用到当前进程。"
+        },
+        "memory": {
+          "label": "记忆",
+          "enabled": "记忆服务已启用。",
+          "disabled": "memory.enabled 为 false。"
+        },
+        "router": {
+          "label": "路由 (CCR)",
+          "enabled": "路由看板使用原生记录。",
+          "disabled": "router.enabled 为 false。"
+        },
+        "gateway": {
+          "label": "网关",
+          "enabled": "网关已启用。",
+          "disabled": "gateway.enabled 为 false。"
+        }
+      }
+    },
+    "rawYaml": {
+      "configValid": "配置有效",
+      "unsaved": "（未保存）",
+      "configInvalid": "配置存在校验错误",
+      "configInvalidSeeBelow": "配置存在校验错误——见下方",
+      "errors": "错误",
+      "warnings": "警告",
+      "yamlParseError": "配置文件 YAML 解析失败。请修复下方原始 YAML 后保存。",
+      "yamlParseErrorWithDetail": "配置文件 YAML 解析失败：{{error}}",
+      "cannotParse": "无法解析配置文件 YAML。请修复上方原始 YAML 后保存，以恢复表单设置。",
+      "rawYaml": "原始 YAML"
+    },
     "sectionGroups": {
       "basic": "基础",
       "basicDescription": "运行本服务前需要配置模型服务。",
@@ -1055,12 +1077,30 @@
         "title": "高级重试设置",
         "description": "连接不稳定时的自动恢复策略",
         "fields": {
-          "requestMaxRetries": { "label": "请求最大重试次数", "description": "非流式请求的最大重试次数。" },
-          "streamMaxRetries": { "label": "流式最大重试次数", "description": "流式请求的最大重试次数。" },
-          "streamIdleTimeoutMs": { "label": "流式空闲超时（毫秒）", "description": "在此时间内没有收到数据则中止流。" },
-          "judgeTimeoutMs": { "label": "判定超时（毫秒）", "description": "等待判定结果的最长时间。" },
-          "baseDelayMs": { "label": "基础延迟（毫秒）", "description": "首次重试前的初始等待时间。" },
-          "maxDelayMs": { "label": "最大延迟（毫秒）", "description": "两次重试之间的最长等待时间。" }
+          "requestMaxRetries": {
+            "label": "请求最大重试次数",
+            "description": "非流式请求的最大重试次数。"
+          },
+          "streamMaxRetries": {
+            "label": "流式最大重试次数",
+            "description": "流式请求的最大重试次数。"
+          },
+          "streamIdleTimeoutMs": {
+            "label": "流式空闲超时（毫秒）",
+            "description": "在此时间内没有收到数据则中止流。"
+          },
+          "judgeTimeoutMs": {
+            "label": "判定超时（毫秒）",
+            "description": "等待判定结果的最长时间。"
+          },
+          "baseDelayMs": {
+            "label": "基础延迟（毫秒）",
+            "description": "首次重试前的初始等待时间。"
+          },
+          "maxDelayMs": {
+            "label": "最大延迟（毫秒）",
+            "description": "两次重试之间的最长等待时间。"
+          }
         }
       },
       "runtime": {
@@ -1068,14 +1108,38 @@
         "description": "配置服务端口、数据路径和网络代理。修改端口或路径后通常需要重启服务。",
         "advancedToggle": "高级设置",
         "fields": {
-          "host": { "label": "主机", "description": "HTTP/WebSocket 服务器的绑定接口。" },
-          "serverPort": { "label": "服务器端口", "description": "Express + WebSocket 端口。" },
-          "vitePort": { "label": "Vite 端口", "description": "前端开发服务器（仅在运行 npm run dev 时使用）。" },
-          "apiTimeout": { "label": "API 超时（毫秒）", "description": "每次请求的上游超时。" },
-          "databasePath": { "label": "数据库路径", "description": "SQLite 认证/项目数据库（~ 展开为主目录）。" },
-          "workspacesRoot": { "label": "工作区根目录", "description": "项目扫描的根目录。" },
-          "proxyUrl": { "label": "HTTPS 代理", "description": "出站 HTTPS 代理 URL，同时作用于 Gateway 和 UI Server。" },
-          "proxyNoProxy": { "label": "代理排除列表", "description": "逗号分隔的主机名/IP，这些地址不走代理。" }
+          "host": {
+            "label": "主机",
+            "description": "HTTP/WebSocket 服务器的绑定接口。"
+          },
+          "serverPort": {
+            "label": "服务器端口",
+            "description": "Express + WebSocket 端口。"
+          },
+          "vitePort": {
+            "label": "Vite 端口",
+            "description": "前端开发服务器（仅在运行 npm run dev 时使用）。"
+          },
+          "apiTimeout": {
+            "label": "API 超时（毫秒）",
+            "description": "每次请求的上游超时。"
+          },
+          "databasePath": {
+            "label": "数据库路径",
+            "description": "SQLite 认证/项目数据库（~ 展开为主目录）。"
+          },
+          "workspacesRoot": {
+            "label": "工作区根目录",
+            "description": "项目扫描的根目录。"
+          },
+          "proxyUrl": {
+            "label": "HTTPS 代理",
+            "description": "出站 HTTPS 代理 URL，同时作用于 Gateway 和 UI Server。"
+          },
+          "proxyNoProxy": {
+            "label": "代理排除列表",
+            "description": "逗号分隔的主机名/IP，这些地址不走代理。"
+          }
         }
       },
       "officePreview": {
@@ -1321,16 +1385,37 @@
       "alwaysOn": {
         "title": "Always-On",
         "description": "配置全局自动发现，并按工作区单独开关。",
-        "enabled": { "label": "启用", "description": "常驻后台智能体的总开关。" },
+        "enabled": {
+          "label": "启用",
+          "description": "常驻后台智能体的总开关。"
+        },
         "trigger": {
           "title": "触发",
           "description": "在合适的时机主动发现可推进的工作，并避免频繁打扰。",
-          "autoDiscovery": { "label": "自动发现", "description": "启用后，常驻模式会定期检查已接入的工作区并提出后续计划。" },
-          "tickInterval": { "label": "检查间隔（分钟）", "description": "后台检查工作区状态的频率。" },
-          "cooldown": { "label": "冷却时间（分钟）", "description": "每个工作区两次运行之间的最短间隔。" },
-          "dailyBudget": { "label": "每日预算", "description": "每个工作区每天最多可运行的计划数。" },
-          "heartbeatStale": { "label": "心跳过期（秒）", "description": "超过此时间的心跳视为过期。" },
-          "recentUserMsg": { "label": "最近用户消息（分钟）", "description": "仅在用户于此时间窗口内发送过消息时触发。" },
+          "autoDiscovery": {
+            "label": "自动发现",
+            "description": "启用后，常驻模式会定期检查已接入的工作区并提出后续计划。"
+          },
+          "tickInterval": {
+            "label": "检查间隔（分钟）",
+            "description": "后台检查工作区状态的频率。"
+          },
+          "cooldown": {
+            "label": "冷却时间（分钟）",
+            "description": "每个工作区两次运行之间的最短间隔。"
+          },
+          "dailyBudget": {
+            "label": "每日预算",
+            "description": "每个工作区每天最多可运行的计划数。"
+          },
+          "heartbeatStale": {
+            "label": "心跳过期（秒）",
+            "description": "超过此时间的心跳视为过期。"
+          },
+          "recentUserMsg": {
+            "label": "最近用户消息（分钟）",
+            "description": "仅在用户于此时间窗口内发送过消息时触发。"
+          },
           "preferChannel": {
             "label": "首选频道",
             "description": "常驻智能体向你发送进展的默认频道。",
@@ -1344,25 +1429,58 @@
         "dormancy": {
           "title": "休眠",
           "description": "文件系统监听：用户正在活跃编辑时暂停自动发现。",
-          "enabled": { "label": "启用", "description": "当工作区有近期文件变更时暂停发现触发。" },
-          "debounce": { "label": "防抖（毫秒）", "description": "最后一次文件变更后等待此时长再恢复。" },
-          "ignoreGlobs": { "label": "忽略匹配模式", "description": "不参与休眠检测的文件匹配模式，每行一个。" }
+          "enabled": {
+            "label": "启用",
+            "description": "当工作区有近期文件变更时暂停发现触发。"
+          },
+          "debounce": {
+            "label": "防抖（毫秒）",
+            "description": "最后一次文件变更后等待此时长再恢复。"
+          },
+          "ignoreGlobs": {
+            "label": "忽略匹配模式",
+            "description": "不参与休眠检测的文件匹配模式，每行一个。"
+          }
         },
         "workspace": {
           "title": "工作区",
           "description": "常驻模式跑批的工作区隔离策略。",
-          "gitWorktree": { "label": "Git 工作树根目录", "description": "基于 Git 工作树隔离的根目录。" },
-          "snapshotDir": { "label": "快照根目录", "description": "基于快照隔离的根目录。" },
-          "snapshotMaxBytes": { "label": "快照最大字节数", "description": "工作区快照的最大大小。" },
-          "maxPlansPerCycle": { "label": "每周期最大计划数", "description": "单个隔离环境周期内最多可累计执行的计划数量。" },
-          "gitLfs": { "label": "Git LFS", "description": "在工作区快照中包含 Git LFS 对象。" }
+          "gitWorktree": {
+            "label": "Git 工作树根目录",
+            "description": "基于 Git 工作树隔离的根目录。"
+          },
+          "snapshotDir": {
+            "label": "快照根目录",
+            "description": "基于快照隔离的根目录。"
+          },
+          "snapshotMaxBytes": {
+            "label": "快照最大字节数",
+            "description": "工作区快照的最大大小。"
+          },
+          "maxPlansPerCycle": {
+            "label": "每周期最大计划数",
+            "description": "单个隔离环境周期内最多可累计执行的计划数量。"
+          },
+          "gitLfs": {
+            "label": "Git LFS",
+            "description": "在工作区快照中包含 Git LFS 对象。"
+          }
         },
         "execution": {
           "title": "执行",
           "description": "每次常驻模式跑批的安全上限。",
-          "maxTurns": { "label": "最大轮次", "description": "每次运行的最大智能体轮次数。" },
-          "maxToolCalls": { "label": "最大工具调用数", "description": "每次运行的最大工具调用总数。" },
-          "timeout": { "label": "超时（分钟）", "description": "每次运行的硬性超时。" }
+          "maxTurns": {
+            "label": "最大轮次",
+            "description": "每次运行的最大智能体轮次数。"
+          },
+          "maxToolCalls": {
+            "label": "最大工具调用数",
+            "description": "每次运行的最大工具调用总数。"
+          },
+          "timeout": {
+            "label": "超时（分钟）",
+            "description": "每次运行的硬性超时。"
+          }
         },
         "workspaceOptIn": {
           "title": "项目",
@@ -1481,7 +1599,8 @@
         "provider": {
           "label": "搜索提供商",
           "description": "选择智能体当前使用的搜索服务。",
-          "deepseek": "DeepSeek Search",          "glm": "GLM / Z.AI Web Search",
+          "deepseek": "DeepSeek Search",
+          "glm": "GLM / Z.AI Web Search",
           "tavily": "Tavily",
           "custom": "自定义",
           "serper": "Serper (Google)",
@@ -1560,7 +1679,10 @@
       "router": {
         "title": "PilotDeck Router",
         "description": "内嵌路由器，跨提供商路由分发（按层级分流、Token 节省、自动编排）。",
-        "enabled": { "label": "启用", "description": "启用后，智能体通过路由器而非直接使用配置的提供商。" },
+        "enabled": {
+          "label": "启用",
+          "description": "启用后，智能体通过路由器而非直接使用配置的提供商。"
+        },
         "advancedToggle": "高级设置",
         "ui": {
           "otherProvider": "其他",
@@ -1634,30 +1756,54 @@
         "zeroUsageRetry": {
           "label": "Zero-usage 重试",
           "description": "上游返回零 Token 用量响应时自动重试。",
-          "maxAttempts": { "label": "最大重试次数", "description": "放弃前的最大重试次数。" }
+          "maxAttempts": {
+            "label": "最大重试次数",
+            "description": "放弃前的最大重试次数。"
+          }
         },
         "transientRetry": {
           "label": "瞬态错误重试",
           "description": "遇到瞬态错误（限流、服务端错误、过载）时自动重试，采用指数退避策略。",
-          "maxAttempts": { "label": "最大重试次数", "description": "放弃前的最大重试次数。" },
-          "baseDelayMs": { "label": "基础延迟（毫秒）", "description": "首次重试前的初始等待时间。" },
-          "maxDelayMs": { "label": "最大延迟（毫秒）", "description": "两次重试之间的最长等待时间。" }
+          "maxAttempts": {
+            "label": "最大重试次数",
+            "description": "放弃前的最大重试次数。"
+          },
+          "baseDelayMs": {
+            "label": "基础延迟（毫秒）",
+            "description": "首次重试前的初始等待时间。"
+          },
+          "maxDelayMs": {
+            "label": "最大延迟（毫秒）",
+            "description": "两次重试之间的最长等待时间。"
+          }
         },
         "tokenSaver": {
           "title": "Token 节省",
           "description": "轻量级判定器将每轮对话分类到对应层级，并路由到成本适合的模型。",
           "judgeModel": "判定模型",
           "defaultTier": "默认层级",
-          "judgeTimeout": { "label": "判定超时（毫秒）", "description": "等待判定结果的最长时间。" },
-          "subagentPolicy": { "label": "子智能体策略", "description": "子智能体的路由方式：'judge' 重新评估每个子智能体轮次，'skip' 保持子智能体直接路由。" }
+          "judgeTimeout": {
+            "label": "判定超时（毫秒）",
+            "description": "等待判定结果的最长时间。"
+          },
+          "subagentPolicy": {
+            "label": "子智能体策略",
+            "description": "子智能体的路由方式：'judge' 重新评估每个子智能体轮次，'skip' 保持子智能体直接路由。"
+          }
         },
         "autoOrchestrate": {
           "title": "自动编排",
           "description": "当判定器分配到特定层级时，自动将复杂轮次展开为并行子智能体。",
           "triggerTiers": "触发层级",
-          "slimPrompt": { "label": "精简系统提示", "description": "为编排的子智能体使用更短的系统提示以节省 Token。" }
+          "slimPrompt": {
+            "label": "精简系统提示",
+            "description": "为编排的子智能体使用更短的系统提示以节省 Token。"
+          }
         },
-        "stats": { "label": "统计收集", "description": "跟踪每个会话的 Token 用量和成本。为仪表板提供数据。" },
+        "stats": {
+          "label": "统计收集",
+          "description": "跟踪每个会话的 Token 用量和成本。为仪表板提供数据。"
+        },
         "pricing": {
           "title": "模型定价",
           "description": "每个模型的自定义定价（$/百万 Token）。在 API 不报告成本时使用。",
@@ -1698,8 +1844,14 @@
       "gateway": {
         "title": "网关",
         "description": "消息网关（飞书 / Telegram / Discord / Slack）—— 频道级密钥建议用原始 YAML 编辑。",
-        "enabled": { "label": "启用网关", "description": "统一管理外部消息的接收、路由与回复。" },
-        "home": { "label": "网关主目录", "description": "网关状态和各频道配置的工作目录。" }
+        "enabled": {
+          "label": "启用网关",
+          "description": "统一管理外部消息的接收、路由与回复。"
+        },
+        "home": {
+          "label": "网关主目录",
+          "description": "网关状态和各频道配置的工作目录。"
+        }
       },
       "subsystemReload": {
         "title": "子系统重载状态",

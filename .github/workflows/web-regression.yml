@@ -59,4 +59,12 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: pilotdeck:web-regression
+      - name: Verify isolated image startup dependencies
+        run: >-
+          docker run --rm --entrypoint node pilotdeck:web-regression
+          --import tsx --input-type=module -e
+          "import { classifyRuntimeError } from '@pilotdeck/config';
+          import './ui/server/runtimeBootstrap.js';
+          if (classifyRuntimeError({code:'ENOENT'}) !== 'PD_RESOURCE_NOT_FOUND') process.exit(1);"

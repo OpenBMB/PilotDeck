@@ -9,6 +9,8 @@ import { searchChatHistory } from "../../src/session/search/searchChatHistory.js
 import { listProjectSessions, searchSessionsByTitle } from "../../src/session/storage/SessionList.js";
 
 const NOW = "2026-08-16T09:00:00.000Z";
+// Use the on-disk session ID shape. A colon creates an NTFS alternate data
+// stream instead of a discoverable transcript on Windows.
 
 function entry(type: string, sessionId: string, sequence: number, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return { type, sessionId, turnId: "turn-1", sequence, createdAt: NOW, ...extra };
@@ -21,7 +23,7 @@ test("lists historical sessions whose large inline image hides metadata from the
     const chatDir = getPilotProjectChatDir(projectRoot, pilotHome);
     await mkdir(chatDir, { recursive: true });
 
-    const largeSessionId = "web:s_large-image";
+    const largeSessionId = "web_s_large-image";
     const largeTitle = "Recovered PilotDeck session title";
     const largeInput = entry("accepted_input", largeSessionId, 1, {
       messages: [{
@@ -49,13 +51,13 @@ test("lists historical sessions whose large inline image hides metadata from the
       `${JSON.stringify(largeInput)}\n${JSON.stringify(largeMetadata)}\n${JSON.stringify(largeTail)}\n${JSON.stringify(latestInput)}\n${JSON.stringify(modelSelectionPatch)}\n`,
     );
 
-    const smallSessionId = "web:s_small";
+    const smallSessionId = "web_s_small";
     await writeFile(
       join(chatDir, `${smallSessionId}.jsonl`),
       `${JSON.stringify(entry("session_metadata", smallSessionId, 1, { metadata: { aiTitle: "Small session" } }))}\n`,
     );
 
-    const invalidSessionId = "web:s_invalid";
+    const invalidSessionId = "web_s_invalid";
     const invalidTail = entry("assistant_message", invalidSessionId, 3, {
       message: { role: "assistant", content: [{ type: "text", text: "z".repeat(160 * 1024) }] },
     });
@@ -92,7 +94,7 @@ test("prefers a newer oversized metadata title over an older title in the lite h
     const chatDir = getPilotProjectChatDir(projectRoot, pilotHome);
     await mkdir(chatDir, { recursive: true });
 
-    const sessionId = "web:s_new-fork-title";
+    const sessionId = "web_s_new-fork-title";
     const oldMetadata = entry("session_metadata", sessionId, 1, {
       metadata: { title: "Old parent title" },
     });
@@ -122,7 +124,7 @@ test("preserves createdAt when metadata recovery has no lite summary", async () 
     const chatDir = getPilotProjectChatDir(projectRoot, pilotHome);
     await mkdir(chatDir, { recursive: true });
 
-    const sessionId = "web:s_recovered-created-at";
+    const sessionId = "web_s_recovered-created-at";
     const largeInput = entry("accepted_input", sessionId, 1, {
       messages: [{
         role: "user",
@@ -159,7 +161,7 @@ test("does not trust a trailing metadata patch as a full title snapshot", async 
     const chatDir = getPilotProjectChatDir(projectRoot, pilotHome);
     await mkdir(chatDir, { recursive: true });
 
-    const sessionId = "web:s_tail-patch";
+    const sessionId = "web_s_tail-patch";
     const oldMetadata = entry("session_metadata", sessionId, 1, {
       metadata: { title: "Old title" },
     });
@@ -192,7 +194,7 @@ test("uses firstPrompt from a titled tail snapshot for title search", async () =
     const chatDir = getPilotProjectChatDir(projectRoot, pilotHome);
     await mkdir(chatDir, { recursive: true });
 
-    const sessionId = "web:s_tail-snapshot-prompt";
+    const sessionId = "web_s_tail-snapshot-prompt";
     const originalPrompt = "Original presentation prompt";
     const largeInput = entry("accepted_input", sessionId, 1, {
       messages: [{
@@ -229,7 +231,7 @@ test("uses a prompt-only tail snapshot without requiring a generated title", asy
     const chatDir = getPilotProjectChatDir(projectRoot, pilotHome);
     await mkdir(chatDir, { recursive: true });
 
-    const sessionId = "web:s_prompt-snapshot";
+    const sessionId = "web_s_prompt-snapshot";
     const largeInput = entry("accepted_input", sessionId, 1, {
       messages: [{
         role: "user",

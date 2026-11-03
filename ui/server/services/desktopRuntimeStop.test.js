@@ -4,12 +4,13 @@ import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { it, expect, vi } from 'vitest';
+import { resolveConfigHome, redactDiagnostic } from '@pilotdeck/config';
 
 // Exercise the actual runtime class without booting Electron or local services.
 const main = readFileSync(new URL('../../../apps/desktop/src/main.ts', import.meta.url), 'utf8');
 const source = main.slice(main.indexOf('class RuntimeManager {'), main.indexOf('async function ensureRuntime()'));
 function setup(killProcessTree) {
-  const context = vm.createContext({ killProcessTree, path, os: { EOL: '\n' },
+  const context = vm.createContext({ killProcessTree, path, resolveConfigHome, redactDiagnostic, os: { EOL: '\n' },
     app: { isPackaged: true, getPath: () => '/tmp', setAppLogsPath: vi.fn() }, publishRuntimeStatus: vi.fn() });
   vm.runInContext(ts.transpileModule(source + '\nglobalThis.RuntimeManager = RuntimeManager;', { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
   const manager = new context.RuntimeManager('/tmp', process.execPath);

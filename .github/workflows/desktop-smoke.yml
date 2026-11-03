@@ -102,6 +102,9 @@ jobs:
       - name: Test desktop packaging helpers
         run: pnpm --filter pilotdeck-desktop run test
 
+      - name: Test shared runtime diagnostics and inline script data
+        run: node --test packages/config/tests/*.test.cjs scripts/lib/*.test.mjs
+
       - name: Test desktop updater network
         # Requires electron-updater, intentionally absent from the Web-only job.
         run: >-

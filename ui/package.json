@@ -31,6 +31,7 @@
     "postbuild": "node ../scripts/write-web-build-metadata.mjs dist"
   },
   "dependencies": {
+    "@pilotdeck/config": "workspace:*",
     "@aiden0z/pptx-renderer": "1.2.4",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.9",

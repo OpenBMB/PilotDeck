@@ -248,6 +248,25 @@ test("catalog models keep their catalog image capability when no override is set
   );
 });
 
+test("partial multimodal overrides preserve catalog image constraints", () => {
+  const models = {
+    baseline: { "gpt-4o-mini": {} },
+    partial: { "gpt-4o-mini": { multimodal: { input: ["text", "image"] } } },
+    explicit: { "gpt-4o-mini": { multimodal: { input: ["text", "image"], maxImagesPerRequest: 3 } } },
+  } as const;
+  const parse = (model: typeof models[keyof typeof models]) => parseModelConfig({
+    providers: { openai: { apiKey: "test-key", models: model } },
+  }).providers.openai.models["gpt-4o-mini"].multimodal;
+
+  assert.deepEqual(parse(models.partial), parse(models.baseline));
+  assert.equal(parse(models.explicit).maxImagesPerRequest, 3);
+  assert.deepEqual(parse(models.explicit).supportedImageMimeTypes, parse(models.baseline).supportedImageMimeTypes);
+  assert.throws(
+    () => parse({ "gpt-4o-mini": { multimodal: { input: ["text", "image"], maxImagesPerRequest: 0 } } }),
+    (error: unknown) => (error as { code?: string }).code === "invalid_config_value",
+  );
+});
+
 test("catalog model aliases keep their declared provider image capability", () => {
   const config = parseModelConfig({
     providers: {

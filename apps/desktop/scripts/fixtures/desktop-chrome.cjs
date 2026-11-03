@@ -54,6 +54,11 @@ ipcMain.on('pilotdeck:get-window-state', e => { e.returnValue = { fullscreen: wi
 ipcMain.handle('pilotdeck:set-appearance', (_e, value) => { appearance = value; nativeTheme.themeSource = value.themeMode; publish(); refresh(); });
 ipcMain.handle('pilotdeck:menu-state', (_e, value) => { state = normalizeMenuState(value); refresh(); });
 ipcMain.handle('pilotdeck:get-runtime-info', () => null);
+// The shared pre-bundle startup page reads this synchronously, just like the
+// production shell. A missing handler leaves Chromium waiting during navigation.
+ipcMain.on('pilotdeck:get-runtime-status', event => {
+  event.returnValue = { phase: 'ready', progress: 96, startedAt: Date.now(), phaseStartedAt: Date.now() };
+});
 ipcMain.handle('pilotdeck:about-info', () => desktopAboutInfo({ language: appearance.language, appVersion: '0.1.0-test',
   metadata: { version: '2026.930.0-test', buildTime: '2026-09-30T04:00:00Z', commitSha: 'abc123fixture' },
   platform: process.platform, arch: process.arch, osRelease: os.release(), versions: process.versions }));

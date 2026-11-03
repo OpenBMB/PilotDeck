@@ -426,6 +426,7 @@ export type WebProjectSummary = {
   projectKey: string;
   name: string;
   fullPath: string;
+  /** Nonempty primary transcript files; malformed summaries are skipped lazily. */
   sessionCount: number;
   lastActivity?: number;
   createdAt?: number;

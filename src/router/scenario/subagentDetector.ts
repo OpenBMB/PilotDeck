@@ -42,8 +42,14 @@ export function detectSubagent(
     !!tools &&
     !tools.some((tool) => AGENT_TOOL_NAME_PATTERN.test(tool.name));
 
+  // `missingAgentTool` is a weak heuristic: a main agent that has customized
+  // its tool set to omit `agent`/`task` should NEVER be reclassified as a
+  // subagent on that basis alone — doing so changes model selection, the
+  // fallback chain, and (via RouterRuntime) may terminate the request under
+  // the subagent token budget check. Only the explicit tag in a user message
+  // is strong enough to override the caller's `isMainAgent` flag.
   return {
-    isSubagent: !isMainAgent || taggedInUserMessage || missingAgentTool,
+    isSubagent: !isMainAgent || taggedInUserMessage,
     modelHint,
     missingAgentTool,
     taggedInUserMessage,

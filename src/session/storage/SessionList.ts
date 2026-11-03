@@ -4,14 +4,10 @@ import { getPilotProjectChatDir } from "../../pilot/index.js";
 import { mergeMetadata } from "../metadata/SessionMetadataStore.js";
 import { readSessionLite, SESSION_LITE_READ_BYTES, type SessionLiteFile } from "./SessionLiteReader.js";
 import type { SessionMetadataValue } from "../transcript/TranscriptEntry.js";
+import { isInternalSession, listSessionFiles, type SessionFile } from "./SessionCatalog.js";
 
-const ALWAYS_ON_AUXILIARY_PATTERN = /^always-on-(discovery|workspace|report)[:\-]/;
 const SESSION_METADATA_SCAN_CHUNK_BYTES = 64 * 1024;
 const MAX_SESSION_METADATA_LINE_BYTES = 128 * 1024;
-
-function isInternalSession(sessionId: string): boolean {
-  return ALWAYS_ON_AUXILIARY_PATTERN.test(sessionId);
-}
 
 export type SessionInfo = {
   sessionId: string;
@@ -38,32 +34,55 @@ export type ListProjectSessionsOptions = {
 
 export async function listProjectSessions(options: ListProjectSessionsOptions): Promise<SessionInfo[]> {
   const chatDir = getPilotProjectChatDir(options.projectRoot, options.pilotHome);
-  let names: string[];
-  try {
-    names = await readdir(chatDir);
-  } catch {
-    return [];
-  }
-
+  const files = (await listSessionFiles(options.pilotHome, chatDir))
+    .filter((file) => options.includeInternal || !isInternalSession(file.sessionId));
   const sessions: SessionInfo[] = [];
-  for (const name of names) {
-    if (!name.endsWith(".jsonl")) {
-      continue;
-    }
-    const sessionId = name.slice(0, -".jsonl".length);
-    if (!options.includeInternal && isInternalSession(sessionId)) {
-      continue;
-    }
-    const info = await readSessionInfo(join(chatDir, name), sessionId, options.projectRoot);
-    if (info) {
-      sessions.push(info);
+  const offset = Math.max(0, options.offset ?? 0);
+  const target = options.limit && options.limit > 0 ? offset + options.limit : Infinity;
+  // Stat/sort first, then read only enough valid summaries to fill the page.
+  // Offset still counts visible sessions, so corrupt records cannot leave gaps.
+  for (let start = 0; start < files.length && sessions.length < target;) {
+    const count = Math.min(8, target - sessions.length, files.length - start);
+    const batch = files.slice(start, start + count);
+    start += count;
+    const infos = await Promise.all(batch.map((file) => readCachedSessionInfo(file, options.projectRoot)));
+    sessions.push(...infos.filter((info): info is SessionInfo => info !== null));
+  }
+  return sessions.slice(offset);
+}
+
+// Derived, bounded process-local cache; transcripts remain the source of truth.
+// File attributes are rechecked on every request, including edits from another
+// process. Failed reads are retried instead of being cached indefinitely.
+const sessionInfoCache = new Map<string, { signature: string; info: SessionInfo; bytes: number }>();
+let sessionInfoCacheBytes = 0;
+async function readCachedSessionInfo(file: SessionFile, projectRoot: string): Promise<SessionInfo | null> {
+  const signature = `${file.mtime}:${file.ctime}:${file.size}`;
+  const cached = sessionInfoCache.get(file.path);
+  if (cached?.signature === signature) {
+    sessionInfoCache.delete(file.path);
+    sessionInfoCache.set(file.path, cached);
+    return { ...cached.info, cwd: projectRoot };
+  }
+  const info = await readSessionInfo(file.path, file.sessionId, projectRoot);
+  const previous = sessionInfoCache.get(file.path);
+  if (previous) sessionInfoCacheBytes -= previous.bytes;
+  sessionInfoCache.delete(file.path);
+  if (info) {
+    const bytes = Buffer.byteLength(JSON.stringify(info));
+    // Oversized prompts must not turn a small title cache into a media cache.
+    if (bytes <= 256 * 1024) {
+      while (sessionInfoCache.size >= 512 || sessionInfoCacheBytes + bytes > 8 * 1024 * 1024) {
+        const key = sessionInfoCache.keys().next().value!;
+        sessionInfoCacheBytes -= sessionInfoCache.get(key)!.bytes;
+        sessionInfoCache.delete(key);
+      }
+      // A concurrent append changes the next request's signature and forces a read.
+      sessionInfoCache.set(file.path, { signature, info: { ...info }, bytes });
+      sessionInfoCacheBytes += bytes;
     }
   }
-
-  sessions.sort((left, right) => right.lastModified - left.lastModified);
-  const offset = Math.max(0, options.offset ?? 0);
-  const limit = options.limit ?? sessions.length;
-  return sessions.slice(offset, limit === 0 ? undefined : offset + limit);
+  return info;
 }
 
 export async function readSessionInfo(

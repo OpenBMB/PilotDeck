@@ -8,6 +8,11 @@ import { linuxCaptionAction, linuxCaptionEntries } from "./linuxCaptionMenu";
 import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
+import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiagnostics';
+import { createRuntimeLogWriter, normalizeLogRetentionDays, redactDiagnostic, registerDiagnosticSecrets, setRuntimeLogRetention, type RuntimeLogWriter } from '@pilotdeck/config';
+import { startupProgress } from './startupPresentation';
+import { exportRuntimeLogs } from './runtimeLogExport';
+import { createDesktopUninstaller } from './desktopUninstall';
 import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } from './notifications';
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
@@ -18,7 +23,7 @@ import { DebUpdater, MacUpdater, NsisUpdater, RpmUpdater } from "electron-update
 import { installUpdateDownloadControl } from "./updateDownload";
 import { createUpdateController } from "./updates";
 import { createUpdateNetwork } from "./updateNetwork";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -58,6 +63,9 @@ type RuntimeStatus = {
   message: string;
   logPath?: string;
   error?: string;
+  progress?: number;
+  startedAt?: number;
+  phaseStartedAt?: number;
 };
 
 let mainWindow: BrowserWindow | null = null;
@@ -66,6 +74,8 @@ let runtime: RuntimeManager | null = null;
 let isQuitting = false;
 let runtimeStartPromise: Promise<RuntimeInfo> | null = null;
 let lastRuntimeStatus: RuntimeStatus | null = null;
+let startupPageUrl = '';
+let rendererLog: RuntimeLogWriter | undefined;
 let updateOrigin: string | null = null;
 let desktopTray: ReturnType<typeof createDesktopTray> | null = null;
 
@@ -90,8 +100,9 @@ type BuildMetadata = {
 class RuntimeManager {
   private readonly processes: ManagedProcess[] = [];
   private readonly expectedExits = new WeakSet<ChildProcess>();
+  private readonly processDiagnostics = new WeakMap<ChildProcess, RuntimeProcessDiagnostics>();
   private readonly logPath: string;
-  private logStream: fs.WriteStream | null = null;
+  private logStream: RuntimeLogWriter | null = null;
   private info: RuntimeInfo | null = null;
   private serverProcess: ChildProcess | null = null;
   private gatewayProcess: ChildProcess | null = null;
@@ -123,8 +134,22 @@ class RuntimeManager {
 
   async start(): Promise<RuntimeInfo> {
     this.stopping = false;
-    fs.mkdirSync(path.dirname(this.logPath), { recursive: true });
-    this.logStream = fs.createWriteStream(this.logPath, { flags: "a" });
+    // Read only the new preference from the existing YAML. Broken configuration
+    // uses the default here; the normal model validation still owns its errors.
+    let days = 7;
+    try {
+      const home = process.env.PILOT_HOME || path.join(os.homedir(), '.pilotdeck');
+      const file = process.env.PILOTDECK_CONFIG_PATH || path.join(home, 'pilotdeck.yaml');
+      if (fs.statSync(file).size <= 1024 * 1024) {
+        const yaml = require(require.resolve('yaml', { paths: [path.join(this.runtimeRoot, 'ui')] }));
+        const config = yaml.parse(fs.readFileSync(file, 'utf8'));
+        registerDiagnosticSecrets(config);
+        days = normalizeLogRetentionDays(config?.webui?.runtime?.logRetentionDays);
+      }
+    } catch { /* Default retention also works when the Web server cannot boot. */ }
+    setRuntimeLogRetention(days);
+    this.logStream = createRuntimeLogWriter(this.logPath, { retentionDays: days });
+    rendererLog ??= createRuntimeLogWriter(path.join(path.dirname(this.logPath), 'renderer.log'), { retentionDays: days });
     publishRuntimeStatus({
       phase: "starting",
       message: "Preparing PilotDeck runtime...",
@@ -160,6 +185,7 @@ class RuntimeManager {
     }
     const playwrightBrowsersPath = resolvePlaywrightBrowsersPath(this.runtimeRoot);
     const buildMetadata = readBuildMetadata();
+    this.log(`Runtime context: ${JSON.stringify({ version: app.getVersion(), commit: buildMetadata.commitSha, platform: process.platform, arch: process.arch, nodeBinary: this.nodeBinary, inheritedNodeOptions: Boolean(process.env.NODE_OPTIONS) })}`);
     this.log(`Playwright browsers path: ${playwrightBrowsersPath}`);
     const inheritedEnv = { ...process.env };
     const configuredConfigPath = inheritedEnv.PILOTDECK_CONFIG_PATH?.trim();
@@ -193,6 +219,8 @@ class RuntimeManager {
       PILOTDECK_SKIP_BROWSER_OPEN: "1",
       PILOTDECK_SKIP_DEFAULT_PROJECT: "1",
       PILOTDECK_RUNTIME_SUPERVISED: "1",
+      PILOTDECK_LOG_PATH: this.logPath,
+      PILOTDECK_LOG_CAPTURED: "1",
       PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
     }, this.runtimeRoot, this.nodeBinary, bundledGit);
     this.commonEnv = commonEnv;
@@ -212,7 +240,17 @@ class RuntimeManager {
     );
     this.serverProcess = server;
     server.on("message", (message) => this.handleServerMessage(message));
-    await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath);
+    try {
+      await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const detail = this.processDiagnostics.get(server)?.failure(message) ?? message;
+      this.log(detail);
+      // Configuration may now have started Gateway before Web was ready.
+      await this.stopGateway().catch(stopError => this.log(`Failed to stop startup Gateway: ${String(stopError)}`));
+      throw Object.assign(new Error(detail, { cause: error }), { name: 'RuntimeStartupError' });
+    }
+    this.processDiagnostics.get(server)?.markReady();
 
     this.info = {
       serverPort,
@@ -253,7 +291,7 @@ class RuntimeManager {
     this.gatewayProcess = null;
     this.gatewayStartPromise = null;
     this.log("PilotDeck Desktop runtime stopped");
-    this.logStream?.end();
+    this.logStream?.close();
     this.logStream = null;
     this.info = null;
     this.commonEnv = null;
@@ -272,19 +310,21 @@ class RuntimeManager {
   private gatewayCommand(): string[] {
     const builtEntry = path.join(this.runtimeRoot, "dist", "src", "cli", "pilotdeck.js");
     if (fs.existsSync(builtEntry)) {
-      return [this.nodeBinary, builtEntry, "server"];
+      return [this.nodeBinary, ...runtimeReportArguments(), builtEntry, "server"];
     }
     if (app.isPackaged || process.env.PILOTDECK_DESKTOP_RUNTIME_ROOT) {
       throw new Error(`Compiled PilotDeck gateway entry not found: ${builtEntry}`);
     }
-    return [this.nodeBinary, "--import", "tsx", path.join(this.runtimeRoot, "src", "cli", "pilotdeck.ts"), "server"];
+    return [this.nodeBinary, ...runtimeReportArguments(), "--import", "tsx", path.join(this.runtimeRoot, "src", "cli", "pilotdeck.ts"), "server"];
   }
 
   private serverCommand(): string[] {
+    const entry = fs.existsSync(path.join(this.runtimeRoot, 'ui/server/supervisedBootstrap.js'))
+      ? 'server/supervisedBootstrap.js' : 'server/index.js';
     if (app.isPackaged || process.env.PILOTDECK_DESKTOP_RUNTIME_ROOT) {
-      return [this.nodeBinary, "server/index.js"];
+      return [this.nodeBinary, entry];
     }
-    return [this.nodeBinary, "--import", "tsx", "server/index.js"];
+    return [this.nodeBinary, "--import", "tsx", entry];
   }
 
   private spawnRuntime(
@@ -307,10 +347,16 @@ class RuntimeManager {
       windowsHide: process.platform === "win32",
     }, this.nodeBinary);
     this.processes.push({ name, child });
+    const diagnostics = new RuntimeProcessDiagnostics(name, this.logPath);
+    this.processDiagnostics.set(child, diagnostics);
     this.log(`[${name}] spawn ${bin} ${args.join(" ")}`);
+    this.log(`[${name}] diagnostic=${diagnostics.id}`);
 
     child.stdout?.on("data", (chunk: Buffer) => this.logChunk(name, chunk));
-    child.stderr?.on("data", (chunk: Buffer) => this.logChunk(name, chunk));
+    child.stderr?.on("data", (chunk: Buffer) => {
+      diagnostics.captureStderr(chunk);
+      this.logChunk(name, chunk);
+    });
     child.on("managed-exit", (code, signal, startupError) => {
       // Retain the group record until stop() confirms all descendants exited.
       this.log(`[${name}] exited code=${code ?? "null"} signal=${signal ?? "null"}`);
@@ -318,7 +364,8 @@ class RuntimeManager {
       if (name === "gateway" && this.gatewayProcess === child) {
         this.gatewayProcess = null;
         if (!isQuitting) {
-          const detail = startupError || `Gateway exited code=${code ?? "null"} signal=${signal ?? "null"}`;
+          const detail = diagnostics.exited(code, signal, startupError);
+          this.log(detail);
           this.setGatewayState({ state: "error", error: detail });
           publishRuntimeStatus({
             phase: "error",
@@ -334,7 +381,7 @@ class RuntimeManager {
           phase: "error",
           message: `${name} exited unexpectedly. See runtime log for details.`,
           logPath: this.logPath,
-          error: `${name} exited code=${code ?? "null"} signal=${signal ?? "null"}`,
+          error: diagnostics.exited(code, signal, startupError),
         });
       }
     });
@@ -349,7 +396,12 @@ class RuntimeManager {
       id?: string;
       action?: string;
       value?: unknown;
+      days?: unknown;
     };
+    if (runtimeMessage.type === 'pilotdeck:log-retention') {
+      setRuntimeLogRetention(runtimeMessage.days);
+      return;
+    }
     if (runtimeMessage.type === 'pilotdeck:computer-use-request' && typeof runtimeMessage.id === 'string') {
       const reply = (status?: unknown, error?: string) => {
         if (this.serverProcess?.connected) this.serverProcess.send({ type: 'pilotdeck:computer-use-response', id: runtimeMessage.id, status, error }, () => {});
@@ -443,6 +495,7 @@ class RuntimeManager {
         this.logPath,
       );
       if (this.gatewayProcess !== gateway) return;
+      this.processDiagnostics.get(gateway)?.markReady();
       this.setGatewayState({ state: "ready" });
       publishRuntimeStatus({
         phase: "ready",
@@ -458,7 +511,8 @@ class RuntimeManager {
           this.gatewayProcess = null;
         } catch (stopError) { error = stopError; }
       }
-      const detail = error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
+      const detail = gateway ? this.processDiagnostics.get(gateway)?.failure(message) ?? message : message;
       this.log(`Gateway failed to start: ${detail}`);
       this.setGatewayState({ state: "error", error: detail });
       publishRuntimeStatus({
@@ -475,9 +529,12 @@ class RuntimeManager {
     const gateway = this.gatewayProcess;
     this.gatewayStopPromise = (async () => {
       if (gateway) {
-        this.expectedExits.add(gateway);
-        await this.stopManagedProcess(gateway);
+        // Readiness can reject while the intentional termination is in flight.
+        // Detach it first so that rejection cannot overwrite the Web failure.
         this.gatewayProcess = null;
+        this.expectedExits.add(gateway);
+        try { await this.stopManagedProcess(gateway); }
+        catch (error) { this.gatewayProcess = gateway; throw error; }
       }
       this.setGatewayState({ state: "stopped" });
     })().finally(() => {
@@ -519,7 +576,7 @@ class RuntimeManager {
   }
 
   private log(message: string): void {
-    const line = `${new Date().toISOString()} ${message}${os.EOL}`;
+    const line = `${new Date().toISOString()} ${redactDiagnostic(message)}${os.EOL}`;
     this.logStream?.write(line);
     if (!app.isPackaged) process.stdout.write(line);
   }
@@ -639,7 +696,8 @@ async function createOrShowWindow(): Promise<void> {
     showDialog: (options) => dialog.showMessageBox(recoveryWindow, options),
     log: (event, details) => {
       const line = `${new Date().toISOString()} [renderer] ${event} ${JSON.stringify(details)}\n`;
-      void fs.promises.appendFile(path.join(app.getPath("logs"), "renderer.log"), line).catch(() => {});
+      rendererLog ??= createRuntimeLogWriter(path.join(app.getPath("logs"), "renderer.log"));
+      rendererLog.write(redactDiagnostic(line));
     },
   });
 
@@ -660,8 +718,10 @@ async function createOrShowWindow(): Promise<void> {
     updateApplicationMenu();
   });
 
-  await mainWindow.webContents.session.clearCache();
-  await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderLoadingHtml(readAppearance()))}`);
+  // Hashed assets and revalidated HTML already handle software updates.
+  // Clearing the entire HTTP cache here made every window start a cold load.
+  startupPageUrl = `data:text/html;charset=utf-8,${encodeURIComponent(renderLoadingHtml(readAppearance()))}`;
+  await mainWindow.loadURL(startupPageUrl);
   if (lastRuntimeStatus) {
     sendRuntimeStatus(lastRuntimeStatus);
   }
@@ -678,6 +738,11 @@ async function loadRuntimeUrl(info: RuntimeInfo): Promise<void> {
 }
 
 function publishRuntimeStatus(status: RuntimeStatus): void {
+  const restarting = status.phase === 'starting' || status.phase === 'gateway' && ['error', 'ready', 'stopped'].includes(lastRuntimeStatus?.phase ?? '');
+  const previous = restarting ? 0 : lastRuntimeStatus?.progress ?? 0;
+  status.progress = Math.max(previous, startupProgress[status.phase] ?? previous);
+  status.startedAt = restarting ? Date.now() : lastRuntimeStatus?.startedAt ?? Date.now();
+  status.phaseStartedAt = restarting || status.phase !== lastRuntimeStatus?.phase ? Date.now() : lastRuntimeStatus?.phaseStartedAt ?? Date.now();
   lastRuntimeStatus = status;
   sendRuntimeStatus(status);
 }
@@ -726,7 +791,9 @@ async function startRuntimeAndLoad(): Promise<void> {
     const info = await ensureRuntime();
     await loadRuntimeUrl(info);
   } catch (error) {
-    const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+    const detail = error instanceof Error && error.name === 'RuntimeStartupError'
+      ? error.message
+      : new RuntimeProcessDiagnostics("desktop", runtime?.getLogPath() || path.join(app.getPath("logs"), "runtime.log")).failure(error instanceof Error ? error.stack ?? error.message : String(error));
     publishRuntimeStatus({
       phase: "error",
       message: "PilotDeck failed to start.",
@@ -751,10 +818,12 @@ async function retryRuntime(): Promise<void> {
   if (isQuitting) return;
   runtime = null;
   runtimeStartPromise = null;
+  publishRuntimeStatus({ phase: 'starting', message: 'Preparing PilotDeck runtime...', logPath: currentRuntime?.getLogPath() });
   if (!mainWindow || mainWindow.isDestroyed()) {
     await createOrShowWindow();
   } else {
-    await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderLoadingHtml(readAppearance()))}`);
+    startupPageUrl = `data:text/html;charset=utf-8,${encodeURIComponent(renderLoadingHtml(readAppearance()))}`;
+    await mainWindow.loadURL(startupPageUrl);
   }
   await startRuntimeAndLoad();
 }
@@ -958,6 +1027,7 @@ function waitForPortOrProcessExit(
       if (settled) return;
       settled = true;
       child.off("managed-exit", onExit);
+      child.off("error", onError);
       callback();
     };
     const onExit = (code: number | null, signal: NodeJS.Signals | null, startupError?: string) => {
@@ -966,6 +1036,8 @@ function waitForPortOrProcessExit(
       });
     };
     child.once("managed-exit", onExit);
+    const onError = (error: Error) => finish(() => reject(error));
+    child.once("error", onError);
     waitForPort(port, host, timeoutMs)
       .then(() => finish(resolve))
       .catch((error) => finish(() => reject(error)));
@@ -1283,6 +1355,36 @@ ipcMain.handle('pilotdeck:delete-appearance-image', (event, id: unknown) => {
 });
 
 ipcMain.handle("pilotdeck:get-runtime-info", () => runtime?.getInfo());
+const uninstallDataHelper = require(app.isPackaged ? path.join(process.resourcesPath, 'uninstall-data.cjs') : path.join(__dirname, '../resources/uninstall-data.cjs'));
+const desktopUninstaller = createDesktopUninstaller({
+  platform: process.platform, packaged: app.isPackaged, chinese: () => readAppearance().language === 'zh-CN', exists: fs.existsSync,
+  run: (file, args) => new Promise(resolve => execFile(file, args, { windowsHide: true }, (error, stdout) => resolve({ code: error ? 1 : 0, stdout }))),
+  confirm: options => mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options),
+  stop: async () => { isQuitting = true; await runtimeStartPromise?.catch(() => {}); await runtime?.stop(); runtime = null; runtimeStartPromise = null; },
+  restore: async () => { isQuitting = false; await startRuntimeAndLoad(); },
+  cleanup: () => {
+    return uninstallDataHelper.cleanupPersonalData({ profile: os.homedir(), appData: app.getPath('appData'), localAppData: process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), pilotHome: process.env.PILOT_HOME });
+  },
+  notify: async message => { await dialog.showMessageBox({ type: 'info', title: 'PilotDeck', message }); },
+  quit: () => { isQuitting = true; app.exit(0); },
+});
+ipcMain.handle('pilotdeck:uninstall-status', event => { requireUpdateSender(event); return { supported: desktopUninstaller.supported() }; });
+ipcMain.handle('pilotdeck:uninstall', event => { requireUpdateSender(event); return desktopUninstaller.start(); });
+ipcMain.on('pilotdeck:get-runtime-status', (event) => { event.returnValue = lastRuntimeStatus; });
+ipcMain.handle('pilotdeck:save-runtime-logs', async event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid log export sender');
+  if (event.senderFrame.url !== startupPageUrl) requireUpdateSender(event);
+  const logPath = runtime?.getLogPath() ?? lastRuntimeStatus?.logPath;
+  if (!logPath) throw new Error('No runtime logs available');
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: readAppearance().language === 'zh-CN' ? '下载运行日志' : 'Download runtime logs',
+    defaultPath: path.join(app.getPath('downloads'), `PilotDeck-logs-${new Date().toISOString().replace(/[:.]/g, '-')}.log`),
+    filters: [{ name: readAppearance().language === 'zh-CN' ? '运行日志' : 'Runtime logs', extensions: ['log'] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  await exportRuntimeLogs(logPath, result.filePath);
+  return { canceled: false };
+});
 ipcMain.handle("pilotdeck:retry-runtime", () => retryRuntime());
 ipcMain.handle("pilotdeck:open-runtime-log", async () => {
   const logPath = runtime?.getLogPath() ?? lastRuntimeStatus?.logPath;
@@ -1345,8 +1447,8 @@ const ownsInstance = process.platform === "darwin" || app.requestSingleInstanceL
 if (!ownsInstance) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    void restoreMainWindow().catch(error => console.error("Could not restore PilotDeck", error));
+  app.on("second-instance", (_event, argv) => {
+    void restoreMainWindow().then(() => argv.includes('--uninstall') ? desktopUninstaller.start() : undefined).catch(error => console.error("Could not restore PilotDeck", error));
   });
   app.whenReady()
     .then(async () => {
@@ -1405,7 +1507,13 @@ if (!ownsInstance) {
       }
       await createOrShowWindow();
     })
-    .then(startRuntimeAndLoad)
+    .then(async () => {
+      if (process.platform === 'linux' && process.argv.includes('--uninstall')) {
+        try { await desktopUninstaller.start(); }
+        catch (error) { dialog.showErrorBox('PilotDeck', String(error)); }
+        if (!isQuitting) app.exit(0);
+      } else await startRuntimeAndLoad();
+    })
     .catch(async (error) => {
       const detail = error instanceof Error ? error.stack ?? error.message : String(error);
       await runtime?.stop().catch(() => undefined);

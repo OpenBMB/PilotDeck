@@ -1,6 +1,6 @@
 import { recordUiDiagnostic, reloadUi } from '../../../lib/uiDiagnostics';
 import { useTranslation } from 'react-i18next';
-import { useCallback, useState, type ErrorInfo, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, type ErrorInfo, type ReactNode } from 'react';
 import {
   ErrorBoundary as ReactErrorBoundary,
   type FallbackProps,
@@ -9,6 +9,7 @@ import {
 type ErrorFallbackProps = FallbackProps & {
   showDetails: boolean;
   componentStack: string | null;
+  diagnosticId: string | null;
 };
 
 type ErrorBoundaryProps = {
@@ -31,8 +32,16 @@ function ErrorFallback({
   resetErrorBoundary,
   showDetails,
   componentStack,
+  diagnosticId,
 }: ErrorFallbackProps) {
   const { t } = useTranslation('common');
+  const [logPath, setLogPath] = useState('~/.pilotdeck/logs/runtime.log');
+  useEffect(() => {
+    let token: string | null = null;
+    try { token = localStorage.getItem('auth-token'); } catch { /* unavailable */ }
+    void fetch('/api/diagnostics/location', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(response => response.ok ? response.json() : null).then(value => { if (value?.logPath) setLogPath(value.logPath); }).catch(() => {});
+  }, []);
   return (
     <div className="flex flex-col items-center justify-center p-8 text-center">
       <div className="max-w-md rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 p-6">
@@ -50,6 +59,7 @@ function ErrorFallback({
         </div>
         <div className="text-sm text-red-700 dark:text-red-300">
           <p className="mb-2">{t('common:uiText.chatError')}</p>
+          <p className="break-all font-mono text-xs">PD_UI_RENDER_FAILED {diagnosticId} · {t('uiText.runtimeLog', { defaultValue: 'Runtime log' })}: {logPath}</p>
           {showDetails && (
             <details className="mt-4">
               <summary className="cursor-pointer font-mono text-xs">{t('common:uiText.errorDetails')}</summary>
@@ -84,10 +94,11 @@ function ErrorBoundary({
   resetKeys = undefined,
 }: ErrorBoundaryProps) {
   const [componentStack, setComponentStack] = useState<string | null>(null);
+  const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
 
   const handleError = useCallback((error: Error, errorInfo: ErrorInfo) => {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
-    recordUiDiagnostic('react-boundary', { errorName: error.name });
+    setDiagnosticId(recordUiDiagnostic('react-boundary', { errorName: error.name }).diagnosticId);
     // Keep component stack for optional debug rendering in fallback UI.
     setComponentStack(errorInfo?.componentStack ?? null);
   }, []);
@@ -104,9 +115,10 @@ function ErrorBoundary({
         resetErrorBoundary={resetErrorBoundary}
         showDetails={showDetails}
         componentStack={componentStack}
+        diagnosticId={diagnosticId}
       />
     ),
-    [showDetails, componentStack]
+    [showDetails, componentStack, diagnosticId]
   );
 
   return (
