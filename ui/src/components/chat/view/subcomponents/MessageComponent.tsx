@@ -27,6 +27,7 @@ import { CollapsibleDisplay } from '../../tools/components';
 import DocumentReferenceChip from '../../../chat-v2/DocumentReferenceChip';
 import { Markdown } from './Markdown';
 import MessageCopyControl from './MessageCopyControl';
+import ConversationError from './ConversationError';
 import ImageLightbox, { type LightboxImage } from './ImageLightbox';
 
 type DiffLine = {
@@ -269,6 +270,9 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
   ]);
 
   const formattedTime = useMemo(() => new Date(message.timestamp).toLocaleTimeString(), [message.timestamp]);
+  if (message.type === 'error') {
+    return <div className="chat-message error px-3 sm:px-0" ref={messageRef}><ConversationError message={message} /></div>;
+  }
   const shouldHideThinkingMessage = Boolean(message.isThinking && !showThinking);
 
   if (shouldHideThinkingMessage) {

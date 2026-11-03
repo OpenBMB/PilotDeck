@@ -1,7 +1,7 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { AlertTriangle, Check, Copy, GitBranch, Loader2, Pencil } from 'lucide-react';
+import { Check, Copy, GitBranch, Loader2, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import TurnChangesCard from '../chat-review/TurnChangesCard';
 import { isImeEnterEvent } from '../../utils/ime.js';
@@ -25,6 +25,7 @@ import type {
   SessionRuntimeState,
 } from '../chat/types/types';
 import MessageComponent from '../chat/view/subcomponents/MessageComponent';
+import ConversationError from '../chat/view/subcomponents/ConversationError';
 import ImageLightbox, { type LightboxImage } from '../chat/view/subcomponents/ImageLightbox';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { formatUsageLimitText } from '../chat/utils/chatFormatting';
@@ -549,18 +550,9 @@ function MessageRowV2({
     );
   }
 
-  // Error: full-width red banner with warning glyph.
   if (isError) {
     return withProcessRows(
-      <div className="flex gap-3">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-500">
-          <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
-        </div>
-        <div className="min-w-0 flex-1 pt-0.5 text-[14px] leading-relaxed text-red-500">
-          <Markdown projectName={selectedProject?.name}
-          onFileOpen={onFileOpen}>{formattedContent}</Markdown>
-        </div>
-      </div>,
+      <ConversationError message={message} />,
     );
   }
 
