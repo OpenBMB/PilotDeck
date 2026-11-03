@@ -23,7 +23,8 @@ if ('serviceWorker' in navigator) {
 
 // Install recovery handlers before importing the application.
 async function mountApplication() {
-await import('./i18n/config.js');
+// App imports the initialized i18n instance itself. Loading it separately here
+// serialized two large chunks on every cold start.
 const { default: App } = await import('./App.tsx');
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

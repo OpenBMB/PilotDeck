@@ -29,9 +29,8 @@ it('finishes and fades smoothly even when a client is ready immediately', async 
   const workspace = screen.getByText('workspace ready');
   expect(workspace.parentElement).toBe(root);
   expect(root.inert).toBe(true);
-  expect(root.dataset.pilotdeckStartup).toBe('waiting');
+  expect(root.dataset.pilotdeckStartup).toBe('complete');
   expect(screen.queryByText('P')).toBeNull();
-  act(() => vi.advanceTimersByTime(200));
   expect(workspace.parentElement).toBe(root);
   expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
   act(() => vi.advanceTimersByTime(240));
@@ -42,6 +41,64 @@ it('finishes and fades smoothly even when a client is ready immediately', async 
   expect(workspace.parentElement).toBe(root);
   expect(root.inert).toBe(false);
   expect(root.dataset.pilotdeckStartup).toBeUndefined();
+});
+
+it.each([
+  [undefined, '#ffffff'],
+  [{ preset: 'default' }, '#ffffff'],
+  [{ preset: 'lavender' }, '#f1ecfa'],
+  [{ preset: 'custom', custom: { background: '#b9dfce' } }, '#b9dfce'],
+])('keeps the native startup canvas during the Web handoff with preference %j', (lightAppearance, expected) => {
+  // Reproduce the default lavender application canvas being available before
+  // the Web startup script runs, after leaving the native white document.
+  document.documentElement.style.backgroundColor = '#eef0f8';
+  localStorage.setItem('themeMode', 'light');
+  localStorage.setItem('pilotdeck-light-appearance-v1', JSON.stringify(lightAppearance ?? null));
+  const html = renderLoadingHtml({ language: 'en', themeMode: 'light' }, true);
+  const shell = document.createElement('div'); shell.id = 'pilotdeck-startup-shell';
+  shell.innerHTML = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)![1]; document.body.append(shell);
+  try {
+    for (const script of shell.querySelectorAll('script')) new Function('window', 'document', 'navigator', 'localStorage', script.textContent!)(window, document, navigator, localStorage);
+    expect(document.documentElement.style.getPropertyValue('--startup-bg') || '#ffffff').toBe(expected);
+  } finally {
+    localStorage.clear(); document.documentElement.removeAttribute('style');
+  }
+});
+
+it('seeds desktop progress before enabling the first Web transition', () => {
+  const now = Date.now();
+  const status = { phase: 'gateway', progress: 78, startedAt: now - 10000, phaseStartedAt: now - 5000 };
+  window.pilotdeckDesktop = { getRuntimeStatus: () => status, onRuntimeStatus: () => () => {} } as never;
+  const html = renderLoadingHtml({ language: 'en', themeMode: 'light' }, true);
+  const shell = document.createElement('div'); shell.id = 'pilotdeck-startup-shell';
+  shell.innerHTML = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)![1]; document.body.append(shell);
+  const bar = document.getElementById('bar')!;
+  let seededWidth = 0;
+  vi.spyOn(bar, 'getBoundingClientRect').mockImplementation(() => {
+    expect(bar.style.transition).toBe('none');
+    seededWidth = parseFloat(bar.style.width);
+    return {} as DOMRect;
+  });
+  for (const script of shell.querySelectorAll('script')) new Function('window', 'document', 'navigator', 'localStorage', script.textContent!)(window, document, navigator, localStorage);
+  expect(seededWidth).toBeCloseTo(startupVisualProgress(status, now), 1);
+  expect(seededWidth).toBeGreaterThan(78);
+  expect(bar.style.transition).toBe('');
+  window.__pilotdeckStartupUpdate!({ phase: 'ready', progress: 96, completed: true, leaving: true });
+  window.__pilotdeckStartupUpdate!({ phase: 'ready', progress: 96 });
+  expect(bar.style.width).toBe('100%');
+  expect(document.getElementById('startup')!.dataset.leaving).toBe('true');
+});
+
+it.each(['dark', 'system'] as const)('keeps dark startup colors with a custom light palette in %s mode', (themeMode) => {
+  window.pilotdeckDesktop = { getAppearance: () => ({ themeMode, lightAppearance: { preset: 'rose' } }), onRuntimeStatus: () => () => {} } as never;
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+  const html = renderLoadingHtml({ language: 'en', themeMode }, true);
+  const shell = document.createElement('div'); shell.id = 'pilotdeck-startup-shell';
+  shell.innerHTML = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)![1]; document.body.append(shell);
+  try {
+    for (const script of shell.querySelectorAll('script')) new Function('window', 'document', 'navigator', 'localStorage', script.textContent!)(window, document, navigator, localStorage);
+    expect(document.documentElement.style.getPropertyValue('--startup-bg')).toBe('#0a0a0a');
+  } finally { vi.unstubAllGlobals(); document.documentElement.removeAttribute('style'); }
 });
 
 it('keeps the same painted HTML shell and progress node through React loading, Gateway and workspace handoffs', async () => {
