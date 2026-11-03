@@ -8478,7 +8478,6 @@
 }
 
 /* Deep links from model-removal previews identify the current editable owner. */
-:where(.pilotdeck-settings-app) .model-pool-default { margin-bottom: 20px; }
 :where(.pilotdeck-settings-app) .model-reference-detail { flex: 0 0 auto; margin-bottom: 20px; }
 :where(.pilotdeck-settings-app) .model-reference-value { white-space: pre-wrap; overflow-wrap: anywhere; }
 :where(.pilotdeck-settings-app) [data-reference-highlight] {
