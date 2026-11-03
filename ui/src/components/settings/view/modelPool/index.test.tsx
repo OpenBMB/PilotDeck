@@ -5,7 +5,7 @@ import { parse } from 'yaml';
 import ModelPoolSections from './index';
 const mocks = vi.hoisted(() => ({ commit: vi.fn() }));
 vi.mock('../../../../hooks/usePilotDeckConfig', () => ({ usePilotDeckConfig: () => ({
-  raw: JSON.stringify({ agent: { model: 'HX API/old', maxContextTokens: 128000 }, model: { providers: { 'HX API': { protocol: 'openai', models: { old: {} } } } } }),
+  raw: JSON.stringify({ agent: { model: 'HX API/old', maxContextTokens: 128000, subagents: { default: 'HX API/helper' } }, model: { providers: { 'HX API': { protocol: 'openai', models: { old: {} } } } } }),
   loading: false, error: null, commitRaw: mocks.commit, acceptServerConfig: vi.fn(),
 }) }));
 vi.mock('./components/ModelsSection', () => ({ default: ({ config, onChange }: any) => <div data-testid="modern-provider-workspace">
@@ -22,12 +22,12 @@ it('shows the provider workspace without primary-model or agent-context controls
   expect(mocks.commit).not.toHaveBeenCalled();
 });
 
-it('continues saving per-model context settings without rewriting the existing agent configuration', async () => {
+it('removes the hidden legacy context override on explicit model saves while preserving other agent settings', async () => {
   mocks.commit.mockResolvedValue({ ok: true });
   render(<ModelPoolSections title="Models" />);
   fireEvent.click(screen.getByRole('button', { name: 'Save model settings' }));
   await waitFor(() => expect(mocks.commit).toHaveBeenCalledOnce());
   const config = parse(mocks.commit.mock.calls[0][0]);
-  expect(config.agent).toEqual({ model: 'HX API/old', maxContextTokens: 128000 });
+  expect(config.agent).toEqual({ model: 'HX API/old', subagents: { default: 'HX API/helper' } });
   expect(config.model.providers['HX API'].models.old.capabilities.maxContextTokens).toBe(65536);
 });

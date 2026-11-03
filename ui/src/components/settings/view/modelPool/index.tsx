@@ -31,7 +31,14 @@ export default function ModelPoolSections({ title: _title }: ModelPoolSectionsPr
     options?: ConfigSaveOptions,
   ): Promise<ConfigSaveResult> => {
     try {
-      const nextRaw = configToYamlString(next);
+      // Model settings now own context limits. Retire the hidden legacy
+      // override only on an explicit save, leaving other agent settings intact.
+      const nextConfig = { ...next };
+      if (next.agent) {
+        nextConfig.agent = { ...next.agent };
+        delete nextConfig.agent.maxContextTokens;
+      }
+      const nextRaw = configToYamlString(nextConfig);
       return await commitRaw(nextRaw, options);
     } catch (caught) {
       const message = caught instanceof Error
