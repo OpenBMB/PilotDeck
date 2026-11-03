@@ -8,6 +8,7 @@ on:
       - src/**
       - tests/**
       - scripts/**
+      - resources/**
       - ui/**
       - skills/**
       - package.json
