@@ -8,7 +8,7 @@ import { buildApplicationMenu } from "./applicationMenu";
 import { createDesktopTray } from "./desktopTray";
 import { createDesktopLifecycle } from "./desktopLifecycle";
 import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiagnostics';
-import { withRuntimeCommandPath } from './runtimeEnvironment';
+import { desktopInstallationRoot, withRuntimeCommandPath } from './runtimeEnvironment';
 import { findFreePort } from './startupNetwork';
 import { createRuntimeLogWriter, normalizeLogRetentionDays, redactDiagnostic, registerDiagnosticSecrets, setRuntimeLogRetention, type RuntimeLogWriter } from '@pilotdeck/config';
 import { startupProgress } from './startupPresentation';
@@ -217,6 +217,7 @@ class RuntimeManager {
       HOST: "127.0.0.1",
       PILOTDECK_RUNTIME_ROOT: this.runtimeRoot,
       PILOTDECK_DESKTOP_RUNTIME_ROOT: this.runtimeRoot,
+      PILOTDECK_DESKTOP_INSTALL_ROOT: app.isPackaged ? desktopInstallationRoot(process.resourcesPath) : this.runtimeRoot,
       PILOT_HOME: config.pilotHome,
       PILOTDECK_CONFIG_DIR: config.pilotHome,
       SERVER_PORT: String(serverPort),

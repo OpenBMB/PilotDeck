@@ -41,6 +41,19 @@ describe('General workspace isolation', () => {
         expect(await fs.readFile(path.join(legacy, 'report.md'), 'utf8')).toBe('previous version file');
         expect(await fs.readdir(path.dirname(legacy))).not.toContain('PilotDeckGeneral');
     });
+    it.each(['runtime', 'resources-sibling', 'install-sibling', 'install-root', 'install-parent'])('rejects a custom workspace overlapping the complete desktop installation: %s', async kind => {
+        const root = await makeTemporaryRoot();
+        const installation = path.join(root, 'application');
+        const runtime = path.join(installation, 'resources', 'runtime');
+        await fs.mkdir(runtime, { recursive: true });
+        const candidate = { runtime, 'resources-sibling': path.join(installation, 'resources', 'user-workspace'),
+            'install-sibling': path.join(installation, 'user-workspace'), 'install-root': installation, 'install-parent': root }[kind];
+        const env = { PILOT_HOME: path.join(root, 'profile'), PILOTDECK_DESKTOP_RUNTIME_ROOT: runtime,
+            PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: candidate };
+        await expect(ensureGeneralWorkspaceDirectory(env)).rejects.toMatchObject({ code: 'GENERAL_WORKSPACE_UNSAFE' });
+        expect(await fs.readdir(runtime)).toEqual([]);
+        expect(await fs.readdir(installation)).toEqual(['resources']);
+    });
     it.each(['win32', 'darwin', 'linux'])('uses an explicitly configured exact directory on %s', (platform) => {
         const homeDirectory = path.resolve('fixture-user');
         const directory = path.resolve('custom-directory');

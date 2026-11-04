@@ -115,6 +115,32 @@ async function realPlannedPath(candidate) {
     }
 }
 
+async function assertSafeLocation(candidate, env) {
+    const pilotHome = resolvePilotHome(env);
+    const [plannedCandidate, plannedPilotHome] = await Promise.all([
+        realPlannedPath(candidate), realPlannedPath(pilotHome),
+    ]);
+    assertSeparatedFromPilotHome(plannedCandidate, plannedPilotHome);
+    const runtimeRoots = [env.PILOTDECK_DESKTOP_RUNTIME_ROOT, env.PILOTDECK_RUNTIME_ROOT].filter(Boolean);
+    const installationPaths = [env.PILOTDECK_DESKTOP_INSTALL_ROOT,
+        fileURLToPath(new URL('../../../', import.meta.url)), ...runtimeRoots];
+    // Older desktop launchers supplied only resources/runtime. Protect its
+    // complete install too: upgrades replace the enclosing resources tree.
+    for (const runtime of runtimeRoots) {
+        const resources = path.dirname(path.resolve(runtime));
+        if (path.basename(runtime).toLowerCase() === 'runtime' && path.basename(resources).toLowerCase() === 'resources') {
+            const parent = path.dirname(resources);
+            installationPaths.push(path.basename(parent) === 'Contents' ? path.dirname(parent) : parent);
+        }
+    }
+    for (const installation of installationPaths.filter(Boolean)) {
+        const realInstallation = await realPlannedPath(path.resolve(installation));
+        if (isPathInsideOrEqual(plannedCandidate, realInstallation) || isPathInsideOrEqual(realInstallation, plannedCandidate)) {
+            throw Object.assign(new Error('General workspace overlaps the PilotDeck installation.'), { code: 'GENERAL_WORKSPACE_UNSAFE' });
+        }
+    }
+}
+
 /**
  * Materialize the managed working directory used by General conversations.
  *
@@ -124,20 +150,7 @@ async function realPlannedPath(candidate) {
  */
 async function prepareDirectory(candidate, env, { requireEmpty = false, workspaceId } = {}) {
     const pilotHome = resolvePilotHome(env);
-    const [plannedCandidate, plannedPilotHome] = await Promise.all([
-        realPlannedPath(candidate), realPlannedPath(pilotHome),
-    ]);
-    assertSeparatedFromPilotHome(plannedCandidate, plannedPilotHome);
-    // Cover desktop installs and source/web deployments, including an install
-    // nested inside the proposed workspace. Resolve links before comparing.
-    const installationPaths = [env.PILOTDECK_DESKTOP_RUNTIME_ROOT, env.PILOTDECK_RUNTIME_ROOT,
-        fileURLToPath(new URL('../../../', import.meta.url))].filter(Boolean);
-    for (const installation of installationPaths) {
-        const realInstallation = await realPlannedPath(path.resolve(installation));
-        if (isPathInsideOrEqual(plannedCandidate, realInstallation) || isPathInsideOrEqual(realInstallation, plannedCandidate)) {
-            throw Object.assign(new Error('General workspace overlaps the PilotDeck installation.'), { code: 'GENERAL_WORKSPACE_UNSAFE' });
-        }
-    }
+    await assertSafeLocation(candidate, env);
 
     const existing = await fs.lstat(candidate).catch((error) => {
         if (error?.code === 'ENOENT') return null;
@@ -203,6 +216,7 @@ const locationLocks = new Map();
 export async function ensureGeneralWorkspaceDirectory(env = process.env, options = {}) {
     if (env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY?.trim()) {
         const candidate = resolveGeneralWorkspaceDirectory(env, options);
+        await assertSafeLocation(candidate, env);
         if (!env.PILOTDECK_GENERAL_WORKSPACE_ID) await assertGeneralWorkspaceSwitchAllowed(null, candidate);
         await prepareDirectory(candidate, env, { workspaceId: env.PILOTDECK_GENERAL_WORKSPACE_ID || undefined });
         return candidate;
