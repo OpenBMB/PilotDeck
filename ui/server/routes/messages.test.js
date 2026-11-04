@@ -79,3 +79,16 @@ describe('message routes', () => {
     }
   });
 });
+
+it.each(['generate_video', 'save_generated_video'])('retains %s attachment identity and purpose through HTTP history recovery', async toolName => {
+  const videoGeneration = { videoId: 'video-id', sessionId: 'web:session', path: '/managed/video.mp4', mimeType: 'video/mp4', purpose: 'deliverable' };
+  vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+    withPilotDeckGatewayReadRetry: vi.fn(async () => ({ messages: [{ id: 'result', kind: 'tool_result', toolName,
+      toolCallId: 'video-call', text: 'Video attached', ok: true, payload: { videoGeneration } }] })),
+  }));
+  const { default: routes } = await import('./messages.js'); const app = express(); app.use('/api/sessions', routes); const server = app.listen(0);
+  try {
+    const response = await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/web:session/messages`);
+    expect((await response.json()).messages[0]).toMatchObject({ kind: 'tool_result', toolId: 'video-call', toolUseResult: { videoGeneration } });
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
