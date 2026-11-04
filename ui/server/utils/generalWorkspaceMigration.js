@@ -104,7 +104,7 @@ async function copyTree(source, destination, roots, report) {
     await assertInside(roots.destination, destination);
     for (const name of (await fs.readdir(source)).sort()) {
         // Workspace ownership belongs to the destination, never to an old copy.
-        if (name === '.pilotdeck-workspace') continue;
+        if (source === roots.source && name === '.pilotdeck-workspace') continue;
         const from = path.join(source, name);
         const sourceStat = await fs.lstat(from);
         const relativeSource = path.relative(roots.source, from);

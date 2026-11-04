@@ -299,11 +299,13 @@ async function ensureDefaultDirectory(env, options) {
         if (error.code === 'ENOENT') return []; throw error;
     })).some(name => name.endsWith('.jsonl'));
     const previousDirectory = legacyState ? state.directory : path.join(path.dirname(base), 'PilotDeck');
+    const previousStat = await fs.lstat(previousDirectory).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    const previousIsDirectory = previousStat?.isDirectory() && !previousStat.isSymbolicLink();
     let previousMarker;
-    try { previousMarker = JSON.parse(await fs.readFile(path.join(previousDirectory, GENERAL_WORKSPACE_MARKER), 'utf8')); }
+    try { if (previousIsDirectory) previousMarker = JSON.parse(await fs.readFile(path.join(previousDirectory, GENERAL_WORKSPACE_MARKER), 'utf8')); }
     catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; }
     const ownedPrevious = previousMarker?.product === 'PilotDeck' && previousMarker?.version === 1 && typeof previousMarker?.id === 'string';
-    if (legacyState || hasGeneralHistory || ownedPrevious) {
+    if (legacyState || (previousIsDirectory && (hasGeneralHistory || ownedPrevious))) {
         let safe = true;
         try { await assertSafeLocation(previousDirectory, env); }
         catch (error) {

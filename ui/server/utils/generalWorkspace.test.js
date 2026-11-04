@@ -188,6 +188,20 @@ describe('General workspace isolation', () => {
         expect(await fs.readdir(current)).toEqual(['.pilotdeck-workspace']);
         expect(await fs.readFile(path.join(legacy, 'app.exe'), 'utf8')).toBe('application');
     });
+    it.each(['file', 'link'])('ignores an unrelated %s at the previous PilotDeck path on first launch', async kind => {
+        const root = await makeTemporaryRoot();
+        const previous = path.join(root, 'PilotDeck');
+        if (kind === 'file') await fs.writeFile(previous, 'unrelated file');
+        else {
+            const other = path.join(root, 'other');
+            await fs.mkdir(other);
+            await fs.writeFile(path.join(other, 'private.txt'), 'must not import');
+            await fs.symlink(other, previous, process.platform === 'win32' ? 'junction' : 'dir');
+        }
+        const directory = await ensureGeneralWorkspaceDirectory({ PILOT_HOME: path.join(root, 'profile'), WORKSPACES_ROOT: root });
+        expect(directory).toBe(path.join(root, 'PilotDeckGeneral'));
+        expect(await fs.readdir(directory)).toEqual(['.pilotdeck-workspace']);
+    });
 
     it('merges a custom root with an already populated PilotDeck directory', async () => {
         const root = await makeTemporaryRoot();
