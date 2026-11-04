@@ -197,7 +197,7 @@ it('continues an existing General conversation with its old files in the migrate
     const previousRoot = process.env.WORKSPACES_ROOT;
     const root = await mkdtemp(path.join(os.tmpdir(), 'pilotdeck-general-turn-'));
     const legacy = path.join(root, 'general');
-    const current = path.join(root, 'PilotDeck');
+    const current = path.join(root, 'PilotDeckGeneral');
     const sessionId = `web:general-migration-${randomUUID()}`;
     const reads = [], frames = [];
     await mkdir(legacy);

@@ -268,6 +268,8 @@ export interface Project {
   projectListRevision?: number;
   kind?: 'project' | 'general';
   workspaceCwd?: string;
+  workspaceNotice?: { directory: string; originalDirectory: string } | null;
+  workspaceUnavailable?: boolean;
   capabilities?: {
     files?: boolean;
     explore?: boolean;

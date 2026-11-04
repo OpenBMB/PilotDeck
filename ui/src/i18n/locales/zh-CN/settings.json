@@ -1,4 +1,22 @@
 {
+  "generalWorkspace": {
+    "title": "通用对话",
+    "directory": "工作目录",
+    "description": "用于通用对话后续轮次的执行。已有文件仍保留在原目录，留空则使用默认目录。",
+    "current": "当前目录：{{path}}",
+    "browse": "浏览",
+    "save": "保存",
+    "reset": "使用默认目录",
+    "retry": "重试",
+    "saved": "通用对话目录已更新",
+    "notEmptyError": "此文件夹非空，请选择空文件夹；当前目录未更改。",
+    "unavailableError": "已保存的工作目录不可用或身份无法验证，已有文件未移动。请恢复原文件夹，或选择新的空目录。",
+    "defaultAdjusted": "默认目录 {{originalDirectory}} 与安装位置或已占用路径冲突，已改用 {{directory}}。已有文件仍保留在原目录。",
+    "loadError": "无法加载工作目录，请重试。",
+    "saveError": "无法使用此文件夹，请确认目录可写后重试。",
+    "unsafeError": "请选择与 PilotDeck 配置及会话数据分开的文件夹。",
+    "invalidError": "请输入绝对目录路径，或以 ~ 开头的路径。"
+  },
   "uninstall": {
     "title": "卸载 PilotDeck",
     "description": "先选择是否保留个人数据，再由系统确认卸载应用。",

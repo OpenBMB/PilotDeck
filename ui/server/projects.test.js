@@ -115,7 +115,7 @@ describe('getProjects', () => {
         expect(projects.find((project) => project.name === 'general')).toMatchObject({
             kind: 'general',
             fullPath: process.env.PILOT_HOME,
-            workspaceCwd: path.join(testWorkspacesRoot, 'PilotDeck'),
+            workspaceCwd: path.join(testWorkspacesRoot, 'PilotDeckGeneral'),
             capabilities: {
                 files: false,
                 explore: false,

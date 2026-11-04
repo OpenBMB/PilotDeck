@@ -1,4 +1,22 @@
 {
+  "generalWorkspace": {
+    "title": "General conversations",
+    "directory": "Working directory",
+    "description": "Used for subsequent turns in General conversations. Existing files stay in their current folder. Leave blank to use the default.",
+    "current": "Current directory: {{path}}",
+    "browse": "Browse",
+    "save": "Save",
+    "reset": "Use default",
+    "retry": "Retry",
+    "saved": "General conversation directory updated",
+    "notEmptyError": "This folder is not empty. Choose an empty folder; the current directory has not changed.",
+    "unavailableError": "The saved working directory is unavailable or its identity could not be verified. Existing files have not been moved. Restore the folder or choose a new empty directory.",
+    "defaultAdjusted": "The default folder {{originalDirectory}} conflicts with an installation or an occupied path. PilotDeck is using {{directory}} instead. Existing files have been kept in their original folder.",
+    "loadError": "Could not load the working directory. Please try again.",
+    "saveError": "Could not use this folder. Check that it is writable and try again.",
+    "unsafeError": "Choose a folder separate from PilotDeck's configuration and session data.",
+    "invalidError": "Enter an absolute folder path or a path starting with ~."
+  },
   "uninstall": {
     "title": "Uninstall PilotDeck",
     "description": "Choose whether to keep personal data before the system asks to remove the application.",

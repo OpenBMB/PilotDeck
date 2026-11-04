@@ -8502,7 +8502,15 @@
 :where(.pilotdeck-settings-app) .general-notification-settings-button:disabled { opacity: .5; cursor: default; }
 :where(.pilotdeck-settings-app) .general-notification-help { padding: 0 24px 18px; font-size: 13px; color: inherit; opacity: .75; }
 
-/* Runtime logs use one readable row, including on narrow settings windows. */
+  :where(.pilotdeck-settings-app) .general-workspace-content { display: grid; gap: 10px; padding: 16px 20px 20px; }
+  :where(.pilotdeck-settings-app) .general-workspace-content label { font-size: 14px; font-weight: 500; }
+  :where(.pilotdeck-settings-app) .general-workspace-content p { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+  :where(.pilotdeck-settings-app) .general-workspace-content [role="alert"] { color: #dc2626; }
+  :where(.pilotdeck-settings-app) .general-workspace-path { display: flex; gap: 8px; }
+  :where(.pilotdeck-settings-app) .general-workspace-path input { min-width: 0; width: 100%; border: 1px solid var(--line, #d9dce7); border-radius: 10px; padding: 8px 12px; background: transparent; color: inherit; font-size: 13px; }
+  :where(.pilotdeck-settings-app) .general-workspace-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+  /* Runtime logs use one readable row, including on narrow settings windows. */
 :where(.pilotdeck-settings-app) .runtime-logs-section { margin-bottom: 20px; }
 :where(.pilotdeck-settings-app) .runtime-logs-content { padding: 18px 24px 22px; display: flex; flex-direction: column; gap: 16px; }
 :where(.pilotdeck-settings-app) .runtime-logs-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
