@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { isPathInsideOrEqual } from './pathSafety.js';
 import { createProjectId, resolvePilotHome } from './pilotPaths.js';
@@ -214,19 +214,48 @@ async function prepareDirectory(candidate, env, { requireEmpty = false, workspac
 
 const locationLocks = new Map();
 export async function ensureGeneralWorkspaceDirectory(env = process.env, options = {}) {
-    if (env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY?.trim()) {
-        const candidate = resolveGeneralWorkspaceDirectory(env, options);
-        await assertSafeLocation(candidate, env);
-        if (!env.PILOTDECK_GENERAL_WORKSPACE_ID) await assertGeneralWorkspaceSwitchAllowed(null, candidate);
-        await prepareDirectory(candidate, env, { workspaceId: env.PILOTDECK_GENERAL_WORKSPACE_ID || undefined });
-        return candidate;
-    }
     const key = resolvePilotHome(env);
     const previous = locationLocks.get(key) ?? Promise.resolve();
-    const next = previous.catch(() => {}).then(() => ensureDefaultDirectory(env, options));
+    const next = previous.catch(() => {}).then(() => env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY?.trim()
+        ? ensureCustomDirectory(env, options) : ensureDefaultDirectory(env, options));
     locationLocks.set(key, next);
     try { return await next; }
     finally { if (locationLocks.get(key) === next) locationLocks.delete(key); }
+}
+
+async function writeLocationState(statePath, state) {
+    await fs.mkdir(path.dirname(statePath), { recursive: true, mode: 0o700 });
+    const temporary = `${statePath}.${randomUUID()}.tmp`;
+    try {
+        await fs.writeFile(temporary, JSON.stringify(state), { mode: 0o600, flag: 'wx' });
+        await fs.rename(temporary, statePath);
+    } finally { await fs.unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
+}
+
+async function ensureCustomDirectory(env, options) {
+    const candidate = resolveGeneralWorkspaceDirectory(env, options);
+    await assertSafeLocation(candidate, env);
+    const realDirectory = await realPlannedPath(candidate);
+    const identityKey = process.platform === 'win32' ? realDirectory.toLowerCase() : realDirectory;
+    const key = createHash('sha256').update(identityKey).digest('hex');
+    const statePath = path.join(resolvePilotHome(env), 'general-workspace-identities', `${key}.json`);
+    let saved;
+    try {
+        saved = JSON.parse(await fs.readFile(statePath, 'utf8'));
+        if (saved.version !== 1 || saved.directory !== identityKey || typeof saved.workspaceId !== 'string' || !saved.workspaceId) throw new Error('Invalid identity');
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw Object.assign(new Error('Cannot verify the saved General workspace identity.'), { code: 'GENERAL_WORKSPACE_STATE_INVALID' });
+    }
+    const workspaceId = env.PILOTDECK_GENERAL_WORKSPACE_ID || saved?.workspaceId;
+    if (!workspaceId) await assertGeneralWorkspaceSwitchAllowed(null, candidate);
+    const prepared = await prepareDirectory(candidate, env, { workspaceId });
+    // YAML users do not go through the settings route that saves an ID. Keep
+    // claims in the profile too, without rewriting their YAML or nesting the
+    // configuration write lock held by that route.
+    if (saved?.workspaceId !== prepared.workspaceId) {
+        await writeLocationState(statePath, { version: 1, directory: identityKey, workspaceId: prepared.workspaceId });
+    }
+    return candidate;
 }
 
 async function ensureDefaultDirectory(env, options) {

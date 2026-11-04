@@ -37,6 +37,22 @@ async function put(directory) {
   return { status: response.status, body: await response.json() };
 }
 
+it('reuses a directory configured directly in YAML after files are created and settings reload', async () => {
+  const directory = path.join(root, 'manual YAML 中文');
+  const yaml = stringify({ customEnv: { KEEP_SETTING: 'keep-me' }, webui: { runtime: { generalWorkspaceDirectory: directory } } });
+  await fs.writeFile(configPath, yaml);
+  expect(await (await fetch(base)).json()).toMatchObject({ effectiveDirectory: directory, unavailable: false });
+  await fs.writeFile(path.join(directory, 'first-turn.txt'), 'user output');
+  expect(await (await fetch(base)).json()).toMatchObject({ effectiveDirectory: directory, unavailable: false });
+  const { buildRuntimeEnv, readPilotDeckConfigFile } = await import('../services/pilotdeckConfig.js');
+  const { ensureGeneralWorkspaceDirectory } = await import('../utils/generalWorkspace.js');
+  const freshEnvironment = { ...process.env, ...buildRuntimeEnv(readPilotDeckConfigFile().config) };
+  expect(freshEnvironment.PILOTDECK_GENERAL_WORKSPACE_ID).toBe('');
+  expect(await ensureGeneralWorkspaceDirectory(freshEnvironment)).toBe(directory);
+  expect(await fs.readFile(configPath, 'utf8')).toBe(yaml);
+  expect(await fs.readFile(path.join(directory, 'first-turn.txt'), 'utf8')).toBe('user output');
+});
+
 it('persists the exact folder, preserves unrelated config, reloads it and resets the effective cwd', async () => {
   const initial = await (await fetch(base)).json();
   expect(initial.directory).toBe('');

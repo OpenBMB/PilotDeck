@@ -25,6 +25,29 @@ afterEach(async () => {
     )));
 });
 describe('General workspace isolation', () => {
+    it('persists custom YAML directory claims across turns and process restarts', async () => {
+        const root = await makeTemporaryRoot();
+        const env = { PILOT_HOME: path.join(root, 'profile'), PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: path.join(root, 'custom') };
+        const directory = await ensureGeneralWorkspaceDirectory({ ...env });
+        await fs.writeFile(path.join(directory, 'report.md'), 'first turn');
+        expect(await ensureGeneralWorkspaceDirectory({ ...env })).toBe(directory);
+        vi.resetModules();
+        const restarted = await import('./generalWorkspace.js');
+        expect(await restarted.ensureGeneralWorkspaceDirectory({ ...env })).toBe(directory);
+        await fs.writeFile(path.join(directory, '.pilotdeck-workspace'), JSON.stringify({ product: 'PilotDeck', version: 1, id: 'replacement' }));
+        await expect(restarted.ensureGeneralWorkspaceDirectory({ ...env })).rejects.toMatchObject({ code: 'GENERAL_WORKSPACE_STATE_INVALID' });
+    });
+    it('serializes concurrent custom claims and refuses an unclaimed populated YAML directory', async () => {
+        const root = await makeTemporaryRoot();
+        const env = { PILOT_HOME: path.join(root, 'profile'), PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: path.join(root, 'custom') };
+        const claimed = await Promise.all(Array.from({ length: 4 }, () => ensureGeneralWorkspaceDirectory({ ...env })));
+        expect(new Set(claimed)).toEqual(new Set([env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY]));
+        const other = path.join(root, 'occupied');
+        await fs.mkdir(other);
+        await fs.writeFile(path.join(other, '.hidden'), 'user data');
+        await expect(ensureGeneralWorkspaceDirectory({ ...env, PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: other })).rejects.toMatchObject({ code: 'GENERAL_WORKSPACE_NOT_EMPTY' });
+        expect(await fs.readdir(other)).toEqual(['.hidden']);
+    });
     it('adopts the previous PilotDeck directory only when existing General history proves an upgrade', async () => {
         const root = await makeTemporaryRoot();
         const pilotHome = path.join(root, 'profile');
