@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import GeneratedVideoCard from './GeneratedVideoCard';
 import { UnifiedToolCall } from './UnifiedToolCall';
 import { buildRenderableMessageItems, foldCompletedTurns } from '../../chat-v2/processGrouping';
@@ -9,7 +9,8 @@ import type { ChatMessage } from '../types/types';
 import { isBinaryFile, isVideoFile } from '../../code-editor/utils/binaryFile';
 import { attachmentPreviewKind } from '../utils/attachmentPreviewKind';
 
-vi.mock('../../../utils/api', () => ({ appendAuthToken: (url: string) => url + (url.includes('?') ? '&' : '?') + 'token=fixture' }));
+const recoveryApi = vi.hoisted(() => ({ fetch: vi.fn() }));
+vi.mock('../../../utils/api', () => ({ authenticatedFetch: recoveryApi.fetch, appendAuthToken: (url: string) => url + (url.includes('?') ? '&' : '?') + 'token=fixture' }));
 const pending = { id: 'video', toolId: 'video', type: 'tool', isToolUse: true, toolName: 'generate_video', toolInput: { purpose: 'deliverable' }, content: '' } as ChatMessage;
 const complete: ChatMessage = { ...pending, toolResult: { content: 'Stored at /private/video.mp4', toolUseResult: { videoGeneration: { videoId: 'video-id', sessionId: 'session-id', purpose: 'deliverable', savedTo: '/project/movie.mp4' } } } };
 afterEach(cleanup);
@@ -50,4 +51,33 @@ it('folds interrupted or historical pending video calls without leaving a large 
   expect(buildRenderableMessageItems([pending], { isAssistantWorking: false }).some(i => i.mediaArtifact)).toBe(false);
   const later = { id: 'next-turn', timestamp: new Date(), type: 'user', content: 'Continue' } as ChatMessage;
   expect(buildRenderableMessageItems([pending, later], { isAssistantWorking: true }).some(i => i.mediaArtifact)).toBe(false);
+});
+
+it('keeps a paused known job in front after the Agent turn ends and restores its player without losing the call record', () => {
+  const saved = { ...pending, toolResult: { isError: true, content: 'Wait stopped' }, videoJob: { id: 'job', sessionId: 'session', toolCallId: 'video', state: 'paused', purpose: 'deliverable', reason: 'timeout' } } as ChatMessage;
+  expect(buildRenderableMessageItems([saved], { isAssistantWorking: false }).filter(i => i.mediaArtifact)).toHaveLength(1);
+  const { container, rerender } = render(<GeneratedVideoCard message={saved} running={false} />);
+  expect(screen.getByRole('button').textContent).toBe('videoGeneration.resume');
+  expect(container.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe('false');
+  rerender(<GeneratedVideoCard message={{ ...saved, videoJob: { ...(saved.videoJob as object), state: 'reconnecting' } }} running={false} />);
+  expect(screen.getByRole('status').textContent).toContain('videoGeneration.reconnecting');
+  expect(screen.queryByRole('button')).toBeNull();
+  rerender(<GeneratedVideoCard message={{ ...saved, videoJob: { ...(saved.videoJob as object), state: 'completed', video: { videoId: 'recovered', sessionId: 'session', purpose: 'deliverable' } } }} running={false} />);
+  expect(container.querySelector('video')?.src).toContain('/session/recovered');
+});
+
+it('resumes the saved host task from its card without a generation request', async () => {
+  recoveryApi.fetch.mockResolvedValue({ ok: true, json: async () => ({ id: 'job', sessionId: 'session', state: 'tracking', purpose: 'deliverable' }) });
+  render(<GeneratedVideoCard message={{ ...pending, videoJob: { id: 'job', sessionId: 'session', state: 'paused', purpose: 'deliverable' } }} running={false} />);
+  fireEvent.click(screen.getByRole('button'));
+  await waitFor(() => expect(screen.queryByRole('button')).toBeNull());
+  expect(recoveryApi.fetch).toHaveBeenCalledWith('/api/video-generation/jobs/session/job/resume', expect.objectContaining({ method: 'POST' }));
+  expect(screen.getByRole('status').textContent).toContain('videoGeneration.generating');
+});
+it('keeps original video tool details when an interrupted turn has no assistant prose host', () => {
+  const interrupted = { ...pending, videoJob: { id: 'job', state: 'paused', sessionId: 'session', purpose: 'deliverable' } } as ChatMessage;
+  const items = buildRenderableMessageItems([interrupted], { isAssistantWorking: false });
+  const details = items.flatMap(i => [...i.beforeProcessAttachments, ...i.afterProcessAttachments].flatMap(a => a.processDetailMessages));
+  expect(details.some(m => m.toolId === 'video')).toBe(true);
+  expect(items.filter(i => i.mediaArtifact)).toHaveLength(1);
 });

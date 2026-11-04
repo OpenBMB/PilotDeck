@@ -804,6 +804,13 @@
     "generating": "Generating video…",
     "interrupted": "Video generation interrupted",
     "download": "Download video",
-    "playbackUnavailable": "This browser cannot play the video. Download it to open with a local player."
+    "playbackUnavailable": "This browser cannot play the video. Download it to open with a local player.",
+    "reconnecting": "Connection interrupted. Reconnecting…",
+    "downloading": "Video ready. Downloading…",
+    "paused": "Fetching paused. The submitted task is saved.",
+    "configuration": "Check the video service settings to continue fetching.",
+    "resume": "Continue fetching",
+    "retryUnavailable": "Cannot connect yet. Please try again.",
+    "exportUnavailable": "Video recovered. Project export was not completed; save this video again."
   }
 }

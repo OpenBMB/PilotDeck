@@ -50,47 +50,66 @@ function streamed(response: Response, signal: AbortSignal): Response {
   return new Response(body, { status: response.status, headers: response.headers });
 }
 
-/** One awaited tool invocation; vendor polling does not create a host background task. */
-export async function requestOpenAIVideo(config: VideoGenerationConfig, input: VideoRequest, options: {
-  signal?: AbortSignal; env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; pollMs?: number; timeoutMs?: number;
-} = {}): Promise<Response> {
-  if (config.enabled !== true) throw new Error("Video generation is disabled.");
+export class VideoApiError extends Error {
+  constructor(message: string, readonly status?: number) { super(message); }
+  get retryable() { return this.status === undefined || this.status === 408 || this.status === 429 || this.status >= 500; }
+}
+export type VideoTransportOptions = { signal?: AbortSignal; env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; pollMs?: number; timeoutMs?: number };
+export function videoClient(config: VideoGenerationConfig, options: VideoTransportOptions = {}) {
   const key = resolveApiKey(config.apiKey, options.env);
   const base = videoApiBaseUrl(config.baseUrl);
-  const signal = AbortSignal.any([...(options.signal ? [options.signal] : []), AbortSignal.timeout(options.timeoutMs ?? VIDEO_TIMEOUT_MS)]);
-  const headers = { authorization: `Bearer ${key}` };
-  const request = async (path: string, init: RequestInit = {}) => streamed(await networkFetch(base + path, { ...init, headers, redirect: "error" },
-    { signal, fetchImpl: options.fetchImpl, retry: { maxRetries: 0 } }), signal);
-  let jobId: string | undefined;
-  try {
-    const body = new FormData();
-    const extra = { ...config.extraParams, ...input.extra_params };
-    if (Object.keys(extra).length) body.append("extra_params", JSON.stringify(extra));
-    for (const [name, value] of Object.entries({ model: config.model, prompt: input.prompt, seconds: input.seconds ?? 5, size: input.size, num_inference_steps: input.num_inference_steps, seed: input.seed })) {
-      if (value !== undefined) body.append(name, String(value));
+  const request = async (path: string, init: RequestInit = {}) => {
+    const signal = options.signal ?? AbortSignal.timeout(60_000);
+    try {
+      return streamed(await networkFetch(base + path, { ...init, headers: { authorization: `Bearer ${key}` }, redirect: "error" },
+        { signal, fetchImpl: options.fetchImpl, retry: { maxRetries: 0 } }), signal);
+    } catch { throw new VideoApiError("Cannot reach the video service."); }
+  };
+  const read = async (response: Response) => {
+    try { return await json(response); }
+    catch (error) {
+      const text = error instanceof Error ? error.message : "Invalid video response.";
+      throw new VideoApiError((key ? text.split(key).join("[REDACTED]") : text).slice(0, 1200), response.ok ? undefined : response.status);
     }
-    let status = await json(await request("/videos", { method: "POST", body: body as unknown as BodyInit }));
-    if (typeof status.id !== "string" || !status.id || status.id.length > 256) throw new Error("Video API returned no valid job ID.");
-    jobId = status.id;
+  };
+  return {
+    async submit(input: VideoRequest) {
+      const body = new FormData();
+      const extra = { ...config.extraParams, ...input.extra_params };
+      if (Object.keys(extra).length) body.append("extra_params", JSON.stringify(extra));
+      for (const [name, value] of Object.entries({ model: config.model, prompt: input.prompt, seconds: input.seconds ?? 5, size: input.size, num_inference_steps: input.num_inference_steps, seed: input.seed })) {
+        if (value !== undefined) body.append(name, String(value));
+      }
+      const status = await read(await request("/videos", { method: "POST", body: body as unknown as BodyInit }));
+      if (typeof status.id !== "string" || !status.id || status.id.length > 256) throw new Error("Video API returned no valid job ID.");
+      return status;
+    },
+    status: async (id: string) => read(await request(`/videos/${encodeURIComponent(id)}`)),
+    async content(id: string) {
+      const response = await request(`/videos/${encodeURIComponent(id)}/content`);
+      if (!response.ok) await read(response);
+      return response;
+    },
+  };
+}
+
+/** Ephemeral settings probe. Production generations use the durable VideoJobManager. */
+export async function requestOpenAIVideo(config: VideoGenerationConfig, input: VideoRequest, options: VideoTransportOptions = {}): Promise<Response> {
+  if (config.enabled !== true) throw new Error("Video generation is disabled.");
+  const signal = AbortSignal.any([...(options.signal ? [options.signal] : []), AbortSignal.timeout(options.timeoutMs ?? VIDEO_TIMEOUT_MS)]);
+  const client = videoClient(config, { ...options, signal });
+  try {
+    let status = await client.submit(input);
+    const id = status.id;
     while (status.status !== "completed") {
-      signal.throwIfAborted();
-      if (status.status === "failed" || status.status === "cancelled") throw new Error(`Video generation ${status.status}. ${typeof status.error?.message === "string" ? status.error.message : ""}`);
+      if (["failed", "cancelled"].includes(status.status)) throw new Error(`Video generation ${status.status}. ${typeof status.error?.message === "string" ? status.error.message : ""}`);
       if (!["queued", "in_progress", "pending", "processing"].includes(status.status)) throw new Error(`Unsupported video job status: ${String(status.status).slice(0, 80)}`);
       await delay(options.pollMs ?? 2000, undefined, { signal });
-      status = await json(await request(`/videos/${encodeURIComponent(jobId)}`));
+      status = await client.status(id);
     }
-    const response = await request(`/videos/${encodeURIComponent(jobId)}/content`);
-    if (!response.ok) { await json(response); throw new Error("Video download failed."); }
-    return response; // Download goes directly to the attachment store, never a full in-memory video buffer.
+    return await client.content(id);
   } catch (error) {
-    if (signal.aborted && jobId) {
-      // Best effort remote cancellation; do not retry a generation POST.
-      void networkFetch(`${base}/videos/${encodeURIComponent(jobId)}`, { method: "DELETE", headers, redirect: "error" },
-        { signal: AbortSignal.timeout(3000), fetchImpl: options.fetchImpl, retry: { maxRetries: 0 } }).then(r => r.body?.cancel()).catch(() => {});
-    }
-    if (options.signal?.aborted) throw options.signal.reason;
-    const message = signal.aborted ? "Video generation timed out. The provider may still be processing it; check before retrying."
-      : error instanceof Error ? error.message : "Video generation failed.";
-    throw new Error((key ? message.split(key).join("[REDACTED]") : message).slice(0, 1200));
+    if (signal.aborted) throw new Error("Video generation timed out or waiting was cancelled. The provider may still be processing it.");
+    throw error;
   }
 }

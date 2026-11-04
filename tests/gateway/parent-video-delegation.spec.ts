@@ -129,7 +129,7 @@ model:
     assert.deepEqual(await readFile(join(workspace, "child-original.mp4")), mp4);
     assert.deepEqual(await readFile(join(workspace, "parent-edited.mp4")), editedMp4);
     assert.deepEqual(await readFile((await store.get(sessionId, edited.videoId)).path), editedMp4);
-    assert.deepEqual(requests, ["/v1/videos", "/v1/videos/fixture-job/content", "/v1/videos", "/v1/videos/fixture-job/content"]);
+    assert.deepEqual(requests, ["/v1/videos", "/v1/videos/fixture-job", "/v1/videos/fixture-job/content", "/v1/videos", "/v1/videos/fixture-job", "/v1/videos/fixture-job/content"]);
     assert.equal([...seeded, ...consumed].filter(event => event.type === "assistant_attachment").length, 2, "preparation and saving do not redeliver inherited originals");
     await assert.rejects(() => store.get("web:unrelated", edited.videoId), /ENOENT/);
   });

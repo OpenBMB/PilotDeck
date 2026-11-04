@@ -1,3 +1,4 @@
+import { useVideoJobs } from "../tools/useVideoJobs";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
@@ -471,7 +472,7 @@ export function useChatSessionState({
   // memo recomputes when session_created upgrades the ref from null → real id.
   const pendingTargetSessionId = pendingViewSessionRef.current?.sessionId ?? null;
 
-  const chatMessages = useMemo(() => {
+  const baseChatMessages = useMemo(() => {
     const all = normalizedToChatMessages(storeMessages, subagentLinks);
     // The optimistic user bubble must ONLY render in the session it was
     // submitted into. Two valid surfaces:
@@ -499,6 +500,8 @@ export function useChatSessionState({
     if (viewHiddenCount > 0 && viewHiddenCount < all.length) return all.slice(0, -viewHiddenCount);
     return all;
   }, [storeMessages, viewHiddenCount, pendingUserMessage, activeSessionId, pendingTargetSessionId, subagentLinks]);
+
+  const chatMessages = useVideoJobs(baseChatMessages);
 
   const activityMessages = useMemo(
     () => normalizedToChatMessages(activityStoreMessages),

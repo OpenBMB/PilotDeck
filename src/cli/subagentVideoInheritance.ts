@@ -1,3 +1,4 @@
+import { VideoJobManager } from "../tool/builtin/videos/VideoJobManager.js";
 import type { AgentRuntimeDependencies } from "../agent/runtime/AgentRuntimeDependencies.js";
 import { VideoStore, type GeneratedVideo } from "../tool/builtin/videos/VideoStore.js";
 
@@ -12,6 +13,7 @@ function describeVideo(video: GeneratedVideo) {
 export function createSubagentVideoPreparation(store: VideoStore, isEnabled: () => boolean): NonNullable<AgentRuntimeDependencies["prepareSubagentArtifacts"]> {
   return async ({ parentSessionId, subagentSessionId, abortSignal }) => {
     if (!isEnabled()) return [];
+    await new VideoJobManager({ store, getConfig: () => undefined }).registerParent(parentSessionId, subagentSessionId);
     abortSignal?.throwIfAborted();
     const videos = await store.list(parentSessionId);
     const inherited = [];

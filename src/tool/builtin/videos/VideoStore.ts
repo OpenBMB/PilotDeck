@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { copyFile, link, mkdir, open, readFile, readdir, realpath, stat, unlink } from "node:fs/promises";
+import { copyFile, link, mkdir, open, readFile, readdir, realpath, stat, unlink, rename } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 
@@ -27,14 +27,28 @@ export class VideoStore {
     }
     return videos;
   }
-  async save(sessionId: string, response: Response, signal?: AbortSignal, purpose: VideoPurpose = "deliverable"): Promise<GeneratedVideo> {
-    const videoId = randomUUID(); const dir = this.directory(sessionId);
+  async save(sessionId: string, response: Response, signal?: AbortSignal, purpose: VideoPurpose = "deliverable", videoId: string = randomUUID()): Promise<GeneratedVideo> {
+    if (!/^[0-9a-f-]{36}$/.test(videoId)) throw new Error("Invalid video ID.");
+    const dir = this.directory(sessionId);
     const path = join(dir, videoId + ".mp4");
     await mkdir(dir, { recursive: true, mode: 0o700 });
+    try {
+      const existing = await this.get(sessionId, videoId);
+      await response.body?.cancel();
+      return existing;
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    // The durable job owns a process lease while saving this identity. Remove
+    // abandoned chunks left by its previous process before downloading again.
+    for (const name of await readdir(dir)) if (name.startsWith(videoId + ".") && name.endsWith(".partial")) {
+      await unlink(join(dir, name)).catch(() => {});
+    }
     const reader = response.body?.getReader();
     if (!reader) throw new Error("Video service returned no video.");
     let bytes = 0; const digest = createHash("sha256"); let header = Buffer.alloc(0);
-    const handle = await open(path, "wx", 0o600);
+    // A retry publishes the same attachment identity. Incomplete downloads
+    // never occupy the final file, including after a process crash.
+    const staging = `${path}.${randomUUID()}.partial`;
+    const handle = await open(staging, "wx", 0o600); let published = false;
     const abort = () => { void reader.cancel(signal?.reason).catch(() => {}); };
     signal?.addEventListener("abort", abort, { once: true });
     try {
@@ -47,9 +61,11 @@ export class VideoStore {
       if (bytes < 16 || header.toString("ascii", 4, 8) !== "ftyp") throw new Error("Video service returned invalid MP4 data.");
       await handle.close();
       const video: GeneratedVideo = { videoId, sessionId, mimeType: "video/mp4", bytes, sha256: digest.digest("hex"), path, purpose };
+      await rename(staging, path);
+      published = true;
       await this.manifest(video, signal); return video;
-    } catch (error) { await handle.close().catch(() => {}); await unlink(path).catch(() => {}); throw error; }
-    finally { signal?.removeEventListener("abort", abort); await reader.cancel().catch(() => {}); }
+    } catch (error) { await handle.close().catch(() => {}); if (published) await unlink(path).catch(() => {}); throw error; }
+    finally { await unlink(staging).catch(() => {}); signal?.removeEventListener("abort", abort); await reader.cancel().catch(() => {}); }
   }
   private async manifest(video: GeneratedVideo, signal?: AbortSignal) {
     const target = join(this.directory(video.sessionId), video.videoId + ".json");

@@ -773,7 +773,7 @@ export function buildRenderableMessageItems(
       return;
     }
     const liveVideo = Boolean(liveTurn && originalIndex >= liveTurn.start && originalIndex < liveTurn.end);
-    if (isImageDeliverable(message) || (isVideoDeliverable(message) && (message.toolResult || liveVideo))) {
+    if (isImageDeliverable(message) || (isVideoDeliverable(message) && (message.toolResult || message.videoJob || liveVideo))) {
       const callKey = message.toolId || message.toolCallId || message.id || String(originalIndex);
       syntheticItems.push({
         mediaArtifact: true,
@@ -903,11 +903,14 @@ export function buildRenderableMessageItems(
         pushProcessAttachment(nextHost, 'before', attachment);
       } else {
         syntheticItems.push({
-          message: summary,
+          // An interrupted turn can have only a tool call, with no assistant
+          // prose to host its details. Keep a real expandable attachment here
+          // rather than a count-only summary that loses the original call.
+          message: { id: `process-host-${segment.id}`, type: 'assistant', content: '', timestamp: summary.timestamp },
           originalIndex: segment.startIndex - 0.1,
           beforeRunAttachment: null,
           afterRunAttachment: null,
-          beforeProcessAttachments: [],
+          beforeProcessAttachments: [attachment],
           afterProcessAttachments: [],
         });
       }

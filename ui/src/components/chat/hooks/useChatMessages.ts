@@ -204,6 +204,8 @@ function convertSingleMessage(
         ...turnIdentity,
         isToolUse: true,
         toolName: msg.toolName,
+        sessionId: msg.sessionId,
+
         toolInput: typeof msg.toolInput === 'string' ? msg.toolInput : JSON.stringify(msg.toolInput ?? '', null, 2),
         toolId: msg.toolId,
         toolResult,

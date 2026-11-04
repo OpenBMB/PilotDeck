@@ -631,6 +631,7 @@ app.use('/api/commands', authenticateToken, commandsRoutes);
 app.use('/api/skills', authenticateToken, skillsRoutes);
 app.use('/api/uploads', authenticateToken, uploadsRoutes);
 app.use('/api/video-generation', authenticateToken, videoGenerationRoutes);
+videoGenerationRoutes.startRecovery();
 app.use('/api/image-generation', authenticateToken, imageGenerationRoutes);
 app.use('/api/models', authenticateToken, modelsRoutes);
 

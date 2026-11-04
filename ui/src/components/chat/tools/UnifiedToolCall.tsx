@@ -91,8 +91,9 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
           {isShell ? <pre className="mb-3 whitespace-pre-wrap break-words font-mono"><span className="select-none text-neutral-400">$ </span>{displayText(input.command)}</pre>
             : inputDetails ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="input" contentOnly createDiff={createDiff} onFileOpen={onFileOpen} selectedProject={selectedProject} />
             : <pre className="mb-3 whitespace-pre-wrap break-words font-mono">{isRead ? file : isSkill ? target : displayText(Object.keys(input).length ? input : message.toolInput)}</pre>}
+          {name === 'generate_video' && Boolean(message.videoJob) && !isVideoDeliverable(message) && <GeneratedVideoCard message={message} running={running} />}
           {!externalError && (result ? <>
-            {!result.isError && name === 'generate_video' && videoAttachment(message) && !isVideoDeliverable(message) ? <GeneratedVideoCard message={message} running={running} />
+            {!message.videoJob && !result.isError && name === 'generate_video' && videoAttachment(message) && !isVideoDeliverable(message) ? <GeneratedVideoCard message={message} running={running} />
               : !result.isError && isDrawingTool(name) && hasImageAttachment(message) && !isImageDeliverable(message) ? <GeneratedImageCard message={message} running={running} />
               : !result.isError && (resultDetails || hasFileList) ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="result" contentOnly onFileOpen={onFileOpen} selectedProject={selectedProject} />
               : <pre className="whitespace-pre-wrap break-words font-mono">{output || t('toolDisplay.noOutput')}</pre>}

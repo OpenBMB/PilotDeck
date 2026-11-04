@@ -1,14 +1,10 @@
-import { copyFile, link, mkdir, unlink } from "node:fs/promises";
-import { constants } from "node:fs";
-import { randomUUID } from "node:crypto";
-import { dirname, extname } from "node:path";
 import type { VideoGenerationConfig } from "../../pilot/config/videoGenerationConfig.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type { PilotDeckToolDefinition, PilotDeckToolExecutionOutput, PilotDeckToolRuntimeContext } from "../protocol/types.js";
-import { resolvePilotDeckWorkspacePath } from "./filesystem/pathSafety.js";
-import { withFileMutation } from "./filesystem/coordinateMutation.js";
 import { VideoStore, type GeneratedVideo, type VideoPurpose } from "./videos/VideoStore.js";
-import { requestOpenAIVideo, type VideoRequest } from "./videos/openaiVideos.js";
+import type { VideoRequest } from "./videos/openaiVideos.js";
+import { outputPath, publish } from "./videos/videoExport.js";
+import { VideoJobManager } from "./videos/VideoJobManager.js";
 
 export type VideoToolOptions = { store: VideoStore; getConfig: () => VideoGenerationConfig | undefined; fetchImpl?: typeof fetch; pollMs?: number };
 type GenerateInput = VideoRequest & { purpose: VideoPurpose; output_path?: string };
@@ -17,28 +13,6 @@ function enabled(options: VideoToolOptions): VideoGenerationConfig {
   const config = options.getConfig();
   if (config?.enabled !== true) throw new PilotDeckToolRuntimeError("tool_unavailable", "Video generation is disabled.");
   return config;
-}
-function outputPath(path: string, context: PilotDeckToolRuntimeContext): string {
-  const resolved = resolvePilotDeckWorkspacePath(path, context, { forWrite: true });
-  if (!resolved.ok) throw new PilotDeckToolRuntimeError(resolved.error.code, resolved.error.message);
-  if (extname(path).toLowerCase() !== ".mp4") throw new PilotDeckToolRuntimeError("invalid_tool_input", "Output path must end in .mp4.");
-  return resolved.absolutePath;
-}
-async function publish(video: GeneratedVideo, path: string, context: PilotDeckToolRuntimeContext): Promise<string> {
-  const target = outputPath(path, context);
-  return withFileMutation(context, target, async () => {
-    outputPath(path, context); context.abortSignal?.throwIfAborted();
-    await context.fileHistory?.trackEdit(target, context.messageId ?? context.turnId);
-    await mkdir(dirname(target), { recursive: true }); const staging = `${target}.${randomUUID()}.tmp`;
-    try {
-      await copyFile(video.path, staging, constants.COPYFILE_EXCL); context.abortSignal?.throwIfAborted();
-      await link(staging, target);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new PilotDeckToolRuntimeError("file_conflict", "The output file already exists. Choose a new path.");
-      throw error;
-    } finally { await unlink(staging).catch(() => {}); }
-    await context.fileHistory?.recordEdit?.(target, context.messageId ?? context.turnId); return target;
-  });
 }
 function result(video: GeneratedVideo, deliver = true): PilotDeckToolExecutionOutput {
   return {
@@ -69,16 +43,15 @@ export function createVideoGenerationTools(options: VideoToolOptions): PilotDeck
       if (input.output_path) outputPath(input.output_path, context); return { ok: true, input };
     },
     execute: async (input: GenerateInput, context: PilotDeckToolRuntimeContext) => {
-      const response = await requestOpenAIVideo(enabled(options), input, { env: context.env, signal: context.abortSignal, fetchImpl: options.fetchImpl, pollMs: options.pollMs });
-      const video = await options.store.save(context.sessionId, response, context.abortSignal, input.purpose);
-      if (input.output_path) {
-        try { video.savedTo = await publish(video, input.output_path, context); }
-        catch (error) {
-          if (context.abortSignal?.aborted) throw error;
-          const output = result(video); output.content.push({ type: "text", text: `The video was generated but project export failed: ${error instanceof Error ? error.message : String(error)}. Use save_generated_video with this video_id; do not regenerate.` }); return output;
-        }
-      }
-      return result(video);
+      const manager = new VideoJobManager({ ...options, env: context.env });
+      const job = await manager.submit(enabled(options), input, context);
+      const completed = await manager.wait(job, context);
+      if (!completed.video) throw new Error(completed.state === "failed" || completed.state === "cancelled"
+        ? `The provider reports that the video task ${completed.state}.`
+        : "Video task remains saved. Use Continue fetching on its card; do not generate it again.");
+      const output = result(completed.video);
+      if (completed.exportError) output.content.push({ type: "text", text: "Video generated, but project export failed. Use save_generated_video with the same video_id and a new path; do not regenerate." });
+      return output;
     },
   } as PilotDeckToolDefinition<GenerateInput>, {
     name: "save_generated_video", title: "Save generated video", kind: "filesystem",

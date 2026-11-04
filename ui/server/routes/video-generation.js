@@ -1,4 +1,5 @@
 import express from 'express';
+import { VideoJobManager, videoJobView } from '../../../src/tool/builtin/videos/VideoJobManager.js';
 import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,6 +13,19 @@ import { readPilotDeckConfigFile } from '../services/pilotdeckConfig.js';
 export function createVideoGenerationRouter({ store = new VideoStore(path.join(resolvePilotHome(process.env), 'generated-videos')),
   readConfig = () => readPilotDeckConfigFile().config, fetchImpl } = {}) {
   const router = express.Router();
+  const manager = new VideoJobManager({ store, getConfig: () => readConfig().tools?.videoGeneration, fetchImpl });
+  router.startRecovery = () => manager.startRecovery();
+  router.get('/jobs/:sessionId/call/:toolCallId', async (req, res) => {
+    try {
+      const job = await manager.forCall(req.params.sessionId, req.params.toolCallId, typeof req.query.turnId === 'string' ? req.query.turnId : undefined);
+      res.set('Cache-Control', 'private, no-store');
+      return job ? res.json(videoJobView(job)) : res.status(404).json({ error: 'Video task not found.' });
+    } catch { return res.status(500).json({ error: 'Cannot read video task.' }); }
+  });
+  router.post('/jobs/:sessionId/:jobId/resume', async (req, res) => {
+    try { return res.json(videoJobView(await manager.resume(req.params.sessionId, req.params.jobId))); }
+    catch { return res.status(404).json({ error: 'Video task not found.' }); }
+  });
   router.post('/test', async (req, res) => {
     let apiKey = '';
     const startedAt = Date.now();

@@ -51,3 +51,24 @@ it('rejects changed masked-key addresses and redacts errors from provider-specif
     expect(upstream).toHaveBeenCalledTimes(1);
   }, upstream);
 });
+it('restores a paused task through the authenticated host API without exposing its provider ID or submitting again', async () => {
+  const { VideoJobManager } = await import('../../../src/tool/builtin/videos/VideoJobManager.js');
+  let ready = false;
+  const upstream = vi.fn(async (url) => String(url).endsWith('/content') ? new Response(mp4) : new Response(JSON.stringify({ id: 'private-provider-id', status: ready ? 'completed' : 'queued' })));
+  await fixture(async ({ base, store, config }) => {
+    const context = { sessionId: 'session', turnId: 'turn', currentToolCallId: 'call', cwd: store.root, permissionMode: 'default', permissionContext: { cwd: store.root, mode: 'default', additionalWorkingDirectories: [], rules: { allow: [], deny: [], ask: [] }, canPrompt: true, bypassAvailable: true } };
+    const manager = new VideoJobManager({ store, getConfig: () => config, pollMs: 1, timeoutMs: 10, fetchImpl: upstream });
+    const job = await manager.submit({ ...config, enabled: true }, { prompt: 'ball', purpose: 'deliverable' }, context);
+    await manager.wait(job, context);
+    await new Promise(r => setTimeout(r, 10));
+    const status = await (await fetch(base + '/jobs/session/call/call')).json();
+    expect(status.state).toBe('paused'); expect(JSON.stringify(status)).not.toContain('private-provider-id'); expect(JSON.stringify(status)).not.toContain(config.apiKey);
+    expect((await fetch(base + '/jobs/unrelated/call/call')).status).toBe(404);
+    expect((await fetch(base + `/jobs/unrelated/${job.id}/resume`, { method: 'POST' })).status).toBe(404);
+    ready = true;
+    expect((await fetch(base + `/jobs/session/${job.id}/resume`, { method: 'POST' })).status).toBe(200);
+    await vi.waitFor(async () => expect((await manager.get('session', job.id)).state).toBe('completed'));
+    expect(upstream.mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(1);
+    const completed = await (await fetch(base + '/jobs/session/call/call')).json(); expect(completed.video.videoId).toBe(job.id);
+  }, upstream);
+});

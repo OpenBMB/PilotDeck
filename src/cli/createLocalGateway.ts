@@ -1,4 +1,5 @@
 import { VideoStore } from "../tool/builtin/videos/VideoStore.js";
+import { VideoJobManager } from "../tool/builtin/videos/VideoJobManager.js";
 import { createSubagentVideoPreparation, createSubagentVideoInheritance } from "./subagentVideoInheritance.js";
 import { ImageStore } from "../tool/builtin/images/ImageStore.js";
 import { createSubagentImageInheritance, createSubagentImagePreparation } from "./subagentImageInheritance.js";
@@ -1532,6 +1533,10 @@ class ProjectRuntimeRegistry {
         this.options.pilotHome,
       );
       const contextRuntime = new DefaultContextRuntime({
+        sessionArtifactContext: async sessionId => {
+          if (loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.videoGeneration?.enabled !== true) return;
+          return new VideoJobManager({ store: videoStore, getConfig: () => undefined }).contextForSession(sessionId);
+        },
         extension,
         projectRoot,
         memoryResolver,
