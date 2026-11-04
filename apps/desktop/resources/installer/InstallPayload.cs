@@ -176,6 +176,7 @@ internal static class InstallPayload
 
     internal static void Commit(string payload, string target, string backup, Action<int> checkpoint)
     {
+        RejectWorkspaceParents(target);
         // Only move top-level entries: large resource directories are renamed as
         // a whole. Never fall back to recursive copying or delete user data.
         var saved = new List<string>();
@@ -222,6 +223,16 @@ internal static class InstallPayload
         for (var dir = new DirectoryInfo(target); dir != null; dir = dir.Parent)
             if (dir.Exists && (dir.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Installation through a directory junction is not supported: " + dir.FullName);
+    }
+
+    internal static void RejectWorkspaceParents(string target)
+    {
+        for (var directory = new DirectoryInfo(Path.GetFullPath(target)); directory != null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, ".pilotdeck-workspace")))
+                throw new IOException(Text("This folder is a PilotDeck working directory. Choose a separate application installation folder.",
+                    "此文件夹是 PilotDeck 工作目录。请选择独立的程序安装文件夹。"));
+        }
     }
 
     static int Main(string[] args)
@@ -278,6 +289,7 @@ internal static class InstallPayload
                 bar = GetDlgItem(page, 1136);
             }
             RejectReparseParents(target);
+            RejectWorkspaceParents(target);
             string parent = Path.GetDirectoryName(target);
             if (String.IsNullOrEmpty(parent)) throw new IOException("Cannot install at a volume root");
             if (!commitOnly) stage = Path.Combine(parent, ".pilotdeck-install-" + Guid.NewGuid().ToString("N"));

@@ -13,6 +13,12 @@ replacement extracts into a unique staging directory beside the destination and
 moves its top-level entries into place on the same volume. Resource directories
 are moved as a whole. No components are removed and no runtime download is added.
 
+General workspaces carry a `.pilotdeck-workspace` identity marker. Installation
+refuses a target inside one of these workspaces before extracting or committing
+files, so an application `resources` directory cannot replace user files. The
+runtime also rejects workspaces overlapping the application installation. This
+protects marked workspaces; it cannot recover files overwritten by older installers.
+
 ## Build integration
 
 `scripts/after-pack.cjs` calls `scripts/prepare-windows-installer.cjs` on Windows.
