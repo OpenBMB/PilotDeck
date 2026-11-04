@@ -121,3 +121,32 @@ it('reports a damaged directory identity and permits recovery into a new empty f
   expect(recovered.body.unavailable).toBe(false);
   expect(await fs.readFile(path.join(initial.effectiveDirectory, '.pilotdeck-workspace'), 'utf8')).toBe('damaged identity');
 });
+
+it.each(['missing', 'replaced'])('allows explicit reselection of an empty folder with a %s marker while startup rejects its stale claim', async marker => {
+  const first = path.join(root, 'A');
+  const second = path.join(root, 'B');
+  expect((await put(first)).status).toBe(200);
+  const originalId = parse(await fs.readFile(configPath, 'utf8')).webui.runtime.generalWorkspaceId;
+  expect((await put(second)).status).toBe(200);
+  await fs.rm(first, { recursive: true });
+  await fs.mkdir(first);
+  if (marker === 'replaced') await fs.writeFile(path.join(first, '.pilotdeck-workspace'), JSON.stringify({ product: 'PilotDeck', version: 1, id: 'replacement-identity' }));
+  const { ensureGeneralWorkspaceDirectory } = await import('../utils/generalWorkspace.js');
+  const startup = { ...process.env, PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: first, PILOTDECK_GENERAL_WORKSPACE_ID: '' };
+  await expect(ensureGeneralWorkspaceDirectory(startup)).rejects.toMatchObject({ code: 'GENERAL_WORKSPACE_STATE_INVALID' });
+  const selected = await put(first);
+  expect(selected).toMatchObject({ status: 200, body: { effectiveDirectory: first, unavailable: false } });
+  const newId = parse(await fs.readFile(configPath, 'utf8')).webui.runtime.generalWorkspaceId;
+  expect(newId).not.toBe(originalId);
+  await fs.writeFile(path.join(first, 'output.txt'), 'next turn');
+  expect(await ensureGeneralWorkspaceDirectory({ ...startup })).toBe(first);
+  expect((await (await fetch(base)).json()).unavailable).toBe(false);
+  expect((await put(second)).status).toBe(200);
+  await fs.rm(first, { recursive: true });
+  await fs.mkdir(first);
+  await fs.writeFile(path.join(first, '.hidden'), 'replacement user data');
+  expect(await put(first)).toMatchObject({ status: 400, body: { code: 'GENERAL_WORKSPACE_NOT_EMPTY' } });
+  expect(parse(await fs.readFile(configPath, 'utf8')).webui.runtime.generalWorkspaceDirectory).toBe(second);
+  await expect(ensureGeneralWorkspaceDirectory({ ...startup })).rejects.toMatchObject({ code: 'GENERAL_WORKSPACE_STATE_INVALID' });
+  expect(await fs.readdir(first)).toEqual(['.hidden']);
+});

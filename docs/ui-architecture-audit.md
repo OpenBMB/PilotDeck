@@ -103,6 +103,9 @@ The selected default and its identity are recorded in
 marker in the workspace. Custom directory claims are also recorded under
 `PILOT_HOME/general-workspace-identities`, so manually configured YAML paths
 remain usable after the first turn creates files, without rewriting user YAML.
+An explicit settings selection may renew a historical custom claim for an empty
+folder that was deleted and recreated. Startup and turn dispatch still require
+the saved identity; a populated replacement cannot be reclaimed this way.
 Existing General history, a saved location or a workspace marker identifies the
 previous `PilotDeck` location for migration into `PilotDeckGeneral`. An existing safe unnumbered
 default can be reused on first install, even when populated. Installation

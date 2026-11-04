@@ -247,14 +247,20 @@ async function ensureCustomDirectory(env, options) {
     const identityKey = process.platform === 'win32' ? realDirectory.toLowerCase() : realDirectory;
     const key = createHash('sha256').update(identityKey).digest('hex');
     const statePath = path.join(resolvePilotHome(env), 'general-workspace-identities', `${key}.json`);
+    // Only an explicit settings selection may replace a historical claim, and
+    // only when the selected folder has no user files. Startup never opts in.
+    const explicitEmptySelection = options.reclaimEmptyDirectory && await fs.readdir(candidate)
+        .then(entries => entries.every(name => name === GENERAL_WORKSPACE_MARKER))
+        .catch(error => { if (error.code === 'ENOENT') return true; throw error; });
     let saved;
     try {
         saved = JSON.parse(await fs.readFile(statePath, 'utf8'));
         if (saved.version !== 1 || saved.directory !== identityKey || typeof saved.workspaceId !== 'string' || !saved.workspaceId) throw new Error('Invalid identity');
     } catch (error) {
-        if (error.code !== 'ENOENT') throw Object.assign(new Error('Cannot verify the saved General workspace identity.'), { code: 'GENERAL_WORKSPACE_STATE_INVALID' });
+        if (error.code !== 'ENOENT' && !explicitEmptySelection) throw Object.assign(new Error('Cannot verify the saved General workspace identity.'), { code: 'GENERAL_WORKSPACE_STATE_INVALID' });
+        saved = undefined;
     }
-    const workspaceId = env.PILOTDECK_GENERAL_WORKSPACE_ID || saved?.workspaceId;
+    const workspaceId = env.PILOTDECK_GENERAL_WORKSPACE_ID || (explicitEmptySelection ? undefined : saved?.workspaceId);
     if (!workspaceId) await assertGeneralWorkspaceSwitchAllowed(null, candidate);
     const prepared = await prepareDirectory(candidate, env, { workspaceId });
     // YAML users do not go through the settings route that saves an ID. Keep

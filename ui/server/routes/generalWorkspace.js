@@ -50,7 +50,7 @@ router.put('/', async (req, res) => {
         catch { /* A new empty folder receives its identity during preparation. */ }
       }
       // Validate and create the destination before committing the setting.
-      const nextDirectory = await ensureGeneralWorkspaceDirectory(nextEnv);
+      const nextDirectory = await ensureGeneralWorkspaceDirectory(nextEnv, { reclaimEmptyDirectory: Boolean(directory.trim()) });
       await assertGeneralWorkspaceSwitchAllowed(currentDirectory, nextDirectory);
       config.webui.runtime.generalWorkspaceId = directory.trim() ? await generalWorkspaceIdentity(nextDirectory) : '';
     }, {
