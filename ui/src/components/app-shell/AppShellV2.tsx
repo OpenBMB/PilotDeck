@@ -156,6 +156,23 @@ function AppShellContent() {
     isMobile,
     activeSessions,
   });
+  const shownWorkspaceNotice = useRef('');
+  useEffect(() => {
+    const general = sidebarSharedProps.projects.find(project => project.name === 'general');
+    const notice = general?.workspaceNotice;
+    if (!notice && !general?.workspaceUnavailable) return;
+    const key = JSON.stringify({ notice, unavailable: general?.workspaceUnavailable, profile: general?.fullPath });
+    if (shownWorkspaceNotice.current === key) return;
+    shownWorkspaceNotice.current = key;
+    try {
+      if (localStorage.getItem('pilotdeck-workspace-notice') === key) return;
+      localStorage.setItem('pilotdeck-workspace-notice', key);
+    } catch { /* The per-mount guard still prevents repeated notifications. */ }
+    window.dispatchEvent(new CustomEvent('pilotdeck:toast', { detail: {
+      kind: general?.workspaceUnavailable ? 'error' : 'info',
+      message: general?.workspaceUnavailable ? t('settings:generalWorkspace.unavailableError') : t('settings:generalWorkspace.defaultAdjusted', notice!),
+    } }));
+  }, [sidebarSharedProps.projects, t]);
   // The wildcard route keeps this owner mounted across dedicated pages too.
   const workspaceUpload = useWorkspaceUpload(selectedProject?.name);
   const workspaceTab = activeTab === 'cron' || activeTab === 'skills' ? 'chat' : activeTab;

@@ -2,6 +2,12 @@ import path from 'node:path';
 
 type BundledGit = { bash: string; git: string; pathEntries: string[] };
 
+/** Electron's resources directory sits inside the tree replaced by upgrades. */
+export function desktopInstallationRoot(resourcesPath: string, platform = process.platform): string {
+  const pathApi = platform === 'win32' ? path.win32 : path.posix;
+  return pathApi.resolve(resourcesPath, platform === 'darwin' ? '../..' : '..');
+}
+
 /** Environment for app-owned runtimes; explicit tool/MCP environments remain separate. */
 export function withRuntimeCommandPath(
   env: NodeJS.ProcessEnv,

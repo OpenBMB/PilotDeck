@@ -85,6 +85,8 @@ export type PilotDeckConfig = {
       logRetentionDays?: number;
       databasePath?: string;
       workspacesRoot?: string;
+      generalWorkspaceDirectory?: string;
+      generalWorkspaceId?: string;
     };
     officePreview?: {
       service?: "builtin" | "libreoffice" | string;

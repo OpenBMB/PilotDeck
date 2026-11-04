@@ -1,5 +1,6 @@
 {
   "context": {
+    "tokenUnit": "tokens",
     "title": "Context budget",
     "used": "Used",
     "systemPrompt": "System instructions",
@@ -166,6 +167,15 @@
     "waitingForApproval": "Waiting for approval",
     "waitingForPermission": "Waiting for permission",
     "retrying": "Reconnecting {{attempt}}/{{max}}{{delay}}",
+    "retryDelay": " ({{seconds}}s)",
+    "retryReasons": {
+      "network_error": "Network interrupted",
+      "server_error": "Provider temporarily unavailable",
+      "continuation": "Continuing interrupted response",
+      "rate_limit": "Rate limited",
+      "overloaded": "Provider overloaded",
+      "zero_usage": "Empty response"
+    },
     "waitingForSubagent": "Waiting for subagent",
     "waitingForWebFetch": "Fetching web content..."
   },

@@ -54,9 +54,9 @@ async function equalFiles(source, sourceStat, destination, destinationStat, root
     return await digest(source, sourceStat, roots.source) === await digest(destination, destinationStat, roots.destination);
 }
 
-function recoveryName(name, attempt, directory) {
+function recoveryName(name, attempt, directory, sourceLabel) {
     const parsed = path.parse(name);
-    const suffix = ` (from general${attempt === 1 ? '' : ` ${attempt}`})`;
+    const suffix = ` (from ${sourceLabel}${attempt === 1 ? '' : ` ${attempt}`})`;
     const shorten = (text, bytes) => {
         let result = '';
         for (const character of text) {
@@ -103,6 +103,8 @@ async function copyTree(source, destination, roots, report) {
     await assertInside(roots.source, source);
     await assertInside(roots.destination, destination);
     for (const name of (await fs.readdir(source)).sort()) {
+        // Workspace ownership belongs to the destination, never to an old copy.
+        if (source === roots.source && name === '.pilotdeck-workspace') continue;
         const from = path.join(source, name);
         const sourceStat = await fs.lstat(from);
         const relativeSource = path.relative(roots.source, from);
@@ -112,7 +114,7 @@ async function copyTree(source, destination, roots, report) {
         }
         for (let attempt = 0; ; attempt++) {
             if (attempt > 1000) throw new Error(`Too many migration conflicts for ${relativeSource}`);
-            const to = path.join(destination, attempt === 0 ? name : recoveryName(name, attempt, sourceStat.isDirectory()));
+            const to = path.join(destination, attempt === 0 ? name : recoveryName(name, attempt, sourceStat.isDirectory(), roots.sourceLabel));
             let existing = await statOrNull(to);
             if (sourceStat.isDirectory()) {
                 if (!existing) {
@@ -142,7 +144,7 @@ async function copyTree(source, destination, roots, report) {
     }
 }
 
-async function migrate({ source, destination, pilotHome }) {
+async function migrate({ source, destination, pilotHome, sourceLabel = 'general' }) {
     const sourceStat = await statOrNull(source);
     if (!sourceStat) return;
     if (sourceStat.isSymbolicLink() || !sourceStat.isDirectory()) throw unsafe('Legacy General workspace is not a safe directory.');
@@ -172,7 +174,7 @@ async function migrate({ source, destination, pilotHome }) {
             && sameIdentity(completed.destinationIdentity, destinationIdentity)) return;
     }
     const report = { version: 1, source: realSource, destination: realDestination, destinationIdentity, copied: 0, conflicts: [], skipped: [] };
-    await copyTree(realSource, realDestination, { source: realSource, destination: realDestination }, report);
+    await copyTree(realSource, realDestination, { source: realSource, destination: realDestination, sourceLabel }, report);
     await fs.mkdir(stateDirectory, { recursive: true, mode: 0o700 });
     await assertInside(realPilotHome, stateDirectory);
     const temporary = path.join(stateDirectory, `${key}-${randomUUID()}.tmp`);

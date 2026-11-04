@@ -124,6 +124,7 @@ function createPaneElement({
   planModeActive = false,
   showThinking = true,
   inlineThinking = false,
+  workingStatus,
   onRegenerate,
 }: {
   messages: ChatMessage[];
@@ -137,6 +138,7 @@ function createPaneElement({
   planModeActive?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
+  workingStatus?: import('../chat/types/types').PilotDeckWorkStatus;
   onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 }) {
   const scrollContainerRef = React.createRef<HTMLDivElement>();
@@ -171,6 +173,7 @@ function createPaneElement({
         planModeActive={planModeActive}
         showThinking={showThinking}
         inlineThinking={inlineThinking}
+        workingStatus={workingStatus}
         onRegenerate={onRegenerate}
       />
     </FindShortcutProvider>
@@ -189,10 +192,24 @@ function renderPane(options: {
   planModeActive?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
+  workingStatus?: import('../chat/types/types').PilotDeckWorkStatus;
   onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 }) {
   return render(createPaneElement(options));
 }
+
+it('shows retry progress over the previous completed tool activity', () => {
+  renderPane({
+    messages: [{ id: 'retry-user', type: 'user', content: 'Continue', timestamp: new Date().toISOString() }],
+    activityMessages: [{ id: 'old-tool', type: 'assistant', content: '', timestamp: new Date().toISOString(), isToolUse: true,
+      toolName: 'bash', toolInput: { command: 'pwd' }, toolResult: { content: '/workspace' } }],
+    isAssistantWorking: true,
+    workingStatus: { text: 'Reconnecting', tokens: 0, can_interrupt: true,
+      retryProgress: { attempt: 1, maxAttempts: 5, delayMs: 500, reason: 'network_error', provider: 'test', model: 'model' } },
+  });
+  expect(screen.getByText('Reconnecting {{attempt}}/{{max}}{{delay}}')).toBeTruthy();
+  expect(screen.getByText(/working.retryReasons.network_error/)).toBeTruthy();
+});
 
 it.each(['generate_image', 'edit_image'])('keeps the %s record in the completed trace while retaining exactly one image', async toolName => {
   const fetchImage = vi.spyOn(api, 'authenticatedFetch').mockResolvedValue({

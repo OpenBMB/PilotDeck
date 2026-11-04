@@ -1575,18 +1575,14 @@ function getLiveStatusStep(
   hasPendingToolUse: boolean,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): ProcessTraceStep {
-  const latestActivity = getLatestActivity(activities);
-  if (latestActivity) {
-    return activityToLiveStep(latestActivity);
-  }
-
   const retryProgress = (workingStatus as any)?.retryProgress;
   if (retryProgress) {
     const parts: string[] = [];
-    if (retryProgress.reason) parts.push(retryProgress.reason);
+    const retryReasons = ['network_error', 'server_error', 'continuation', 'rate_limit', 'overloaded', 'zero_usage'];
+    if (retryReasons.includes(retryProgress.reason)) parts.push(t(`working.retryReasons.${retryProgress.reason}`));
     if (retryProgress.provider) parts.push(retryProgress.provider);
     if (retryProgress.model) parts.push(retryProgress.model);
-    const delayStr = retryProgress.delayMs ? ` (${Math.round(retryProgress.delayMs / 1000)}s)` : '';
+    const delayStr = retryProgress.delayMs ? t('working.retryDelay', { seconds: Math.max(1, Math.ceil(retryProgress.delayMs / 1000)) }) : '';
     return {
       id: 'live-retry',
       title: t('working.retrying', {
@@ -1600,6 +1596,11 @@ function getLiveStatusStep(
       state: 'running',
       severity: 'warning',
     };
+  }
+
+  const latestActivity = getLatestActivity(activities);
+  if (latestActivity) {
+    return activityToLiveStep(latestActivity);
   }
 
   if (workingStatus?.compactProgress) {

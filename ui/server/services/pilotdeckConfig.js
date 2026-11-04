@@ -143,6 +143,7 @@ export function buildDefaultPilotDeckConfig() {
         logRetentionDays: 7,
         databasePath: path.join(PILOT_HOME_DIR, 'auth.db'),
         workspacesRoot: os.homedir(),
+        generalWorkspaceDirectory: '',
       },
       officePreview: {
         service: 'builtin',
@@ -565,6 +566,11 @@ export function validatePilotDeckConfig(config) {
   if (libreOfficeBinaryPath !== undefined && typeof libreOfficeBinaryPath !== 'string') {
     errors.push('webui.officePreview.binaryPath must be a string');
   }
+  const generalDirectory = normalized.webui?.runtime?.generalWorkspaceDirectory;
+  if (generalDirectory !== undefined && (typeof generalDirectory !== 'string'
+    || (generalDirectory.trim() && !path.isAbsolute(generalDirectory.trim()) && !/^~(?:[\\/]|$)/.test(generalDirectory.trim())))) {
+    errors.push('webui.runtime.generalWorkspaceDirectory must be an absolute path or start with ~');
+  }
   return { valid: errors.length === 0, errors, warnings, config: normalized };
 }
 
@@ -661,6 +667,10 @@ export function buildRuntimeEnv(config) {
     HOST: process.env.HOST || String(runtime.host ?? '0.0.0.0'),
     API_TIMEOUT_MS: String(runtime.apiTimeoutMs ?? 120000),
     PILOTDECK_MEMORY_ENABLED: normalized.memory?.enabled ? '1' : '0',
+    // Always assign the empty value as well, so resetting to the default clears
+    // a previous directory during config hot reload.
+    PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: runtime.generalWorkspaceDirectory?.trim() || '',
+    PILOTDECK_GENERAL_WORKSPACE_ID: runtime.generalWorkspaceId || '',
   };
 
   if (runtime.databasePath) env.DATABASE_PATH = expandTilde(runtime.databasePath);

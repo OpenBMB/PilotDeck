@@ -11,7 +11,15 @@ const mod = { exports: {} };
 new Function('module', 'exports', 'require', ts.transpileModule(fs.readFileSync(new URL('../src/runtimeEnvironment.ts', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText)(mod, mod.exports, createRequire(import.meta.url));
-const { withRuntimeCommandPath } = mod.exports;
+const { desktopInstallationRoot, withRuntimeCommandPath } = mod.exports;
+
+for (const [platform, resources, expected] of [
+  ['win32', 'C:\\Program Files\\PilotDeck\\resources', 'C:\\Program Files\\PilotDeck'],
+  ['darwin', '/Applications/PilotDeck.app/Contents/Resources', '/Applications/PilotDeck.app'],
+  ['linux', '/opt/PilotDeck/resources', '/opt/PilotDeck'],
+]) test(`protect the complete packaged ${platform} installation`, () => {
+  assert.equal(desktopInstallationRoot(resources, platform), expected);
+});
 
 test('Windows duplicate keys retain Node selection while bundled tools win command lookup', () => {
   const env = Object.freeze({ Path: 'wrong-lower', PATH: 'existing-upper', path: 'wrong-last', TEMP: 'chosen-temp', Temp: 'wrong-temp' });

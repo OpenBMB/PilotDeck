@@ -19,6 +19,7 @@ let checks = 0;
 let menuRequests = [];
 const openedDirectories = [];
 let captionMenu;
+let menuSession = Promise.resolve();
 let aboutDialogs = [], copiedVersion = '', openedWebsite = '';
 function menuTemplate() {
   return buildApplicationMenu(process.platform, appearance.language, undefined, {
@@ -54,6 +55,8 @@ ipcMain.on('pilotdeck:get-window-state', e => { e.returnValue = { fullscreen: wi
 ipcMain.handle('pilotdeck:set-appearance', (_e, value) => { appearance = value; nativeTheme.themeSource = value.themeMode; publish(); refresh(); });
 ipcMain.handle('pilotdeck:menu-state', (_e, value) => { state = normalizeMenuState(value); refresh(); });
 ipcMain.handle('pilotdeck:get-runtime-info', () => null);
+ipcMain.handle('pilotdeck:notification-status', () => ({ supported: false, permission: 'unknown',
+  preferences: { enabled: false, sound: false, badge: false, preview: false } }));
 // Record native folder requests without launching the user's file manager.
 ipcMain.handle('pilotdeck:open-directory', (_event, directory) => { openedDirectories.push(directory); return true; });
 // The shared pre-bundle startup page reads this synchronously, just like the
@@ -70,10 +73,12 @@ ipcMain.handle('pilotdeck:update-status', () => ({ state: 'idle', progress: 0 })
 ipcMain.handle('pilotdeck:show-menu', (_e, request) => {
   menuRequests.push(request || { id: 'all' });
   captionMenu ||= new WindowsCaptionMenu(window, menuTemplate, items => Menu.buildFromTemplate(items), () => screen.getCursorScreenPoint());
-  return captionMenu.show(request);
+  menuSession = captionMenu.show(request);
+  return menuSession;
 });
 nativeTheme.on('updated', publish);
-global.chromeTest = { loaded: () => loaded, state: () => state, checks: () => checks, menuRequests: () => menuRequests, closeMenu: () => captionMenu?.close(), refreshMenu: refresh, openedDirectories: () => openedDirectories,
+global.chromeTest = { loaded: () => loaded, state: () => state, checks: () => checks, menuRequests: () => menuRequests,
+  closeMenu: () => { captionMenu?.close(); return menuSession; }, refreshMenu: refresh, openedDirectories: () => openedDirectories,
   about: () => ({ dialogs: aboutDialogs, copiedVersion, openedWebsite }) };
 app.whenReady().then(async () => {
   nativeTheme.themeSource = 'dark';

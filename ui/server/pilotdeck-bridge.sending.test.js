@@ -193,14 +193,15 @@ it('ends a General send when workspace preflight fails before input acceptance',
     }
 });
 
-it('continues an existing General conversation with its old files in the migrated cwd', async () => {
+it.each(['general', 'PilotDeck'])('uses the new cwd for existing and new General conversations after migrating %s', async legacyName => {
     const previousRoot = process.env.WORKSPACES_ROOT;
     const root = await mkdtemp(path.join(os.tmpdir(), 'pilotdeck-general-turn-'));
-    const legacy = path.join(root, 'general');
-    const current = path.join(root, 'PilotDeck');
+    const legacy = path.join(root, legacyName);
+    const current = path.join(root, 'PilotDeckGeneral');
     const sessionId = `web:general-migration-${randomUUID()}`;
     const reads = [], frames = [];
     await mkdir(legacy);
+    if (legacyName === 'PilotDeck') await writeFile(path.join(legacy, '.pilotdeck-workspace'), JSON.stringify({ product: 'PilotDeck', version: 1, id: 'old-workspace' }));
     await writeFile(path.join(legacy, 'report.md'), 'report from an earlier conversation');
     process.env.WORKSPACES_ROOT = root;
     const gateway = {
@@ -216,6 +217,12 @@ it('continues an existing General conversation with its old files in the migrate
         }, { send: frame => frames.push(frame) }, 'pilotdeck', { getGateway: async () => gateway });
         expect(result).toMatchObject({ sessionKey: sessionId, inputAccepted: true, sawTurnCompleted: true });
         expect(reads).toEqual([{ cwd: current, report: 'report from an earlier conversation' }]);
+        const newConversation = await runChatViaGateway('Read report.md again', {
+            projectPath: mock.home, workspaceCwd: legacy,
+        }, { send: frame => frames.push(frame) }, 'pilotdeck', { getGateway: async () => gateway });
+        expect(newConversation).toMatchObject({ inputAccepted: true, sawTurnCompleted: true });
+        expect(reads).toHaveLength(2);
+        expect(reads[1]).toEqual({ cwd: current, report: 'report from an earlier conversation' });
         expect(frames.some(frame => frame.kind === 'error')).toBe(false);
         expect(await readFile(path.join(legacy, 'report.md'), 'utf8')).toBe('report from an earlier conversation');
     } finally {

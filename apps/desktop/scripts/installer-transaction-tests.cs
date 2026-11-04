@@ -46,6 +46,35 @@ internal static class InstallerTests
         Check(InstallPayload.RemainingSeconds(10, 100, 0) == null, "do not report zero while finalizing");
         Check(InstallPayload.RemainingSeconds(10, 99, 0) == 5, "round up small estimates");
         Check(InstallPayload.RemainingSeconds(100000, 1, 0) == 86395, "bound estimates without wrapping to zero hours");
+        string workspace = Path.Combine(root, "user workspace"), protectedPayload = Path.Combine(root, "protected-payload");
+        Directory.CreateDirectory(Path.Combine(workspace, "resources"));
+        Directory.CreateDirectory(Path.Combine(protectedPayload, "resources"));
+        File.WriteAllText(Path.Combine(workspace, ".pilotdeck-workspace"), "workspace identity");
+        File.WriteAllText(Path.Combine(workspace, "resources", "report.txt"), "user data");
+        File.WriteAllText(Path.Combine(protectedPayload, "resources", "new.txt"), "new application");
+        foreach (string destination in new[] { workspace, Path.Combine(workspace, "nested-install") })
+        {
+            bool rejected = false;
+            try { InstallPayload.Commit(protectedPayload, destination, Path.Combine(root, "must-not-backup"), null); }
+            catch (IOException) { rejected = true; }
+            Check(rejected, "refuse installing in or below a registered workspace");
+            Check(File.ReadAllText(Path.Combine(workspace, "resources", "report.txt")) == "user data", "preserve user files before replacing resources");
+            Check(File.Exists(Path.Combine(protectedPayload, "resources", "new.txt")), "do not consume payload on rejection");
+        }
+        string nestedTarget = Path.Combine(root, "nested-target");
+        string nestedWorkspace = Path.Combine(nestedTarget, "resources", "user-workspace");
+        Directory.CreateDirectory(nestedWorkspace);
+        File.WriteAllText(Path.Combine(nestedWorkspace, ".pilotdeck-workspace"), "workspace identity");
+        File.WriteAllText(Path.Combine(nestedWorkspace, "report.txt"), "irreplaceable user data");
+        File.WriteAllText(Path.Combine(nestedTarget, "app.exe"), "old executable");
+        bool nestedRejected = false;
+        try { InstallPayload.Commit(protectedPayload, nestedTarget, Path.Combine(root, "must-not-backup"), null); }
+        catch (IOException) { nestedRejected = true; }
+        Check(nestedRejected, "refuse replacing a subtree containing a workspace");
+        Check(File.ReadAllText(Path.Combine(nestedWorkspace, "report.txt")) == "irreplaceable user data", "preserve nested workspace bytes");
+        Check(File.ReadAllText(Path.Combine(nestedTarget, "app.exe")) == "old executable", "preflight before moving any application files");
+        Check(!Directory.Exists(Path.Combine(root, "must-not-backup")), "rejection must not create a backup");
+        Check(File.Exists(Path.Combine(protectedPayload, "resources", "new.txt")), "nested rejection must not consume payload");
         Console.WriteLine("PASS: commit, rollback, retry, transient file locks, component preservation and ETA edge cases");
         return 0;
     }

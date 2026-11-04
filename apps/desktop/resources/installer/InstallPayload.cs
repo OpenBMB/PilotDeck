@@ -176,6 +176,7 @@ internal static class InstallPayload
 
     internal static void Commit(string payload, string target, string backup, Action<int> checkpoint)
     {
+        RejectWorkspaceTree(target);
         // Only move top-level entries: large resource directories are renamed as
         // a whole. Never fall back to recursive copying or delete user data.
         var saved = new List<string>();
@@ -222,6 +223,37 @@ internal static class InstallPayload
         for (var dir = new DirectoryInfo(target); dir != null; dir = dir.Parent)
             if (dir.Exists && (dir.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Installation through a directory junction is not supported: " + dir.FullName);
+    }
+
+    internal static void RejectWorkspaceParents(string target)
+    {
+        for (var directory = new DirectoryInfo(Path.GetFullPath(target)); directory != null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, ".pilotdeck-workspace")) || Directory.Exists(Path.Combine(directory.FullName, ".pilotdeck-workspace")))
+                throw new IOException(Text("This folder is a PilotDeck working directory. Choose a separate application installation folder.",
+                    "此文件夹是 PilotDeck 工作目录。请选择独立的程序安装文件夹。"));
+        }
+    }
+
+    internal static void RejectWorkspaceTree(string target)
+    {
+        RejectWorkspaceParents(target);
+        // Preflight the entire installation before moving anything. NSIS may
+        // uninstall the previous version between preparation and commit, and a
+        // top-level rename can otherwise bury a workspace in a deleted backup.
+        var pending = new Stack<string>();
+        if (Directory.Exists(target)) pending.Push(target);
+        while (pending.Count > 0)
+        {
+            string directory = pending.Pop();
+            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+                throw new IOException(Text("The installation contains a directory link. Choose a separate installation folder.",
+                    "安装目录中存在目录链接。请选择独立的安装文件夹。"));
+            if (File.Exists(Path.Combine(directory, ".pilotdeck-workspace")) || Directory.Exists(Path.Combine(directory, ".pilotdeck-workspace")))
+                throw new IOException(Text("The installation contains a PilotDeck working directory. Move the workspace outside the installation folder before updating.",
+                    "安装目录中包含 PilotDeck 工作目录。请先将工作目录移至安装目录之外，再更新程序。"));
+            foreach (string child in Directory.GetDirectories(directory)) pending.Push(child);
+        }
     }
 
     static int Main(string[] args)
@@ -278,6 +310,7 @@ internal static class InstallPayload
                 bar = GetDlgItem(page, 1136);
             }
             RejectReparseParents(target);
+            RejectWorkspaceTree(target);
             string parent = Path.GetDirectoryName(target);
             if (String.IsNullOrEmpty(parent)) throw new IOException("Cannot install at a volume root");
             if (!commitOnly) stage = Path.Combine(parent, ".pilotdeck-install-" + Guid.NewGuid().ToString("N"));
@@ -287,6 +320,7 @@ internal static class InstallPayload
                 Directory.CreateDirectory(payload);
                 Console.WriteLine(Text("Preparing files on the installation volume: ", "正在安装目标磁盘上准备文件：") + stage);
                 Extract(Path.GetFullPath(args[0]), Path.GetFullPath(args[1]), payload);
+                RejectWorkspaceTree(target);
                 if (prepareOnly)
                 {
                     File.WriteAllLines(stateFile, new[] { stage, target });

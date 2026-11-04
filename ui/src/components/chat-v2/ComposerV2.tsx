@@ -579,7 +579,7 @@ export default function ComposerV2({
   const contextTriggerRef = useRef<HTMLButtonElement>(null);
   const addMenu = useFloatingPanel(isAddMenuOpen, addTriggerRef, () => setIsAddMenuOpen(false), { matchComposer: true });
   const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 280 });
-  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 320, maxHeight: 240 });
+  const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 272, maxHeight: 204 });
   const fileMenu = useFloatingPanel(showFileDropdown, textareaRef, undefined, { matchComposer: true, maxHeight: 320 });
   const permissionSelectorDisabled = runMode === "plan";
   const [workspaceMenuForceOpen, setWorkspaceMenuForceOpen] = useState(false);

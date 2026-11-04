@@ -38,6 +38,23 @@ test('cleanup refuses broad custom homes and repositories', () => {
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
 });
 
+test('cleanup preserves a General workspace even when nested inside a client data directory', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-uninstall-workspace-'));
+  try {
+    const profile = path.join(root, 'profile'), appData = path.join(profile, 'AppData', 'Roaming');
+    const client = path.join(appData, 'PilotDeck'), workspace = path.join(client, 'custom', 'General');
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(workspace, '.pilotdeck-workspace'), 'workspace marker');
+    fs.writeFileSync(path.join(workspace, 'report.md'), 'user file');
+    const result = cleanupPersonalData({ profile, appData });
+    assert.ok(result.skipped.includes(client));
+    assert.equal(fs.readFileSync(path.join(workspace, 'report.md'), 'utf8'), 'user file');
+  } finally {
+    assert.equal(path.dirname(root), path.resolve(os.tmpdir()));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('uninstall language probing respects the saved preference and cannot clean data', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'pilotdeck-uninstall-language-'));
   try {

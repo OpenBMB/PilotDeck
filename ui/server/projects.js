@@ -39,7 +39,7 @@ import {
 import { mapCronRunOutcome } from '../../src/cron/protocol/types.js';
 import sessionManager from './sessionManager.js';
 import { applyCustomSessionNames } from './database/db.js';
-import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
+import { ensureGeneralWorkspaceDirectory, generalWorkspaceNotice } from './utils/generalWorkspace.js';
 
 // Optional taskmaster detection. Read once per project; lightweight.
 async function detectTaskMaster(projectPath) {
@@ -294,6 +294,7 @@ async function getProjects(progressCallback = null) {
     // sourced from the same backend as any other project.
     const generalHome = resolvePilotHome(process.env);
     let generalWorkspaceCwd;
+    let generalWorkspaceUnavailable = false;
     try {
         generalWorkspaceCwd = await ensureGeneralWorkspaceDirectory(process.env);
     } catch (error) {
@@ -301,6 +302,7 @@ async function getProjects(progressCallback = null) {
         // workspace root is temporarily unavailable. Sending a turn will
         // retry the same safety check and surface the failure to the user.
         console.warn('[projects] failed to prepare General workspace:', error?.message || error);
+        generalWorkspaceUnavailable = true;
     }
     let generalSessions = [];
     let generalTotal = 0;
@@ -362,6 +364,8 @@ async function getProjects(progressCallback = null) {
         fullPath: generalHome,
         path: generalHome,
         ...(generalWorkspaceCwd ? { workspaceCwd: generalWorkspaceCwd } : {}),
+        ...(generalWorkspaceCwd ? { workspaceNotice: generalWorkspaceNotice(process.env) } : {}),
+        ...(generalWorkspaceUnavailable ? { workspaceUnavailable: true } : {}),
         capabilities: {
             files: false,
             explore: false,

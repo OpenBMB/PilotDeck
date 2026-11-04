@@ -1,5 +1,6 @@
 {
   "context": {
+    "tokenUnit": "tokens",
     "title": "上下文预算",
     "used": "已用",
     "systemPrompt": "系统指令",
@@ -165,6 +166,15 @@
     "waitingForApproval": "等待你审批",
     "waitingForPermission": "等待授权",
     "retrying": "重连中 {{attempt}}/{{max}}{{delay}}",
+    "retryDelay": "（{{seconds}} 秒后）",
+    "retryReasons": {
+      "network_error": "网络连接中断",
+      "server_error": "服务商暂时不可用",
+      "continuation": "继续中断的回复",
+      "rate_limit": "请求受到限流",
+      "overloaded": "服务商负载过高",
+      "zero_usage": "模型返回空回复"
+    },
     "waitingForSubagent": "等待子任务完成",
     "waitingForWebFetch": "正在获取网页内容..."
   },

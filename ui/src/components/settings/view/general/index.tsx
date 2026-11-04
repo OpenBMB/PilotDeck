@@ -3,6 +3,7 @@ import ChatInputSection from "./ChatInputSection";
 import CodeEditorSection from "./CodeEditorSection";
 import GeneralSettingsSection from "./GeneralSettingsSection";
 import NotificationsSection from './NotificationsSection';
+import GeneralWorkspaceSection from './GeneralWorkspaceSection';
 
 type GeneralSectionsProps = {
   title: string;
@@ -23,6 +24,7 @@ export default function GeneralSections({ title: _title }: GeneralSectionsProps)
         onProjectSortOrderChange={setProjectSortOrder}
       />
       <ChatInputSection />
+      <GeneralWorkspaceSection />
       <NotificationsSection />
       <CodeEditorSection
         codeEditorSettings={codeEditorSettings}

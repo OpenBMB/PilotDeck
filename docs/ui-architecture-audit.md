@@ -85,7 +85,7 @@ context inspection) and colocate its tests. Backend session protocol versions,
 database migrations, provider API versions and asset variants are independent
 of the UI generations and must not be removed by a `v1`/`v2` text search.
 
-General conversations use a managed `PilotDeck` working directory: the system
+New profiles use a managed `PilotDeckGeneral` working directory: the system
 Documents folder on Windows, and the user's home directory on macOS/Linux.
 Windows desktop passes Electron's known Documents folder to the server;
 standalone Web resolves the same system folder, including redirected folders.
@@ -93,14 +93,47 @@ A custom `WORKSPACES_ROOT` still selects a different parent directory. The
 default project-browsing root (home) uses the platform convention above.
 Session storage remains keyed by `PILOT_HOME`; sidebar folder actions open
 the current managed workspace even when older sessions have stale cwd metadata.
+General settings can select an exact absolute or home-relative directory through
+`webui.runtime.generalWorkspaceDirectory`. Switching to a different nonempty
+folder is rejected, including folders containing hidden user files. Existing
+files are not moved when the setting changes.
+
+The selected default and its identity are recorded in
+`PILOT_HOME/general-workspace.json`, with a matching `.pilotdeck-workspace`
+marker in the workspace. Custom directory claims are also recorded under
+`PILOT_HOME/general-workspace-identities`, so manually configured YAML paths
+remain usable after the first turn creates files, without rewriting user YAML.
+An explicit settings selection may renew a historical custom claim for an empty
+folder that was deleted and recreated. Startup and turn dispatch still require
+the saved identity; a populated replacement cannot be reclaimed this way.
+Existing General history, a saved location or a workspace marker identifies the
+previous `PilotDeck` location for migration into `PilotDeckGeneral`. An existing safe unnumbered
+default can be reused on first install, even when populated. Installation
+overlap, a file or a link at that path causes first-run selection of the first
+safe empty `PilotDeckGeneral2`, `PilotDeckGeneral3`, etc. The UI reports this
+choice. Subsequent launches reuse the registered location; a missing or changed
+identity reports an error instead of silently switching directories. The
+Windows installer checks the complete installation tree, its parents and nested
+workspaces before preparation and again before replacement. The runtime rejects
+workspaces overlapping the complete installation, including siblings of
+`resources/runtime`. These guards do not recover files
+overwritten by older installers or external processes.
 
 Before publishing that cwd to the sidebar or dispatching a General turn, merge
-the previous `<WORKSPACES_ROOT || home>/general` directory into the new location.
-This also handles the Windows home-to-Documents move and an existing `PilotDeck`
+the previous `<WORKSPACES_ROOT || home>/general` and recognized `PilotDeck`
+directories into the new location. Registered numbered `PilotDeck2` locations
+are migrated too. Independent projects retain their existing paths and defaults.
+This also handles the Windows home-to-Documents move and an existing default
 directory. Keep the original directory; copy missing files, reuse identical
 files, and preserve differing old versions as `name (from general).ext` (with
-numbered suffixes when needed). Merge directories and preserve file/directory
+numbered suffixes when needed); files from `PilotDeck` use ` (from PilotDeck)`.
+The source root's ownership marker is not copied. Merge directories and preserve file/directory
 collisions the same way. The new copy is independent of the original.
+
+Persist a pending location claim before copying, including the identity of a
+registered legacy source. Failed numbered migrations resume that exact directory
+after restart; partial files must not cause another numbered selection. Clear
+the pending state only once migration completes.
 
 Publish each complete file without overwriting an existing name. Interrupted
 copies cannot expose a partial file under its final name, and failed migrations
@@ -110,6 +143,6 @@ follow source links or destination junctions, copy special files, or allow a
 workspace to overlap `PILOT_HOME`. Retain a completion/conflict/skipped-entry
 report under `PILOT_HOME/migrations/general-workspace-v1-*.json`, outside the
 agent workspace. Repeated requests share the migration and completed work is
-not reimported on restart; removing the destination directory allows recovery
-from the retained legacy directory. Existing transcript/session identities remain
-unchanged.
+not reimported on restart. A removed registered workspace must be restored or
+replaced explicitly through General settings. Existing transcript/session
+identities remain unchanged.

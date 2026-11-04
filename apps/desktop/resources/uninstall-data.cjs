@@ -3,6 +3,17 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+function containsWorkspace(directory) {
+  const pending = [directory];
+  while (pending.length) {
+    for (const entry of fs.readdirSync(pending.pop(), { withFileTypes: true })) {
+      if (entry.name === '.pilotdeck-workspace') return true;
+      if (entry.isDirectory() && !entry.isSymbolicLink()) pending.push(path.join(entry.parentPath || entry.path, entry.name));
+    }
+  }
+  return false;
+}
+
 function cleanupPersonalData({ profile, appData, localAppData, pilotHome }) {
   const home = path.resolve(profile), targets = new Set(), skipped = [], removed = [];
   if (home === path.parse(home).root) return { removed, skipped: [home] };
@@ -26,6 +37,7 @@ function cleanupPersonalData({ profile, appData, localAppData, pilotHome }) {
       // turn a user's cache path into another user's or a system directory.
       const canonical = fs.realpathSync(target);
       if (!same(canonical, target)) { skipped.push(target); continue; }
+      if (containsWorkspace(canonical)) { skipped.push(target); continue; }
       fs.rmSync(canonical, { recursive: true, force: true, maxRetries: 2 });
       removed.push(target);
     } catch (error) { if (error.code !== 'ENOENT') skipped.push(target); }
