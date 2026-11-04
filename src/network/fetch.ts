@@ -165,7 +165,7 @@ export function normalizeNetworkError(
   if (combined.includes("enotfound") || combined.includes("eai_again") || combined.includes("dns")) {
     return new NetworkFetchError("network_dns_error", message, error);
   }
-  if (combined.includes("econnreset") || combined.includes("socket hang up") || combined.includes("terminated")) {
+  if (combined.includes("econnreset") || combined.includes("epipe") || combined.includes("und_err_socket") || combined.includes("socket hang up") || combined.includes("terminated")) {
     return new NetworkFetchError("network_connection_reset", message, error);
   }
   if (combined.includes("econnrefused")) {
@@ -174,7 +174,7 @@ export function normalizeNetworkError(
   if (combined.includes("etimedout") || combined.includes("timeout")) {
     return new NetworkFetchError("network_timeout", message, error);
   }
-  if (combined.includes("certificate") || combined.includes("tls") || combined.includes("ssl")) {
+  if (combined.includes("certificate") || combined.includes("cert_") || combined.includes("tls") || combined.includes("ssl")) {
     return new NetworkFetchError("network_tls_error", message, error);
   }
   if (combined.includes("proxy")) {
