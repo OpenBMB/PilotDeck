@@ -1,3 +1,4 @@
+import { isVideoDeliverable } from '../chat/tools/videoPresentation';
 import type { TFunction } from 'i18next';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
 import { isReadOnlyModeToolDeny } from '../chat/utils/chatPermissions';
@@ -41,8 +42,8 @@ export type ProcessRunAttachment = {
 };
 
 export type RenderableMessageItem = {
-  /** A separate image surface; the original tool call remains in the process. */
-  imageArtifact?: true;
+  /** A separate media surface; the original tool call remains in the process. */
+  mediaArtifact?: true;
   turnTrace?: { id: string; durationMs: number; items: RenderableMessageItem[] };
   message: ChatMessage;
   originalIndex: number;
@@ -771,11 +772,12 @@ export function buildRenderableMessageItems(
     if (message.isAgentActivitySummary) {
       return;
     }
-    if (isImageDeliverable(message)) {
+    const liveVideo = Boolean(liveTurn && originalIndex >= liveTurn.start && originalIndex < liveTurn.end);
+    if (isImageDeliverable(message) || (isVideoDeliverable(message) && (message.toolResult || liveVideo))) {
       const callKey = message.toolId || message.toolCallId || message.id || String(originalIndex);
       syntheticItems.push({
-        imageArtifact: true,
-        message: { ...message, renderKey: `image-artifact-${callKey}` },
+        mediaArtifact: true,
+        message: { ...message, renderKey: `media-artifact-${callKey}` },
         originalIndex: originalIndex + 0.001,
         beforeRunAttachment: null, afterRunAttachment: null,
         beforeProcessAttachments: [], afterProcessAttachments: [],
@@ -955,11 +957,11 @@ export function foldCompletedTurns(
       beforeProcessAttachments: [], afterProcessAttachments: [],
     });
     const traceItems: RenderableMessageItem[] = [];
-    const imageItems = turnItems.filter(item => item.imageArtifact);
+    const mediaItems = turnItems.filter(item => item.mediaArtifact);
     for (const item of turnItems) {
-      // Only the image surface stays outside. Every original tool call,
-      // including delivered images, remains available in the trace.
-      if (imageItems.includes(item)) continue;
+      // Only the media surface stays outside. Every original tool call,
+      // including delivered images and videos, remains available in the trace.
+      if (mediaItems.includes(item)) continue;
       if (item.message.type !== 'user' && item !== finalItem) {
         traceItems.push({ ...item, beforeRunAttachment: null, afterRunAttachment: null });
       } else if (item.beforeProcessAttachments.length || item.afterProcessAttachments.length) {
@@ -983,7 +985,7 @@ export function foldCompletedTurns(
       message: { id, type: 'assistant', content: '', timestamp: last!.timestamp },
       turnTrace: { id, durationMs: getTurnRunDurationMs(messages, turn) ?? 0, items: traceItems },
     });
-    result.push(...imageItems.map(clean));
+    result.push(...mediaItems.map(clean));
     result.push(clean(finalItem));
   }
   return result;

@@ -36,7 +36,7 @@ const encodePathSegments = (relativePath) =>
     .map((segment) => encodeURIComponent(segment))
     .join('/');
 
-const appendAuthToken = (url) => {
+export const appendAuthToken = (url) => {
   const token = localStorage.getItem('auth-token');
   if (!token) return url;
   const separator = url.includes('?') ? '&' : '?';

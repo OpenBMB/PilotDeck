@@ -1,3 +1,4 @@
+import { createVideoGenerationTools, type VideoToolOptions } from "../builtin/videoGeneration.js";
 import { createImageGenerationTools, type ImageToolOptions } from "../builtin/imageGeneration.js";
 import type { BackgroundTaskRuntime } from "../../task/runtime/BackgroundTaskRuntime.js";
 import { createAgentTool, type CreateAgentToolOptions } from "../builtin/agent.js";
@@ -28,6 +29,7 @@ import { createWriteFileTool } from "../builtin/writeFile.js";
 import { ToolRegistry } from "./ToolRegistry.js";
 
 export type CreateBuiltinRegistryOptions = {
+  videoGeneration?: VideoToolOptions;
   imageGeneration?: ImageToolOptions;
   bash?: CreateBashToolOptions;
   /**
@@ -92,6 +94,9 @@ export type CreateBuiltinRegistryOptions = {
 
 export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): ToolRegistry {
   const registry = new ToolRegistry();
+  if (options?.videoGeneration?.getConfig()?.enabled === true) {
+    for (const tool of createVideoGenerationTools(options.videoGeneration)) registry.register(tool);
+  }
   if (options?.imageGeneration?.getConfig()?.enabled === true) {
     for (const tool of createImageGenerationTools(options.imageGeneration)) registry.register(tool);
   }

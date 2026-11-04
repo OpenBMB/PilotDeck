@@ -1,3 +1,5 @@
+import { VideoStore } from "../tool/builtin/videos/VideoStore.js";
+import { createSubagentVideoPreparation, createSubagentVideoInheritance } from "./subagentVideoInheritance.js";
 import { ImageStore } from "../tool/builtin/images/ImageStore.js";
 import { createSubagentImageInheritance, createSubagentImagePreparation } from "./subagentImageInheritance.js";
 import { acquireWorkspaceOperation, operationContext } from "../session/checkpoints/WorkspaceCoordinator.js";
@@ -1037,6 +1039,10 @@ class ProjectRuntimeRegistry {
       ? resolveWebSearchConfig(snapshot.config.tools.webSearch)
       : undefined;
     const tools = createBuiltinRegistry({
+      videoGeneration: {
+        store: new VideoStore(resolve(this.options.pilotHome, "generated-videos")),
+        getConfig: () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.videoGeneration,
+      },
       imageGeneration: {
         store: new ImageStore(resolve(this.options.pilotHome, "generated-images")),
         getConfig: () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration,
@@ -1409,6 +1415,7 @@ class ProjectRuntimeRegistry {
     const memoryResolver = runtime.memory;
     const now = this.options.now;
     const eventBuf = createAgentEventBuffer();
+    const videoStore = new VideoStore(resolve(this.options.pilotHome, "generated-videos"));
     const imageStore = new ImageStore(resolve(this.options.pilotHome, "generated-images"));
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
@@ -1429,9 +1436,11 @@ class ProjectRuntimeRegistry {
       now: this.options.now,
       eventEmitter: eventBuf.emitter,
       drainEvents: eventBuf.drain,
-      inheritSubagentToolResult: createSubagentImageInheritance(imageStore),
-      prepareSubagentArtifacts: createSubagentImagePreparation(imageStore,
-        () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration?.enabled === true),
+      inheritSubagentToolResult: async input => await createSubagentVideoInheritance(videoStore)(input) ?? await createSubagentImageInheritance(imageStore)(input),
+      prepareSubagentArtifacts: async input => [
+        ...await createSubagentImagePreparation(imageStore, () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration?.enabled === true)(input),
+        ...await createSubagentVideoPreparation(videoStore, () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.videoGeneration?.enabled === true)(input),
+      ],
       tokenAccounting: runtime.tokenAccounting,
       getModelMaxContextTokens: (provider, model) => resolveRoutedModelMaxContextTokens({
         modelRuntime: runtime.model,

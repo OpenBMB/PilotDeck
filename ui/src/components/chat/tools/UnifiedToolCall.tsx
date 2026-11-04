@@ -1,3 +1,5 @@
+import GeneratedVideoCard from './GeneratedVideoCard';
+import { isVideoDeliverable, videoAttachment } from './videoPresentation';
 import GeneratedImageCard from './GeneratedImageCard';
 import { hasImageAttachment, isDrawingTool, isImageDeliverable } from './imagePresentation';
 import { useMemo, useState } from 'react';
@@ -90,7 +92,8 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
             : inputDetails ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="input" contentOnly createDiff={createDiff} onFileOpen={onFileOpen} selectedProject={selectedProject} />
             : <pre className="mb-3 whitespace-pre-wrap break-words font-mono">{isRead ? file : isSkill ? target : displayText(Object.keys(input).length ? input : message.toolInput)}</pre>}
           {!externalError && (result ? <>
-            {!result.isError && isDrawingTool(name) && hasImageAttachment(message) && !isImageDeliverable(message) ? <GeneratedImageCard message={message} running={running} />
+            {!result.isError && name === 'generate_video' && videoAttachment(message) && !isVideoDeliverable(message) ? <GeneratedVideoCard message={message} running={running} />
+              : !result.isError && isDrawingTool(name) && hasImageAttachment(message) && !isImageDeliverable(message) ? <GeneratedImageCard message={message} running={running} />
               : !result.isError && (resultDetails || hasFileList) ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="result" contentOnly onFileOpen={onFileOpen} selectedProject={selectedProject} />
               : <pre className="whitespace-pre-wrap break-words font-mono">{output || t('toolDisplay.noOutput')}</pre>}
           </> : <span className="text-neutral-400">{t(active ? 'toolDisplay.executing' : 'toolDisplay.noResult')}</span>)}

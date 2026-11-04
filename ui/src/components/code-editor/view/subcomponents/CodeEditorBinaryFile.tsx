@@ -1,3 +1,4 @@
+import VideoPlayer from '../../../media/VideoPlayer';
 import {
   Suspense,
   lazy,
@@ -22,6 +23,7 @@ import type { CodeEditorFile } from '../../types/types';
 import {
   isBuiltinOfficeFile,
   isImageFile,
+  isVideoFile,
   isOfficeFile,
   isPdfFile,
   isSpreadsheetFile,
@@ -1482,15 +1484,18 @@ export default function CodeEditorBinaryFile({
   const iconBtn =
     'flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100';
 
+  const isVideo = isVideoFile(file.name);
   const isImage = isImageFile(file.name);
   const isPdf = isPdfFile(file.name);
   const isOffice = isOfficeFile(file.name);
-  const canPreview = isImage || isPdf || isOffice;
+  const canPreview = isVideo || isImage || isPdf || isOffice;
   const hasEmbeddedDocumentToolbar = isPdf || isOffice;
   const documentIsFullscreen = isSidebar ? isExpanded : isFullscreen;
   const onToggleDocumentFullscreen = isSidebar ? onToggleExpand : onToggleFullscreen;
 
-  const previewContent = isImage
+  const previewContent = isVideo && projectName
+    ? <div className="flex h-full items-center justify-center p-4"><VideoPlayer src={api.fileContentUrl(projectName, file.path)} downloadUrl={api.fileDownloadUrl(projectName, file.path)} name={file.name} /></div>
+    : isImage
     ? <ImagePreview projectName={projectName} file={file} title={title} message={message} onClose={onClose} />
     : isPdf
       ? (

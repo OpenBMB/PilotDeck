@@ -799,5 +799,11 @@
       "tool": "Used",
       "skill": "Read skill"
     }
+  },
+  "videoGeneration": {
+    "generating": "Generating video…",
+    "interrupted": "Video generation interrupted",
+    "download": "Download video",
+    "playbackUnavailable": "This browser cannot play the video. Download it to open with a local player."
   }
 }

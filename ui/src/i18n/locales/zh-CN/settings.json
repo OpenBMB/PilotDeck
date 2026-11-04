@@ -151,6 +151,8 @@
       "agentMemory": "记忆",
       "agentResident": "常驻",
       "imageGeneration": "图像生成",
+
+      "videoGeneration": "视频生成",
       "agentSearch": "搜索",
       "agentSchedule": "定时任务",
       "integrations": "外部集成",
@@ -173,6 +175,8 @@
       "agentMemory": "持续整理并记住项目重要信息，在后续任务中自动使用。",
       "agentResident": "在用户离开后持续关注工作区变化，并在合适时机主动推进任务与同步进展。",
       "imageGeneration": "让智能体在对话和项目工作中生成、编辑图片。",
+
+      "videoGeneration": "让智能体在对话和项目工作中生成视频。",
       "agentSearch": "让智能体能够检索实时网页信息，为回答补充最新内容与外部事实。",
       "agentSchedule": "按设定的时间自动唤起智能体执行任务，无需你持续在线。",
       "integrations": "连接常用通讯工具，让智能体可以从飞书、微信与企业微信接收消息并回复。",
@@ -193,6 +197,8 @@
       "agentMemory": "智能体 / 记忆",
       "agentResident": "智能体 / 常驻",
       "imageGeneration": "图像生成",
+
+      "videoGeneration": "视频生成",
       "agentSearch": "智能体 / 搜索",
       "agentSchedule": "智能体 / 定时任务",
       "integrations": "外部集成",
@@ -2145,5 +2151,27 @@
     "previewHint": "JSON 请求体展开显示，发送时仅序列化一次。预览使用占位密钥，不会发送请求。",
     "save": "保存请求配置",
     "invalidJson": "JSON 格式错误"
+  },
+  "videoGeneration": {
+    "enabled": "启用视频生成",
+    "apiKey": "API 密钥",
+    "apiKeyHint": "密钥保存在本地，留空保留已保存的密钥。",
+    "baseUrl": "API 地址",
+    "baseUrlHint": "OpenAI 兼容 Videos API 基础地址，例如 http://localhost:8000/v1。",
+    "model": "模型名称",
+    "modelHint": "填写服务端提供的视频生成模型名称，与聊天模型分别配置。",
+    "check": "测试连接",
+    "checking": "正在生成测试视频…",
+    "connected": "测试成功，已生成有效视频（耗时 {{seconds}} 秒）。",
+    "connectionFailed": "测试失败：{{error}}",
+    "unknownError": "请检查地址、密钥和服务可用性。",
+    "invalidAddress": "请填写有效的 HTTP 或 HTTPS API 地址。",
+    "keyRequired": "请填写 API 密钥。",
+    "newKeyRequired": "更换 API 地址后，请重新填写密钥。",
+    "modelRequired": "请填写视频模型名称。",
+    "saveFailed": "保存失败，请重试。",
+    "extraParams": "模型参数（可选）",
+    "extraParamsHint": "填写服务要求的默认参数 JSON。例如 MiniMax-H3：{\"task\":\"t2va\",\"aspect_ratio\":\"16:9\"}。",
+    "invalidParams": "请填写不超过 8 KB 的 JSON 对象。"
   }
 }

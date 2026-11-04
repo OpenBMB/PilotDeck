@@ -29,6 +29,7 @@ export const SETTINGS_NAV_ICONS: Partial<Record<SettingsMenuKey, string>> = {
   agentResident: agentResidentIcon,
   agentSearch: agentSearchIcon,
   imageGeneration: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg>',
+  videoGeneration: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg>',
   agentSchedule: agentScheduleIcon,
   integrations: integrationsIcon,
   mcpServers: mcpIcon,

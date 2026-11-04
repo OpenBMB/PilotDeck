@@ -780,5 +780,11 @@
       "tool": "已使用",
       "skill": "已读取技能"
     }
+  },
+  "videoGeneration": {
+    "generating": "正在生成视频…",
+    "interrupted": "视频生成已中断",
+    "download": "下载视频",
+    "playbackUnavailable": "浏览器无法播放此视频，可下载后使用本地播放器打开。"
   }
 }

@@ -65,6 +65,7 @@ export type PilotDeckConfig = {
     maxConcurrentRuns?: number;
   } | null;
   tools?: {
+    videoGeneration?: import("../../../../../../../src/pilot/config/videoGenerationConfig.js").VideoGenerationConfig;
     imageGeneration?: import("../../../../../../../src/pilot/config/imageGenerationConfig.js").ImageGenerationConfig;
     webSearch?: import("../../../../../../../src/pilot/config/webSearchConfig.js").WebSearchConfig;
   };

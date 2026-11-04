@@ -12,6 +12,7 @@ const AgentMemorySections = lazy(() => import("./agentMemory"));
 const AgentResidentSections = lazy(() => import("./agentResident"));
 const AgentRouteSections = lazy(() => import("./agentRoute"));
 const AgentScheduleSections = lazy(() => import("./agentSchedule"));
+const VideoGenerationSettings = lazy(() => import("./videoGeneration"));
 const ImageGenerationSettings = lazy(() => import("./imageGeneration"));
 const AgentSearchSections = lazy(() => import("./agentSearch"));
 const AdvancedSections = lazy(() => import("./advanced"));
@@ -49,6 +50,7 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   agentResident: "settingsPage.titles.agentResident",
   agentSearch: "settingsPage.titles.agentSearch",
   imageGeneration: "settingsPage.titles.imageGeneration",
+  videoGeneration: "settingsPage.titles.videoGeneration",
   agentSchedule: "settingsPage.titles.agentSchedule",
   integrations: "settingsPage.titles.integrations",
   extensions: "settingsPage.titles.extensions",
@@ -71,6 +73,7 @@ const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
   agentResident: "settingsPage.menu.agentResident",
   agentSearch: "settingsPage.menu.agentSearch",
   imageGeneration: "settingsPage.menu.imageGeneration",
+  videoGeneration: "settingsPage.menu.videoGeneration",
   agentSchedule: "settingsPage.menu.agentSchedule",
   integrations: "settingsPage.menu.messageChannels",
   extensions: "settingsPage.menu.extensions",
@@ -92,6 +95,7 @@ const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
   agentResident: "settingsPage.descriptions.agentResident",
   agentSearch: "settingsPage.descriptions.agentSearch",
   imageGeneration: "settingsPage.descriptions.imageGeneration",
+  videoGeneration: "settingsPage.descriptions.videoGeneration",
   agentSchedule: "settingsPage.descriptions.agentSchedule",
   integrations: "settingsPage.descriptions.integrations",
   mcpServers: "settingsPage.descriptions.mcpServers",
@@ -112,6 +116,7 @@ const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
   agentResident: "agent-resident-page",
   agentSearch: "agent-search-page",
   imageGeneration: "agent-search-page",
+  videoGeneration: "agent-search-page",
   agentSchedule: "agent-scheduled-page",
   integrations: "integration-settings-page",
   mcpServers: "mcp-settings-page",
@@ -205,6 +210,8 @@ export default function SettingsContent({
           <AgentResidentSections title={title} projects={projects} />
         ) : selectedKey === "agentSearch" ? (
           <AgentSearchSections title={title} />
+        ) : selectedKey === "videoGeneration" ? (
+          <VideoGenerationSettings />
         ) : selectedKey === "imageGeneration" ? (
           <ImageGenerationSettings />
         ) : selectedKey === "agentSchedule" ? (

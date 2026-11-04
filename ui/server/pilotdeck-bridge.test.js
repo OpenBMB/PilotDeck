@@ -42,6 +42,18 @@ it.each(['generate_image', 'edit_image', 'save_generated_image'])('preserves %s 
         toolUseResult: { imageGeneration, diagnostic: { truncated: true } } });
     expect(result.toolUseResult.imageGeneration.sessionId).not.toBe('web:parent');
 });
+it.each(['generate_video', 'save_generated_video'])('preserves %s video identity through the subagent gateway and bridge while the parent is running', toolName => {
+    const videoGeneration = { videoId: 'video-id', sessionId: '/project::sub::child', path: '/managed/video.mp4',
+        width: 24, height: 16, mimeType: 'video/mp4', purpose: 'deliverable' };
+    const events = mapAgentEvent({ type: 'subagent_tool_result', sessionId: 'web:parent', turnId: 'parent-turn',
+        subagentId: 'child', subagentType: 'general-purpose', result: { type: 'success', toolName, toolCallId: 'draw',
+            content: [{ type: 'text', text: 'Video attached' }], data: { videoGeneration, diagnostic: 'x'.repeat(120000) }, startedAt: '', completedAt: '' } }, 'parent-run');
+    const frames = events.flatMap(event => gatewayEventToFrames(event, 'web:parent', 'pilotdeck'));
+    const result = frames.find(frame => frame.kind === 'tool_result' && frame.isSubagentDetail);
+    expect(result).toMatchObject({ toolId: 'draw', isError: false, subagentId: 'child', runId: 'parent-run',
+        toolUseResult: { videoGeneration, diagnostic: { truncated: true } } });
+    expect(result.toolUseResult.videoGeneration.sessionId).not.toBe('web:parent');
+});
 
 describe('model block identity', () => {
     it('preserves absolute snapshots and explicit end boundaries for parent and child streams', () => {

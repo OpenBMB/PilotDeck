@@ -1,3 +1,4 @@
+import { parseVideoGenerationConfig } from "./parseVideoGenerationConfig.js";
 import { parseImageGenerationConfig } from "./parseImageGenerationConfig.js";
 import { isWebSearchProvider, SERPAPI_ENGINES, type SerpApiEngine } from "./webSearchProviders.js";
 import { isRecord } from "../../model/config/schema.js";
@@ -50,10 +51,11 @@ export function parseToolsConfig(
   }
 
   const webSearch = parseWebSearch(rawTools.webSearch, diagnostics);
+  const videoGeneration = parseVideoGenerationConfig(rawTools.videoGeneration, diagnostics);
   const imageGeneration = parseImageGenerationConfig(rawTools.imageGeneration, diagnostics);
 
   for (const key of Object.keys(rawTools)) {
-    if (key !== "webSearch" && key !== "imageGeneration") {
+    if (key !== "webSearch" && key !== "imageGeneration" && key !== "videoGeneration") {
       diagnostics.push({
         code: "TOOLS_UNKNOWN_FIELD",
         severity: "warning",
@@ -64,8 +66,8 @@ export function parseToolsConfig(
     }
   }
 
-  if (!webSearch && !imageGeneration) return undefined;
-  return { ...(webSearch ? { webSearch } : {}), ...(imageGeneration ? { imageGeneration } : {}) };
+  if (!webSearch && !imageGeneration && !videoGeneration) return undefined;
+  return { ...(videoGeneration ? { videoGeneration } : {}), ...(webSearch ? { webSearch } : {}), ...(imageGeneration ? { imageGeneration } : {}) };
 }
 
 function parseWebSearch(

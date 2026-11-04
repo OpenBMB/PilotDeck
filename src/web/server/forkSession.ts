@@ -1,3 +1,4 @@
+import { VideoStore, type GeneratedVideo } from "../../tool/builtin/videos/VideoStore.js";
 /**
  * Fork a web session transcript at a prior turn entry.
  *
@@ -433,11 +434,12 @@ async function copySessionAuxDirs(sourceSessionDir: string, targetSessionDir: st
   }
 }
 
-/** Inherited image IDs become assets owned by the new conversation, including
- * images referenced by compact snapshots and retained child transcripts. */
-class ForkImageInheritance {
+/** Inherited media IDs become assets owned by the new conversation, including
+ * attachments referenced by compact snapshots and retained child transcripts. */
+class ForkMediaInheritance {
   private readonly images = new Map<string, GeneratedImage>();
-  constructor(private readonly store: ImageStore, private readonly targetSessionId: string) {}
+  private readonly videos = new Map<string, GeneratedVideo>();
+  constructor(private readonly store: ImageStore, private readonly targetSessionId: string, private readonly videoStore: VideoStore) {}
 
   async rewrite(entries: AgentTranscriptEntry[]): Promise<AgentTranscriptEntry[]> {
     const blocks = new Map<CanonicalContentBlock, CanonicalContentBlock>();
@@ -447,6 +449,22 @@ class ForkImageInheritance {
       return message;
     });
     for (const block of references) {
+      const videoRaw = block.raw as { toolName?: string; data?: { videoGeneration?: GeneratedVideo } } | undefined;
+      if (videoRaw && ["generate_video", "save_generated_video"].includes(videoRaw.toolName ?? "")) {
+        const original = videoRaw.data?.videoGeneration;
+        if (original && typeof original.videoId === "string" && typeof original.sessionId === "string") {
+          let inherited = this.videos.get(original.videoId);
+          if (!inherited) {
+            inherited = await this.videoStore.inherit(original.sessionId, original.videoId, this.targetSessionId);
+            this.videos.set(original.videoId, inherited);
+          }
+          const rewritten = replaceImagePath(block, original.path, inherited.path) as typeof block;
+          const raw = rewritten.raw as typeof videoRaw;
+          raw.data = { ...raw.data, videoGeneration: { ...original, ...inherited } };
+          blocks.set(block, rewritten);
+        }
+        continue;
+      }
       const raw = block.raw as { toolName?: string; data?: { imageGeneration?: GeneratedImage } } | undefined;
       if (!raw || !["generate_image", "edit_image", "save_generated_image"].includes(raw.toolName ?? "")) continue;
       const original = raw.data?.imageGeneration;
@@ -487,6 +505,7 @@ class ForkImageInheritance {
   }
 
   async rollback(): Promise<void> {
+    await Promise.all([...this.videos.values()].flatMap(video => [video.path, join(dirname(video.path), video.videoId + ".json")]).map(file => unlink(file).catch(() => {})));
     await Promise.all([...this.images.values()].flatMap(image => [image.path, join(dirname(image.path), image.imageId + ".json")])
       .map(file => unlink(file).catch(() => {})));
   }
@@ -554,13 +573,13 @@ export async function forkWebSession(
   await mkdir(chatDir, { recursive: true, mode: 0o700 });
   await mkdir(newSessionDir, { recursive: true, mode: 0o700 });
   await copySessionAuxDirs(sourceSessionDir, newSessionDir);
-  const images = new ForkImageInheritance(new ImageStore(join(options.pilotHome, "generated-images")), newSessionKey);
+  const images = new ForkMediaInheritance(new ImageStore(join(options.pilotHome, "generated-images")), newSessionKey, new VideoStore(join(options.pilotHome, "generated-videos")));
   try {
     preserved = await images.rewrite(preserved);
     await images.rewriteSubagents(preserved, chatDir, newSessionDir, forkPoint.target.createdAt);
   } catch (error) {
     await images.rollback();
-    throw new ForkSessionError("fork_image_unavailable", `Could not inherit session images: ${error instanceof Error ? error.message : String(error)}`);
+    throw new ForkSessionError("fork_image_unavailable", `Could not inherit session attachments: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   const preservedLines = preserved.map((entry) => `${JSON.stringify(entry)}\n`).join("");

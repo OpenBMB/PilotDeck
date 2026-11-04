@@ -9,6 +9,7 @@ export type SettingsMenuKey =
   | 'agentResident'
   | 'agentSearch'
   | 'imageGeneration'
+  | 'videoGeneration'
   | 'agentSchedule'
   | 'integrations'
   | 'extensions'
