@@ -269,27 +269,15 @@ async function ensureDefaultDirectory(env, options) {
     let candidate = state?.directory ?? base;
     let prepared;
     let reason = state?.reason;
-    if (state) {
+    const legacyState = state && !path.basename(state.directory).startsWith(GENERAL_WORKSPACE_DIRECTORY_NAME);
+    if (state && !legacyState) {
         // Upgrades reuse a registered directory, including populated ones.
         // Unavailability or identity loss must never silently choose another cwd.
         prepared = await prepareDirectory(state.directory, env, { workspaceId: state.workspaceId });
     }
-    if (!state) {
-        // Before location records existed, General transcripts were keyed by
-        // PILOT_HOME. Adopt the old PilotDeck folder only with this upgrade
-        // evidence, never merely because a same-named unrelated folder exists.
-        const legacy = path.join(path.dirname(base), 'PilotDeck');
-        const transcriptDirectory = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats');
-        const hasGeneralHistory = (await fs.readdir(transcriptDirectory).catch(error => {
-            if (error.code === 'ENOENT') return []; throw error;
-        })).some(name => name.endsWith('.jsonl'));
-        if (hasGeneralHistory && await fs.lstat(legacy).then(stat => stat.isDirectory() && !stat.isSymbolicLink()).catch(error => {
-            if (error.code === 'ENOENT') return false; throw error;
-        })) {
-            try { prepared = await prepareDirectory(legacy, env); candidate = legacy; }
-            catch (error) { if (error.code !== 'GENERAL_WORKSPACE_UNSAFE') throw error; }
-        }
-    }
+    // Validate a registered old PilotDeck/PilotDeck2 before migrating it. A
+    // missing/replaced legacy workspace must not be mistaken for a fresh install.
+    if (legacyState) await prepareDirectory(state.directory, env, { workspaceId: state.workspaceId });
     for (let suffix = 1; !prepared && suffix <= 1000; suffix++) {
         candidate = suffix === 1 ? base : `${base}${suffix}`;
         try {
@@ -301,22 +289,39 @@ async function ensureDefaultDirectory(env, options) {
         }
     }
     if (!prepared) throw Object.assign(new Error('No safe General workspace directory is available.'), { code: 'GENERAL_WORKSPACE_UNSAFE' });
-    if (!state || state.directory !== candidate) {
-        const statePath = locationStatePath(env);
-        await fs.mkdir(path.dirname(statePath), { recursive: true, mode: 0o700 });
-        const temporary = `${statePath}.${randomUUID()}.tmp`;
-        try {
-            await fs.writeFile(temporary, JSON.stringify({ version: 1, baseDirectory: base, directory: candidate, workspaceId: prepared.workspaceId, reason }), { mode: 0o600, flag: 'wx' });
-            await fs.rename(temporary, statePath);
-        } finally { await fs.unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
-    }
     // The previous managed directory was <WORKSPACES_ROOT || home>/general,
     // including ~/general on Windows before the move into Documents.
     // Choosing a custom folder does not copy or relocate existing files.
     const homeDirectory = options.homeDirectory ?? os.homedir();
     const legacyDirectory = path.resolve(expandHome(env.WORKSPACES_ROOT || homeDirectory, homeDirectory), 'general');
+    const transcriptDirectory = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats');
+    const hasGeneralHistory = (await fs.readdir(transcriptDirectory).catch(error => {
+        if (error.code === 'ENOENT') return []; throw error;
+    })).some(name => name.endsWith('.jsonl'));
+    const previousDirectory = legacyState ? state.directory : path.join(path.dirname(base), 'PilotDeck');
+    let previousMarker;
+    try { previousMarker = JSON.parse(await fs.readFile(path.join(previousDirectory, GENERAL_WORKSPACE_MARKER), 'utf8')); }
+    catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; }
+    const ownedPrevious = previousMarker?.product === 'PilotDeck' && previousMarker?.version === 1 && typeof previousMarker?.id === 'string';
+    if (legacyState || hasGeneralHistory || ownedPrevious) {
+        let safe = true;
+        try { await assertSafeLocation(previousDirectory, env); }
+        catch (error) {
+            // A same-named application folder is not legacy user data. Never
+            // import the installation just because General history exists.
+            if (legacyState || error.code !== 'GENERAL_WORKSPACE_UNSAFE') throw error;
+            safe = false;
+        }
+        if (safe) await migrateLegacyGeneralWorkspace({ source: previousDirectory, destination: candidate, pilotHome: prepared.realPilotHome, sourceLabel: 'PilotDeck' });
+    }
     assertSeparatedFromPilotHome(legacyDirectory, pilotHome);
+    await assertSafeLocation(legacyDirectory, env);
     await migrateLegacyGeneralWorkspace({ source: legacyDirectory, destination: candidate, pilotHome: prepared.realPilotHome });
+    // Publish the new location only after copying succeeds. Both legacy source
+    // directories and all transcript keys remain intact; retries are idempotent.
+    if (!state || state.directory !== candidate) {
+        await writeLocationState(locationStatePath(env), { version: 1, baseDirectory: base, directory: candidate, workspaceId: prepared.workspaceId, reason });
+    }
     await fs.chmod(candidate, 0o700).catch(() => {});
     return candidate;
 }

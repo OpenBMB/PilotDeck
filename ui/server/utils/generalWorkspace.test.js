@@ -48,7 +48,7 @@ describe('General workspace isolation', () => {
         await expect(ensureGeneralWorkspaceDirectory({ ...env, PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: other })).rejects.toMatchObject({ code: 'GENERAL_WORKSPACE_NOT_EMPTY' });
         expect(await fs.readdir(other)).toEqual(['.hidden']);
     });
-    it('adopts the previous PilotDeck directory only when existing General history proves an upgrade', async () => {
+    it('copies the previous PilotDeck directory into the new default when General history proves an upgrade', async () => {
         const root = await makeTemporaryRoot();
         const pilotHome = path.join(root, 'profile');
         const transcriptDirectory = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats');
@@ -58,11 +58,13 @@ describe('General workspace isolation', () => {
         await fs.mkdir(legacy, { recursive: true });
         await fs.writeFile(path.join(legacy, 'report.md'), 'previous version file');
         const env = { PILOT_HOME: pilotHome, WORKSPACES_ROOT: path.join(root, 'workspaces') };
-        expect(await ensureGeneralWorkspaceDirectory(env)).toBe(legacy);
-        expect(await ensureGeneralWorkspaceDirectory(env)).toBe(legacy);
-        expect(resolveGeneralWorkspaceDirectory(env)).toBe(legacy);
+        const current = path.join(path.dirname(legacy), 'PilotDeckGeneral');
+        expect(await ensureGeneralWorkspaceDirectory(env)).toBe(current);
+        expect(await ensureGeneralWorkspaceDirectory(env)).toBe(current);
+        expect(resolveGeneralWorkspaceDirectory(env)).toBe(current);
+        expect(await fs.readFile(path.join(current, 'report.md'), 'utf8')).toBe('previous version file');
         expect(await fs.readFile(path.join(legacy, 'report.md'), 'utf8')).toBe('previous version file');
-        expect(await fs.readdir(path.dirname(legacy))).not.toContain('PilotDeckGeneral');
+        expect(await fs.readFile(path.join(transcriptDirectory, 'existing.jsonl'), 'utf8')).toBe('{"fixture":true}\n');
     });
     it.each(['runtime', 'resources-sibling', 'install-sibling', 'install-root', 'install-parent'])('rejects a custom workspace overlapping the complete desktop installation: %s', async kind => {
         const root = await makeTemporaryRoot();
@@ -116,19 +118,75 @@ describe('General workspace isolation', () => {
             PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: path.join(root, 'link', 'must-not-create') })).rejects.toMatchObject({ code: 'GENERAL_WORKSPACE_UNSAFE' });
         expect(await fs.readdir(pilotHome)).toEqual([]);
     });
-    it.each(['win32', 'darwin', 'linux'])('migrates the previous default directory on %s before returning the new cwd', async (platform) => {
+    it.each(['win32', 'darwin', 'linux'].flatMap(platform => ['general', 'PilotDeck', 'both'].map(legacy => [platform, legacy])))('migrates %s legacy %s files before returning the new cwd', async (platform, legacy) => {
         const root = await makeTemporaryRoot();
         const homeDirectory = path.join(root, 'user home');
         const documentsDirectory = path.join(root, 'redirected 文档');
         const pilotHome = path.join(root, 'pilot-home');
-        await fs.mkdir(path.join(homeDirectory, 'general'), { recursive: true });
-        await fs.writeFile(path.join(homeDirectory, 'general', 'report.md'), 'legacy report');
+        const parent = platform === 'win32' ? documentsDirectory : homeDirectory;
+        const sources = [];
+        if (legacy !== 'PilotDeck') sources.push(path.join(homeDirectory, 'general'));
+        if (legacy !== 'general') sources.push(path.join(parent, 'PilotDeck'));
+        const transcripts = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats');
+        await fs.mkdir(transcripts, { recursive: true });
+        await fs.writeFile(path.join(transcripts, 'existing.jsonl'), 'history');
+        for (const source of sources) {
+            await fs.mkdir(source, { recursive: true });
+            await fs.writeFile(path.join(source, 'report.md'), `legacy ${path.basename(source)}`);
+        }
         const result = await ensureGeneralWorkspaceDirectory({ PILOT_HOME: pilotHome, WORKSPACES_ROOT: homeDirectory }, {
             platform, homeDirectory, documentsDirectory,
         });
         expect(result).toBe(path.join(platform === 'win32' ? documentsDirectory : homeDirectory, 'PilotDeckGeneral'));
-        expect(await fs.readFile(path.join(result, 'report.md'), 'utf8')).toBe('legacy report');
-        expect(await fs.readFile(path.join(homeDirectory, 'general', 'report.md'), 'utf8')).toBe('legacy report');
+        expect(await fs.readFile(path.join(result, 'report.md'), 'utf8')).toBe(`legacy ${legacy === 'general' ? 'general' : 'PilotDeck'}`);
+        if (legacy === 'both') expect(await fs.readFile(path.join(result, 'report (from general).md'), 'utf8')).toBe('legacy general');
+        for (const source of sources) expect(await fs.readFile(path.join(source, 'report.md'), 'utf8')).toBe(`legacy ${path.basename(source)}`);
+        expect(await ensureGeneralWorkspaceDirectory({ PILOT_HOME: pilotHome, WORKSPACES_ROOT: homeDirectory }, { platform, homeDirectory, documentsDirectory })).toBe(result);
+        expect(await fs.readFile(path.join(transcripts, 'existing.jsonl'), 'utf8')).toBe('history');
+    });
+
+    it.each(['PilotDeck', 'PilotDeck2'])('migrates a registered %s location without copying its identity or changing the new cwd on restart', async name => {
+        const root = await makeTemporaryRoot();
+        const pilotHome = path.join(root, 'profile');
+        const parent = path.join(root, 'workspaces');
+        const legacy = path.join(parent, name);
+        const current = path.join(parent, 'PilotDeckGeneral');
+        const workspaceId = 'previous-location-id';
+        await fs.mkdir(legacy, { recursive: true });
+        await fs.mkdir(pilotHome);
+        await fs.writeFile(path.join(legacy, '.pilotdeck-workspace'), JSON.stringify({ product: 'PilotDeck', version: 1, id: workspaceId }));
+        await fs.writeFile(path.join(legacy, 'report.md'), 'old version');
+        await fs.writeFile(path.join(pilotHome, 'general-workspace.json'), JSON.stringify({ version: 1, baseDirectory: path.join(parent, 'PilotDeck'), directory: legacy, workspaceId }));
+        await fs.mkdir(current);
+        await fs.writeFile(path.join(current, 'report.md'), 'current version');
+        const env = { PILOT_HOME: pilotHome, WORKSPACES_ROOT: parent };
+        expect(await ensureGeneralWorkspaceDirectory(env)).toBe(current);
+        expect(await fs.readFile(path.join(current, 'report.md'), 'utf8')).toBe('current version');
+        expect(await fs.readFile(path.join(current, 'report (from PilotDeck).md'), 'utf8')).toBe('old version');
+        const marker = JSON.parse(await fs.readFile(path.join(current, '.pilotdeck-workspace'), 'utf8'));
+        expect(marker.id).not.toBe(workspaceId);
+        const files = await fs.readdir(current);
+        expect(files.some(file => file.includes('pilotdeck-workspace (from'))).toBe(false);
+        vi.resetModules();
+        const restarted = await import('./generalWorkspace.js');
+        expect(await restarted.ensureGeneralWorkspaceDirectory({ ...env })).toBe(current);
+        expect(await fs.readdir(current)).toEqual(files);
+    });
+
+    it('does not import an unrelated PilotDeck folder or application installation on first launch', async () => {
+        const root = await makeTemporaryRoot();
+        const legacy = path.join(root, 'PilotDeck');
+        await fs.mkdir(legacy);
+        await fs.writeFile(path.join(legacy, 'app.exe'), 'application');
+        const env = { PILOT_HOME: path.join(root, 'profile'), WORKSPACES_ROOT: root };
+        const current = await ensureGeneralWorkspaceDirectory(env);
+        expect(await fs.readdir(current)).toEqual(['.pilotdeck-workspace']);
+        const transcripts = path.join(env.PILOT_HOME, 'projects', createProjectId(env.PILOT_HOME), 'chats');
+        await fs.mkdir(transcripts, { recursive: true });
+        await fs.writeFile(path.join(transcripts, 'existing.jsonl'), 'history');
+        expect(await ensureGeneralWorkspaceDirectory({ ...env, PILOTDECK_DESKTOP_INSTALL_ROOT: legacy })).toBe(current);
+        expect(await fs.readdir(current)).toEqual(['.pilotdeck-workspace']);
+        expect(await fs.readFile(path.join(legacy, 'app.exe'), 'utf8')).toBe('application');
     });
 
     it('merges a custom root with an already populated PilotDeck directory', async () => {

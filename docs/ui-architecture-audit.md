@@ -100,23 +100,31 @@ files are not moved when the setting changes.
 
 The selected default and its identity are recorded in
 `PILOT_HOME/general-workspace.json`, with a matching `.pilotdeck-workspace`
-marker in the workspace. Existing General history allows the previous
-`PilotDeck` location to be adopted on upgrade. An existing safe unnumbered
+marker in the workspace. Custom directory claims are also recorded under
+`PILOT_HOME/general-workspace-identities`, so manually configured YAML paths
+remain usable after the first turn creates files, without rewriting user YAML.
+Existing General history, a saved location or a workspace marker identifies the
+previous `PilotDeck` location for migration into `PilotDeckGeneral`. An existing safe unnumbered
 default can be reused on first install, even when populated. Installation
 overlap, a file or a link at that path causes first-run selection of the first
 safe empty `PilotDeckGeneral2`, `PilotDeckGeneral3`, etc. The UI reports this
 choice. Subsequent launches reuse the registered location; a missing or changed
 identity reports an error instead of silently switching directories. The
-Windows installer refuses marked workspaces and their descendants before
-extracting or replacing application files. These guards do not recover files
+Windows installer checks the complete installation tree, its parents and nested
+workspaces before preparation and again before replacement. The runtime rejects
+workspaces overlapping the complete installation, including siblings of
+`resources/runtime`. These guards do not recover files
 overwritten by older installers or external processes.
 
 Before publishing that cwd to the sidebar or dispatching a General turn, merge
-the previous `<WORKSPACES_ROOT || home>/general` directory into the new location.
+the previous `<WORKSPACES_ROOT || home>/general` and recognized `PilotDeck`
+directories into the new location. Registered numbered `PilotDeck2` locations
+are migrated too. Independent projects retain their existing paths and defaults.
 This also handles the Windows home-to-Documents move and an existing default
 directory. Keep the original directory; copy missing files, reuse identical
 files, and preserve differing old versions as `name (from general).ext` (with
-numbered suffixes when needed). Merge directories and preserve file/directory
+numbered suffixes when needed); files from `PilotDeck` use ` (from PilotDeck)`.
+Workspace markers are not copied. Merge directories and preserve file/directory
 collisions the same way. The new copy is independent of the original.
 
 Publish each complete file without overwriting an existing name. Interrupted
