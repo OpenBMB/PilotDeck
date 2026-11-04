@@ -124,8 +124,13 @@ This also handles the Windows home-to-Documents move and an existing default
 directory. Keep the original directory; copy missing files, reuse identical
 files, and preserve differing old versions as `name (from general).ext` (with
 numbered suffixes when needed); files from `PilotDeck` use ` (from PilotDeck)`.
-Workspace markers are not copied. Merge directories and preserve file/directory
+The source root's ownership marker is not copied. Merge directories and preserve file/directory
 collisions the same way. The new copy is independent of the original.
+
+Persist a pending location claim before copying, including the identity of a
+registered legacy source. Failed numbered migrations resume that exact directory
+after restart; partial files must not cause another numbered selection. Clear
+the pending state only once migration completes.
 
 Publish each complete file without overwriting an existing name. Interrupted
 copies cannot expose a partial file under its final name, and failed migrations

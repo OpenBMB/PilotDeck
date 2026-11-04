@@ -20,11 +20,47 @@ async function makeTemporaryRoot() {
 }
 
 afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(temporaryRoots.splice(0).map((root) => (
         fs.rm(root, { recursive: true, force: true })
     )));
 });
 describe('General workspace isolation', () => {
+    it.each(['general', 'PilotDeck2'])('resumes repeated interrupted numbered migrations from %s in the same directory after restart', async legacyName => {
+        const root = await makeTemporaryRoot();
+        const env = { PILOT_HOME: path.join(root, 'profile'), WORKSPACES_ROOT: root };
+        await fs.writeFile(path.join(root, 'PilotDeckGeneral'), 'occupied default');
+        const source = path.join(root, legacyName);
+        await fs.mkdir(source);
+        if (legacyName === 'PilotDeck2') {
+            await fs.mkdir(env.PILOT_HOME);
+            await fs.writeFile(path.join(source, '.pilotdeck-workspace'), JSON.stringify({ product: 'PilotDeck', version: 1, id: 'legacy-id' }));
+            await fs.writeFile(path.join(env.PILOT_HOME, 'general-workspace.json'), JSON.stringify({ version: 1, baseDirectory: path.join(root, 'PilotDeck'), directory: source, workspaceId: 'legacy-id' }));
+        }
+        await fs.writeFile(path.join(source, 'a.txt'), 'first file');
+        await fs.writeFile(path.join(source, 'b.txt'), 'second file');
+        const link = fs.link.bind(fs);
+        const publish = vi.spyOn(fs, 'link').mockImplementationOnce(link)
+            .mockRejectedValueOnce(Object.assign(new Error('Disk full'), { code: 'ENOSPC' }));
+        await expect(ensureGeneralWorkspaceDirectory(env)).rejects.toMatchObject({ code: 'ENOSPC' });
+        const claimed = path.join(root, 'PilotDeckGeneral2');
+        expect(await fs.readFile(path.join(claimed, 'a.txt'), 'utf8')).toBe('first file');
+        const statePath = path.join(env.PILOT_HOME, 'general-workspace.json');
+        const pending = JSON.parse(await fs.readFile(statePath, 'utf8'));
+        expect(pending).toMatchObject({ directory: claimed, migration: { phase: 'pending', source: legacyName === 'general' ? null : { directory: source, workspaceId: 'legacy-id' } } });
+        publish.mockRestore();
+        vi.resetModules();
+        const restarted = await import('./generalWorkspace.js');
+        const failAgain = vi.spyOn(fs, 'link').mockRejectedValueOnce(Object.assign(new Error('Still full'), { code: 'ENOSPC' }));
+        await expect(restarted.ensureGeneralWorkspaceDirectory({ ...env })).rejects.toMatchObject({ code: 'ENOSPC' });
+        expect(JSON.parse(await fs.readFile(statePath, 'utf8')).workspaceId).toBe(pending.workspaceId);
+        failAgain.mockRestore();
+        expect(await restarted.ensureGeneralWorkspaceDirectory({ ...env })).toBe(claimed);
+        expect(await fs.readFile(path.join(claimed, 'b.txt'), 'utf8')).toBe('second file');
+        expect(await fs.readdir(root)).not.toContain('PilotDeckGeneral3');
+        expect(await fs.readFile(path.join(source, 'a.txt'), 'utf8')).toBe('first file');
+        expect(JSON.parse(await fs.readFile(statePath, 'utf8')).migration).toBeUndefined();
+    });
     it('persists custom YAML directory claims across turns and process restarts', async () => {
         const root = await makeTemporaryRoot();
         const env = { PILOT_HOME: path.join(root, 'profile'), PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: path.join(root, 'custom') };
