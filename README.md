@@ -106,6 +106,28 @@ PilotDeck breaks the "you ask, it answers" loop: after you sign off, the agent k
 </tr>
 </table>
 
+### 🧪 Benchmark Results
+
+On **Workbuddy Bench**, we compared PilotDeck, Claude Code, and WorkBuddy on **260 real-world tasks** across office, web, code, and security, using the same base model and task set. Each task was run independently three times, with **gpt-5.6-sol** as the shared judge.
+
+Higher scores are better. **Bold** marks the best score in each column for the same base model; Avg. is the mean of the four categories.
+
+#### DeepSeek-V4.1-Flash
+
+| Method | Office | Web | Code | Security | Avg. |
+|:---|---:|---:|---:|---:|---:|
+| WorkBuddy | 57.30 | 61.67 | 82.45 | 56.80 | 64.56 |
+| Claude Code | **74.60** | **70.29** | 83.17 | 65.38 | 73.36 |
+| PilotDeck | 74.18 | 66.95 | **85.20** | **68.30** | **73.66** |
+
+#### GLM-5.3
+
+| Method | Office | Web | Code | Security | Avg. |
+|:---|---:|---:|---:|---:|---:|
+| WorkBuddy | 72.32 | 60.52 | 72.69 | 54.30 | 64.96 |
+| Claude Code | **81.81** | 63.76 | 73.76 | **69.88** | **72.30** |
+| PilotDeck | 76.47 | **68.33** | **74.83** | 66.31 | 71.49 |
+
 ### 📊 Real-world Numbers
 
 The three pillar capabilities have shown clear advantages in production-grade workflows:
