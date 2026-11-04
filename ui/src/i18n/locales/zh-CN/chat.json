@@ -1,5 +1,6 @@
 {
   "context": {
+    "tokenUnit": "tokens",
     "title": "上下文预算",
     "used": "已用",
     "systemPrompt": "系统指令",

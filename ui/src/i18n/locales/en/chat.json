@@ -1,5 +1,6 @@
 {
   "context": {
+    "tokenUnit": "tokens",
     "title": "Context budget",
     "used": "Used",
     "systemPrompt": "System instructions",

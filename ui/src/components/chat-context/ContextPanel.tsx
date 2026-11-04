@@ -57,7 +57,7 @@ export default function ContextPanel({ target, used, total, percent, percentLabe
       <span className="pd-context-title"><Layers3 size={15} strokeWidth={1.7} aria-hidden="true" />{t('context.title')}</span>
       <span className="pd-context-status"><span>{t('context.used')}</span><strong>{total > 0 ? percentLabel : '—'}</strong></span>
     </div>
-    <div className="pd-context-total"><span>{total > 0 ? `~${tokenFormat.format(used)} / ${tokenFormat.format(total)}` : '— / —'}</span><span className="pd-context-unit">tokens</span></div>
+    <div className="pd-context-total"><span>{total > 0 ? `~${tokenFormat.format(used)} / ${tokenFormat.format(total)}` : '— / —'}</span><span className="pd-context-unit">{t('context.tokenUnit')}</span></div>
     <div className="pd-context-bar" role={total > 0 ? 'meter' : undefined}
       aria-label={total > 0 ? t('context.title') : undefined} aria-hidden={total <= 0 || undefined}
       aria-valuemin={0} aria-valuemax={100} aria-valuenow={total > 0 ? occupied : undefined} aria-valuetext={total > 0 ? percentLabel : undefined}>
