@@ -343,6 +343,10 @@ export class ApiServerChannel implements ChannelAdapter {
           scope: "channel",
           userHint: "PilotDeck failed before this API request could finish. Retry the request; if it repeats, check the API server and gateway logs.",
         }))}\n\n`);
+        // An error stream must still terminate like a normal OpenAI stream, or
+        // clients waiting for the terminal markers keep the failed stream
+        // pending / misclassify its final state.
+        writeStreamDone(res, this.modelName);
       } catch { /* best effort */ }
     } finally {
       clearTimeout(timeout);
