@@ -1,4 +1,4 @@
-// Start Vite on 127.0.0.1:5187 with PILOTDECK_DISABLE_LOCAL_AUTH=1.
+// Run a production preview with PILOTDECK_TEST_URL, or use Vite on port 5187.
 // This uses synthetic API responses and never contacts a model or user profile.
 import { chromium, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const baseUrl = process.env.PILOTDECK_TEST_URL || 'http://127.0.0.1:5187';
 const artifacts = path.join(root, 'artifacts/context-workspace');
 await fs.mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.PILOTDECK_TEST_BROWSER_CHANNEL || 'chrome', headless: true });
@@ -24,7 +25,8 @@ try {
     await page.route('**/api/**', async route => {
       const url = new URL(route.request().url()); const p = url.pathname;
       let status = 200, body = {};
-      if (p === '/api/projects') body = [
+      if (p === '/api/auth/status') body = { authDisabled: true };
+      else if (p === '/api/projects') body = [
         { name: 'general', displayName: 'general', fullPath: '/fixture/profile', kind: 'general', workspaceCwd: '/fixture/PilotDeckGeneral', sessions: [] },
         { name: 'demo', displayName: 'Demo', fullPath: '/fixture/demo', sessions: [{ id: 'review', title: 'Context review', createdAt: new Date().toISOString() }] },
       ];
@@ -54,7 +56,7 @@ try {
     await page.routeWebSocket('**/ws**', socket => socket.onMessage(message => {
       try { if (JSON.parse(String(message)).type === 'ping') socket.send(JSON.stringify({ type: 'pong' })); } catch {}
     }));
-    await page.goto('http://127.0.0.1:5187/p/demo/c/review');
+    await page.goto(`${baseUrl}/p/demo/c/review`);
     const trigger = page.locator('.pd-composer-context-control > button');
     await expect(trigger).toBeVisible({ timeout: 60000 });
     await trigger.click();
@@ -68,7 +70,7 @@ try {
     await expect(popover.getByRole('meter')).toHaveAttribute('aria-valuenow', '45');
     await page.screenshot({ path: path.join(artifacts, `context-${language}-${theme}-${width}.png`) });
     await page.keyboard.press('Escape'); await expect(popover).toHaveCount(0); await expect(trigger).toBeFocused();
-    await page.goto('http://127.0.0.1:5187/settings/general');
+    await page.goto(`${baseUrl}/settings/general`);
     if (width < 640) await page.getByRole('navigation', { name: language === 'en' ? 'Settings' : '设置' }).getByRole('button', { name: language === 'en' ? 'General' : '通用', exact: true }).click();
     const card = page.locator('.general-workspace-card');
     const input = card.getByRole('textbox', { name: language === 'en' ? 'Working directory' : '工作目录' });
