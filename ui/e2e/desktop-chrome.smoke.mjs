@@ -22,7 +22,7 @@ const app = await electron.launch({
     ...(process.env.PILOTDECK_CHROME_DISABLE_GPU ? ['--disable-gpu', '--disable-dev-shm-usage'] : [])],
   env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')), PILOTDECK_CHROME_PROFILE: profile },
 });
-app.process().on('exit', (code, signal) => { if (code) console.error('Electron exited', { code, signal }); });
+app.process().on('exit', (code, signal) => console.log('Electron exited', { code, signal }));
 const errors = [];
 let page;
 try {
@@ -216,6 +216,9 @@ try {
       await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe(id);
       await expect(caption.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-expanded', 'true');
       await app.evaluate(() => global.chromeTest.closeMenu());
+      // Native closePopup completes asynchronously (notably GTK/X11). Wait for
+      // the real close callback and renderer state before the next mouse click.
+      await expect(caption.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-expanded', 'false');
     }
     await page.keyboard.press('F10');
     await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe('all');
