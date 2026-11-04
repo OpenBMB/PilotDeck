@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "company.schema.json",
+  "title": "Company Profile",
+  "description": "Single source of truth for one company in industry research.",
+  "type": "object",
+  "required": ["canonical_name", "racetrack_id", "country", "status", "as_of_date", "sources"],
+  "properties": {
+    "canonical_name": {
+      "type": "string",
+      "description": "Official canonical name; used for joining tables."
+    },
+    "aliases": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "All known aliases including English/Chinese variants."
+    },
+    "ticker": {
+      "type": ["string", "null"],
+      "description": "Stock ticker if listed (e.g. HK:02513, US:NVDA, SH:600519)."
+    },
+    "racetrack_id": {
+      "type": "string",
+      "description": "Foreign key to racetrack.schema.json."
+    },
+    "archetype": {
+      "type": "string",
+      "enum": ["platform", "saas-vertical", "deeptech-hardware", "marketplace", "consumer", "infrastructure", "content-media"]
+    },
+    "country": {
+      "type": "string",
+      "description": "ISO 3166-1 alpha-2 (e.g. CN, US, HK)."
+    },
+    "headquarters": {"type": "string"},
+    "founded_year": {"type": "integer"},
+    "status": {
+      "type": "string",
+      "enum": ["public", "private", "acquired", "shutdown"]
+    },
+    "founders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "background": {"type": "string"},
+          "linkedin": {"type": "string"}
+        }
+      }
+    },
+    "product_lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "category"],
+        "properties": {
+          "name": {"type": "string"},
+          "category": {"type": "string"},
+          "launch_date": {"type": "string", "format": "date"},
+          "url": {"type": "string", "format": "uri"}
+        }
+      }
+    },
+    "tech_route": {
+      "type": "string",
+      "enum": ["proprietary", "open-source-fork", "third-party-api", "hybrid"]
+    },
+    "financials": {
+      "type": "object",
+      "properties": {
+        "revenue_usd_mn": {"$ref": "#/definitions/datum"},
+        "gross_margin_pct": {"$ref": "#/definitions/datum"},
+        "net_margin_pct": {"$ref": "#/definitions/datum"},
+        "rd_ratio_pct": {"$ref": "#/definitions/datum"},
+        "fiscal_year": {"type": "integer"}
+      }
+    },
+    "users": {
+      "type": "object",
+      "properties": {
+        "mau_mn": {"$ref": "#/definitions/datum"},
+        "dau_mn": {"$ref": "#/definitions/datum"},
+        "paid_mn": {"$ref": "#/definitions/datum"}
+      }
+    },
+    "funding_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["round", "date", "amount_usd_mn"],
+        "properties": {
+          "round": {"type": "string"},
+          "date": {"type": "string", "format": "date"},
+          "amount_usd_mn": {"type": "number"},
+          "valuation_post_usd_mn": {"type": "number"},
+          "lead_investors": {"type": "array", "items": {"type": "string"}},
+          "source_url": {"type": "string", "format": "uri"}
+        }
+      }
+    },
+    "valuation": {
+      "type": "object",
+      "required": ["latest_usd_mn", "as_of_date", "grade", "method"],
+      "properties": {
+        "latest_usd_mn": {"type": "number"},
+        "ipo_day_usd_mn": {"type": ["number", "null"]},
+        "peak_usd_mn": {"type": ["number", "null"]},
+        "as_of_date": {"type": "string", "format": "date"},
+        "grade": {"$ref": "#/definitions/grade"},
+        "method": {
+          "type": "string",
+          "enum": ["exchange-realtime", "share-x-price", "latest-round", "comparable-multiple", "media-quote", "estimate"]
+        },
+        "source_url": {"type": "string", "format": "uri"}
+      }
+    },
+    "competitive_position": {
+      "type": "object",
+      "properties": {
+        "tier": {"type": "string", "enum": ["tier-1", "tier-2", "tier-3"]},
+        "market_share_pct": {"$ref": "#/definitions/datum"},
+        "differentiation": {"type": "string"},
+        "main_competitors": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "stance_signals": {
+      "type": "object",
+      "properties": {
+        "regulatory_risk": {"type": "string", "enum": ["low", "medium", "high"]},
+        "ip_disputes": {"type": "array", "items": {"type": "string"}},
+        "public_sentiment": {"type": "string"}
+      }
+    },
+    "bd_assessment": {
+      "type": "object",
+      "properties": {
+        "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
+        "rationale": {"type": "string"},
+        "entry_point": {"type": "string"}
+      }
+    },
+    "as_of_date": {"type": "string", "format": "date"},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "source.schema.json"}
+    }
+  },
+  "definitions": {
+    "datum": {
+      "type": "object",
+      "required": ["value", "as_of_date", "grade"],
+      "properties": {
+        "value": {"type": ["number", "string"]},
+        "unit": {"type": "string"},
+        "as_of_date": {"type": "string", "format": "date"},
+        "grade": {"$ref": "#/definitions/grade"},
+        "source_url": {"type": "string", "format": "uri"},
+        "quote": {"type": "string"},
+        "derived": {"type": "boolean", "default": false},
+        "derivation_formula": {"type": "string"}
+      }
+    },
+    "grade": {
+      "type": "string",
+      "enum": ["L1", "L2", "L3", "L4"],
+      "description": "L1=exchange/audited; L2=authoritative media; L3=PR/estimate; L4=rumor."
+    }
+  }
+}

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>industry-landscape-research v2.0 · Skill Showcase</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-elev: #161b22;
+    --bg-card: #1c2229;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --text-muted: #6e7681;
+    --accent: #ffb86c;
+    --accent2: #79c0ff;
+    --accent3: #d2a8ff;
+    --green: #56d364;
+    --yellow: #e3b341;
+    --red: #f85149;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    font-size: 15px;
+  }
+  .container { max-width: 1180px; margin: 0 auto; padding: 64px 48px 96px; }
+
+  header { border-bottom: 1px solid var(--border); padding-bottom: 40px; margin-bottom: 56px; }
+  .eyebrow { color: var(--accent); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 16px; }
+  h1 { font-size: 44px; font-weight: 700; line-height: 1.15; margin-bottom: 16px; letter-spacing: -0.01em; }
+  .subtitle { font-size: 18px; color: var(--text-dim); max-width: 780px; }
+  .meta { display: flex; gap: 24px; margin-top: 24px; font-size: 13px; color: var(--text-muted); }
+  .meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .pill { background: var(--bg-elev); border: 1px solid var(--border); padding: 4px 10px; border-radius: 12px; font-family: ui-monospace, "SF Mono", monospace; font-size: 12px; }
+
+  section { margin-bottom: 72px; }
+  h2 {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    letter-spacing: -0.005em;
+  }
+  h2 .num { color: var(--accent); margin-right: 12px; font-family: ui-monospace, "SF Mono", monospace; font-size: 20px; }
+  .section-lede { color: var(--text-dim); font-size: 15px; margin-bottom: 28px; max-width: 760px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px;
+    transition: border-color 0.15s;
+  }
+  .card:hover { border-color: var(--accent); }
+  .card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--accent2);
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .card h3 .step-num { color: var(--text-muted); font-family: ui-monospace, "SF Mono", monospace; font-size: 12px; }
+  .card p { font-size: 14px; color: var(--text-dim); line-height: 1.7; }
+  .card .tag { display: inline-block; background: var(--bg-elev); color: var(--text-muted); padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-top: 12px; margin-right: 4px; font-family: ui-monospace, "SF Mono", monospace; }
+
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 8px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+    margin-bottom: 32px;
+  }
+  .pipe-step {
+    text-align: center;
+    padding: 12px 6px;
+    background: var(--bg-card);
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .pipe-step .num { display: block; font-family: ui-monospace, "SF Mono", monospace; color: var(--accent); font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .pipe-step .name { color: var(--text); font-weight: 500; }
+  .pipe-step .out { display: block; font-size: 10px; color: var(--text-muted); margin-top: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+  .archetypes {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .arch-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 16px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .arch-card .name { font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .arch-card .kpi { color: var(--text-muted); font-size: 11px; font-family: ui-monospace, "SF Mono", monospace; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  th, td { padding: 10px 14px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { background: var(--bg-elev); color: var(--text-dim); font-weight: 500; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  td { color: var(--text); }
+  td.dim { color: var(--text-muted); font-family: ui-monospace, "SF Mono", monospace; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+
+  .grade-l1 { color: var(--green); font-weight: 600; }
+  .grade-l2 { color: var(--accent2); font-weight: 600; }
+  .grade-l3 { color: var(--yellow); font-weight: 600; }
+  .grade-l4 { color: var(--red); font-weight: 600; }
+
+  .tree {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px 24px;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 12.5px;
+    line-height: 1.85;
+    color: var(--text-dim);
+    overflow-x: auto;
+  }
+  .tree .file { color: var(--text); }
+  .tree .dir { color: var(--accent2); }
+  .tree .comment { color: var(--text-muted); }
+
+  .changelog {
+    background: var(--bg-elev);
+    border-left: 3px solid var(--accent);
+    padding: 20px 24px;
+    border-radius: 0 4px 4px 0;
+  }
+  .changelog ul { list-style: none; padding-left: 0; }
+  .changelog li { padding: 6px 0; color: var(--text-dim); font-size: 14px; }
+  .changelog li::before { content: "▸"; color: var(--accent); margin-right: 10px; font-weight: 700; }
+  .changelog li strong { color: var(--text); font-weight: 600; }
+
+  footer { border-top: 1px solid var(--border); padding-top: 32px; margin-top: 80px; color: var(--text-muted); font-size: 12px; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <div class="eyebrow">QoderWork Skill · Showcase</div>
+  <h1>industry-landscape-research</h1>
+  <p class="subtitle">通用行业调研方法论。从范围界定到深度分析，从数据采集到 House View，一套可复用的八步法 + 7 个 archetype + 完整脏活手册，把"看透吃透一个行业"沉淀为可执行的工程化流程。</p>
+  <div class="meta">
+    <span><span class="pill">v2.0.0</span></span>
+    <span><span class="pill">8-Step Framework</span></span>
+    <span><span class="pill">7 Archetypes</span></span>
+    <span><span class="pill">SSOT JSONL</span></span>
+    <span><span class="pill">L1-L4 Quality Tiers</span></span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="num">§1</span>八步法</h2>
+  <p class="section-lede">每一步有明确输入、输出、产物与质量门槛。前一步未通过签字，不进入下一步。</p>
+
+  <div class="pipeline">
+    <div class="pipe-step"><span class="num">1</span><span class="name">Charter</span><span class="out">Sign-off</span></div>
+    <div class="pipe-step"><span class="num">2</span><span class="name">Decompose</span><span class="out">Racetracks</span></div>
+    <div class="pipe-step"><span class="num">3</span><span class="name">3-Round Search</span><span class="out">JSONL</span></div>
+    <div class="pipe-step"><span class="num">4</span><span class="name">Coverage Audit</span><span class="out">⭐ Rating</span></div>
+    <div class="pipe-step"><span class="num">5</span><span class="name">Frameworks</span><span class="out">Porter/7P</span></div>
+    <div class="pipe-step"><span class="num">6</span><span class="name">Quant Model</span><span class="out">TAM/Profit</span></div>
+    <div class="pipe-step"><span class="num">7</span><span class="name">Thesis</span><span class="out">House View</span></div>
+    <div class="pipe-step"><span class="num">8</span><span class="name">Deliverable</span><span class="out">15 Artifacts</span></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3><span class="step-num">Step 3</span>三轮搜索法</h3>
+      <p>R1 广度建骨架（赛道 + 公司清单）→ R2 深度填画像（80% 字段）→ R3 验证补盲（双源 + 找新锐）。每轮明确输入输出，R4-R8 按收敛信号迭代。</p>
+      <span class="tag">广度→深度→验证</span><span class="tag">≥15 家/赛道</span><span class="tag">收敛 &lt;5%</span>
+    </div>
+    <div class="card">
+      <h3><span class="step-num">Step 4</span>覆盖度审计</h3>
+      <p>8 维度矩阵，⭐ 评分 + 🔴🟡🟢 缺口分级。任一维度 🔴 阻断 Step 5。先确认覆盖度，再进入分析。</p>
+      <span class="tag">8 dim ⭐ rating</span><span class="tag">🔴 阻断</span>
+    </div>
+    <div class="card">
+      <h3><span class="step-num">Step 5</span>分析框架强制</h3>
+      <p>Porter 5 / 7 Powers (0-5 评分) / Wardley Map / JTBD / S-curve。每个赛道必须产出至少 3 张分析画布，避免"只列数据不下结论"。</p>
+      <span class="tag">Porter 5</span><span class="tag">7 Powers</span><span class="tag">Wardley</span><span class="tag">JTBD</span><span class="tag">S-curve</span>
+    </div>
+    <div class="card">
+      <h3><span class="step-num">Step 7</span>House View &amp; Devil's Advocate</h3>
+      <p>三情景预测（概率总和 100%）+ Pre-mortem 预警 + 独立反方 Agent 评审。所有结论标 H/M/L 信心等级。</p>
+      <span class="tag">3 scenarios</span><span class="tag">Pre-mortem</span><span class="tag">Devil's Advocate</span><span class="tag">H/M/L</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">§2</span>7 个行业原型 (Archetypes)</h2>
+  <p class="section-lede">每个 archetype 锁定 10-12 个必填分析项与 KPI，避免"通用框架套不进特定行业"。Step 1 Charter 阶段需选定 archetype。</p>
+
+  <div class="archetypes">
+    <div class="arch-card"><div class="name">Platform 平台</div><div class="kpi">GMV · take rate · network effects · liquidity</div></div>
+    <div class="arch-card"><div class="name">Vertical SaaS</div><div class="kpi">ARR · NRR · CAC payback · Magic Number</div></div>
+    <div class="arch-card"><div class="name">DeepTech 硬科技</div><div class="kpi">R&amp;D ratio · TRL · BOM · 良率</div></div>
+    <div class="arch-card"><div class="name">Marketplace 撮合</div><div class="kpi">take rate · liquidity · disintermediation</div></div>
+    <div class="arch-card"><div class="name">Consumer 消费</div><div class="kpi">D1/D7/D30 retention · ARPU · 自然流量</div></div>
+    <div class="arch-card"><div class="name">Infrastructure 基础设施</div><div class="kpi">Capex/Rev · utilization · 客户集中度</div></div>
+    <div class="arch-card"><div class="name">Content / Media</div><div class="kpi">创作者留存 · 版权诉讼 · 内容 ROI</div></div>
+    <div class="arch-card"><div class="name">+ 子生态分层</div><div class="kpi">平台 / 生产 / IP源 / 出海 / 工具 / 基建</div></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">§3</span>数据质量四元组</h2>
+  <p class="section-lede">每一个非常识数据点必须有：数值 + 来源 URL + 截止日期 + 数据等级。否则不进 JSONL。</p>
+
+  <table>
+    <thead><tr><th>等级</th><th>含义</th><th>来源示例</th><th>使用规则</th></tr></thead>
+    <tbody>
+      <tr><td><span class="grade-l1">L1</span></td><td>交易所/审计/招股书</td><td class="dim">NVIDIA 10-K · 港交所披露易</td><td>直接使用</td></tr>
+      <tr><td><span class="grade-l2">L2</span></td><td>权威媒体深度报道</td><td class="dim">The Information · 36氪深氪 · FT</td><td>双源交叉验证后使用</td></tr>
+      <tr><td><span class="grade-l3">L3</span></td><td>公司 PR / 媒体综述</td><td class="dim">公司新闻稿 · 行业媒体快讯</td><td>标 "~" 或 "(估)"</td></tr>
+      <tr><td><span class="grade-l4">L4</span></td><td>匿名信源 / 自媒体</td><td class="dim">"消息称…" · 未署名爆料</td><td>标 "(传)"，必要时排除</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="num">§4</span>Skill 包结构</h2>
+  <p class="section-lede">单一事实源 = JSONL。所有 Markdown 表格、PPTX、Excel 由脚本从 JSONL 生成，避免手工抄写产生分歧。</p>
+
+  <div class="tree">
+<span class="dir">industry-landscape-research/</span>
+├── <span class="file">SKILL.md</span>                  <span class="comment"># v2.0.0 主文档</span>
+├── <span class="dir">workflows/</span>                 <span class="comment"># 8 步法逐步指南</span>
+│   ├── 00-execution-plan.md
+│   ├── 01-research-charter.md
+│   ├── 02-three-round-search.md
+│   ├── 03-analysis-frameworks.md
+│   ├── 04-coverage-audit.md
+│   ├── 05-quant-modeling.md
+│   ├── 06-thesis-synthesis.md
+│   └── 07-deliverable-assembly.md
+├── <span class="dir">archetypes/</span>                <span class="comment"># 7 个行业原型 + KPI</span>
+│   ├── platform.md
+│   ├── saas-vertical.md
+│   ├── deeptech-hardware.md
+│   ├── marketplace.md
+│   ├── consumer.md
+│   ├── infrastructure.md
+│   └── content-media.md
+├── <span class="dir">references/</span>                <span class="comment"># 知识参考</span>
+│   ├── source-matrix.md
+│   ├── crawl-strategy.md
+│   ├── valuation-playbook.md
+│   ├── bias-checklist.md
+│   ├── dirty-work-playbook.md
+│   ├── rules-of-thumb.md
+│   ├── stack-map.md
+│   ├── value-chain-journey.md
+│   ├── profit-pool.md
+│   └── stakeholder-stance.md
+├── <span class="dir">schemas/</span>                   <span class="comment"># JSON Schema 校验</span>
+│   ├── company.schema.json
+│   ├── racetrack.schema.json
+│   ├── event.schema.json
+│   ├── source.schema.json
+│   └── deliverable.schema.json
+├── <span class="dir">templates/</span>                 <span class="comment"># 子代理 prompt</span>
+│   ├── subagent-racetrack-scan.md
+│   ├── subagent-company-deepdive.md
+│   ├── subagent-cross-validate.md
+│   ├── subagent-quant-model.md
+│   └── subagent-devil-advocate.md
+├── <span class="dir">examples/</span>                  <span class="comment"># 端到端样例</span>
+│   └── ex-aigc-image/
+├── <span class="dir">assets/</span>
+│   └── showcase.html              <span class="comment"># 本页</span>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">§5</span>v1.4 → v2.0 升级</h2>
+  <div class="changelog">
+    <ul>
+      <li><strong>从数据采集 → 分析方法论</strong>：新增分析框架、量化建模、Thesis 综合三层（v1 只到数据采集就止）</li>
+      <li><strong>从单文件 → 多文件 Skill 包</strong>：SKILL.md + workflows + archetypes + references + schemas + templates，分层职责清晰</li>
+      <li><strong>从可选规范 → 强制 JSON Schema</strong>：单一事实源 SSOT 是 JSONL，所有 Markdown/PPT 由脚本派生</li>
+      <li><strong>从隐式约束 → 显式 Charter</strong>：Step 1 必须签字才能进 Step 2，避免范围漂移</li>
+      <li><strong>新增 Coverage Audit</strong>：8 维度 ⭐ 评分 + 🔴 阻断机制，分析前先验数据是否够厚</li>
+      <li><strong>新增 Devil's Advocate</strong>：独立子代理评审 5 类批判（数据/偏差/反向/信任度/盲区）</li>
+      <li><strong>新增 7 archetypes</strong>：每个原型锁定 10-12 必填项，KPI 不再"通用得没用"</li>
+      <li><strong>新增 Stack Map / Value Chain Journey / Profit Pool / Stakeholder Stance</strong>：四个分析画布通用化，从 AIGC 复盘中沉淀</li>
+      <li><strong>新增 Phase 1/2/3 并行编排</strong>：明确按赛道/公司/数据源切片，避免 30 Agent 同时抓一个源</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <span>industry-landscape-research v2.0.0</span>
+  <span>QoderWork Skill · 2026-06</span>
+</footer>
+
+</div>
+</body>
+</html>

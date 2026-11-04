@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 演进时间线骨架。水平时间轴 + 阶段背景 + 事件标记 + 公司涌现密度 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 700" font-family="Inter, 'Noto Sans SC', sans-serif">
+  <defs>
+    <style>
+      .bg { fill: #0F1115; }
+      .axis { stroke: #C9A87C; stroke-width: 2; }
+      .tick { stroke: #C9A87C; stroke-width: 1; }
+      .tick-label { fill: #C9A87C; font-size: 12px; text-anchor: middle; }
+      .phase-bg { fill: #1A1C20; opacity: 0.5; }
+      .phase-label { fill: #E5E0D8; font-size: 14px; font-weight: 600; text-anchor: middle; }
+      .phase-sublabel { fill: #8B8680; font-size: 11px; text-anchor: middle; }
+      .event-marker { fill: #C9A87C; }
+      .event-marker-major { fill: #4A90E2; }
+      .event-line { stroke: #C9A87C; stroke-width: 1; stroke-dasharray: 3,3; }
+      .event-label { fill: #E5E0D8; font-size: 11px; }
+      .event-sublabel { fill: #8B8680; font-size: 10px; }
+      .title { fill: #E5E0D8; font-size: 26px; font-family: 'Playfair Display', serif; }
+      .subtitle { fill: #8B8680; font-size: 13px; }
+      .s-curve { fill: none; stroke: #4A90E2; stroke-width: 2; opacity: 0.6; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="700"/>
+
+  <text class="title" x="60" y="60">{{INDUSTRY_NAME}} 演进时间线</text>
+  <text class="subtitle" x="60" y="84">{{START_YEAR}} - {{END_YEAR}} · 共标记 {{EVENT_COUNT}} 个关键事件 · 来源：events.jsonl</text>
+
+  <!-- 阶段背景 -->
+  <rect class="phase-bg" x="100" y="140" width="280" height="380"/>
+  <text class="phase-label" x="240" y="180">{{PHASE_1_NAME}}</text>
+  <text class="phase-sublabel" x="240" y="200">{{PHASE_1_THEME}}</text>
+
+  <rect class="phase-bg" x="380" y="140" width="380" height="380"/>
+  <text class="phase-label" x="570" y="180">{{PHASE_2_NAME}}</text>
+  <text class="phase-sublabel" x="570" y="200">{{PHASE_2_THEME}}</text>
+
+  <rect class="phase-bg" x="760" y="140" width="380" height="380"/>
+  <text class="phase-label" x="950" y="180">{{PHASE_3_NAME}}</text>
+  <text class="phase-sublabel" x="950" y="200">{{PHASE_3_THEME}}</text>
+
+  <rect class="phase-bg" x="1140" y="140" width="380" height="380"/>
+  <text class="phase-label" x="1330" y="180">{{PHASE_4_NAME}}</text>
+  <text class="phase-sublabel" x="1330" y="200">{{PHASE_4_THEME}}</text>
+
+  <!-- S-curve（行业整体成熟度，覆盖在背景上）-->
+  <path class="s-curve" d="M 100,500 C 380,500 500,490 760,430 S 1140,260 1520,220"/>
+  <text class="event-sublabel" x="1530" y="220">S-curve 成熟度</text>
+
+  <!-- 时间轴 -->
+  <line class="axis" x1="100" y1="540" x2="1520" y2="540"/>
+  <line class="tick" x1="100" y1="540" x2="100" y2="552"/>
+  <text class="tick-label" x="100" y="572">{{TICK_1_YEAR}}</text>
+  <line class="tick" x1="380" y1="540" x2="380" y2="552"/>
+  <text class="tick-label" x="380" y="572">{{TICK_2_YEAR}}</text>
+  <line class="tick" x1="760" y1="540" x2="760" y2="552"/>
+  <text class="tick-label" x="760" y="572">{{TICK_3_YEAR}}</text>
+  <line class="tick" x1="1140" y1="540" x2="1140" y2="552"/>
+  <text class="tick-label" x="1140" y="572">{{TICK_4_YEAR}}</text>
+  <line class="tick" x1="1520" y1="540" x2="1520" y2="552"/>
+  <text class="tick-label" x="1520" y="572">{{TICK_5_YEAR}}</text>
+
+  <!-- 事件标记示例（按需复制）-->
+  <g id="event-1">
+    <line class="event-line" x1="200" y1="540" x2="200" y2="380"/>
+    <circle class="event-marker" cx="200" cy="540" r="6"/>
+    <text class="event-label" x="206" y="372">{{EVENT_1_LABEL}}</text>
+    <text class="event-sublabel" x="206" y="388">{{EVENT_1_DATE}}</text>
+  </g>
+
+  <g id="event-2-major">
+    <line class="event-line" x1="500" y1="540" x2="500" y2="320"/>
+    <circle class="event-marker-major" cx="500" cy="540" r="8"/>
+    <text class="event-label" x="506" y="312">{{EVENT_2_LABEL}}</text>
+    <text class="event-sublabel" x="506" y="328">{{EVENT_2_DATE}}</text>
+  </g>
+
+  <g id="event-3">
+    <line class="event-line" x1="900" y1="540" x2="900" y2="420"/>
+    <circle class="event-marker" cx="900" cy="540" r="6"/>
+    <text class="event-label" x="906" y="412">{{EVENT_3_LABEL}}</text>
+    <text class="event-sublabel" x="906" y="428">{{EVENT_3_DATE}}</text>
+  </g>
+
+  <g id="event-4-major">
+    <line class="event-line" x1="1300" y1="540" x2="1300" y2="260"/>
+    <circle class="event-marker-major" cx="1300" cy="540" r="8"/>
+    <text class="event-label" x="1306" y="252">{{EVENT_4_LABEL}}</text>
+    <text class="event-sublabel" x="1306" y="268">{{EVENT_4_DATE}}</text>
+  </g>
+
+  <!-- 图例 -->
+  <g transform="translate(60,640)">
+    <circle class="event-marker" cx="0" cy="0" r="6"/>
+    <text class="event-label" x="12" y="4">常规事件（融资/发布/合作）</text>
+    <circle class="event-marker-major" cx="280" cy="0" r="8"/>
+    <text class="event-label" x="294" y="4">里程碑事件（IPO/退出/重大政策）</text>
+    <line class="s-curve" x1="540" y1="0" x2="600" y2="0"/>
+    <text class="event-label" x="608" y="4">行业 S-curve 成熟度</text>
+  </g>
+</svg>

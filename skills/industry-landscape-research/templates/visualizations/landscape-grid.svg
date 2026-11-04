@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  行业全景图骨架（Landscape Grid）
+  用法：将 {{...}} 占位符替换为实际数据
+  行 = 赛道（racetrack_id），列 = 地理（geo），卡片大小 = tier (T1/T2/T3)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="Inter, 'Noto Sans SC', sans-serif">
+  <defs>
+    <style>
+      .bg { fill: #0F1115; }
+      .axis-label { fill: #C9A87C; font-size: 16px; font-weight: 600; }
+      .axis-sublabel { fill: #8B8680; font-size: 12px; }
+      .grid-line { stroke: #2A2A2E; stroke-width: 1; stroke-dasharray: 2,4; }
+      .card-t1 { fill: #C9A87C; stroke: #C9A87C; stroke-width: 1; }
+      .card-t2 { fill: none; stroke: #C9A87C; stroke-width: 2; }
+      .card-t3 { fill: none; stroke: #8B8680; stroke-width: 1; }
+      .card-text { fill: #0F1115; font-size: 11px; font-weight: 600; text-anchor: middle; }
+      .card-text-outline { fill: #C9A87C; font-size: 11px; font-weight: 600; text-anchor: middle; }
+      .legend-text { fill: #E5E0D8; font-size: 11px; }
+      .title { fill: #E5E0D8; font-size: 26px; font-family: 'Playfair Display', serif; }
+      .subtitle { fill: #8B8680; font-size: 13px; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="900"/>
+
+  <text class="title" x="60" y="60">{{INDUSTRY_NAME}} 行业全景图</text>
+  <text class="subtitle" x="60" y="84">数据截止 {{AS_OF_DATE}} · 共 {{TOTAL_COMPANIES}} 家公司 · L1+L2 数据占比 {{L1L2_PCT}}%</text>
+
+  <!-- 列标题（地理） -->
+  <text class="axis-label" x="260" y="140">{{GEO_1}}</text>
+  <text class="axis-sublabel" x="260" y="156">{{GEO_1_COUNT}} 家</text>
+  <text class="axis-label" x="540" y="140">{{GEO_2}}</text>
+  <text class="axis-sublabel" x="540" y="156">{{GEO_2_COUNT}} 家</text>
+  <text class="axis-label" x="820" y="140">{{GEO_3}}</text>
+  <text class="axis-sublabel" x="820" y="156">{{GEO_3_COUNT}} 家</text>
+  <text class="axis-label" x="1100" y="140">{{GEO_4}}</text>
+  <text class="axis-sublabel" x="1100" y="156">{{GEO_4_COUNT}} 家</text>
+  <text class="axis-label" x="1380" y="140">{{GEO_5}}</text>
+  <text class="axis-sublabel" x="1380" y="156">{{GEO_5_COUNT}} 家</text>
+
+  <!-- 行标题（赛道）+ 网格 -->
+  <g id="row-1" transform="translate(0,200)">
+    <text class="axis-label" x="60" y="60">{{RACETRACK_1}}</text>
+    <text class="axis-sublabel" x="60" y="78">{{RACETRACK_1_DESC}}</text>
+    <line class="grid-line" x1="60" y1="120" x2="1540" y2="120"/>
+    <!-- 卡片占位：T1（大）40x90，T2（中）100x32，T3（小）60x22 -->
+    <!-- Row 1 × Col 1 -->
+    <rect class="card-t1" x="200" y="30" width="120" height="60" rx="6"/>
+    <text class="card-text" x="260" y="64">{{R1C1_T1_NAME}}</text>
+    <!-- 继续填卡片... -->
+  </g>
+
+  <g id="row-2" transform="translate(0,340)">
+    <text class="axis-label" x="60" y="60">{{RACETRACK_2}}</text>
+    <text class="axis-sublabel" x="60" y="78">{{RACETRACK_2_DESC}}</text>
+    <line class="grid-line" x1="60" y1="120" x2="1540" y2="120"/>
+  </g>
+
+  <g id="row-3" transform="translate(0,480)">
+    <text class="axis-label" x="60" y="60">{{RACETRACK_3}}</text>
+    <text class="axis-sublabel" x="60" y="78">{{RACETRACK_3_DESC}}</text>
+    <line class="grid-line" x1="60" y1="120" x2="1540" y2="120"/>
+  </g>
+
+  <g id="row-4" transform="translate(0,620)">
+    <text class="axis-label" x="60" y="60">{{RACETRACK_4}}</text>
+    <text class="axis-sublabel" x="60" y="78">{{RACETRACK_4_DESC}}</text>
+  </g>
+
+  <!-- 图例 -->
+  <g id="legend" transform="translate(60,830)">
+    <rect class="card-t1" x="0" y="0" width="24" height="14" rx="3"/>
+    <text class="legend-text" x="32" y="12">T1 (Tier 1, 估值 ≥ $1B 或营收 ≥ $100M)</text>
+
+    <rect class="card-t2" x="280" y="0" width="24" height="14" rx="3"/>
+    <text class="legend-text" x="312" y="12">T2 (中腰部)</text>
+
+    <rect class="card-t3" x="430" y="0" width="24" height="14" rx="3"/>
+    <text class="legend-text" x="462" y="12">T3 (新锐 / 长尾)</text>
+
+    <text class="legend-text" x="640" y="12">来源：sources.csv · 抓取日期 {{AS_OF_DATE}}</text>
+  </g>
+</svg>
