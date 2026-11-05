@@ -38,4 +38,6 @@ Runtime logs are managed under userData/logs, or PILOT_HOME/logs for standalone 
 
 The Node helper suite is collected by the test command above. [Desktop chrome acceptance](../../ui/e2e/desktop-chrome.smoke.mjs), [lifecycle acceptance](scripts/verify-desktop-lifecycle.cjs) and native installer checks need their stated build/platform prerequisites and isolated profiles. They do not establish that a particular published package is signed; [release verification](../../docs/release.md) checks the actual payload.
 
+Caption-menu changes also require `pnpm --dir ui exec vitest run --project server server/services/windowsCaptionMenu.test.ts`; these fake-clock integration cases complement the desktop helper's real event-loop tests.
+
 Shared development rules: [CONTRIBUTING.md](../../CONTRIBUTING.md). Test selection: [testing guide](../../docs/testing.md).
