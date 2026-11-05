@@ -146,7 +146,7 @@ vite.config.ts.timestamp-*
 
 # Local recording / artifacts
 artifacts/
-outputs/desktop-chrome-review/
+/outputs/
 /design-qa/
 /design-qa.md
 !src/session/artifacts/
@@ -208,10 +208,9 @@ package-lock.json
 # Test output
 test-results/
 
-# Local test drafts (force-add intentional new tests with git add -f)
-test/
-test.ts
-*.test.ts
+# Local test drafts at the repository root; keep module tests discoverable.
+/test/
+/test.ts
 
 # Auto-Research-Skills (local-only)
 Auto-Research-Skills/
