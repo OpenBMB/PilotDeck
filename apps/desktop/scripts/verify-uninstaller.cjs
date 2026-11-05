@@ -11,7 +11,9 @@ const { getMakeNsisPath, getNsisPluginsPath } = require(path.join(lib,'out/tools
 const { NsisScriptGenerator } = require(path.join(lib,'out/targets/nsis/nsisScriptGenerator.js'));
 
 (async () => {
-  const directory = path.resolve(__dirname,'../../../artifacts/uninstall-verification-2026-11-02');
+  const directory = process.argv[2]
+    ? path.resolve(process.argv[2])
+    : path.resolve(__dirname, '../../../artifacts/uninstaller-verification');
   fs.mkdirSync(directory,{recursive:true});
   const binary = await getMakeNsisPath(), plugins = await getNsisPluginsPath();
   const generator = new NsisScriptGenerator();

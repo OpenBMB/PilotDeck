@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
@@ -122,13 +122,16 @@ test("a fresh process recovers a killed worker's ID and lease without another su
   t.after(() => { server.closeAllConnections(); server.close(); });
   const url = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}/v1`;
   const params = { config: { ...config, baseUrl: url }, context, root: store.root };
-  const modulePath = resolve("src/tool/builtin/videos/VideoJobManager.js");
-  const storePath = resolve("src/tool/builtin/videos/VideoStore.js");
+  const runningFromSource = import.meta.url.endsWith(".ts");
+  const extension = runningFromSource ? "ts" : "js";
+  const managerUrl = new URL(`../../../src/tool/builtin/videos/VideoJobManager.${extension}`, import.meta.url).href;
+  const storeUrl = new URL(`../../../src/tool/builtin/videos/VideoStore.${extension}`, import.meta.url).href;
   const script = join(root, "worker.mjs");
-  await writeFile(script, `import {VideoJobManager} from ${JSON.stringify(modulePath)}; import {VideoStore} from ${JSON.stringify(storePath)};
+  await writeFile(script, `import {VideoJobManager} from ${JSON.stringify(managerUrl)}; import {VideoStore} from ${JSON.stringify(storeUrl)};
     const p=${JSON.stringify(params)}; const m=new VideoJobManager({store:new VideoStore(p.root),getConfig:()=>p.config,pollMs:5});
     const j=await m.submit(p.config,{prompt:'ball',purpose:'deliverable'},p.context); await m.start(j);`);
-  const child = spawn(process.execPath, ["--import", "tsx", script], { stdio: ["ignore", "ignore", "pipe"] });
+  const nodeArgs = runningFromSource ? ["--import", "tsx", script] : [script];
+  const child = spawn(process.execPath, nodeArgs, { stdio: ["ignore", "ignore", "pipe"] });
   let errors = ""; child.stderr.on("data", c => { errors += c; });
   t.after(() => child.kill("SIGKILL"));
   await until(async () => { if (child.exitCode !== null) throw new Error(errors); return queries > 0; });
@@ -220,7 +223,13 @@ test('live process leases do not consume recovery slots or starve later jobs', a
   const ordered = await manager.list('session');
   const { createHash } = await import('node:crypto'); const directory = join(manager.root, createHash('sha256').update('session').digest('hex'));
   for (const job of ordered.slice(0, 4)) await writeFile(join(directory, job.id + '.json.lease'), JSON.stringify({ pid: process.pid, nonce: job.id }));
-  const stop = manager.startRecovery(5); t.after(stop);
-  await until(async () => (await manager.get('session', ordered[4].id)).state === 'completed');
-  for (const job of ordered.slice(0, 4)) assert.equal((await manager.get('session', job.id)).state, 'tracking');
+  const stop = manager.startRecovery(5);
+  try {
+    await until(async () => (await manager.get('session', ordered[4].id)).state === 'completed');
+    for (const job of ordered.slice(0, 4)) assert.equal((await manager.get('session', job.id)).state, 'tracking');
+  } finally {
+    stop();
+    // The job can report completion before its process lease has been released.
+    await manager.start(ordered[4]);
+  }
 });
