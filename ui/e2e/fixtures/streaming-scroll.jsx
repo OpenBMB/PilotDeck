@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FindShortcutProvider } from '../../src/contexts/FindShortcutContext';
+import PermissionRequestsBanner from '../../src/components/chat/view/subcomponents/PermissionRequestsBanner';
 import MessagesPane from '../../src/components/chat-v2/MessagesPaneV2';
 import { useScrollFollow } from '../../src/components/chat/hooks/useScrollFollow';
 import { normalizedToChatMessages } from '../../src/components/chat/hooks/useChatMessages';
@@ -18,6 +19,8 @@ const base = { sessionId: sid, provider: 'pilotdeck', timestamp, runId: 'live' }
 function Fixture() {
   const store = useSessionStore();
   const [working, setWorking] = useState(false);
+  const [questions, setQuestions] = useState([]);
+  const answerText = useRef('');
   const [inline, setInline] = useState(true);
   const [mode, setMode] = useState('agent');
   const [olderMessages, setOlderMessages] = useState([]);
@@ -32,6 +35,17 @@ function Fixture() {
     ]).flat());
   }, [store]);
   window.streamFixture = {
+    askQuestion(text = '') {
+      answerText.current = text;
+      const input = { questions: [{ header: 'Next step', question: 'How should we continue?', options: [
+        { label: 'Continue', description: 'Keep working on the current task.' },
+        { label: 'Review', description: 'Review the work before continuing.' },
+      ] }] };
+      store.finalizeStreamingThinking(sid, 'live');
+      store.appendRealtime(sid, { ...base, id: 'question-tool', kind: 'tool_use', toolId: 'question-tool', toolName: 'AskUserQuestion', toolInput: input });
+      setQuestions([{ requestId: 'question-1', toolName: 'AskUserQuestion', input }]);
+      setWorking(true);
+    },
     prepend(count) {
       setOlderMessages((previous) => [
         ...Array.from({ length: count }, (_, index) => ({
@@ -41,10 +55,12 @@ function Fixture() {
       ]);
     },
     think(text) {
+      store.finalizeStreaming(sid, 'live');
       setWorking(true);
       store.updateStreamingThinking(sid, text, 'pilotdeck', 'live');
     },
     tool(id = 'fetch-1') {
+      store.finalizeStreaming(sid, 'live');
       store.finalizeStreamingThinking(sid, 'live');
       store.appendRealtime(sid, { ...base, id, kind: 'tool_use', toolId: id, toolName: 'web_fetch', toolInput: { url: `https://example.com/${id}` } });
       setWorking(true);
@@ -80,9 +96,22 @@ function Fixture() {
       allMessagesLoaded={false} isLoadingAllMessages={false}
       provider="pilotdeck" selectedProject={null} selectedSession={null}
       createDiff={diff} showThinking inlineThinking={inline} setInput={() => {}}
+      pendingPermissionRequests={questions}
       isAssistantWorking={working} sessionRuntimeState={working ? 'running' : 'inactive'}
       activeRunId="live" runMode={mode} planModeActive={mode === 'plan'}
     />
+    <div className="mx-auto w-full max-w-[860px] px-6">
+      <PermissionRequestsBanner pendingPermissionRequests={questions} handleGrantToolPermission={() => ({ success: true })}
+        handlePermissionDecision={(_id, decision) => {
+          store.appendRealtime(sid, { ...base, id: 'question-result', kind: 'tool_result', toolId: 'question-tool',
+            content: 'Answered', toolUseResult: { answers: decision.updatedInput.answers } });
+          setQuestions([]);
+          if (answerText.current) {
+            store.updateStreaming(sid, answerText.current, 'pilotdeck', 'live');
+            store.finalizeStreaming(sid, 'live'); setWorking(false);
+          }
+        }} />
+    </div>
   </div></FindShortcutProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture />);

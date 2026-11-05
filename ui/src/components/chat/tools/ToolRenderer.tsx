@@ -336,7 +336,7 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
       }
     }
 
-    if (contentOnly) return contentComponent;
+    if (contentOnly || canonicalToolName === 'AskUserQuestion') return contentComponent;
 
     // For edit tools, make the title (filename) clickable to open the file
     const handleTitleClick = (canonicalToolName === 'Edit' || canonicalToolName === 'Write' || canonicalToolName === 'ApplyPatch') && contentProps.filePath && onFileOpen

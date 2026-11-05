@@ -1,8 +1,8 @@
-import { recordUiDiagnostic, reloadUi } from '../../lib/uiDiagnostics';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { XCircle, GitBranch, ArrowDown } from 'lucide-react';
+import { recordUiDiagnostic, reloadUi } from '../../lib/uiDiagnostics';
 import type {
   ChatMessage,
   ChatRunMode,
@@ -16,10 +16,12 @@ import type {
 import type { SessionStore } from '../../stores/useSessionStore';
 import { getSessionRequestParams, isReadOnlySession, type Project, type ProjectSession, type SessionProvider } from '../../types/app';
 import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
-import MessageRowV2 from './MessageRowV2';
 import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
-import SendingMessages from './SendingMessages';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
+import MessageRowV2 from './MessageRowV2';
+import { useLiveReplyKeys } from './useLiveReplyKeys';
+import { CompactProcessRow, ProcessBlock } from './ProcessBlock';
+import SendingMessages from './SendingMessages';
 import AssistantReplyQuoteAction from './AssistantReplyQuoteAction';
 import SubagentDetailModal from './SubagentDetailModal';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
@@ -31,15 +33,8 @@ import { ProcessLiveStatus, ProcessRunHeader, type ProcessTraceStep } from './Pr
 import { formatProcessDuration } from './processTraceUtils';
 import {
   buildRenderableMessageItems,
-  foldCompletedTurns,
-  getLiveProcessDetailMessages,
-  getLiveProcessGroupStep,
-  getLiveProcessGroups,
+  groupProcessIntervals,
   isPendingToolUseMessage,
-  isSingleToolProcess,
-  shouldRenderLiveProcessGroup,
-  splitLiveProcessGroupDetailMessages,
-  type LiveProcessGroup,
   type RenderableMessageItem,
 } from './processGrouping';
 import {
@@ -371,7 +366,6 @@ function MessagesPaneV2({
   sessionRuntimeState = 'synchronizing',
   activeRunId = null,
   workingStatus,
-  runMode = 'agent',
   sessionStore,
   onFork,
   onRegenerate,
@@ -532,47 +526,9 @@ function MessagesPaneV2({
     },
     [visibleMessages, showThinking],
   );
-  const liveProcessDetailMessages = useMemo(
-    () => isAssistantWorking ? getLiveProcessDetailMessages(renderableMessages) : [],
-    [isAssistantWorking, renderableMessages],
-  );
-  const liveProcessGroups = useMemo(
-    () => isAssistantWorking
-      ? getLiveProcessGroups(renderableMessages, { isAssistantWorking })
-        .filter((group) => shouldRenderLiveProcessGroup(group, runMode))
-      : [],
-    [isAssistantWorking, renderableMessages, runMode],
-  );
-  // Initialize the enclosing group's state once. A single call has no group
-  // toggle yet, so inherit its expansion when the enclosing row first appears.
-  // After that, parent and child toggles (and the completed trace) are independent.
-  useLayoutEffect(() => {
-    setExpandedProcessRows(current => {
-      let next = current;
-      for (const group of liveProcessGroups) {
-        if (isSingleToolProcess(group.messages) || next.has(group.id)) continue;
-        const expanded = group.detailMessages.some(message => {
-          const key = `${String(message.turnId || message.runId || 'legacy-turn')}:${String(message.toolId || message.toolCallId || message.id || message.toolName || 'tool')}:input`;
-          return Boolean(message.isToolUse && isToolSectionExpanded(key, autoExpandTools));
-        });
-        if (next === current) next = new Map(current);
-        next.set(group.id, expanded);
-      }
-      return next;
-    });
-  }, [liveProcessGroups, isToolSectionExpanded, autoExpandTools]);
-
-  const liveProcessGroupsByAnchor = useMemo(() => {
-    const groupsByAnchor = new Map<number, LiveProcessGroup[]>();
-    for (const group of liveProcessGroups) {
-      const groups = groupsByAnchor.get(group.afterOriginalIndex) || [];
-      groups.push(group);
-      groupsByAnchor.set(group.afterOriginalIndex, groups);
-    }
-    return groupsByAnchor;
-  }, [liveProcessGroups]);
+  const liveReplyKeys = useLiveReplyKeys(renderableMessages, isAssistantWorking, messageWindowScope);
   const renderableMessageItems = useMemo(
-    () => foldCompletedTurns(renderableMessages,
+    () => groupProcessIntervals(renderableMessages,
       buildRenderableMessageItems(renderableMessages, { isAssistantWorking }), isAssistantWorking),
     [isAssistantWorking, renderableMessages],
   );
@@ -651,15 +607,6 @@ function MessagesPaneV2({
   const windowedMessageItems = shouldVirtualizeMessages
     ? keyedMessageItems.slice(virtualWindow.startIndex, virtualWindow.endIndex)
     : keyedMessageItems;
-  const unanchoredLiveProcessGroups = useMemo(() => {
-    if (liveProcessGroups.length === 0) return [];
-    const renderedAnchorIndices = new Set(
-      keyedMessageItems.map((item) => item.originalIndex),
-    );
-    return liveProcessGroups.filter(
-      (group) => !renderedAnchorIndices.has(group.afterOriginalIndex),
-    );
-  }, [keyedMessageItems, liveProcessGroups]);
   const latestUserRenderIndex = useMemo(() => {
     for (let index = keyedMessageItems.length - 1; index >= 0; index -= 1) {
       if (keyedMessageItems[index].message.type === 'user') return index;
@@ -810,11 +757,9 @@ function MessagesPaneV2({
     workingStatus,
     waitingFor,
   ]);
-  const hasRunningProcessGroup = liveProcessGroups.some((group) => group.isRunning);
+  const hasRunningProcessGroup = renderableMessageItems.some(item => item.turnTrace?.isLive);
   const thinkingHasOwnStatus = Boolean(!waitingFor && showThinking && liveThinkingMessage);
-  const shouldRenderBottomLiveStatus = isAssistantWorking && !hasRunningProcessGroup && !thinkingHasOwnStatus;
-  const bottomLiveProcessKey = `bottom-live:${liveStatusStep.id || 'working'}`;
-  const bottomLiveStatusExpanded = isProcessExpanded(bottomLiveProcessKey);
+  const shouldRenderBottomLiveStatus = isAssistantWorking && !waitingFor && !hasRunningProcessGroup && !thinkingHasOwnStatus;
 
   const bumpHeightVersion = useCallback(() => {
     if (heightVersionRafRef.current !== null) return;
@@ -925,91 +870,6 @@ function MessagesPaneV2({
     ));
   }, [keyedMessageItems, messageWindowScope, scrollContainerRef]);
 
-  const renderLiveProcessDetailMessages = useCallback((detailMessages: ChatMessage[], groupId: string) => (
-    detailMessages.map((message: ChatMessage, index: number) => (
-      <MessageRowV2
-        key={`${groupId}-${getMessageKey(message, index)}`}
-        message={message}
-        prevMessage={index > 0 ? detailMessages[index - 1] : null}
-        nextMessage={index < detailMessages.length - 1 ? detailMessages[index + 1] : null}
-        provider={provider}
-        selectedProject={selectedProject}
-        createDiff={createDiff}
-        onFileOpen={onFileOpen}
-        onShowSettings={onShowSettings}
-        onGrantSessionToolPermission={onGrantSessionToolPermission}
-        autoExpandTools={autoExpandTools}
-        showThinking={showThinking}
-        inlineThinking={inlineThinking}
-        isProcessExpanded={isProcessExpanded}
-        onProcessExpandedChange={handleProcessExpandedChange}
-        isToolSectionExpanded={isToolSectionExpanded}
-        onToolSectionExpandedChange={handleToolSectionExpandedChange}
-        onOpenSubagentDetail={handleOpenSubagentDetail}
-        subagentActivityById={subagentActivityById}
-        subagentThinkingById={subagentThinkingById}
-        isSessionRunning={isAssistantWorking}
-        sessionRuntimeState={sessionRuntimeState}
-      />
-    ))
-  ), [
-    autoExpandTools,
-    createDiff,
-    getMessageKey,
-    handleOpenSubagentDetail,
-    handleToolSectionExpandedChange,
-    inlineThinking,
-    onFileOpen,
-    onGrantSessionToolPermission,
-    onShowSettings,
-    provider,
-    selectedProject,
-    subagentActivityById,
-    subagentThinkingById,
-    isProcessExpanded,
-    isToolSectionExpanded,
-    handleProcessExpandedChange,
-    showThinking,
-    isAssistantWorking,
-    sessionRuntimeState,
-  ]);
-
-  const renderLiveProcessGroup = useCallback((group: LiveProcessGroup, index: number) => {
-    const isLatestGroup = liveProcessGroups[liveProcessGroups.length - 1]?.id === group.id;
-    const step = getLiveProcessGroupStep(group, t, group.isRunning && isLatestGroup ? liveStatusStep : null);
-    const { beforeStatusMessages, statusDetailMessages } = splitLiveProcessGroupDetailMessages(group);
-    if (isSingleToolProcess(group.messages)) {
-      return <Fragment key={group.id}>{renderLiveProcessDetailMessages(group.detailMessages, group.id)}</Fragment>;
-    }
-    const expanded = isProcessExpanded(group.id);
-    return (
-      <Fragment key={group.id || `${group.afterOriginalIndex}-${index}`}>
-        {expanded && beforeStatusMessages.length > 0 ? (
-          <div className="pl-5">
-            {renderLiveProcessDetailMessages(beforeStatusMessages, `${group.id}-before-status`)}
-          </div>
-        ) : null}
-        <ProcessLiveStatus
-          step={step}
-          compact
-          expanded={expanded}
-          onExpandedChange={(expanded) => handleProcessExpandedChange(group.id, expanded)}
-        >
-          {statusDetailMessages.length > 0
-            ? renderLiveProcessDetailMessages(statusDetailMessages, group.id)
-            : null}
-        </ProcessLiveStatus>
-      </Fragment>
-    );
-  }, [
-    handleProcessExpandedChange,
-    isProcessExpanded,
-    liveProcessGroups,
-    liveStatusStep,
-    renderLiveProcessDetailMessages,
-    t,
-  ]);
-
   const renderMessageItem = useCallback((item: KeyedRenderableMessageItem) => {
     const previousMessage = item.renderIndex > 0 ? keyedMessageItems[item.renderIndex - 1].message : null;
     const nextMessage = item.renderIndex < keyedMessageItems.length - 1
@@ -1021,7 +881,6 @@ function MessagesPaneV2({
       item.originalIndex,
       item.message,
     );
-    const anchoredLiveGroups = liveProcessGroupsByAnchor.get(item.originalIndex) || [];
     const rendersLiveHeaderAfterItem = item.renderIndex === liveProcessHeaderIndex - 1;
     const messageSessionRuntimeState = isHistoricalSubagentItem(
       item,
@@ -1057,11 +916,14 @@ function MessagesPaneV2({
       return true;
     })();
 
-    const renderRow = (rowItem: RenderableMessageItem, inTrace = false) => rowItem.mediaArtifact ? (
+    const renderRow = (rowItem: RenderableMessageItem, inTrace = false) => rowItem.message.isCompactBoundary ? (
+      <CompactProcessRow message={rowItem.message} running={Boolean(item.turnTrace?.isLive)} />
+    ) : rowItem.mediaArtifact ? (
       <GeneratedMediaCard message={rowItem.message} running={isAssistantWorking} />
     ) : (
       <MessageRowV2
         message={rowItem.message}
+        animateTextOnMount={liveReplyKeys.has(getIntrinsicMessageKey(rowItem.message) || "")}
         prevMessage={previousMessage}
         nextMessage={nextMessage}
         beforeProcessAttachments={rowItem.beforeProcessAttachments}
@@ -1082,8 +944,8 @@ function MessagesPaneV2({
         onOpenSubagentDetail={handleOpenSubagentDetail}
         subagentActivityById={subagentActivityById}
         subagentThinkingById={subagentThinkingById}
-        isSessionRunning={!inTrace && isAssistantWorking}
-        sessionRuntimeState={inTrace ? 'inactive' : messageSessionRuntimeState}
+        isSessionRunning={isAssistantWorking && (!inTrace || Boolean(item.turnTrace?.isLive))}
+        sessionRuntimeState={inTrace && !item.turnTrace?.isLive ? 'inactive' : messageSessionRuntimeState}
         onFork={onFork}
         forkCarriedMessageCount={forkCarriedMessageCount}
         forkDisabled={forkDisabled}
@@ -1112,8 +974,8 @@ function MessagesPaneV2({
           itemKey={item.itemKey}
           message={item.message}
           isLast={isLast}
-          compactBottomSpacing={anchoredLiveGroups.length > 0 || rendersLiveHeaderAfterItem || Boolean(item.message.isThinking || item.message.isToolUse)}
-          flushBottomSpacing={Boolean(item.turnTrace && !isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}`))}
+          compactBottomSpacing={rendersLiveHeaderAfterItem || Boolean(item.turnTrace || item.message.isThinking || item.message.isToolUse)}
+          flushBottomSpacing={false}
           onHeightChange={handleMeasuredItemHeight}
         >
           {item.beforeRunAttachment ? (
@@ -1123,21 +985,14 @@ function MessagesPaneV2({
             />
           ) : null}
           {item.turnTrace ? (
-            <>
-              <CompletedProcessHeader durationMs={item.turnTrace.durationMs} t={t}
-                expanded={isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}`)}
-                onExpandedChange={(expanded) => handleProcessExpandedChange(`${messageWindowScope}:${item.turnTrace!.id}`, expanded)} />
-              {isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}`) ? (
-                <div className="space-y-2" data-turn-trace={item.turnTrace.id}>
-                  {item.turnTrace.items.map((child) => {
-                    const childKey = `${messageWindowScope}:${getMessageKey(child.message, child.originalIndex)}`;
-                    return <div key={childKey} className="chat-message" data-message-key={childKey}>
-                      {renderRow(child, true)}
-                    </div>;
-                  })}
-                </div>
-              ) : null}
-            </>
+            <ProcessBlock trace={item.turnTrace}
+              expanded={isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}:${item.turnTrace.defaultExpanded}`, item.turnTrace.defaultExpanded)}
+              onExpandedChange={expanded => handleProcessExpandedChange(`${messageWindowScope}:${item.turnTrace!.id}:${item.turnTrace!.defaultExpanded}`, expanded)}>
+              {item.turnTrace.items.map(child => {
+                const childKey = `${messageWindowScope}:${getMessageKey(child.message, child.originalIndex)}`;
+                return <div key={childKey} className="chat-message" data-message-key={childKey}>{renderRow(child, true)}</div>;
+              })}
+            </ProcessBlock>
           ) : renderRow(item)}
           {rendersLiveHeaderAfterItem ? (
             <LiveProcessHeader
@@ -1152,11 +1007,6 @@ function MessagesPaneV2({
               durationMs={item.afterRunAttachment.durationMs}
               t={t}
             />
-          ) : null}
-          {anchoredLiveGroups.length > 0 ? (
-            <div className="mt-2 flex min-w-0 flex-col gap-2">
-              {anchoredLiveGroups.map(renderLiveProcessGroup)}
-            </div>
           ) : null}
         </MeasuredMessageItem>
       </Fragment>
@@ -1177,9 +1027,9 @@ function MessagesPaneV2({
     isAssistantWorking,
     sessionRuntimeState,
     keyedMessageItems,
+    liveReplyKeys,
     renderableMessages,
     nonSubagentLiveActivities,
-    liveProcessGroupsByAnchor,
     liveProcessHeaderIndex,
     liveProcessStartedAtMs,
     waitingFor,
@@ -1192,7 +1042,6 @@ function MessagesPaneV2({
     onGrantSessionToolPermission,
     onShowSettings,
     provider,
-    renderLiveProcessGroup,
     selectedProject,
     showThinking,
     subagentActivityById,
@@ -1213,7 +1062,7 @@ function MessagesPaneV2({
   const revealSearchTrace = useCallback((match: { messageIndex: number; messageKey: string }) => {
     onPauseScroll?.(match.messageKey);
     const trace = keyedMessageItems[match.messageIndex]?.turnTrace;
-    if (trace) handleProcessExpandedChange(`${messageWindowScope}:${trace.id}`, true);
+    if (trace) handleProcessExpandedChange(`${messageWindowScope}:${trace.id}:${trace.defaultExpanded}`, true);
   }, [onPauseScroll, keyedMessageItems, messageWindowScope, handleProcessExpandedChange]);
   const chatHistorySearch = useChatHistorySearch({
     scrollContainerRef,
@@ -1461,12 +1310,6 @@ function MessagesPaneV2({
               <div aria-hidden="true" style={{ height: virtualWindow.bottomPadding }} />
             ) : null}
 
-            {unanchoredLiveProcessGroups.length > 0 ? (
-              <div className="flex min-w-0 flex-col gap-2">
-                {unanchoredLiveProcessGroups.map(renderLiveProcessGroup)}
-              </div>
-            ) : null}
-
             {isAssistantWorking &&
             liveProcessHeaderIndex === keyedMessageItems.length &&
             keyedMessageItems[liveProcessHeaderIndex - 1]?.message.type !== 'user' ? (
@@ -1478,19 +1321,7 @@ function MessagesPaneV2({
               />
             ) : null}
 
-            {shouldRenderBottomLiveStatus && liveProcessGroups.length === 0 && isSingleToolProcess(liveProcessDetailMessages) ? (
-              renderLiveProcessDetailMessages(liveProcessDetailMessages, 'bottom-live-process')
-            ) : shouldRenderBottomLiveStatus ? (
-              <ProcessLiveStatus
-                step={liveStatusStep}
-                expanded={bottomLiveStatusExpanded}
-                onExpandedChange={(expanded) => handleProcessExpandedChange(bottomLiveProcessKey, expanded)}
-              >
-                {liveProcessDetailMessages.length > 0 && liveProcessGroups.length === 0
-                  ? renderLiveProcessDetailMessages(liveProcessDetailMessages, 'bottom-live-process')
-                  : null}
-              </ProcessLiveStatus>
-            ) : null}
+            {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={liveStatusStep} /> : null}
           </div>
           <SendingMessages items={sendingInputs} />
         </div>
@@ -1720,7 +1551,8 @@ function LiveProcessHeader({
     defaultValue: `Processed ${duration}`,
   });
 
-  return <ProcessRunHeader label={waitingFor ? t(waitingFor === 'question' ? 'working.waitingForAnswer' : 'working.waitingForApproval', { defaultValue: waitingFor === 'question' ? 'Waiting for your answer' : 'Waiting for approval' }) : label} />;
+  if (waitingFor) return null;
+  return <ProcessRunHeader label={label} />;
 }
 
 function CompletedProcessHeader({

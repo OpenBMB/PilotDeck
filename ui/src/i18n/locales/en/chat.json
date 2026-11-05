@@ -180,6 +180,7 @@
     "waitingForWebFetch": "Fetching web content..."
   },
   "process": {
+    "group": { "details": "Work details", "running": "Working" },
     "summary": {
       "processed": "Processed {{duration}}",
       "completed": "Process completed",

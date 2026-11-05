@@ -13,12 +13,12 @@ export function ThinkingBlock({ content, isStreaming, startedAt, durationMs, inl
   projectName?: string;
   onFileOpen?: (path: string) => void;
 }) {
-  // Phase changes collapse before paint; token updates preserve manual toggles.
-  const [view, setView] = useState(() => ({ streaming: isStreaming, expanded: false,
+  // Phase changes reset the default; token updates preserve manual toggles.
+  const [view, setView] = useState(() => ({ streaming: isStreaming, expanded: isStreaming,
     observedStart: isStreaming ? Date.now() : undefined, stoppedAt: undefined as number | undefined }));
   let phase = view;
   if (view.streaming !== isStreaming) {
-    phase = { streaming: isStreaming, expanded: false,
+    phase = { streaming: isStreaming, expanded: isStreaming,
       observedStart: isStreaming ? Date.now() : view.observedStart,
       stoppedAt: isStreaming ? undefined : Date.now() };
     setView(phase);
@@ -59,16 +59,19 @@ export function ThinkingBlock({ content, isStreaming, startedAt, durationMs, inl
         <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} strokeWidth={1.8} />
       </button>
       {/* Keep the viewport mounted when collapsed so reopening retains its position. */}
-      <div id={contentId} hidden={!expanded}>
-        <StreamingScrollViewport
-          label={t('thinking.liveContentLabel', { defaultValue: 'Live thinking content' })}
-          enabled={expanded && isStreaming}
-          className={`ml-[22px] mt-1.5 border-l-2 pl-3 text-[13px] leading-relaxed text-neutral-600 dark:text-neutral-300 ${inline
-            ? 'border-[var(--brand)]'
-            : 'border-neutral-200 dark:border-neutral-700'}`}
-        >
-          <Markdown projectName={projectName} onFileOpen={onFileOpen} isStreaming={isStreaming}>{content}</Markdown>
-        </StreamingScrollViewport>
+      <div id={contentId} className="chat-process-disclosure" data-expanded={expanded}
+        aria-hidden={!expanded} {...(!expanded ? { inert: '' } : {})}>
+        <div className="min-h-0 overflow-hidden">
+          <StreamingScrollViewport
+            label={t('thinking.liveContentLabel', { defaultValue: 'Live thinking content' })}
+            enabled={expanded && isStreaming}
+            className={`ml-[22px] mt-1.5 border-l-2 pl-3 text-[13px] leading-relaxed text-neutral-600 dark:text-neutral-300 ${inline
+              ? 'border-[var(--brand)]'
+              : 'border-neutral-200 dark:border-neutral-700'}`}
+          >
+            <Markdown projectName={projectName} onFileOpen={onFileOpen} isStreaming={isStreaming}>{content}</Markdown>
+          </StreamingScrollViewport>
+        </div>
       </div>
     </div>
   );

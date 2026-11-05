@@ -12,6 +12,22 @@
     outline: 2px solid var(--brand);
     outline-offset: 3px;
   }
+
+  .chat-process-disclosure {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease-out;
+  }
+
+  .chat-process-disclosure[data-expanded="true"] {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-process-disclosure { transition: none; }
+  }
 }
 
 /* Global spinner animation - defined early to ensure it loads */

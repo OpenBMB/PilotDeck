@@ -29,12 +29,12 @@ import ConversationError from '../chat/view/subcomponents/ConversationError';
 import ImageLightbox, { type LightboxImage } from '../chat/view/subcomponents/ImageLightbox';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { formatUsageLimitText } from '../chat/utils/chatFormatting';
+import { useUploadedAttachmentPreviews } from '../chat/hooks/useUploadedAttachmentPreviews';
 import { ProcessTrace } from './ProcessTrace';
 import { isSingleToolProcess, processSummaryToTrace, type ProcessAttachment } from './processGrouping';
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import { ThinkingBlock } from './ThinkingBlock';
-import { useUploadedAttachmentPreviews } from '../chat/hooks/useUploadedAttachmentPreviews';
 import DocumentReferenceChip from './DocumentReferenceChip';
 import ReplyQuoteChip from './ReplyQuoteChip';
 import { UserAttachmentCards } from './MessageFileCards';
@@ -101,6 +101,7 @@ type MessageRowV2Props = {
   autoExpandTools?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
+  animateTextOnMount?: boolean;
   isProcessExpanded?: (processKey: string, defaultExpanded?: boolean) => boolean;
   onProcessExpandedChange?: (processKey: string, expanded: boolean) => void;
   isToolSectionExpanded?: (sectionKey: string, defaultExpanded?: boolean) => boolean;
@@ -146,6 +147,7 @@ function MessageRowV2({
   autoExpandTools,
   showThinking,
   inlineThinking,
+  animateTextOnMount = false,
   isProcessExpanded,
   onProcessExpandedChange,
   isToolSectionExpanded,
@@ -169,7 +171,7 @@ function MessageRowV2({
     () => formatUsageLimitText(String(message.content ?? '')),
     [message.content],
   );
-  const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6);
+  const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6, animateTextOnMount);
   const assistantArtifacts = useMemo(
     () => (Array.isArray(message.artifacts) ? message.artifacts : []),
     [message.artifacts],
@@ -331,7 +333,7 @@ function MessageRowV2({
 
   if (delegate) {
     return withProcessRows(
-      <div className="ui-v2-legacy-row min-w-0 w-full">
+      <div className="ui-v2-legacy-row w-full min-w-0">
         <MessageComponent
           message={message}
           prevMessage={prevMessage}
@@ -494,7 +496,7 @@ function MessageRowV2({
         {!isEditing ? (
           <div
             data-testid="user-message-actions"
-            className="pointer-events-none mt-1 flex h-6 items-center justify-end gap-1 pr-1 opacity-0 transition-opacity duration-150 group-hover/user-msg:pointer-events-auto group-hover/user-msg:opacity-100 group-focus-within/user-msg:pointer-events-auto group-focus-within/user-msg:opacity-100"
+            className="pointer-events-none mt-1 flex h-6 items-center justify-end gap-1 pr-1 opacity-0 transition-opacity duration-150 group-focus-within/user-msg:pointer-events-auto group-focus-within/user-msg:opacity-100 group-hover/user-msg:pointer-events-auto group-hover/user-msg:opacity-100"
           >
             {messageTime ? (
               <time
@@ -616,7 +618,7 @@ function MessageRowV2({
       {shouldRenderAssistantActions ? (
         <div
           data-testid="assistant-message-actions"
-          className="pointer-events-none mt-1.5 flex h-6 items-center justify-start gap-1 opacity-0 transition-opacity duration-150 group-hover/assistant-msg:pointer-events-auto group-hover/assistant-msg:opacity-100 group-focus-within/assistant-msg:pointer-events-auto group-focus-within/assistant-msg:opacity-100"
+          className="pointer-events-none mt-1.5 flex h-6 items-center justify-start gap-1 opacity-0 transition-opacity duration-150 group-focus-within/assistant-msg:pointer-events-auto group-focus-within/assistant-msg:opacity-100 group-hover/assistant-msg:pointer-events-auto group-hover/assistant-msg:opacity-100"
         >
           {message.model ? (
             <span data-testid="assistant-message-model" className="mr-1 truncate text-xs text-neutral-400 dark:text-neutral-500">

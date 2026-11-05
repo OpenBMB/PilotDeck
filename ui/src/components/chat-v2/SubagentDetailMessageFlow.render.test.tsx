@@ -115,7 +115,7 @@ it.each(['generate_image', 'edit_image'])('loads a live %s result before the chi
     expect(surface?.getAttribute('aria-busy')).toBe('false');
     expect(fetchImage).toHaveBeenCalledTimes(1);
     expect(fetchImage).toHaveBeenCalledWith('/api/image-generation/%2Fproject%3A%3Asub%3A%3Achild/image-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(screen.getByText('Continuing the subtask.')).toBeTruthy();
+    expect(await screen.findByText('Continuing the subtask.')).toBeTruthy();
   } finally {
     fetchImage.mockRestore(); URL.createObjectURL = previousCreate; URL.revokeObjectURL = previousRevoke;
   }
@@ -138,7 +138,7 @@ describe('SubagentDetailMessageFlow', () => {
     ]);
 
     const thinkingText = await screen.findByText('Choose the smallest patch.');
-    const status = screen.getByRole('status');
+    const status = document.querySelector('.tool-call') as HTMLElement;
 
     expect(screen.getAllByText('Choose the smallest patch.')).toHaveLength(1);
     expect(Boolean(thinkingText.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -155,28 +155,15 @@ describe('SubagentDetailMessageFlow', () => {
     expect(screen.getAllByText('Standalone thought two.')).toHaveLength(1);
   });
 
-  it('keeps completed subagent thinking in its own rows outside tool status details', () => {
-    renderFlow([
-      assistant('a-1', 'I will inspect the issue.', 100),
-      thinking('think-1', 'Completed thought one.', 200),
-      thinking('think-2', 'Completed thought two.', 300),
-      tool('read-1', 'Read', 400),
-    ], false);
-
+  it('groups completed thinking and tools together while preserving the individual disclosures', () => {
+    renderFlow([assistant('a-1', 'I will inspect the issue.'), thinking('think-1', 'Completed thought one.'),
+      thinking('think-2', 'Completed thought two.'), tool('read-1', 'Read'), assistant('done', 'Finished')], false);
+    const toggle = document.querySelector('[data-process-block] > button') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
     expect(screen.getAllByRole('button', { name: /Finished thinking|已思考/i })).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /Explored 1 file|已探索 1 个文件/i }));
-
-    const status = screen.getByRole('status');
-    const processRow = status.closest('.process-live-status');
-
-    expect(screen.getAllByText('Completed thought one.')).toHaveLength(1);
-    expect(screen.getAllByText('Completed thought two.')).toHaveLength(1);
-    expect(processRow?.textContent).not.toContain('Completed thought one.');
-    expect(processRow?.textContent).not.toContain('Completed thought two.');
-    expect(status.textContent).not.toContain('Completed thought one.');
-    expect(status.textContent).not.toContain('Completed thought two.');
-    expect(screen.queryByText('Thought through next step')).toBeNull();
-    expect(screen.getByText(/Explored 1 file|已探索 1 个文件/i)).toBeTruthy();
+    expect(document.querySelectorAll('.tool-call')).toHaveLength(1);
+    expect(screen.getByText('Finished')).toBeTruthy();
   });
 
   it('opens local search and highlights subagent message content', async () => {
@@ -221,7 +208,6 @@ it('passes subagent lifecycle state to normalized tool cards and updates it with
     </I18nextProvider>
   );
   const view = render(pane(true));
-  fireEvent.click(view.container.querySelector('.process-live-status button[aria-expanded]') as HTMLButtonElement);
   fireEvent.click(view.container.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement);
   expect(screen.getByRole('button', { name: 'Running Build app' })).toBeTruthy();
   expect(screen.getAllByText('Running…').length).toBeGreaterThan(0);

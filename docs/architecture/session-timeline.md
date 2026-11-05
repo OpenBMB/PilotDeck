@@ -70,12 +70,19 @@ pages only add/update content; absence from a page is not evidence of deletion.
 There is deliberately no client reconstruction of a provider response from its
 text. Legacy records/frames use the old adapter at the boundary. Runtime status
 rows do not place new-protocol content. Thinking renders received content
-without an additional typewriter. Reasoning stays collapsed by default during and
-after streaming; manual expansion survives token updates, and completion collapses
-before paint. Its localized status shows elapsed seconds while live and the measured
+without an additional typewriter. Reasoning opens automatically while streaming and collapses smoothly when its
+phase ends. Manual toggles survive token updates. Continuous reasoning and tool
+calls share a stable process seat between visible assistant replies; the next
+reply closes that seat, while every prose reply and delivered media remain visible.
+Interrupted work and pending interactive prompts remain accessible. Disclosures
+retain mounted content after opening, use inert hidden subtrees, and respect
+reduced motion. Its localized status shows elapsed seconds while live and the measured
 duration after completion. Legacy history without timing shows a completed label
 without a guessed duration. Reasoning and tool summaries share row metrics and
-theme-aware colors; expanded reasoning retains its reading position.
+theme-aware colors; expanded reasoning retains its reading position. New live
+replies drain gradually even when text and completion arrive in one render;
+historical text displays immediately. Answered question panels retain their seat
+for a short height transition without delaying the submitted answer.
 
 ## Verification
 
@@ -89,6 +96,8 @@ theme-aware colors; expanded reasoning retains its reading position.
   and edited-turn tombstones.
 - `ui/src/components/chat-v2/ThinkingBlock.test.tsx`: localized clocks, completion,
   manual expansion and legacy-history fallback.
+- `ui/e2e/process-transitions.spec.mjs`: real height transitions, question exits,
+  batched final replies and reduced motion.
 - `ui/e2e/reasoning-status.spec.mjs`: real row alignment across light palettes and
   dark mode, keyboard expansion, narrow layouts and reduced motion. Run with
   `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs` after

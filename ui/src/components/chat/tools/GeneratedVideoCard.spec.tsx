@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import GeneratedVideoCard from './GeneratedVideoCard';
 import { UnifiedToolCall } from './UnifiedToolCall';
-import { buildRenderableMessageItems, foldCompletedTurns } from '../../chat-v2/processGrouping';
+import { buildRenderableMessageItems, groupProcessIntervals } from '../../chat-v2/processGrouping';
 import { isVideoDeliverable } from './videoPresentation';
 import type { ChatMessage } from '../types/types';
 import { isBinaryFile, isVideoFile } from '../../code-editor/utils/binaryFile';
@@ -29,7 +29,7 @@ it('keeps final video and its original call independently in the completed trace
   const asset = { ...complete, id: 'asset', toolInput: { purpose: 'intermediate' }, toolResult: { content: 'asset', toolUseResult: { videoGeneration: { videoId: 'asset-id', sessionId: 'session-id', purpose: 'intermediate' } } } };
   const failed = { ...pending, id: 'failed', toolResult: { content: 'error', isError: true } };
   const messages: ChatMessage[] = [{ id: 'user', type: 'user', timestamp: new Date(), content: 'Create a site and show a video' }, asset, failed, complete, { id: 'answer', type: 'assistant', timestamp: new Date(), content: 'Done' }];
-  const items = foldCompletedTurns(messages, buildRenderableMessageItems(messages), false);
+  const items = groupProcessIntervals(messages, buildRenderableMessageItems(messages), false);
   expect(items.filter(i => i.mediaArtifact)).toHaveLength(1);
   const details = items.find(i => i.turnTrace)?.turnTrace?.items.flatMap(i => [i.message, ...[...i.beforeProcessAttachments, ...i.afterProcessAttachments].flatMap(a => a.processDetailMessages)]) ?? [];
   expect(details.map(m => m.id)).toEqual(expect.arrayContaining(['video', 'asset', 'failed']));

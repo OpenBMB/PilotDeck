@@ -12,13 +12,13 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 it.each([
   ['en', 'Thinking for 0s', 'Thinking for 3s', 'Thought for 3s'],
   ['zh-CN', '正在思考 0 秒', '正在思考 3 秒', '已思考 3 秒'],
-])('shows a collapsed, localized live clock and freezes it on completion (%s)', async (language, initial, running, completed) => {
+])('opens live reasoning with a localized clock and closes it on completion (%s)', async (language, initial, running, completed) => {
   const i18n = await createTestI18n(language);
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
   const element = (isStreaming: boolean) => <I18nextProvider i18n={i18n}><ThinkingBlock content="Reasoning" isStreaming={isStreaming} /></I18nextProvider>;
   const view = render(element(true));
-  expect(screen.getByRole('button', { name: initial }).getAttribute('aria-expanded')).toBe('false');
+  expect(screen.getByRole('button', { name: initial }).getAttribute('aria-expanded')).toBe('true');
   act(() => vi.advanceTimersByTime(3000));
   expect(screen.getByRole('button', { name: running })).toBeTruthy();
   view.rerender(element(false));
@@ -30,7 +30,6 @@ it.each([
 it('preserves manual expansion across tokens, collapses on completion and keeps final content available', () => {
   const view = render(<ThinkingBlock content="First chunk" isStreaming />);
   const toggle = screen.getByRole('button');
-  fireEvent.click(toggle);
   view.rerender(<ThinkingBlock content="First chunk and final words" isStreaming />);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
   view.rerender(<ThinkingBlock content="First chunk and final words" isStreaming={false} durationMs={4200} />);
@@ -40,6 +39,20 @@ it('preserves manual expansion across tokens, collapses on completion and keeps 
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
   expect(document.getElementById(toggle.getAttribute('aria-controls')!)?.textContent).toContain('final words');
   view.rerender(<ThinkingBlock content="Persisted final words" isStreaming={false} durationMs={4200} />);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+});
+
+it('respects a manual collapse while tokens arrive and starts a new phase expanded', () => {
+  const view = render(<ThinkingBlock content="First chunk" isStreaming />);
+  const toggle = screen.getByRole('button');
+  fireEvent.click(toggle);
+  view.rerender(<ThinkingBlock content="First chunk and more" isStreaming />);
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  const disclosure = document.getElementById(toggle.getAttribute('aria-controls')!);
+  expect(disclosure?.getAttribute('aria-hidden')).toBe('true');
+  expect(disclosure?.hasAttribute('inert')).toBe(true);
+  view.rerender(<ThinkingBlock content="First complete" isStreaming={false} />);
+  view.rerender(<ThinkingBlock content="New phase" isStreaming />);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
 });
 

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import GeneratedImageCard from './GeneratedImageCard';
 import { UnifiedToolCall } from './UnifiedToolCall';
 import type { ChatMessage } from '../types/types';
-import { isProcessMessage, buildRenderableMessageItems, foldCompletedTurns } from '../../chat-v2/processGrouping';
+import { isProcessMessage, buildRenderableMessageItems, groupProcessIntervals } from '../../chat-v2/processGrouping';
 
 vi.mock('../../../utils/api', () => ({ authenticatedFetch: vi.fn(async () => ({ ok: true, blob: async () => new Blob(['image'], { type: 'image/png' }) })) }));
 vi.mock('../view/subcomponents/ImageLightbox', () => ({ default: () => null }));
@@ -59,7 +59,7 @@ it('keeps the image outside and the tool record inside the collapsed trace', () 
     { ...message, toolResult: { content: 'image attached', toolUseResult: { imageGeneration: { imageId: 'image', sessionId: 'session' } } } },
     { ...message, id: 'answer', type: 'assistant', isToolUse: false, content: 'done' },
   ];
-  const items = foldCompletedTurns(messages, buildRenderableMessageItems(messages), false);
+  const items = groupProcessIntervals(messages, buildRenderableMessageItems(messages), false);
   expect(items.filter(item => item.mediaArtifact)).toHaveLength(1);
   const details = items.flatMap(item => item.turnTrace?.items ?? []).flatMap(item => [
     item.message, ...[...item.beforeProcessAttachments, ...item.afterProcessAttachments].flatMap(attachment => attachment.processDetailMessages),

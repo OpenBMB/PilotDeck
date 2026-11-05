@@ -1,17 +1,18 @@
 import { test, expect } from '@playwright/test';
 
-test('reasoning clocks stay collapsed, freeze at the next step, and share tool row metrics in every palette', async ({ page }) => {
+test('reasoning clocks open automatically, freeze at the next step, and share tool row metrics in every palette', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-11-05T00:00:00Z') });
   await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
   await page.evaluate(() => window.streamFixture.think('Compare the implementation before choosing the next step.'));
   const thinking = page.getByRole('button', { name: /^Thinking for \d+s$/ });
-  await expect(thinking).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByRole('region', { name: 'Live thinking content' })).toHaveCount(0);
+  await expect(thinking).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('region', { name: 'Live thinking content' })).toBeVisible();
   await page.clock.runFor(3100);
   await expect(thinking).toHaveText('Thinking for 3s');
   await thinking.focus();
   await page.keyboard.press('Enter');
-  await expect(thinking).toHaveAttribute('aria-expanded', 'true');
+  await expect(thinking).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('Enter');
   await page.evaluate(() => window.streamFixture.tool());
   const finished = page.getByRole('button', { name: 'Thought for 3s', exact: true });
   await expect(finished).toHaveAttribute('aria-expanded', 'false');
@@ -21,8 +22,11 @@ test('reasoning clocks stay collapsed, freeze at the next step, and share tool r
   await page.clock.runFor(1100);
   await page.evaluate(() => { window.streamFixture.tool('fetch-2'); window.streamFixture.tool('fetch-3'); });
   await page.evaluate(() => { window.streamFixture.finishTool('fetch-2'); window.streamFixture.finishTool('fetch-3'); window.streamFixture.think('Summarize the findings.'); });
-  const triggers = page.locator('.chat-process-trigger');
-  await expect(triggers).toHaveCount(5);
+  await expect(page.locator('[data-thinking-state="running"]')).toContainText('Summarize the findings.');
+  await page.locator('[data-thinking-state] > button[aria-expanded="true"]').evaluateAll(nodes => nodes.forEach(node => node.click()));
+  const triggers = page.locator('[data-turn-trace] .chat-process-trigger');
+  await expect(triggers).toHaveCount(6);
+  await expect.poll(() => triggers.evaluateAll(nodes => nodes.slice(1).every((node, i) => Math.abs(node.getBoundingClientRect().top - nodes[i].getBoundingClientRect().bottom - 8) < 0.5))).toBe(true);
 
   for (const preset of ['default', 'blue', 'mint', 'apricot', 'lavender', 'rose', 'custom', 'dark']) {
     await page.evaluate((preset) => window.streamFixture.setAppearance(preset === 'dark' ? 'default' : preset, preset === 'dark'), preset);
@@ -70,7 +74,7 @@ test('restored reasoning shows its measured duration and reduced motion keeps th
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
   await page.evaluate(() => window.streamFixture.restoreThinking(8700));
-  const restored = page.getByRole('button', { name: 'Thought for 8s' });
+  const restored = page.locator('[data-thinking-state] > button');
   await expect(restored).toHaveAttribute('aria-expanded', 'false');
   await restored.click();
   await expect(page.getByRole('region', { name: 'Live thinking content' })).toContainText('restored from history');

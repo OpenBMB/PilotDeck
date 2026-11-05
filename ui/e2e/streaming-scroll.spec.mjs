@@ -15,7 +15,7 @@ test('small upward gestures win over text streaming and explicit resume follows 
   await open(page);
   await page.evaluate(() => window.streamFixture.text('Streaming response.\n\n'.repeat(60)));
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
-  await viewport(page).hover({ position: { x: 20, y: 300 } });
+  await viewport(page).hover({ position: { x: 60, y: 300 } });
   await page.mouse.wheel(0, -30);
   await expect(page.getByRole('button', { name: 'Back to latest' })).toBeVisible();
   const readingTop = await top(viewport(page));
@@ -31,8 +31,7 @@ test('thinking keeps its reading position through tools and remains available in
   await open(page);
   await page.evaluate((text) => window.streamFixture.think(text), lines(30));
   const liveThinking = page.getByRole('button', { name: /^Thinking for \d+s$/ });
-  await expect(liveThinking).toHaveAttribute('aria-expanded', 'false');
-  await liveThinking.click();
+  await expect(liveThinking).toHaveAttribute('aria-expanded', 'true');
   const thinking = page.getByRole('region', { name: 'Live thinking content' });
   await expect(thinking.getByText(/Thinking line 30/)).toBeVisible();
   await expect(liveThinking).toHaveCount(1);
@@ -50,12 +49,14 @@ test('thinking keeps its reading position through tools and remains available in
   await completedThinking.click();
   await expect(thinking).toBeVisible();
   expect(Math.abs(await top(thinking) - readingTop)).toBeLessThan(2);
-  await expect.poll(() => top(viewport(page))).toBeCloseTo(outerTop, 0);
+  // A collapsing 400px block can clamp the outer scroll range. Keep the reader paused,
+  // retain the inner position, and never force the conversation forward.
+  await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+  expect(await top(viewport(page))).toBeLessThanOrEqual(outerTop + 1);
   await page.evaluate(() => { window.streamFixture.finishTool(); window.streamFixture.text('Final answer.'); window.streamFixture.complete(); });
-  const completedProcess = page.getByRole('button', { name: /^Processed / });
+  const completedProcess = page.locator('[data-process-block] > button');
   await expect(completedProcess).toHaveAttribute('aria-expanded', 'false');
   await completedProcess.click();
-  await page.getByRole('button', { name: /^Thought for \d+s$/ }).click();
   await expect(thinking).toBeVisible();
   await expect(thinking).toContainText('Thinking line 45');
   await page.screenshot({ path: test.info().outputPath('thinking-reading-position.png') });
@@ -68,22 +69,22 @@ test('web fetch has one status in plan mode and empty results finish it; paralle
   await page.evaluate(() => window.streamFixture.finishTool());
   await expect(page.getByRole('button', { name: 'Used https://example.com/fetch-1', exact: true })).toHaveCount(1);
   await page.evaluate(() => { window.streamFixture.tool('fetch-2'); window.streamFixture.tool('fetch-3'); window.streamFixture.finishTool('fetch-2'); });
-  const waiting = page.getByRole('button', { name: 'Fetching web content...', exact: true });
-  await expect(waiting).toHaveCount(1);
-  await waiting.click();
+  const waiting = page.locator('[data-process-block] > button');
+  await expect(waiting).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('button', { name: /^Using https:\/\/example.com\/fetch-/ })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Used https://example.com/fetch-2', exact: true })).toHaveCount(1);
   await page.evaluate(() => window.streamFixture.finishTool('fetch-3'));
-  await expect(waiting).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Using https:\/\/example.com\/fetch-/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Used https:\/\/example.com\/fetch-/ })).toHaveCount(3);
 });
 
 test('stream updates do not repeatedly recenter an existing search match', async ({ page }) => {
   await open(page);
-  await viewport(page).click({ position: { x: 20, y: 300 } });
+  await viewport(page).click({ position: { x: 60, y: 300 } });
   await page.keyboard.press('Meta+f');
   await page.getByRole('searchbox').fill('needle 10');
   await expect(page.locator('mark.chat-history-search-highlight-active')).toBeVisible();
-  await viewport(page).hover({ position: { x: 20, y: 300 } });
+  await viewport(page).hover({ position: { x: 60, y: 300 } });
   await page.mouse.wheel(0, -120);
   await page.waitForTimeout(150);
   const readingTop = await top(viewport(page));
@@ -97,7 +98,7 @@ test('prepending virtualized history while streaming preserves the visible messa
   await page.evaluate(() => window.streamFixture.prepend(200));
   await expect(page.locator('[data-virtualized-messages="true"]')).toHaveCount(1);
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
-  await viewport(page).hover({ position: { x: 20, y: 300 } });
+  await viewport(page).hover({ position: { x: 60, y: 300 } });
   await page.mouse.wheel(0, -300);
   await expect(page.getByRole('button', { name: 'Back to latest' })).toBeVisible();
   await page.waitForTimeout(200);

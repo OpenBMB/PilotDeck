@@ -823,7 +823,8 @@
     "questionsCount_one": "{{count}} question",
     "questionsCount_other": "{{count}} questions",
     "reloadInterface": "Reload interface",
-    "chatLayoutError": "Messages could not be displayed. Try reloading the interface."
+    "chatLayoutError": "Messages could not be displayed. Try reloading the interface.",
+    "questionAnswered": "Answered"
   },
   "confirmDialog": {
     "title": "Confirm action",

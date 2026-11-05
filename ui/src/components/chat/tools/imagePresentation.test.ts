@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { ChatMessage } from '../types/types';
 import { imagePurpose, isImageDeliverable } from './imagePresentation';
-import { buildRenderableMessageItems, foldCompletedTurns, getLiveProcessDetailMessages, isProcessMessage } from '../../chat-v2/processGrouping';
+import { buildRenderableMessageItems, groupProcessIntervals, getLiveProcessDetailMessages, isProcessMessage } from '../../chat-v2/processGrouping';
 
 const base = { id: 'draw', type: 'tool', isToolUse: true, toolName: 'generate_image', timestamp: new Date(), content: '' } as ChatMessage;
 
@@ -45,7 +45,7 @@ it.each(['generate_image', 'edit_image'])('keeps only successful deliverables ou
   expect(isProcessMessage(failed)).toBe(true);
   expect(isImageDeliverable(failed)).toBe(false);
   expect(isProcessMessage(delivered)).toBe(true);
-  const items = foldCompletedTurns(messages, buildRenderableMessageItems(messages), false);
+  const items = groupProcessIntervals(messages, buildRenderableMessageItems(messages), false);
   expect(items.filter(item => item.message.isToolUse).map(item => item.message.id)).toEqual(['delivered']);
   expect(items.filter(item => item.mediaArtifact)).toHaveLength(1);
   const trace = items.find(item => item.turnTrace)?.turnTrace?.items ?? [];

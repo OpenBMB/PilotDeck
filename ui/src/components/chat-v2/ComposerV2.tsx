@@ -1,7 +1,4 @@
 import { createPortal } from "react-dom";
-import ContextPanel, { type ContextTarget } from '../chat-context/ContextPanel';
-import { useFloatingPanel } from "../ui/useFloatingPanel";
-import { useModelMenuLayout } from "./useModelMenuLayout";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -30,6 +27,8 @@ import {
   Square,
   type LucideIcon,
 } from "lucide-react";
+import { useFloatingPanel } from "../ui/useFloatingPanel";
+import ContextPanel, { type ContextTarget } from '../chat-context/ContextPanel';
 import type {
   ChatRunMode,
   PendingPermissionRequest,
@@ -47,6 +46,12 @@ import type {
   ChatModelCatalogItem,
   ChatModelSelection,
 } from "../chat/hooks/useChatProviderState";
+import type { Project } from "../../types/app";
+import ReplyQuoteChip from "./ReplyQuoteChip";
+import WorkspacePickerBar from "./WorkspacePickerBar";
+import { getComposerPrimaryAction } from "./composerPrimaryAction";
+import { useModelMenuLayout } from "./useModelMenuLayout";
+import DocumentReferenceChip from "./DocumentReferenceChip";
 import {
   buildExplicitSelection,
   capabilityValues,
@@ -56,11 +61,6 @@ import {
   sameCapabilityValue,
   speedOptionValues,
 } from "./modelCapabilityOptions";
-import DocumentReferenceChip from "./DocumentReferenceChip";
-import ReplyQuoteChip from "./ReplyQuoteChip";
-import WorkspacePickerBar from "./WorkspacePickerBar";
-import { getComposerPrimaryAction } from "./composerPrimaryAction";
-import type { Project } from "../../types/app";
 
 interface MentionableFile {
   id?: string;
@@ -798,16 +798,12 @@ export default function ComposerV2({
             </button>
           </div>
         ) : null}
-        {pendingPermissionRequests.length > 0 ? (
-          <div className="mb-3">
-            <PermissionRequestsBanner
-              pendingPermissionRequests={pendingPermissionRequests}
-              handlePermissionDecision={handlePermissionDecision}
-              handleGrantToolPermission={handleGrantToolPermission}
-              onPlanExecutionApproved={onPlanExecutionApproved}
-            />
-          </div>
-        ) : null}
+        <PermissionRequestsBanner
+          pendingPermissionRequests={pendingPermissionRequests}
+          handlePermissionDecision={handlePermissionDecision}
+          handleGrantToolPermission={handleGrantToolPermission}
+          onPlanExecutionApproved={onPlanExecutionApproved}
+        />
 
         {!hasBlockingPermissionPanel ? (
           <form
@@ -867,7 +863,7 @@ export default function ComposerV2({
             ) : null}
 
             {showFileDropdown ? createPortal(
-              <div ref={fileMenu.panelRef} style={fileMenu.style} className="flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 dark:border-violet-900/70 dark:bg-neutral-900">
+              <div ref={fileMenu.panelRef} style={fileMenu.style} className="shadow-[var(--pd-accent,#2e1065)]/10 flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 shadow-xl dark:border-violet-900/70 dark:bg-neutral-900">
                 <div className="flex items-center justify-between px-2 pb-2 pt-1">
                   <span className="text-[12px] font-bold text-neutral-900 dark:text-neutral-100">
                     {t("input.projectFiles", { defaultValue: "Reference project content" })}
@@ -883,7 +879,7 @@ export default function ComposerV2({
                       defaultValue: "Project content available to reference",
                     }) as string
                   }
-                  className="grid min-h-0 max-h-[238px] gap-px overflow-y-auto [scrollbar-color:#c8c5d5_transparent] [scrollbar-width:thin]"
+                  className="grid max-h-[238px] min-h-0 gap-px overflow-y-auto [scrollbar-color:#c8c5d5_transparent] [scrollbar-width:thin]"
                   onScroll={(event) => {
                     const target = event.currentTarget;
                     if (
@@ -1165,7 +1161,7 @@ export default function ComposerV2({
                         ref={addMenu.panelRef}
                         role="menu"
                         style={addMenu.style}
-                        className="flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 dark:border-violet-900/70 dark:bg-neutral-900"
+                        className="shadow-[var(--pd-accent,#2e1065)]/10 flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left shadow-xl dark:border-violet-900/70 dark:bg-neutral-900"
                       >
                         <div
                           className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:#cbc9d5_transparent] [scrollbar-width:thin]"
@@ -1366,7 +1362,7 @@ export default function ComposerV2({
                     {isPermissionMenuOpen ? createPortal(
                       <div ref={permissionMenu.panelRef} style={permissionMenu.style}
                         role="menu"
-                        className="overflow-y-auto overscroll-contain rounded-[10px] border border-[var(--pd-accent-border,#ddd6fe)] bg-[rgba(255,255,255,.995)] p-[5px] text-left font-sans tracking-normal shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 [font-synthesis:none] dark:border-violet-900/70 dark:bg-neutral-900"
+                        className="shadow-[var(--pd-accent,#2e1065)]/10 overflow-y-auto overscroll-contain rounded-[10px] border border-[var(--pd-accent-border,#ddd6fe)] bg-[rgba(255,255,255,.995)] p-[5px] text-left font-sans tracking-normal shadow-xl [font-synthesis:none] dark:border-violet-900/70 dark:bg-neutral-900"
                       >
                         {PERMISSION_MODE_OPTIONS.map((option) => {
                           const Icon = option.Icon;
@@ -1511,7 +1507,7 @@ export default function ComposerV2({
                         }
                         ref={modelMenu.menuRef}
                         style={modelMenu.menuStyle}
-                        className="pd-composer-model-menu z-50 flex flex-col rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white text-left shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 dark:border-violet-900/70 dark:bg-neutral-900"
+                        className="pd-composer-model-menu shadow-[var(--pd-accent,#2e1065)]/10 z-50 flex flex-col rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white text-left shadow-xl dark:border-violet-900/70 dark:bg-neutral-900"
                       >
                         <div className={cn("min-h-0 min-w-0 flex-col p-2", modelMenu.inline && advancedModel ? "hidden" : "flex")}>
                           <div className="relative mb-1.5 shrink-0">
@@ -1531,7 +1527,7 @@ export default function ComposerV2({
                               autoFocus
                             />
                           </div>
-                          <div data-model-list className="min-h-0 max-h-64 overflow-y-auto [scrollbar-color:#c1c1c1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-button]:h-0 [&::-webkit-scrollbar-button]:w-0 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c1c1c1] [&::-webkit-scrollbar-track]:bg-transparent">
+                          <div data-model-list className="max-h-64 min-h-0 overflow-y-auto [scrollbar-color:#c1c1c1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-button]:h-0 [&::-webkit-scrollbar-button]:w-0 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c1c1c1] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1.5">
                             {modelCatalogError ? (
                               <div className="px-3 py-3 text-[12px] text-red-500" role="alert">{modelCatalogError}</div>
                             ) : null}

@@ -804,7 +804,8 @@
     "questionsCount": "{{count}} 个问题",
     "projectScope": "项目",
     "reloadInterface": "重新加载界面",
-    "chatLayoutError": "消息显示异常，可以尝试重新加载界面。"
+    "chatLayoutError": "消息显示异常，可以尝试重新加载界面。",
+    "questionAnswered": "已回答"
   },
   "confirmDialog": {
     "title": "确认操作",

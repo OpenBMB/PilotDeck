@@ -25,6 +25,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('stream text presentation', () => {
+  it('reveals a new live reply when its text and completion arrive in the same render', () => {
+    const fullText = 'x'.repeat(1000);
+    const view = renderHook(() => useTypewriter(fullText, false, 6, true));
+    expect(view.result.current).toBe('');
+    advance(50);
+    expect(view.result.current.length).toBeGreaterThan(0);
+    expect(view.result.current.length).toBeLessThan(fullText.length);
+    advance(1000);
+    expect(view.result.current).toBe(fullText);
+  });
   it('resumes after Strict Mode replays the effects', () => {
     const view = renderHook(() => useTypewriter('Live response', true), { wrapper: StrictMode });
     advance(1000);

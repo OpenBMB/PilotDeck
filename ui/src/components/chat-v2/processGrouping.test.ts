@@ -4,7 +4,7 @@ import type { ChatMessage } from '../chat/types/types';
 import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import {
   buildRenderableMessageItems,
-  foldCompletedTurns,
+  groupProcessIntervals,
   getLiveProcessGroups,
   hasPendingWebFetchInRunningGroup,
   shouldShowWebFetchWaitingHint,
@@ -599,60 +599,60 @@ describe('processGrouping', () => {
 });
 
 
-describe('completed turn folding', () => {
-  const fold = (messages: ChatMessage[], working = false) => foldCompletedTurns(
+describe('process seats between visible replies', () => {
+  const fold = (messages: ChatMessage[], working = false) => groupProcessIntervals(
     messages, buildRenderableMessageItems(messages, { isAssistantWorking: working }), working,
   );
-
-  it.each(['thinking', 'prose'])('keeps mid-turn compaction after preceding %s when the turn completes', (kind) => {
+  it.each(['thinking', 'prose'])('keeps compaction after preceding %s in timeline order', kind => {
     const preceding = kind === 'thinking' ? thinking('before') : assistant('before', 'Before compact');
     const items = fold([user('u'), preceding, compact('middle'), assistant('final', 'After compact')]);
-    const row = items.flatMap(item => item.turnTrace?.items ?? []).find(item => item.message.id === 'before');
-    expect(row?.beforeProcessAttachments).toEqual([]);
-    expect(row?.afterProcessAttachments).toHaveLength(1);
-    expect(row?.afterProcessAttachments[0].processSummary.compactCount).toBe(1);
+    const projected = items.flatMap(item => item.turnTrace?.items ?? [item]);
+    expect(projected.map(item => item.message.id)).toEqual(['u', 'before', 'middle', 'final']);
+    expect(items.find(item => item.turnTrace)?.turnTrace?.defaultExpanded).toBe(false);
+    if (kind === 'prose') expect(items.some(item => item.message === preceding)).toBe(true);
   });
-
-  it('does not move a trailing compaction ahead of unfinished thinking', () => {
-    const items = fold([user('u'), thinking('before'), compact('middle')]);
-    const row = items.find(item => item.message.id === 'before');
-    expect(row?.beforeProcessAttachments).toEqual([]);
-    expect(row?.afterProcessAttachments).toHaveLength(1);
+  it('keeps unfinished work open and retains stable identity through tools and final prose', () => {
+    const first = { ...thinking('transient'), renderKey: 'canonical-thought' };
+    const live = fold([user('u'), first], true)[1];
+    const next = fold([user('u'), { ...first, id: 'persisted' }, tool('read', 'Read')], true)[1];
+    const closed = fold([user('u'), first, tool('read', 'Read'), assistant('a', 'Done')])[1];
+    expect(live.turnTrace?.isLive).toBe(true);
+    expect(live.turnTrace?.defaultExpanded).toBe(true);
+    expect(next.message.renderKey).toBe(live.message.renderKey);
+    expect(closed.message.renderKey).toBe(live.message.renderKey);
+    expect(closed.turnTrace?.defaultExpanded).toBe(false);
+    expect(closed.turnTrace?.items.map(item => item.message.id)).toEqual(['transient', 'read']);
   });
-
-  it('moves user/final-hosted process attachments inside the trace without modifying messages', () => {
-    const messages = [user('u'), thinking('t'), tool('tool', 'Read'), assistant('final', 'Answer')];
+  it('groups each prose interval independently without mutating the source', () => {
+    const messages = [user('u'), thinking('t'), tool('read', 'Read'), assistant('interim', 'An update'),
+      thinking('t2'), tool('bash', 'Bash'), assistant('final', 'Answer')];
     const original = JSON.stringify(messages);
-    const items = fold(messages);
-    expect(items.map((item) => item.message.id)).toEqual(['u', 'turn-trace-u', 'final']);
-    expect(items[0].afterRunAttachment).toBeNull();
-    expect(items[2].beforeProcessAttachments).toEqual([]);
-    expect(items[1].turnTrace?.items.flatMap((item) => [...item.beforeProcessAttachments, ...item.afterProcessAttachments])).toHaveLength(1);
+    const items = fold(messages, true);
+    expect(items.map(item => item.turnTrace ? 'process' : item.message.id)).toEqual(['u','process','interim','process','final']);
+    expect(items.filter(item => item.turnTrace).every(item => !item.turnTrace?.defaultExpanded)).toBe(true);
     expect(JSON.stringify(messages)).toBe(original);
   });
-
-  it('retains an artifact-only final reply outside the trace', () => {
+  it('keeps artifact-only replies and all prose outside work seats', () => {
     const final = { ...assistant('final', ''), artifacts: [{
       id: 'file', name: 'result.md', path: '/result.md', operation: 'created' as const,
       source: 'tool' as const, status: 'complete' as const, size: 12, sha256: 'hash', createdAt: timestamp(1000),
     }] };
-    const items = fold([user('u'), assistant('intermediate', 'Writing a file'), final]);
+    const items = fold([user('u'), assistant('intermediate', 'Writing a file'), tool('read','Read'), final]);
     expect(items.at(-1)?.message).toBe(final);
-    expect(items[1].turnTrace?.items[0].message.content).toBe('Writing a file');
+    expect(items[1].message.content).toBe('Writing a file');
   });
-
-  it('folds historical turns while leaving the current running turn expanded', () => {
-    const messages = [user('u1'), thinking('t1'), assistant('a1', 'First answer'),
-      user('u2'), assistant('interim', 'Still working'), assistant('a2', 'More work')];
-    const items = fold(messages, true);
-    expect(items.filter((item) => item.turnTrace)).toHaveLength(1);
-    expect(items.some((item) => item.message.id === 'interim')).toBe(true);
+  it.each(['error', 'interrupted'])('keeps %s visible and preceding incomplete work open', kind => {
+    const notice = { ...assistant('notice', 'Stopped'), type: kind === 'error' ? 'error' as const : 'assistant' as const,
+      isInterruptedNotice: kind === 'interrupted' };
+    const items = fold([user('u'), thinking('t'), notice]);
+    expect(items[1].turnTrace?.defaultExpanded).toBe(true);
+    expect(items[2].message).toBe(notice);
   });
-
-  it.each(['failed', 'cancelled'])('does not conceal a %s run behind a previous prose response', (state) => {
-    const messages = [user('u'), thinking('t'), assistant('a', 'Partial reply'), {
-      ...assistant('summary', ''), isAgentActivitySummary: true, state, startedAt: timestamp(0), endedAt: timestamp(2000),
-    }];
-    expect(fold(messages).some((item) => item.turnTrace)).toBe(false);
+  it.each(['AskUserQuestion', 'ask_user_question', 'ExitPlanMode'])('keeps interactive %s outside work', name => {
+    const question = tool('question', name);
+    const items = fold([user('u'), thinking('t'), question, thinking('next')], true);
+    expect(items[2].message).toBe(question);
+    expect(items[1].turnTrace?.defaultExpanded).toBe(false);
+    expect(items[3].turnTrace?.isLive).toBe(true);
   });
 });

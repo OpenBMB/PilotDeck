@@ -1,10 +1,10 @@
-import { isVideoDeliverable } from '../chat/tools/videoPresentation';
 import type { TFunction } from 'i18next';
+import { isVideoDeliverable } from '../chat/tools/videoPresentation';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
 import { isReadOnlyModeToolDeny } from '../chat/utils/chatPermissions';
+import { isImageDeliverable } from '../chat/tools/imagePresentation';
 import type { ProcessTraceMetric, ProcessTraceStep } from './ProcessTrace';
 import { formatProcessDuration } from './processTraceUtils';
-import { isImageDeliverable } from '../chat/tools/imagePresentation';
 
 export type ProcessAttachmentImage = {
   data: string;
@@ -44,7 +44,7 @@ export type ProcessRunAttachment = {
 export type RenderableMessageItem = {
   /** A separate media surface; the original tool call remains in the process. */
   mediaArtifact?: true;
-  turnTrace?: { id: string; durationMs: number; items: RenderableMessageItem[] };
+  turnTrace?: { id: string; isLive: boolean; defaultExpanded: boolean; items: RenderableMessageItem[] };
   message: ChatMessage;
   originalIndex: number;
   beforeRunAttachment: ProcessRunAttachment | null;
@@ -104,6 +104,7 @@ type ProcessCounts = {
 
 const USER_VISIBLE_TOOL_NAMES = new Set([
   'AskUserQuestion',
+  'ask_user_question',
   'ExitPlanMode',
   'ExitPlanModeV2',
   'exit_plan_mode',
@@ -923,75 +924,56 @@ export function buildRenderableMessageItems(
     .sort((a, b) => a.originalIndex - b.originalIndex);
 }
 
-/** Fold only completed turns with a final answer. Keep interrupted/unfinished work visible. */
-export function foldCompletedTurns(
+/** Project work between visible replies into stable seats. Never fold assistant prose. */
+export function groupProcessIntervals(
   messages: ChatMessage[],
   items: RenderableMessageItem[],
   isAssistantWorking: boolean,
 ): RenderableMessageItem[] {
-  const turns = createMessageTurns(messages);
-  attachSummariesToTurns(messages, turns);
   const result: RenderableMessageItem[] = [];
-  let itemCursor = 0;
-  for (const [turnIndex, turn] of turns.entries()) {
-    const turnItems: RenderableMessageItem[] = [];
-    while (itemCursor < items.length && items[itemCursor].originalIndex < turn.end) {
-      turnItems.push(items[itemCursor++]);
-    }
-    const raw = messages.slice(turn.start, turn.end);
-    const last = [...raw].reverse().find((message) =>
-      !message.isAgentActivity && !message.isAgentActivitySummary && !message.isCompactBoundary
-      && !isEmptyAssistantShell(message),
-    );
-    const finalItem = turnItems.find((item) => item.message === last);
-    const abnormal = raw.some((message) => message.type === 'error' || message.isInterruptedNotice
-      || message.isInteractivePrompt || message.isStreaming
-      || (message.isCompactBoundary && message.compactState === 'running')
-      || (message.isAgentActivitySummary && message.state && message.state !== 'completed'));
-    const hasFinal = last?.type === 'assistant' && !last.isThinking && !last.isToolUse
-      && !last.isSubagentContainer && !last.isTaskNotification
-      && (Boolean(last.content?.trim()) || Boolean(last.artifacts?.length));
-    if ((isAssistantWorking && turnIndex === turns.length - 1) || abnormal || !hasFinal || !finalItem) {
-      result.push(...turnItems);
-      continue;
-    }
-    const clean = (item: RenderableMessageItem): RenderableMessageItem => ({
-      ...item, beforeRunAttachment: null, afterRunAttachment: null,
-      beforeProcessAttachments: [], afterProcessAttachments: [],
-    });
-    const traceItems: RenderableMessageItem[] = [];
-    const mediaItems = turnItems.filter(item => item.mediaArtifact);
-    for (const item of turnItems) {
-      // Only the media surface stays outside. Every original tool call,
-      // including delivered images and videos, remains available in the trace.
-      if (mediaItems.includes(item)) continue;
-      if (item.message.type !== 'user' && item !== finalItem) {
-        traceItems.push({ ...item, beforeRunAttachment: null, afterRunAttachment: null });
-      } else if (item.beforeProcessAttachments.length || item.afterProcessAttachments.length) {
-        // Process summaries may be hosted on either the user or the final answer.
-        // Move these into the trace while leaving the final answer/artifacts intact.
-        traceItems.push({
-          ...item, beforeRunAttachment: null, afterRunAttachment: null,
-          message: { id: `trace-attachments-${item.message.id}`, type: 'assistant', content: '', timestamp: item.message.timestamp },
-        });
-      }
-    }
-    if (!traceItems.length) {
-      result.push(...turnItems);
-      continue;
-    }
-    const id = `turn-trace-${getStableMessagePart(messages[turn.start], String(turn.start))}`;
-    result.push(...turnItems.filter((item) => item.message.type === 'user').map(clean));
-    result.push({
-      ...clean(finalItem),
-      originalIndex: turn.start + 0.01,
-      message: { id, type: 'assistant', content: '', timestamp: last!.timestamp },
-      turnTrace: { id, durationMs: getTurnRunDurationMs(messages, turn) ?? 0, items: traceItems },
-    });
-    result.push(...mediaItems.map(clean));
-    result.push(clean(finalItem));
+  const mediaByIndex = new Map<number, RenderableMessageItem[]>();
+  const existingByMessage = new Map<ChatMessage, RenderableMessageItem>();
+  for (const item of items) {
+    if (item.mediaArtifact) {
+      const index = Math.floor(item.originalIndex);
+      const surfaces = mediaByIndex.get(index) ?? [];
+      surfaces.push(item);
+      mediaByIndex.set(index, surfaces);
+    } else existingByMessage.set(item.message, item);
   }
-  return result;
+  const clean = (message: ChatMessage, originalIndex: number): RenderableMessageItem => ({
+    message, originalIndex, beforeRunAttachment: null, afterRunAttachment: null,
+    beforeProcessAttachments: [], afterProcessAttachments: [],
+  });
+  let pending: RenderableMessageItem[] = [];
+  let turnKey = 'history';
+  const flush = (closed: boolean, live = false) => {
+    if (!pending.length) return;
+    const first = pending[0];
+    const id = `process-block-${turnKey}-${String(first.message.renderKey || first.message.compactionId || first.message.toolId || first.message.toolCallId || first.message.id || first.originalIndex)}`;
+    result.push({ ...clean({ id, renderKey: id, type: 'assistant', content: '', timestamp: first.message.timestamp }, first.originalIndex),
+      turnTrace: { id, isLive: live, defaultExpanded: !closed, items: pending } });
+    pending = [];
+  };
+  messages.forEach((message, index) => {
+    if (message.isAgentActivity || message.isAgentActivitySummary || isEmptyAssistantShell(message)) return;
+    const work = message.isThinking || isProcessMessage(message);
+    if (work) {
+      pending.push(clean(message, index));
+      // Delivered media stays visible even when the surrounding work closes.
+      result.push(...(mediaByIndex.get(index) ?? []));
+      return;
+    }
+    flush(message.type !== 'error' && !message.isInterruptedNotice);
+    if (message.type === 'user') turnKey = String(message.renderKey || message.id || index);
+    const existing = existingByMessage.get(message);
+    result.push({ ...clean(message, index),
+      beforeRunAttachment: existing?.beforeRunAttachment ?? null,
+      afterRunAttachment: existing?.afterRunAttachment ?? null });
+  });
+  flush(false, isAssistantWorking);
+  // Media may have arrived while a group was still accumulating. Preserve chronology.
+  return result.sort((a, b) => a.originalIndex - b.originalIndex);
 }
 
 export function getLiveProcessDetailMessages(messages: ChatMessage[]): ChatMessage[] {
