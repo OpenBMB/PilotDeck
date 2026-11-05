@@ -466,6 +466,43 @@ test("summary output truncated by the provider is treated as a failed compaction
   assert.equal(result.summaryGenerated, false);
 });
 
+test("summary output reserve scales with context while preserving explicit limits", async () => {
+  const summaryRequests: CanonicalModelRequest[] = [];
+  const engine = new CompactionEngine({
+    model: {
+      async *stream(request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+        summaryRequests.push(request);
+        yield { type: "message_start", role: "assistant" };
+        yield { type: "text_delta", text: "## Objective\nContinue.\n\n## Current State\nCompacted." };
+        yield { type: "message_end", finishReason: "stop" };
+      },
+    },
+    provider: "local",
+    model_: "local-chat",
+  });
+
+  const cases = [
+    { effectiveContextTokens: 95_232, expected: 16_000 },
+    { effectiveContextTokens: 20_000, expected: 8_000 },
+    { expected: 16_000 },
+    { effectiveContextTokens: 95_232, maxOutputTokens: 1_536, expected: 1_536 },
+  ];
+  for (const testCase of cases) {
+    await engine.run({
+      trigger: "auto",
+      messages: compactFixture(),
+      keepTailRatio: 0.01,
+      effectiveContextTokens: testCase.effectiveContextTokens,
+      maxOutputTokens: testCase.maxOutputTokens,
+    });
+  }
+
+  assert.deepEqual(
+    summaryRequests.map((request) => request.maxOutputTokens),
+    cases.map((testCase) => testCase.expected),
+  );
+});
+
 test("protected turns remain in chronological order with later work", async () => {
   const engine = new CompactionEngine({
     model: {
