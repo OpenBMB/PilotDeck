@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 @layer components {
-  .conversation-pane { container-type: inline-size; }
+  .conversation-pane { container-type: inline-size; min-width: 0; max-width: 100%; }
   .conversation-turn-nav {
     position: absolute;
     z-index: 20;
@@ -73,6 +73,8 @@
 
   .chat-process-disclosure {
     display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 0fr;
     opacity: 0;
     transition: grid-template-rows 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease-out;
@@ -82,6 +84,10 @@
     grid-template-rows: 1fr;
     opacity: 1;
   }
+
+  /* Assistant seats own the outer rhythm; Markdown only spaces interior blocks. */
+  [data-turn-process-prose] .prose > :first-child { margin-top: 0; }
+  [data-turn-process-prose] .prose > :last-child { margin-bottom: 0; }
 
   @media (prefers-reduced-motion: reduce) {
     .chat-process-disclosure { transition: none; }
@@ -1935,6 +1941,7 @@
   }
 
   .chat-panel-scrollbar {
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: #c1c1c1 transparent;
   }

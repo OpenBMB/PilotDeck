@@ -109,13 +109,13 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
   }, []);
 
   const buildAnswers = useCallback(() => {
-    const answers: Record<string, string> = {};
+    const answers: Record<string, string | string[]> = {};
     questions.forEach((q, idx) => {
       const selected = Array.from(selections.get(idx) || []);
       const isOther = otherActive.get(idx) || false;
       const otherText = (otherTexts.get(idx) || '').trim();
       if (isOther && otherText) selected.push(otherText);
-      if (selected.length > 0) answers[q.question] = selected.join(', ');
+      if (selected.length > 0) answers[q.question] = q.multiSelect ? selected : selected[0];
     });
     return answers;
   }, [questions, selections, otherActive, otherTexts]);
@@ -206,10 +206,10 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
         mounted ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0',
       )}
     >
-      <div className="overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-sm">
+      <div data-question-panel className="overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-sm">
         {/* Header */}
-        <div className="px-4 pb-3 pt-4">
-          <div className="mb-2 flex items-center gap-2">
+        <div className="px-3 pb-2.5 pt-3">
+          <div className="mb-1.5 flex items-center gap-2">
             <HelpCircle className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.75} />
 
             <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -253,7 +253,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
           )}
 
           {/* Question text */}
-          <p className="text-[14px] font-medium leading-6 text-foreground">
+          <p className="text-[14px] font-medium leading-[22px] text-foreground">
             {q.question}
           </p>
           {multi && (
@@ -263,7 +263,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
 
         {/* Options */}
         <div
-          className="scrollbar-thin max-h-[min(40vh,320px)] overflow-y-auto overscroll-contain px-4 pb-3"
+          className="scrollbar-thin max-h-[min(38vh,280px)] overflow-y-auto overscroll-contain px-3 pb-2.5"
           role="group"
           aria-label={q.question}
         >
@@ -277,7 +277,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                   onClick={() => toggleOption(currentStep, opt.label, multi)}
                   aria-pressed={isSelected}
                   className={cn(
-                    'group flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]',
+                    'group flex w-full items-start gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]',
                     isSelected
                       ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-foreground'
                       : 'border-border/60 hover:border-border hover:bg-muted/60',
@@ -304,7 +304,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                       {opt.label}
                     </div>
                     {opt.description && (
-                      <div className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
+                      <div className="mt-0.5 text-[12px] leading-[18px] text-muted-foreground">
                         {opt.description}
                       </div>
                     )}
@@ -323,7 +323,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
               onClick={() => toggleOther(currentStep, multi)}
               aria-pressed={isOtherOn}
               className={cn(
-                'group flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]',
+                'group flex w-full items-start gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]',
                 isOtherOn
                   ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-foreground'
                   : 'border-dashed border-border/60 hover:border-border hover:bg-muted/60',

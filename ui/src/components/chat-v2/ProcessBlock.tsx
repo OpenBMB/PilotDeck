@@ -1,6 +1,7 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { ChevronRight, Workflow } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { AnimatedDisclosure } from '../ui/AnimatedDisclosure';
 import type { ChatMessage } from '../chat/types/types';
 import { formatCompletedProcessTitle, type RenderableMessageItem } from './processGrouping';
 import { ProcessLiveStatus } from './ProcessTrace';
@@ -22,8 +23,6 @@ export function ProcessBlock({ trace, expanded, onExpandedChange, children }: {
 }) {
   const { t } = useTranslation('chat');
   const id = useId();
-  const [visited, setVisited] = useState(expanded);
-  if (expanded && !visited) setVisited(true);
   const onlyThinking = trace.items.every(item => item.message.isThinking);
   const measured = trace.items.every(item => typeof item.message.durationMs === 'number');
   const seconds = Math.floor(trace.items.reduce((sum, item) => sum + (item.message.durationMs || 0), 0) / 1000);
@@ -39,13 +38,10 @@ export function ProcessBlock({ trace, expanded, onExpandedChange, children }: {
       <span className="min-w-0 truncate">{title}</span>
       <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
     </button>
-    <div id={id} className="chat-process-disclosure" data-expanded={expanded} aria-hidden={!expanded}
-      {...(!expanded ? { inert: '' } : {})}>
-      <div className="min-h-0 overflow-hidden">
-        <div className="ml-[22px] space-y-2 border-l border-border py-1.5 pl-3" data-turn-trace={trace.id}>
-          {visited || expanded ? children : null}
+    <AnimatedDisclosure id={id} expanded={expanded}>
+        <div className="ml-[22px] space-y-2 border-l border-border pl-3 pt-2" data-turn-trace={trace.id}>
+          {children}
         </div>
-      </div>
-    </div>
+    </AnimatedDisclosure>
   </div>;
 }

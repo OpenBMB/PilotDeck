@@ -759,6 +759,8 @@
     },
     "tasksCompleted": "{{completed}}/{{total}} completed",
     "updatingTodos": "Updating todo list",
+    "todoList": "Todo list",
+    "todoProgress": "{{completed}}/{{count}} completed",
     "taskList": "Task list",
     "taskDetails": "Task details",
     "subagentResult": "Subagent result",
@@ -824,7 +826,9 @@
     "questionsCount_other": "{{count}} questions",
     "reloadInterface": "Reload interface",
     "chatLayoutError": "Messages could not be displayed. Try reloading the interface.",
-    "questionAnswered": "Answered"
+    "questionAnswered": "Answered",
+    "answersProgress": "Answered {{answered}}/{{count}}",
+    "questionTool": "Questions"
   },
   "confirmDialog": {
     "title": "Confirm action",

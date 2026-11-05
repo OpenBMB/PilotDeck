@@ -1,12 +1,13 @@
+import { useId, useMemo, useState } from 'react';
+import { Check, ChevronRight, FileText, Globe, Loader2, Pencil, Search, Terminal, Wrench, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { AnimatedDisclosure } from '../../ui/AnimatedDisclosure';
+import type { ChatMessage } from '../types/types';
+import type { Project } from '../../../types/app';
 import GeneratedVideoCard from './GeneratedVideoCard';
 import { isVideoDeliverable, videoAttachment } from './videoPresentation';
 import GeneratedImageCard from './GeneratedImageCard';
 import { hasImageAttachment, isDrawingTool, isImageDeliverable } from './imagePresentation';
-import { useMemo, useState } from 'react';
-import { Check, ChevronRight, FileText, Globe, Loader2, Pencil, Search, Terminal, Wrench, X } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import type { ChatMessage } from '../types/types';
-import type { Project } from '../../../types/app';
 import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
 import { ToolRenderer } from './ToolRenderer';
 import { ToolDiffViewer } from './components/ToolDiffViewer';
@@ -31,6 +32,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
   const { t: commonT } = useTranslation('common');
   const [localOpen, setLocalOpen] = useState(defaultOpen);
   const expanded = open ?? localOpen;
+  const contentId = useId();
   const name = getCanonicalToolName(message.toolName || 'Tool');
   const input = useMemo(() => objectValue(message.toolInput), [message.toolInput]);
   const config = getToolConfig(message.toolName || '', commonT);
@@ -74,15 +76,15 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
   return (
     <div className="tool-call min-w-0" data-tool-id={message.toolId}>
       <div className="flex min-w-0 items-center gap-2 text-[13px] leading-6 text-neutral-500 dark:text-neutral-400">
-        <button type="button" aria-expanded={expanded} aria-label={`${label} ${target}`} onClick={() => { setLocalOpen(!expanded); onOpenChange?.(!expanded); }} className="chat-process-trigger hover-brand-text group flex-1">
-          <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'animate-spin' : ''}`} strokeWidth={1.8} />
+        <button type="button" aria-expanded={expanded} aria-controls={contentId} aria-label={`${label} ${target}`} onClick={() => { setLocalOpen(!expanded); onOpenChange?.(!expanded); }} className="chat-process-trigger hover-brand-text group flex-1">
+          <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'motion-safe:animate-spin' : ''}`} strokeWidth={1.8} />
           <span className="shrink-0">{label}</span>
           <span className="min-w-0 truncate" title={target}>{target}</span>
           {diff.length > 0 && !result?.isError && <span className="shrink-0 text-xs tabular-nums"><span className="text-green-600 dark:text-green-400">+{diff.filter(line => line.type === 'added').length}</span>{' '}<span className="text-red-500 dark:text-red-400">−{diff.filter(line => line.type === 'removed').length}</span></span>}
-          <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
         </button>
       </div>
-      {expanded && <div className="ml-[22px] mt-2 min-w-0 space-y-2">
+      <AnimatedDisclosure id={contentId} expanded={expanded} contentClassName="ml-[22px] mt-2 space-y-2">
         {hasDiff ? <>
           <ToolDiffViewer oldContent={oldContent} newContent={newContent} filePath={file} createDiff={createDiff} onFileClick={onFileOpen ? () => onFileOpen(file, name === 'Write' ? undefined : { old_string: oldContent, new_string: newContent }) : undefined} badge={name === 'Write' ? 'Write' : 'Diff'} />
           <div className="flex justify-end gap-2 text-xs text-neutral-500 dark:text-neutral-400">{footer}</div>
@@ -99,7 +101,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
               : <pre className="whitespace-pre-wrap break-words font-mono">{output || t('toolDisplay.noOutput')}</pre>}
           </> : <span className="text-neutral-400">{t(active ? 'toolDisplay.executing' : 'toolDisplay.noResult')}</span>)}
         </ToolDetails>}
-      </div>}
+      </AnimatedDisclosure>
     </div>
   );
 }

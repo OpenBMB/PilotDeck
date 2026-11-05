@@ -54,6 +54,7 @@ test('thinking keeps its reading position through tools and remains available in
   await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
   expect(await top(viewport(page))).toBeLessThanOrEqual(outerTop + 1);
   await page.evaluate(() => { window.streamFixture.finishTool(); window.streamFixture.text('Final answer.'); window.streamFixture.complete(); });
+  await page.locator('[data-turn-process-header] button').last().click();
   const completedProcess = page.locator('[data-process-block] > button');
   await expect(completedProcess).toHaveAttribute('aria-expanded', 'false');
   await completedProcess.click();

@@ -8,12 +8,16 @@ import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRowV2 from './MessageRowV2';
+import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
 import { useLiveReplyKeys } from './useLiveReplyKeys';
 import { CompactProcessRow, ProcessBlock } from './ProcessBlock';
 import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
 import {
   buildRenderableMessageItems,
   groupProcessIntervals,
+  getTurnProcessMemberId,
+  turnProcessKey,
+  type TurnProcessGroup,
   type RenderableMessageItem,
 } from './processGrouping';
 import { useChatHistorySearch } from './useChatHistorySearch';
@@ -166,7 +170,9 @@ export default function SubagentDetailMessageFlow({
     captureFindShortcutInModal: true,
     onNavigate: match => {
       follow.pause();
-      const trace = keyedItems[match.messageIndex]?.turnTrace;
+      const item = keyedItems[match.messageIndex];
+      if (item?.processRun) handleProcessExpandedChange(turnProcessKey("subagent", item.processRun), true);
+      const trace = item?.turnTrace;
       if (trace) handleProcessExpandedChange(`${trace.id}:${trace.defaultExpanded}`, true);
     },
   });
@@ -220,22 +226,15 @@ export default function SubagentDetailMessageFlow({
           inputRef={chatHistorySearch.inputRef}
         />
       ) : null}
-      <div ref={scrollContainerRef} data-stream-scroll-viewport className="min-h-0 flex-1 overflow-y-auto" style={{ overflowAnchor: 'none' }}>
-        <div data-chat-scroll-content className="flex min-w-0 flex-col gap-2 px-6 py-4">
+      <div ref={scrollContainerRef} data-stream-scroll-viewport className="chat-panel-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden" style={{ overflowAnchor: 'none' }}>
+        <div data-chat-scroll-content className="flex min-w-0 flex-col px-6 py-4">
           {keyedItems.map((item) => {
             const previousMessage = item.renderIndex > 0 ? keyedItems[item.renderIndex - 1].message : null;
             const nextMessage = item.renderIndex < keyedItems.length - 1
               ? keyedItems[item.renderIndex + 1].message
               : null;
 
-            return (
-              <Fragment key={item.itemKey}>
-                <div
-                  className="chat-message"
-                  data-message-key={item.itemKey}
-                  data-message-timestamp={item.message.timestamp ? String(item.message.timestamp) : undefined}
-                >
-                  {item.turnTrace ? <ProcessBlock trace={item.turnTrace}
+            const rowContent = item.turnTrace ? <ProcessBlock trace={item.turnTrace}
                     expanded={isProcessExpanded(`${item.turnTrace.id}:${item.turnTrace.defaultExpanded}`, item.turnTrace.defaultExpanded)}
                     onExpandedChange={expanded => handleProcessExpandedChange(`${item.turnTrace!.id}:${item.turnTrace!.defaultExpanded}`, expanded)}>
                     {renderLiveProcessDetailMessages(item.turnTrace.items.map(child => child.message))}
@@ -258,7 +257,27 @@ export default function SubagentDetailMessageFlow({
                     onProcessExpandedChange={handleProcessExpandedChange}
                     isToolSectionExpanded={isToolSectionExpanded}
                     onToolSectionExpandedChange={handleToolSectionExpandedChange}
-                  />}
+                  />;
+            const renderTurnHeader = (group: TurnProcessGroup) => group.memberIds.length ? <TurnProcessHeader
+              group={group} scope="subagent" showWhileRunning={false}
+              expanded={isProcessExpanded(turnProcessKey('subagent', group), group.defaultExpanded)}
+              onExpandedChange={expanded => handleProcessExpandedChange(turnProcessKey('subagent', group), expanded)} /> : null;
+
+            return (
+              <Fragment key={item.itemKey}>
+                <div
+                  className={item.processRun ? "chat-message" : "chat-message pb-2"}
+                  data-message-key={item.itemKey}
+                  data-message-timestamp={item.message.timestamp ? String(item.message.timestamp) : undefined}
+                >
+                  {item.beforeTurnProcess ? renderTurnHeader(item.beforeTurnProcess) : null}
+                  {item.processRun ? <TurnProcessRegion group={item.processRun} scope="subagent"
+                    member={getTurnProcessMemberId(item)} output={item.processOutput}
+                    prose={item.message.type === 'assistant' && !item.turnTrace && !item.message.isToolUse}
+                    expanded={Boolean(item.processOutput || isProcessExpanded(turnProcessKey('subagent', item.processRun), item.processRun.defaultExpanded))}>
+                    {rowContent}
+                  </TurnProcessRegion> : rowContent}
+                  {item.afterTurnProcess ? renderTurnHeader(item.afterTurnProcess) : null}
                 </div>
               </Fragment>
             );

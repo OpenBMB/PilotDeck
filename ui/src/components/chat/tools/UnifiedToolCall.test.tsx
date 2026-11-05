@@ -4,9 +4,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
 import { createTestI18n } from '../../../i18n/testInstance';
 import { copyTextToClipboard } from '../../../utils/clipboard';
-import { UnifiedToolCall } from './UnifiedToolCall';
 import { calculateDiff } from '../utils/messageTransforms';
 import type { ChatMessage } from '../types/types';
+import { UnifiedToolCall } from './UnifiedToolCall';
 vi.mock('../../../utils/clipboard', () => ({ copyTextToClipboard: vi.fn(async () => true) }));
 let i18n: Awaited<ReturnType<typeof createTestI18n>>;
 beforeAll(async () => { i18n = await createTestI18n(); });
@@ -23,7 +23,7 @@ describe('UnifiedToolCall', () => {
     expect(screen.getByText('built')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Ran Build app' }));
     rerender(view({ ...message, toolResult: { content: 'built again' } }));
-    expect(screen.queryByText('built again')).toBeNull();
+    expect(screen.getByText('built again').closest('[aria-hidden]')?.getAttribute('aria-hidden')).toBe('true');
   });
   it('shows failures only inside details and does not claim the operation succeeded', () => {
     render(view({ ...message, toolResult: { isError: true, content: 'exit 1: test failed' } }));

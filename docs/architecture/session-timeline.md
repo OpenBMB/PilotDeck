@@ -73,16 +73,29 @@ rows do not place new-protocol content. Thinking renders received content
 without an additional typewriter. Reasoning opens automatically while streaming and collapses smoothly when its
 phase ends. Manual toggles survive token updates. Continuous reasoning and tool
 calls share a stable process seat between visible assistant replies; the next
-reply closes that seat, while every prose reply and delivered media remain visible.
+reply closes that seat. On successful turn completion, one measured process
+header folds all intermediate prose, reasoning, tool calls and answered questions
+in their original order. Only the final assistant reply and delivered media stay
+visible. Reopening restores the same seats and their disclosure state without
+reparenting content or replaying its text animation.
 Interrupted work and pending interactive prompts remain accessible. Disclosures
 retain mounted content after opening, use inert hidden subtrees, and respect
-reduced motion. Its localized status shows elapsed seconds while live and the measured
+reduced motion. Conversation scrollbars reserve their gutter, and disclosure
+columns constrain intrinsic content widths so expansion never shifts the transcript
+horizontally. All process and tool disclosures animate in both directions.
+The localized status shows elapsed seconds while live and the measured
 duration after completion. Legacy history without timing shows a completed label
 without a guessed duration. Reasoning and tool summaries share row metrics and
 theme-aware colors; expanded reasoning retains its reading position. New live
 replies drain gradually even when text and completion arrive in one render;
 historical text displays immediately. Answered question panels retain their seat
 for a short height transition without delaying the submitted answer.
+Question tools use full-width compact transcripts with a separate disclosure
+header. Multi-select answers remain arrays through elicitation, live transport,
+canonical history and UI projection, preserving labels that contain commas.
+The history reader retains structured question results instead of reconstructing
+answers from tool-result text. Todo updates use one progress header and checklist;
+successful acknowledgements do not create a second details row.
 
 The left conversation navigation rail uses fixed-pitch turn marks with bounded plain
 text previews of user prompts and assistant replies. It excludes reasoning and
@@ -105,8 +118,11 @@ its own long list scrolls independently of the transcript.
   manual expansion and legacy-history fallback.
 - `ui/e2e/conversation-turn-nav.spec.mjs`: left-side positioning, previews, keyboard
   navigation, distant virtual rows, reader ownership and responsive hiding.
-- `ui/e2e/process-transitions.spec.mjs`: real height transitions, question exits,
-  batched final replies and reduced motion.
+- `ui/e2e/process-transitions.spec.mjs`: bidirectional height transitions, stable
+  widths, ordered turn folding, compact question/Todo tools, multi-select history
+  replay, question exits, batched final replies and reduced motion.
+- `tests/web/question-answer-history.spec.ts`: real elicitation output through
+  canonical transcript and live Web projections, including comma-bearing labels.
 - `ui/e2e/reasoning-status.spec.mjs`: real row alignment across light palettes and
   dark mode, keyboard expansion, narrow layouts and reduced motion. Run with
   `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs` after

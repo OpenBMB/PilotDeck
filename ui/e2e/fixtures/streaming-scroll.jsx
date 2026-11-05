@@ -27,6 +27,14 @@ function Fixture() {
   const ref = useRef(null);
   const messages = [...olderMessages, ...normalizedToChatMessages(store.getMessages(sid))];
   const follow = useScrollFollow({ containerRef: ref, enabled: true, scopeKey: sid, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
+  const askQuestions = (list, text = '') => {
+    answerText.current = text;
+    const input = { questions: list };
+    store.finalizeStreamingThinking(sid, 'live');
+    store.appendRealtime(sid, { ...base, id: 'question-tool', kind: 'tool_use', toolId: 'question-tool', toolName: 'AskUserQuestion', toolInput: input });
+    setQuestions([{ requestId: 'question-1', toolName: 'AskUserQuestion', input }]);
+    setWorking(true);
+  };
   useEffect(() => {
     store.setActiveSession(sid);
     store.appendRealtimeBatch(sid, Array.from({ length: Number(new URLSearchParams(location.search).get('history') ?? 24) }, (_, index) => [
@@ -35,17 +43,20 @@ function Fixture() {
     ]).flat());
   }, [store]);
   window.streamFixture = {
-    askQuestion(text = '') {
-      answerText.current = text;
-      const input = { questions: [{ header: 'Next step', question: 'How should we continue?', options: [
-        { label: 'Continue', description: 'Keep working on the current task.' },
-        { label: 'Review', description: 'Review the work before continuing.' },
-      ] }] };
-      store.finalizeStreamingThinking(sid, 'live');
-      store.appendRealtime(sid, { ...base, id: 'question-tool', kind: 'tool_use', toolId: 'question-tool', toolName: 'AskUserQuestion', toolInput: input });
-      setQuestions([{ requestId: 'question-1', toolName: 'AskUserQuestion', input }]);
+    beginTurn(id = 'current-user') {
+      const at = new Date().toISOString();
+      store.appendRealtime(sid, { ...base, id, kind: 'text', role: 'user', content: 'Inspect the implementation', timestamp: at });
       setWorking(true);
     },
+    askQuestion(text = '') {
+      askQuestions([{ header: 'Next step', question: 'How should we continue?', options: [
+        { label: 'Continue', description: 'Keep working on the current task.' },
+        { label: 'Review', description: 'Review the work before continuing.' },
+      ] }], text);
+    },
+    askQuestions,
+    getMessages: () => store.getMessages(sid),
+    refresh: () => store.refreshFromServer(sid, { provider: 'pilotdeck' }),
     prepend(count) {
       setOlderMessages((previous) => [
         ...Array.from({ length: count }, (_, index) => ({
@@ -59,17 +70,25 @@ function Fixture() {
       setWorking(true);
       store.updateStreamingThinking(sid, text, 'pilotdeck', 'live');
     },
-    tool(id = 'fetch-1') {
+    tool(id = 'fetch-1', toolName = 'web_fetch', toolInput = { url: `https://example.com/${id}` }) {
       store.finalizeStreaming(sid, 'live');
       store.finalizeStreamingThinking(sid, 'live');
-      store.appendRealtime(sid, { ...base, id, kind: 'tool_use', toolId: id, toolName: 'web_fetch', toolInput: { url: `https://example.com/${id}` } });
+      store.appendRealtime(sid, { ...base, id, kind: 'tool_use', toolId: id, toolName, toolInput });
       setWorking(true);
     },
     finishTool(id = 'fetch-1', content = '') {
       store.appendRealtime(sid, { ...base, id: `${id}-result`, kind: 'tool_result', toolId: id, content, isError: false });
     },
     text(text) { setWorking(true); store.finalizeStreamingThinking(sid, 'live'); store.updateStreaming(sid, text, 'pilotdeck', 'live'); },
-    complete() { store.finalizeStreamingThinking(sid, 'live'); store.finalizeStreaming(sid, 'live'); setWorking(false); },
+    complete(durationMs) {
+      store.finalizeStreamingThinking(sid, 'live'); store.finalizeStreaming(sid, 'live');
+      if (typeof durationMs === 'number') store.appendRealtime(sid, {
+        sessionId: sid, provider: 'pilotdeck', id: 'completed-summary', kind: 'agent_activity_summary',
+        timestamp: new Date().toISOString(), status: 'completed', durationMs,
+        startedAt: new Date(Date.now() - durationMs).toISOString(), endedAt: new Date().toISOString(),
+      });
+      setWorking(false);
+    },
     setInline, setMode,
     setLanguage: (language) => i18n.changeLanguage(language),
     setAppearance(preset, dark = false) {

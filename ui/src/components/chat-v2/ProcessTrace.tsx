@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Activity,
@@ -13,6 +13,7 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
+import { AnimatedDisclosure } from '../ui/AnimatedDisclosure';
 import { AgentTimeline } from './AgentTimeline';
 import { StreamingScrollViewport } from './StreamingScrollViewport';
 
@@ -52,11 +53,13 @@ export function ProcessRunHeader({
   className = '',
   expanded,
   onExpandedChange,
+  controls,
 }: {
   label: string;
   className?: string;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  controls?: string;
 }) {
   return (
     <div
@@ -65,9 +68,9 @@ export function ProcessRunHeader({
       className={`mb-3 border-b border-neutral-200/70 pb-1.5 text-[14px] leading-relaxed text-neutral-500 dark:border-neutral-800/80 dark:text-neutral-400 ${className}`}
     >
       {onExpandedChange ? (
-        <button type="button" aria-expanded={expanded} onClick={() => onExpandedChange(!expanded)}
+        <button type="button" aria-expanded={expanded} aria-controls={controls || undefined} onClick={() => onExpandedChange(!expanded)}
           className="hover-brand-text flex items-center gap-1.5 text-left">
-          <ChevronRight className={`h-3.5 w-3.5 ${expanded ? 'rotate-90' : ''}`} />
+          <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
           <span className="tabular-nums">{label}</span>
         </button>
       ) : <span className="tabular-nums">{label}</span>}
@@ -96,6 +99,7 @@ export function ProcessLiveStatus({
 }) {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const contentId = useId();
   const setExpanded = (nextExpanded: boolean | ((value: boolean) => boolean)) => {
     const resolvedExpanded = typeof nextExpanded === 'function'
       ? nextExpanded(expanded)
@@ -144,6 +148,7 @@ export function ProcessLiveStatus({
           <button
             type="button"
             aria-expanded={expanded}
+            aria-controls={contentId}
             onClick={() => setExpanded((value) => !value)}
             className="chat-process-trigger hover-brand-text group"
           >
@@ -155,11 +160,9 @@ export function ProcessLiveStatus({
           </div>
         )}
       </div>
-      {expanded && hasDetails ? (
-        <div className={`mt-1.5 space-y-1.5 ${contentClassName ?? ''}`}>
-          {children}
-        </div>
-      ) : null}
+      {hasDetails ? <AnimatedDisclosure id={contentId} expanded={expanded} contentClassName={`mt-1.5 space-y-1.5 ${contentClassName ?? ""}`}>
+        {children}
+      </AnimatedDisclosure> : null}
     </div>
   );
 }
@@ -233,9 +236,7 @@ function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
 export function ProcessTrace({
   label,
   collapsedDetail,
-  statusLabel,
   status = 'completed',
-  metrics = [],
   steps = [],
   children,
   defaultExpanded = false,
@@ -246,6 +247,7 @@ export function ProcessTrace({
 }: ProcessTraceProps) {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const contentId = useId();
   const setExpanded = (nextExpanded: boolean | ((value: boolean) => boolean)) => {
     const resolvedExpanded = typeof nextExpanded === 'function'
       ? nextExpanded(expanded)
@@ -271,6 +273,7 @@ export function ProcessTrace({
       <button
         type="button"
         aria-expanded={hasDetails ? expanded : undefined}
+        aria-controls={hasDetails ? contentId : undefined}
         onClick={() => {
           if (hasDetails) {
             setExpanded((value) => !value);
@@ -300,8 +303,7 @@ export function ProcessTrace({
         ) : null}
       </button>
 
-      {expanded ? (
-        <div className="mt-1.5 space-y-1.5">
+      <AnimatedDisclosure id={contentId} expanded={expanded} contentClassName="mt-1.5 space-y-1.5">
           {steps.length > 3 ? (
             <AgentTimeline steps={steps} />
           ) : (
@@ -310,8 +312,7 @@ export function ProcessTrace({
             ))
           )}
           {children ? <div className="space-y-1.5 pt-0.5">{children}</div> : null}
-        </div>
-      ) : null}
+      </AnimatedDisclosure>
     </div>
   );
 }

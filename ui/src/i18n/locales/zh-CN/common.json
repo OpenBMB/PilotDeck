@@ -754,6 +754,8 @@
     },
     "tasksCompleted": "已完成 {{completed}}/{{total}}",
     "updatingTodos": "正在更新待办事项",
+    "todoList": "待办事项",
+    "todoProgress": "已完成 {{completed}}/{{count}}",
     "taskList": "任务列表",
     "taskDetails": "任务详情",
     "subagentResult": "子智能体结果",
@@ -805,7 +807,9 @@
     "projectScope": "项目",
     "reloadInterface": "重新加载界面",
     "chatLayoutError": "消息显示异常，可以尝试重新加载界面。",
-    "questionAnswered": "已回答"
+    "questionAnswered": "已回答",
+    "answersProgress": "已回答 {{answered}}/{{count}}",
+    "questionTool": "提问"
   },
   "confirmDialog": {
     "title": "确认操作",

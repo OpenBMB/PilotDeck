@@ -26,7 +26,7 @@ test('reasoning clocks open automatically, freeze at the next step, and share to
   await page.locator('[data-thinking-state] > button[aria-expanded="true"]').evaluateAll(nodes => nodes.forEach(node => node.click()));
   const triggers = page.locator('[data-turn-trace] .chat-process-trigger');
   await expect(triggers).toHaveCount(6);
-  await expect.poll(() => triggers.evaluateAll(nodes => nodes.slice(1).every((node, i) => Math.abs(node.getBoundingClientRect().top - nodes[i].getBoundingClientRect().bottom - 8) < 0.5))).toBe(true);
+  await expect.poll(() => triggers.evaluateAll(nodes => nodes.slice(1).every((node, i) => Math.abs(node.getBoundingClientRect().top - nodes[i].getBoundingClientRect().bottom - 8) < 0.01))).toBe(true);
 
   for (const preset of ['default', 'blue', 'mint', 'apricot', 'lavender', 'rose', 'custom', 'dark']) {
     await page.evaluate((preset) => window.streamFixture.setAppearance(preset === 'dark' ? 'default' : preset, preset === 'dark'), preset);

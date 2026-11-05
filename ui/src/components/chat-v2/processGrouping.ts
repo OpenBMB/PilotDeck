@@ -41,10 +41,25 @@ export type ProcessRunAttachment = {
   endIndex: number;
 };
 
+export type TurnProcessGroup = {
+  id: string;
+  isRunning: boolean;
+  defaultExpanded: boolean;
+  durationMs: number | null;
+  startedAt?: string;
+  memberIds: string[];
+};
+
 export type RenderableMessageItem = {
   /** A separate media surface; the original tool call remains in the process. */
   mediaArtifact?: true;
   turnTrace?: { id: string; isLive: boolean; defaultExpanded: boolean; items: RenderableMessageItem[] };
+  /** One shared disclosure owns all process seats in this user turn. */
+  processRun?: TurnProcessGroup;
+  /** The latest prose/artifact reply remains visible when the turn folds. */
+  processOutput?: boolean;
+  beforeTurnProcess?: TurnProcessGroup;
+  afterTurnProcess?: TurnProcessGroup;
   message: ChatMessage;
   originalIndex: number;
   beforeRunAttachment: ProcessRunAttachment | null;
@@ -924,7 +939,7 @@ export function buildRenderableMessageItems(
     .sort((a, b) => a.originalIndex - b.originalIndex);
 }
 
-/** Project work between visible replies into stable seats. Never fold assistant prose. */
+/** Preserve interleaved seats; the enclosing turn disclosure hides intermediate work and prose together. */
 export function groupProcessIntervals(
   messages: ChatMessage[],
   items: RenderableMessageItem[],
@@ -973,7 +988,77 @@ export function groupProcessIntervals(
   });
   flush(false, isAssistantWorking);
   // Media may have arrived while a group was still accumulating. Preserve chronology.
-  return result.sort((a, b) => a.originalIndex - b.originalIndex);
+  return attachTurnProcessGroups(messages, result.sort((a, b) => a.originalIndex - b.originalIndex), isAssistantWorking);
+}
+
+export function getTurnProcessMemberId(item: RenderableMessageItem): string {
+  return String(item.turnTrace?.id || item.message.renderKey || item.message.compactionId
+    || item.message.toolId || item.message.toolCallId || item.message.id || item.originalIndex);
+}
+
+export function turnProcessKey(scope: string, group: TurnProcessGroup) {
+  return `${scope}:${group.id}:${group.defaultExpanded}`;
+}
+
+export function turnProcessRegionId(scope: string, group: TurnProcessGroup, member: string) {
+  return `turn-process-region-${encodeURIComponent(`${scope}:${group.id}:${member}`)}`;
+}
+
+/** Keep process seats in place while their turn-level header controls visibility. */
+function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessageItem[], working: boolean) {
+  const turns = createMessageTurns(messages);
+  attachSummariesToTurns(messages, turns);
+  let cursor = 0;
+  for (const [turnIndex, turn] of turns.entries()) {
+    const turnItems: RenderableMessageItem[] = [];
+    while (cursor < items.length && items[cursor].originalIndex < turn.end) turnItems.push(items[cursor++]);
+    if (!turnItems.length) continue;
+    const raw = messages.slice(turn.start, turn.end);
+    const running = working && turnIndex === turns.length - 1;
+    const last = [...raw].reverse().find(message => !message.isAgentActivity && !message.isAgentActivitySummary
+      && !message.isCompactBoundary && !isEmptyAssistantShell(message));
+    const interrupted = raw.some(message => message.type === 'error' || message.isInterruptedNotice)
+      || Boolean(turn.summary?.message.state && turn.summary.message.state !== 'completed');
+    const finalReply = last?.type === 'assistant' && !last.isThinking && !last.isToolUse
+      && !last.isSubagentContainer && !last.isInteractivePrompt && !last.isTaskNotification && !last.isStreaming
+      && (Boolean(last.content?.trim()) || Boolean(last.artifacts?.length));
+    const completed = !running && !interrupted && (finalReply || turn.summary?.message.state === 'completed');
+    const isReply = (item: RenderableMessageItem) => item.message.type === 'assistant' && !item.mediaArtifact && !item.turnTrace
+      && !item.message.isThinking && !item.message.isToolUse && !item.message.isSubagentContainer
+      && !item.message.isInteractivePrompt && !item.message.isTaskNotification
+      && !item.message.isInterruptedNotice && !item.message.isAgentActivity && !item.message.isAgentActivitySummary;
+    const output = [...turnItems].reverse().find(isReply);
+    const seats = turnItems.filter(item => {
+      if (item.mediaArtifact || item.message.type === 'error' || item.message.isInterruptedNotice) return false;
+      if (item.turnTrace) return true;
+      if (isReply(item)) return true;
+      // Pending questions/approvals and permission actions must remain reachable.
+      if (isPermissionToolError(item.message)) return false;
+      if (isUserVisibleTool(item.message) && !item.message.toolResult) return false;
+      return Boolean(item.message.isThinking || item.message.isToolUse || item.message.isSubagentContainer
+        || (item.message.isInteractivePrompt && completed)
+        || item.message.isTaskNotification || item.message.isCompactBoundary);
+    });
+    const members = seats.filter(item => item !== output);
+    const durationMs = getTurnRunDurationMs(messages, turn);
+    if (!running && !seats.length && durationMs === null) continue;
+    const anchor = messages[turn.start];
+    const startedAtMs = parseMessageTime(anchor.timestamp);
+    const group: TurnProcessGroup = {
+      id: `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}`,
+      isRunning: running, defaultExpanded: !completed, durationMs,
+      startedAt: turn.summary?.message.startedAt || (startedAtMs !== null ? new Date(startedAtMs).toISOString() : undefined),
+      memberIds: members.map(getTurnProcessMemberId),
+    };
+    for (const item of turnItems) { item.beforeRunAttachment = null; item.afterRunAttachment = null; }
+    for (const item of seats) { item.processRun = group; item.processOutput = item === output; }
+    if (running || members.length || durationMs !== null) {
+      const user = turnItems.find(item => item.message.type === 'user');
+      if (user) user.afterTurnProcess = group;
+      else turnItems[0].beforeTurnProcess = group;
+    }
+  }
+  return items;
 }
 
 export function getLiveProcessDetailMessages(messages: ChatMessage[]): ChatMessage[] {

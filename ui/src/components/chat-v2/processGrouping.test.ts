@@ -656,3 +656,51 @@ describe('process seats between visible replies', () => {
     expect(items[3].turnTrace?.isLive).toBe(true);
   });
 });
+
+describe('turn-wide process disclosure', () => {
+  const project = (messages: ChatMessage[], working = false) => groupProcessIntervals(messages,
+    buildRenderableMessageItems(messages, { isAssistantWorking: working }), working);
+  it('gives prose and tools one stable owner while retaining only the final reply', () => {
+    const raw = [user('u'), thinking('t'), tool('read', 'Read'), assistant('progress', 'A progress reply'),
+      tool('bash', 'Bash'), assistant('final', 'The final answer', 29000)];
+    const live = project(raw.slice(0, -1), true);
+    const finished = project(raw);
+    const owner = finished[0].afterTurnProcess!;
+    expect(owner.id).toBe(live[0].afterTurnProcess?.id);
+    expect(owner.defaultExpanded).toBe(false);
+    expect(owner.durationMs).toBe(29000);
+    expect(owner.memberIds).toEqual(['process-block-u-t', 'progress', 'process-block-u-bash']);
+    expect(finished.filter(item => item.processRun).every(item => item.processRun === owner)).toBe(true);
+    expect(finished.find(item => item.message.id === 'progress')?.processOutput).toBe(false);
+    expect(finished.find(item => item.message.id === 'final')?.processOutput).toBe(true);
+    expect(finished.every(item => !item.beforeRunAttachment && !item.afterRunAttachment)).toBe(true);
+  });
+  it('uses the recorded duration and includes answered questions and subagents', () => {
+    const question = { ...tool('question', 'AskUserQuestion'), toolResult: { content: 'Answered', toolUseResult: { answers: { Route: 'Continue' } } } };
+    const child = { ...assistant('child', ''), isSubagentContainer: true, subagentId: 'child' };
+    const raw = [user('u'), question, child, assistant('answer', 'Finished'), {
+      ...assistant('summary', ''), isAgentActivitySummary: true, state: 'completed', durationMs: 34500,
+    }];
+    const items = project(raw);
+    expect(items[0].afterTurnProcess?.durationMs).toBe(34500);
+    expect(items.filter(item => item.processRun && !item.processOutput).map(item => item.message.id)).toEqual(['question', 'child']);
+  });
+  it.each(['error', 'interrupted', 'unfinished'])('leaves %s work accessible', kind => {
+    const raw = [user('u'), tool('call', 'Read')];
+    if (kind !== 'unfinished') raw.push({ ...assistant('notice', 'Stopped'), type: kind === 'error' ? 'error' : 'assistant', isInterruptedNotice: kind === 'interrupted' });
+    const items = project(raw);
+    expect(items[0].afterTurnProcess?.defaultExpanded).toBe(true);
+    expect(items.find(item => item.message.id === 'notice')?.processRun).toBeUndefined();
+  });
+  it('keeps pending questions and media outside the turn fold and tolerates invalid legacy timestamps', () => {
+    const image = { ...tool('image', 'generate_image', { purpose: 'deliverable' }), toolResult: {
+      content: 'Image', toolUseResult: { imageGeneration: { imageId: 'image', sessionId: 'session', purpose: 'deliverable' } },
+    } };
+    const raw = [{ ...user('u'), timestamp: 'invalid' }, { ...tool('question', 'AskUserQuestion'), toolResult: null }, image, assistant('answer', 'Finished')];
+    const items = project(raw);
+    expect(items.find(item => item.message.id === 'question')?.processRun).toBeUndefined();
+    expect(items.filter(item => item.mediaArtifact)).toHaveLength(1);
+    expect(items.find(item => item.mediaArtifact)?.processRun).toBeUndefined();
+    expect(() => project(raw)).not.toThrow();
+  });
+});

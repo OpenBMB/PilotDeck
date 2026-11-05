@@ -20,6 +20,7 @@ import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import MessageRowV2 from './MessageRowV2';
 import { useLiveReplyKeys } from './useLiveReplyKeys';
+import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
 import { ConversationTurnNav } from './ConversationTurnNav';
 import { CompactProcessRow, ProcessBlock } from './ProcessBlock';
 import SendingMessages from './SendingMessages';
@@ -30,11 +31,13 @@ import { useRegisterChatHistorySearchControls } from './ChatHistorySearchControl
 import { useChatHistorySearch } from './useChatHistorySearch';
 import type { SearchableChatMessageInput } from './chatHistorySearchUtils';
 import { useSubagentMessages } from './useSubagentMessages';
-import { ProcessLiveStatus, ProcessRunHeader, type ProcessTraceStep } from './ProcessTrace';
-import { formatProcessDuration } from './processTraceUtils';
+import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
 import {
   buildRenderableMessageItems,
   groupProcessIntervals,
+  getTurnProcessMemberId,
+  turnProcessKey,
+  type TurnProcessGroup,
   isPendingToolUseMessage,
   type RenderableMessageItem,
 } from './processGrouping';
@@ -179,14 +182,16 @@ function getMessageTextLength(message: ChatMessage): number {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function estimateMessageItemHeight(item: RenderableMessageItem): number {
-  if (item.turnTrace) return 50;
+  const turnHeaderHeight = (item.beforeTurnProcess ? 34 : 0) + (item.afterTurnProcess ? 34 : 0);
+  if (item.processRun && !item.processOutput && !item.processRun.defaultExpanded) return turnHeaderHeight;
+  if (item.turnTrace) return 50 + turnHeaderHeight;
   const textLength = getMessageTextLength(item.message);
   const roughLines = Math.ceil(textLength / 92);
   const baseHeight = item.message.type === 'user' ? 64 : 92;
   const processSummaryCount =
     item.beforeProcessAttachments.length + item.afterProcessAttachments.length;
   const processSummaryHeight = processSummaryCount * 32;
-  const runHeaderHeight = (item.beforeRunAttachment ? 34 : 0) + (item.afterRunAttachment ? 34 : 0);
+  const runHeaderHeight = turnHeaderHeight + (item.beforeRunAttachment ? 34 : 0) + (item.afterRunAttachment ? 34 : 0);
   const attachmentHeight = Array.isArray(item.message.attachments) && item.message.attachments.length > 0 ? 56 : 0;
   const artifactCount = Array.isArray(item.message.artifacts) ? item.message.artifacts.length : 0;
   const artifactHeight = artifactCount > 0 ? Math.min(artifactCount, 3) * 64 + 34 : 0;
@@ -213,7 +218,7 @@ export function getVirtualMessageWindow(
 
   const prefixOffsets = [0];
   for (const height of itemHeights) {
-    prefixOffsets.push(prefixOffsets[prefixOffsets.length - 1] + Math.max(1, height));
+    prefixOffsets.push(prefixOffsets[prefixOffsets.length - 1] + Math.max(0, height));
   }
 
   const totalHeight = prefixOffsets[prefixOffsets.length - 1];
@@ -553,8 +558,12 @@ function MessagesPaneV2({
   }, [keyedMessageItems]);
   const measuredItemHeights = useMemo(() => {
     void heightVersion;
-    return keyedMessageItems.map((item) => measuredHeightsRef.current.get(item.itemKey) ?? item.estimatedHeight);
-  }, [heightVersion, keyedMessageItems]);
+    return keyedMessageItems.map(item => {
+      const measured = measuredHeightsRef.current.get(item.itemKey);
+      const open = item.processOutput || (item.processRun && isProcessExpanded(turnProcessKey(messageWindowScope, item.processRun), item.processRun.defaultExpanded));
+      return open && (measured ?? item.estimatedHeight) === 0 ? 50 : measured ?? item.estimatedHeight;
+    });
+  }, [heightVersion, keyedMessageItems, isProcessExpanded, messageWindowScope]);
   const shouldVirtualizeMessages = useMemo(() => (
     keyedMessageItems.length > MESSAGE_VIRTUALIZATION_THRESHOLD
     // A modest number of long answers can be heavier than hundreds of short
@@ -645,18 +654,6 @@ function MessagesPaneV2({
       openSubagentActivity &&
       !['completed', 'failed', 'cancelled'].includes(String(openSubagentActivity.state || '')),
   );
-  // The current turn's "started at" is anchored to the latest user message's
-  // timestamp (set by the composer when the user submits). This is the only
-  // signal that survives a page refresh and reliably resets between turns —
-  // activity-based timing is unreliable because `activityMessages` accumulates
-  // across turns in the session store.
-  const liveProcessStartedAtMs = useMemo(() => {
-    if (!isAssistantWorking || liveProcessHeaderIndex <= 0) return null;
-    const anchorMessage = keyedMessageItems[liveProcessHeaderIndex - 1]?.message;
-    if (anchorMessage?.type !== 'user' || anchorMessage.timestamp == null) return null;
-    const parsed = Date.parse(String(anchorMessage.timestamp));
-    return Number.isFinite(parsed) ? parsed : null;
-  }, [isAssistantWorking, keyedMessageItems, liveProcessHeaderIndex]);
   const hasLiveAssistantContent = useMemo(() => {
     if (!isAssistantWorking || liveProcessHeaderIndex < 0) return false;
     return keyedMessageItems.slice(liveProcessHeaderIndex).some((item) => (
@@ -771,9 +768,9 @@ function MessagesPaneV2({
   }, []);
 
   const handleMeasuredItemHeight = useCallback((itemKey: string, height: number) => {
-    const normalizedHeight = Math.max(1, Math.ceil(height));
+    const normalizedHeight = Math.max(0, Math.ceil(height));
     const currentHeight = measuredHeightsRef.current.get(itemKey);
-    if (currentHeight !== undefined && Math.abs(currentHeight - normalizedHeight) < 2) {
+    if (currentHeight !== undefined && (currentHeight === normalizedHeight || (currentHeight > 0 && normalizedHeight > 0 && Math.abs(currentHeight - normalizedHeight) < 2))) {
       return;
     }
 
@@ -882,7 +879,6 @@ function MessagesPaneV2({
       item.originalIndex,
       item.message,
     );
-    const rendersLiveHeaderAfterItem = item.renderIndex === liveProcessHeaderIndex - 1;
     const messageSessionRuntimeState = isHistoricalSubagentItem(
       item,
       activeRunId,
@@ -961,31 +957,7 @@ function MessagesPaneV2({
       />
     );
 
-    return (
-      <Fragment key={item.itemKey}>
-        {liveProcessHeaderIndex === 0 && item.renderIndex === 0 ? (
-          <LiveProcessHeader
-            waitingFor={waitingFor}
-            activities={nonSubagentLiveActivities}
-            startedAtMs={liveProcessStartedAtMs}
-            t={t}
-          />
-        ) : null}
-        <MeasuredMessageItem
-          itemKey={item.itemKey}
-          message={item.message}
-          isLast={isLast}
-          compactBottomSpacing={rendersLiveHeaderAfterItem || Boolean(item.turnTrace || item.message.isThinking || item.message.isToolUse)}
-          flushBottomSpacing={false}
-          onHeightChange={handleMeasuredItemHeight}
-        >
-          {item.beforeRunAttachment ? (
-            <CompletedProcessHeader
-              durationMs={item.beforeRunAttachment.durationMs}
-              t={t}
-            />
-          ) : null}
-          {item.turnTrace ? (
+    const rowContent = item.turnTrace ? (
             <ProcessBlock trace={item.turnTrace}
               expanded={isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}:${item.turnTrace.defaultExpanded}`, item.turnTrace.defaultExpanded)}
               onExpandedChange={expanded => handleProcessExpandedChange(`${messageWindowScope}:${item.turnTrace!.id}:${item.turnTrace!.defaultExpanded}`, expanded)}>
@@ -994,21 +966,29 @@ function MessagesPaneV2({
                 return <div key={childKey} className="chat-message" data-message-key={childKey}>{renderRow(child, true)}</div>;
               })}
             </ProcessBlock>
-          ) : renderRow(item)}
-          {rendersLiveHeaderAfterItem ? (
-            <LiveProcessHeader
-              waitingFor={waitingFor}
-              activities={nonSubagentLiveActivities}
-              startedAtMs={liveProcessStartedAtMs}
-              t={t}
-            />
-          ) : null}
-          {item.afterRunAttachment ? (
-            <CompletedProcessHeader
-              durationMs={item.afterRunAttachment.durationMs}
-              t={t}
-            />
-          ) : null}
+          ) : renderRow(item);
+    const renderTurnHeader = (group: TurnProcessGroup) => <TurnProcessHeader group={group} scope={messageWindowScope}
+      expanded={isProcessExpanded(turnProcessKey(messageWindowScope, group), group.defaultExpanded)}
+      onExpandedChange={expanded => handleProcessExpandedChange(turnProcessKey(messageWindowScope, group), expanded)}
+      waiting={group.isRunning && Boolean(waitingFor)} />;
+
+    return (
+      <Fragment key={item.itemKey}>
+        <MeasuredMessageItem
+          itemKey={item.itemKey}
+          message={item.message}
+          isLast={isLast}
+          compactBottomSpacing={Boolean(item.afterTurnProcess || item.turnTrace || item.message.isThinking || item.message.isToolUse)}
+          flushBottomSpacing={Boolean(item.processRun)}
+          onHeightChange={handleMeasuredItemHeight}
+        >
+          {item.beforeTurnProcess ? renderTurnHeader(item.beforeTurnProcess) : null}
+          {item.processRun ? <TurnProcessRegion group={item.processRun} scope={messageWindowScope}
+            member={getTurnProcessMemberId(item)} output={item.processOutput} prose={isRenderableAssistantProse(item.message)}
+            expanded={Boolean(item.processOutput || isProcessExpanded(turnProcessKey(messageWindowScope, item.processRun), item.processRun.defaultExpanded))}>
+            {rowContent}
+          </TurnProcessRegion> : rowContent}
+          {item.afterTurnProcess ? renderTurnHeader(item.afterTurnProcess) : null}
         </MeasuredMessageItem>
       </Fragment>
     );
@@ -1030,9 +1010,7 @@ function MessagesPaneV2({
     keyedMessageItems,
     liveReplyKeys,
     renderableMessages,
-    nonSubagentLiveActivities,
     liveProcessHeaderIndex,
-    liveProcessStartedAtMs,
     waitingFor,
     onFileOpen,
     onFork,
@@ -1047,7 +1025,6 @@ function MessagesPaneV2({
     showThinking,
     subagentActivityById,
     subagentThinkingById,
-    t,
   ]);
 
   const keyedMessagesForSearch = useMemo<SearchableChatMessageInput[]>(() => {
@@ -1062,7 +1039,9 @@ function MessagesPaneV2({
 
   const revealSearchTrace = useCallback((match: { messageIndex: number; messageKey: string }) => {
     onPauseScroll?.(match.messageKey);
-    const trace = keyedMessageItems[match.messageIndex]?.turnTrace;
+    const item = keyedMessageItems[match.messageIndex];
+    if (item?.processRun) handleProcessExpandedChange(turnProcessKey(messageWindowScope, item.processRun), true);
+    const trace = item?.turnTrace;
     if (trace) handleProcessExpandedChange(`${messageWindowScope}:${trace.id}:${trace.defaultExpanded}`, true);
   }, [onPauseScroll, keyedMessageItems, messageWindowScope, handleProcessExpandedChange]);
   const chatHistorySearch = useChatHistorySearch({
@@ -1311,17 +1290,6 @@ function MessagesPaneV2({
               <div aria-hidden="true" style={{ height: virtualWindow.bottomPadding }} />
             ) : null}
 
-            {isAssistantWorking &&
-            liveProcessHeaderIndex === keyedMessageItems.length &&
-            keyedMessageItems[liveProcessHeaderIndex - 1]?.message.type !== 'user' ? (
-              <LiveProcessHeader
-                waitingFor={waitingFor}
-                activities={nonSubagentLiveActivities}
-                startedAtMs={liveProcessStartedAtMs}
-                t={t}
-              />
-            ) : null}
-
             {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={liveStatusStep} /> : null}
           </div>
           <SendingMessages items={sendingInputs} />
@@ -1498,84 +1466,4 @@ function getLiveStatusStep(
         phase: 'generation',
         state: 'running',
       };
-}
-
-function getLiveProcessStartedAtMs(activities: ChatMessage[], fallbackStartedAtMs: number): number {
-  if (activities.length === 0) return fallbackStartedAtMs;
-
-  // `activityMessages` accumulates across turns in the session store, so the
-  // raw list can include activities from previous runs. Scope the start time
-  // to the current run by anchoring on the most recently received activity's
-  // `runId` and picking the earliest start within that run.
-  const latestActivity = activities[activities.length - 1];
-  const latestRunId = latestActivity?.runId;
-  const currentRunActivities = latestRunId
-    ? activities.filter((activity) => activity.runId === latestRunId)
-    : activities;
-
-  let earliestMs = Number.POSITIVE_INFINITY;
-  for (const activity of currentRunActivities) {
-    const value = activity.startedAt || activity.timestamp;
-    const parsed = value ? Date.parse(String(value)) : NaN;
-    if (Number.isFinite(parsed) && parsed < earliestMs) {
-      earliestMs = parsed;
-    }
-  }
-  return Number.isFinite(earliestMs) ? earliestMs : fallbackStartedAtMs;
-}
-
-function LiveProcessHeader({
-  activities,
-  startedAtMs,
-  t,
-  waitingFor,
-}: {
-  activities: ChatMessage[];
-  startedAtMs: number | null;
-  t: (key: string, options?: Record<string, unknown>) => string;
-  waitingFor: 'question' | 'approval' | null;
-}) {
-  const fallbackStartedAtRef = useRef(Date.now());
-  const [nowMs, setNowMs] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (waitingFor) return;
-    setNowMs(Date.now());
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [waitingFor]);
-
-  const elapsedMs = useMemo(() => {
-    const effectiveStartedAtMs = startedAtMs
-      ?? getLiveProcessStartedAtMs(activities, fallbackStartedAtRef.current);
-    return Math.max(0, nowMs - effectiveStartedAtMs);
-  }, [activities, nowMs, startedAtMs]);
-  const duration = formatProcessDuration(elapsedMs);
-  const label = t('process.summary.processed', {
-    duration,
-    defaultValue: `Processed ${duration}`,
-  });
-
-  if (waitingFor) return null;
-  return <ProcessRunHeader label={label} />;
-}
-
-function CompletedProcessHeader({
-  durationMs,
-  t,
-  expanded,
-  onExpandedChange,
-}: {
-  durationMs: number;
-  expanded?: boolean;
-  onExpandedChange?: (expanded: boolean) => void;
-  t: (key: string, options?: Record<string, unknown>) => string;
-}) {
-  const duration = formatProcessDuration(durationMs);
-  const label = t('process.summary.processed', {
-    duration,
-    defaultValue: `Processed ${duration}`,
-  });
-
-  return <ProcessRunHeader label={label} expanded={expanded} onExpandedChange={onExpandedChange} />;
 }

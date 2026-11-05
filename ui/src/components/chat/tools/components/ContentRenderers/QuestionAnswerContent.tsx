@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import React, { useId, useState } from 'react';
 import { Check, ChevronRight, HelpCircle } from 'lucide-react';
+import { AnimatedDisclosure } from '../../../../ui/AnimatedDisclosure';
 import type { Question } from '../../../types/types';
 
 interface QuestionAnswerContentProps {
@@ -56,12 +57,14 @@ function normalizeQuestions(value: unknown): Question[] {
   return [];
 }
 
-function normalizeAnswers(value: unknown): Record<string, string> {
+function normalizeAnswers(value: unknown): Record<string, string | string[]> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
       .filter(([key]) => key.trim())
-      .map(([key, answer]) => [key, typeof answer === 'string' ? answer : String(answer ?? '')]),
+      .filter(([, answer]) => (typeof answer === 'string' && Boolean(answer.trim())) || Array.isArray(answer))
+      .map(([key, answer]) => [key, typeof answer === 'string' ? answer
+        : (answer as unknown[]).filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))]),
   );
 }
 
@@ -83,10 +86,10 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
 }) => {
   const { t } = useTranslation('common');
   const id = useId();
-  const [view, setView] = useState({ resolved, expandedIdx: null as number | null });
+  const [view, setView] = useState({ resolved, open: false, expandedIdx: null as number | null });
   let phase = view;
   if (view.resolved !== resolved) {
-    phase = { resolved, expandedIdx: null };
+    phase = { resolved, open: false, expandedIdx: null };
     setView(phase);
   }
   const { expandedIdx } = phase;
@@ -108,40 +111,56 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
     );
   }
 
+  const answerCount = normalizedQuestions.filter(question => normalizedAnswers[question.question]?.length).length;
+  const status = !resolved ? t('common:uiText.waitingForAnswer') : answerCount
+    ? t('common:uiText.answersProgress', { answered: answerCount, count: normalizedQuestions.length }) : t('common:uiText.skipped');
+  const toolBodyId = `${id}-tool`;
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div data-question-tool className={`w-full min-w-0 ${className}`}>
+      <button type="button" className="chat-process-trigger hover-brand-text" aria-expanded={phase.open} aria-controls={toolBodyId}
+        onClick={() => setView({ ...phase, open: !phase.open })}>
+        <HelpCircle aria-hidden="true" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+        <span>{t('common:uiText.questionTool')}</span>
+        <span className="text-muted-foreground">{t('common:uiText.questionsCount', { count: normalizedQuestions.length })}</span>
+        <span className="tabular-nums text-muted-foreground">{status}</span>
+        <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${phase.open ? 'rotate-90' : ''}`} />
+      </button>
+      <AnimatedDisclosure id={toolBodyId} expanded={phase.open} contentClassName="ml-[22px] mt-2">
+        <div data-question-transcript className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card text-foreground">
       {normalizedQuestions.map((q, idx) => {
-        const answer = normalizedAnswers[q.question];
+        const rawAnswer = normalizedAnswers[q.question];
+        const answerLabels = Array.isArray(rawAnswer) ? rawAnswer : typeof rawAnswer === 'string' && rawAnswer.trim()
+          ? q.multiSelect && !q.options.some(option => option.label === rawAnswer) ? rawAnswer.split(', ') : [rawAnswer] : [];
+        const answer = answerLabels.length ? answerLabels.join(', ') : undefined;
         const expanded = expandedIdx === idx;
         const contentId = `${id}-${idx}`;
-        return <div key={q.question} className="min-w-0 rounded-xl border border-border/70 bg-card text-foreground">
+        return <div key={q.question} className="min-w-0 border-b border-border/50 last:border-b-0">
           <button type="button" aria-expanded={expanded} aria-controls={contentId}
             onClick={() => setView({ ...phase, expandedIdx: expanded ? null : idx })}
-            className="flex w-full min-w-0 items-start gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] leading-5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]">
+            className="flex w-full min-w-0 items-start gap-2 px-3 py-1.5 text-left text-[13px] leading-5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]">
             {answer ? <Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-strong)]" />
               : <HelpCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium">{q.header || q.question}</span>
-              {answer && <span className="mt-1 block whitespace-pre-wrap break-words text-muted-foreground">{answer}</span>}
-            </span>
-            <span className="shrink-0 text-[12px] text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate font-medium text-muted-foreground">{q.header || q.question}</span>
+            {answer && <span className="max-w-[60%] truncate text-foreground" title={answer}>{answer}</span>}
+            {(normalizedQuestions.length === 1 || (resolved && !answer)) && <span className="shrink-0 text-[12px] text-muted-foreground">
               {answer ? t('common:uiText.questionAnswered')
                 : resolved ? t('common:uiText.skipped') : t('common:uiText.waitingForAnswer')}
-            </span>
+            </span>}
             <ChevronRight aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
           </button>
-          <div id={contentId} className="chat-process-disclosure" data-expanded={expanded} aria-hidden={!expanded}
-            {...(!expanded ? { inert: '' } : {})}>
-            <div className="min-h-0 overflow-hidden"><div className="space-y-2 border-t border-border/60 px-3 py-3 text-[13px] leading-5">
+          <AnimatedDisclosure id={contentId} expanded={expanded} keepMounted
+            contentClassName="space-y-2 border-t border-border/60 px-3 py-3 text-[13px] leading-5">
               <p>{q.question}</p>
-              {q.options.map(option => <div key={option.label} className={`rounded-lg px-3 py-2 ${answer?.split(', ').includes(option.label) ? 'bg-[var(--brand-soft)] text-foreground' : 'bg-muted/40 text-muted-foreground'}`}>
+              {answer && <p className="whitespace-pre-wrap break-words font-medium text-foreground">{answer}</p>}
+              {q.options.map(option => <div key={option.label} data-answer-selected={answerLabels.includes(option.label)} className={`rounded-lg px-3 py-2 ${answerLabels.includes(option.label) ? 'bg-[var(--brand-soft)] text-foreground' : 'bg-muted/40 text-muted-foreground'}`}>
                 <div className="font-medium">{option.label}</div>
                 {option.description && <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground">{option.description}</p>}
               </div>)}
-            </div></div>
-          </div>
+          </AnimatedDisclosure>
         </div>;
       })}
+        </div>
+      </AnimatedDisclosure>
     </div>
   );
 };

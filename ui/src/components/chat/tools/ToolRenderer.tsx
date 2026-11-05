@@ -3,6 +3,7 @@ import React, { memo, useMemo, useCallback } from 'react';
 import type { Project } from '../../../types/app';
 import type { SubagentChildTool } from '../types/types';
 import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
+import { TodoToolContent } from './components/ContentRenderers/TodoToolContent';
 import { OneLineDisplay, CollapsibleDisplay, ToolDiffViewer, MarkdownContent, FileListContent, TodoListContent, TaskListContent, TextContent, QuestionAnswerContent, SubagentContainer, PlanApprovedCard } from './components';
 
 type DiffLine = {
@@ -275,6 +276,9 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
         break;
 
       case 'todo-list':
+        if (mode === 'input' && !contentOnly && ['TodoWrite', 'todo_write'].includes(canonicalToolName)) {
+          return <TodoToolContent todos={contentProps.todos || []} resolved={Boolean(toolResult && !toolResult.isError)} />;
+        }
         if (contentProps.todos?.length > 0) {
           contentComponent = (
             <TodoListContent

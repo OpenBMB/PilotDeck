@@ -30,6 +30,8 @@ test('history refresh preserves thinking and compaction order and a single image
   await page.evaluate(() => window.streamLifecycle.store.refreshFromServer('s', { provider: 'pilotdeck' }));
   const order = () => page.evaluate(() => window.streamLifecycle.store.getMessages('s').map(m => m.kind));
   await expect.poll(order).toEqual(['text', 'thinking', 'compact_boundary', 'text']);
+  const runHeader = page.locator('[data-turn-process-header] button');
+  if (await runHeader.getAttribute('aria-expanded') === 'false') await runHeader.click();
   await page.locator('[data-process-block] > button').click();
   await page.locator('[data-thinking-state] > button').click();
   await expect(page.getByText('Inspect the screenshot carefully.', { exact: true })).toBeVisible();

@@ -7,8 +7,8 @@ import { createTestI18n } from '../../i18n/testInstance';
 import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage } from '../chat/types/types';
-import SubagentDetailMessageFlow from './SubagentDetailMessageFlow';
 import * as api from '../../utils/api';
+import SubagentDetailMessageFlow from './SubagentDetailMessageFlow';
 
 const baseTime = Date.parse('2026-05-18T08:00:00.000Z');
 
@@ -158,6 +158,7 @@ describe('SubagentDetailMessageFlow', () => {
   it('groups completed thinking and tools together while preserving the individual disclosures', () => {
     renderFlow([assistant('a-1', 'I will inspect the issue.'), thinking('think-1', 'Completed thought one.'),
       thinking('think-2', 'Completed thought two.'), tool('read-1', 'Read'), assistant('done', 'Finished')], false);
+    fireEvent.click(document.querySelector('[data-turn-process-header] button') as HTMLButtonElement);
     const toggle = document.querySelector('[data-process-block] > button') as HTMLButtonElement;
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
