@@ -316,6 +316,8 @@ function convertSingleMessage(
         runId: msg.runId,
         parentRunId: msg.parentRunId,
         activityId: msg.activityId,
+        subagentId: msg.subagentId,
+        fileInputProgress: msg.fileInputProgress,
         phase: msg.phase,
         state: msg.state,
         title: msg.title,

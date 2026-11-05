@@ -26,6 +26,7 @@ function Fixture() {
   const [olderMessages, setOlderMessages] = useState([]);
   const ref = useRef(null);
   const messages = [...olderMessages, ...normalizedToChatMessages(store.getMessages(sid))];
+  const activities = normalizedToChatMessages(store.getActivityMessages(sid));
   const follow = useScrollFollow({ containerRef: ref, enabled: true, scopeKey: sid, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
   const askQuestions = (list, text = '') => {
     answerText.current = text;
@@ -46,6 +47,12 @@ function Fixture() {
     beginTurn(id = 'current-user') {
       const at = new Date().toISOString();
       store.appendRealtime(sid, { ...base, id, kind: 'text', role: 'user', content: 'Inspect the implementation', timestamp: at });
+      setWorking(true);
+    },
+    prepareFile(id, receivedBytes, filePath) {
+      store.finalizeStreaming(sid, 'live'); store.finalizeStreamingThinking(sid, 'live');
+      store.upsertActivity(sid, { ...base, id: `preparing-${id}`, kind: 'agent_activity', activityId: `preparing-${id}`,
+        phase: 'file_input', state: 'running', toolId: id, toolName: 'write_file', fileInputProgress: { receivedBytes, filePath } });
       setWorking(true);
     },
     askQuestion(text = '') {
@@ -108,7 +115,7 @@ function Fixture() {
       showReturnToLatest={follow.canReturnToLatest}
       onResumeScroll={follow.scrollToBottom}
       onPauseScroll={() => follow.setPaused(true)}
-      chatMessages={messages} visibleMessages={messages} visibleMessageCount={100}
+      chatMessages={messages} visibleMessages={messages} activityMessages={activities} visibleMessageCount={100}
       isLoadingSessionMessages={false} isLoadingMoreMessages={false}
       hasMoreMessages={false} totalMessages={messages.length}
       loadEarlierMessages={() => {}} loadAllMessages={() => {}}

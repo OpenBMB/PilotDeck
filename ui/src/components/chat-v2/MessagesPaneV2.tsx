@@ -21,6 +21,8 @@ import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import MessageRowV2 from './MessageRowV2';
 import { useLiveReplyKeys } from './useLiveReplyKeys';
 import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
+import { FileInputStatus } from './FileInputStatus';
+import { pendingFileInputs } from './fileInputStatusUtils';
 import { ConversationTurnNav } from './ConversationTurnNav';
 import { CompactProcessRow, ProcessBlock } from './ProcessBlock';
 import SendingMessages from './SendingMessages';
@@ -670,6 +672,7 @@ function MessagesPaneV2({
   }, [visibleMessages]);
   const hasPendingToolUse = currentTurnMessages.some(isPendingToolUseMessage);
   const currentToolActivities = useMemo(() => nonSubagentLiveActivities.filter((activity) => {
+    if (activity.phase === 'file_input') return false;
     if (activeRunId && activity.runId && activity.runId !== activeRunId) return false;
     const start = currentTurnMessages[0]?.timestamp;
     if (!activity.runId && start && new Date(activity.timestamp).getTime() < new Date(start).getTime()) return false;
@@ -679,6 +682,9 @@ function MessagesPaneV2({
     }
     return activity.phase !== 'tool';
   }), [activeRunId, currentTurnMessages, nonSubagentLiveActivities]);
+  const filePreparations = useMemo(() => isAssistantWorking
+    ? pendingFileInputs(nonSubagentLiveActivities, currentTurnMessages, activeRunId) : [],
+  [isAssistantWorking, nonSubagentLiveActivities, currentTurnMessages, activeRunId]);
   const currentRunSubagentIds = useMemo(() => {
     const ids = new Set<string>();
     for (const item of keyedMessageItems) {
@@ -757,7 +763,7 @@ function MessagesPaneV2({
   ]);
   const hasRunningProcessGroup = renderableMessageItems.some(item => item.turnTrace?.isLive);
   const thinkingHasOwnStatus = Boolean(!waitingFor && showThinking && liveThinkingMessage);
-  const shouldRenderBottomLiveStatus = isAssistantWorking && !waitingFor && !hasRunningProcessGroup && !thinkingHasOwnStatus;
+  const shouldRenderBottomLiveStatus = isAssistantWorking && !waitingFor && !hasRunningProcessGroup && !thinkingHasOwnStatus && !filePreparations.length;
 
   const bumpHeightVersion = useCallback(() => {
     if (heightVersionRafRef.current !== null) return;
@@ -965,6 +971,7 @@ function MessagesPaneV2({
                 const childKey = `${messageWindowScope}:${getMessageKey(child.message, child.originalIndex)}`;
                 return <div key={childKey} className="chat-message" data-message-key={childKey}>{renderRow(child, true)}</div>;
               })}
+              {item.turnTrace.isLive && filePreparations.map(activity => <FileInputStatus key={activity.activityId} activity={activity} />)}
             </ProcessBlock>
           ) : renderRow(item);
     const renderTurnHeader = (group: TurnProcessGroup) => <TurnProcessHeader group={group} scope={messageWindowScope}
@@ -1009,6 +1016,7 @@ function MessagesPaneV2({
     sessionRuntimeState,
     keyedMessageItems,
     liveReplyKeys,
+    filePreparations,
     renderableMessages,
     liveProcessHeaderIndex,
     waitingFor,
@@ -1290,6 +1298,7 @@ function MessagesPaneV2({
               <div aria-hidden="true" style={{ height: virtualWindow.bottomPadding }} />
             ) : null}
 
+            {!hasRunningProcessGroup && filePreparations.map(activity => <div key={activity.activityId} className="pb-2"><FileInputStatus activity={activity} /></div>)}
             {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={liveStatusStep} /> : null}
           </div>
           <SendingMessages items={sendingInputs} />

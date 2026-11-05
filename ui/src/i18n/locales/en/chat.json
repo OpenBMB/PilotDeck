@@ -279,6 +279,11 @@
     "selectedOption": "✓ PilotDeck selected option {{number}}",
     "instructionDetail": "In the CLI, you would select this option interactively using arrow keys or by typing the number."
   },
+  "filePreparation": {
+    "write": "Generating file content",
+    "edit": "Preparing file changes",
+    "received": "{{kilobytes}} KB received"
+  },
   "imagePreview": {
     "label": "Preview image",
     "named": "Preview {{name}}",
@@ -779,6 +784,10 @@
   },
   "toolDisplay": {
     "copyCommand": "Copy command",
+    "previewLines": "Showing {{count}} of {{total}} lines",
+    "moreLines": "Show more lines",
+    "largeChangePreview": "Large change: showing a content preview. Full file content is available to copy.",
+    "longLinePreview": "Long lines are shortened in this preview. Copy to get the full content.",
     "tool": "Tool",
     "duration": "{{seconds}}s",
     "collapse": "Limit height",

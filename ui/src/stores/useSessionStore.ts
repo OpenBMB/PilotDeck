@@ -1,4 +1,3 @@
-import { SessionTimeline, isTimelineMessage, mergeTimeline, type TimelinePosition } from './sessionTimeline';
 /**
  * Session-keyed message store.
  *
@@ -13,6 +12,7 @@ import type { SessionProvider } from '../types/app';
 import { authenticatedFetch, readAgentStatusErrorFromResponse } from '../utils/api';
 import { parseUserAttachmentNote } from '../components/chat/utils/attachmentNotes';
 import type { ChatAttachment } from '../components/chat/types/types';
+import { SessionTimeline, isTimelineMessage, mergeTimeline, type TimelinePosition } from './sessionTimeline';
 
 // ─── NormalizedMessage (mirrors server/adapters/types.js) ────────────────────
 
@@ -89,6 +89,8 @@ export interface NormalizedMessage {
   }>;
   toolName?: string;
   toolInput?: unknown;
+  /** Ephemeral metadata while the model generates mutation arguments; never file contents. */
+  fileInputProgress?: { receivedBytes: number; filePath?: string };
   toolId?: string;
   /** Structured presentation data on tool_result frames, shared by parent and child streams. */
   toolUseResult?: unknown;

@@ -28,6 +28,7 @@ async function expectSmoothOpen(page) {
 }
 
 async function watchWidths(page) {
+  await expect(page.locator('[data-chat-scroll-content]')).toBeAttached();
   await page.evaluate(() => {
     window.widthSamples = [];
     const end = performance.now() + 650;
@@ -277,4 +278,46 @@ test('native task disclosures keep their content mounted through both transition
   await watchHeight(page, 'details > .chat-process-disclosure'); await summary.click(); await expectSmoothOpen(page);
   await expect(page.getByText('Verify task 8', { exact: true })).toBeVisible();
   await watchHeight(page, 'details > .chat-process-disclosure'); await summary.press('Enter'); await expectSmoothClose(page);
+});
+
+test('file generation shows live path and size before writing, then opens a bounded large-file preview', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+  await page.evaluate(() => {
+    window.streamFixture.beginTurn(); window.streamFixture.think('Review the implementation.');
+    window.streamFixture.prepareFile('write-large', 0);
+  });
+  const preparing = page.locator('[data-file-input-status]');
+  await expect(preparing).toHaveCount(1);
+  await expect(preparing).toContainText('Generating file content');
+  await preparing.evaluate(node => { window.preparingNode = node; });
+  await watchWidths(page);
+  await page.evaluate(() => window.streamFixture.prepareFile('write-large', 64 * 1024, 'src/example.ts'));
+  await expect(preparing).toContainText('example.ts');
+  await expect(preparing).toContainText('64.0 KB received');
+  await expectStableWidths(page);
+  expect(await preparing.evaluate(node => node === window.preparingNode)).toBe(true);
+  await expect(page.getByRole('progressbar')).toHaveCount(0);
+  await page.evaluate(() => { window.streamFixture.setAppearance('mint', true); return window.streamFixture.setLanguage('zh-CN'); });
+  await expect(preparing).toContainText('正在生成文件内容');
+  await expect(preparing).toContainText('已接收 64.0 KB');
+  await page.screenshot({ path: test.info().outputPath('file-preparation-dark-zh.png'), animations: 'disabled' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await preparing.locator('svg').evaluate(node => getComputedStyle(node).animationName)).toBe('none');
+  await page.evaluate(() => window.streamFixture.tool('write-large', 'write_file', {
+    file_path: 'src/example.ts', content: Array.from({ length: 10_000 }, (_, index) => `// line ${index}`).join('\n'),
+  }));
+  await expect(preparing).toHaveCount(0);
+  const tool = page.locator('[data-tool-id="write-large"]');
+  await expect(tool).toHaveCount(1);
+  await expect(tool.locator(':scope button').first()).toContainText('example.ts');
+  await tool.locator(':scope button').first().click();
+  await expect(tool.locator('[data-file-preview-line]')).toHaveCount(200);
+  await expect(tool).toContainText('已显示 200/10000 行');
+  await page.screenshot({ path: test.info().outputPath('large-file-preview-dark-zh.png'), animations: 'disabled' });
+  await tool.getByRole('button', { name: '显示更多行' }).click();
+  await expect(tool.locator('[data-file-preview-line]')).toHaveCount(400);
+  await page.evaluate(() => { window.streamFixture.finishTool('write-large', 'Saved');
+    window.streamFixture.text('File written successfully.'); window.streamFixture.complete(); });
+  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('File written successfully.', { exact: true })).toBeVisible();
 });

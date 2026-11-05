@@ -278,6 +278,11 @@
     "selectedOption": "✓ PilotDeck 选择了选项 {{number}}",
     "instructionDetail": "在 CLI 中，您可以使用方向键或输入数字来交互式地选择此选项。"
   },
+  "filePreparation": {
+    "write": "正在生成文件内容",
+    "edit": "正在生成修改内容",
+    "received": "已接收 {{kilobytes}} KB"
+  },
   "imagePreview": {
     "label": "预览图片",
     "named": "预览 {{name}}",
@@ -760,6 +765,10 @@
   },
   "toolDisplay": {
     "copyCommand": "复制命令",
+    "previewLines": "已显示 {{count}}/{{total}} 行",
+    "moreLines": "显示更多行",
+    "largeChangePreview": "改动较大，当前显示内容预览，可复制完整文件内容。",
+    "longLinePreview": "预览中的超长行已缩短，复制时会保留完整内容。",
     "tool": "工具",
     "duration": "{{seconds}} 秒",
     "collapse": "收起完整内容",

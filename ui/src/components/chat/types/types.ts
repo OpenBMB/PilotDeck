@@ -104,6 +104,7 @@ export interface ChatMessage {
   isToolUse?: boolean;
   toolName?: string;
   toolInput?: unknown;
+  fileInputProgress?: { receivedBytes: number; filePath?: string };
   toolResult?: ToolResult | null;
   toolId?: string;
   toolCallId?: string;

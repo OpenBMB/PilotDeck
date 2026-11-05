@@ -1177,6 +1177,15 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 }),
             ];
         case 'agent_status': {
+            if (event.event === 'file_input_progress') {
+                const detail = event.detail || {};
+                return [createNormalizedMessage({ ...base, kind: 'agent_activity',
+                    id: detail.activityId, activityId: detail.activityId, phase: 'file_input', state: detail.state,
+                    toolId: detail.toolCallId, toolName: detail.toolName,
+                    fileInputProgress: { receivedBytes: detail.receivedBytes, filePath: detail.filePath },
+                    ...(detail.subagentId ? { subagentId: detail.subagentId, isSubagentDetail: true } : {}),
+                })];
+            }
             const subagentFrames = createSubagentStatusFrames(event, base);
             if (subagentFrames && subagentFrames.length > 0) return subagentFrames;
 

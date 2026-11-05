@@ -13,6 +13,17 @@ beforeAll(async () => { i18n = await createTestI18n(); });
 afterEach(cleanup);
 const message: ChatMessage = { id: 'call', type: 'assistant', timestamp: '2026-09-15', isToolUse: true, toolName: 'bash', toolInput: { command: 'pnpm build', description: 'Build app' } };
 const view = (value: ChatMessage, running = false) => <I18nextProvider i18n={i18n}><UnifiedToolCall message={value} createDiff={calculateDiff} running={running} /></I18nextProvider>;
+
+it('avoids a large diff calculation even while the tool disclosure is closed', () => {
+  const createDiff = vi.fn(() => { throw new Error('Do not allocate a large LCS matrix'); });
+  const result = render(<I18nextProvider i18n={i18n}><UnifiedToolCall message={{ ...message, toolId: 'call', toolName: 'edit_file',
+    toolInput: { file_path: 'large.ts', old_string: 'old\n'.repeat(1000), new_string: 'new\n'.repeat(1000) } }} createDiff={createDiff} /></I18nextProvider>);
+  expect(createDiff).not.toHaveBeenCalled();
+  expect(result.container.querySelectorAll('[data-file-preview-line]')).toHaveLength(0);
+  fireEvent.click(result.container.querySelector('[data-tool-id] button')!);
+  expect(createDiff).not.toHaveBeenCalled();
+  expect(result.container.querySelectorAll('[data-file-preview-line]')).toHaveLength(200);
+});
 describe('UnifiedToolCall', () => {
   it('keeps a manually opened call expanded while it runs and completes', () => {
     const { rerender } = render(view(message, true));

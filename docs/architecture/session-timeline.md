@@ -97,6 +97,21 @@ The history reader retains structured question results instead of reconstructing
 answers from tool-result text. Todo updates use one progress header and checklist;
 successful acknowledgements do not create a second details row.
 
+File mutation preparation is an ephemeral Gateway activity, separate from the
+ordered tool-call transcript. The Gateway observes argument generation before
+dispatch, publishes only a validated complete path and received argument byte
+count, and throttles updates. It retains a bounded prefix rather than file
+contents. Active snapshots coalesce each draft to one update; dispatch, retry,
+failure, cancellation and turn completion retire drafts. Preparing arguments
+never implies that a tool ran or a file was written. Root and child views show
+the same localized feedback, without a fabricated percentage or a file-open
+action before dispatch.
+
+Large file previews render a bounded batch of lines, shorten exceptionally long
+lines, and reveal additional batches on request. Large edits use an explicitly
+labeled content preview instead of allocating a quadratic line-diff matrix.
+Copy retains the complete underlying content, including text outside the preview.
+
 The left conversation navigation rail uses fixed-pitch turn marks with bounded plain
 text previews of user prompts and assistant replies. It excludes reasoning and
 tool output, follows the visible turn, supports keyboard navigation and virtual
@@ -125,6 +140,8 @@ its own long list scrolls independently of the transcript.
   replay, question exits, batched final replies and reduced motion.
 - `tests/web/question-answer-history.spec.ts`: real elicitation output through
   canonical transcript and live Web projections, including comma-bearing labels.
+- `tests/gateway/file-input-progress.spec.ts`: pre-dispatch feedback, bounded
+  metadata, throttling, coalesced snapshots, retry and child isolation.
 - `ui/e2e/reasoning-status.spec.mjs`: real row alignment across light palettes and
   dark mode, keyboard expansion, narrow layouts and reduced motion. Run with
   `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs` after

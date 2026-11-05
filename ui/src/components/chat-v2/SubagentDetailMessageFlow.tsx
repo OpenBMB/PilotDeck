@@ -9,6 +9,8 @@ import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRowV2 from './MessageRowV2';
 import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
+import { FileInputStatus } from './FileInputStatus';
+import { pendingFileInputs } from './fileInputStatusUtils';
 import { useLiveReplyKeys } from './useLiveReplyKeys';
 import { CompactProcessRow, ProcessBlock } from './ProcessBlock';
 import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
@@ -122,7 +124,9 @@ export default function SubagentDetailMessageFlow({
     })),
     [renderableItems],
   );
-  const shouldRenderBottomLiveStatus = isRunning && !renderableItems.some(item => item.turnTrace?.isLive) && !streamingThinkingContent;
+  const filePreparations = useMemo(() => isRunning ? pendingFileInputs(messages, messages) : [], [isRunning, messages]);
+  const hasLiveGroup = renderableItems.some(item => item.turnTrace?.isLive);
+  const shouldRenderBottomLiveStatus = isRunning && !hasLiveGroup && !streamingThinkingContent && !filePreparations.length;
   const keyedMessagesForSearch = useMemo<SearchableChatMessageInput[]>(() => {
     return keyedItems.filter(item => !item.mediaArtifact).flatMap(item => item.turnTrace
       ? item.turnTrace.items.map(child => ({ message: child.message, messageKey: getMessageKey(child.message, child.originalIndex), messageIndex: item.renderIndex }))
@@ -210,7 +214,7 @@ export default function SubagentDetailMessageFlow({
     showThinking,
   ]);
 
-  if (!keyedItems.length && !shouldRenderBottomLiveStatus) return null;
+  if (!keyedItems.length && !shouldRenderBottomLiveStatus && !filePreparations.length) return null;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -238,6 +242,7 @@ export default function SubagentDetailMessageFlow({
                     expanded={isProcessExpanded(`${item.turnTrace.id}:${item.turnTrace.defaultExpanded}`, item.turnTrace.defaultExpanded)}
                     onExpandedChange={expanded => handleProcessExpandedChange(`${item.turnTrace!.id}:${item.turnTrace!.defaultExpanded}`, expanded)}>
                     {renderLiveProcessDetailMessages(item.turnTrace.items.map(child => child.message))}
+                    {item.turnTrace.isLive && filePreparations.map(activity => <FileInputStatus key={activity.activityId} activity={activity} />)}
                   </ProcessBlock> : item.mediaArtifact ? (
                     <GeneratedMediaCard message={item.message} running={isRunning} />
                   ) : <MessageRowV2
@@ -282,6 +287,7 @@ export default function SubagentDetailMessageFlow({
               </Fragment>
             );
           })}
+          {!hasLiveGroup && filePreparations.map(activity => <div key={activity.activityId} className="pb-2"><FileInputStatus activity={activity} /></div>)}
           {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={thinkingStatusStep} /> : null}
         </div>
       </div>

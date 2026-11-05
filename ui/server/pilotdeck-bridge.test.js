@@ -6,6 +6,7 @@ import { createBackgroundSessionForwarder, createSessionActivityRegistry } from 
 import { mapAgentEvent } from '../../src/gateway/client/InProcessGateway.ts';
 import { createAskUserQuestionTool } from '../../src/tool/builtin/askUserQuestion.ts';
 import { InMemoryElicitationChannel } from '../../src/tool/elicitation/PilotDeckElicitationChannel.ts';
+import { FileInputProgress } from '../../src/gateway/stream/FileInputProgress.ts';
 
 import {
     beginActivitySnapshotRead,
@@ -70,6 +71,27 @@ it.each(['generate_video', 'save_generated_video'])('preserves %s video identity
     expect(result).toMatchObject({ toolId: 'draw', isError: false, subagentId: 'child', runId: 'parent-run',
         toolUseResult: { videoGeneration, diagnostic: { truncated: true } } });
     expect(result.toolUseResult.videoGeneration.sessionId).not.toBe('web:parent');
+});
+
+it('projects root and child file preparation as ephemeral metadata before actual tool dispatch', () => {
+    let now = 0;
+    const tracker = new FileInputProgress('run', () => now);
+    for (const child of [undefined, 'child']) {
+        const raw = event => ({ type: child ? 'subagent_model_event' : 'model_event', sessionId: 's', turnId: 't',
+            ...(child ? { subagentId: child, subagentType: 'worker' } : {}), event });
+        const frames = tracker.accept(raw({ type: 'tool_call_start', id: 'write', name: 'write_file' }))
+            .flatMap(event => gatewayEventToFrames(event, 's', 'pilotdeck'));
+        now += 200;
+        frames.push(...tracker.accept(raw({ type: 'tool_call_delta', id: 'write', delta: '{"file_path":"src/app.ts","content":"PRIVATE_CONTENT' }))
+            .flatMap(event => gatewayEventToFrames(event, 's', 'pilotdeck')));
+        expect(frames.at(-1)).toMatchObject({ kind: 'agent_activity', phase: 'file_input', state: 'running',
+            toolId: 'write', fileInputProgress: { filePath: 'src/app.ts', receivedBytes: expect.any(Number) },
+            ...(child ? { subagentId: child, isSubagentDetail: true } : {}) });
+        expect(frames.some(frame => frame.kind === 'tool_use')).toBe(false);
+        expect(JSON.stringify(frames)).not.toContain('PRIVATE_CONTENT');
+    }
+    expect(tracker.finish().flatMap(event => gatewayEventToFrames(event, 's', 'pilotdeck')))
+        .toEqual([expect.objectContaining({ state: 'cancelled' }), expect.objectContaining({ state: 'cancelled' })]);
 });
 
 describe('model block identity', () => {

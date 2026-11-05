@@ -12,6 +12,23 @@ import SubagentDetailMessageFlow from './SubagentDetailMessageFlow';
 
 const baseTime = Date.parse('2026-05-18T08:00:00.000Z');
 
+it('shows child file preparation before dispatch and retires it when the actual call appears', async () => {
+  const i18n = await createTestI18n('zh-CN');
+  const preparing: ChatMessage = { id: 'preparing', type: 'system', timestamp: baseTime, isAgentActivity: true,
+    activityId: 'file-input:child', phase: 'file_input', state: 'running', toolId: 'write', toolName: 'write_file',
+    fileInputProgress: { filePath: 'src/example.ts', receivedBytes: 2048 } };
+  const view = (messages: ChatMessage[]) => <I18nextProvider i18n={i18n}><FindShortcutProvider activeScope="chat">
+    <SubagentDetailMessageFlow messages={messages} provider="pilotdeck" selectedProject={null} createDiff={() => []} isRunning />
+  </FindShortcutProvider></I18nextProvider>;
+  const result = render(view([preparing]));
+  expect(screen.getByText('正在生成文件内容')).toBeTruthy();
+  expect(screen.getByText('已接收 2.0 KB')).toBeTruthy();
+  result.rerender(view([preparing, { id: 'write', type: 'assistant', content: '', timestamp: baseTime + 1,
+    isToolUse: true, toolId: 'write', toolName: 'write_file', toolInput: { file_path: 'src/example.ts', content: 'File content' } }]));
+  expect(result.container.querySelector('[data-file-input-status]')).toBeNull();
+  expect(screen.getByText('example.ts')).toBeTruthy();
+});
+
 beforeAll(() => {
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => (
     window.setTimeout(() => callback(performance.now()), 0)

@@ -12,6 +12,7 @@ import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
 import { ToolRenderer } from './ToolRenderer';
 import { ToolDiffViewer } from './components/ToolDiffViewer';
 import { ToolDetails } from './components/ToolDetails';
+import { needsLargeChangePreview } from './fileChangePreview';
 import { displayText, objectValue, resultText, shellOutput } from './toolPresentation';
 
 type DiffLine = { type: string; content: string; lineNum: number };
@@ -61,6 +62,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
   const oldContent = input.old_string;
   const newContent = name === 'Write' ? input.content : input.new_string;
   const diff = useMemo(() => isEdit && name !== 'Write' && typeof oldContent === 'string' && typeof newContent === 'string'
+    && !needsLargeChangePreview(oldContent, newContent)
     ? createDiff(oldContent, newContent) : [], [isEdit, name, oldContent, newContent, createDiff]);
   const hasDiff = isEdit && typeof newContent === 'string' && (name === 'Write' || typeof oldContent === 'string');
   const inputDetails = !isSkill && config.input.type === 'collapsible' && config.input.contentType !== 'diff';
