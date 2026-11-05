@@ -108,6 +108,16 @@ jobs:
           EXPECTED_HOST_ARCH: ${{ matrix.host_arch }}
         run: test "$(uname -m)" = "$EXPECTED_HOST_ARCH"
 
+      - name: Prepare Electron before native lifecycle checks
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm --filter pilotdeck-desktop exec node node_modules/electron/install.js; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep "$((attempt * 2))"
+          done
+
       - name: Verify managed process ownership and crash cleanup
         run: node --test apps/desktop/scripts/process-scope.test.mjs
 
