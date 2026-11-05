@@ -39,6 +39,13 @@
     "saveFailed": "日志下载失败，请尝试其他位置。",
     "preferenceFailed": "日志保留设置保存失败。"
   },
+  "multimodalGeneration": {
+    "tabsLabel": "多模态生成",
+    "image": "图像",
+    "video": "视频",
+    "enabled": "已开启",
+    "disabled": "已关闭"
+  },
   "imageGeneration": {
     "enabled": "启用图像生成",
     "apiKey": "API 密钥",
@@ -150,6 +157,7 @@
       "agentRoute": "路由",
       "agentMemory": "记忆",
       "agentResident": "常驻",
+      "multimodalGeneration": "多模态生成",
       "imageGeneration": "图像生成",
 
       "videoGeneration": "视频生成",
@@ -196,6 +204,7 @@
       "agentRoute": "智能体 / 路由",
       "agentMemory": "智能体 / 记忆",
       "agentResident": "智能体 / 常驻",
+      "multimodalGeneration": "多模态生成",
       "imageGeneration": "图像生成",
 
       "videoGeneration": "视频生成",

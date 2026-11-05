@@ -1,6 +1,6 @@
 # 视频生成
 
-视频生成是独立的可选能力，默认关闭。在「设置 → 视频生成」填写 API 密钥、Videos API 基础地址和模型名称。如果服务要求模型专属参数，可展开「模型参数（可选）」填写 JSON 默认值，例如 MiniMax-H3 的 `{"task":"t2va","aspect_ratio":"16:9"}`。关闭后，新一轮模型请求中不包含 `generate_video`、`save_generated_video`；已经生成的视频仍可播放和下载。
+视频生成是独立的可选能力，默认关闭。在「设置 → 多模态生成 → 视频」填写 API 密钥、Videos API 基础地址和模型名称。如果服务要求模型专属参数，可展开「模型参数（可选）」填写 JSON 默认值，例如 MiniMax-H3 的 `{"task":"t2va","aspect_ratio":"16:9"}`。关闭后，新一轮模型请求中不包含 `generate_video`、`save_generated_video`；已经生成的视频仍可播放和下载。
 
 ## 接口和执行
 

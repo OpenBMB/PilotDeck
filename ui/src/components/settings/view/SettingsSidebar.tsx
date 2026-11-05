@@ -33,8 +33,7 @@ const AGENT_ITEMS: NavItem[] = [
   { key: "agentMemory", labelKey: "settingsPage.menu.agentMemory" },
   { key: "agentResident", labelKey: "settingsPage.menu.agentResident" },
   { key: "agentSearch", labelKey: "settingsPage.menu.agentSearch" },
-  { key: "imageGeneration", labelKey: "settingsPage.menu.imageGeneration" },
-  { key: "videoGeneration", labelKey: "settingsPage.menu.videoGeneration" },
+  { key: "multimodalGeneration", labelKey: "settingsPage.menu.multimodalGeneration" },
   { key: "agentSchedule", labelKey: "settingsPage.menu.agentSchedule" },
 ];
 

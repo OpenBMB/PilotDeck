@@ -113,3 +113,12 @@ it('saves optional model JSON defaults and blocks malformed parameter objects', 
   fireEvent.click(screen.getByRole('button', { name: '保存' }));
   expect(change.mock.calls[0][0].tools.videoGeneration.extraParams).toEqual({ task: 't2va', aspect_ratio: '16:9' });
 });
+it('clears a successfully saved JSON formatting draft even when its parsed values are unchanged', async () => {
+  const config = configured();
+  config.tools!.videoGeneration!.extraParams = { task: 't2va', aspect_ratio: '16:9' };
+  await form(config, vi.fn(async () => ({ ok: true as const })));
+  fireEvent.change(screen.getByLabelText('模型参数（可选）'), { target: { value: '{"task":"t2va","aspect_ratio":"16:9"}' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  await waitFor(() => expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(true));
+  expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+});

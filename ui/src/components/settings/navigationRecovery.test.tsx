@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import Settings from './Settings';
 import AgentMemorySections from './view/agentMemory';
@@ -24,4 +24,14 @@ it.each([30, 90])('preserves an existing %i minute dream interval when opening a
   fireEvent.click(screen.getAllByRole('button', { name: 'settingsPage.actions.edit' })[1]);
   fireEvent.click(screen.getByRole('button', { name: 'settingsPage.actions.save' }));
   expect(parse(mocks.commit.mock.calls[0][0]).memory.autoDreamIntervalMinutes).toBe(minutes);
+});
+
+it.each([
+  ['/settings/image-generation', '/settings/multimodal-generation'],
+  ['/settings/video-generation', '/settings/multimodal-generation?tab=video'],
+])('redirects %s to its matching multimodal tab', async (initial, expected) => {
+  function Page() { const { section } = useParams(); const location = useLocation(); return <><Settings section={section} onClose={vi.fn()} /><output data-testid="route">{location.pathname + location.search}</output></>; }
+  render(<MemoryRouter initialEntries={[initial]}><Routes><Route path="/settings/:section?" element={<Page />} /></Routes></MemoryRouter>);
+  expect(screen.getByTestId('content').textContent).toContain('multimodalGeneration');
+  expect(screen.getByTestId('route').textContent).toBe(expected);
 });

@@ -65,18 +65,19 @@ export function VideoGenerationForm({ config, onChange }: {
     }
     return { ...current, apiKey, baseUrl, model, ...(Object.keys(extraParams).length ? { extraParams } : { extraParams: undefined }) };
   };
-  const commit = async (value: VideoGenerationConfig) => {
+  const commit = async (value: VideoGenerationConfig, resetDraft = false) => {
     resetTest(); setSaving(true);
     try {
       const result = await onChange({ ...config, tools: { ...config.tools, videoGeneration: value } });
       if (result && !result.ok) setStatus(result.error);
+      else if (resetDraft) { setDraft(draftOf(value)); setErrors({}); }
     }
     catch { setStatus(t('videoGeneration.saveFailed')); }
     finally { setSaving(false); }
   };
   const save = () => {
     const value = validate(current.enabled === true);
-    if (value) void commit(value);
+    if (value) void commit(value, true);
   };
   const toggle = (enabled: boolean) => {
     // Turning off must also work with incomplete, unsaved form fields.
@@ -116,7 +117,7 @@ export function VideoGenerationForm({ config, onChange }: {
     <section className="search-card" aria-label={t('settingsPage.menu.videoGeneration')}>
       <div className="search-config-body">
         {fields.map(field => <div className="search-setting-row" key={field}>
-          <div className="search-setting-copy"><label htmlFor={'video-' + field}>{t('videoGeneration.' + field)}</label><p>{t('videoGeneration.' + field + 'Hint')}</p></div>
+          <div className="search-setting-copy"><label htmlFor={'video-' + field}>{t('videoGeneration.' + field)}</label></div>
           <div className="search-control-area"><div className="search-input-wrap">
             <GeneralSettingsIcon icon={field === 'apiKey' ? KeyRound : field === 'baseUrl' ? Link : Video} />
             <input id={'video-' + field} type={field === 'apiKey' ? 'password' : 'text'} autoComplete="off" spellCheck={false} disabled={saving}
@@ -139,11 +140,9 @@ export function VideoGenerationForm({ config, onChange }: {
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5">
         <span role="status" className="text-sm text-muted-foreground">{status}</span>
         <div className="flex gap-2">
-          {dirty && <>
-            <button className="button secondary compact" type="button" disabled={saving} onClick={() => { setDraft(draftOf(current)); setErrors({}); resetTest(); }}><GeneralSettingsIcon icon={X} />{t('settingsPage.actions.cancel')}</button>
-            <button className="button primary compact" type="button" disabled={saving} onClick={save}><GeneralSettingsIcon icon={Save} />{t('settingsPage.actions.save')}</button>
-          </>}
           <button className="button secondary compact" type="button" disabled={checking || saving} onClick={() => void check()}><GeneralSettingsIcon icon={Plug} />{t(checking ? 'videoGeneration.checking' : 'videoGeneration.check')}</button>
+          {dirty && <button className="button secondary compact" type="button" disabled={saving} onClick={() => { setDraft(draftOf(current)); setErrors({}); resetTest(); }}><GeneralSettingsIcon icon={X} />{t('settingsPage.actions.cancel')}</button>}
+          <button className="button primary compact" type="button" disabled={saving || !dirty} onClick={save}><GeneralSettingsIcon icon={Save} />{t('settingsPage.actions.save')}</button>
         </div>
       </div>
     </section>

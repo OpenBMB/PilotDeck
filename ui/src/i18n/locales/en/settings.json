@@ -39,6 +39,13 @@
     "saveFailed": "Could not download the logs. Try another location.",
     "preferenceFailed": "Could not save the log retention preference."
   },
+  "multimodalGeneration": {
+    "tabsLabel": "Multimodal generation",
+    "image": "Images",
+    "video": "Video",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
   "imageGeneration": {
     "enabled": "Enable image generation",
     "apiKey": "API key",
@@ -150,6 +157,7 @@
       "agentRoute": "Route",
       "agentMemory": "Memory",
       "agentResident": "Always-On",
+      "multimodalGeneration": "Multimodal generation",
       "imageGeneration": "Image generation",
 
       "videoGeneration": "Video generation",
@@ -196,6 +204,7 @@
       "agentRoute": "Agents / Route",
       "agentMemory": "Agents / Memory",
       "agentResident": "Agents / Always-On",
+      "multimodalGeneration": "Multimodal generation",
       "imageGeneration": "Image generation",
 
       "videoGeneration": "Video generation",

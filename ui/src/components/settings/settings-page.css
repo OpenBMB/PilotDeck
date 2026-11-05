@@ -8517,3 +8517,72 @@
 :where(.pilotdeck-settings-app) .runtime-logs-select { width: 190px; flex-shrink: 0; }
 
 @media(max-width: 760px) { :where(.pilotdeck-settings-app) .runtime-logs-row { align-items: flex-start; flex-direction: column; gap: 12px; } }
+
+/* One settings destination; each modality keeps its own configuration and draft. */
+:where(.pilotdeck-settings-app) .multimodal-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 28px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+:where(.pilotdeck-settings-app) .multimodal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 3px 13px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+:where(.pilotdeck-settings-app) .multimodal-tab[aria-selected="true"] {
+  border-bottom-color: var(--brand);
+  color: var(--brand);
+}
+:where(.pilotdeck-settings-app) .multimodal-tab:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+:where(.pilotdeck-settings-app) .multimodal-state-dot {
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.6;
+}
+:where(.pilotdeck-settings-app) .multimodal-state-dot.is-enabled {
+  background: var(--success);
+  opacity: 1;
+}
+:where(.pilotdeck-settings-app) .multimodal-panels {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+:where(.pilotdeck-settings-app) .multimodal-panels > [hidden] { display: none; }
+:where(.pilotdeck-settings-app) .multimodal-generation-content .search-setting-row {
+  grid-template-columns: minmax(100px, 0.25fr) minmax(0, 1fr);
+  gap: 24px;
+}
+@media (max-width: 580px) {
+  :where(.pilotdeck-settings-app) .multimodal-generation-content .search-setting-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  :where(.pilotdeck-settings-app) .multimodal-tabs { gap: 24px; }
+}
+@media (pointer: coarse) {
+  :where(.pilotdeck-settings-app) .multimodal-tab { min-height: 44px; }
+}
+:where(.pilotdeck-settings-app) .multimodal-generation-content .button.primary:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+}
