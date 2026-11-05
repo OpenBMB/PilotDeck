@@ -1,3 +1,4 @@
+import { useVideoJobs } from "../chat/tools/useVideoJobs";
 import { isTimelineMessage } from '../../stores/sessionTimeline';
 import { computeMerged } from '../../stores/useSessionStore';
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
@@ -151,7 +152,7 @@ export function useSubagentMessages(
     return inheritSubagentRenderKeys(previousRef.current?.scope === scope ? previousRef.current.messages : [], merged);
   }, [snapshot, realtimeMessages, scope, refreshKey]);
   useLayoutEffect(() => { previousRef.current = { scope, messages: normalized }; }, [scope, normalized]);
-  const messages = useMemo(() => normalizeSubagentDetailContainers(
+  const baseMessages = useMemo(() => normalizeSubagentDetailContainers(
     filterSubagentDetailMessages(normalizedToChatMessages(normalized)),
   ), [normalized]);
 
@@ -197,5 +198,6 @@ export function useSubagentMessages(
     return () => controller.abort();
   }, [sessionId, subagentId, projectPath, refreshKey, sessionKind, parentSessionId, relativeTranscriptPath, scope]);
 
+  const messages = useVideoJobs(baseMessages);
   return { messages, isLoading: request?.scope === scope && request.isLoading, error: request?.scope === scope ? request.error : null };
 }

@@ -21,15 +21,15 @@ it('retains a running deliverable tool record independently of its pending image
   const call: ChatMessage = { ...base, toolInput: { purpose: 'deliverable' } };
   const messages: ChatMessage[] = [{ ...base, id: 'user', type: 'user', isToolUse: false, content: 'Draw' }, call];
   const items = buildRenderableMessageItems(messages, { isAssistantWorking: true });
-  expect(items.filter(item => item.imageArtifact)).toHaveLength(1);
+  expect(items.filter(item => item.mediaArtifact)).toHaveLength(1);
   expect(getLiveProcessDetailMessages(messages)).toContain(call);
-  expect(items.find(item => item.imageArtifact)?.message.renderKey).toBe('image-artifact-draw');
+  expect(items.find(item => item.mediaArtifact)?.message.renderKey).toBe('media-artifact-draw');
 });
 
 it('falls back to the ordinary tool record when a completed image result has no attachment identity', () => {
   const completed = { ...base, toolInput: { purpose: 'deliverable' }, toolResult: { content: 'Image attached' } };
   expect(isImageDeliverable(completed)).toBe(false);
-  expect(buildRenderableMessageItems([completed]).some(item => item.imageArtifact)).toBe(false);
+  expect(buildRenderableMessageItems([completed]).some(item => item.mediaArtifact)).toBe(false);
 });
 
 it.each(['generate_image', 'edit_image'])('keeps only successful deliverables outside the completed %s trace', toolName => {
@@ -47,7 +47,7 @@ it.each(['generate_image', 'edit_image'])('keeps only successful deliverables ou
   expect(isProcessMessage(delivered)).toBe(true);
   const items = foldCompletedTurns(messages, buildRenderableMessageItems(messages), false);
   expect(items.filter(item => item.message.isToolUse).map(item => item.message.id)).toEqual(['delivered']);
-  expect(items.filter(item => item.imageArtifact)).toHaveLength(1);
+  expect(items.filter(item => item.mediaArtifact)).toHaveLength(1);
   const trace = items.find(item => item.turnTrace)?.turnTrace?.items ?? [];
   const details = trace.flatMap(item => [item.message, ...[...item.beforeProcessAttachments, ...item.afterProcessAttachments].flatMap(attachment => attachment.processDetailMessages)]);
   expect(details.map(message => message.id)).toEqual(expect.arrayContaining(['asset', 'failed', 'delivered']));

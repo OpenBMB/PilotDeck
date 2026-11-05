@@ -85,3 +85,11 @@ describe('draft attachment preview', () => {
     expect(attachmentPreviewKind({ name, type })).toBe(kind);
   });
 });
+
+it('previews a video attachment with missing MIME type and releases its local URL', () => {
+  const file = new File(['video'], 'clip.webm');
+  const view = render(<AttachmentPreview files={[file]} initialFile={file} onClose={vi.fn()} />);
+  expect(screen.getByRole('dialog').querySelector('video')).not.toBeNull();
+  expect(screen.queryByText('attachmentPreview.unsupported')).toBeNull();
+  view.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalledWith(expect.stringContaining('blob:test-'));
+});

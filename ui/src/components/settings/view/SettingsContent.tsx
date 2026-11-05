@@ -12,7 +12,7 @@ const AgentMemorySections = lazy(() => import("./agentMemory"));
 const AgentResidentSections = lazy(() => import("./agentResident"));
 const AgentRouteSections = lazy(() => import("./agentRoute"));
 const AgentScheduleSections = lazy(() => import("./agentSchedule"));
-const ImageGenerationSettings = lazy(() => import("./imageGeneration"));
+const MultimodalGenerationSettings = lazy(() => import("./multimodalGeneration"));
 const AgentSearchSections = lazy(() => import("./agentSearch"));
 const AdvancedSections = lazy(() => import("./advanced"));
 const McpServersSection = lazy(() => import("./extensions"));
@@ -48,7 +48,7 @@ const MENU_TITLE_KEYS: Record<SettingsMenuKey, string> = {
   agentMemory: "settingsPage.titles.agentMemory",
   agentResident: "settingsPage.titles.agentResident",
   agentSearch: "settingsPage.titles.agentSearch",
-  imageGeneration: "settingsPage.titles.imageGeneration",
+  multimodalGeneration: "settingsPage.titles.multimodalGeneration",
   agentSchedule: "settingsPage.titles.agentSchedule",
   integrations: "settingsPage.titles.integrations",
   extensions: "settingsPage.titles.extensions",
@@ -70,7 +70,7 @@ const PAGE_HEADING_KEYS: Record<SettingsMenuKey, string> = {
   agentMemory: "settingsPage.menu.agentMemory",
   agentResident: "settingsPage.menu.agentResident",
   agentSearch: "settingsPage.menu.agentSearch",
-  imageGeneration: "settingsPage.menu.imageGeneration",
+  multimodalGeneration: "settingsPage.menu.multimodalGeneration",
   agentSchedule: "settingsPage.menu.agentSchedule",
   integrations: "settingsPage.menu.messageChannels",
   extensions: "settingsPage.menu.extensions",
@@ -91,7 +91,6 @@ const PAGE_DESCRIPTION_KEYS: Partial<Record<SettingsMenuKey, string>> = {
   agentMemory: "settingsPage.descriptions.agentMemory",
   agentResident: "settingsPage.descriptions.agentResident",
   agentSearch: "settingsPage.descriptions.agentSearch",
-  imageGeneration: "settingsPage.descriptions.imageGeneration",
   agentSchedule: "settingsPage.descriptions.agentSchedule",
   integrations: "settingsPage.descriptions.integrations",
   mcpServers: "settingsPage.descriptions.mcpServers",
@@ -111,7 +110,7 @@ const PAGE_CLASS: Partial<Record<SettingsMenuKey, string>> = {
   agentMemory: "agent-memory-page",
   agentResident: "agent-resident-page",
   agentSearch: "agent-search-page",
-  imageGeneration: "agent-search-page",
+  multimodalGeneration: "agent-search-page multimodal-generation-page",
   agentSchedule: "agent-scheduled-page",
   integrations: "integration-settings-page",
   mcpServers: "mcp-settings-page",
@@ -205,8 +204,8 @@ export default function SettingsContent({
           <AgentResidentSections title={title} projects={projects} />
         ) : selectedKey === "agentSearch" ? (
           <AgentSearchSections title={title} />
-        ) : selectedKey === "imageGeneration" ? (
-          <ImageGenerationSettings />
+        ) : selectedKey === "multimodalGeneration" ? (
+          <MultimodalGenerationSettings />
         ) : selectedKey === "agentSchedule" ? (
           <AgentScheduleSections title={title} />
         ) : selectedKey === "integrations" ? (

@@ -60,7 +60,7 @@ it('keeps the image outside and the tool record inside the collapsed trace', () 
     { ...message, id: 'answer', type: 'assistant', isToolUse: false, content: 'done' },
   ];
   const items = foldCompletedTurns(messages, buildRenderableMessageItems(messages), false);
-  expect(items.filter(item => item.imageArtifact)).toHaveLength(1);
+  expect(items.filter(item => item.mediaArtifact)).toHaveLength(1);
   const details = items.flatMap(item => item.turnTrace?.items ?? []).flatMap(item => [
     item.message, ...[...item.beforeProcessAttachments, ...item.afterProcessAttachments].flatMap(attachment => attachment.processDetailMessages),
   ]);

@@ -6,7 +6,7 @@ import { useScrollFollow } from '../chat/hooks/useScrollFollow';
 import type { Project, SessionProvider } from '../../types/app';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRowV2 from './MessageRowV2';
-import GeneratedImageCard from '../chat/tools/GeneratedImageCard';
+import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
 import {
   buildRenderableMessageItems,
@@ -196,7 +196,7 @@ export default function SubagentDetailMessageFlow({
   const hasOpenEndedLiveProcessGroup = liveProcessGroups.some((group) => group.isRunning);
   const shouldRenderBottomLiveStatus = isRunning && !hasOpenEndedLiveProcessGroup && !streamingThinkingContent;
   const keyedMessagesForSearch = useMemo<SearchableChatMessageInput[]>(() => {
-    return keyedItems.filter(item => !item.imageArtifact).map((item) => (
+    return keyedItems.filter(item => !item.mediaArtifact).map((item) => (
       {
         message: item.message,
         messageKey: item.itemKey,
@@ -354,8 +354,8 @@ export default function SubagentDetailMessageFlow({
                   data-message-key={item.itemKey}
                   data-message-timestamp={item.message.timestamp ? String(item.message.timestamp) : undefined}
                 >
-                  {item.imageArtifact ? (
-                    <GeneratedImageCard message={item.message} running={isRunning} />
+                  {item.mediaArtifact ? (
+                    <GeneratedMediaCard message={item.message} running={isRunning} />
                   ) : <MessageRowV2
                     message={item.message}
                     prevMessage={previousMessage}

@@ -39,6 +39,11 @@
     "saveFailed": "Could not download the logs. Try another location.",
     "preferenceFailed": "Could not save the log retention preference."
   },
+  "multimodalGeneration": {
+    "tabsLabel": "Multimodal",
+    "image": "Images",
+    "video": "Video"
+  },
   "imageGeneration": {
     "enabled": "Enable image generation",
     "apiKey": "API key",
@@ -150,7 +155,10 @@
       "agentRoute": "Route",
       "agentMemory": "Memory",
       "agentResident": "Always-On",
+      "multimodalGeneration": "Multimodal",
       "imageGeneration": "Image generation",
+
+      "videoGeneration": "Video generation",
       "agentSearch": "Search",
       "agentSchedule": "Scheduled Tasks",
       "integrations": "Integrations",
@@ -173,6 +181,8 @@
       "agentMemory": "Manage memory, summarization intervals, and project memory data.",
       "agentResident": "Keep watching workspace changes after you leave, and advance work or sync progress at the right time.",
       "imageGeneration": "Let agents generate and edit images in conversations and projects.",
+
+      "videoGeneration": "Let agents generate videos in conversations and projects.",
       "agentSearch": "Let agents retrieve real-time web information and add current external facts to their answers.",
       "agentSchedule": "Wake agents automatically at scheduled times to run tasks without requiring you to stay online.",
       "integrations": "Connect Feishu, WeChat, and WeCom message channels.",
@@ -192,7 +202,10 @@
       "agentRoute": "Agents / Route",
       "agentMemory": "Agents / Memory",
       "agentResident": "Agents / Always-On",
+      "multimodalGeneration": "Multimodal",
       "imageGeneration": "Image generation",
+
+      "videoGeneration": "Video generation",
       "agentSearch": "Agents / Search",
       "agentSchedule": "Agents / Scheduled Tasks",
       "integrations": "Integrations",
@@ -2152,5 +2165,27 @@
     "previewHint": "JSON bodies are expanded for readability and serialized once when sent. Preview uses a placeholder key and sends no request.",
     "save": "Save request configuration",
     "invalidJson": "Invalid JSON"
+  },
+  "videoGeneration": {
+    "enabled": "Enable video generation",
+    "apiKey": "API key",
+    "apiKeyHint": "Stored locally. Leave blank to keep the saved key.",
+    "baseUrl": "API address",
+    "baseUrlHint": "OpenAI-compatible Videos API base URL, such as http://localhost:8000/v1.",
+    "model": "Model",
+    "modelHint": "The video model offered by your service, configured separately from chat.",
+    "check": "Test connection",
+    "checking": "Generating test video…",
+    "connected": "Test succeeded. A valid video was generated in {{seconds}} seconds.",
+    "connectionFailed": "Test failed: {{error}}",
+    "unknownError": "Check the address, key, and service availability.",
+    "invalidAddress": "Enter a valid HTTP or HTTPS API address.",
+    "keyRequired": "Enter an API key.",
+    "newKeyRequired": "Enter the API key again after changing the API address.",
+    "modelRequired": "Enter an video model name.",
+    "saveFailed": "Could not save. Please try again.",
+    "extraParams": "Model parameters (optional)",
+    "extraParamsHint": "JSON defaults required by your model service. For MiniMax-H3: {\"task\":\"t2va\",\"aspect_ratio\":\"16:9\"}.",
+    "invalidParams": "Enter a JSON object no larger than 8 KB."
   }
 }

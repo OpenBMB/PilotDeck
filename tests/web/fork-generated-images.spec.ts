@@ -145,7 +145,7 @@ test("a missing inherited image aborts the fork without publishing a broken tran
   await unlink(join(dirname(missing.path), missing.imageId + ".json"));
   await f.finish();
   const fromEntryId = await f.forkPoint();
-  await assert.rejects(() => forkWebSession({ sessionKey: f.sourceId, fromEntryId }, f.options), /Could not inherit session images/);
+  await assert.rejects(() => forkWebSession({ sessionKey: f.sourceId, fromEntryId }, f.options), /Could not inherit session attachments/);
   assert.deepEqual((await readdir(f.chatDir)).filter(name => name.endsWith(".jsonl")), [sanitizeSessionIdForPath(f.sourceId) + ".jsonl"]);
   for (const dir of await readdir(f.store.root)) {
     if (join(f.store.root, dir) !== dirname(first.path)) assert.deepEqual(await readdir(join(f.store.root, dir)), []);

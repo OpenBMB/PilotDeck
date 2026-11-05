@@ -492,3 +492,13 @@ describe('CodeEditorBinaryFile', () => {
     expect(screen.getByText('officePreview.configureService')).not.toBeNull();
   });
 });
+
+it.each(['mp4', 'webm', 'mov'])('opens project %s files as streaming video without loading a blob or falling back to binary text', extension => {
+  const readBlob = vi.spyOn(api, 'readFileBlob');
+  const file = { ...baseProps.file, name: `movie.${extension}`, path: `/workspace/hundouluo/movie.${extension}` };
+  const { container } = render(<CodeEditorBinaryFile {...baseProps} file={file} />);
+  const video = container.querySelector('video')!;
+  expect(video).not.toBeNull(); expect(video.getAttribute('src')).toBe(api.fileContentUrl('hundouluo', file.path));
+  expect(video.hasAttribute('controls')).toBe(true); expect(video.getAttribute('preload')).toBe('metadata');
+  expect(screen.queryByText('Preview unavailable')).toBeNull(); expect(readBlob).not.toHaveBeenCalled();
+});

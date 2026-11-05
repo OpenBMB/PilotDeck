@@ -1,3 +1,4 @@
+import { videoApiBaseUrl } from "../../../src/pilot/config/videoGenerationConfig.js";
 import { imageApiBaseUrl } from "../../../src/pilot/config/imageGenerationConfig.js";
 import { customSearchRequest, customSearchResults } from "../../../src/pilot/config/customSearch.js";
 import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../../../src/pilot/config/webSearchProviders.js";
@@ -282,14 +283,20 @@ function formatWebSearchApiError(response, raw) {
   return context ? `${context}: ${detail}` : detail;
 }
 
-function validateMaskedImageKeyReuse(nextConfig, previousConfig) {
-  const next = nextConfig?.tools?.imageGeneration;
-  if (next?.apiKey !== MASKED_SECRET) return null;
-  const previous = previousConfig?.tools?.imageGeneration;
-  try {
-    if (previous?.apiKey && previous.apiKey !== MASKED_SECRET && imageApiBaseUrl(next.baseUrl) === imageApiBaseUrl(previous.baseUrl)) return null;
-  } catch {}
-  return 'Enter the image API key again after changing its API address.';
+function validateMaskedMediaKeyReuse(nextConfig, previousConfig) {
+  for (const [section, normalize, label] of [
+    ['imageGeneration', imageApiBaseUrl, 'image'],
+    ['videoGeneration', videoApiBaseUrl, 'video'],
+  ]) {
+    const next = nextConfig?.tools?.[section];
+    if (next?.apiKey !== MASKED_SECRET) continue;
+    const previous = previousConfig?.tools?.[section];
+    try {
+      if (previous?.apiKey && previous.apiKey !== MASKED_SECRET && normalize(next.baseUrl) === normalize(previous.baseUrl)) continue;
+    } catch {}
+    return `Enter the ${label} API key again after changing its API address.`;
+  }
+  return null;
 }
 
 function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
@@ -940,7 +947,7 @@ router.put('/', async (req, res) => {
       if (maskedProviderKeyError) {
         return res.status(400).json({ error: maskedProviderKeyError });
       }
-      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.rawYaml ?? {}) || validateMaskedImageKeyReuse(renamedConfig, diskRecord.rawYaml ?? {});
+      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.rawYaml ?? {}) || validateMaskedMediaKeyReuse(renamedConfig, diskRecord.rawYaml ?? {});
       if (maskedKeyError) {
         return res.status(400).json({ error: maskedKeyError });
       }
@@ -1008,7 +1015,7 @@ router.put('/', async (req, res) => {
       if (maskedProviderKeyError) {
         return res.status(400).json({ error: maskedProviderKeyError });
       }
-      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.config) || validateMaskedImageKeyReuse(renamedConfig, diskRecord.config);
+      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.config) || validateMaskedMediaKeyReuse(renamedConfig, diskRecord.config);
       if (maskedKeyError) {
         return res.status(400).json({ error: maskedKeyError });
       }

@@ -780,5 +780,18 @@
       "tool": "已使用",
       "skill": "已读取技能"
     }
+  },
+  "videoGeneration": {
+    "generating": "正在生成视频…",
+    "interrupted": "视频生成已中断",
+    "download": "下载视频",
+    "playbackUnavailable": "浏览器无法播放此视频，可下载后使用本地播放器打开。",
+    "reconnecting": "连接中断，正在自动重连…",
+    "downloading": "视频已生成，正在取回…",
+    "paused": "已暂停获取，生成任务已保留",
+    "configuration": "请检查视频服务配置后继续获取",
+    "resume": "继续获取",
+    "retryUnavailable": "暂时无法连接，请稍后重试",
+    "exportUnavailable": "视频已取回，保存到项目未完成，可使用同一视频重新保存。"
   }
 }
