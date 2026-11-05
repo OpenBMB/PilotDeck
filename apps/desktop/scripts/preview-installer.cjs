@@ -8,7 +8,9 @@ const lib = path.dirname(builder.resolve('app-builder-lib/package.json'));
 const { getMakeNsisPath, getNsisPluginsPath } = require(path.join(lib, 'out/toolsets/windows.js'));
 const { NsisScriptGenerator } = require(path.join(lib, 'out/targets/nsis/nsisScriptGenerator.js'));
 (async () => {
-  const directory = path.resolve(__dirname, '../../../artifacts/startup-refinement-2026-11-02');
+  const directory = process.argv[2]
+    ? path.resolve(process.argv[2])
+    : path.resolve(__dirname, '../../../artifacts/installer-preview');
   fs.mkdirSync(directory, { recursive: true });
   const binary = await getMakeNsisPath(), plugins = await getNsisPluginsPath();
   const generator = new NsisScriptGenerator();
@@ -24,7 +26,7 @@ ${generator.build()}
 !define PROJECT_DIR "${path.resolve(__dirname, '..')}"
 !define PRODUCT_NAME "PilotDeck"
 !define PRODUCT_FILENAME "PilotDeck"
-!define VERSION "2026.1102.0"
+!define VERSION "${require('../package.json').version}"
 !include "${path.resolve(__dirname, '../resources/installer.nsh')}"
 !include "common.nsh"
 !include "MUI2.nsh"
