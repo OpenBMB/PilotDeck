@@ -1,0 +1,57 @@
+import { test, expect } from '@playwright/test';
+
+test('turn previews, keyboard jumps and streamed updates preserve reader ownership', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html');
+  const nav = page.locator('.conversation-turn-nav');
+  const mark = nav.getByRole('button', { name: 'Jump to turn 6', exact: true });
+  const navBox = await nav.boundingBox();
+  const paneBox = await page.locator('.conversation-pane').boundingBox();
+  expect(navBox.x - paneBox.x).toBe(12);
+  await mark.hover();
+  const previewBox = await nav.getByRole('tooltip').boundingBox();
+  expect(previewBox.x).toBeGreaterThan(navBox.x);
+  await expect(nav.getByRole('tooltip')).toContainText('Question 5');
+  await expect(nav.getByRole('tooltip')).toContainText('Answer 5');
+  await mark.click();
+  const viewport = page.locator('[data-chat-search-surface]');
+  await expect(page.locator('[data-chat-search-surface]').getByText('Question 5', { exact: true })).toBeInViewport();
+  await expect(viewport).toHaveAttribute('data-scroll-follow-paused', 'true');
+  await expect(mark).toHaveAttribute('aria-current', 'true');
+  await mark.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(nav.getByRole('button', { name: 'Jump to turn 7', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-chat-search-surface]').getByText('Question 6', { exact: true })).toBeInViewport();
+  const readingTop = await viewport.evaluate(node => node.scrollTop);
+  await page.evaluate(() => window.streamFixture.text('New content. '.repeat(300)));
+  await page.waitForTimeout(500);
+  expect(Math.abs(await viewport.evaluate(node => node.scrollTop) - readingTop)).toBeLessThan(2);
+  await page.evaluate(() => { window.streamFixture.setAppearance('mint', true); return window.streamFixture.setLanguage('zh-CN'); });
+  await expect(nav).toHaveAttribute('aria-label', '对话导航');
+  await page.screenshot({ path: test.info().outputPath('turn-navigation-left-dark.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 600, height: 700 });
+  await expect(nav).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(600);
+});
+
+test('a long rail keeps fixed pitch and lands on a distant virtualized turn', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html');
+  await page.evaluate(() => window.streamFixture.prepend(500));
+  const nav = page.locator('.conversation-turn-nav');
+  const marks = nav.locator('[data-turn-index]');
+  await expect(page.locator('[data-virtualized-messages]')).toBeVisible();
+  expect(await marks.count()).toBeLessThan(50);
+  await marks.first().focus();
+  await page.keyboard.press('Home');
+  const first = nav.getByRole('button', { name: 'Jump to turn 1', exact: true });
+  await expect(first).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-chat-search-surface]').getByText('Earlier message 0: additional history.', { exact: true })).toBeInViewport();
+  const pitch = await marks.evaluateAll(nodes => nodes.length > 1 ? parseFloat(nodes[1].style.top) - parseFloat(nodes[0].style.top) : 0);
+  expect(pitch).toBe(10);
+  await page.keyboard.press('End');
+  const last = nav.getByRole('button', { name: 'Jump to turn 274', exact: true });
+  await expect(last).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-chat-search-surface]').getByText('Question 23', { exact: true })).toBeInViewport();
+});

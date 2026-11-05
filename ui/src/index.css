@@ -3,6 +3,64 @@
 @tailwind utilities;
 
 @layer components {
+  .conversation-pane { container-type: inline-size; }
+  .conversation-turn-nav {
+    position: absolute;
+    z-index: 20;
+    top: 50%;
+    left: 12px;
+    width: 28px;
+    max-height: calc(100% - 80px);
+    transform: translateY(-50%);
+  }
+  .conversation-turn-scroller {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+  .conversation-turn-scroller::-webkit-scrollbar { display: none; }
+  .conversation-turn-mark {
+    position: absolute;
+    left: 0;
+    width: 28px;
+    height: 10px;
+    border-radius: 4px;
+  }
+  .conversation-turn-mark::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 0;
+    width: 13px;
+    height: 2px;
+    border-radius: 2px;
+    background: hsl(var(--muted-foreground) / 0.35);
+    transition: width 140ms ease, background-color 140ms ease;
+  }
+  .conversation-turn-mark[aria-current="true"]::before,
+  .conversation-turn-mark:hover::before { width: 22px; background: hsl(var(--foreground)); }
+  .conversation-turn-mark:focus-visible { outline: 1px solid var(--brand); outline-offset: -1px; }
+  .conversation-turn-mark:focus-visible::before { width: 22px; background: var(--brand); }
+  .conversation-turn-mark[aria-busy="true"]::before { animation: pulse 1s ease-in-out infinite; }
+  .conversation-turn-load { position: absolute; top: -22px; left: 0; color: hsl(var(--muted-foreground)); }
+  .conversation-turn-preview {
+    position: absolute;
+    left: 38px;
+    width: min(300px, calc(100cqw - 100px));
+    max-height: 110px;
+    overflow: hidden;
+    padding: 12px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 14px;
+    background: hsl(var(--card));
+    box-shadow: 0 6px 24px hsl(var(--foreground) / 0.08);
+    pointer-events: none;
+    animation: turn-preview-enter 140ms ease-out;
+    transition: top 140ms ease-out;
+  }
+  @keyframes turn-preview-enter { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+  @container (max-width: 900px) { .conversation-turn-nav { display: none; } }
   /* Shared metrics keep reasoning, individual tools and grouped steps aligned. */
   .chat-process-trigger {
     @apply flex min-h-6 w-fit min-w-0 max-w-full items-center gap-2 rounded text-left text-[13px] font-normal leading-6 text-muted-foreground transition-colors;
@@ -27,6 +85,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .chat-process-disclosure { transition: none; }
+    .conversation-turn-mark::before, .conversation-turn-preview { transition: none; animation: none; }
   }
 }
 

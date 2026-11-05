@@ -20,6 +20,7 @@ import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import MessageRowV2 from './MessageRowV2';
 import { useLiveReplyKeys } from './useLiveReplyKeys';
+import { ConversationTurnNav } from './ConversationTurnNav';
 import { CompactProcessRow, ProcessBlock } from './ProcessBlock';
 import SendingMessages from './SendingMessages';
 import AssistantReplyQuoteAction from './AssistantReplyQuoteAction';
@@ -1108,7 +1109,7 @@ function MessagesPaneV2({
 
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden">
+    <div className="conversation-pane relative min-h-0 flex-1 overflow-hidden">
       {hasLayoutWarning ? (
         <div role="alert" className="absolute inset-x-4 top-4 z-20 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
           <span>{t('common:uiText.chatLayoutError')}</span>
@@ -1344,6 +1345,10 @@ function MessagesPaneV2({
         />
       ) : null}
       </div>
+      <ConversationTurnNav key={messageWindowScope} messages={chatMessages} items={keyedMessageItems}
+        heights={measuredItemHeights} scrollRef={scrollContainerRef} onPause={onPauseScroll}
+        loadAll={loadAllMessages} hasMore={hasMoreMessages || chatMessages.length > visibleMessages.length}
+        loading={isLoadingAllMessages || isLoadingMoreMessages} />
       {showReturnToLatest && onResumeScroll ? (
         <button
           type="button"

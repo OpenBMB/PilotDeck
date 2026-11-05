@@ -1,4 +1,10 @@
 {
+  "turnNavigation": {
+    "label": "Conversation navigation",
+    "jump": "Jump to turn {{number}}",
+    "turn": "Turn {{number}}",
+    "loadEarlier": "Load earlier conversation turns"
+  },
   "context": {
     "tokenUnit": "tokens",
     "title": "Context budget",

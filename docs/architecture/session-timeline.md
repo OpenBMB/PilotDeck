@@ -84,6 +84,13 @@ replies drain gradually even when text and completion arrive in one render;
 historical text displays immediately. Answered question panels retain their seat
 for a short height transition without delaying the submitted answer.
 
+The left conversation navigation rail uses fixed-pitch turn marks with bounded plain
+text previews of user prompts and assistant replies. It excludes reasoning and
+tool output, follows the visible turn, supports keyboard navigation and virtual
+rows, and pauses automatic following on explicit jumps. Earlier known turns load
+history before landing. The rail is hidden when the conversation pane is narrow;
+its own long list scrolls independently of the transcript.
+
 ## Verification
 
 - `tests/model/streaming/timeline.spec.ts`: assembler → agent coordinates → Gateway
@@ -96,6 +103,8 @@ for a short height transition without delaying the submitted answer.
   and edited-turn tombstones.
 - `ui/src/components/chat-v2/ThinkingBlock.test.tsx`: localized clocks, completion,
   manual expansion and legacy-history fallback.
+- `ui/e2e/conversation-turn-nav.spec.mjs`: left-side positioning, previews, keyboard
+  navigation, distant virtual rows, reader ownership and responsive hiding.
 - `ui/e2e/process-transitions.spec.mjs`: real height transitions, question exits,
   batched final replies and reduced motion.
 - `ui/e2e/reasoning-status.spec.mjs`: real row alignment across light palettes and
