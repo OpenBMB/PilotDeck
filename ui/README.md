@@ -5,7 +5,9 @@ React/Vite client and Express server used by browser and Electron deployments.
 - Client entry: [src/main.jsx](src/main.jsx); active shell and screens live under [src/components](src/components).
 - Server entry: [server/index.js](server/index.js); HTTP routes and services live under [server](server).
 - Shared contracts: [shared](shared); real browser/Electron acceptance: [e2e](e2e).
-- Account authentication remains required for supported self-hosted deployments. Desktop local-auth bypass is an explicit runtime policy, not a reason to remove login code.
+- Web and desktop skip account registration/login by default and use the built-in local user.
+- Set `PILOTDECK_DISABLE_LOCAL_AUTH=0` (or `false`) before initial startup to require account authentication. Rebuild the client and restart the server after changing this setting. Values `1`/`true` or an unset/empty value disable login; unrecognized values keep authentication enabled.
+- Configure authentication explicitly when exposing a deployment to other users. Login code and native-control origin/host checks remain supported.
 
 Run from the repository root:
 

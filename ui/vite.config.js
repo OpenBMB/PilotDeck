@@ -4,6 +4,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 import { getConnectableHost, normalizeLoopbackHost } from './shared/networkHosts.js'
+import { isLocalAuthDisabled } from './shared/localAuth.js'
 import { LIGHT_PRESETS } from '../apps/desktop/src/lightAppearance'
 import { renderLoadingHtml } from '../apps/desktop/src/appearance'
 import { startupLabels } from '../apps/desktop/src/startupPresentation'
@@ -50,9 +51,7 @@ export default defineConfig(({ mode }) => {
     '@uiw/react-codemirror',
   ]
 
-  const disableLocalAuth =
-    env.PILOTDECK_DISABLE_LOCAL_AUTH === '1' ||
-    env.PILOTDECK_DISABLE_LOCAL_AUTH === 'true'
+  const disableLocalAuth = isLocalAuthDisabled(env.PILOTDECK_DISABLE_LOCAL_AUTH)
 
   return {
     define: {
