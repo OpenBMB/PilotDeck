@@ -1,6 +1,5 @@
 # PilotDeck Docker
 
-简体中文版本：[README_DOCKER.zh.md](./README_DOCKER.zh.md)
 
 PilotDeck runs as two cooperating Node.js processes in the container:
 
