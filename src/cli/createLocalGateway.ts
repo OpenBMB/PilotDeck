@@ -1443,6 +1443,7 @@ class ProjectRuntimeRegistry {
         ...await createSubagentVideoPreparation(videoStore, () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.videoGeneration?.enabled === true)(input),
       ],
       tokenAccounting: runtime.tokenAccounting,
+      backgroundTasks: runtime.backgroundTasks,
       getModelMaxContextTokens: (provider, model) => resolveRoutedModelMaxContextTokens({
         modelRuntime: runtime.model,
         agentModel: runtime.snapshot.config.agent.model,
