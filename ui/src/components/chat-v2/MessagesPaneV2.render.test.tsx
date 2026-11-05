@@ -1053,8 +1053,7 @@ describe('MessagesPaneV2 render behavior', () => {
     ];
     rerender(createPaneElement({ messages: completedMessages }));
     const turnToggle = processToggle();
-    expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(turnToggle);
+    expect(turnToggle.getAttribute('aria-expanded')).toBe('true');
 
     expect(screen.getByText('Explored 1 file')).toBeTruthy();
     const completedButton = screen.getByText('ReadHidden.tsx').closest('button');
@@ -1956,8 +1955,8 @@ it.each([false, true])('preserves an inherited group toggle independently throug
   view.rerender(createPaneElement({ messages: [...grouped, {
     id: 'reg-answer', type: 'assistant', content: 'Inspection complete', timestamp: '2026-09-15T09:00:02.000Z',
   }] }));
-  expect(processToggle().getAttribute('aria-expanded')).toBe('false');
-  fireEvent.click(processToggle());
+  expect(processToggle().getAttribute('aria-expanded')).toBe(String(!closeParent));
+  if (closeParent) fireEvent.click(processToggle());
   expect(processToggle().getAttribute('aria-expanded')).toBe('true');
   {
     expect(screen.getByRole('button', { name: /first\.ts$/ }).getAttribute('aria-expanded')).toBe('false');
@@ -2105,4 +2104,22 @@ it('shows a model-call spinner between completed tools and the next model output
   expect(status()).toBeNull();
   view.rerender(createPaneElement({ messages: [user, finished, thought] }));
   expect(status()).toBeNull();
+});
+
+it('retains manually inspected tools and their ancestors after new prose and completion', () => {
+  const messages = toolRegressionMessages();
+  const view = renderPane({ messages, isAssistantWorking: true });
+  const tool = screen.getByRole('button', { name: /first\.ts$/ });
+  fireEvent.click(tool);
+  const group = view.container.querySelector('[data-process-block] > button')!;
+  const turn = view.container.querySelector('[data-turn-process-header] button')!;
+  view.rerender(createPaneElement({ messages: [...messages, { id: 'inspection-reply', type: 'assistant',
+    content: 'The file is ready.', timestamp: '2026-09-15T09:00:02Z' }] }));
+  expect(tool.getAttribute('aria-expanded')).toBe('true');
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  expect(turn.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.click(tool);
+  view.rerender(createPaneElement({ messages: [...messages, { id: 'inspection-reply', type: 'assistant',
+    content: 'The file is ready. Another update.', timestamp: '2026-09-15T09:00:02Z' }] }));
+  expect(tool.getAttribute('aria-expanded')).toBe('false');
 });

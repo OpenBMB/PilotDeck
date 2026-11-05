@@ -43,6 +43,7 @@ describe('StreamingThinkingPreview', () => {
     );
     expect(region.scrollTop).toBe(100);
 
+    fireEvent.wheel(region, { deltaY: 300 });
     region.scrollTop = 400;
     fireEvent.scroll(region);
     view.rerender(

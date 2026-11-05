@@ -292,3 +292,17 @@ it('shows the model-call spinner after a child tool finishes and hides it during
   result.rerender(view([finished, { ...assistant('child-model-reply', 'Done.'), isStreaming: true }]));
   expect(status()).toBeNull();
 });
+
+it('keeps manually expanded child tool details visible after the child replies', () => {
+  const call = { ...tool('child-inspect', 'Read'), toolResult: { content: 'Inspectable file contents' } };
+  const element = (messages: ChatMessage[], running: boolean) => <FindShortcutProvider activeScope="chat">
+    <SubagentDetailMessageFlow messages={messages} provider="pilotdeck" selectedProject={null} createDiff={() => []} isRunning={running} />
+  </FindShortcutProvider>;
+  const view = render(element([call], true));
+  const toolToggle = view.container.querySelector('.tool-call > div > button')!;
+  fireEvent.click(toolToggle);
+  view.rerender(element([call, assistant('child-finished-inspection', 'Inspection complete.')], false));
+  expect(toolToggle.getAttribute('aria-expanded')).toBe('true');
+  expect(view.container.querySelector('[data-process-block] > button')?.getAttribute('aria-expanded')).toBe('true');
+  expect(view.container.querySelector('[data-turn-process-header] button')?.getAttribute('aria-expanded')).toBe('true');
+});

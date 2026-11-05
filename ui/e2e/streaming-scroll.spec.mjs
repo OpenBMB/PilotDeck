@@ -54,10 +54,9 @@ test('thinking keeps its reading position through tools and remains available in
   await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
   expect(await top(viewport(page))).toBeLessThanOrEqual(outerTop + 1);
   await page.evaluate(() => { window.streamFixture.finishTool(); window.streamFixture.text('Final answer.'); window.streamFixture.complete(); });
-  await page.locator('[data-turn-process-header] button').last().click();
+  await expect(page.locator('[data-turn-process-header] button').last()).toHaveAttribute('aria-expanded', 'true');
   const completedProcess = page.locator('[data-process-block] > button');
-  await expect(completedProcess).toHaveAttribute('aria-expanded', 'false');
-  await completedProcess.click();
+  await expect(completedProcess).toHaveAttribute('aria-expanded', 'true');
   await expect(thinking).toBeVisible();
   await expect(thinking).toContainText('Thinking line 45');
   await page.screenshot({ path: test.info().outputPath('thinking-reading-position.png') });
@@ -117,4 +116,54 @@ test('prepending virtualized history while streaming preserves the visible messa
   const finalY = await viewport(page).evaluate((node, key) => [...node.querySelectorAll('[data-message-key]')]
     .find((item) => item.dataset.messageKey === key)?.getBoundingClientRect().top, anchor.key);
   expect(Math.abs(finalY - anchor.y)).toBeLessThan(2);
+});
+
+test('automatic layout shrink and growth keep following without reader input', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => {
+    window.unwantedPauses = [];
+    const node = document.querySelector('[data-chat-search-surface]');
+    new MutationObserver(records => {
+      if (node.dataset.scrollFollowPaused === 'true' || records.some(r => r.oldValue === 'true')) window.unwantedPauses.push(true);
+    }).observe(node, { attributes: true, attributeFilter: ['data-scroll-follow-paused'], attributeOldValue: true });
+  });
+  for (let step = 0; step < 3; step++) {
+    await page.evaluate(text => window.streamFixture.think(text), lines(40 + step * 10));
+    await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+    await page.evaluate(id => window.streamFixture.tool(id), `layout-tool-${step}`);
+    await expect(page.locator('[data-thinking-state="completed"]').last()).toBeVisible();
+    await page.evaluate(id => window.streamFixture.finishTool(id), `layout-tool-${step}`);
+    await page.evaluate(text => window.streamFixture.text(text), `Progress ${step}.\n\n`.repeat(30));
+    await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+    await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'false');
+    await expect(page.getByRole('button', { name: 'Back to latest' })).toHaveCount(0);
+  }
+  await page.evaluate(() => { window.streamFixture.text('Final answer.'); window.streamFixture.complete(5000); });
+  await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+  expect(await page.evaluate(() => window.unwantedPauses)).toEqual([]);
+});
+
+test('manually opened tools keep their parents open and hold the reader through new replies', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => { window.streamFixture.beginTurn();
+    window.streamFixture.tool('inspect', 'read_file', { file_path: 'example.ts' });
+    window.streamFixture.finishTool('inspect', 'Inspectable contents.\n'.repeat(12)); });
+  const tool = page.locator('.tool-call[data-tool-id="inspect"] > div > button');
+  await tool.click();
+  const group = page.locator('[data-process-block] > button');
+  await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+  await page.waitForTimeout(300);
+  const readingY = await tool.evaluate(node => node.getBoundingClientRect().top);
+  await page.evaluate(() => window.streamFixture.text('A long follow-up response.\n\n'.repeat(70)));
+  await expect(group).toHaveAttribute('aria-expanded', 'true');
+  await expect(tool).toHaveAttribute('aria-expanded', 'true');
+  await page.waitForTimeout(700);
+  expect(Math.abs(await tool.evaluate(node => node.getBoundingClientRect().top) - readingY)).toBeLessThan(2);
+  await page.evaluate(() => window.streamFixture.complete(5000));
+  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'true');
+  await expect(group).toHaveAttribute('aria-expanded', 'true');
+  await expect(tool).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('button', { name: 'Back to latest' }).click();
+  await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+  await expect(tool).toHaveAttribute('aria-expanded', 'true');
 });

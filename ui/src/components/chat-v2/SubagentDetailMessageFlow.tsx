@@ -6,8 +6,10 @@ import { useScrollFollow } from '../chat/hooks/useScrollFollow';
 import type { Project, SessionProvider } from '../../types/app';
 import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
+import { expandingDisclosure } from '../chat/utils/disclosureInteraction';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRowV2 from './MessageRowV2';
+import { disclosureAncestorKeys } from './disclosureState';
 import { TurnFileFooter } from './TurnFileFooter';
 import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
 import { FileInputStatus } from './FileInputStatus';
@@ -188,7 +190,7 @@ export default function SubagentDetailMessageFlow({
       const item = keyedItems[match.messageIndex];
       if (item?.processRun) handleProcessExpandedChange(turnProcessKey("subagent", item.processRun), true);
       const trace = item?.turnTrace;
-      if (trace) handleProcessExpandedChange(`${trace.id}:${trace.defaultExpanded}`, true);
+      if (trace) handleProcessExpandedChange(`subagent:${trace.id}`, true);
     },
   });
 
@@ -242,7 +244,12 @@ export default function SubagentDetailMessageFlow({
         />
       ) : null}
       <div ref={scrollContainerRef} data-stream-scroll-viewport className="chat-panel-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden" style={{ overflowAnchor: 'none' }}>
-        <div data-chat-scroll-content className="flex min-w-0 flex-col px-6 py-4">
+        <div data-chat-scroll-content className="flex min-w-0 flex-col px-6 py-4" onClickCapture={event => {
+          const trigger = expandingDisclosure(event.target);
+          if (!trigger) return;
+          follow.pauseAt(trigger.closest<HTMLElement>('[data-message-key]')?.dataset.messageKey);
+          disclosureAncestorKeys(trigger, 'subagent').forEach(key => handleProcessExpandedChange(key, true));
+        }}>
           {keyedItems.map((item) => {
             const previousMessage = item.renderIndex > 0 ? keyedItems[item.renderIndex - 1].message : null;
             const nextMessage = item.renderIndex < keyedItems.length - 1
@@ -250,8 +257,8 @@ export default function SubagentDetailMessageFlow({
               : null;
 
             const rowContent = item.turnTrace ? <ProcessBlock trace={item.turnTrace}
-                    expanded={isProcessExpanded(`${item.turnTrace.id}:${item.turnTrace.defaultExpanded}`, item.turnTrace.defaultExpanded)}
-                    onExpandedChange={expanded => handleProcessExpandedChange(`${item.turnTrace!.id}:${item.turnTrace!.defaultExpanded}`, expanded)}>
+                    expanded={isProcessExpanded(`subagent:${item.turnTrace.id}`, item.turnTrace.defaultExpanded)}
+                    onExpandedChange={expanded => handleProcessExpandedChange(`subagent:${item.turnTrace!.id}`, expanded)}>
                     {renderLiveProcessDetailMessages(item.turnTrace.items.map(child => child.message))}
                     {item.turnTrace.isLive && filePreparations.map(activity => <FileInputStatus key={activity.activityId} activity={activity} />)}
                   </ProcessBlock> : item.mediaArtifact ? (

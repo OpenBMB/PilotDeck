@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import { expandingDisclosure } from '../utils/disclosureInteraction';
 
 const BOTTOM_EPSILON = 2;
 const VIEWPORT_SELECTOR = '[data-stream-scroll-viewport]';
@@ -160,6 +161,7 @@ export function useScrollFollow({
   const getIsPaused = useCallback(() => pausedRef.current, []);
   const pause = useCallback(() => setPaused(true), [setPaused]);
   const pauseAt = useCallback((messageKey?: string) => {
+    userScrollRef.current = null;
     setPaused(true);
     // A search hit may be nested deep inside one expanded process row. Keep
     // that message steady while the process above it finishes measuring.
@@ -250,6 +252,10 @@ export function useScrollFollow({
       }
     };
     const pointerUp = () => { if (userScrollRef.current?.dragging) userScrollRef.current = null; };
+    const click = (event: MouseEvent) => {
+      const trigger = expandingDisclosure(event.target);
+      if (trigger) pauseAt(trigger.closest<HTMLElement>('[data-message-key]')?.dataset.messageKey);
+    };
     const scroll = () => {
       const previous = metricsRef.current;
       const top = node.scrollTop;
@@ -263,10 +269,14 @@ export function useScrollFollow({
       programmaticTopRef.current = null;
       const layoutChanged = node.scrollHeight !== previous.height || node.clientHeight !== previous.viewport;
       if (userMoved || !layoutChanged) {
-        if (!userMoved && top < previous.top) setPaused(true);
-        else if (top > previous.top && atBottom()) scrollToBottom();
+        // Layout clamping, focus and our own writes also emit scroll events.
+        // Only an actual gesture can hand ownership back to automatic following.
+        if (userMoved && top > previous.top && atBottom()) scrollToBottom();
+        // Virtualized rows may correct their offsets without user input. Rebase
+        // geometry while retaining the existing reading/following ownership.
         if (pausedRef.current || !optionsRef.current.enabled) captureAnchor();
       }
+      if (!pausedRef.current && !atBottom()) scheduleFollow();
       rememberMetrics();
       publish();
     };
@@ -277,6 +287,7 @@ export function useScrollFollow({
     node.addEventListener('touchmove', touchMove, { capture: true, passive: true });
     node.addEventListener('keydown', keyDown, true);
     node.addEventListener('pointerdown', pointerDown, true);
+    node.addEventListener('click', click, true);
     window.addEventListener('pointerup', pointerUp);
     node.addEventListener('scroll', scroll, { passive: true });
     rememberMetrics();
@@ -288,10 +299,11 @@ export function useScrollFollow({
       node.removeEventListener('touchmove', touchMove, true);
       node.removeEventListener('keydown', keyDown, true);
       node.removeEventListener('pointerdown', pointerDown, true);
+      node.removeEventListener('click', click, true);
       window.removeEventListener('pointerup', pointerUp);
       node.removeEventListener('scroll', scroll);
     };
-  }, [containerRef, scopeKey, contentKey, acceptUserDisplacement, captureAnchor, rememberMetrics, publish, resumeOwnViewport, scrollToBottom, setPaused, updateAvailability]);
+  }, [containerRef, scopeKey, contentKey, acceptUserDisplacement, captureAnchor, rememberMetrics, publish, resumeOwnViewport, scrollToBottom, setPaused, updateAvailability, pauseAt, scheduleFollow]);
 
   useLayoutEffect(() => {
     const node = containerRef.current;

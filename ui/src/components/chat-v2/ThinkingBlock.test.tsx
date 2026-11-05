@@ -74,3 +74,12 @@ it('does not invent a duration for old history and clamps future timestamps', ()
   view.rerender(<ThinkingBlock content="New thought" isStreaming startedAt="2999-01-01T00:00:00Z" />);
   expect(screen.getByRole('button').textContent).toBe('Thinking for 0s');
 });
+
+it('retains a deliberately opened live thought when the model moves to its next step', () => {
+  const view = render(<ThinkingBlock content="Inspect this reasoning" isStreaming />);
+  const toggle = screen.getByRole('button');
+  fireEvent.click(toggle); fireEvent.click(toggle);
+  view.rerender(<ThinkingBlock content="Completed reasoning" isStreaming={false} durationMs={2000} />);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(toggle.textContent).toContain('Thought for 2s');
+});

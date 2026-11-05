@@ -318,7 +318,7 @@ test('file generation shows live path and size before writing, then opens a boun
   await expect(tool.locator('[data-file-preview-line]')).toHaveCount(400);
   await page.evaluate(() => { window.streamFixture.finishTool('write-large', 'Saved');
     window.streamFixture.text('File written successfully.'); window.streamFixture.complete(); });
-  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByText('File written successfully.', { exact: true })).toBeVisible();
 });
 

@@ -146,10 +146,10 @@ describe('reader-owned scroll following', () => {
     const { node, metrics } = setup();
     fireEvent.wheel(node, { deltaY: -30 });
     node.scrollTop = 770; fireEvent.scroll(node);
-    node.scrollTop = 790; fireEvent.scroll(node);
+    fireEvent.wheel(node, { deltaY: 20 }); node.scrollTop = 790; fireEvent.scroll(node);
     resize(); flush();
     expect(node.scrollTop).toBe(790);
-    node.scrollTop = 800; fireEvent.scroll(node);
+    fireEvent.wheel(node, { deltaY: 20 }); node.scrollTop = 800; fireEvent.scroll(node);
     metrics.height += 40;
     resize(); flush();
     expect(node.scrollTop).toBe(840);
@@ -225,4 +225,44 @@ describe('reader-owned scroll following', () => {
     view.unmount();
     expect(frames.size).toBe(0);
   });
+});
+
+it.each(['resize-first', 'scroll-first'])('keeps following layout-only clamping without user input (%s)', order => {
+  const { node, metrics } = setup();
+  metrics.height = 700;
+  node.scrollTop = 500;
+  if (order === 'resize-first') { resize(); flush(); }
+  fireEvent.scroll(node);
+  metrics.height = 1200;
+  resize(); flush();
+  expect(api.isPaused).toBe(false);
+  expect(api.canReturnToLatest).toBe(false);
+  expect(node.scrollTop).toBe(1000);
+});
+
+it('ignores non-user upward scroll events after layout measurements have settled', () => {
+  const { node, metrics } = setup();
+  node.scrollTop = 680;
+  fireEvent.scroll(node);
+  resize(); flush();
+  expect(api.isPaused).toBe(false);
+  expect(node.scrollTop).toBe(metrics.height - metrics.viewport);
+});
+
+it('pauses before intentional disclosure expansion and retains that ownership through layout changes', () => {
+  const { node, metrics } = setup();
+  const row = node.querySelector('[data-message-key="reading"]')!;
+  const button = document.createElement('button');
+  button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', 'details');
+  row.append(button);
+  fireEvent.click(button);
+  expect(api.isPaused).toBe(true);
+  metrics.height += 500;
+  resize(); flush();
+  expect(node.scrollTop).toBe(800);
+  act(() => api.scrollToBottom());
+  metrics.height += 50;
+  resize(); flush();
+  expect(node.scrollTop).toBe(1350);
+  expect(api.isPaused).toBe(false);
 });

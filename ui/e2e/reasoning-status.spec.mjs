@@ -9,13 +9,13 @@ test('reasoning clocks open automatically, freeze at the next step, and share to
   await expect(page.getByRole('region', { name: 'Live thinking content' })).toBeVisible();
   await page.clock.runFor(3100);
   await expect(thinking).toHaveText('Thinking for 3s');
-  await thinking.focus();
-  await page.keyboard.press('Enter');
-  await expect(thinking).toHaveAttribute('aria-expanded', 'false');
-  await page.keyboard.press('Enter');
   await page.evaluate(() => window.streamFixture.tool());
   const finished = page.getByRole('button', { name: 'Thought for 3s', exact: true });
   await expect(finished).toHaveAttribute('aria-expanded', 'false');
+  await finished.focus();
+  await page.keyboard.press('Enter');
+  await expect(finished).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Enter');
   await page.clock.runFor(10000);
   await expect(finished).toHaveText('Thought for 3s');
   await page.evaluate(() => { window.streamFixture.finishTool(); window.streamFixture.think('Check the result.'); });

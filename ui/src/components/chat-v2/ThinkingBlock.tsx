@@ -14,12 +14,12 @@ export function ThinkingBlock({ content, isStreaming, startedAt, durationMs, inl
   projectName?: string;
   onFileOpen?: (path: string) => void;
 }) {
-  // Phase changes reset the default; token updates preserve manual toggles.
+  // Phase defaults follow streaming; deliberate openings remain pinned.
   const [view, setView] = useState(() => ({ streaming: isStreaming, expanded: isStreaming,
-    observedStart: isStreaming ? Date.now() : undefined, stoppedAt: undefined as number | undefined }));
+    pinnedOpen: false, observedStart: isStreaming ? Date.now() : undefined, stoppedAt: undefined as number | undefined }));
   let phase = view;
   if (view.streaming !== isStreaming) {
-    phase = { streaming: isStreaming, expanded: isStreaming,
+    phase = { streaming: isStreaming, expanded: view.pinnedOpen || isStreaming, pinnedOpen: view.pinnedOpen,
       observedStart: isStreaming ? Date.now() : view.observedStart,
       stoppedAt: isStreaming ? undefined : Date.now() };
     setView(phase);
@@ -52,7 +52,7 @@ export function ThinkingBlock({ content, isStreaming, startedAt, durationMs, inl
         type="button"
         aria-expanded={expanded}
         aria-controls={contentId}
-        onClick={() => setView({ ...phase, expanded: !expanded })}
+        onClick={() => setView({ ...phase, expanded: !expanded, pinnedOpen: !expanded })}
         className="chat-process-trigger hover-brand-text"
       >
         <Brain aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${isStreaming ? 'motion-safe:animate-pulse' : ''}`} strokeWidth={1.8} />

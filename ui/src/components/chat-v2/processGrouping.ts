@@ -1001,7 +1001,7 @@ export function getTurnProcessMemberId(item: RenderableMessageItem): string {
 }
 
 export function turnProcessKey(scope: string, group: TurnProcessGroup) {
-  return `${scope}:${group.id}:${group.defaultExpanded}`;
+  return `${scope}:${group.id}`;
 }
 
 export function turnProcessRegionId(scope: string, group: TurnProcessGroup, member: string) {

@@ -18,7 +18,9 @@ import { getSessionRequestParams, isReadOnlySession, type Project, type ProjectS
 import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
+import { expandingDisclosure } from '../chat/utils/disclosureInteraction';
 import MessageRowV2 from './MessageRowV2';
+import { disclosureAncestorKeys } from './disclosureState';
 import { TurnFileFooter } from './TurnFileFooter';
 import { useLiveReplyKeys } from './useLiveReplyKeys';
 import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
@@ -967,8 +969,8 @@ function MessagesPaneV2({
 
     const rowContent = item.turnTrace ? (
             <ProcessBlock trace={item.turnTrace}
-              expanded={isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}:${item.turnTrace.defaultExpanded}`, item.turnTrace.defaultExpanded)}
-              onExpandedChange={expanded => handleProcessExpandedChange(`${messageWindowScope}:${item.turnTrace!.id}:${item.turnTrace!.defaultExpanded}`, expanded)}>
+              expanded={isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}`, item.turnTrace.defaultExpanded)}
+              onExpandedChange={expanded => handleProcessExpandedChange(`${messageWindowScope}:${item.turnTrace!.id}`, expanded)}>
               {item.turnTrace.items.map(child => {
                 const childKey = `${messageWindowScope}:${getMessageKey(child.message, child.originalIndex)}`;
                 return <div key={childKey} className="chat-message" data-message-key={childKey}>{renderRow(child, true)}</div>;
@@ -1053,7 +1055,7 @@ function MessagesPaneV2({
     const item = keyedMessageItems[match.messageIndex];
     if (item?.processRun) handleProcessExpandedChange(turnProcessKey(messageWindowScope, item.processRun), true);
     const trace = item?.turnTrace;
-    if (trace) handleProcessExpandedChange(`${messageWindowScope}:${trace.id}:${trace.defaultExpanded}`, true);
+    if (trace) handleProcessExpandedChange(`${messageWindowScope}:${trace.id}`, true);
   }, [onPauseScroll, keyedMessageItems, messageWindowScope, handleProcessExpandedChange]);
   const chatHistorySearch = useChatHistorySearch({
     scrollContainerRef,
@@ -1218,6 +1220,12 @@ function MessagesPaneV2({
         <div
           className="mx-auto max-w-[860px] px-6 py-10"
           data-chat-scroll-content
+          onClickCapture={event => {
+            const trigger = expandingDisclosure(event.target);
+            if (!trigger) return;
+            onPauseScroll?.(trigger.closest<HTMLElement>('[data-message-key]')?.dataset.messageKey);
+            disclosureAncestorKeys(trigger, messageWindowScope).forEach(key => handleProcessExpandedChange(key, true));
+          }}
           data-virtualized-messages={shouldVirtualizeMessages ? 'true' : undefined}
           data-rendered-message-count={windowedMessageItems.length}
           data-total-message-count={keyedMessageItems.length}

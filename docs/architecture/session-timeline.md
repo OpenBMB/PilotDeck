@@ -71,18 +71,25 @@ There is deliberately no client reconstruction of a provider response from its
 text. Legacy records/frames use the old adapter at the boundary. Runtime status
 rows do not place new-protocol content. Thinking renders received content
 without an additional typewriter. Reasoning opens automatically while streaming and collapses smoothly when its
-phase ends. Manual toggles survive token updates. Continuous reasoning and tool
+phase ends, unless the user deliberately keeps it open. Manual choices survive
+new output and completion. Opening a child also retains its process/turn ancestors.
+Continuous reasoning and tool
 calls share a stable process seat between visible assistant replies; the next
-reply closes that seat. On successful turn completion, one measured process
+reply closes that seat by default. On successful turn completion, one measured process
 header folds all intermediate prose, reasoning, tool calls and answered questions
 in their original order. Only the final assistant reply and delivered media stay
 visible. Reopening restores the same seats and their disclosure state without
-reparenting content or replaying its text animation.
+reparenting content or replaying its text animation. Explicitly inspected work
+stays open until the user closes it.
 Interrupted work and pending interactive prompts remain accessible. Disclosures
 retain mounted content after opening, use inert hidden subtrees, and respect
 reduced motion. Conversation scrollbars reserve their gutter, and disclosure
 columns constrain intrinsic content widths so expansion never shifts the transcript
 horizontally. All process and tool disclosures animate in both directions.
+Scroll following pauses on explicit upward wheel, touch, keyboard or scrollbar
+input, disclosure opening, search or turn navigation. Layout-driven scroll events
+and browser clamping do not transfer ownership. A paused reader keeps an anchor;
+scrolling down to the bottom or choosing Return to latest resumes following.
 The localized status shows elapsed seconds while live and the measured
 duration after completion. Legacy history without timing shows a completed label
 without a guessed duration. Reasoning and tool summaries share row metrics and
