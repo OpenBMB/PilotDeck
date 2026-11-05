@@ -7,21 +7,22 @@ Search settings live at tools.webSearch. GET/PUT `/api/config` and POST `/api/co
 | Field | Contract |
 | --- | --- |
 | enabled | Explicit false disables the tool and skips validation of inactive search subfields |
-| provider | glm, tavily, custom, serper or brave |
+| provider | deepseek, glm, tavily, serper, brave, baidu, bocha, exa, serpapi or custom |
 | providers.<provider> | Separate saved apiKey, endpoint, searchEngine and customProvider per provider |
+| searchEngine | SerpAPI engine, default google, with bing, baidu, duckduckgo, yahoo and yandex also supported |
 | apiKey | Legacy/current provider key, masked on read; environment injection remains supported |
 | endpoint | Optional built-in endpoint override; must be HTTP(S); custom requires one at runtime/test time |
 | customProvider | Request/auth/result mapping for custom services |
 
 Switching providers preserves other saved entries. Existing per-provider values take precedence over legacy top-level fields; form editing migrates legacy values into their original provider. Mask reuse requires matching provider, endpoint and authentication scope for both saving and probing.
 
-Unknown fields warn; malformed providers and active non-HTTP(S) endpoints are fatal. Inactive raw YAML is retained by the general configuration layer. An explicit provider wins. Without one, runtime selects the first available environment credential in this order: TAVILY_API_KEY, GLM_WEB_SEARCH_API_KEY, ZAI_API_KEY, SERPER_API_KEY, BRAVE_API_KEY, CUSTOM_WEB_SEARCH_API_KEY.
+Unknown fields warn. Malformed providers and active non-HTTP(S) endpoints are fatal. Inactive raw YAML is retained by the general configuration layer. An explicit provider wins. A legacy key without a provider defaults to glm. Otherwise the first available environment credential follows the order in [resolveProvider](../../src/tool/builtin/webSearch.ts). Supported IDs and SerpAPI engines are defined by the shared [provider registry](../../src/pilot/config/webSearchProviders.ts).
 
 Custom mapping defaults: name=custom, auth=bearer (also bodyApiKey/queryApiKey/none), method=POST (or GET), queryParam=query, apiKeyParam=api_key, empty resultsPath for common-field fallback, and title/url/snippet/source/publishedAt field names. See the provider reference for request examples.
 
 ## Connectivity probe
 
-`POST /api/config/test-web-search` accepts provider, apiKey, endpoint and optional customProvider. Omitted provider defaults to glm for this compatibility endpoint. A `********` key may resolve the caller's saved credential only in the same provider/endpoint/auth scope; changes require a new key. Never return the key.
+`POST /api/config/test-web-search` accepts provider, apiKey, endpoint, optional customProvider and optional searchEngine. Omitted provider defaults to glm for this compatibility endpoint. A `********` key may resolve the caller's saved credential only in the same provider/endpoint/auth scope. Changes require a new key. Responses redact the key.
 
 The server probes the fixed query hello, with a 15-second timeout and at most two network retries. Each request is independent. It writes no configuration and creates no persistent test ID or result binding.
 
