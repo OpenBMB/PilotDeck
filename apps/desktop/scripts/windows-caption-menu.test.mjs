@@ -78,14 +78,13 @@ test('repeated close during native completion cannot cancel deferred settlement 
   const { controller, menus, sent } = fixture(t);
   let settled = false;
   const session = controller.show({ id: 'menu-file' }).then(() => { settled = true; });
-  controller.close();
-  controller.close();
+  const closings = [controller.close(), controller.close()];
   assert.equal(menus[0].closes, 1);
   await menus[0].finish();
   controller.close();
   assert.equal(settled, false);
   await tick();
-  await session;
+  await Promise.all([session, ...closings]);
   assert.deepEqual(sent.map(([, id]) => id), ['menu-file', null]);
 });
 
@@ -124,4 +123,10 @@ test('destroying the owner cancels a queued replacement and settles all requests
   await Promise.all(sessions);
   assert.equal(menus.length, 1);
   assert.deepEqual(sent.map(([, id]) => id), ['menu-file']);
+});
+
+test('closing an idle controller acknowledges immediately without opening a popup', async t => {
+  const { controller, menus } = fixture(t);
+  await controller.close();
+  assert.equal(menus.length, 0);
 });

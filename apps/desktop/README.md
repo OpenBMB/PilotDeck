@@ -26,7 +26,7 @@ Development and packaging prepare an architecture-matched runtime and pinned nat
 
 Closing the window keeps background work running when a supported tray is available. Explicit Quit stops owned processes; updater failure must restore a working runtime. Do not terminate unrelated user processes.
 
-Caption menus retain each native popup through deferred close completion. Renderer acknowledgements and queued menu switches resume after the native close callback exits; repeated close requests do not cancel that settlement.
+Caption menus retain each native popup through deferred close completion. `close()` stops hover tracking and returns a promise that resolves after native teardown. Renderer acknowledgements and queued menu switches resume after the native close callback exits; repeated close requests do not cancel that settlement. Native acceptance controls popup closure through renderer IPC and reads main-process debugger state after dismissal.
 
 Notifications follow application preferences and OS policy. Windows uses native Toasts without numeric app badges. Supported app badges count background tasks and clear when the main window gains focus; conversation unread state is independent.
 

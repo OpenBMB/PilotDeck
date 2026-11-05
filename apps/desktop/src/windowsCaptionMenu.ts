@@ -48,12 +48,16 @@ export class WindowsCaptionMenu {
     return result;
   }
 
-  close(): void {
+  close(): Promise<void> {
+    const result = new Promise<void>(resolve => this.completions.push(resolve));
     this.pending = undefined;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
     if (this.popup && !this.closing) {
       this.closing = true;
       this.popup.closePopup(this.owner);
     } else if (!this.popup) this.finish();
+    return result;
   }
 
   private switchTo(id: string | null): void {

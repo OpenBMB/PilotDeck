@@ -214,17 +214,21 @@ try {
     const menuCycle = [['File', 'menu-file'], ['Edit', 'menu-edit'], ['View', 'menu-view']];
     // Exercise repeated native teardown before reusing the same caption entries.
     for (const [label, id] of [...menuCycle, ...menuCycle, ...menuCycle]) {
+      console.log(`[desktop-chrome] opening native ${id}`);
       await caption.getByRole('button', { name: label, exact: true }).click();
-      await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe(id);
       await expect(caption.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-expanded', 'true');
-      await app.evaluate(() => global.chromeTest.closeMenu());
+      // Avoid main-process debugger evaluation inside the native popup loop.
+      // Renderer IPC acknowledges closure after the native teardown completes.
+      await page.evaluate(() => window.pilotdeckChromeFixture.closeMenu());
       // Native closePopup completes asynchronously (notably GTK/X11). Wait for
       // the real close callback and renderer state before the next mouse click.
       await expect(caption.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-expanded', 'false');
+      await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe(id);
+      console.log(`[desktop-chrome] closed native ${id}`);
     }
     await page.keyboard.press('F10');
+    await page.evaluate(() => window.pilotdeckChromeFixture.closeMenu());
     await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe('all');
-    await app.evaluate(() => global.chromeTest.closeMenu());
     await expect(page.locator('#pilotdeck-linux-popup')).toHaveCount(0);
   }
   const command = async id => {

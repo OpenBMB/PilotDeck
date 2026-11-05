@@ -83,3 +83,19 @@ it('cancels pending transitions when navigating away and rejects unknown menus',
   expect(f.popups).toHaveLength(1);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('explicit close stops native hover tracking and acknowledges only deferred settlement', async () => {
+  const f = fixture();
+  const shown = f.controller.show({ id: 'menu-file', buttons: f.buttons });
+  let closed = false;
+  const closing = f.controller.close().then(() => { closed = true; });
+  f.move(185, 110);
+  expect(f.popups[0].closePopup).toHaveBeenCalledOnce();
+  f.popups[0].options.callback();
+  expect(closed).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);
+  await Promise.all([shown, closing]);
+  expect(closed).toBe(true);
+  expect(f.popups).toHaveLength(1);
+  expect(vi.getTimerCount()).toBe(0);
+});
