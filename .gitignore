@@ -152,13 +152,9 @@ artifacts/
 !src/session/artifacts/
 !src/session/artifacts/**
 
-# Raw .mov source files at the assets/ root (only the derived .gif
-# README assets are tracked; the .mov originals stay local).
-assets/*.mov
-
-# Locally regenerated demo video — kept out of the repo so each
-# re-export doesn't churn a 50MB blob.
-assets/result/ios_game_result.mp4
+# Track the GIFs used by the READMEs; keep source recordings and video exports local.
+/assets/**/*.mov
+/assets/**/*.mp4
 
 # third-party
 third-party/

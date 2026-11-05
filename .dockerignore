@@ -11,6 +11,9 @@ design-qa.md
 .pilotdeck/
 .playwright-mcp/
 .cursor/
+# README source recordings are not application build inputs.
+/assets/**/*.mov
+/assets/**/*.mp4
 Auto-Research-Skills/
 # Keep Electron packages and build outputs out of the Web image. The UI uses
 # these environment-independent appearance/startup contracts during its build.
