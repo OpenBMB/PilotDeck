@@ -28,6 +28,7 @@ import ConversationError from '../chat/view/subcomponents/ConversationError';
 import ImageLightbox, { type LightboxImage } from '../chat/view/subcomponents/ImageLightbox';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { formatUsageLimitText } from '../chat/utils/chatFormatting';
+import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import { useUploadedAttachmentPreviews } from '../chat/hooks/useUploadedAttachmentPreviews';
 import { ProcessTrace } from './ProcessTrace';
 import { isSingleToolProcess, processSummaryToTrace, type ProcessAttachment } from './processGrouping';
@@ -101,6 +102,7 @@ type MessageRowV2Props = {
   showThinking?: boolean;
   inlineThinking?: boolean;
   animateTextOnMount?: boolean;
+  presentedReplyKeys?: Set<string>;
   isProcessExpanded?: (processKey: string, defaultExpanded?: boolean) => boolean;
   onProcessExpandedChange?: (processKey: string, expanded: boolean) => void;
   isToolSectionExpanded?: (sectionKey: string, defaultExpanded?: boolean) => boolean;
@@ -147,6 +149,7 @@ function MessageRowV2({
   showThinking,
   inlineThinking,
   animateTextOnMount = false,
+  presentedReplyKeys,
   isProcessExpanded,
   onProcessExpandedChange,
   isToolSectionExpanded,
@@ -170,7 +173,14 @@ function MessageRowV2({
     () => formatUsageLimitText(String(message.content ?? '')),
     [message.content],
   );
-  const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6, animateTextOnMount);
+  const replyKey = getIntrinsicMessageKey(message);
+  const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6,
+    animateTextOnMount, Boolean(replyKey && presentedReplyKeys?.has(replyKey)));
+  useEffect(() => {
+    // Virtual rows may unmount while the run continues. Their next mount must
+    // show the available text immediately instead of collapsing and replaying it.
+    if (replyKey && message.type === 'assistant' && !message.isThinking && !delegate) presentedReplyKeys?.add(replyKey);
+  }, [replyKey, message.type, message.isThinking, delegate, presentedReplyKeys]);
   const assistantArtifacts = useMemo(
     () => (Array.isArray(message.artifacts) ? message.artifacts : []),
     [message.artifacts],

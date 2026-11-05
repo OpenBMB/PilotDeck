@@ -569,6 +569,9 @@ function MessagesPaneV2({
     [visibleMessages, showThinking],
   );
   const liveReplyKeys = useLiveReplyKeys(renderableMessages, isAssistantWorking, messageWindowScope);
+  const { keys: presentedReplyKeys } = useMemo(() => ({
+    scope: messageWindowScope, keys: new Set<string>(),
+  }), [messageWindowScope]);
   const renderableMessageItems = useMemo(
     () => groupProcessIntervals(renderableMessages,
       buildRenderableMessageItems(renderableMessages, { isAssistantWorking }), isAssistantWorking),
@@ -981,6 +984,7 @@ function MessagesPaneV2({
       <MessageRowV2
         message={rowItem.message}
         animateTextOnMount={liveReplyKeys.has(getIntrinsicMessageKey(rowItem.message) || "")}
+        presentedReplyKeys={presentedReplyKeys}
         prevMessage={previousMessage}
         nextMessage={nextMessage}
         beforeProcessAttachments={rowItem.beforeProcessAttachments}
@@ -1076,6 +1080,7 @@ function MessagesPaneV2({
     sessionRuntimeState,
     keyedMessageItems,
     liveReplyKeys,
+    presentedReplyKeys,
     filePreparations,
     renderableMessages,
     liveProcessHeaderIndex,

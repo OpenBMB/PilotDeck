@@ -190,6 +190,11 @@ rendering, not disk replay cost.
 Loaded messages are not truncated by raw message count. Virtual rows retain
 stable identities, bound the mounted DOM, preserve the reading anchor on
 prepend, and invalidate offscreen heights when their disclosure layout changes.
+Replies already presented in the current conversation restore their available
+text immediately after virtual remount; only new output animates. Earlier replies
+first encountered by scrolling also render immediately, avoiding repeated text
+reveal, height changes and Markdown parsing during navigation. Reading-anchor
+restoration reuses its mounted row and reacquires it when virtualization replaces it.
 The live reply reserve transitions to zero when execution stops, preventing a
 permanent empty tail after short or interrupted replies.
 

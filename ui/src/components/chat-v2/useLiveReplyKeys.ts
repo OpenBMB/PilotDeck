@@ -14,7 +14,12 @@ export function useLiveReplyKeys(messages: ChatMessage[], working: boolean, scop
       const key = getIntrinsicMessageKey(message);
       if (key && !previous.has(key) && message.type === 'assistant' && !message.isThinking
         && !message.isToolUse && !message.isSubagentContainer && !message.isInteractivePrompt
-        && !message.isAgentActivity && !message.isAgentActivitySummary && !message.isTaskNotification) animated.add(key);
+        && !message.isAgentActivity && !message.isAgentActivitySummary && !message.isTaskNotification) {
+        // Mounted replies finish their own animation. Replies first encountered
+        // later by scrolling are history, even when they arrived during this run.
+        animated.clear();
+        animated.add(key);
+      }
     }
   }
   setSnapshot({ messages, working, scope, animated });

@@ -53,6 +53,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it('reuses the reading row across updates and reacquires it after virtual remount', () => {
+    const { node, metrics } = setup();
+    let inserted = 0;
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 750 + inserted - metrics.top, bottom: 1000 + inserted - metrics.top }) as DOMRect;
+    act(() => api.pauseAt('reading'));
+    const queries = vi.spyOn(node, 'querySelectorAll');
+    inserted = 40; metrics.height += 40;
+    resize();
+    expect(node.scrollTop).toBe(840);
+    expect(queries.mock.calls.filter(([selector]) => selector === '[data-message-key]')).toHaveLength(0);
+    const replacement = row.cloneNode(true) as HTMLElement;
+    replacement.getBoundingClientRect = row.getBoundingClientRect;
+    row.replaceWith(replacement);
+    inserted = 90; metrics.height += 50;
+    resize();
+    expect(node.scrollTop).toBe(890);
+    expect(queries.mock.calls.filter(([selector]) => selector === '[data-message-key]')).toHaveLength(1);
+    queries.mockRestore();
+  });
   it('anchors a search result inside an expanded process while content above the result resizes', () => {
     const { node, metrics } = setup();
     const process = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;

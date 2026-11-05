@@ -25,6 +25,17 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('stream text presentation', () => {
+  it.each([false, true])('restores a virtual reply immediately and animates only later output (streaming=%s)', streaming => {
+    const previous = 'Already presented. '.repeat(80);
+    const view = renderHook(({ text }) => useTypewriter(text, streaming, 6, true, true), { initialProps: { text: previous } });
+    expect(view.result.current).toBe(previous);
+    expect(frames.size).toBe(0);
+    const next = previous + 'New output. '.repeat(40);
+    view.rerender({ text: next });
+    expect(view.result.current).toBe(previous);
+    advance(1000);
+    expect(view.result.current).toBe(next);
+  });
   it('reveals a new live reply when its text and completion arrive in the same render', () => {
     const fullText = 'x'.repeat(1000);
     const view = renderHook(() => useTypewriter(fullText, false, 6, true));

@@ -33,6 +33,7 @@ export function useScrollFollow({
   const frameRef = useRef<number | null>(null);
   const initialFrameRef = useRef(false);
   const anchorRef = useRef<ReadingAnchor | null>(null);
+  const anchorElementRef = useRef<HTMLElement | null>(null);
   const metricsRef = useRef({ top: 0, height: 0, viewport: 0 });
   const programmaticTopRef = useRef<number | null>(null);
   const userScrollRef = useRef<UserScroll | null>(null);
@@ -68,10 +69,17 @@ export function useScrollFollow({
     const node = containerRef.current;
     if (!node || !contentSelector) return;
     const top = node.getBoundingClientRect().top;
-    const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-message-key]'));
-    const row = (typeof messageKey === 'string' ? rows.find(item => item.dataset.messageKey === messageKey) : undefined)
-      ?? rows.find(item => item.getBoundingClientRect().bottom > top);
-    anchorRef.current = row ? { key: row.dataset.messageKey!, offset: row.getBoundingClientRect().top - top } : null;
+    const rows = node.querySelectorAll<HTMLElement>('[data-message-key]');
+    let row: HTMLElement | undefined;
+    let rect: DOMRect | undefined;
+    if (typeof messageKey === 'string') row = Array.from(rows).find(item => item.dataset.messageKey === messageKey);
+    if (row) rect = row.getBoundingClientRect();
+    else for (const candidate of rows) {
+      const bounds = candidate.getBoundingClientRect();
+      if (bounds.bottom > top) { row = candidate; rect = bounds; break; }
+    }
+    anchorElementRef.current = row ?? null;
+    anchorRef.current = row && rect ? { key: row.dataset.messageKey!, offset: rect.top - top } : null;
     if (row) node.dataset.readingAnchorKey = row.dataset.messageKey;
     else delete node.dataset.readingAnchorKey;
   }, [containerRef, contentSelector]);
@@ -80,8 +88,12 @@ export function useScrollFollow({
     const node = containerRef.current;
     const anchor = anchorRef.current;
     if (!node || !anchor) return;
-    const row = Array.from(node.querySelectorAll<HTMLElement>('[data-message-key]'))
-      .find((item) => item.dataset.messageKey === anchor.key);
+    let row = anchorElementRef.current;
+    if (!row || row.dataset.messageKey !== anchor.key || !node.contains(row)) {
+      row = Array.from(node.querySelectorAll<HTMLElement>('[data-message-key]'))
+        .find((item) => item.dataset.messageKey === anchor.key) ?? null;
+      anchorElementRef.current = row;
+    }
     if (!row) return;
     const delta = row.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.offset;
     if (Math.abs(delta) > 0.5) {
@@ -111,6 +123,7 @@ export function useScrollFollow({
       captureAnchor();
     } else {
       anchorRef.current = null;
+      anchorElementRef.current = null;
       if (containerRef.current) delete containerRef.current.dataset.readingAnchorKey;
     }
     publish();
@@ -206,6 +219,7 @@ export function useScrollFollow({
   useLayoutEffect(() => {
     cancelFollow();
     anchorRef.current = null;
+    anchorElementRef.current = null;
     if (containerRef.current) delete containerRef.current.dataset.readingAnchorKey;
     programmaticTopRef.current = null;
     userScrollRef.current = null;
@@ -292,22 +306,21 @@ export function useScrollFollow({
         return;
       }
       programmaticTopRef.current = null;
-      const layoutChanged = node.scrollHeight !== previous.height || node.clientHeight !== previous.viewport;
-      if (userMoved || !layoutChanged) {
-        // Layout clamping, focus and our own writes also emit scroll events.
-        // Only an actual gesture can hand ownership back to automatic following.
-        if (userMoved && top > previous.top && atBottom()) scrollToBottom();
-        // Virtualized measurement writes must not replace a saved reading
-        // offset before its row settles. Navigation captures its target
-        // explicitly; only a new reader gesture chooses another anchor here.
-        if (userMoved && (pausedRef.current || !optionsRef.current.enabled)) captureAnchor();
-      }
+      // Layout clamping, focus and our own writes also emit scroll events.
+      // Only an actual gesture can hand ownership back to automatic following.
+      if (userMoved && top > previous.top && atBottom()) scrollToBottom();
+      // acceptUserDisplacement already captured the new reading position.
+      // Measurement writes must not replace it before its virtual row settles.
       if (!pausedRef.current && !atBottom()) scheduleFollow();
       rememberMetrics();
       publish();
     };
     controllers.set(node, { resume: resumeOwnViewport });
-    node.addEventListener(FOLLOW_CHANGE, updateAvailability);
+    const nestedFollowChanged = (event: Event) => {
+      // publish already updated this viewport; only nested controllers need a rescan.
+      if (event.target !== node) updateAvailability();
+    };
+    node.addEventListener(FOLLOW_CHANGE, nestedFollowChanged);
     node.addEventListener(LAYOUT_CHANGE, layout);
     node.addEventListener('wheel', wheel, { capture: true, passive: true });
     node.addEventListener('touchstart', touchStart, { capture: true, passive: true });
@@ -320,7 +333,7 @@ export function useScrollFollow({
     rememberMetrics();
     return () => {
       controllers.delete(node);
-      node.removeEventListener(FOLLOW_CHANGE, updateAvailability);
+      node.removeEventListener(FOLLOW_CHANGE, nestedFollowChanged);
       node.removeEventListener(LAYOUT_CHANGE, layout);
       node.removeEventListener('wheel', wheel, true);
       node.removeEventListener('touchstart', touchStart, true);

@@ -18,6 +18,9 @@ it('animates only new live replies, including a batched final frame, and resets 
   view.rerender({ messages: [earlier, history, reply], working: false, scope: 'a' });
   expect(view.result.current.has(getIntrinsicMessageKey(reply)!)).toBe(true);
   expect(view.result.current.has(getIntrinsicMessageKey(history)!)).toBe(false);
+  const latest = { ...reply, id: 'latest' };
+  view.rerender({ messages: [earlier, history, reply, latest], working: true, scope: 'a' });
+  expect([...view.result.current]).toEqual([getIntrinsicMessageKey(latest)]);
   view.rerender({ messages: [reply], working: false, scope: 'b' });
   expect(view.result.current.size).toBe(0);
 });
