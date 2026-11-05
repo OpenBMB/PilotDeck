@@ -138,7 +138,11 @@ test('historical sessions open at the bottom with auto follow disabled and prese
     return row ? row.getBoundingClientRect().top - node.getBoundingClientRect().top : -100000;
   }, anchor.key)).toBeCloseTo(anchor.offset, 0);
   await outer(page).hover({ position: { x: 60, y: 300 } });
+  const beforeWheel = await top(outer(page));
   await page.mouse.wheel(0, -150);
+  // wheel() dispatches input without waiting for Chromium to scroll. Capture
+  // the revisit anchor after that displacement, not the previous visible row.
+  await expect.poll(() => top(outer(page))).toBeLessThan(beforeWheel - 100);
   await expect(latest(page)).toBeVisible();
   const reading = await outer(page).evaluate((node) => {
     const edge = node.getBoundingClientRect().top;

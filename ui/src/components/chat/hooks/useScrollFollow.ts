@@ -5,13 +5,16 @@ import { expandingDisclosure } from '../utils/disclosureInteraction';
 const BOTTOM_EPSILON = 2;
 const VIEWPORT_SELECTOR = '[data-stream-scroll-viewport]';
 const FOLLOW_CHANGE = 'stream-scroll-follow-change';
+const LAYOUT_CHANGE = 'stream-scroll-layout-change';
+/** Virtual rows can redistribute height while the content's total stays equal. */
+export function notifyScrollLayout(node: HTMLElement) { node.dispatchEvent(new Event(LAYOUT_CHANGE)); }
 const controllers = new WeakMap<HTMLElement, { resume: () => void }>();
 export type ReadingAnchor = { key: string; offset: number };
 type UserScroll = { top: number; direction: number; dragging?: boolean };
 
 /** Keep user intent, viewport geometry, and the return-to-latest affordance separate. */
 export function useScrollFollow({
-  containerRef, enabled = true, scopeKey, contentKey, contentSelector, canFollow,
+  containerRef, enabled = true, scopeKey, contentKey, contentSelector, canFollow, initialPositionKey,
 }: {
   containerRef: RefObject<HTMLDivElement | null>;
   enabled?: boolean;
@@ -19,13 +22,14 @@ export function useScrollFollow({
   contentKey?: unknown;
   contentSelector?: string;
   canFollow?: () => boolean;
+  initialPositionKey?: unknown;
 }) {
   const [isPaused, setIsPaused] = useState(false);
   const [canReturnToLatest, setCanReturnToLatest] = useState(false);
   const [hasOverflow, setHasOverflow] = useState(false);
   const pausedRef = useRef(false);
-  const optionsRef = useRef({ enabled, canFollow });
-  optionsRef.current = { enabled, canFollow };
+  const optionsRef = useRef({ enabled, canFollow, initialPositionKey });
+  optionsRef.current = { enabled, canFollow, initialPositionKey };
   const frameRef = useRef<number | null>(null);
   const initialFrameRef = useRef(false);
   const anchorRef = useRef<ReadingAnchor | null>(null);
@@ -144,18 +148,33 @@ export function useScrollFollow({
   }, [containerRef, captureAnchor, rememberMetrics, publish]);
 
   const queuePosition = useCallback((initial: boolean) => {
+    const initialKey = optionsRef.current.initialPositionKey;
     const allowed = () => !pausedRef.current
+      && (!initial || optionsRef.current.initialPositionKey === initialKey)
       && (initial || optionsRef.current.enabled) && (optionsRef.current.canFollow?.() ?? true);
     if (!allowed()) return;
     if (initial) cancelFollow();
     if (frameRef.current !== null) return;
     initialFrameRef.current = initial;
-    frameRef.current = requestAnimationFrame(() => {
+    let previousSize = '';
+    let stableFrames = 0;
+    let attempts = 0;
+    const position = () => {
       frameRef.current = null;
-      initialFrameRef.current = false;
-      if (allowed()) writeBottom();
-    });
-  }, [cancelFollow, writeBottom]);
+      if (!allowed()) { initialFrameRef.current = false; return; }
+      writeBottom();
+      const node = containerRef.current;
+      const size = `${node?.scrollHeight}:${node?.clientHeight}`;
+      stableFrames = size === previousSize ? stableFrames + 1 : 0;
+      previousSize = size;
+      // Initial virtual rows can replace their estimates over several frames.
+      // Settle that first landing even with automatic following disabled. Any
+      // reader gesture/disclosure cancels this bounded initialization lease.
+      if (initial && stableFrames < 3 && ++attempts < 12) frameRef.current = requestAnimationFrame(position);
+      else initialFrameRef.current = false;
+    };
+    frameRef.current = requestAnimationFrame(position);
+  }, [cancelFollow, containerRef, writeBottom]);
   const scheduleFollow = useCallback(() => queuePosition(false), [queuePosition]);
   const scheduleInitialPosition = useCallback(() => queuePosition(true), [queuePosition]);
   const getIsPaused = useCallback(() => pausedRef.current, []);
@@ -256,6 +275,12 @@ export function useScrollFollow({
       const trigger = expandingDisclosure(event.target);
       if (trigger) pauseAt(trigger.closest<HTMLElement>('[data-message-key]')?.dataset.messageKey);
     };
+    const layout = () => {
+      acceptUserDisplacement();
+      if (pausedRef.current || !optionsRef.current.enabled) restoreAnchor();
+      else scheduleFollow();
+      publish();
+    };
     const scroll = () => {
       const previous = metricsRef.current;
       const top = node.scrollTop;
@@ -272,9 +297,10 @@ export function useScrollFollow({
         // Layout clamping, focus and our own writes also emit scroll events.
         // Only an actual gesture can hand ownership back to automatic following.
         if (userMoved && top > previous.top && atBottom()) scrollToBottom();
-        // Virtualized rows may correct their offsets without user input. Rebase
-        // geometry while retaining the existing reading/following ownership.
-        if (pausedRef.current || !optionsRef.current.enabled) captureAnchor();
+        // Virtualized measurement writes must not replace a saved reading
+        // offset before its row settles. Navigation captures its target
+        // explicitly; only a new reader gesture chooses another anchor here.
+        if (userMoved && (pausedRef.current || !optionsRef.current.enabled)) captureAnchor();
       }
       if (!pausedRef.current && !atBottom()) scheduleFollow();
       rememberMetrics();
@@ -282,6 +308,7 @@ export function useScrollFollow({
     };
     controllers.set(node, { resume: resumeOwnViewport });
     node.addEventListener(FOLLOW_CHANGE, updateAvailability);
+    node.addEventListener(LAYOUT_CHANGE, layout);
     node.addEventListener('wheel', wheel, { capture: true, passive: true });
     node.addEventListener('touchstart', touchStart, { capture: true, passive: true });
     node.addEventListener('touchmove', touchMove, { capture: true, passive: true });
@@ -294,6 +321,7 @@ export function useScrollFollow({
     return () => {
       controllers.delete(node);
       node.removeEventListener(FOLLOW_CHANGE, updateAvailability);
+      node.removeEventListener(LAYOUT_CHANGE, layout);
       node.removeEventListener('wheel', wheel, true);
       node.removeEventListener('touchstart', touchStart, true);
       node.removeEventListener('touchmove', touchMove, true);
@@ -303,7 +331,7 @@ export function useScrollFollow({
       window.removeEventListener('pointerup', pointerUp);
       node.removeEventListener('scroll', scroll);
     };
-  }, [containerRef, scopeKey, contentKey, acceptUserDisplacement, captureAnchor, rememberMetrics, publish, resumeOwnViewport, scrollToBottom, setPaused, updateAvailability, pauseAt, scheduleFollow]);
+  }, [containerRef, scopeKey, contentKey, acceptUserDisplacement, captureAnchor, rememberMetrics, publish, resumeOwnViewport, scrollToBottom, setPaused, updateAvailability, pauseAt, scheduleFollow, restoreAnchor]);
 
   useLayoutEffect(() => {
     const node = containerRef.current;

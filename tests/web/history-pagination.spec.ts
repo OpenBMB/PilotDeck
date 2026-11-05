@@ -21,7 +21,7 @@ test('backward history pages retain complete turns, stable order and repeated pr
       }
       await storage.transcript.recordTurnResult(sessionKey, turnId, {
         type: 'success', sessionId: sessionKey, turnId, stopReason: 'completed',
-        permissionDenials: [], turns: 1, startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:00:01Z',
+        usage: {}, permissionDenials: [], turns: 1, startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:00:01Z',
       });
     };
     const read = (input = {}) => readWebSessionMessages({ sessionKey, ...input }, { projectRoot, pilotHome });

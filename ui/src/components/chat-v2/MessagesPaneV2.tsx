@@ -1,6 +1,7 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
+import { notifyScrollLayout } from '../chat/hooks/useScrollFollow';
 import { XCircle, GitBranch, ArrowDown } from 'lucide-react';
 import { recordUiDiagnostic, reloadUi } from '../../lib/uiDiagnostics';
 import type {
@@ -652,7 +653,8 @@ function MessagesPaneV2({
       scrollContainerRef.current.scrollTop = projectedScrollTop;
       setScrollViewport((current) => ({ ...current, scrollTop: scrollContainerRef.current!.scrollTop }));
     }
-  }, [keyedMessageItems, measuredItemHeights, messageWindowScope, projectedScrollTop, scrollContainerRef, virtualAnchorDelta]);
+    if (shouldVirtualizeMessages && scrollContainerRef.current) notifyScrollLayout(scrollContainerRef.current);
+  }, [keyedMessageItems, measuredItemHeights, messageWindowScope, projectedScrollTop, scrollContainerRef, virtualAnchorDelta, shouldVirtualizeMessages]);
   const virtualWindow = useMemo(
     () => shouldVirtualizeMessages
       ? getVirtualMessageWindow(

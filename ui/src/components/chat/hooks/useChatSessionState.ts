@@ -287,6 +287,7 @@ export function useChatSessionState({
   const [isLoadingSessionMessages, setIsLoadingSessionMessages] = useState(false);
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const [historyLoadError, setHistoryLoadError] = useState(false);
+  const [historyReadyScrollKey, setHistoryReadyScrollKey] = useState<string | null>(null);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [totalMessages, setTotalMessages] = useState(0);
   const [canAbortSession, setCanAbortSession] = useState(false);
@@ -305,6 +306,7 @@ export function useChatSessionState({
   const isLoadingMoreRef = useRef(false);
   const allMessagesLoadedRef = useRef(false);
   const pendingInitialScrollRef = useRef(true);
+  const historyReadyScrollKeyRef = useRef<string | null>(null);
   const conversationScrollPositionsRef = useRef(new Map<string, ConversationScrollPosition>());
   const pendingConversationScrollRestoreRef = useRef<{
     key: string;
@@ -508,6 +510,7 @@ export function useChatSessionState({
     enabled: Boolean(autoScrollToBottom),
     scopeKey: activeScrollKey,
     contentKey: isLoadingSessionMessages || chatMessages.length === 0,
+    initialPositionKey: chatMessages.length,
     contentSelector: '[data-chat-scroll-content]',
     canFollow: () => !searchScrollActiveRef.current && !isLoadingMoreRef.current && !isLoadingSessionMessages,
   });
@@ -570,12 +573,16 @@ export function useChatSessionState({
     ],
   );
 
-  const handleScroll = useCallback(async () => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    if (activeScrollKey) {
-      conversationScrollPositionsRef.current.set(activeScrollKey, {
+  const handleScroll = useCallback(() => {
+    const eventScope = activeScrollKey;
+    // React's scroll handler can precede the shared native controller. Save
+    // after it accepts the gesture, rather than caching its previous anchor.
+    queueMicrotask(() => {
+      const container = scrollContainerRef.current;
+      if (!container || !eventScope || activeScrollKeyRef.current !== eventScope
+        || historyReadyScrollKeyRef.current !== eventScope
+        || pendingInitialScrollRef.current || pendingConversationScrollRestoreRef.current) return;
+      conversationScrollPositionsRef.current.set(eventScope, {
         top: container.scrollTop,
         following: Boolean(autoScrollToBottom) && !getIsPaused(),
         anchor: getReadingAnchor(),
@@ -584,11 +591,13 @@ export function useChatSessionState({
           container.scrollHeight - container.scrollTop - container.clientHeight,
         ),
       });
-    }
+    });
   }, [activeScrollKey, autoScrollToBottom, getIsPaused, getReadingAnchor]);
 
   // Reset scroll/pagination state on session change
   useLayoutEffect(() => {
+    historyReadyScrollKeyRef.current = null;
+    setHistoryReadyScrollKey(null);
     const savedScrollPosition = activeScrollKey
       ? conversationScrollPositionsRef.current.get(activeScrollKey) ?? null
       : null;
@@ -612,6 +621,7 @@ export function useChatSessionState({
       || pendingRestore.key !== activeScrollKey
       || !container
       || isLoadingSessionMessages
+      || historyReadyScrollKey !== activeScrollKey
       || chatMessages.length === 0
     ) {
       return;
@@ -628,26 +638,28 @@ export function useChatSessionState({
     else captureReadingAnchor();
     pendingConversationScrollRestoreRef.current = null;
     pendingInitialScrollRef.current = false;
-  }, [activeScrollKey, chatMessages.length, isLoadingSessionMessages, captureReadingAnchor, restoreReadingAnchor]);
+  }, [activeScrollKey, historyReadyScrollKey, chatMessages.length, isLoadingSessionMessages, captureReadingAnchor, restoreReadingAnchor]);
 
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
-    if (!activeScrollKey || !container || pendingConversationScrollRestoreRef.current) return;
+    if (!activeScrollKey || !container || pendingConversationScrollRestoreRef.current
+      || pendingInitialScrollRef.current || historyReadyScrollKeyRef.current !== activeScrollKey) return;
     conversationScrollPositionsRef.current.set(activeScrollKey, {
       top: container.scrollTop,
       distanceFromBottom: Math.max(0, container.scrollHeight - container.scrollTop - container.clientHeight),
       following: Boolean(autoScrollToBottom) && !isUserScrolledUp,
       anchor: getReadingAnchor(),
     });
-  }, [activeScrollKey, autoScrollToBottom, isUserScrolledUp, getReadingAnchor]);
+  }, [activeScrollKey, historyReadyScrollKey, autoScrollToBottom, isUserScrolledUp, getReadingAnchor]);
 
   // Initial scroll to bottom
   useEffect(() => {
-    if (!pendingInitialScrollRef.current || !scrollContainerRef.current || isLoadingSessionMessages) return;
+    if (!pendingInitialScrollRef.current || !scrollContainerRef.current || isLoadingSessionMessages
+      || historyReadyScrollKeyRef.current !== activeScrollKey) return;
     if (chatMessages.length === 0) { pendingInitialScrollRef.current = false; return; }
     pendingInitialScrollRef.current = false;
     if (!searchScrollActiveRef.current) scheduleInitialPosition();
-  }, [chatMessages.length, isLoadingSessionMessages, scheduleInitialPosition]);
+  }, [activeScrollKey, historyReadyScrollKey, chatMessages.length, isLoadingSessionMessages, scheduleInitialPosition]);
 
   // Main session loading effect — store-based
   useEffect(() => {
@@ -789,6 +801,8 @@ export function useChatSessionState({
       direction: 'backward',
     }).then(slot => {
       if (activeScrollKeyRef.current !== requestScrollKey) return;
+      historyReadyScrollKeyRef.current = requestScrollKey;
+      setHistoryReadyScrollKey(requestScrollKey);
       if (slot) {
         setHasMoreMessages(slot.hasMore);
         setAllMessagesLoaded(!slot.hasMore);
