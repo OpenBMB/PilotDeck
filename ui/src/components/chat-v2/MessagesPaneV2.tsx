@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../../utils/api';
 import { recordUiDiagnostic, reloadUi } from '../../lib/uiDiagnostics';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
@@ -379,6 +380,12 @@ function MessagesPaneV2({
   forkParentSessionTitle = null,
 }: MessagesPaneV2Props) {
   const { t } = useTranslation('chat');
+  const [runtimeCanEdit, setRuntimeCanEdit] = useState(true);
+  useEffect(() => {
+    let active=true;
+    void authenticatedFetch('/api/runtime-capabilities').then(r=>r.json()).then(v=>{if(active)setRuntimeCanEdit(v.editPreviousTurns!==false);}).catch(()=>{});
+    return ()=>{active=false;};
+  }, []);
   const waitingFor = pendingPermissionRequests.some(request => /^(ask_?user_?question)$/i.test(request.toolName))
     ? 'question' : pendingPermissionRequests.length ? 'approval' : null;
   const messageKeyMapRef = useRef<WeakMap<ChatMessage, string>>(new WeakMap());
@@ -1086,10 +1093,11 @@ function MessagesPaneV2({
         sessionRuntimeState={inTrace ? 'inactive' : messageSessionRuntimeState}
         onFork={onFork}
         forkCarriedMessageCount={forkCarriedMessageCount}
-        forkDisabled={forkDisabled}
+        forkDisabled={forkDisabled || !runtimeCanEdit}
         showAssistantActions={!inTrace && showAssistantActions}
         canEdit={Boolean(
           onRegenerate
+          && runtimeCanEdit
           && !sessionIsReadOnly
           && !inTrace
           && item.itemKey === lastUserMessageItemKey
@@ -1187,6 +1195,7 @@ function MessagesPaneV2({
     onFork,
     onRegenerate,
     forkDisabled,
+    runtimeCanEdit,
     lastUserMessageItemKey,
     sessionIsReadOnly,
     onGrantSessionToolPermission,

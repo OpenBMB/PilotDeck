@@ -1,0 +1,20 @@
+guard = "deny-all"
+exec_backend = "none"
+startup_tools = []
+allow_ops = "session.deliver,session.new,session.attach,session.inbox.drain,task.poll,tool.list,tool.exec,approval.list,approval.decide,model.request,model.stream,loop.event,session.get,session.lease_acquire,session.lease_status,session.compaction_commit,session.compaction_load"
+[approval]
+tools = ["write_file"]
+[agents]
+enabled = false
+[model]
+kind = "openai-compatible"
+base_url = "http://127.0.0.1:11434/v1"
+model = "mint-minicpm5:2.6b-q4_k_m"
+timeout_ms = 120000
+[egress]
+allow_hosts = "127.0.0.1"
+[supervisor]
+mode = "multi-process"
+drain_ms = 1500
+max_per_kind = 1
+children = [{ name = "installed-rust-loop", kind = "loop", bin = "/tmp/mint-merge-all-mrs-20261104/target/debug/examples/installed_loop_worker", args = [], restart = "never" }]

@@ -1,0 +1,40 @@
+{
+  "components": [
+    {
+      "kind": "command",
+      "tool": "read_file",
+      "command": [
+        "/tmp/mint-merge-all-mrs-20261104/target/debug/examples/installed_tool_command"
+      ],
+      "impl_id": "mint-installed:read_file",
+      "version": "0.1"
+    },
+    {
+      "kind": "command",
+      "tool": "write_file",
+      "command": [
+        "/tmp/mint-merge-all-mrs-20261104/target/debug/examples/installed_tool_command"
+      ],
+      "impl_id": "mint-installed:write_file",
+      "version": "0.1"
+    },
+    {
+      "kind": "command",
+      "tool": "pilotdeck_compaction_port_owner",
+      "command": [
+        "/tmp/mint-merge-all-mrs-20261104/target/debug/examples/installed_tool_command"
+      ],
+      "impl_id": "mint-installed:pilotdeck_compaction_port_owner",
+      "version": "0.1"
+    },
+    {
+      "kind": "command",
+      "tool": "pilotdeck_compaction_basic",
+      "command": [
+        "/tmp/mint-merge-all-mrs-20261104/target/debug/examples/installed_tool_command"
+      ],
+      "impl_id": "mint-installed:pilotdeck_compaction_basic",
+      "version": "0.1"
+    }
+  ]
+}

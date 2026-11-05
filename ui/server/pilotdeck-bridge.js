@@ -37,6 +37,7 @@
  * handshake for `GATEWAY_CONNECT_TIMEOUT_MS` while Gateway is starting.
  */
 
+import { mintBackendEnabled, getMintAcpGateway } from './services/mintAcpGateway.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -252,6 +253,7 @@ const gatewayConnections = createGatewayConnectionCache({
 });
 
 function ensureGateway() {
+    if (mintBackendEnabled()) return Promise.resolve(getMintAcpGateway());
     return gatewayConnections.get();
 }
 
@@ -283,6 +285,7 @@ export async function getPilotDeckGateway() {
  * @returns {Promise<T>}
  */
 export async function withPilotDeckGatewayReadRetry(operation) {
+    if (mintBackendEnabled()) return operation(getMintAcpGateway());
     if (getModelConfigurationState({ validateGateway: false }).state === 'empty') {
         return operation(createModelFreeHistory({ pilotHome: resolvePilotHome(process.env), projectRoot: REPO_ROOT }));
     }

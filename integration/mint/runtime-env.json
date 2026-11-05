@@ -1,0 +1,21 @@
+{
+  "MINT_PROJECT": "/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime/provider-probe-project",
+  "MINT_HOST_BIN": "/tmp/mint-merge-all-mrs-20261104/target/debug/mint-host",
+  "MINT_REQUIRED_PLUGINS": "[\"pilotdeck/context-instructions\", \"pilotdeck/context-retention\", \"pilotdeck/context-tool-result-pruner\", \"pilotdeck/context-budget-production\", \"liyishan1/pilotdeck-attachments-consumer\", \"liyishan1/pilotdeck-compaction-port-owner\", \"liyishan1/pilotdeck-compaction-basic\", \"liyishan1/pilotdeck-context-prompt-consumer\", \"liyishan1/pilotdeck-context-time-consumer\", \"liyishan1/pilotdeck-tool-fs-read\", \"pilotdeck/model-provider-openai-consumer\"]",
+  "MINT_PLUGIN_GRANTS": "{\"pilotdeck/context-instructions\": {\"fs.read\": [\"$WORKDIR\"], \"fs.write\": [\"$WORKDIR\"]}, \"pilotdeck/context-retention\": {\"fs.read\": [\"/.pilotdeck/tool-results\"], \"fs.write\": [\"/.pilotdeck/tool-results\"]}, \"pilotdeck/context-tool-result-pruner\": {}, \"pilotdeck/context-budget-production\": {}, \"liyishan1/pilotdeck-attachments-consumer\": {\"fs.read\": [\"$WORKDIR\"], \"fs.write\": [\"$WORKDIR\"]}, \"liyishan1/pilotdeck-compaction-port-owner\": {\"model\": true}, \"liyishan1/pilotdeck-compaction-basic\": {\"model\": true}, \"liyishan1/pilotdeck-context-prompt-consumer\": {}, \"liyishan1/pilotdeck-context-time-consumer\": {}, \"liyishan1/pilotdeck-tool-fs-read\": {\"fs.read\": [\"$WORKDIR\"], \"fs.write\": [\"$WORKDIR\"]}, \"pilotdeck/model-provider-openai-consumer\": {\"net\": [\"http://127.0.0.1:11434/v1/chat/completions\"], \"model\": true}}",
+  "MINT_MODEL": "mint-minicpm5:2.6b-q4_k_m",
+  "MINT_MODEL_ENDPOINT": "http://127.0.0.1:11434/v1/chat/completions",
+  "MINT_MODEL_API_KEY": "local-no-secret",
+  "MINT_CONTEXT_WINDOW": "32768",
+  "MINT_OUTPUT_LIMIT": "4096",
+  "MINT_MODEL_PRIVATE_HOSTS": "[\"127.0.0.1\"]",
+  "MINT_LIVE_PROVIDER_OVERRIDE": "1",
+  "MINT_CONTEXT_OWNER_COMMAND": "/usr/bin/env",
+  "MINT_CONTEXT_OWNER_ARGS": "[\"node\",\"--import\",\"tsx\",\"integration/mint/context-owner.mjs\"]",
+  "MINT_CONTEXT_OWNER_CWD": "/Users/a1/Documents/ChatGPT/pilotdeck-mint-integration",
+  "MINT_TOOL_SOCKET": "/tmp/pilotdeck-unified-tools.sock",
+  "MINT_MODEL_OWNER_SOCKET": "/tmp/pilotdeck-unified-model-owner.sock",
+  "AGENTCPM_STDIO_TRUSTED": "1",
+  "AGENTCPM_STARTUP_COMPONENTS": "/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime/unified/components.json",
+  "MINT_REQUEST_EVIDENCE_DIR": "/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime/unified/request-evidence"
+}

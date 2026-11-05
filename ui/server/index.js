@@ -681,6 +681,11 @@ app.use('/api/update', authenticateToken, updateRoutes);
 // Legacy four-provider config endpoints have been removed. The runtime
 // model is read from PilotDeck config; fall back to a static stub so any
 // older frontend code paths render without crashing.
+app.get('/api/runtime-capabilities', authenticateToken, (_req, res) => {
+    const mint=process.env.PILOTDECK_RUNTIME_BACKEND==='mint';
+    res.json({backend:mint?'mint':'pilotdeck',editPreviousTurns:!mint,forkSessions:!mint});
+});
+
 app.get('/api/agents/runtime-config', authenticateToken, (_req, res) => {
     const permSettings = readPermissionSettings();
     res.json({
