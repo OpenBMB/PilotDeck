@@ -118,6 +118,9 @@ test("video provider errors are redacted and generation POST is never retried", 
 
 test("cancellation and deadline interrupt polling and stalled download bodies", async t => {
   const { store } = await fixture(t);
+  // The mocked response has no socket to keep AbortSignal.timeout's timer alive.
+  const keepAlive = setTimeout(() => undefined, 1_000);
+  t.after(() => clearTimeout(keepAlive));
   const response = await requestOpenAIVideo(config, { prompt: "ball" }, { timeoutMs: 30, fetchImpl: async url => String(url).endsWith("/content") ? new Response(new ReadableStream()) : json({ id: "one", status: "completed" }) });
   await assert.rejects(() => store.save("stalled", response), /cancelled|timed out/);
   assert.deepEqual(await store.list("stalled"), []);
