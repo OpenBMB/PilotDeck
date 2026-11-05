@@ -8,7 +8,7 @@ export type SettingsMenuKey =
   | 'agentMemory'
   | 'agentResident'
   | 'agentSearch'
-  | 'imageGeneration'
+  | 'multimodalGeneration'
   | 'agentSchedule'
   | 'integrations'
   | 'extensions'

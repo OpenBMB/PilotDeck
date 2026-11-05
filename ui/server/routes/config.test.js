@@ -2942,3 +2942,19 @@ it('persists a custom endpoint change after dropping the old endpoint credential
   expect(readFileSync(configPath, 'utf8')).not.toContain('saved-secret');
   expect(resolveWebSearchConfig((await request('/api/config')).body.config.tools.webSearch).endpoint).toBe('https://new.example/search');
 });
+
+it.each(['raw', 'config'])('scopes masked video credentials to the saved API address in %s updates', async shape => {
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { videoGeneration: {
+    enabled: false, apiKey: 'saved-video-secret', baseUrl: 'https://videos.example/v1', model: 'video-model',
+  } } }));
+  const config = (await request('/api/config')).body.config;
+  const original = readFileSync(configPath, 'utf8');
+  config.tools.videoGeneration.baseUrl = 'https://other.example/v1';
+  const body = () => JSON.stringify(shape === 'raw' ? { raw: stringifyYaml(config) } : { config });
+  const blocked = await request('/api/config', { method: 'PUT', body: body() });
+  expect(blocked.status).toBe(400); expect(blocked.body.error).toContain('video API key');
+  expect(readFileSync(configPath, 'utf8')).toBe(original);
+  config.tools.videoGeneration.baseUrl = 'https://videos.example/v1'; config.tools.videoGeneration.model = 'changed-model';
+  expect((await request('/api/config', { method: 'PUT', body: body() })).status).toBe(200);
+  expect(parseYaml(readFileSync(configPath, 'utf8')).tools.videoGeneration.apiKey).toBe('saved-video-secret');
+});

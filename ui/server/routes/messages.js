@@ -239,7 +239,7 @@ function mapWebMessageToNormalized(message, sessionId) {
       const planPayload = message.payload && typeof message.payload === 'object'
           ? message.payload
           : {};
-      const toolPayload = (isSearchToolName(message.toolName) || ['generate_image', 'edit_image', 'save_generated_image'].includes(message.toolName)) && message.payload && typeof message.payload === 'object'
+      const toolPayload = (isSearchToolName(message.toolName) || ['generate_image', 'edit_image', 'save_generated_image', 'generate_video', 'save_generated_video'].includes(message.toolName)) && message.payload && typeof message.payload === 'object'
           ? message.payload
           : null;
       return createNormalizedMessage({

@@ -47,6 +47,8 @@ export type AutoCompactResult =
     };
 
 export type DefaultContextRuntimeOptions = {
+  /** Durable host artifacts that can finish after an Agent turn is interrupted. */
+  sessionArtifactContext?: (sessionId: string) => Promise<string | undefined>;
   extension?: ExtensionResolver;
   promptAssembler?: PromptAssembler;
   messageProjector?: MessageProjector;
@@ -100,6 +102,7 @@ const EMERGENCY_TOOL_RESULT_TOKENS = 256;
 const EMERGENCY_HEAD_KEEP_RATIO = 0.10;
 
 export class DefaultContextRuntime implements ContextRuntime {
+  private readonly sessionArtifactContext?: DefaultContextRuntimeOptions["sessionArtifactContext"];
   private readonly extension: ExtensionResolver;
   private readonly promptAssembler: PromptAssembler;
   private readonly messageProjector: MessageProjector;
@@ -128,6 +131,7 @@ export class DefaultContextRuntime implements ContextRuntime {
   private readonly now: () => Date;
 
   constructor(options: DefaultContextRuntimeOptions = {}) {
+    this.sessionArtifactContext = options.sessionArtifactContext;
     this.extension = options.extension ?? new NullExtensionResolver();
     this.promptAssembler = options.promptAssembler ?? new PromptAssembler(this.extension);
     this.messageProjector = options.messageProjector ?? new MessageProjector();
@@ -223,6 +227,9 @@ export class DefaultContextRuntime implements ContextRuntime {
       messageIndex = update.index;
     }
     requestMessages.push(...projection.messages.slice(messageIndex));
+    const artifacts = await this.sessionArtifactContext?.(input.sessionId);
+    if (artifacts) requestMessages.push({ role: "user", content: [{ type: "text", text: artifacts }],
+      metadata: { synthetic: true, purpose: "session_artifact_status" } });
     const prompt = this.promptAssembler.assemble({
       cwd: input.cwd,
       provider: input.provider,

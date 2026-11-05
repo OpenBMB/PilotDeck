@@ -17,7 +17,7 @@ import type { SessionStore } from '../../stores/useSessionStore';
 import { getSessionRequestParams, isReadOnlySession, type Project, type ProjectSession, type SessionProvider } from '../../types/app';
 import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import MessageRowV2 from './MessageRowV2';
-import GeneratedImageCard from '../chat/tools/GeneratedImageCard';
+import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import SendingMessages from './SendingMessages';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import AssistantReplyQuoteAction from './AssistantReplyQuoteAction';
@@ -1057,8 +1057,8 @@ function MessagesPaneV2({
       return true;
     })();
 
-    const renderRow = (rowItem: RenderableMessageItem, inTrace = false) => rowItem.imageArtifact ? (
-      <GeneratedImageCard message={rowItem.message} running={isAssistantWorking} />
+    const renderRow = (rowItem: RenderableMessageItem, inTrace = false) => rowItem.mediaArtifact ? (
+      <GeneratedMediaCard message={rowItem.message} running={isAssistantWorking} />
     ) : (
       <MessageRowV2
         message={rowItem.message}
@@ -1201,7 +1201,7 @@ function MessagesPaneV2({
   ]);
 
   const keyedMessagesForSearch = useMemo<SearchableChatMessageInput[]>(() => {
-    return keyedMessageItems.filter(item => !item.imageArtifact).flatMap((item) => (
+    return keyedMessageItems.filter(item => !item.mediaArtifact).flatMap((item) => (
       item.turnTrace ? item.turnTrace.items.map((child) => ({
         message: child.message,
         messageKey: `${messageWindowScope}:${getMessageKey(child.message, child.originalIndex)}`,

@@ -11,7 +11,7 @@ const PAGE_SLUG_BY_KEY: Partial<Record<SettingsMenuKey, string>> = {
   agentMemory: "agent-memory",
   agentResident: "agent-resident",
   agentSearch: "agent-search",
-  imageGeneration: "image-generation",
+  multimodalGeneration: "multimodal-generation",
   agentSchedule: "agent-schedule",
   integrations: "integrations",
   mcpServers: "mcp",
@@ -27,6 +27,8 @@ const KEY_BY_PAGE_SLUG: Record<string, SettingsMenuKey> = Object.fromEntries(
     slug ? [[slug, key as SettingsMenuKey]] : [],
   ),
 );
+KEY_BY_PAGE_SLUG["image-generation"] = "multimodalGeneration";
+KEY_BY_PAGE_SLUG["video-generation"] = "multimodalGeneration";
 
 export function mapInitialTabToMenuKey(
   tab: string | undefined,
@@ -38,7 +40,9 @@ export function mapInitialTabToMenuKey(
     memory: "agentMemory",
     tools: "agentSearch",
     webSearch: "agentSearch",
-    imageGeneration: "imageGeneration",
+    imageGeneration: "multimodalGeneration",
+    videoGeneration: "multimodalGeneration",
+    multimodalGeneration: "multimodalGeneration",
     router: "agentRoute",
     gateway: "integrations",
     officePreview: "officePreview",
@@ -86,9 +90,17 @@ export function mapSettingsSectionToMenuKey(
 
 export function getSettingsPathFromTab(tab?: string): string {
   const [page, query] = (tab ?? "").split("?", 2);
-  const reference = new URLSearchParams(query).get("reference");
-  const path = getSettingsPath(mapInitialTabToMenuKey(page));
-  return reference ? `${path}?${new URLSearchParams({ reference })}` : path;
+  const input = new URLSearchParams(query);
+  const params = new URLSearchParams();
+  const reference = input.get("reference");
+  const key = mapInitialTabToMenuKey(page);
+  const path = getSettingsPath(key);
+  if (key === "multimodalGeneration") {
+    const tab = getMultimodalGenerationTab(page, input.get("tab"));
+    if (tab === "video") params.set("tab", tab);
+  }
+  if (reference) params.set("reference", reference);
+  return params.size ? `${path}?${params}` : path;
 }
 
 export function getModelReferenceTab(path: string): string | null {
@@ -96,4 +108,11 @@ export function getModelReferenceTab(path: string): string | null {
     : path === "agent.subagents.default" || path.startsWith("router.") ? "agent-route"
     : path === "memory.model" ? "agent-memory" : null;
   return page ? `${page}?${new URLSearchParams({ reference: path })}` : null;
+}
+
+export type MultimodalGenerationTab = "image" | "video";
+export function getMultimodalGenerationTab(section?: string, tab?: string | null): MultimodalGenerationTab {
+  if (section === "video-generation" || section === "config:videoGeneration") return "video";
+  if (section === "image-generation" || section === "config:imageGeneration") return "image";
+  return tab === "video" ? "video" : "image";
 }

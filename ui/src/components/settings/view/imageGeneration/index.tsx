@@ -59,15 +59,19 @@ export function ImageGenerationForm({ config, onChange }: {
     }
     return { ...current, apiKey, baseUrl, model };
   };
-  const commit = async (value: ImageGenerationConfig) => {
+  const commit = async (value: ImageGenerationConfig, resetDraft = false) => {
     resetTest(); setSaving(true);
-    try { await onChange({ ...config, tools: { ...config.tools, imageGeneration: value } }); }
+    try {
+      const result = await onChange({ ...config, tools: { ...config.tools, imageGeneration: value } });
+      if (result && !result.ok) setStatus(result.error);
+      else if (resetDraft) { setDraft(draftOf(value)); setErrors({}); }
+    }
     catch { setStatus(t('imageGeneration.saveFailed')); }
     finally { setSaving(false); }
   };
   const save = () => {
     const value = validate(current.enabled === true);
-    if (value) void commit(value);
+    if (value) void commit(value, true);
   };
   const toggle = (enabled: boolean) => {
     // Turning off must also work with incomplete, unsaved form fields.
@@ -107,7 +111,7 @@ export function ImageGenerationForm({ config, onChange }: {
     <section className="search-card" aria-label={t('settingsPage.menu.imageGeneration')}>
       <div className="search-config-body">
         {fields.map(field => <div className="search-setting-row" key={field}>
-          <div className="search-setting-copy"><label htmlFor={'image-' + field}>{t('imageGeneration.' + field)}</label><p>{t('imageGeneration.' + field + 'Hint')}</p></div>
+          <div className="search-setting-copy"><label htmlFor={'image-' + field}>{t('imageGeneration.' + field)}</label></div>
           <div className="search-control-area"><div className="search-input-wrap">
             <GeneralSettingsIcon icon={field === 'apiKey' ? KeyRound : field === 'baseUrl' ? Link : Image} />
             <input id={'image-' + field} type={field === 'apiKey' ? 'password' : 'text'} autoComplete="off" spellCheck={false} disabled={saving}
@@ -121,11 +125,9 @@ export function ImageGenerationForm({ config, onChange }: {
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5">
         <span role="status" className="text-sm text-muted-foreground">{status}</span>
         <div className="flex gap-2">
-          {dirty && <>
-            <button className="button secondary compact" type="button" disabled={saving} onClick={() => { setDraft(draftOf(current)); setErrors({}); resetTest(); }}><GeneralSettingsIcon icon={X} />{t('settingsPage.actions.cancel')}</button>
-            <button className="button primary compact" type="button" disabled={saving} onClick={save}><GeneralSettingsIcon icon={Save} />{t('settingsPage.actions.save')}</button>
-          </>}
           <button className="button secondary compact" type="button" disabled={checking || saving} onClick={() => void check()}><GeneralSettingsIcon icon={Plug} />{t(checking ? 'imageGeneration.checking' : 'imageGeneration.check')}</button>
+          {dirty && <button className="button secondary compact" type="button" disabled={saving} onClick={() => { setDraft(draftOf(current)); setErrors({}); resetTest(); }}><GeneralSettingsIcon icon={X} />{t('settingsPage.actions.cancel')}</button>}
+          <button className="button primary compact" type="button" disabled={saving || !dirty} onClick={save}><GeneralSettingsIcon icon={Save} />{t('settingsPage.actions.save')}</button>
         </div>
       </div>
     </section>
