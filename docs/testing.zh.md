@@ -59,29 +59,25 @@
 - [Anthropic webapp-testing](https://github.com/anthropics/skills/blob/main/skills/webapp-testing/SKILL.md)：适合少量关键浏览器流程的探索与验收，不负责筛选单元测试。对于持续连接或轮询的页面，应等待具体就绪条件，不机械套用 `networkidle`。
 - [Testing Library](https://testing-library.com/docs/guiding-principles/) 与 [Playwright](https://playwright.dev/docs/best-practices)：以可观察行为和隔离为核心。Playwright 的 [Test Agents](https://playwright.dev/docs/test-agents) 可辅助规划和维护；生成或修复的断言仍须人工核对其业务含义。
 
-## 2026-11-03 审计记录
+## 可重复验证与产物管理
 
-以 `6e3cab1c` 的 Git 跟踪文件为起点，识别到 508 个 `.test`／`.spec` 文件，约 74,172 行：Gateway 166 个、前端 204 个、UI 服务端 94 个、桌面 35 个、共享包 2 个、其他 7 个。文件数量不等于冗余数量；其中有大量文件系统、真实进程、权限、打包等集成测试。
+先完成对应 checkout 的 Core、Desktop 和 Web 构建，再执行需要编译产物的验证。启动基准使用临时 PILOT_HOME，桌面模式另建 Electron userData；不要用真实凭据和日常对话做故障注入。
 
-| 发现 | 结论与处理 |
+| 场景 | 入口与前提 |
 | --- | --- |
-| 52 个服务端文件没有环境注解，继承全局 jsdom | 分离 server/node 与 client/jsdom projects；保留显式的 DOM 测试注解 |
-| 12 个服务端文件、133 个用例的交错复测 | 原配置两次为 40.74、32.46 秒；新配置为 6.23、10.56 秒，全部用例通过。此数据仅代表本机该子集，不是完整 CI 的提速承诺 |
-| `useChatSessionState`、`sessionLauncher` 各有一对 `.test`／`.spec` | 合并为每模块一个文件；比较执行器输出的完整用例名称，32 个场景全部保留 |
-| 合并后的测试是否仍能识别错误 | 在独立工作区临时把消息执行目录错误地改为项目目录，合并后的测试按预期失败；随后恢复生产文件，确认无残留 diff |
-| `streamSmoother` 的旧测试仍要求已移除的输出行为，且生产模块已没有调用者 | 历史提交 `f7342da2` 明确将其移出消息流管线；核对全部生产引用后删除死代码及旧测试，清理 CI 排除项，并验证实际的 store／实时消息／帧批处理测试 |
-| 桌面入口只收集 `*.test.mjs` | 补收 `runtime-log-export.spec.mjs`、`uninstall-data.spec.mjs`，恢复 11 个涉及脱敏和数据保留／清理的场景 |
-| 静态筛查标记 43 个包含源码读取与文本断言的文件 | 作为人工复核候选，不作为删除清单。发布权限、平台边界、恶意路径和安全策略的静态防线仍可能有独立价值 |
-| 任何 UI 改动都会进入八个原生包构建任务 | 保留现有门禁，先提出按变更风险分层的方案；需要结合分支保护和发布策略再调整 |
+| 启动基准与大量历史 | `node scripts/benchmark-startup.mjs --samples 3 --sessions 1000 --artifacts artifacts/startup --output artifacts/startup/summary.json`；加 `--serial` 对照串行启动，`--root <compiled-checkout>` 指定另一份已编译源码 |
+| 会话列表磁盘读取基准 | `node scripts/benchmark-session-list.mjs 1000`；只使用合成会话，不等同于完整客户端启动时间 |
+| 真实桌面故障注入 | `node scripts/benchmark-startup.mjs --desktop --fault slow-start --artifacts artifacts/startup --hold-ms 180000`；另支持 abort、oom、module-missing、web-module-missing、config-invalid；向产物目录写入 `stop` 文件可提前结束 |
+| 启动界面演示 | Core、Desktop 和 Web 编译后执行 `node scripts/create-startup-preview.mjs`，使用本地 Web 服务查看 `/startup-preview.html`；只演示界面，正式构建会覆盖该页面 |
+| Windows 安装器 | `node apps/desktop/scripts/verify-installer.cjs`、`node apps/desktop/scripts/verify-installer-shortcut.cjs`；检查真实 NSIS 宏、中文路径及快捷方式，需 Windows 和桌面构建依赖 |
+| Windows 卸载与预览 | `node apps/desktop/scripts/verify-uninstaller.cjs`、`node apps/desktop/scripts/preview-installer.cjs`；产物分别写入 `artifacts/uninstaller-verification/` 和 `artifacts/installer-preview/` |
+| Windows 系统通知 | `pnpm --filter pilotdeck-desktop exec electron scripts/verify-windows-notifications.cjs`；需先编译 Desktop，使用独立通知身份并清理 |
+| TUI 权限交互 | `pnpm exec tsx scripts/tui-e2e-permission.tsx`；使用模拟 Gateway，无模型调用；仍应在临时 PILOT_HOME 中运行 |
+| iLink 本地联调 | `pnpm exec tsx scripts/mock-ilink.ts`；启动本地模拟服务后通过 `/inject` 注入合成消息 |
+| 模型协议实测 | `node scripts/smoke-llm-center-protocols.mjs` 默认跳过；显式设置 `PILOTDECK_RUN_LIVE_LLM_CENTER=1` 及对应环境凭据后才请求远端 |
 
-中间阶段完整 UI／服务端回归执行了 296 个文件、2,637 个用例：2,597 通过、23 失败、17 跳过。随后沿生产导入图确认 smoother 已不用，删除其中 4 个临时改写的 smoother 用例及未使用模块；最终复跑收集 295 个文件、2,633 个用例：2,591 通过、25 失败、17 跳过。其中 23 个失败断言逐项匹配先前在干净 `main` 上复现的基线，另两个是本次高负载执行中的 Git／命令集成测试超时；随后用单 worker 单独复跑所属两个文件，24 个用例全部通过，耗时 78.18 秒。没有用新的跳过列表掩盖失败。桌面辅助测试 220 通过、9 个平台跳过；直接从 TypeScript 执行模型测试 128 项通过；实际聊天流及合并模块回归 126 项通过；UI 类型检查通过。
+消息流的稳定身份、历史与增量协调由 [session timeline 契约](architecture/session-timeline.md) 说明；思考参数由 [reasoning settings](reasoning-settings.md) 说明。API 文档、TRD 与 OpenAPI 分别面向调用、设计边界和机器契约，不因主题相同而合并删除。
 
-中间阶段完整回归用了 430.15 秒，末次复跑用了 610.80 秒。worker 数、超时参数、工作区及机器负载均会影响整体结果；本次不能证明完整仓库或 CI 已稳定加速，也不把墙钟差异归因于单一配置调整。上表交错子集测试才是本次环境优化的主要对照证据。慢速且易超时的系统集成测试需要独立调度和可控 fixture，而不是把整仓超时统一调大。
+临时截图、日志、请求记录、单次基准 JSON 和安装器预览放在 `artifacts/<topic>/` 或 `outputs/<topic>/`，使用后清理；不要提交本机路径、真实对话、用户文档、凭据或一次性执行结果。PR 描述记录本次验证，长期文档只保留行为契约、前提和复现入口。Git 忽略规则只忽略根目录的 `/test/` 和 `/test.ts` 草稿，模块内的正式测试正常跟踪。
 
-另以 `ui/src/main.jsx` 为入口检查相对静态导入图，再核对全仓引用、当前设置页面入口及动态加载方式，确认 `VersionBadge`、其独占的 `useGitVersion`／`restartUi`、`DesktopBuildInfo` 已没有生产调用；现有版本信息和更新行为由在用的设置页面实现。已删除这些旧实现及仅覆盖它们的三个测试文件。`LlmConfigurationStep` 的生产编排壳也已没有调用，但其测试实际验证仍在使用的 `ProviderStep`、`ConnectionStep` 和 `useLlmSetup`：将编排壳内联到 `LlmSetup.integration.test.tsx`，保留全部模型保存、凭据与取消场景。`i18n/testInstance` 是有意存在的测试工具，继续保留；不能把“不在生产入口图中”直接等同于无价值。
-
-较大的文件也需要区别对待：`ui/server/routes/config.test.js` 有 2,945 行，`MessagesPaneV2.render.test.tsx` 有 1,899 行，`useSessionStore.streaming.test.ts` 有 1,763 行。对它们更合适的后续工作是按配置保存／引用修复／消息投影等责任划分断言，复用小型 fixture，把组合输入下沉到纯函数或协议契约层，界面层只保留独有交互与关键连通流程。它们不应被进一步合并成更大的回归文件，也不能仅凭行数删掉时序、数据完整性或安全用例。
-
-运行时隔离还需继续完善：完整回归日志出现了用户目录中的 `auth.db` 路径，而 `ui/server/database/db.js` 在导入时会打开数据库并确保配置表存在。下一阶段应统一临时 profile／数据库目录，避免读取真实用户配置，也让需要真实 Git、HTTP、Python、文件链接权限的用例明确声明前提。此项尚未通过全局环境重写实施，不能声称本轮已经解决了全部测试隔离问题。
-
-合并 PR 前继续清理上述已确认的旧入口后，模型配置及当前 About 页共 47 个用例通过，UI 类型检查和生产构建通过。补充 Windows 禁用 PowerShell 的启动／子进程回收验收，以及 Linux 实际打包器解析各尺寸图标的回归后，桌面完整测试为 224 通过、9 个平台跳过。Linux 安装后的图标检查仍保留；修复方式是补齐标准尺寸的打包产物，而非放宽缺失图标的断言。
+测试隔离仍需逐项核对：`ui/server/database/db.js` 在导入时会打开数据库，系统集成测试也可能依赖 Git、HTTP、Python、文件链接权限或本地配置。使用临时 profile 和数据库目录，并明确平台前提；不能以单元测试通过替代真实安装、卸载或跨平台验收。

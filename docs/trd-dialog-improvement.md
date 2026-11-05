@@ -5,7 +5,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档状态 | Draft |
-| 关联 PRD | `/Users/a1/Desktop/对话框改进.md` |
+| 关联接口契约 | [对话框改进 API](dialog-improvement-api.md) |
 | 适用版本 | PilotDeck Web API / Gateway |
 | 目标读者 | 后端、Gateway、接口联调和测试 |
 

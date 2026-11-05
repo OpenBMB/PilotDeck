@@ -32,6 +32,26 @@ use app badges where supported. Service Worker storage deduplicates live and
 push delivery and preserves pending reminders. Read state is local to each
 browser/device.
 
+## Startup diagnostics and runtime logs
+
+The native loading page, Web first paint and React startup view share progress
+across configuration, server, gateway and workspace readiness. Failures show a
+stable diagnostic code, a short reason, the log location and recovery actions.
+Exit code 134 alone does not identify an out-of-memory failure; classification
+requires stderr or a fatal report. Invalid configuration is left intact.
+
+Runtime logs live under Electron userData/logs, or PILOT_HOME/logs for a
+standalone server; PILOTDECK_LOG_PATH can override the location. The existing
+`webui.runtime.logRetentionDays` setting accepts 1, 3, 7, 30 or 90 days and
+defaults to 7. Managed logs rotate by UTC date. Retention cleanup excludes
+unrelated files and directory links. Settings changes apply immediately.
+
+**Download runtime logs** opens the native Save As dialog on desktop and uses an
+authenticated download on Web. The exported UTF-8 log combines retained runtime
+logs, renderer logs and crash reports, with secrets redacted again at export.
+Canceling Save As does not report success. Reproducible startup and installer
+checks are listed in [the testing guide](../../docs/testing.zh.md).
+
 ## Development
 
 ```bash
