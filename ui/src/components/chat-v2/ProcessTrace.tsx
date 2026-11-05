@@ -98,6 +98,7 @@ export function ProcessLiveStatus({
   contentClassName?: string;
 }) {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
+  const { t } = useTranslation('chat');
   const expanded = controlledExpanded ?? uncontrolledExpanded;
   const contentId = useId();
   const setExpanded = (nextExpanded: boolean | ((value: boolean) => boolean)) => {
@@ -110,7 +111,7 @@ export function ProcessLiveStatus({
     onExpandedChange?.(resolvedExpanded);
   };
   const Icon = getStepIcon(step);
-  const title = step.title || step.toolName || 'Working';
+  const title = step.title || step.toolName || t('process.group.running');
   const isRunning = !['failed', 'completed', 'cancelled', 'waiting'].includes(step.state || '');
   const hasDetails = Boolean(children);
   const statusContent = (
@@ -205,9 +206,10 @@ function getStepIconClass(step: ProcessTraceStep): string {
 }
 
 function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
+  const { t } = useTranslation('chat');
   const Icon = getStepIcon(step);
   const isRunning = step.state === 'running';
-  const title = step.title || step.toolName || 'Step';
+  const title = step.title || step.toolName || t('process.step');
 
   return (
     <div

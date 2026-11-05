@@ -4,6 +4,10 @@
     "label": "界面缩放",
     "reset": "复位"
   },
+  "keyboard": {
+    "enter": "Enter",
+    "escape": "Esc"
+  },
   "buttons": {
     "save": "保存",
     "cancel": "取消",
@@ -755,6 +759,8 @@
     "tasksCompleted": "已完成 {{completed}}/{{total}}",
     "updatingTodos": "正在更新待办事项",
     "todoList": "待办事项",
+    "todoListUpdated": "待办事项已更新",
+    "toolDetails": "详情",
     "todoProgress": "已完成 {{completed}}/{{count}}",
     "taskList": "任务列表",
     "taskDetails": "任务详情",

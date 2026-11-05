@@ -116,6 +116,8 @@ its own long list scrolls independently of the transcript.
   and edited-turn tombstones.
 - `ui/src/components/chat-v2/ThinkingBlock.test.tsx`: localized clocks, completion,
   manual expansion and legacy-history fallback.
+- `ui/src/components/chat-v2/ConversationI18n.test.tsx`: in-place language changes
+  for process durations, question/Todo controls, tool fallbacks and image accessibility labels.
 - `ui/e2e/conversation-turn-nav.spec.mjs`: left-side positioning, previews, keyboard
   navigation, distant virtual rows, reader ownership and responsive hiding.
 - `ui/e2e/process-transitions.spec.mjs`: bidirectional height transitions, stable

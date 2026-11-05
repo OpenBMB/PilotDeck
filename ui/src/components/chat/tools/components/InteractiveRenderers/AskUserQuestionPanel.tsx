@@ -382,7 +382,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                     className="h-9 pr-14 text-[13px]"
                   />
                   <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    Enter
+                    {t('common:keyboard.enter')}
                   </kbd>
                 </div>
               </div>
@@ -400,7 +400,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
             className="h-8 px-2 text-[13px] text-muted-foreground hover:text-foreground"
           >
             {isSingle ? t('common:uiText.skip') : t('common:uiText.skipAll')}
-            <span className="ml-1 font-mono text-[11px] opacity-60">Esc</span>
+            <span className="ml-1 font-mono text-[11px] opacity-60">{t('common:keyboard.escape')}</span>
           </Button>
 
           <div className="flex items-center gap-1.5">
@@ -425,7 +425,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
               className="h-8 gap-2 px-3 text-[13px] font-medium"
             >
               {isLast ? t('common:uiText.submit') : t('common:uiText.next')}
-              <span className="font-mono text-[11px] opacity-60">Enter</span>
+              <span className="font-mono text-[11px] opacity-60">{t('common:keyboard.enter')}</span>
             </Button>
           </div>
         </div>

@@ -217,9 +217,9 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
         () => typeof displayConfig.title === 'function'
           ? displayConfig.title(parsedData, { toolResult })
           : displayConfig.title,
-        'Details',
+        t('uiText.toolDetails'),
       ),
-      'Details',
+      t('uiText.toolDetails'),
     );
 
     const defaultOpen = displayConfig.defaultOpen !== undefined
@@ -325,8 +325,8 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
 
       case 'success-message': {
         const msg = toDisplayString(
-          safeCall('success message getter', toolName, () => displayConfig.getMessage?.(parsedData), 'Success'),
-          'Success',
+          safeCall('success message getter', toolName, () => displayConfig.getMessage?.(parsedData), t('status.success')),
+          t('status.success'),
         );
         contentComponent = (
           <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">

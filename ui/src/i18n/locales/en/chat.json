@@ -187,6 +187,12 @@
   },
   "process": {
     "group": { "details": "Work details", "running": "Working" },
+    "duration": {
+      "day": "{{count}}d",
+      "hour": "{{count}}h",
+      "minute": "{{count}}m",
+      "second": "{{count}}s"
+    },
     "summary": {
       "processed": "Processed {{duration}}",
       "completed": "Process completed",
@@ -272,6 +278,12 @@
     "instruction": "Please select an option in your terminal where PilotDeck is running.",
     "selectedOption": "✓ PilotDeck selected option {{number}}",
     "instructionDetail": "In the CLI, you would select this option interactively using arrow keys or by typing the number."
+  },
+  "imagePreview": {
+    "label": "Preview image",
+    "named": "Preview {{name}}",
+    "uploaded": "Uploaded image",
+    "toolResult": "Tool result image"
   },
   "thinking": {
     "title": "Thinking...",
@@ -767,6 +779,8 @@
   },
   "toolDisplay": {
     "copyCommand": "Copy command",
+    "tool": "Tool",
+    "duration": "{{seconds}}s",
     "collapse": "Limit height",
     "full": "Expand fully",
     "copy": "Copy",

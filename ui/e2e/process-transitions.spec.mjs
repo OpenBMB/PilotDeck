@@ -143,7 +143,7 @@ test('completion smoothly folds every intermediate process into the single measu
   const controlIds = (await header.getAttribute('aria-controls')).split(' ');
   expect(controlIds).toHaveLength(3);
   await page.evaluate(() => window.streamFixture.setLanguage('zh-CN'));
-  await expect(header).toHaveText('已处理 29s');
+  await expect(header).toHaveText('已处理 29 秒');
   await page.screenshot({ path: test.info().outputPath('turn-completed-collapsed-light.png'), animations: 'disabled' });
   await page.evaluate(() => window.streamFixture.setAppearance('default', true));
   await page.screenshot({ path: test.info().outputPath('turn-completed-collapsed-dark.png'), animations: 'disabled' });

@@ -4,6 +4,10 @@
     "label": "Interface zoom",
     "reset": "Reset"
   },
+  "keyboard": {
+    "enter": "Enter",
+    "escape": "Esc"
+  },
   "buttons": {
     "save": "Save",
     "cancel": "Cancel",
@@ -760,6 +764,8 @@
     "tasksCompleted": "{{completed}}/{{total}} completed",
     "updatingTodos": "Updating todo list",
     "todoList": "Todo list",
+    "todoListUpdated": "Todo list updated",
+    "toolDetails": "Details",
     "todoProgress": "{{completed}}/{{count}} completed",
     "taskList": "Task list",
     "taskDetails": "Task details",

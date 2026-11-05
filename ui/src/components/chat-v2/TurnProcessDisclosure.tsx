@@ -29,7 +29,7 @@ export function TurnProcessHeader({ group, scope, expanded, onExpandedChange, wa
   const end = group.isRunning ? now : current.stoppedAt;
   const durationMs = !group.isRunning && group.durationMs !== null ? group.durationMs
     : observedStart.current !== undefined && start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined;
-  const duration = formatProcessDuration(durationMs ?? 0);
+  const duration = formatProcessDuration(durationMs ?? 0, t);
   const label = durationMs === undefined ? t('process.summary.completed', { defaultValue: 'Process completed' })
     : t('process.summary.processed', { duration, defaultValue: `Processed ${duration}` });
   if (waiting || (group.isRunning && !showWhileRunning)) return null;

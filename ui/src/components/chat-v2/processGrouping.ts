@@ -1407,6 +1407,7 @@ export function processSummaryToTrace(
   const rawStatus = String(message.state || 'completed');
   const duration = formatProcessDuration(
     typeof message.durationMs === 'number' ? message.durationMs : 0,
+    t,
   );
   const label = formatCompletedProcessTitle(message, t) ||
     t('process.summary.processed', {

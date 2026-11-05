@@ -438,11 +438,11 @@ function MessageRowV2({
                       key={index}
                       onClick={() => setUserImageLightbox(index)}
                       className={cn('block max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900/40', visibleImages.length > 1 ? 'h-24 w-24' : 'w-72')}
-                      aria-label={image.name ? `Preview ${image.name}` : 'Preview image'}
+                      aria-label={image.name ? t('imagePreview.named', { name: image.name, defaultValue: `Preview ${image.name}` }) : t('imagePreview.label', { defaultValue: 'Preview image' })}
                     >
                       <img
                         src={image.data}
-                        alt={image.name || 'Uploaded image'}
+                        alt={image.name || t('imagePreview.uploaded', { defaultValue: 'Uploaded image' })}
                         className={cn('block w-full cursor-zoom-in object-contain hover:opacity-90', visibleImages.length > 1 ? 'h-full' : 'h-48')}
                         loading="lazy"
                       />
@@ -822,11 +822,11 @@ function ProcessAttachmentRow({
               key={`${attachment.inlineImages[idx].toolId || 'tool-image'}-${idx}`}
               onClick={() => setLightboxIndex(idx)}
               className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900"
-              aria-label={image.name ? `Preview ${image.name}` : 'Preview image'}
+              aria-label={image.name ? t('imagePreview.named', { name: image.name, defaultValue: `Preview ${image.name}` }) : t('imagePreview.label', { defaultValue: 'Preview image' })}
             >
               <img
                 src={image.data}
-                alt={image.name || 'Tool result image'}
+                alt={image.name || t('imagePreview.toolResult', { defaultValue: 'Tool result image' })}
                 className="block h-auto max-h-72 max-w-xs cursor-zoom-in object-contain"
                 loading="lazy"
               />

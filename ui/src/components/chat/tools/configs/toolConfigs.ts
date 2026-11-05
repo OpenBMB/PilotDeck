@@ -328,7 +328,7 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       hideOnSuccess: true,
       type: 'collapsible',
       contentType: 'success-message',
-      getMessage: () => 'Todo list updated'
+      getMessage: () => t('common:uiText.todoListUpdated')
     }
   },
 
@@ -346,7 +346,7 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       hideOnSuccess: true,
       type: 'collapsible',
       contentType: 'success-message',
-      getMessage: () => 'Todo list updated'
+      getMessage: () => t('common:uiText.todoListUpdated')
     }
   },
 

@@ -186,6 +186,12 @@
   },
   "process": {
     "group": { "details": "执行过程", "running": "执行过程" },
+    "duration": {
+      "day": "{{count}} 天",
+      "hour": "{{count}} 小时",
+      "minute": "{{count}} 分",
+      "second": "{{count}} 秒"
+    },
     "summary": {
       "processed": "已处理 {{duration}}",
       "completed": "过程已完成",
@@ -271,6 +277,12 @@
     "instruction": "请在 PilotDeck 运行的终端中选择一个选项。",
     "selectedOption": "✓ PilotDeck 选择了选项 {{number}}",
     "instructionDetail": "在 CLI 中，您可以使用方向键或输入数字来交互式地选择此选项。"
+  },
+  "imagePreview": {
+    "label": "预览图片",
+    "named": "预览 {{name}}",
+    "uploaded": "已上传图片",
+    "toolResult": "工具结果图片"
   },
   "thinking": {
     "title": "思考中...",
@@ -748,6 +760,8 @@
   },
   "toolDisplay": {
     "copyCommand": "复制命令",
+    "tool": "工具",
+    "duration": "{{seconds}} 秒",
     "collapse": "收起完整内容",
     "full": "展开完整内容",
     "copy": "复制",
