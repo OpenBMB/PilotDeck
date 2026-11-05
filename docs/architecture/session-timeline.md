@@ -113,6 +113,12 @@ can settle a recovered run without an earlier recoverable error taking precedenc
 Searches, webpage fetches and other tool calls retain separate counts in mixed
 summaries. Replayed call identities do not increment counts; distinct runs remain
 distinct even if they reuse a tool-call identifier.
+Completed permission failures also belong to the ordered process disclosure,
+including single-call groups. Genuine pending authorization stays expanded and
+actionable. Structured error codes take precedence over remote response text;
+HTTP failures do not offer local permission changes merely because their body
+mentions permissions. Web fetch rows retain explicit pending, live, completed
+and failed labels.
 The history reader retains structured question results instead of reconstructing
 answers from tool-result text. Todo updates use one progress header and checklist;
 successful acknowledgements do not create a second details row.

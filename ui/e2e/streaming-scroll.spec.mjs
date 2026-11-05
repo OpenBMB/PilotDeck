@@ -65,17 +65,17 @@ test('thinking keeps its reading position through tools and remains available in
 test('web fetch has one status in plan mode and empty results finish it; parallel calls remain distinct', async ({ page }) => {
   await open(page);
   await page.evaluate(() => { window.streamFixture.setMode('plan'); window.streamFixture.tool(); });
-  await expect(page.getByRole('button', { name: 'Using https://example.com/fetch-1', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Fetching https://example.com/fetch-1', exact: true })).toHaveCount(1);
   await page.evaluate(() => window.streamFixture.finishTool());
-  await expect(page.getByRole('button', { name: 'Used https://example.com/fetch-1', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Fetched https://example.com/fetch-1', exact: true })).toHaveCount(1);
   await page.evaluate(() => { window.streamFixture.tool('fetch-2'); window.streamFixture.tool('fetch-3'); window.streamFixture.finishTool('fetch-2'); });
   const waiting = page.locator('[data-process-block] > button');
   await expect(waiting).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByRole('button', { name: /^Using https:\/\/example.com\/fetch-/ })).toHaveCount(1);
-  await expect(page.getByRole('button', { name: 'Used https://example.com/fetch-2', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /^Fetching https:\/\/example.com\/fetch-/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Fetched https://example.com/fetch-2', exact: true })).toHaveCount(1);
   await page.evaluate(() => window.streamFixture.finishTool('fetch-3'));
-  await expect(page.getByRole('button', { name: /^Using https:\/\/example.com\/fetch-/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Used https:\/\/example.com\/fetch-/ })).toHaveCount(3);
+  await expect(page.getByRole('button', { name: /^Fetching https:\/\/example.com\/fetch-/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Fetched https:\/\/example.com\/fetch-/ })).toHaveCount(3);
 });
 
 test('stream updates do not repeatedly recenter an existing search match', async ({ page }) => {

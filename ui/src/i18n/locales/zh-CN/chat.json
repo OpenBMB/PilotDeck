@@ -782,6 +782,7 @@
     "output": "输出",
     "success": "成功",
     "failed": "失败",
+    "fetchFailed": "网页读取失败",
     "exitCode": "退出码 {{code}}",
     "executing": "正在运行…",
     "actionRequired": "需要处理",
@@ -797,6 +798,7 @@
       "read": "正在读取",
       "search": "正在搜索",
       "tool": "正在使用",
+      "fetch": "正在读取网页",
       "skill": "正在读取技能"
     },
     "pending": {
@@ -806,6 +808,7 @@
       "read": "读取",
       "search": "搜索",
       "tool": "工具",
+      "fetch": "读取网页",
       "skill": "读取技能"
     },
     "done": {
@@ -815,6 +818,7 @@
       "read": "已读取",
       "search": "已搜索",
       "tool": "已使用",
+      "fetch": "已读取网页",
       "skill": "已读取技能"
     }
   },

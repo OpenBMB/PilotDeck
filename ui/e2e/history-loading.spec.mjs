@@ -144,3 +144,29 @@ for (const reason of ['aborted_streaming', 'model_error']) test(`restored ${reas
   await expect(page.getByText('Calling model...', { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-process-live="true"]')).toHaveCount(0);
 });
+
+for (const code of [null, 'tool_execution_failed', 'permission_denied']) test(`a single fetch folds with completed work and retains its result (${code ?? 'success'})`, async ({ page }) => {
+  const messages = [{ ...base, id: 'user', kind: 'text', role: 'user', content: 'Check a page', turnTiming: {
+    startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:00:08Z', finishReason: 'completed' } },
+  { ...base, id: 'fetch', kind: 'tool_use', toolId: 'fetch', toolName: 'web_fetch', toolInput: { url: 'https://example.com/page' } },
+  { ...base, id: 'result', kind: 'tool_result', toolId: 'fetch', content: code ? 'HTTP 403: Permission denied; the remote site requires authentication.' : 'Page received.', isError: Boolean(code), errorCode: code },
+  { ...base, id: 'final', kind: 'text', role: 'assistant', content: 'The final response.' }];
+  await serve(page, messages);
+  await page.goto('/e2e/fixtures/history-loading.html');
+  await expect(page.getByText('The final response.', { exact: true })).toBeVisible();
+  const turn = page.locator('[data-turn-process-header] button');
+  await expect(turn).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('[data-tool-id="fetch"]')).toHaveCount(0);
+  await turn.click();
+  const process = page.locator('[data-process-block] > button');
+  await expect(process).toHaveText('Fetched 1 page');
+  await expect(process).toHaveAttribute('aria-expanded', 'false');
+  await process.click();
+  await expect(page.getByRole('button', { name: `${code ? 'Fetch failed' : 'Fetched'} https://example.com/page`, exact: true })).toBeVisible();
+  await turn.click();
+  await expect(turn).toHaveAttribute('aria-expanded', 'false');
+  const closedProcess = page.locator('[data-turn-process-member]');
+  await expect(closedProcess).toHaveAttribute('aria-hidden', 'true');
+  await expect.poll(async () => (await closedProcess.boundingBox()).height).toBeLessThan(1);
+  await expect(page.getByText('The final response.', { exact: true })).toBeVisible();
+});

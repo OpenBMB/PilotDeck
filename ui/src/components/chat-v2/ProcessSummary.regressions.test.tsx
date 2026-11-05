@@ -65,3 +65,26 @@ it('excludes idle gaps between resumed executions and does not double-count over
   expect(group.durationMs).toBe(40000);
   expect(group.outcome).toBe('completed');
 });
+
+it.each([undefined, 'tool_execution_failed', 'permission_denied'])('folds a single completed fetch, including failed or denied attempts (%s)', async errorCode => {
+  const i18n = await createTestI18n('en');
+  const fetch: ChatMessage = { id: 'fetch', toolId: 'fetch', toolName: 'web_fetch', type: 'assistant', timestamp: start,
+    content: '', isToolUse: true, toolResult: { isError: true, errorCode, content: 'Remote permission denied; this site requires a browser.' } };
+  const items = project([user, fetch, { ...user, id: 'final', type: 'assistant', content: 'Used another source.' }]);
+  const trace = items.find(item => item.turnTrace)!;
+  expect(trace.turnTrace?.items.map(item => item.message.id)).toEqual(['fetch']);
+  expect(trace.turnTrace?.defaultExpanded).toBe(false);
+  expect(trace.processRun?.defaultExpanded).toBe(false);
+  expect(items.some(item => item.message.id === 'fetch')).toBe(false);
+  expect(formatCompletedProcessTitle([fetch], i18n.getFixedT('en', 'chat'))).toBe('Fetched 1 page');
+});
+
+it('keeps genuine pending permission controls expanded while work is active or stopped without a reply', () => {
+  const fetch: ChatMessage = { id: 'fetch', toolId: 'fetch', toolName: 'web_fetch', type: 'assistant', timestamp: start,
+    content: '', isToolUse: true, toolResult: { isError: true, errorCode: 'permission_required', content: 'Network fetch requires permission.' } };
+  for (const running of [true, false]) {
+    const trace = project([user, fetch], running).find(item => item.turnTrace)!;
+    expect(trace.turnTrace?.defaultExpanded).toBe(true);
+    expect(trace.processRun?.defaultExpanded).toBe(true);
+  }
+});

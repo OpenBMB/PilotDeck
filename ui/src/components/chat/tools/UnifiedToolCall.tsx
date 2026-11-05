@@ -46,6 +46,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
   const isRead = name === 'Read';
   const isSkill = name === 'read_skill';
   const isSearch = ['Grep', 'Glob', 'web_search'].includes(name);
+  const isFetch = /^web[_-]?fetch$/i.test(name);
   const pending = result == null;
   const active = pending && running;
   const separateMedia = isMediaSurfaceVisible(message, running);
@@ -54,8 +55,9 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
     : isSkill ? displayText(input.skillName || input.skill_name || input.name)
     : isEdit || isRead ? file.split('/').pop() || file
     : displayText(input.query || input.pattern || input.url || input.description || message.toolName);
-  const action = isShell ? 'command' : isEdit ? (name === 'Write' ? 'write' : 'edit') : isRead ? 'read' : isSkill ? 'skill' : isSearch ? 'search' : 'tool';
-  const label = t(`toolDisplay.${active ? 'running' : pending || result?.isError ? 'pending' : 'done'}.${action}`);
+  const action = isShell ? 'command' : isEdit ? (name === 'Write' ? 'write' : 'edit') : isRead ? 'read' : isSkill ? 'skill' : isSearch ? 'search' : isFetch ? 'fetch' : 'tool';
+  const label = isFetch && result?.isError ? t('toolDisplay.fetchFailed')
+    : t(`toolDisplay.${active ? 'running' : pending || result?.isError ? 'pending' : 'done'}.${action}`);
   const Icon = getToolIcon(name);
   const rawResult = resultText(result?.content);
   const displayError = rawResult.includes('<tool_use_error>') ? rawResult.replace(/<\/?tool_use_error>/g, '').replace(/^InputValidationError:\s*/i, '').trim() : rawResult;

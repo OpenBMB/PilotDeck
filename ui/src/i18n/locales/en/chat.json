@@ -801,6 +801,7 @@
     "output": "Output",
     "success": "Success",
     "failed": "Failed",
+    "fetchFailed": "Fetch failed",
     "exitCode": "Exit {{code}}",
     "executing": "Running…",
     "actionRequired": "Action required",
@@ -816,6 +817,7 @@
       "read": "Reading",
       "search": "Searching",
       "tool": "Using",
+      "fetch": "Fetching",
       "skill": "Reading skill"
     },
     "pending": {
@@ -825,6 +827,7 @@
       "read": "Read",
       "search": "Search",
       "tool": "Tool",
+      "fetch": "Fetch",
       "skill": "Read skill"
     },
     "done": {
@@ -834,6 +837,7 @@
       "read": "Read",
       "search": "Searched",
       "tool": "Used",
+      "fetch": "Fetched",
       "skill": "Read skill"
     }
   },

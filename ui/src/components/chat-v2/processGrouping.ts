@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import { isMediaGeneration, isMediaSurfaceVisible } from '../chat/tools/mediaPresentation';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
-import { isReadOnlyModeToolDeny } from '../chat/utils/chatPermissions';
+import { isToolPermissionError } from '../chat/utils/chatPermissions';
 import type { ProcessTraceMetric, ProcessTraceStep } from './ProcessTrace';
 import { formatProcessDuration } from './processTraceUtils';
 
@@ -326,37 +326,7 @@ function hasToolError(message: ChatMessage): boolean {
 }
 
 function isPermissionToolError(message: ChatMessage): boolean {
-  if (!message.toolResult?.isError) {
-    return false;
-  }
-  if (isReadOnlyModeToolDeny(message)) {
-    return false;
-  }
-
-  const errorCode = typeof message.toolResult.errorCode === 'string'
-    ? message.toolResult.errorCode
-    : '';
-  if (
-    errorCode === 'permission_denied' ||
-    errorCode === 'permission_required' ||
-    errorCode === 'permission_cancelled'
-  ) {
-    return true;
-  }
-
-  const content = typeof message.toolResult.content === 'string'
-    ? message.toolResult.content
-    : '';
-  const lower = content.toLowerCase();
-  return (
-    lower.includes('permission') &&
-    (
-      lower.includes('denied') ||
-      lower.includes('not allowed') ||
-      lower.includes('requires') ||
-      lower.includes('grant')
-    )
-  );
+  return isToolPermissionError(message);
 }
 
 function isUserVisibleTool(message: ChatMessage): boolean {
@@ -1010,7 +980,8 @@ export function groupProcessIntervals(
   };
   messages.forEach((message, index) => {
     if (message.isAgentActivity || message.isAgentActivitySummary || isEmptyAssistantShell(message)) return;
-    const work = message.isThinking || isProcessMessage(message);
+    const work = message.isThinking || isProcessMessage(message)
+      || (message.isToolUse && !isUserVisibleTool(message) && isPermissionToolError(message));
     if (work) {
       pending.push(clean(message, index));
       // Delivered media stays visible even when the surrounding work closes.
@@ -1026,7 +997,13 @@ export function groupProcessIntervals(
   });
   flush(false, isAssistantWorking);
   // Media may have arrived while a group was still accumulating. Preserve chronology.
-  return attachTurnProcessGroups(messages, result.sort((a, b) => a.originalIndex - b.originalIndex), isAssistantWorking);
+  const grouped = attachTurnProcessGroups(messages, result.sort((a, b) => a.originalIndex - b.originalIndex), isAssistantWorking);
+  for (const item of grouped) {
+    if (item.turnTrace && item.processRun?.defaultExpanded && item.turnTrace.items.some(child => isPermissionToolError(child.message))) {
+      item.turnTrace.defaultExpanded = true;
+    }
+  }
+  return grouped;
 }
 
 export function getTurnProcessMemberId(item: RenderableMessageItem): string {
@@ -1085,7 +1062,7 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
       if (item.turnTrace) return true;
       if (isReply(item)) return true;
       // Pending questions/approvals and permission actions must remain reachable.
-      if (isPermissionToolError(item.message)) return false;
+      if (!completed && isPermissionToolError(item.message)) return false;
       if (isUserVisibleTool(item.message) && !item.message.toolResult) return false;
       return Boolean(item.message.isThinking || item.message.isToolUse || item.message.isSubagentContainer
         || (item.message.isInteractivePrompt && completed)

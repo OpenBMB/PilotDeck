@@ -140,7 +140,7 @@ test('completion smoothly folds every intermediate process into the single measu
   expect(await page.getByText('Visible progress reply.', { exact: true }).evaluate(node => node === window.progressProse)).toBe(true);
   await expect(page.getByText('Visible progress reply.', { exact: true })).not.toBeInViewport();
   await expect(page.getByText('Final answer stays visible.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Used https:\/\/example.com/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Fetched https:\/\/example.com/ })).toHaveCount(0);
   const controlIds = (await header.getAttribute('aria-controls')).split(' ');
   expect(controlIds).toHaveLength(3);
   await page.evaluate(() => window.streamFixture.setLanguage('zh-CN'));
