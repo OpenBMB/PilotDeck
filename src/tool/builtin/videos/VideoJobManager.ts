@@ -60,7 +60,8 @@ export class VideoJobManager {
   }
   async forCall(sessionId: string, toolCallId: string, turnId?: string) {
     const matches = (job: VideoJob) => job.toolCallId === toolCallId && (!turnId || job.turnId === turnId);
-    const direct = (await this.list(sessionId)).filter(matches).sort((a, b) => b.createdAt - a.createdAt)[0];
+    // Forked child ledgers share the root directory, but retain a distinct scope.
+    const direct = (await this.list(sessionId)).filter(job => !job.forkSubagentId && matches(job)).sort((a, b) => b.createdAt - a.createdAt)[0];
     if (direct) return direct;
     // Child detail frames use the parent's display scope; resolve it only
     // through a relationship registered by the runtime, never by global ID.
@@ -72,7 +73,7 @@ export class VideoJobManager {
     for (const name of await readdir(join(this.root, "parents")).catch(() => [])) {
       const relation = JSON.parse(await readFile(join(this.root, "parents", name), "utf8"));
       if (relation.parent === parent && relation.child.endsWith(suffix)) {
-        return (await this.list(relation.child)).find(matches);
+        return (await this.list(relation.child)).find(job => !job.forkSubagentId && matches(job));
       }
     }
   }

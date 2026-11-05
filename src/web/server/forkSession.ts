@@ -455,13 +455,19 @@ class ForkMediaInheritance {
     this.videos.set(video.videoId, video);
     return video;
   }
-  private async findRecovered(call: string, entry: AgentTranscriptEntry): Promise<VideoJob | undefined> {
-    const owners = new Set([this.sourceSessionId, entry.sessionId]);
+  private async findRecovered(call: string, entry: AgentTranscriptEntry, subagentId?: string): Promise<VideoJob | undefined> {
+    // A previous fork stores child ledgers in its root session, tagged with
+    // their child scope. Original child transcripts retain their actual session
+    // ID. Neither lookup may use an unscoped parent or sibling task, even when
+    // a snapshot has lost its original turn ID and the call ID is unique.
+    const owners = [{ sessionId: this.sourceSessionId, subagentId }];
+    if (subagentId && entry.sessionId !== this.sourceSessionId && entry.sessionId !== this.targetSessionId) {
+      owners.push({ sessionId: entry.sessionId, subagentId: undefined });
+    }
     for (const owner of owners) {
-      if (owner === this.targetSessionId) continue;
-      let pending = this.jobLists.get(owner);
-      if (!pending) { pending = this.jobs.list(owner); this.jobLists.set(owner, pending); }
-      const matches = (await pending).filter(job => job.toolCallId === call &&
+      let pending = this.jobLists.get(owner.sessionId);
+      if (!pending) { pending = this.jobs.list(owner.sessionId); this.jobLists.set(owner.sessionId, pending); }
+      const matches = (await pending).filter(job => job.forkSubagentId === owner.subagentId && job.toolCallId === call &&
         (entry.type !== "control_boundary" || job.createdAt <= Date.parse(entry.createdAt)));
       // A compact snapshot may no longer carry the original turn ID. Only
       // resolve a unique, already-submitted task there; never pick a later
@@ -492,7 +498,7 @@ class ForkMediaInheritance {
     for (const { block, entry } of references) {
       if (block.type === "tool_call") {
         if (block.name === "generate_video") {
-          const job = await this.findRecovered(block.id, entry);
+          const job = await this.findRecovered(block.id, entry, subagentId);
           if (job) await this.inheritJob(job, subagentId);
         }
         continue;
@@ -500,7 +506,7 @@ class ForkMediaInheritance {
       const videoRaw = block.raw as { toolName?: string; data?: { videoGeneration?: GeneratedVideo } } | undefined;
       const isVideo = videoRaw && ["generate_video", "save_generated_video"].includes(videoRaw.toolName ?? "");
       const job = videoRaw?.toolName === "generate_video" || calls.has(JSON.stringify([entry.turnId, block.toolCallId]))
-        ? await this.findRecovered(block.toolCallId, entry) : undefined;
+        ? await this.findRecovered(block.toolCallId, entry, subagentId) : undefined;
       if (isVideo || job) {
         const original = videoRaw?.data?.videoGeneration;
         if (original && typeof original.videoId === "string" && typeof original.sessionId === "string") {
