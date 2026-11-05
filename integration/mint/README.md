@@ -17,7 +17,6 @@ Rust builtin-turn-loop → iface 服务适配 → Mint Host → 安装包。
 ```sh
 sh integration/mint/build-runtime.sh
 python3 integration/mint/setup-local.py
-node --import tsx integration/mint/build-streaming-override.mjs /Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime/provider-probe-project
 sh integration/mint/start-local.sh
 # 停止此独立实例
 sh integration/mint/stop-local.sh
@@ -70,3 +69,12 @@ Mint不支持的编辑重跑和分叉已禁用。高级工作流不属于本次�
 
 聚焦检查：gateway 5项、external events 8项、streaming 3项、外部输入协议1项、
 UI TypeScript和文件工具实际源码类型检查通过。原失败日志保留用于追踪。
+
+## UTF-8 包侧修复（2026-11-05）
+
+当前实例切换为 `utf8-registry-project` 与 `utf8-unified`。五个版本均由MintHub安装：
+Instructions0.1.6、Retention0.2.5、Pruner0.1.8、Budget0.3.6、OpenAI Consumer0.1.3。
+不再运行 build-streaming-override；该脚本仅保留用于重现历史实例。
+Host不提供TextEncoder/TextDecoder，包拥有局部实现。provider实时流已进入正式源码与发布制品。
+原provider-probe-project/unified保留。完整源码与发布记录在
+`/Users/a1/Documents/ChatGPT/mint-utf8-package-release/`。
