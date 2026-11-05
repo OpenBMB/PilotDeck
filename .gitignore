@@ -147,6 +147,8 @@ vite.config.ts.timestamp-*
 # Local recording / artifacts
 artifacts/
 outputs/desktop-chrome-review/
+/design-qa/
+/design-qa.md
 !src/session/artifacts/
 !src/session/artifacts/**
 

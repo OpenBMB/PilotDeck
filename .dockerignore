@@ -3,6 +3,14 @@ wcb/
 test-results/
 node_modules/
 .git/
+# Local diagnostics and screenshots can contain private workspace data.
+artifacts/
+outputs/
+design-qa/
+design-qa.md
+.pilotdeck/
+.playwright-mcp/
+.cursor/
 Auto-Research-Skills/
 # Keep Electron packages and build outputs out of the Web image. The UI uses
 # these environment-independent appearance/startup contracts during its build.
