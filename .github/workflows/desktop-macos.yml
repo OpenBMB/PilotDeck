@@ -177,6 +177,9 @@ jobs:
 
       - name: Build macOS ${{ matrix.arch }} installer
         shell: bash
+        env:
+          # Match Linux's build heap budget for the Mermaid-enabled UI bundle.
+          NODE_OPTIONS: --max-old-space-size=2560
         run: |
           if [ "$PILOTDECK_DESKTOP_REQUIRE_SIGNING" = 1 ]; then
             pnpm --filter pilotdeck-desktop run dist:mac:${{ matrix.arch }}
