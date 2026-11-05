@@ -8,6 +8,8 @@ export type TimelinePosition = {
   order: number;
   revision: number;
   offset?: number;
+  startedAt?: string;
+  durationMs?: number;
 };
 
 export function isTimelineMessage(message: NormalizedMessage): boolean {

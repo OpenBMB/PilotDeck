@@ -226,6 +226,7 @@ function convertSingleMessage(
       const thinkingContent = msg.content?.trim()
         ? msg.content
         : msg.reasoningContent || '';
+      const isStreaming = msg.timeline ? msg.streamState === 'open' : msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_');
       if (thinkingContent.trim()) {
         return {
           id: msg.id,
@@ -235,7 +236,9 @@ function convertSingleMessage(
           timestamp: msg.timestamp,
           ...turnIdentity,
           isThinking: true,
-          isStreaming: msg.timeline ? msg.streamState === 'open' : msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_'),
+          isStreaming,
+          startedAt: msg.timeline?.startedAt ?? msg.startedAt ?? (isStreaming ? msg.timestamp : undefined),
+          durationMs: msg.timeline?.durationMs ?? msg.durationMs,
         };
       }
       return null;

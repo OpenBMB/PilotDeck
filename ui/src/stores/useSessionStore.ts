@@ -2118,6 +2118,8 @@ export function useSessionStore() {
     updated[existingIndex] = {
       ...stream,
       id: getFinalizedSubagentThinkingId(sessionId, subagentId, stream.timestamp),
+      startedAt: stream.timestamp,
+      durationMs: Math.max(0, Date.now() - Date.parse(stream.timestamp)),
     };
     const nextMap = new Map(slot.subagentDetailMessages);
     nextMap.set(subagentId, updated);
@@ -2460,6 +2462,8 @@ export function useSessionStore() {
         ...stream,
         id: newId,
         isFinal: true,
+        startedAt: stream.timestamp,
+        durationMs: Math.max(0, Date.now() - Date.parse(stream.timestamp)),
       };
       recomputeMergedIfNeeded(slot);
       notify(sessionId);

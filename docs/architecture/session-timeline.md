@@ -21,6 +21,11 @@ if an older assembler already combined non-adjacent parts.
 - `offset` is the UTF-16 string offset of an incremental text payload. Absence
   means the payload is an absolute snapshot. A gap triggers baseline recovery;
   duplicate offsets are not appended twice.
+- Thinking positions optionally carry `startedAt` (first received reasoning delta)
+  and a frozen `durationMs` when the block ends. A text/tool boundary, stream end,
+  error or retry stops that block's clock; later tool execution is excluded. These
+  presentation fields survive final snapshots and JSONL history. Older transcripts
+  have no measured reasoning duration.
 - `streamBoundary = { turnId, through, revision }` closes only blocks through that
   position. A delayed end frame cannot close a later response attempt.
 
