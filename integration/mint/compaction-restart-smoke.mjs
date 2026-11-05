@@ -13,8 +13,9 @@ try {
  await new Promise(r=>setTimeout(r,2000));
  gw=gateway();
  let answer='';
- for await(const e of gw.submitTurn({sessionKey,message:'After service restart, what is the secret fruit? Do not use tools.',runId:crypto.randomUUID()})) {console.log(JSON.stringify(e));if(e.type==='text_delta')answer+=e.text;}
+ for await(const e of gw.submitTurn({sessionKey,message:'After service restart, what is the secret fruit? Do not use tools.',runId:crypto.randomUUID()})) {console.log(JSON.stringify(e));if(e.type==='assistant_text_delta')answer+=e.text;}
  const history=await gw.readSessionMessages({sessionKey});
  console.log(JSON.stringify({event:'restart_history',messages:history.messages}));
- assert.match(JSON.stringify(history.messages).toLowerCase(),/apricot/);
+ assert.match(answer.toLowerCase(),/apricot/);
+ assert.equal(history.messages.filter(m=>m.role==='user').length,5);
 } finally{gw.close();}
