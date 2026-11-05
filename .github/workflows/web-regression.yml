@@ -38,6 +38,8 @@ jobs:
           node --test --test-timeout 60000
           dist/tests/session/model-context-snapshot.spec.js
           dist/tests/agent/loop/context-cap.spec.js
+          dist/tests/agent/loop/memory-retrieval-dedup.spec.js
+          dist/tests/context/memory-retrieval-dedup.spec.js
           dist/tests/context/token-accounting-runtime.spec.js
           dist/tests/gateway/gateway-server-port.spec.js
           dist/tests/gateway/background-runtime-reload.spec.js

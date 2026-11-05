@@ -48,6 +48,8 @@ export type AgentContextRuntime = {
    * implementation swallows so a failing memory backend never breaks a turn.
    */
   captureTurn?(input: AgentContextCaptureTurnInput): Promise<void>;
+  /** Optional synchronous cleanup, independent of memory capture; safe to call more than once. */
+  releaseTurn?(input: Pick<AgentContextCaptureTurnInput, "sessionId" | "turnId">): void;
   /**
    * Optional. Proactive auto-compaction: evaluates the token budget and
    * triggers summarization when the context approaches `maxContextTokens`.

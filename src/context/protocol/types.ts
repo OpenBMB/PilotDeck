@@ -140,4 +140,6 @@ export interface ContextRuntime {
    * circuit. Throwing must not break the turn — implementations swallow.
    */
   captureTurn?(input: ContextCaptureTurnInput): Promise<void>;
+  /** Idempotently release only this turn's temporary state, including on early iterator exit. */
+  releaseTurn?(input: Pick<ContextCaptureTurnInput, "sessionId" | "turnId">): void;
 }

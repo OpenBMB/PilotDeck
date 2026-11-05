@@ -16,7 +16,11 @@ import { ensureTrailingUserMessage } from "./compaction/toolPairIntegrity.js";
 import type { ContextOverflowRecovery } from "./recovery/ContextOverflowRecovery.js";
 import { NullExtensionResolver, type ExtensionResolver } from "./extension/ExtensionResolver.js";
 import type { InstructionDiscovery, InstructionScope } from "./instructions/InstructionDiscovery.js";
-import { MemoryAttachmentBuilder } from "./memory/MemoryAttachmentBuilder.js";
+import {
+  MemoryAttachmentBuilder,
+  type MemoryAttachmentBuilderInput,
+  type MemoryAttachmentBuilderResult,
+} from "./memory/MemoryAttachmentBuilder.js";
 import type { MemoryResolver } from "./memory/MemoryResolver.js";
 import { PromptAssembler } from "./prompt/PromptAssembler.js";
 import { MessageProjector } from "./projection/MessageProjector.js";
@@ -101,6 +105,8 @@ const EMERGENCY_SUMMARY_MAX_OUTPUT_TOKENS = 1_536;
 const EMERGENCY_TOOL_RESULT_TOKENS = 256;
 const EMERGENCY_HEAD_KEEP_RATIO = 0.10;
 
+type TurnMemoryTasks = Map<AbortSignal | undefined, Map<string, Promise<MemoryAttachmentBuilderResult>>>;
+
 export class DefaultContextRuntime implements ContextRuntime {
   private readonly sessionArtifactContext?: DefaultContextRuntimeOptions["sessionArtifactContext"];
   private readonly extension: ExtensionResolver;
@@ -109,6 +115,7 @@ export class DefaultContextRuntime implements ContextRuntime {
   private readonly toolResultBudget?: ToolResultBudget;
   private readonly memoryResolver?: MemoryResolver;
   private readonly memoryAttachmentBuilder?: MemoryAttachmentBuilder;
+  private readonly turnMemoryTasks = new Map<string, Map<string, TurnMemoryTasks>>();
   readonly tokenBudget?: TokenBudgetManager;
   readonly compactionEngine?: CompactionEngine;
   readonly autoCompactionPolicy?: AutoCompactionPolicy;
@@ -157,6 +164,9 @@ export class DefaultContextRuntime implements ContextRuntime {
 
   async prepareForModel(input: ContextPrepareInput): Promise<ModelContext> {
     const diagnostics: ContextDiagnostic[] = [];
+    // Capture the turn's scope before asynchronous assembly. If releaseTurn
+    // runs meanwhile, this preparation cannot recreate the released entry.
+    const turnMemory = this.memoryAttachmentBuilder ? this.getTurnMemoryTasks(input) : undefined;
 
     const projection = this.messageProjector.project({
       messages: input.messages,
@@ -245,14 +255,14 @@ export class DefaultContextRuntime implements ContextRuntime {
 
     const parts = [...prompt.parts];
     if (this.memoryAttachmentBuilder) {
-      const memory = await this.memoryAttachmentBuilder.build({
+      const memory = await this.buildTurnMemory({
         query: extractRecentUserText(projection.messages) ?? "",
         sessionId: input.sessionId,
         projectRoot: this.projectRoot ?? input.cwd,
         recentMessages: projection.messages,
         signal: input.abortSignal,
         timeoutMs: this.memoryRetrievalTimeoutMs,
-      });
+      }, turnMemory);
       for (const block of memory.attachments) {
         for (const content of block.content) {
           if (content.type === "text" && content.text.trim().length > 0) {
@@ -391,10 +401,50 @@ export class DefaultContextRuntime implements ContextRuntime {
     return { messages: [...input.messages, ...appendedMessages], appendedMessages, diagnostics };
   }
 
+  private getTurnMemoryTasks(input: ContextPrepareInput): TurnMemoryTasks | undefined {
+    if (!input.sessionId?.trim() || !input.turnId?.trim() || input.abortSignal?.aborted) return undefined;
+    let session = this.turnMemoryTasks.get(input.sessionId);
+    if (!session) this.turnMemoryTasks.set(input.sessionId, session = new Map());
+    let turn = session.get(input.turnId);
+    if (!turn) session.set(input.turnId, turn = new Map());
+    return turn;
+  }
+
+  private buildTurnMemory(input: MemoryAttachmentBuilderInput, turn?: TurnMemoryTasks): Promise<MemoryAttachmentBuilderResult> {
+    // Only called when memory is configured. Standalone callers without turn
+    // identity, and already-aborted requests, retain the builder's behavior.
+    const builder = this.memoryAttachmentBuilder!;
+    if (!turn || input.signal?.aborted) {
+      return builder.build(input);
+    }
+    const fingerprint = createHash("sha256").update(stableSerialize({
+      query: input.query,
+      projectRoot: input.projectRoot,
+      recentMessages: input.recentMessages,
+      timeoutMs: input.timeoutMs,
+    })).digest("hex");
+    let tasks = turn.get(input.signal);
+    if (!tasks) turn.set(input.signal, tasks = new Map());
+    let task = tasks.get(fingerprint);
+    if (!task) {
+      // Share the complete build, including its timeout budget and fallback
+      // result. Register before awaiting so concurrent preparations also join.
+      task = builder.build(input);
+      tasks.set(fingerprint, task);
+    }
+    return task;
+  }
+
+  releaseTurn(input: Pick<ContextCaptureTurnInput, "sessionId" | "turnId">): void {
+    const session = this.turnMemoryTasks.get(input.sessionId);
+    session?.delete(input.turnId);
+    if (session?.size === 0) this.turnMemoryTasks.delete(input.sessionId);
+  }
+
   async captureTurn(input: ContextCaptureTurnInput): Promise<void> {
-    if (!this.memoryResolver) return;
-    if (isAlwaysOnSession(input.sessionId)) return;
     try {
+      if (!this.memoryResolver) return;
+      if (isAlwaysOnSession(input.sessionId)) return;
       await this.memoryResolver.captureTurn({
         sessionId: input.sessionId,
         projectRoot: this.projectRoot ?? "",
@@ -404,6 +454,12 @@ export class DefaultContextRuntime implements ContextRuntime {
     } catch {
       // Memory capture must never break the agent turn — provider already
       // swallows in EdgeClawMemoryProvider, this catch is belt-and-suspenders.
+    } finally {
+      try {
+        this.releaseTurn(input);
+      } catch {
+        // Turn cleanup is advisory and must not replace the capture outcome.
+      }
     }
   }
 
