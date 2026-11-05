@@ -2049,3 +2049,34 @@ it('places checkpoint-only changes at the tail and preserves incomplete-turn rev
     expect(within(card).getByRole('button', { name: '撤销' }).hasAttribute('disabled')).toBe(false);
   } finally { fetch.mockRestore(); }
 });
+
+it.each(['generate_image', 'edit_image', 'generate_video'])('keeps pending intermediate %s animation outside folded work, then retires it', async toolName => {
+  const now = '2026-11-01T00:00:00Z';
+  const user: ChatMessage = { id: 'media-user', type: 'user', content: 'Create a site asset', timestamp: now };
+  const call: ChatMessage = { id: 'asset-call', toolId: 'asset-call', type: 'assistant', content: '', timestamp: now,
+    isToolUse: true, toolName, toolInput: { purpose: 'intermediate', output_path: 'assets/example.png', prompt: 'A small site asset' } };
+  const view = renderPane({ messages: [user, call], isAssistantWorking: true });
+  const surface = view.container.querySelector('.generated-image-surface')!;
+  expect(surface.getAttribute('aria-busy')).toBe('true');
+  expect(surface.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
+  fireEvent.click(view.container.querySelector('[data-turn-process-header] button')!);
+  expect(surface.closest('[aria-hidden="true"]')).toBeNull();
+  const result = toolName === 'generate_video'
+    ? { videoGeneration: { videoId: 'video-1', sessionId: 'session-1', purpose: 'intermediate' } }
+    : { imageGeneration: { imageId: 'image-1', sessionId: 'session-1', purpose: 'intermediate', width: 24, height: 16, mimeType: 'image/png' } };
+  view.rerender(createPaneElement({ messages: [user, { ...call, toolResult: { content: 'Done', toolUseResult: result } },
+    { id: 'asset-answer', type: 'assistant', content: 'Site complete.', timestamp: now }] }));
+  expect(surface.closest('[data-media-surface]')?.getAttribute('aria-hidden')).toBe('true');
+  await waitFor(() => expect(view.container.querySelector('.generated-image-surface')).toBeNull());
+  expect(view.container.querySelector('video, img')).toBeNull();
+});
+
+it.each(['generate_image', 'edit_image'])('does not restart historical unfinished %s feedback in a later turn', toolName => {
+  const messages: ChatMessage[] = [
+    { id: 'old-media', type: 'assistant', content: '', timestamp: '2026-11-01T00:00:00Z', isToolUse: true,
+      toolId: 'old-media', toolName, toolInput: { purpose: 'deliverable' } },
+    { id: 'next-media-user', type: 'user', content: 'Continue with another task', timestamp: '2026-11-01T00:01:00Z' },
+  ];
+  const view = renderPane({ messages, isAssistantWorking: true });
+  expect(view.container.querySelector('.generated-image-surface')).toBeNull();
+});

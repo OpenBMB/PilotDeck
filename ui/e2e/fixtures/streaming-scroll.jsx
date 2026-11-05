@@ -83,8 +83,8 @@ function Fixture() {
       store.appendRealtime(sid, { ...base, id, kind: 'tool_use', toolId: id, toolName, toolInput });
       setWorking(true);
     },
-    finishTool(id = 'fetch-1', content = '') {
-      store.appendRealtime(sid, { ...base, id: `${id}-result`, kind: 'tool_result', toolId: id, content, isError: false });
+    finishTool(id = 'fetch-1', content = '', toolUseResult) {
+      store.appendRealtime(sid, { ...base, id: `${id}-result`, kind: 'tool_result', toolId: id, content, isError: false, toolUseResult });
     },
     files(status = 'complete') {
       store.appendRealtime(sid, { ...base, id: 'file-results', kind: 'file_artifacts', artifacts: [{

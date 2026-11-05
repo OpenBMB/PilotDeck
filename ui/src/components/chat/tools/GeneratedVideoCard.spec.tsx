@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import GeneratedVideoCard from './GeneratedVideoCard';
-import { UnifiedToolCall } from './UnifiedToolCall';
 import { buildRenderableMessageItems, groupProcessIntervals } from '../../chat-v2/processGrouping';
-import { isVideoDeliverable } from './videoPresentation';
 import type { ChatMessage } from '../types/types';
 import { isBinaryFile, isVideoFile } from '../../code-editor/utils/binaryFile';
 import { attachmentPreviewKind } from '../utils/attachmentPreviewKind';
+import { isVideoDeliverable } from './videoPresentation';
+import { UnifiedToolCall } from './UnifiedToolCall';
+import GeneratedVideoCard from './GeneratedVideoCard';
 
 const recoveryApi = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('../../../utils/api', () => ({ authenticatedFetch: recoveryApi.fetch, appendAuthToken: (url: string) => url + (url.includes('?') ? '&' : '?') + 'token=fixture' }));
@@ -30,11 +30,11 @@ it('keeps final video and its original call independently in the completed trace
   const failed = { ...pending, id: 'failed', toolResult: { content: 'error', isError: true } };
   const messages: ChatMessage[] = [{ id: 'user', type: 'user', timestamp: new Date(), content: 'Create a site and show a video' }, asset, failed, complete, { id: 'answer', type: 'assistant', timestamp: new Date(), content: 'Done' }];
   const items = groupProcessIntervals(messages, buildRenderableMessageItems(messages), false);
-  expect(items.filter(i => i.mediaArtifact)).toHaveLength(1);
+  expect(items.filter(i => i.mediaArtifact && i.mediaExpanded)).toHaveLength(1);
   const details = items.find(i => i.turnTrace)?.turnTrace?.items.flatMap(i => [i.message, ...[...i.beforeProcessAttachments, ...i.afterProcessAttachments].flatMap(a => a.processDetailMessages)]) ?? [];
   expect(details.map(m => m.id)).toEqual(expect.arrayContaining(['video', 'asset', 'failed']));
   expect(isVideoDeliverable(failed)).toBe(false);
-  expect(buildRenderableMessageItems([pending], { isAssistantWorking: true }).some(i => i.mediaArtifact)).toBe(true);
+  expect(buildRenderableMessageItems([pending], { isAssistantWorking: true }).some(i => i.mediaArtifact && i.mediaExpanded)).toBe(true);
 });
 it('shows intermediate video inside expanded tool details and no giant failed card', () => {
   const { container, rerender } = render(<UnifiedToolCall message={{ ...complete, toolInput: { purpose: 'intermediate' }, toolResult: { ...complete.toolResult!, toolUseResult: { videoGeneration: { videoId: 'id', sessionId: 'session', purpose: 'intermediate' } } } }} createDiff={() => []} running={false} defaultOpen />);
@@ -48,14 +48,14 @@ it.each(['MP4', 'webm', 'mov', 'm4v', 'ogv', 'mkv'])('treats %s as a video and n
 });
 
 it('folds interrupted or historical pending video calls without leaving a large placeholder', () => {
-  expect(buildRenderableMessageItems([pending], { isAssistantWorking: false }).some(i => i.mediaArtifact)).toBe(false);
+  expect(buildRenderableMessageItems([pending], { isAssistantWorking: false }).some(i => i.mediaArtifact && i.mediaExpanded)).toBe(false);
   const later = { id: 'next-turn', timestamp: new Date(), type: 'user', content: 'Continue' } as ChatMessage;
-  expect(buildRenderableMessageItems([pending, later], { isAssistantWorking: true }).some(i => i.mediaArtifact)).toBe(false);
+  expect(buildRenderableMessageItems([pending, later], { isAssistantWorking: true }).some(i => i.mediaArtifact && i.mediaExpanded)).toBe(false);
 });
 
 it('keeps a paused known job in front after the Agent turn ends and restores its player without losing the call record', () => {
   const saved = { ...pending, toolResult: { isError: true, content: 'Wait stopped' }, videoJob: { id: 'job', sessionId: 'session', toolCallId: 'video', state: 'paused', purpose: 'deliverable', reason: 'timeout' } } as ChatMessage;
-  expect(buildRenderableMessageItems([saved], { isAssistantWorking: false }).filter(i => i.mediaArtifact)).toHaveLength(1);
+  expect(buildRenderableMessageItems([saved], { isAssistantWorking: false }).filter(i => i.mediaArtifact && i.mediaExpanded)).toHaveLength(1);
   const { container, rerender } = render(<GeneratedVideoCard message={saved} running={false} />);
   expect(screen.getByRole('button').textContent).toBe('videoGeneration.resume');
   expect(container.querySelector('[aria-busy]')?.getAttribute('aria-busy')).toBe('false');
@@ -79,5 +79,5 @@ it('keeps original video tool details when an interrupted turn has no assistant 
   const items = buildRenderableMessageItems([interrupted], { isAssistantWorking: false });
   const details = items.flatMap(i => [...i.beforeProcessAttachments, ...i.afterProcessAttachments].flatMap(a => a.processDetailMessages));
   expect(details.some(m => m.toolId === 'video')).toBe(true);
-  expect(items.filter(i => i.mediaArtifact)).toHaveLength(1);
+  expect(items.filter(i => i.mediaArtifact && i.mediaExpanded)).toHaveLength(1);
 });

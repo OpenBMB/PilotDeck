@@ -264,3 +264,13 @@ it('places child file results after trailing tools and outside the process discl
   expect(work.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(card.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
 });
+
+it('keeps a recovering intermediate video visible after the child turn stops', () => {
+  const call: ChatMessage = { ...tool('child-video', 'generate_video'), toolInput: { purpose: 'intermediate' },
+    toolResult: { isError: true, content: 'Wait stopped' }, videoJob: { id: 'job', sessionId: 'child', toolCallId: 'child-video',
+      purpose: 'intermediate', state: 'reconnecting' } };
+  const view = renderFlow([call], false);
+  const surface = view.container.querySelector('.generated-image-surface')!;
+  expect(surface.getAttribute('aria-busy')).toBe('true');
+  expect(surface.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
+});

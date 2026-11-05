@@ -245,7 +245,7 @@ export default function SubagentDetailMessageFlow({
                     {renderLiveProcessDetailMessages(item.turnTrace.items.map(child => child.message))}
                     {item.turnTrace.isLive && filePreparations.map(activity => <FileInputStatus key={activity.activityId} activity={activity} />)}
                   </ProcessBlock> : item.mediaArtifact ? (
-                    <GeneratedMediaCard message={item.message} running={isRunning} />
+                    <GeneratedMediaCard message={item.message} running={isRunning} visible={item.mediaExpanded} />
                   ) : <MessageRowV2
                     message={item.message}
                     animateTextOnMount={liveReplyKeys.has(getIntrinsicMessageKey(item.message) || "")}
@@ -272,7 +272,7 @@ export default function SubagentDetailMessageFlow({
             return (
               <Fragment key={item.itemKey}>
                 <div
-                  className={item.processRun ? "chat-message" : "chat-message pb-2"}
+                  className={item.processRun || item.mediaArtifact ? "chat-message" : "chat-message pb-2"}
                   data-message-key={item.itemKey}
                   data-message-timestamp={item.message.timestamp ? String(item.message.timestamp) : undefined}
                 >

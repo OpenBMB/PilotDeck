@@ -5,9 +5,10 @@ import { AnimatedDisclosure } from '../../ui/AnimatedDisclosure';
 import type { ChatMessage } from '../types/types';
 import type { Project } from '../../../types/app';
 import GeneratedVideoCard from './GeneratedVideoCard';
-import { isVideoDeliverable, videoAttachment } from './videoPresentation';
+import { videoAttachment } from './videoPresentation';
 import GeneratedImageCard from './GeneratedImageCard';
-import { hasImageAttachment, isDrawingTool, isImageDeliverable } from './imagePresentation';
+import { hasImageAttachment, isDrawingTool } from './imagePresentation';
+import { isMediaSurfaceVisible } from './mediaPresentation';
 import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
 import { getToolIcon } from './toolIcons';
 import { ToolRenderer } from './ToolRenderer';
@@ -47,6 +48,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
   const isSearch = ['Grep', 'Glob', 'web_search'].includes(name);
   const pending = result == null;
   const active = pending && running;
+  const separateMedia = isMediaSurfaceVisible(message, running);
   const file = displayText(input.file_path || input.path);
   const target = isShell ? displayText(input.description || input.command)
     : isSkill ? displayText(input.skillName || input.skill_name || input.name)
@@ -95,10 +97,10 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
           {isShell ? <pre className="mb-3 whitespace-pre-wrap break-words font-mono"><span className="select-none text-neutral-400">$ </span>{displayText(input.command)}</pre>
             : inputDetails ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="input" contentOnly createDiff={createDiff} onFileOpen={onFileOpen} selectedProject={selectedProject} />
             : <pre className="mb-3 whitespace-pre-wrap break-words font-mono">{isRead ? file : isSkill ? target : displayText(Object.keys(input).length ? input : message.toolInput)}</pre>}
-          {name === 'generate_video' && Boolean(message.videoJob) && !isVideoDeliverable(message) && <GeneratedVideoCard message={message} running={running} />}
+          {name === 'generate_video' && Boolean(message.videoJob) && !separateMedia && <GeneratedVideoCard message={message} running={running} />}
           {!externalError && (result ? <>
-            {!message.videoJob && !result.isError && name === 'generate_video' && videoAttachment(message) && !isVideoDeliverable(message) ? <GeneratedVideoCard message={message} running={running} />
-              : !result.isError && isDrawingTool(name) && hasImageAttachment(message) && !isImageDeliverable(message) ? <GeneratedImageCard message={message} running={running} />
+            {!message.videoJob && !result.isError && name === 'generate_video' && videoAttachment(message) && !separateMedia ? <GeneratedVideoCard message={message} running={running} />
+              : !result.isError && isDrawingTool(name) && hasImageAttachment(message) && !separateMedia ? <GeneratedImageCard message={message} running={running} />
               : !result.isError && (resultDetails || hasFileList) ? <ToolRenderer toolName={message.toolName || ''} toolInput={message.toolInput} toolResult={result} mode="result" contentOnly onFileOpen={onFileOpen} selectedProject={selectedProject} />
               : <pre className="whitespace-pre-wrap break-words font-mono">{output || t('toolDisplay.noOutput')}</pre>}
           </> : <span className="text-neutral-400">{t(active ? 'toolDisplay.executing' : 'toolDisplay.noResult')}</span>)}

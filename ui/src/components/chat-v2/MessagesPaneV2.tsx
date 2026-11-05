@@ -188,6 +188,7 @@ export function estimateMessageItemHeight(item: RenderableMessageItem): number {
   const turnHeaderHeight = (item.beforeTurnProcess ? 34 : 0) + (item.afterTurnProcess ? 34 : 0);
   const artifactCount = item.turnFiles?.visible ? item.turnFiles.artifacts.length : 0;
   const artifactHeight = artifactCount > 0 ? Math.min(artifactCount, 3) * 64 + 34 : 0;
+  if (item.mediaArtifact) return turnHeaderHeight + artifactHeight + (item.mediaExpanded === false ? 0 : 360);
   if (item.processRun && !item.processOutput && !item.processRun.defaultExpanded) return turnHeaderHeight + artifactHeight;
   if (item.turnTrace) return 50 + turnHeaderHeight + artifactHeight;
   const textLength = getMessageTextLength(item.message);
@@ -563,7 +564,8 @@ function MessagesPaneV2({
     void heightVersion;
     return keyedMessageItems.map(item => {
       const measured = measuredHeightsRef.current.get(item.itemKey);
-      const open = item.processOutput || (item.processRun && isProcessExpanded(turnProcessKey(messageWindowScope, item.processRun), item.processRun.defaultExpanded));
+      const open = item.processOutput || (item.mediaArtifact && item.mediaExpanded !== false)
+        || (item.processRun && isProcessExpanded(turnProcessKey(messageWindowScope, item.processRun), item.processRun.defaultExpanded));
       const hasFiles = item.turnFiles?.visible && item.turnFiles.artifacts.length > 0;
       // A previously hidden work seat can now own a visible file footer.
       return (open || hasFiles) && (measured ?? item.estimatedHeight) === 0
@@ -927,7 +929,7 @@ function MessagesPaneV2({
     const renderRow = (rowItem: RenderableMessageItem, inTrace = false) => rowItem.message.isCompactBoundary ? (
       <CompactProcessRow message={rowItem.message} running={Boolean(item.turnTrace?.isLive)} />
     ) : rowItem.mediaArtifact ? (
-      <GeneratedMediaCard message={rowItem.message} running={isAssistantWorking} />
+      <GeneratedMediaCard message={rowItem.message} running={isAssistantWorking} visible={rowItem.mediaExpanded} />
     ) : (
       <MessageRowV2
         message={rowItem.message}
@@ -991,7 +993,7 @@ function MessagesPaneV2({
           message={item.message}
           isLast={isLast}
           compactBottomSpacing={Boolean(item.afterTurnProcess || item.turnTrace || item.message.isThinking || item.message.isToolUse)}
-          flushBottomSpacing={Boolean(item.processRun)}
+          flushBottomSpacing={Boolean(item.processRun || item.mediaArtifact)}
           onHeightChange={handleMeasuredItemHeight}
         >
           {item.beforeTurnProcess ? renderTurnHeader(item.beforeTurnProcess) : null}

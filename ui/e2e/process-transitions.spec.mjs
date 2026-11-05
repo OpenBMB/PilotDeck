@@ -359,3 +359,43 @@ test('file results wait for execution to stop and remain last when work is reope
   await expect(card).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('turn-file-footer.png'), animations: 'disabled' });
 });
+
+for (const toolName of ['generate_image', 'edit_image', 'generate_video']) {
+  test(`intermediate ${toolName} shows independent generation feedback and closes smoothly`, async ({ page }) => {
+    const image = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    await page.route('**/api/image-generation/**', route => route.fulfill({ contentType: 'image/gif', body: image }));
+    await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+    await page.evaluate(name => {
+      window.streamFixture.beginTurn();
+      window.streamFixture.tool('media-call', name, { purpose: 'intermediate', prompt: 'A site asset', output_path: 'assets/example.png' });
+    }, toolName);
+    const generation = page.locator('[data-media-surface]');
+    const surface = generation.locator('.generated-image-surface');
+    await expect(surface).toBeVisible();
+    await expect(surface).toHaveAttribute('aria-busy', 'true');
+    expect(await surface.evaluate(node => getComputedStyle(node, '::before').animationName)).toBe('image-generation-shimmer');
+    await page.locator('[data-turn-process-header] button').click();
+    await expect(surface).toBeVisible();
+    expect(await surface.evaluate(node => !node.closest('[data-turn-process-region], [data-process-block]'))).toBe(true);
+    await page.evaluate(() => window.streamFixture.setAppearance('default', true));
+    await page.screenshot({ path: test.info().outputPath(`${toolName}-generating-dark.png`), animations: 'disabled' });
+    await watchHeight(page, '[data-media-surface]');
+    await page.evaluate(name => {
+      const result = name === 'generate_video'
+        ? { videoGeneration: { videoId: 'video-1', sessionId: 'fixture', purpose: 'intermediate' } }
+        : { imageGeneration: { imageId: 'image-1', sessionId: 'fixture', purpose: 'intermediate', width: 24, height: 16, mimeType: 'image/gif' } };
+      window.streamFixture.finishTool('media-call', 'Site asset ready', result);
+      window.streamFixture.text('The site is ready.');
+      window.streamFixture.complete(5000);
+    }, toolName);
+    await expectSmoothClose(page);
+    await expect(surface).toHaveCount(0);
+    await expect(page.getByText('The site is ready.', { exact: true })).toBeVisible();
+    await page.locator('[data-turn-process-header] button').click();
+    await page.locator('[data-process-block] > button').click();
+    await page.locator('.tool-call[data-tool-id="media-call"] > div > button').click();
+    if (toolName === 'generate_video') await expect(page.locator('video')).toBeVisible();
+    else await expect(page.locator('.generated-image-preview.is-loaded img')).toBeVisible();
+    await expect(page.locator('[data-media-surface] .generated-image-surface')).toHaveCount(0);
+  });
+}

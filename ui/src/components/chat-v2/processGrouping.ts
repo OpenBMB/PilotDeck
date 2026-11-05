@@ -1,8 +1,7 @@
 import type { TFunction } from 'i18next';
-import { isVideoDeliverable } from '../chat/tools/videoPresentation';
+import { isMediaGeneration, isMediaSurfaceVisible } from '../chat/tools/mediaPresentation';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
 import { isReadOnlyModeToolDeny } from '../chat/utils/chatPermissions';
-import { isImageDeliverable } from '../chat/tools/imagePresentation';
 import type { ProcessTraceMetric, ProcessTraceStep } from './ProcessTrace';
 import { formatProcessDuration } from './processTraceUtils';
 
@@ -55,6 +54,8 @@ export type RenderableMessageItem = {
   turnFiles?: { turnId?: string; artifacts: NonNullable<ChatMessage['artifacts']>; visible: boolean };
   /** A separate media surface; the original tool call remains in the process. */
   mediaArtifact?: true;
+  /** Pending generation is shown for assets too; completed assets fold away. */
+  mediaExpanded?: boolean;
   turnTrace?: { id: string; isLive: boolean; defaultExpanded: boolean; items: RenderableMessageItem[] };
   /** One shared disclosure owns all process seats in this user turn. */
   processRun?: TurnProcessGroup;
@@ -790,11 +791,12 @@ export function buildRenderableMessageItems(
     if (message.isAgentActivitySummary) {
       return;
     }
-    const liveVideo = Boolean(liveTurn && originalIndex >= liveTurn.start && originalIndex < liveTurn.end);
-    if (isImageDeliverable(message) || (isVideoDeliverable(message) && (message.toolResult || message.videoJob || liveVideo))) {
+    const inLiveTurn = Boolean(liveTurn && originalIndex >= liveTurn.start && originalIndex < liveTurn.end);
+    if (isMediaGeneration(message)) {
       const callKey = message.toolId || message.toolCallId || message.id || String(originalIndex);
       syntheticItems.push({
         mediaArtifact: true,
+        mediaExpanded: isMediaSurfaceVisible(message, inLiveTurn),
         message: { ...message, renderKey: `media-artifact-${callKey}` },
         originalIndex: originalIndex + 0.001,
         beforeRunAttachment: null, afterRunAttachment: null,
