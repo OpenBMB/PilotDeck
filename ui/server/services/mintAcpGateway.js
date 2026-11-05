@@ -271,7 +271,7 @@ export class MintAcpGateway {
       }
       if (event.event === 'tool_call') messages.push({ ...base, role: 'assistant', kind: 'tool_use',
         toolCallId: event.call?.id, toolName: event.call?.name, payload: event.call?.args });
-      if (event.event === 'tool_call_update') messages.push({ ...base, role: 'tool', kind: 'tool_result',
+      if (event.event === 'tool_call_update' && ['completed', 'failed', 'cancelled'].includes(event.status)) messages.push({ ...base, role: 'tool', kind: 'tool_result',
         toolCallId: event.call_id, ok: event.status === 'completed', text: JSON.stringify(event.content || []) });
     }
     // Consecutive chunks from one role/turn are a single historical message.
