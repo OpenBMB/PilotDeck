@@ -1,5 +1,5 @@
-# Public README media
+# Documentation media
 
-Images and GIFs referenced by the public repository READMEs, including community links. Media pointers are managed by Git LFS where configured in [.gitattributes](../.gitattributes).
+Public README images, animations, videos, community graphics and their existing source exports. Media pointers are managed by Git LFS where configured in [.gitattributes](../.gitattributes).
 
-Keep only referenced, shareable assets. Source recordings, video re-exports and UI review screenshots belong in ignored local output directories. Review visible content and metadata for personal data before adding new media. Preserve intentional attribution and licenses.
+Preserve this existing asset collection during general cleanup, including source formats and variants. A dedicated media change should check README links, source/derived relationships and LFS object identity before replacing or deleting files. Review new media content and metadata for private information and preserve attribution and licenses. Temporary UI review screenshots belong in ignored local output directories.

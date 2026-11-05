@@ -6,7 +6,7 @@ Use Node.js 22 and the pnpm version declared in package.json. Start with the [co
 
 These are PilotDeck conventions; the line targets are guidance, not external standards.
 
-- Preserve the existing root-level README*.md files, their translations and their linked media during cleanup. These public entry points are excluded from automatic English-only developer-documentation normalization. Change them only when explicitly requested.
+- Preserve the existing root-level README*.md files, their translations and the entire existing assets/ tree during cleanup. These public entry points and media sources are excluded from automatic English-only developer-documentation normalization. Change them only when explicitly requested.
 - Keep one short English README.md at each public package or substantial subsystem boundary. Aim for 15–40 lines covering responsibility, real entry points, validation and links. Small internal folders use the parent guide.
 - Put detailed, maintained API/protocol contracts and operational how-to guides in docs/. Keep one canonical description per topic. Write all maintained API, protocol, configuration, testing and explanatory documentation in English; keep one English version rather than parallel translations. Product UI translations and runtime instruction assets follow their functional requirements.
 - Change documentation in the same PR when behavior, build commands, tests, configuration or release steps change. Verify links and commands against the current code.
