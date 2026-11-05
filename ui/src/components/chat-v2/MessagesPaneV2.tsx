@@ -42,6 +42,7 @@ import {
   turnProcessKey,
   type TurnProcessGroup,
   isPendingToolUseMessage,
+  isPendingProcessMessage,
   type RenderableMessageItem,
 } from './processGrouping';
 import {
@@ -663,20 +664,12 @@ function MessagesPaneV2({
       openSubagentActivity &&
       !['completed', 'failed', 'cancelled'].includes(String(openSubagentActivity.state || '')),
   );
-  const hasLiveAssistantContent = useMemo(() => {
-    if (!isAssistantWorking || liveProcessHeaderIndex < 0) return false;
-    return keyedMessageItems.slice(liveProcessHeaderIndex).some((item) => (
-      item.message.type === 'assistant' &&
-      !item.message.isThinking &&
-      !item.message.isToolUse &&
-      typeof item.message.content === 'string' &&
-      item.message.content.trim().length > 0
-    ));
-  }, [isAssistantWorking, keyedMessageItems, liveProcessHeaderIndex]);
   const currentTurnMessages = useMemo(() => {
     const userIndex = visibleMessages.reduce((last, message, index) => message.type === 'user' ? index : last, -1);
     return visibleMessages.slice(Math.max(0, userIndex));
   }, [visibleMessages]);
+  const hasStreamingAssistantContent = currentTurnMessages.some(message => message.type === 'assistant'
+    && !message.isThinking && !message.isToolUse && message.isStreaming && Boolean(message.content?.trim()));
   const hasPendingToolUse = currentTurnMessages.some(isPendingToolUseMessage);
   const currentToolActivities = useMemo(() => nonSubagentLiveActivities.filter((activity) => {
     if (activity.phase === 'file_input') return false;
@@ -744,7 +737,7 @@ function MessagesPaneV2({
       return {
         id: 'live-thinking',
         title: t('working.thinking', { defaultValue: 'Thinking...' }),
-        phase: 'thinking',
+        phase: showThinking ? 'thinking' : 'generation',
         state: 'running',
       };
     }
@@ -757,20 +750,22 @@ function MessagesPaneV2({
         toolName: 'agent',
       };
     }
-    return getLiveStatusStep(currentToolActivities, workingStatus, hasLiveAssistantContent, hasPendingToolUse, t);
+    return getLiveStatusStep(currentToolActivities, workingStatus, hasPendingToolUse, t);
   }, [
-    hasLiveAssistantContent,
     hasPendingToolUse,
     currentToolActivities,
     runningSubagentActivity,
     liveThinkingContent,
+    showThinking,
     t,
     workingStatus,
     waitingFor,
   ]);
   const hasRunningProcessGroup = renderableMessageItems.some(item => item.turnTrace?.isLive);
+  const hasPendingProcessWork = currentTurnMessages.some(isPendingProcessMessage) || Boolean(runningSubagentActivity);
   const thinkingHasOwnStatus = Boolean(!waitingFor && showThinking && liveThinkingMessage);
-  const shouldRenderBottomLiveStatus = isAssistantWorking && !waitingFor && !hasRunningProcessGroup && !thinkingHasOwnStatus && !filePreparations.length;
+  const shouldRenderBottomLiveStatus = isAssistantWorking && !waitingFor && !thinkingHasOwnStatus
+    && !hasStreamingAssistantContent && !filePreparations.length && (!hasRunningProcessGroup || !hasPendingProcessWork);
 
   const bumpHeightVersion = useCallback(() => {
     if (heightVersionRafRef.current !== null) return;
@@ -1392,7 +1387,6 @@ function activityToLiveStep(activity: ChatMessage): ProcessTraceStep {
 function getLiveStatusStep(
   activities: ChatMessage[],
   workingStatus: ClaudeWorkStatus | PilotDeckWorkStatus | null | undefined,
-  hasAssistantContent: boolean,
   hasPendingToolUse: boolean,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): ProcessTraceStep {
@@ -1436,15 +1430,15 @@ function getLiveStatusStep(
   }
 
   const rawStatus = String(workingStatus?.text || '').toLowerCase();
+  if (hasPendingToolUse) {
+    return {
+      id: 'live-tool-exec',
+      title: t('working.executingTool', { defaultValue: 'Running tool...' }),
+      phase: 'tool',
+      state: 'running',
+    };
+  }
   if (rawStatus.includes('model_request_started')) {
-    if (hasPendingToolUse) {
-      return {
-        id: 'live-tool-exec',
-        title: t('working.executingTool', { defaultValue: 'Running tool...' }),
-        phase: 'tool',
-        state: 'running',
-      };
-    }
     return {
       id: 'live-model-call',
       title: t('working.callingModel', { defaultValue: 'Calling model...' }),
@@ -1470,17 +1464,10 @@ function getLiveStatusStep(
     };
   }
 
-  return hasAssistantContent
-    ? {
-        id: 'live-generation',
-        title: t('working.generating', { defaultValue: 'Generating response' }),
-        phase: 'generation',
-        state: 'running',
-      }
-    : {
-        id: 'live-waiting-for-model',
-        title: t('working.waitingForModel', { defaultValue: 'Waiting for model response...' }),
-        phase: 'generation',
-        state: 'running',
-      };
+  return {
+    id: 'live-model-call',
+    title: t('working.callingModel', { defaultValue: 'Calling model...' }),
+    phase: 'generation',
+    state: 'running',
+  };
 }

@@ -274,3 +274,21 @@ it('keeps a recovering intermediate video visible after the child turn stops', (
   expect(surface.getAttribute('aria-busy')).toBe('true');
   expect(surface.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
 });
+
+it('shows the model-call spinner after a child tool finishes and hides it during output', () => {
+  const pending = tool('child-model-tool', 'Read');
+  const view = (messages: ChatMessage[]) => <FindShortcutProvider activeScope="chat">
+    <SubagentDetailMessageFlow messages={messages} provider="pilotdeck" selectedProject={null} createDiff={() => []} isRunning />
+  </FindShortcutProvider>;
+  const result = render(view([pending]));
+  const status = () => result.container.querySelector('[data-process-status="subagent-model-call"]');
+  expect(status()).toBeNull();
+  const finished = { ...pending, toolResult: { content: 'Read complete.' } };
+  result.rerender(view([finished, thinking('child-model-thought', 'Verify the result.')]));
+  expect(status()?.textContent).toContain('Calling model...');
+  expect(status()?.querySelector('svg')?.getAttribute('class')).toContain('motion-safe:animate-spin');
+  result.rerender(view([finished, streamingThinking('Continuing the reasoning.')]));
+  expect(status()).toBeNull();
+  result.rerender(view([finished, { ...assistant('child-model-reply', 'Done.'), isStreaming: true }]));
+  expect(status()).toBeNull();
+});

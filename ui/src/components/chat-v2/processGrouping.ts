@@ -1193,7 +1193,7 @@ function getLatestToolMessage(group: LiveProcessGroup): ChatMessage | undefined 
   return [...group.messages].reverse().find((message) => message.isToolUse || message.type === 'tool');
 }
 
-function isPendingProcessMessage(message: ChatMessage): boolean {
+export function isPendingProcessMessage(message: ChatMessage): boolean {
   return (message.isCompactBoundary && message.compactState === 'running') || isPendingToolUseMessage(message);
 }
 

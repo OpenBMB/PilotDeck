@@ -399,3 +399,45 @@ for (const toolName of ['generate_image', 'edit_image', 'generate_video']) {
     await expect(page.locator('[data-media-surface] .generated-image-surface')).toHaveCount(0);
   });
 }
+
+test('model-call gaps show one spinning status between tools and real output', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+  const status = page.locator('[data-process-status="live-model-call"]');
+  await page.evaluate(() => { window.streamFixture.beginTurn(); window.streamFixture.tool('gap-tool'); });
+  await expect(status).toHaveCount(0);
+  await page.evaluate(() => window.streamFixture.finishTool('gap-tool'));
+  await expect(status).toHaveText('Calling model...');
+  await expect(status.locator('svg').first()).toHaveCSS('animation-name', 'spin');
+  const order = await status.evaluate(node => Boolean(document.querySelector('[data-process-block]')
+    .compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING));
+  expect(order).toBe(true);
+  for (const preset of ['default', 'paper', 'mint', 'sand', 'custom', 'dark']) {
+    await page.evaluate(p => window.streamFixture.setAppearance(p === 'dark' ? 'default' : p, p === 'dark'), preset);
+    await expect(status).toHaveCount(1);
+    await expect(status.locator('svg').first()).toHaveCSS('animation-name', 'spin');
+  }
+  await page.evaluate(() => window.streamFixture.setLanguage('zh-CN'));
+  await expect(status).toHaveText('调用模型中...');
+  await page.screenshot({ path: test.info().outputPath('model-call-gap-dark-zh.png'), animations: 'disabled' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(status.locator('svg').first()).toHaveCSS('animation-name', 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(() => window.streamFixture.think('Continue reasoning.'));
+  await expect(status).toHaveCount(0);
+  await page.evaluate(() => { window.streamFixture.tool('gap-next'); window.streamFixture.finishTool('gap-next'); });
+  await expect(status).toBeVisible();
+  await page.evaluate(() => window.streamFixture.prepareFile('gap-write', 2048, 'src/example.ts'));
+  await expect(status).toHaveCount(0);
+  await page.evaluate(() => { window.streamFixture.tool('gap-write', 'write_file', { file_path: 'src/example.ts', content: 'Example' });
+    window.streamFixture.finishTool('gap-write'); });
+  await expect(status).toBeVisible();
+  await page.evaluate(() => window.streamFixture.askQuestion());
+  await expect(status).toHaveCount(0);
+  await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+  await page.evaluate(() => { window.streamFixture.beginTurn(); window.streamFixture.tool('reply-tool'); window.streamFixture.finishTool('reply-tool'); });
+  await expect(status).toBeVisible();
+  await page.evaluate(() => window.streamFixture.text('The answer is streaming.'));
+  await expect(status).toHaveCount(0);
+  await page.evaluate(() => window.streamFixture.complete(5000));
+  await expect(status).toHaveCount(0);
+});

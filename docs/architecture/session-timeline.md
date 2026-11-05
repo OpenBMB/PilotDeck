@@ -97,6 +97,13 @@ The history reader retains structured question results instead of reconstructing
 answers from tool-result text. Todo updates use one progress header and checklist;
 successful acknowledgements do not create a second details row.
 
+An active process group does not by itself represent ongoing tool execution.
+Root and child views show a localized model-call spinner after tools or reasoning
+finish, until the model produces new output. Actual tool execution, visible live
+reasoning or reply text, file preparation and pending user interactions take
+precedence over this fallback. Completion removes it; reduced motion retains the
+status text with a static icon.
+
 File mutation preparation is an ephemeral Gateway activity, separate from the
 ordered tool-call transcript. The Gateway observes argument generation before
 dispatch, publishes only a validated complete path and received argument byte

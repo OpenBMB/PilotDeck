@@ -19,6 +19,7 @@ import {
   buildRenderableMessageItems,
   groupProcessIntervals,
   getTurnProcessMemberId,
+  isPendingProcessMessage,
   turnProcessKey,
   type TurnProcessGroup,
   type RenderableMessageItem,
@@ -72,11 +73,17 @@ export default function SubagentDetailMessageFlow({
   const follow = useScrollFollow({ containerRef: scrollContainerRef, enabled: true, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
   const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, boolean>>(() => new Map());
   const [expandedToolSections, setExpandedToolSections] = useState<Map<string, boolean>>(() => new Map());
+  const currentTurnMessages = useMemo(() => {
+    const userIndex = messages.reduce((last, message, index) => message.type === 'user' ? index : last, -1);
+    return messages.slice(Math.max(0, userIndex));
+  }, [messages]);
+  const hasStreamingAssistantContent = currentTurnMessages.some(message => message.type === 'assistant'
+    && !message.isThinking && !message.isToolUse && message.isStreaming && Boolean(message.content?.trim()));
 
   const streamingThinkingContent = useMemo(() => {
     if (!showThinking || !isRunning) return null;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
+    for (let index = currentTurnMessages.length - 1; index >= 0; index -= 1) {
+      const message = currentTurnMessages[index];
       if (
         isStreamingSubagentThinkingMessage(message) &&
         typeof message.content === 'string' &&
@@ -86,13 +93,13 @@ export default function SubagentDetailMessageFlow({
       }
     }
     return null;
-  }, [isRunning, messages, showThinking]);
+  }, [isRunning, currentTurnMessages, showThinking]);
 
-  const thinkingStatusStep = useMemo<ProcessTraceStep>(() => {
+  const modelStatusStep = useMemo<ProcessTraceStep>(() => {
     return {
-      id: 'subagent-detail-thinking',
-      title: t('subagent.status.thinking', { defaultValue: 'Thinking' }),
-      phase: 'thinking',
+      id: 'subagent-model-call',
+      title: t('working.callingModel', { defaultValue: 'Calling model...' }),
+      phase: 'generation',
       state: 'running' as const,
     };
   }, [t]);
@@ -127,7 +134,10 @@ export default function SubagentDetailMessageFlow({
   );
   const filePreparations = useMemo(() => isRunning ? pendingFileInputs(messages, messages) : [], [isRunning, messages]);
   const hasLiveGroup = renderableItems.some(item => item.turnTrace?.isLive);
-  const shouldRenderBottomLiveStatus = isRunning && !hasLiveGroup && !streamingThinkingContent && !filePreparations.length;
+  const hasPendingProcessWork = currentTurnMessages.some(isPendingProcessMessage);
+  const hasPendingInteraction = currentTurnMessages.some(message => message.isInteractivePrompt && !message.toolResult);
+  const shouldRenderBottomLiveStatus = isRunning && !streamingThinkingContent && !hasStreamingAssistantContent
+    && !hasPendingInteraction && !filePreparations.length && (!hasLiveGroup || !hasPendingProcessWork);
   const keyedMessagesForSearch = useMemo<SearchableChatMessageInput[]>(() => {
     return keyedItems.filter(item => !item.mediaArtifact).flatMap(item => item.turnTrace
       ? item.turnTrace.items.map(child => ({ message: child.message, messageKey: getMessageKey(child.message, child.originalIndex), messageIndex: item.renderIndex }))
@@ -290,7 +300,7 @@ export default function SubagentDetailMessageFlow({
             );
           })}
           {!hasLiveGroup && filePreparations.map(activity => <div key={activity.activityId} className="pb-2"><FileInputStatus activity={activity} /></div>)}
-          {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={thinkingStatusStep} /> : null}
+          {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={modelStatusStep} /> : null}
         </div>
       </div>
       {follow.canReturnToLatest ? (

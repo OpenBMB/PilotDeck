@@ -331,7 +331,7 @@ describe('MessagesPaneV2 render behavior', () => {
       sessionRuntimeState: 'running',
     });
 
-    expect(screen.getByText('Waiting for model response...')).toBeTruthy();
+    expect(screen.getByText('Calling model...')).toBeTruthy();
     expect(screen.queryByText('Thinking...')).toBeNull();
   });
 
@@ -1400,7 +1400,7 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(Boolean(commandSummary.compareDocumentPosition(finalAssistant) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
-  it('shows generating status after a closed live tool group while the assistant continues', () => {
+  it('shows model-call status after a closed live tool group while the assistant continues', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
       {
@@ -1452,7 +1452,7 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(processToggle().getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(processToggle());
     expect(screen.getByText('ClosedTool.tsx')).toBeTruthy();
-    expect(screen.getByText('Generating response')).toBeTruthy();
+    expect(screen.getByText('Calling model...')).toBeTruthy();
     expect(screen.queryByText('Reading file')).toBeNull();
   });
 
@@ -2079,4 +2079,30 @@ it.each(['generate_image', 'edit_image'])('does not restart historical unfinishe
   ];
   const view = renderPane({ messages, isAssistantWorking: true });
   expect(view.container.querySelector('.generated-image-surface')).toBeNull();
+});
+
+it('shows a model-call spinner between completed tools and the next model output', () => {
+  const now = '2026-11-01T00:00:00Z';
+  const user: ChatMessage = { id: 'model-user', type: 'user', content: 'Inspect a file', timestamp: now };
+  const call: ChatMessage = { id: 'model-tool', toolId: 'model-tool', type: 'assistant', content: '', timestamp: now,
+    isToolUse: true, toolName: 'bash', toolInput: { command: 'verify example.txt' } };
+  const thought: ChatMessage = { id: 'model-thought', type: 'assistant', content: 'Check the result.', timestamp: now, isThinking: true };
+  const view = renderPane({ messages: [user, call], isAssistantWorking: true });
+  const status = () => view.container.querySelector('[data-process-status="live-model-call"]');
+  expect(status()).toBeNull();
+  const finished = { ...call, toolResult: { content: '', isError: false } };
+  view.rerender(createPaneElement({ messages: [user, finished, thought], isAssistantWorking: true }));
+  expect(status()?.textContent).toContain('Calling model...');
+  expect(status()?.querySelector('svg')?.getAttribute('class')).toContain('motion-safe:animate-spin');
+  // Another tool or real model output replaces the fallback rather than duplicating it.
+  view.rerender(createPaneElement({ messages: [user, finished, { ...thought, isStreaming: true }], isAssistantWorking: true }));
+  expect(status()).toBeNull();
+  const reply: ChatMessage = { id: 'model-reply', type: 'assistant', content: 'The result is ready.', timestamp: now, isStreaming: true };
+  view.rerender(createPaneElement({ messages: [user, finished, thought, reply], isAssistantWorking: true }));
+  expect(status()).toBeNull();
+  view.rerender(createPaneElement({ messages: [user, finished, thought, { ...reply, isStreaming: false }], isAssistantWorking: true,
+    pendingPermissionRequests: [{ requestId: 'model-question', toolName: 'AskUserQuestion', receivedAt: new Date() }] }));
+  expect(status()).toBeNull();
+  view.rerender(createPaneElement({ messages: [user, finished, thought] }));
+  expect(status()).toBeNull();
 });

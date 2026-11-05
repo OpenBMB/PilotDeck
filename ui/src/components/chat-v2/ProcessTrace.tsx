@@ -140,6 +140,7 @@ export function ProcessLiveStatus({
 
   return (
     <div
+      data-process-status={step.id}
       className={`process-live-status w-full min-w-0 ${compact ? 'py-0' : 'pb-1'} text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${className}`}
     >
       <div role="status" aria-live="polite">
