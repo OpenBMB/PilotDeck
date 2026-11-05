@@ -3,6 +3,7 @@
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before making changes. Use [the code map](src/README.md) and the nearest module README for boundaries and validation.
 
 - Write maintained developer/API/reference documentation in English.
+- Preserve root-level README*.md files and their linked assets during cleanup. Their existing translations are outside developer-documentation normalization; edit them only when the user explicitly requests root README changes.
 - Update the existing module introduction or canonical reference when needed. Do not create per-task plans, delivery reports, acceptance logs or duplicate design summaries in tracked documentation.
 - Keep source, runtime Markdown/skills, required licenses and genuine regression fixtures. Review dynamic consumers and installation inputs before deleting files.
 - Put temporary probes, screenshots and logs in ignored artifacts/ or outputs/. Use synthetic data and isolated profiles; inspect binary metadata for private information.

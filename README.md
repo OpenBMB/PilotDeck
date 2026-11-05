@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <b>English</b>
+  <b>English</b> | <a href="./README.zh.md">简体中文</a>
   <br/>
   <a href="https://pilotdeck.openbmb.cn">Website</a> · <a href="https://pilotdeck.openbmb.cn/pilotdeck.github.io/demo/p/pilotdeck-demo">Live Demo</a> · <a href="https://pilotdeck.openbmb.cn/pilotdeck.github.io/docs/en/introduction">Tutorial</a> · <a href="#-installation--quick-start">Quick Start</a> · <a href="#-key-highlights">Highlights</a> · <a href="#use-cases">Use Cases</a> · <a href="#-community">Community</a>
 </p>
@@ -512,7 +512,7 @@ PilotDeck has an open plugin architecture with a strict boundary between the ope
 
 Thanks to everyone who has contributed code, feedback, and ideas. New contributors are warmly welcome — let's build the next-gen agent OS together.
 
-Workflow: **Fork → feature branch → PR**. See [contribution rules](CONTRIBUTING.md), [the code map](src/README.md) and [documentation](docs/README.md).
+Workflow: **Fork → feature branch → PR**.
 
 ---
 
@@ -533,22 +533,6 @@ Workflow: **Fork → feature branch → PR**. See [contribution rules](CONTRIBUT
 <td align="center"><img src="assets/community/qr-discord.png" width="200" alt="Discord QR"/></td>
 </tr>
 </table>
-
-
-### Community contributions
-
-Community extensions, deployment tools and public case studies:
-
-| Contributor | Contribution |
-| --- | --- |
-| [panda-lsy](https://github.com/panda-lsy) | [ChemVision](https://github.com/panda-lsy/chemvision-skill), chemistry lookup with PubChem/OPSIN |
-| [AaronAust1n](https://github.com/AaronAust1n) | [China productivity skills](https://github.com/AaronAust1n/PilotDeck/tree/feat/china-productivity-skills) and [industry landscape research](https://github.com/AaronAust1n/PilotDeck/tree/feat/industry-landscape-research) |
-| [umr2015](https://github.com/umr2015) | [PilotDeck-ReadyKit](https://github.com/umr2015/PilotDeck-ReadyKit), Windows/Docker deployment tooling |
-| Programmer Muxian | [Hands-on product review](https://www.youtube.com/watch?v=EP2mW6el5JM) |
-| AaronAust1n | [Cold-start comparison and feedback](https://zhuanlan.zhihu.com/p/2057163316859081709) |
-| Xiong Youfan | [Manufacturing data-system case study](https://mp.weixin.qq.com/s/7p-A7TumCK2CEP3ouAmZsA) |
-| Agent tinkering log | [Memory-system discussion](http://xhslink.com/o/2xEgrIPQyCK) |
-| [maomao-2001](https://github.com/maomao-2001) | [ASR/LLM/VoxCPM real-time conversation demo](https://www.bilibili.com/video/BV1nFE36mEmc/) |
 
 ---
 
