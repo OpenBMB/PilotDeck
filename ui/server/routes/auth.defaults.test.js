@@ -25,10 +25,13 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 
-it.each([
+const flagCases = [
   [undefined, true], ['', true], ['1', true], ['true', true],
   ['0', false], ['false', false], ['typo', false],
-])('keeps Web build, HTTP and WebSocket authentication consistent for %s', async (value, disabled) => {
+];
+const authCases = [undefined, '0.0.0.0'].flatMap(host => flagCases.map(([value, disabled]) => [host, value, disabled]));
+it.each(authCases)('keeps Web build, HTTP and WebSocket authentication consistent on host %s with flag %s', async (host, value, disabled) => {
+  vi.stubEnv('HOST', host);
   vi.stubEnv('PILOTDECK_DISABLE_LOCAL_AUTH', value);
   vi.stubEnv('VITE_IS_PLATFORM', 'false');
   const { default: router } = await import('./auth.js');
