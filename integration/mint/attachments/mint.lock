@@ -1,0 +1,194 @@
+# 由 mint 自动生成，请勿手改（03 §3.5）。
+v = 1
+
+[core]
+version = "0.1.41"
+flavor = "std"
+
+[core.platforms.aarch64-apple-darwin]
+file = "mint-core-0.1.41-std-aarch64-apple-darwin.mint.tar.zst"
+sha256 = "10c8fbb8bbe847f11b991d69aa78e99601ed013d391493dfa6c068d323646e02"
+size = 41801912
+target = "aarch64-apple-darwin"
+flavor = "std"
+integrity = "h1:s51ejVG99Vjd6fGqPzLkW2tVO2OkkonOvlC1grWNbiA="
+
+[[package]]
+name = "pilotdeck/context-instructions"
+version = "0.1.6"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:nfWyf+BBQHA1cwYQ2IYEwnb9nY1Y6JpPHlvFfy21Dok="
+cksum = "743729df52d10b258f120dc6657765ed9a05fdecbc1d4807d813c69c984b517e"
+trust = "T1"
+
+[package.artifacts.any]
+file = "pilotdeck-context-instructions-0.1.6.mint.tar.zst"
+sha256 = "743729df52d10b258f120dc6657765ed9a05fdecbc1d4807d813c69c984b517e"
+size = 18516
+integrity = "h1:nfWyf+BBQHA1cwYQ2IYEwnb9nY1Y6JpPHlvFfy21Dok="
+
+[[package]]
+name = "pilotdeck/context-retention"
+version = "0.2.5"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:FP9Vtb0Z6kiWbx7+ryxt1dG1iOix6cRPUwphO/6vO50="
+cksum = "e83fa0130a71920fd0569a424ae45556090a09084dc69538ca856029ff12f096"
+trust = "T1"
+
+[package.artifacts.any]
+file = "pilotdeck-context-retention-0.2.5.mint.tar.zst"
+sha256 = "e83fa0130a71920fd0569a424ae45556090a09084dc69538ca856029ff12f096"
+size = 29704
+integrity = "h1:FP9Vtb0Z6kiWbx7+ryxt1dG1iOix6cRPUwphO/6vO50="
+
+[[package]]
+name = "pilotdeck/context-tool-result-pruner"
+version = "0.1.8"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:8BGNb1wNncKFpnW5/OYq54/Bc7PXP4heTB4VGAZWJIA="
+cksum = "10b7eab3da3a00b3b6f749ba828404a6112c9d572c54328f20c1428369cfd843"
+trust = "T1"
+
+[package.artifacts.any]
+file = "pilotdeck-context-tool-result-pruner-0.1.8.mint.tar.zst"
+sha256 = "10b7eab3da3a00b3b6f749ba828404a6112c9d572c54328f20c1428369cfd843"
+size = 2300053
+integrity = "h1:8BGNb1wNncKFpnW5/OYq54/Bc7PXP4heTB4VGAZWJIA="
+
+[[package]]
+name = "pilotdeck/context-budget-production"
+version = "0.3.6"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:c7+VEzavPoF2MqpkRzgrNXaGQM/iOFbiCUzVueOZ92w="
+cksum = "c115422fb249595e7d1f24169975755815a6b3a609f7d6bedf621a73fa8cd1ad"
+trust = "T1"
+
+[package.artifacts.any]
+file = "pilotdeck-context-budget-production-0.3.6.mint.tar.zst"
+sha256 = "c115422fb249595e7d1f24169975755815a6b3a609f7d6bedf621a73fa8cd1ad"
+size = 2320450
+integrity = "h1:c7+VEzavPoF2MqpkRzgrNXaGQM/iOFbiCUzVueOZ92w="
+
+[[package]]
+name = "liyishan1/pilotdeck-attachments-consumer"
+version = "0.1.1"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:T1t0obBuZLc8+01VMExsUxcd9f7YUWHSz8Xdwf+KKWo="
+cksum = "df8a0b498ce2fd8a3f94215ba59625e92fb1118d4eecb54692d716198f4eb04b"
+trust = "T1"
+
+[package.artifacts.any]
+file = "liyishan1-pilotdeck-attachments-consumer-0.1.1.mint.tar.zst"
+sha256 = "df8a0b498ce2fd8a3f94215ba59625e92fb1118d4eecb54692d716198f4eb04b"
+size = 19976
+integrity = "h1:T1t0obBuZLc8+01VMExsUxcd9f7YUWHSz8Xdwf+KKWo="
+
+[[package]]
+name = "liyishan1/pilotdeck-compaction-port-owner"
+version = "0.2.3"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:YzcIfEVViKvWv+7HqHEy8OZqtbgssQ/FRTUgYoR3H78="
+cksum = "9716de7beb9272facecde87b29ddd5c73989e12aca67ae189743442133782dff"
+trust = "T1"
+
+[package.artifacts.any]
+file = "liyishan1-pilotdeck-compaction-port-owner-0.2.3.mint.tar.zst"
+sha256 = "9716de7beb9272facecde87b29ddd5c73989e12aca67ae189743442133782dff"
+size = 25861
+integrity = "h1:YzcIfEVViKvWv+7HqHEy8OZqtbgssQ/FRTUgYoR3H78="
+
+[[package]]
+name = "liyishan1/pilotdeck-compaction-basic"
+version = "0.1.3"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:/5MxiPWJ5JRMPQ+GuNdU4JiV+dyhMETUeB9WsvIr4G8="
+cksum = "fe4f67075c681f71ea7ac494cab34e64afa05ec65d5a4ebe4b768461d2182bb6"
+trust = "T1"
+
+[package.artifacts.any]
+file = "liyishan1-pilotdeck-compaction-basic-0.1.3.mint.tar.zst"
+sha256 = "fe4f67075c681f71ea7ac494cab34e64afa05ec65d5a4ebe4b768461d2182bb6"
+size = 69935
+integrity = "h1:/5MxiPWJ5JRMPQ+GuNdU4JiV+dyhMETUeB9WsvIr4G8="
+
+[[package]]
+name = "liyishan1/pilotdeck-context-prompt-consumer"
+version = "0.1.2"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:2Oa2wmHBkGm+8EJJhV2IJE/CyBLq56AItnlpDt2KHqU="
+cksum = "db592342c937f5b87abbba81574b6c82cd22953619ce4f650dfa462d60eed5bc"
+trust = "T1"
+
+[package.artifacts.any]
+file = "liyishan1-pilotdeck-context-prompt-consumer-0.1.2.mint.tar.zst"
+sha256 = "db592342c937f5b87abbba81574b6c82cd22953619ce4f650dfa462d60eed5bc"
+size = 21835
+integrity = "h1:2Oa2wmHBkGm+8EJJhV2IJE/CyBLq56AItnlpDt2KHqU="
+
+[[package]]
+name = "liyishan1/pilotdeck-context-time-consumer"
+version = "0.1.0"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:DOEj7XUQxUN6f1n8IiLcyWF6KtyC4+wYrVICc3ZTkT8="
+cksum = "8f7eda2ddce330d7827e57f48e3b8fcfc9a0cd9e0907f45efdd358edb766b47b"
+trust = "T1"
+
+[package.artifacts.any]
+file = "liyishan1-pilotdeck-context-time-consumer-0.1.0.mint.tar.zst"
+sha256 = "8f7eda2ddce330d7827e57f48e3b8fcfc9a0cd9e0907f45efdd358edb766b47b"
+size = 13745
+integrity = "h1:DOEj7XUQxUN6f1n8IiLcyWF6KtyC4+wYrVICc3ZTkT8="
+
+[[package]]
+name = "liyishan1/pilotdeck-tool-fs-state-types"
+version = "0.1.1"
+kind = "iface"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:jY+pyE8xas6I+RdFleDWI3+RxyjmEgi151w4yaE3su4="
+cksum = "4faf357b708d4bb50dc134154be6785c7387f081777d7c45ecdb2110365ad3d0"
+trust = "T1"
+
+[package.artifacts.any]
+file = "liyishan1-pilotdeck-tool-fs-state-types-0.1.1.mint.tar.zst"
+sha256 = "4faf357b708d4bb50dc134154be6785c7387f081777d7c45ecdb2110365ad3d0"
+size = 15039
+integrity = "h1:jY+pyE8xas6I+RdFleDWI3+RxyjmEgi151w4yaE3su4="
+
+[[package]]
+name = "liyishan1/pilotdeck-tool-fs-read"
+version = "0.1.3"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:Hdsz8O6cw94DVKUO+XbH8FlQ0KBRK2n/ph0UYUYq4sk="
+cksum = "92233bdd9e04e5e7476e96e3a502b6b972982cfe2beebfe10d05096c371a3c53"
+trust = "T1"
+
+[package.artifacts.any]
+file = "liyishan1-pilotdeck-tool-fs-read-0.1.3.mint.tar.zst"
+sha256 = "92233bdd9e04e5e7476e96e3a502b6b972982cfe2beebfe10d05096c371a3c53"
+size = 20719
+integrity = "h1:Hdsz8O6cw94DVKUO+XbH8FlQ0KBRK2n/ph0UYUYq4sk="
+
+[[package]]
+name = "pilotdeck/model-provider-openai-consumer"
+version = "0.1.3"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:E52HKEDsThxvQlzvbYBrqgwP0VTShbHUs1T90vzvPAw="
+cksum = "30367bf24ed61a9b16d140a68f3e509a3dfefc7144f5b8a0c991818b2dfeab3b"
+trust = "T1"
+
+[package.artifacts.any]
+file = "pilotdeck-model-provider-openai-consumer-0.1.3.mint.tar.zst"
+sha256 = "30367bf24ed61a9b16d140a68f3e509a3dfefc7144f5b8a0c991818b2dfeab3b"
+size = 85284
+integrity = "h1:E52HKEDsThxvQlzvbYBrqgwP0VTShbHUs1T90vzvPAw="
