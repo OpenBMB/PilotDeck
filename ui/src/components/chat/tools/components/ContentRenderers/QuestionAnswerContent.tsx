@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import React, { useId, useState } from 'react';
-import { Check, ChevronRight, HelpCircle } from 'lucide-react';
+import { Check, ChevronRight, HelpCircle, MessageCircleQuestion } from 'lucide-react';
 import { AnimatedDisclosure } from '../../../../ui/AnimatedDisclosure';
 import type { Question } from '../../../types/types';
 
@@ -119,7 +119,7 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
     <div data-question-tool className={`w-full min-w-0 ${className}`}>
       <button type="button" className="chat-process-trigger hover-brand-text" aria-expanded={phase.open} aria-controls={toolBodyId}
         onClick={() => setView({ ...phase, open: !phase.open })}>
-        <HelpCircle aria-hidden="true" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+        <MessageCircleQuestion aria-hidden="true" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
         <span>{t('common:uiText.questionTool')}</span>
         <span className="text-muted-foreground">{t('common:uiText.questionsCount', { count: normalizedQuestions.length })}</span>
         <span className="tabular-nums text-muted-foreground">{status}</span>

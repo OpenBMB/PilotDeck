@@ -82,3 +82,65 @@ test('restored reasoning shows its measured duration and reduced motion keeps th
   const live = page.locator('[data-thinking-state="running"] svg').first();
   expect(await live.evaluate((node) => getComputedStyle(node).animationName)).toBe('none');
 });
+
+test('live and completed tools keep semantic icons in every palette', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+  await page.evaluate(() => {
+    window.streamFixture.beginTurn();
+    window.streamFixture.think('Prepare a small report.');
+    window.streamFixture.tool('new-file', 'write_file', { file_path: 'report.txt', content: 'Report' });
+  });
+  const writeIcon = page.locator('[data-tool-id="new-file"] > div > button > svg').first();
+  await expect(writeIcon).toHaveClass(/lucide-file-plus-2/);
+  await expect(writeIcon).toHaveCSS('animation-name', 'pulse');
+  await expect(page.locator('[data-process-block] > button > svg').first()).toHaveClass(/lucide-file-plus-2/);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(writeIcon).toHaveCSS('animation-name', 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(() => {
+    window.streamFixture.finishTool('new-file', 'Written');
+    for (const [id, name, input] of [
+      ['edit', 'edit_file', { file_path: 'report.txt', old_string: 'Report', new_string: 'Final report' }],
+      ['read', 'Read', { file_path: 'report.txt' }],
+      ['files', 'glob', { pattern: '*.txt' }],
+      ['skill', 'read_skill', { skillName: 'reporting' }],
+      ['image', 'generate_image', { prompt: 'Report illustration', purpose: 'intermediate' }],
+      ['video', 'generate_video', { prompt: 'Report animation', purpose: 'intermediate' }],
+      ['external', 'mcp__notes__lookup', { query: 'report' }],
+      ['browser', 'browser_navigate', { url: 'https://example.com' }],
+      ['unknown', 'custom_action', {}],
+    ]) { window.streamFixture.tool(id, name, input); window.streamFixture.finishTool(id, 'Done'); }
+  });
+  await expect(writeIcon).toHaveClass(/lucide-file-plus-2/);
+  await expect(writeIcon).toHaveCSS('animation-name', 'none');
+  const groupIcon = page.locator('[data-process-block] > button > svg').first();
+  await expect(groupIcon).toHaveClass(/lucide-layers/);
+  for (const [id, icon] of [['edit', 'file-pen-line'], ['read', 'file-text'], ['files', 'file-search'],
+    ['skill', 'book-open'], ['image', 'image'], ['video', 'clapperboard'], ['external', 'plug'],
+    ['browser', 'app-window'], ['unknown', 'wrench']]) {
+    await expect(page.locator(`[data-tool-id="${id}"] > div > button > svg`).first()).toHaveClass(new RegExp(`lucide-${icon}(\\s|$)`));
+  }
+  await page.evaluate(() => { window.streamFixture.text('The report is ready.'); window.streamFixture.complete(5000); });
+  await page.locator('[data-turn-process-header] button').click();
+  await page.locator('[data-process-block] > button').click();
+  for (const preset of ['default', 'paper', 'mint', 'sand', 'custom', 'dark']) {
+    await page.evaluate(p => window.streamFixture.setAppearance(p === 'dark' ? 'default' : p, p === 'dark'), preset);
+    await page.mouse.move(0, 0);
+    const icons = page.locator('[data-tool-id] > div > button > svg:first-child');
+    await expect(icons).toHaveCount(10);
+    const metrics = await icons.evaluateAll(nodes => nodes.map(node => ({
+      width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,
+      stroke: node.getAttribute('stroke-width'), hidden: node.getAttribute('aria-hidden'),
+      color: getComputedStyle(node).color,
+      rowColor: getComputedStyle(node.closest('button')).color,
+    })));
+    expect(metrics.every(m => m.width === 14 && m.height === 14 && m.stroke === '1.8' && m.hidden === 'true'), preset).toBe(true);
+    // Icons inherit their own row, including in-flight theme/hover transitions.
+    expect(metrics.every(m => m.color === m.rowColor), preset).toBe(true);
+  }
+  await page.evaluate(() => { window.streamFixture.setAppearance('mint'); return window.streamFixture.setLanguage('zh-CN'); });
+  await expect(writeIcon).toHaveClass(/lucide-file-plus-2/);
+  await page.screenshot({ path: test.info().outputPath('tool-icons-light.png'), animations: 'disabled' });
+  await page.evaluate(() => window.streamFixture.setAppearance('default', true));
+  await page.screenshot({ path: test.info().outputPath('tool-icons-dark.png'), animations: 'disabled' });
+});

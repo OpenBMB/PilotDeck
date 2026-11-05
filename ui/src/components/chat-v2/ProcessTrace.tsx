@@ -7,13 +7,10 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
-  Pencil,
-  Search,
-  Terminal,
-  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { AnimatedDisclosure } from '../ui/AnimatedDisclosure';
+import { getActivityIcon } from '../chat/tools/toolIcons';
 import { AgentTimeline } from './AgentTimeline';
 import { StreamingScrollViewport } from './StreamingScrollViewport';
 
@@ -117,6 +114,7 @@ export function ProcessLiveStatus({
   const statusContent = (
     <>
       <Icon
+        aria-hidden="true"
         className={`h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
           Icon === Loader2 && isRunning ? 'motion-safe:animate-spin' : ''
         }`}
@@ -169,23 +167,11 @@ export function ProcessLiveStatus({
 }
 
 function getStepIcon(step: ProcessTraceStep): LucideIcon {
-  const haystack = `${step.phase || ''} ${step.toolName || ''} ${step.title || ''}`.toLowerCase();
-
   if (step.state === 'failed' || step.severity === 'error' || step.severity === 'warning') {
     return AlertCircle;
   }
-  if (step.phase === 'rag' || /search|grep|glob|find|检索|搜索/.test(haystack)) {
-    return Search;
-  }
-  if (/edit|write|patch|update|create|modify|修改|编辑|写入|创建/.test(haystack)) {
-    return Pencil;
-  }
-  if (/bash|shell|terminal|command|exec|run|命令|运行/.test(haystack)) {
-    return Terminal;
-  }
-  if (step.phase === 'tool' || step.phase === 'subtask' || step.toolName) {
-    return Wrench;
-  }
+  const icon = getActivityIcon(step.phase, step.toolName);
+  if (icon) return icon;
   if (step.state === 'completed') {
     return CheckCircle2;
   }
@@ -214,14 +200,15 @@ function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
   return (
     <div
       className={`inline-flex min-w-0 max-w-full items-start gap-2 text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${
-        isRunning ? 'animate-pulse' : ''
+        isRunning ? 'motion-safe:animate-pulse' : ''
       }`}
     >
       <Icon
+        aria-hidden="true"
         className={`mt-[0.28rem] h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
-          Icon === Loader2 && isRunning ? 'animate-spin' : ''
+          Icon === Loader2 && isRunning ? 'motion-safe:animate-spin' : ''
         }`}
-        strokeWidth={1.9}
+        strokeWidth={1.8}
       />
       <div className="min-w-0">
         <div className="truncate">{title}</div>
@@ -285,6 +272,7 @@ export function ProcessTrace({
         className="chat-process-trigger hover-brand-text group disabled:cursor-default"
       >
         <SummaryIcon
+          aria-hidden="true"
           className={`h-3.5 w-3.5 shrink-0 ${getStepIconClass(summaryIconStep)} ${
             SummaryIcon === Loader2 && isRunning ? 'motion-safe:animate-spin' : ''
           }`}

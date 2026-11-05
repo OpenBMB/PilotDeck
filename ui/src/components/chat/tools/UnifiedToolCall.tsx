@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react';
-import { Check, ChevronRight, FileText, Globe, Loader2, Pencil, Search, Terminal, Wrench, X } from 'lucide-react';
+import { Check, ChevronRight, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AnimatedDisclosure } from '../../ui/AnimatedDisclosure';
 import type { ChatMessage } from '../types/types';
@@ -9,6 +9,7 @@ import { isVideoDeliverable, videoAttachment } from './videoPresentation';
 import GeneratedImageCard from './GeneratedImageCard';
 import { hasImageAttachment, isDrawingTool, isImageDeliverable } from './imagePresentation';
 import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
+import { getToolIcon } from './toolIcons';
 import { ToolRenderer } from './ToolRenderer';
 import { ToolDiffViewer } from './components/ToolDiffViewer';
 import { ToolDetails } from './components/ToolDetails';
@@ -44,7 +45,6 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
   const isRead = name === 'Read';
   const isSkill = name === 'read_skill';
   const isSearch = ['Grep', 'Glob', 'web_search'].includes(name);
-  const isWeb = /browser|web_fetch/.test(name);
   const pending = result == null;
   const active = pending && running;
   const file = displayText(input.file_path || input.path);
@@ -54,7 +54,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
     : displayText(input.query || input.pattern || input.url || input.description || message.toolName);
   const action = isShell ? 'command' : isEdit ? (name === 'Write' ? 'write' : 'edit') : isRead ? 'read' : isSkill ? 'skill' : isSearch ? 'search' : 'tool';
   const label = t(`toolDisplay.${active ? 'running' : pending || result?.isError ? 'pending' : 'done'}.${action}`);
-  const Icon = active ? Loader2 : isShell ? Terminal : isEdit ? Pencil : isRead || isSkill ? FileText : isSearch ? Search : isWeb ? Globe : Wrench;
+  const Icon = getToolIcon(name);
   const rawResult = resultText(result?.content);
   const displayError = rawResult.includes('<tool_use_error>') ? rawResult.replace(/<\/?tool_use_error>/g, '').replace(/^InputValidationError:\s*/i, '').trim() : rawResult;
   const output = result?.isError ? displayError : isShell ? shell.output : rawResult;
@@ -79,7 +79,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
     <div className="tool-call min-w-0" data-tool-id={message.toolId}>
       <div className="flex min-w-0 items-center gap-2 text-[13px] leading-6 text-neutral-500 dark:text-neutral-400">
         <button type="button" aria-expanded={expanded} aria-controls={contentId} aria-label={`${label} ${target}`} onClick={() => { setLocalOpen(!expanded); onOpenChange?.(!expanded); }} className="chat-process-trigger hover-brand-text group flex-1">
-          <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'motion-safe:animate-spin' : ''}`} strokeWidth={1.8} />
+          <Icon aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${active ? 'motion-safe:animate-pulse' : ''}`} strokeWidth={1.8} />
           <span className="shrink-0">{label}</span>
           <span className="min-w-0 truncate" title={target}>{target}</span>
           {diff.length > 0 && !result?.isError && <span className="shrink-0 text-xs tabular-nums"><span className="text-green-600 dark:text-green-400">+{diff.filter(line => line.type === 'added').length}</span>{' '}<span className="text-red-500 dark:text-red-400">−{diff.filter(line => line.type === 'removed').length}</span></span>}

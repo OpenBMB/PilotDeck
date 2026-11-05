@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Check, ChevronLeft, HelpCircle } from 'lucide-react';
+import { Check, ChevronLeft, MessageCircleQuestion } from 'lucide-react';
 import type { PermissionPanelProps } from '../../configs/permissionPanelRegistry';
 import type { Question } from '../../../types/types';
 import { Button } from '../../../../ui/button';
@@ -210,7 +210,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
         {/* Header */}
         <div className="px-3 pb-2.5 pt-3">
           <div className="mb-1.5 flex items-center gap-2">
-            <HelpCircle className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.75} />
+            <MessageCircleQuestion aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} />
 
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <span className="text-[12px] font-medium leading-5 text-muted-foreground">
