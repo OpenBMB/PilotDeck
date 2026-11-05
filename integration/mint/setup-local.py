@@ -3,8 +3,8 @@
 import json, os, pathlib, shutil, subprocess
 repo=pathlib.Path(__file__).resolve().parents[2]
 runtime=pathlib.Path(os.environ.get('PILOTDECK_TEST_RUNTIME','/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime'))
-project=runtime/'utf8-registry-project'
-source=pathlib.Path(os.environ.get('MINT_INSTALL_SOURCE','/tmp/mint-pilotdeck-curated-install-20261105-28489'))
+project=runtime/'pilotdeck-13-package-project'
+source=pathlib.Path(os.environ.get('MINT_INSTALL_SOURCE','/tmp/mint-pilotdeck-image-offload-20261105'))
 if not project.exists(): shutil.copytree(source,project)
 unified=runtime/'utf8-unified';unified.mkdir(parents=True,exist_ok=True)
 for name in ['env.json','kernel.toml','components.json','launch.py']:
@@ -22,5 +22,4 @@ marker=runtime/'.pilotdeck/projects'/name
 marker.mkdir(parents=True,exist_ok=True);(marker/'.cwd').write_text(str(project))
 print('Configured',unified,'for',project)
 
-subprocess.run([os.environ.get('MINT_BIN','/tmp/mint-merge-all-mrs-20261104/target/debug/mint'),'add','pilotdeck/context-instructions@0.1.6','pilotdeck/context-retention@0.2.5','pilotdeck/context-tool-result-pruner@0.1.8','pilotdeck/context-budget-production@0.3.6','pilotdeck/model-provider-openai-consumer@0.1.3','--registry','mint-hub','-y'],cwd=project,check=True)
-(project/'LOCAL-OVERRIDE.md').unlink(missing_ok=True)
+print('Package installation is preserved from', source)

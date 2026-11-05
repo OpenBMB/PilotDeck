@@ -16,7 +16,8 @@ required = [
   "liyishan1/pilotdeck-context-time-consumer@0.1.0",
   "liyishan1/pilotdeck-tool-fs-state-types@0.1.1",
   "liyishan1/pilotdeck-tool-fs-read@0.1.3",
-  "pilotdeck/model-provider-openai-consumer@0.1.2",
+  "pilotdeck/model-provider-openai-consumer@0.1.4",
+  "liyishan1/pilotdeck-context-image-offload@0.1.1",
 ]
 
 [hooks]

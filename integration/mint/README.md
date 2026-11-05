@@ -1,12 +1,12 @@
 # PilotDeck + Mint 本机集成
 
 页面：http://127.0.0.1:5273/ 。使用上游免账号配置 `PILOTDECK_DISABLE_LOCAL_AUTH=1`。
-前端基线 origin/main `6a16ccccfa57b1a8e4ceaded3fddfc4bbf17985d`，分支
-`codex/mint-acp-12-package-integration`。Mint 基线 `15354d81`，分支
-`codex/pilotdeck-12-package-integration`。
+前端基线最新 `origin/main` `32a291f6`，分支
+`codex/pilotdeck-mint-sidecar-integration`。Mint 接入分支为
+`codex/pilotdeck-mint-sidecar-integration`。
 
-执行链：网页 bridge → 服务端 ACP gateway → cpmrt → 外部 Kernel →
-Rust builtin-turn-loop → iface 服务适配 → Mint Host → 安装包。
+执行链：网页 bridge → 服务端 ACP gateway → 配置的 Mint sidecar →
+Rust loop/Kernel → Mint Host → 安装包。sidecar 未配置时明确失败，不回退到旧 loop worker。
 `context-owner.mjs` 复用上游 DefaultContextRuntime，不运行 TypeScript loop。
 11 个 JS 包为必需依赖，缺失/注册错误阻止就绪；第12个是构建依赖类型包。
 
@@ -32,9 +32,9 @@ sh integration/mint/stop-local.sh
 更换端点还需同步 Kernel 路由与 Host net grants。默认只监听本机。
 固定私有 UDS 供这一个实例使用，不同时启动多个 runtime。
 
-## 12包验收
+## 13包装配验收
 
-所有场景使用同一安装项目、同一外部 Rust loop 装配；压缩与保留场景通过环境变量
+所有场景使用同一 13 包安装项目和同一 sidecar 装配；压缩与保留场景通过环境变量
 调整触发阈值。日志均位于运行目录。模型复述不作为单独验收依据。
 
 | 包及版本 | 实际消费证据 |
