@@ -11,6 +11,7 @@ Run from the repository root unless noted.
 | One UI/server module | `pnpm --dir ui exec vitest run <file-or-directory>` |
 | UI server / client suites | `pnpm --dir ui test:server` / `pnpm --dir ui test:client` |
 | Full UI/server regression | `pnpm --dir ui test` |
+| Checkpoint execution and restore | `pnpm test:checkpoints` (build Core first) |
 | Changed/related imports | `pnpm --dir ui test:changed` or `pnpm --dir ui test:related src/path/to/file.ts` |
 | Model protocol/streaming | `node --import tsx --test "tests/model/**/*.spec.ts"` |
 | Desktop helpers | `pnpm --filter pilotdeck-desktop test` |
@@ -30,6 +31,10 @@ Changed/related selection follows import edges, not every dynamically read templ
 - Follow [CONTRIBUTING](../CONTRIBUTING.md) for placement, English documentation and artifact rules. New module tests remain visible to Git; only root test/ and test.ts drafts are ignored.
 
 ## Maintained diagnostic checks
+
+Checkpoint execution cases use separate Python, subagent and background-task
+files with a shared isolated workspace fixture. Each keeps the runner's 60-second
+file deadline instead of sharing one cumulative budget across all execution modes.
 
 First build the relevant Core/Desktop/Web outputs when a command consumes compiled code.
 
