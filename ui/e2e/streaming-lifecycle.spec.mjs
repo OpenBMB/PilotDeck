@@ -30,7 +30,7 @@ test('history refresh preserves thinking and compaction order and a single image
   await page.evaluate(() => window.streamLifecycle.store.refreshFromServer('s', { provider: 'pilotdeck' }));
   const order = () => page.evaluate(() => window.streamLifecycle.store.getMessages('s').map(m => m.kind));
   await expect.poll(order).toEqual(['text', 'thinking', 'compact_boundary', 'text']);
-  await page.getByRole('button', { name: 'Thought process' }).click();
+  await page.getByRole('button', { name: /^Thought for \d+s$|^Finished thinking$/ }).click();
   await expect(page.getByText('Inspect the screenshot carefully.', { exact: true })).toBeVisible();
   await expect(page.getByText('Review this image', { exact: true })).toHaveCount(1);
   await expect(page.locator('img[src^="data:image/gif"]')).toHaveCount(1);
@@ -48,6 +48,7 @@ test('history refresh preserves thinking and compaction order and a single image
 test('short thinking ignores upward wheels, then global resume restores the inner tail', async ({ page }) => {
   await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
   await page.evaluate(() => window.streamFixture.think('A short thought.'));
+  await page.getByRole('button', { name: /^Thinking for \d+s$/ }).click();
   const inner = page.getByRole('region', { name: 'Live thinking content' });
   await expect(inner).toContainText('A short thought.');
   expect(await gap(outer(page))).toBe(0);
@@ -78,6 +79,7 @@ test('short thinking ignores upward wheels, then global resume restores the inne
 test('upward wheels over short thinking yield to the scrollable conversation', async ({ page }) => {
   await page.goto('/e2e/fixtures/streaming-scroll.html');
   await page.evaluate(() => window.streamFixture.think('A short thought.'));
+  await page.getByRole('button', { name: /^Thinking for \d+s$/ }).click();
   const inner = page.getByRole('region', { name: 'Live thinking content' });
   await expect(inner).toContainText('A short thought.');
   await expect.poll(() => gap(outer(page))).toBeLessThan(3);
@@ -185,6 +187,7 @@ test('completion snapshot refresh preserves the mounted thinking viewport and it
   await page.goto('/e2e/fixtures/streaming-lifecycle.html?child');
   await expect(page.getByText('An older persisted step.')).toBeVisible();
   await page.evaluate((text) => window.streamLifecycle.think(text), thought);
+  await page.getByRole('button', { name: /^Thinking for \d+s$/ }).click();
   const inner = page.getByRole('region', { name: 'Live thinking content' });
   await expect(inner).toContainText('Thought 59');
   await expect.poll(() => gap(inner)).toBeLessThan(3);
@@ -195,14 +198,14 @@ test('completion snapshot refresh preserves the mounted thinking viewport and it
   await inner.evaluate((node) => { window.originalThinkingViewport = node; });
   await page.evaluate(() => window.streamLifecycle.finish());
   await expect.poll(() => requests).toBe(2);
-  const completedThinking = page.getByRole('button', { name: 'Thought process' });
+  const completedThinking = page.getByRole('button', { name: /^Thought for \d+s$/ });
   await expect(completedThinking).toHaveAttribute('aria-expanded', 'false');
   await completedThinking.click();
   await expect(inner).toBeVisible();
   expect(await inner.evaluate((node) => node === window.originalThinkingViewport)).toBe(true);
   finishFetch();
   await expect.poll(() => page.evaluate(() => window.streamLifecycle.detail.isLoading)).toBe(false);
-  await expect(page.getByRole('button', { name: 'Thought process' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: /^Thought for \d+s$|^Finished thinking$/ })).toHaveAttribute('aria-expanded', 'true');
   expect(await inner.evaluate((node) => node === window.originalThinkingViewport)).toBe(true);
   expect(Math.abs(await top(inner) - reading)).toBeLessThan(2);
 });

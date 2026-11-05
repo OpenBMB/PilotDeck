@@ -562,6 +562,8 @@ function MessageRowV2({
       <ThinkingBlock
         content={formattedContent}
         isStreaming={Boolean(message.isStreaming)}
+        startedAt={message.startedAt}
+        durationMs={message.durationMs}
         inline={inlineThinking}
         projectName={selectedProject?.name}
         onFileOpen={onFileOpen}

@@ -7,6 +7,8 @@ import { normalizedToChatMessages } from '../../src/components/chat/hooks/useCha
 import { useSessionStore } from '../../src/stores/useSessionStore';
 import '../../src/index.css';
 import i18n from '../../src/i18n/config';
+import { applyLightAppearance } from '../../src/lib/appearanceRuntime';
+import { normalizeLightAppearance } from '../../src/lib/lightAppearance';
 
 i18n.changeLanguage('en');
 
@@ -53,6 +55,16 @@ function Fixture() {
     text(text) { setWorking(true); store.finalizeStreamingThinking(sid, 'live'); store.updateStreaming(sid, text, 'pilotdeck', 'live'); },
     complete() { store.finalizeStreamingThinking(sid, 'live'); store.finalizeStreaming(sid, 'live'); setWorking(false); },
     setInline, setMode,
+    setLanguage: (language) => i18n.changeLanguage(language),
+    setAppearance(preset, dark = false) {
+      document.documentElement.classList.toggle('dark', dark);
+      applyLightAppearance(normalizeLightAppearance({ preset, custom: { accent: '#256c57', background: '#e9f4ef' } }), dark);
+    },
+    restoreThinking(durationMs) {
+      store.applyTimelineMessage(sid, { ...base, id: 'restored-thought', kind: 'thinking', content: 'A measured thought restored from history.',
+        isFinal: true, streamState: 'closed', timeline: { version: 1, turnId: 'restored', id: 'thought', order: 0, revision: 2,
+          startedAt: '2026-01-01T00:00:00Z', durationMs } });
+    },
   };
   const diff = useMemo(() => () => [], []);
   return <FindShortcutProvider activeScope="chat"><div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>

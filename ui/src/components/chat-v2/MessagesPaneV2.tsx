@@ -1112,7 +1112,7 @@ function MessagesPaneV2({
           itemKey={item.itemKey}
           message={item.message}
           isLast={isLast}
-          compactBottomSpacing={anchoredLiveGroups.length > 0 || rendersLiveHeaderAfterItem}
+          compactBottomSpacing={anchoredLiveGroups.length > 0 || rendersLiveHeaderAfterItem || Boolean(item.message.isThinking || item.message.isToolUse)}
           flushBottomSpacing={Boolean(item.turnTrace && !isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}`))}
           onHeightChange={handleMeasuredItemHeight}
         >
@@ -1128,7 +1128,7 @@ function MessagesPaneV2({
                 expanded={isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}`)}
                 onExpandedChange={(expanded) => handleProcessExpandedChange(`${messageWindowScope}:${item.turnTrace!.id}`, expanded)} />
               {isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}`) ? (
-                <div className="space-y-4" data-turn-trace={item.turnTrace.id}>
+                <div className="space-y-2" data-turn-trace={item.turnTrace.id}>
                   {item.turnTrace.items.map((child) => {
                     const childKey = `${messageWindowScope}:${getMessageKey(child.message, child.originalIndex)}`;
                     return <div key={childKey} className="chat-message" data-message-key={childKey}>

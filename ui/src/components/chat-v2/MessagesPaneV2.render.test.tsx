@@ -41,14 +41,13 @@ afterEach(() => {
 });
 
 describe('ThinkingBlock phase transitions', () => {
-  it('opens while streaming, respects manual collapse, and closes once on completion', () => {
+  it('stays collapsed while streaming, respects manual toggles, and closes once on completion', () => {
     const view = render(<ThinkingBlock content="First thought" isStreaming />);
     const toggle = screen.getByRole('button');
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    fireEvent.click(toggle);
-    view.rerender(<ThinkingBlock content="First thought and more" isStreaming />);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
+    view.rerender(<ThinkingBlock content="First thought and more" isStreaming />);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
     view.rerender(<ThinkingBlock content="Completed thought" isStreaming={false} />);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
@@ -377,7 +376,10 @@ describe('MessagesPaneV2 render behavior', () => {
       sessionRuntimeState: 'running',
     });
 
-    const toggle = screen.getByRole('button', { name: 'Thinking...' });
+    const toggle = screen.getByRole('button', { name: /^Thinking for \d+s$/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('region', { name: 'Live thinking content' })).toBeNull();
+    fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     const liveThinkingRegion = screen.getByRole('region', { name: 'Live thinking content' });
     expect(liveThinkingRegion).toBeTruthy();
@@ -392,7 +394,7 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
   });
 
-  it('expands live reasoning when thinking details are enabled during a run', () => {
+  it('keeps live reasoning collapsed when thinking details are enabled during a run', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
       {
@@ -421,8 +423,8 @@ describe('MessagesPaneV2 render behavior', () => {
 
     view.rerender(createPaneElement({ ...options, showThinking: true }));
 
-    expect(screen.getByRole('button', { name: 'Thinking...' }).getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Thinking for \d+s$/ }).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('region', { name: 'Live thinking content' })).toBeNull();
   });
 
   it('preserves the same reasoning viewport when switching display modes during a run', () => {
@@ -450,12 +452,13 @@ describe('MessagesPaneV2 render behavior', () => {
     };
     const view = renderPane({ ...options, inlineThinking: true });
 
+    fireEvent.click(screen.getByRole('button', { name: /^Thinking for \d+s$/ }));
     const region = screen.getByRole('region', { name: 'Live thinking content' });
-    expect(screen.getAllByRole('button', { name: 'Thinking...' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Thinking for \d+s$/ })).toHaveLength(1);
 
     view.rerender(createPaneElement({ ...options, inlineThinking: false }));
 
-    expect(screen.getByRole('button', { name: 'Thinking...' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: /^Thinking for \d+s$/ }).getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByRole('region', { name: 'Live thinking content' })).toBe(region);
   });
 
@@ -1492,11 +1495,8 @@ describe('MessagesPaneV2 render behavior', () => {
     const summary = screen.getByText(/Edited 1 file.*Searched 1 time/);
     const button = summary.closest('button');
     expect(button).not.toBeNull();
-    expect(button?.className).toContain('inline-flex');
-    expect(button?.className).toContain('items-center');
-    expect(button?.className).toContain('text-[14px]');
-    expect(button?.className).toContain('leading-relaxed');
-    expect(button?.closest('.process-trace')?.className).not.toContain('my-');
+    expect(button?.getAttribute('aria-expanded')).toBe('false');
+    expect(button?.querySelector('.text-amber-600, .text-red-500')).toBeNull();
 
     fireEvent.click(button as HTMLButtonElement);
 
@@ -1598,7 +1598,7 @@ describe('MessagesPaneV2 render behavior', () => {
       { id: 'answer', type: 'assistant', content: 'Answer after compaction', timestamp: now },
     ] });
     fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
-    const thought = screen.getByRole('button', { name: 'Thought process' });
+    const thought = screen.getByRole('button', { name: 'Finished thinking' });
     const compact = screen.getByText('Compacted context');
     const answer = screen.getByText('Answer after compaction');
     expect(thought.compareDocumentPosition(compact) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

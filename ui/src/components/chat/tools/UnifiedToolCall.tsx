@@ -72,9 +72,9 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
     {typeof duration === 'number' && duration >= 0 && <span>· {(duration / 1000).toFixed(1)}s</span>}
   </> : <span>{t(active ? 'toolDisplay.executing' : externalError ? 'toolDisplay.actionRequired' : 'toolDisplay.noResult')}</span>;
   return (
-    <div className="tool-call min-w-0 py-1" data-tool-id={message.toolId}>
+    <div className="tool-call min-w-0" data-tool-id={message.toolId}>
       <div className="flex min-w-0 items-center gap-2 text-[13px] leading-6 text-neutral-500 dark:text-neutral-400">
-        <button type="button" aria-expanded={expanded} aria-label={`${label} ${target}`} onClick={() => { setLocalOpen(!expanded); onOpenChange?.(!expanded); }} className="group flex min-w-0 flex-1 items-center gap-2 rounded text-left hover:text-[var(--pd-accent-strong,#7c3aed)] focus-visible:outline-[var(--pd-accent,#8b5cf6)] dark:hover:text-violet-400">
+        <button type="button" aria-expanded={expanded} aria-label={`${label} ${target}`} onClick={() => { setLocalOpen(!expanded); onOpenChange?.(!expanded); }} className="chat-process-trigger hover-brand-text group flex-1">
           <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'animate-spin' : ''}`} strokeWidth={1.8} />
           <span className="shrink-0">{label}</span>
           <span className="min-w-0 truncate" title={target}>{target}</span>

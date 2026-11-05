@@ -1,51 +1,73 @@
-import { useState } from 'react';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { useEffect, useId, useState } from 'react';
+import { Brain, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { StreamingScrollViewport } from './StreamingScrollViewport';
 
-export function ThinkingBlock({ content, isStreaming, inline, projectName, onFileOpen }: {
+export function ThinkingBlock({ content, isStreaming, startedAt, durationMs, inline, projectName, onFileOpen }: {
   content: string;
   isStreaming: boolean;
+  startedAt?: string;
+  durationMs?: number | null;
   inline?: boolean;
   projectName?: string;
   onFileOpen?: (path: string) => void;
 }) {
-  // Only phase transitions change the default; token updates preserve manual toggles.
-  const [view, setView] = useState({ streaming: isStreaming, expanded: isStreaming });
-  // Reset the phase default during render, before paint. A completed block never
-  // flashes a restarted typewriter or an expanded stale viewport for one frame.
-  if (view.streaming !== isStreaming) setView({ streaming: isStreaming, expanded: isStreaming });
-  const expanded = view.streaming === isStreaming ? view.expanded : isStreaming;
+  // Phase changes collapse before paint; token updates preserve manual toggles.
+  const [view, setView] = useState(() => ({ streaming: isStreaming, expanded: false,
+    observedStart: isStreaming ? Date.now() : undefined, stoppedAt: undefined as number | undefined }));
+  let phase = view;
+  if (view.streaming !== isStreaming) {
+    phase = { streaming: isStreaming, expanded: false,
+      observedStart: isStreaming ? Date.now() : view.observedStart,
+      stoppedAt: isStreaming ? undefined : Date.now() };
+    setView(phase);
+  }
+  const { expanded } = phase;
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!isStreaming) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isStreaming]);
+  const parsedStart = Date.parse(startedAt || '');
+  const start = Number.isFinite(parsedStart) ? parsedStart : phase.observedStart;
+  const end = isStreaming ? now : phase.stoppedAt;
+  const elapsed = !isStreaming && typeof durationMs === 'number' && Number.isFinite(durationMs)
+    ? Math.max(0, durationMs)
+    : start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined;
+  const seconds = elapsed === undefined ? undefined : Math.floor(elapsed / 1000);
+  const contentId = useId();
   const { t } = useTranslation('chat');
-  const text = content;
+  const label = seconds === undefined
+    ? t('thinking.finished', { defaultValue: 'Finished thinking' })
+    : t(isStreaming ? 'thinking.runningDuration' : 'thinking.completedDuration', {
+      count: seconds, defaultValue: isStreaming ? `Thinking for ${seconds}s` : `Thought for ${seconds}s`,
+    });
   return (
-    <div className="min-w-0 text-[14px] leading-relaxed">
+    <div className="min-w-0" data-thinking-state={isStreaming ? 'running' : 'completed'}>
       <button
         type="button"
         aria-expanded={expanded}
-        onClick={() => setView({ streaming: isStreaming, expanded: !expanded })}
-        className={`hover-brand-text flex items-center gap-2 text-left text-[13px] font-medium ${inline
-          ? 'text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70 dark:hover:text-blue-300'
-          : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'}`}
+        aria-controls={contentId}
+        onClick={() => setView({ ...phase, expanded: !expanded })}
+        className="chat-process-trigger hover-brand-text"
       >
-        {isStreaming
-          ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
-          : <ChevronRight className={`h-3.5 w-3.5 ${expanded ? 'rotate-90' : ''}`} strokeWidth={2} />}
-        <span>{isStreaming
-          ? t('working.thinking', { defaultValue: 'Thinking...' })
-          : t('thinking.completed', { defaultValue: 'Thought process' })}</span>
+        <Brain aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${isStreaming ? 'motion-safe:animate-pulse' : ''}`} strokeWidth={1.8} />
+        <span className="min-w-0 truncate tabular-nums">{label}</span>
+        <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} strokeWidth={1.8} />
       </button>
       {/* Keep the viewport mounted when collapsed so reopening retains its position. */}
-      <div hidden={!expanded}>
+      <div id={contentId} hidden={!expanded}>
         <StreamingScrollViewport
           label={t('thinking.liveContentLabel', { defaultValue: 'Live thinking content' })}
           enabled={expanded && isStreaming}
-          className={`ml-[22px] mt-1.5 border-l-2 pl-3 text-[13px] text-neutral-600 dark:text-neutral-300 ${inline
-            ? 'border-blue-400/50 dark:border-blue-500/40'
+          className={`ml-[22px] mt-1.5 border-l-2 pl-3 text-[13px] leading-relaxed text-neutral-600 dark:text-neutral-300 ${inline
+            ? 'border-[var(--brand)]'
             : 'border-neutral-200 dark:border-neutral-700'}`}
         >
-          <Markdown projectName={projectName} onFileOpen={onFileOpen} isStreaming={isStreaming}>{text}</Markdown>
+          <Markdown projectName={projectName} onFileOpen={onFileOpen} isStreaming={isStreaming}>{content}</Markdown>
         </StreamingScrollViewport>
       </div>
     </div>

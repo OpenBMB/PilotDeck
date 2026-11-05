@@ -30,9 +30,12 @@ test('small upward gestures win over text streaming and explicit resume follows 
 test('thinking keeps its reading position through tools and remains available in the completed process', async ({ page }) => {
   await open(page);
   await page.evaluate((text) => window.streamFixture.think(text), lines(30));
+  const liveThinking = page.getByRole('button', { name: /^Thinking for \d+s$/ });
+  await expect(liveThinking).toHaveAttribute('aria-expanded', 'false');
+  await liveThinking.click();
   const thinking = page.getByRole('region', { name: 'Live thinking content' });
   await expect(thinking.getByText(/Thinking line 30/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Thinking...' })).toHaveCount(1);
+  await expect(liveThinking).toHaveCount(1);
   await thinking.hover();
   await page.mouse.wheel(0, -70);
   await expect.poll(() => distance(thinking)).toBeGreaterThan(30);
@@ -42,7 +45,7 @@ test('thinking keeps its reading position through tools and remains available in
   await page.waitForTimeout(500);
   expect(Math.abs(await top(thinking) - readingTop)).toBeLessThan(2);
   await page.evaluate(() => window.streamFixture.tool());
-  const completedThinking = page.getByRole('button', { name: 'Thought process' });
+  const completedThinking = page.getByRole('button', { name: /^Thought for \d+s$/ });
   await expect(completedThinking).toHaveAttribute('aria-expanded', 'false');
   await completedThinking.click();
   await expect(thinking).toBeVisible();
@@ -52,7 +55,7 @@ test('thinking keeps its reading position through tools and remains available in
   const completedProcess = page.getByRole('button', { name: /^Processed / });
   await expect(completedProcess).toHaveAttribute('aria-expanded', 'false');
   await completedProcess.click();
-  await page.getByRole('button', { name: 'Thought process' }).click();
+  await page.getByRole('button', { name: /^Thought for \d+s$/ }).click();
   await expect(thinking).toBeVisible();
   await expect(thinking).toContainText('Thinking line 45');
   await page.screenshot({ path: test.info().outputPath('thinking-reading-position.png') });

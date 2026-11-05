@@ -112,8 +112,8 @@ export function ProcessLiveStatus({
   const statusContent = (
     <>
       <Icon
-        className={`mt-[0.28rem] h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
-          Icon === Loader2 && isRunning ? 'animate-spin' : ''
+        className={`h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
+          Icon === Loader2 && isRunning ? 'motion-safe:animate-spin' : ''
         }`}
         strokeWidth={1.8}
       />
@@ -127,9 +127,9 @@ export function ProcessLiveStatus({
       </div>
       {hasDetails ? (
         expanded ? (
-          <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" strokeWidth={1.8} />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
         ) : (
-          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" strokeWidth={1.8} />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
         )
       ) : null}
     </>
@@ -145,14 +145,12 @@ export function ProcessLiveStatus({
             type="button"
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
-            className={`hover-brand-text group inline-flex min-w-0 max-w-full items-start gap-2 text-left transition hover:text-neutral-600 dark:hover:text-neutral-300 ${
-              isRunning ? 'animate-pulse' : ''
-            }`}
+            className="chat-process-trigger hover-brand-text group"
           >
             {statusContent}
           </button>
         ) : (
-          <div className={`inline-flex min-w-0 max-w-full items-start gap-2 ${isRunning ? 'animate-pulse' : ''}`}>
+          <div className="chat-process-trigger">
             {statusContent}
           </div>
         )}
@@ -200,10 +198,7 @@ function getStepIconClass(step: ProcessTraceStep): string {
   if (step.severity === 'warning') {
     return 'text-amber-500 dark:text-amber-400';
   }
-  if (step.state === 'running') {
-    return 'text-neutral-400 dark:text-neutral-500';
-  }
-  return 'text-neutral-400 dark:text-neutral-500';
+  return '';
 }
 
 function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
@@ -282,13 +277,11 @@ export function ProcessTrace({
           }
         }}
         disabled={!hasDetails}
-        className={`hover-brand-text group inline-flex min-w-0 max-w-full items-center gap-2 text-left text-[14px] leading-relaxed text-neutral-400 transition hover:text-neutral-600 disabled:cursor-default disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-300 dark:disabled:hover:text-neutral-500 ${
-          isRunning ? 'animate-pulse' : ''
-        }`}
+        className="chat-process-trigger hover-brand-text group disabled:cursor-default"
       >
         <SummaryIcon
           className={`h-3.5 w-3.5 shrink-0 ${getStepIconClass(summaryIconStep)} ${
-            SummaryIcon === Loader2 && isRunning ? 'animate-spin' : ''
+            SummaryIcon === Loader2 && isRunning ? 'motion-safe:animate-spin' : ''
           }`}
           strokeWidth={1.8}
         />
@@ -300,9 +293,9 @@ export function ProcessTrace({
         ) : null}
         {hasDetails ? (
           expanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:text-neutral-500 dark:text-neutral-500 dark:group-hover:text-neutral-300" strokeWidth={1.8} />
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
           ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:text-neutral-500 dark:text-neutral-500 dark:group-hover:text-neutral-300" strokeWidth={1.8} />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
           )
         ) : null}
       </button>

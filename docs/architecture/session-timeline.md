@@ -70,7 +70,12 @@ pages only add/update content; absence from a page is not evidence of deletion.
 There is deliberately no client reconstruction of a provider response from its
 text. Legacy records/frames use the old adapter at the boundary. Runtime status
 rows do not place new-protocol content. Thinking renders received content
-without an additional typewriter, and its phase transition collapses before paint.
+without an additional typewriter. Reasoning stays collapsed by default during and
+after streaming; manual expansion survives token updates, and completion collapses
+before paint. Its localized status shows elapsed seconds while live and the measured
+duration after completion. Legacy history without timing shows a completed label
+without a guessed duration. Reasoning and tool summaries share row metrics and
+theme-aware colors; expanded reasoning retains its reading position.
 
 ## Verification
 
@@ -82,6 +87,12 @@ without an additional typewriter, and its phase transition collapses before pain
   identity, and 150 deterministic randomized replay schedules.
 - `ui/src/stores/useSessionStore.timeline.test.tsx`: real store history/live race
   and edited-turn tombstones.
+- `ui/src/components/chat-v2/ThinkingBlock.test.tsx`: localized clocks, completion,
+  manual expansion and legacy-history fallback.
+- `ui/e2e/reasoning-status.spec.mjs`: real row alignment across light palettes and
+  dark mode, keyboard expansion, narrow layouts and reduced motion. Run with
+  `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs` after
+  installing Playwright Chromium; the suite also checks reading-position retention.
 
 ## Limits of this first version
 

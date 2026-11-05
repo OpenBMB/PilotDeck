@@ -333,7 +333,7 @@ export default function SubagentDetailMessageFlow({
         />
       ) : null}
       <div ref={scrollContainerRef} data-stream-scroll-viewport className="min-h-0 flex-1 overflow-y-auto" style={{ overflowAnchor: 'none' }}>
-        <div data-chat-scroll-content className="flex min-w-0 flex-col gap-3 px-6 py-4">
+        <div data-chat-scroll-content className="flex min-w-0 flex-col gap-2 px-6 py-4">
           {keyedItems.map((item) => {
             const previousMessage = item.renderIndex > 0 ? keyedItems[item.renderIndex - 1].message : null;
             const nextMessage = item.renderIndex < keyedItems.length - 1

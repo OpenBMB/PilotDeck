@@ -269,6 +269,9 @@
   "thinking": {
     "title": "Thinking...",
     "completed": "Thought process",
+    "finished": "Finished thinking",
+    "runningDuration": "Thinking for {{count}}s",
+    "completedDuration": "Thought for {{count}}s",
     "emoji": "💭 Thinking...",
     "liveContentLabel": "Live thinking content"
   },

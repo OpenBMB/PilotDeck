@@ -163,7 +163,7 @@ describe('SubagentDetailMessageFlow', () => {
       tool('read-1', 'Read', 400),
     ], false);
 
-    expect(screen.getAllByRole('button', { name: /Thought process|思考过程/i })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /Finished thinking|已思考/i })).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: /Explored 1 file|已探索 1 个文件/i }));
 
     const status = screen.getByRole('status');
