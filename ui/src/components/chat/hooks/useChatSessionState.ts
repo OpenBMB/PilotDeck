@@ -240,6 +240,7 @@ type ConversationScrollPosition = {
   distanceFromBottom: number;
   following?: boolean;
   anchor?: ReadingAnchor | null;
+  historyStartId?: string;
 };
 
 const CONVERSATION_SCROLL_BOTTOM_THRESHOLD = 40;
@@ -586,13 +587,14 @@ export function useChatSessionState({
         top: container.scrollTop,
         following: Boolean(autoScrollToBottom) && !getIsPaused(),
         anchor: getReadingAnchor(),
+        historyStartId: activeSessionId ? sessionStore.getSessionSlot(activeSessionId)?.serverMessages[0]?.id : undefined,
         distanceFromBottom: Math.max(
           0,
           container.scrollHeight - container.scrollTop - container.clientHeight,
         ),
       });
     });
-  }, [activeScrollKey, autoScrollToBottom, getIsPaused, getReadingAnchor]);
+  }, [activeScrollKey, activeSessionId, autoScrollToBottom, getIsPaused, getReadingAnchor, sessionStore]);
 
   // Reset scroll/pagination state on session change
   useLayoutEffect(() => {
@@ -649,8 +651,9 @@ export function useChatSessionState({
       distanceFromBottom: Math.max(0, container.scrollHeight - container.scrollTop - container.clientHeight),
       following: Boolean(autoScrollToBottom) && !isUserScrolledUp,
       anchor: getReadingAnchor(),
+      historyStartId: activeSessionId ? sessionStore.getSessionSlot(activeSessionId)?.serverMessages[0]?.id : undefined,
     });
-  }, [activeScrollKey, historyReadyScrollKey, autoScrollToBottom, isUserScrolledUp, getReadingAnchor]);
+  }, [activeScrollKey, activeSessionId, historyReadyScrollKey, autoScrollToBottom, isUserScrolledUp, getReadingAnchor, sessionStore]);
 
   // Initial scroll to bottom
   useEffect(() => {
@@ -792,6 +795,10 @@ export function useChatSessionState({
     // Read the newest complete turns first. Older pages use an absolute
     // backward identity cursor, so live appends cannot reorder history.
     const requestScrollKey = activeScrollKeyRef.current;
+    const restorePosition = pendingConversationScrollRestoreRef.current?.key === requestScrollKey
+      ? pendingConversationScrollRestoreRef.current.position : undefined;
+    const restoreOlderWindow = restorePosition && !(restorePosition.following
+      ?? restorePosition.distanceFromBottom <= CONVERSATION_SCROLL_BOTTOM_THRESHOLD);
     sessionStore.fetchFromServer(selectedSession.id, {
       provider: 'pilotdeck',
       projectName: selectedProject.name,
@@ -799,6 +806,7 @@ export function useChatSessionState({
       ...sessionRequestParams,
       limit: MESSAGES_PER_PAGE,
       direction: 'backward',
+      includeFromId: restoreOlderWindow ? restorePosition.historyStartId : undefined,
     }).then(slot => {
       if (activeScrollKeyRef.current !== requestScrollKey) return;
       historyReadyScrollKeyRef.current = requestScrollKey;

@@ -31,6 +31,8 @@ describe('message routes', () => {
       const body = await (await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/s/messages?direction=backward&cursor=before%3Acurrent-user&limit=100`)).json();
       expect(read.mock.calls[0][0]).toMatchObject({ sessionKey: 's', direction: 'backward', cursor: 'before:current-user', limit: 100 });
       expect(body).toMatchObject({ hasMore: true, nextCursor: 'before:old-user', historyReset: true, total: 250 });
+      await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/s/messages?direction=backward&includeFromId=old-user&limit=100`);
+      expect(read.mock.calls[1][0]).toMatchObject({ direction: 'backward', includeFromId: 'old-user', limit: 100 });
     } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   });
   it('forwards context inspection only when explicitly requested and keeps it out of normal history', async () => {

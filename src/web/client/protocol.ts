@@ -339,6 +339,8 @@ export type WebReadSessionMessagesInput = {
   limit?: number;
   /** Forward: numeric offset. Backward: before:<messageId>, omitted for the newest page. */
   cursor?: string;
+  /** On a backward tail refresh, include this previously loaded message and everything newer. */
+  includeFromId?: string;
   direction?: "forward" | "backward";
 };
 

@@ -12,13 +12,18 @@ async function serve(page, messages, { failOlder = false } = {}) {
     const url = new URL(route.request().url());
     const cursor = url.searchParams.get('cursor');
     const direction = url.searchParams.get('direction');
-    requests.push({ cursor, direction });
+    const includeFromId = url.searchParams.get('includeFromId');
+    requests.push({ cursor, direction, includeFromId });
     active++; maxActive = Math.max(maxActive, active);
     await new Promise(resolve => setTimeout(resolve, 150));
     active--;
     if (cursor && failOlder) { failOlder = false; return route.abort('failed'); }
     let end = cursor ? messages.findIndex(m => m.id === cursor.slice(7)) : messages.length;
     let start = direction === 'backward' ? Math.max(0, end - Number(url.searchParams.get('limit') || 100)) : 0;
+    if (direction === 'backward' && !cursor && includeFromId) {
+      const anchor = messages.findIndex(message => message.id === includeFromId);
+      if (anchor >= 0) start = Math.min(start, anchor);
+    }
     while (start > 0 && messages[start].role !== 'user') start--;
     await route.fulfill({ json: { messages: messages.slice(start, end), total: messages.length,
       hasMore: start > 0, ...(start ? { nextCursor: `before:${messages[start].id}` } : {}) } });
@@ -89,6 +94,32 @@ test('reentering paginated versioned history never appends old replies without t
   await expect.poll(() => loadedCount(page)).toBe(200);
   expect(await page.evaluate(() => window.historyFixture.store.getMessages('a').map(message => message.content)))
     .toEqual(messages.slice(-200).map(message => message.content));
+});
+
+test('reentry preserves an older reading anchor while refreshing newly appended turns', async ({ page }) => {
+  const messages = history(220);
+  const server = await serve(page, messages);
+  await page.goto('/e2e/fixtures/history-loading.html');
+  await expect.poll(() => loadedCount(page)).toBe(100);
+  await reachTop(page);
+  await expect.poll(() => loadedCount(page)).toBe(200);
+  await page.mouse.wheel(0, -2500);
+  await expect.poll(() => viewport(page).getAttribute('data-reading-anchor-key')).toMatch(/(?:u|a)-1[23456]\d/);
+  const before = await viewport(page).evaluate(node => {
+    const key = node.dataset.readingAnchorKey;
+    const row = [...node.querySelectorAll('[data-message-key]')].find(row => row.dataset.messageKey === key);
+    return { key, y: row.getBoundingClientRect().top };
+  });
+  await page.evaluate(() => window.historyFixture.setSession(1));
+  await expect.poll(() => page.evaluate(() => window.historyFixture.chat.currentSessionId)).toBe('b');
+  messages.push(...history(225).slice(440));
+  await page.evaluate(() => window.historyFixture.setSession(0));
+  await expect.poll(() => page.evaluate(() => window.historyFixture.chat.currentSessionId)).toBe('a');
+  await expect.poll(() => page.evaluate(() => window.historyFixture.chat.isLoadingSessionMessages)).toBe(false);
+  expect(server.requests.at(-1).includeFromId).toBe('u-120');
+  await expect(viewport(page).locator(`[data-message-key="${before.key}"]`)).toBeVisible();
+  await expect.poll(() => viewport(page).locator(`[data-message-key="${before.key}"]`).evaluate(row => row.getBoundingClientRect().top)).toBeCloseTo(before.y, 0);
+  expect(await page.evaluate(() => window.historyFixture.store.getMessages('a').at(-1).content)).toContain('Answer 224');
 });
 
 test('a long completed turn retains every step and retry recovers without repeated messages', async ({ page }) => {

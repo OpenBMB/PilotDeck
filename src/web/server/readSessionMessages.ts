@@ -131,15 +131,21 @@ export async function readWebSessionMessages(
   const backward = input.direction === 'backward';
   const beforeId = backward && input.cursor?.startsWith('before:') ? input.cursor.slice(7) : undefined;
   const boundary = beforeId === undefined ? undefined : allMessages.findIndex(message => message.id === beforeId);
-  const historyReset = boundary === -1;
+  const includeFrom = backward && input.cursor === undefined && input.includeFromId
+    ? allMessages.findIndex(message => message.id === input.includeFromId) : undefined;
+  const historyReset = boundary === -1 || includeFrom === -1;
   const sliceEnd = backward ? boundary !== undefined && boundary >= 0 ? boundary
     : Math.min(allMessages.length, input.cursor === undefined || historyReset ? allMessages.length : offset)
     : limit === 0 ? allMessages.length : offset + limit;
   let sliceStart = backward ? Math.max(0, sliceEnd - (limit || sliceEnd)) : offset;
   if (backward) {
+    if (includeFrom !== undefined && includeFrom >= 0) sliceStart = Math.min(sliceStart, includeFrom);
     // A page is a suffix of complete turns. The head identity remains stable
     // when live events or delayed artifacts are inserted around the window.
-    while (sliceStart > 0 && !(allMessages[sliceStart]?.kind === 'text' && allMessages[sliceStart]?.role === 'user')) sliceStart--;
+    // Mid-turn guidance is also a user message, but belongs to the same turn.
+    const oldestTurnId = allMessages[sliceStart]?.turnId;
+    if (oldestTurnId) sliceStart = allMessages.findIndex(message => message.turnId === oldestTurnId);
+    else while (sliceStart > 0 && !(allMessages[sliceStart]?.kind === 'text' && allMessages[sliceStart]?.role === 'user')) sliceStart--;
   }
   const slice = allMessages.slice(sliceStart, sliceEnd);
 

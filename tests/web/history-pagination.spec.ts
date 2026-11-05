@@ -44,6 +44,15 @@ test('backward history pages retain complete turns, stable order and repeated pr
     assert.notEqual(prompts[0].id, prompts[1].id);
     assert.equal(prompts[0].text, prompts[1].text);
 
+    // Re-entry must cover the previous window even after newer turns arrive.
+    const restored = await read({ direction: 'backward', limit: 1, includeFromId: tail.messages[0].id });
+    assert.equal(restored.messages[0].id, tail.messages[0].id);
+    assert.equal(restored.messages.at(-1)?.turnId, 'latest');
+    assert.equal(restored.nextCursor, tail.nextCursor);
+    const missingWindow = await read({ direction: 'backward', limit: 1, includeFromId: 'removed' });
+    assert.equal(missingWindow.historyReset, true);
+    assert.ok(missingWindow.messages.every(message => message.turnId === 'latest'));
+
     const replaced = await read({ direction: 'backward', limit: 1, cursor: 'before:removed-message' });
     assert.equal(replaced.historyReset, true);
     assert.ok(replaced.messages.every(message => message.turnId === 'latest'));
@@ -52,6 +61,41 @@ test('backward history pages retain complete turns, stable order and repeated pr
     assert.equal(forward.nextCursor, '2');
     const next = await read({ limit: 2, cursor: forward.nextCursor });
     assert.deepEqual(next.messages.map(message => message.id), full.messages.slice(2, 4).map(message => message.id));
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(pilotHome, { recursive: true, force: true });
+  }
+});
+
+test('backward pages keep mid-turn guidance with the initial request and authoritative timing', async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), 'pilotdeck-steer-page-project-'));
+  const pilotHome = await mkdtemp(join(tmpdir(), 'pilotdeck-steer-page-home-'));
+  try {
+    const sessionKey = 'web:steer-pagination';
+    const storage = createAgentProjectSessionStorage({ projectRoot, pilotHome, sessionId: sessionKey });
+    const input = (text: string) => ({ role: 'user' as const, content: [{ type: 'text' as const, text }] });
+    await storage.transcript.recordAcceptedInput(sessionKey, 'old', [input('Older task')]);
+    await storage.transcript.recordAcceptedInput(sessionKey, 'guided', [input('Original task')]);
+    await storage.transcript.recordDurableMessage(sessionKey, 'guided', {
+      ...input('Additional guidance'), metadata: { purpose: 'mid_turn_steer', queueItemId: 'guidance-1' },
+    });
+    for (let index = 0; index < 110; index++) await storage.transcript.recordDurableMessage(sessionKey, 'guided', {
+      role: 'assistant', content: [{ type: 'text', text: `Step ${index}` }],
+    });
+    const timing = { startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:00Z' };
+    await storage.transcript.recordTurnResult(sessionKey, 'guided', {
+      type: 'success', sessionId: sessionKey, turnId: 'guided', stopReason: 'completed',
+      usage: {}, permissionDenials: [], turns: 1, ...timing,
+    });
+    const page = await readWebSessionMessages({ sessionKey, direction: 'backward', limit: 100 }, { projectRoot, pilotHome });
+    assert.equal(page.messages[0].text, 'Original task');
+    assert.deepEqual(page.messages[0].turnTiming, { ...timing, finishReason: 'completed' });
+    assert.equal(page.messages.filter(message => message.role === 'user').length, 2);
+    assert.ok(page.messages.every(message => message.turnId === 'guided'));
+    const older = await readWebSessionMessages({ sessionKey, direction: 'backward', limit: 100, cursor: page.nextCursor }, { projectRoot, pilotHome });
+    assert.equal(older.messages.filter(message => message.role === 'user').length, 1);
+    assert.equal(older.messages[0].text, 'Older task');
+    await storage.transcript.close();
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
     await rm(pilotHome, { recursive: true, force: true });

@@ -163,8 +163,12 @@ its own long list scrolls independently of the transcript.
 
 Conversation history opens on the newest complete turns. Backward reads accept
 `direction: "backward"`, a soft `limit` and an optional `before:<messageId>` cursor.
-The oldest included turn extends to its user prompt even when it exceeds the
-budget. Pages remain chronological; appending events cannot shift their anchor.
+The oldest included turn extends to its initial user prompt by turn identity,
+including any mid-turn guidance, even when it exceeds the budget. Pages remain
+chronological; appending events cannot shift their anchor. A backward tail refresh
+can supply `includeFromId` to retain a previously loaded message and all newer
+content while restoring an older reading position; a missing identity resets to
+the newest page. Readers following the latest output still load the default tail.
 A missing anchor returns a fresh tail with `historyReset: true`. Forward numeric
 cursors retain their existing behavior.
 

@@ -46,6 +46,7 @@ const data = Object.fromEntries(sessions.map((session) => [
 const mockStore = {
   setActiveSession: noop,
   getMessages: (id) => data[id] || [],
+  getSessionSlot: (id) => ({ serverMessages: data[id] || [] }),
   has: () => true,
   isStale: () => false,
   fetchFromServer: async (id) => ({

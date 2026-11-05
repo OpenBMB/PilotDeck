@@ -51,6 +51,7 @@ router.get('/:sessionId/messages', async (req, res) => {
       ...(req.query.direction === 'backward' ? {
         direction: 'backward',
         cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+        includeFromId: typeof req.query.includeFromId === 'string' ? req.query.includeFromId : undefined,
       } : { cursor: offset > 0 ? String(offset) : undefined }),
       ...(typeof req.query.sessionKind === 'string' && req.query.sessionKind
         ? { sessionKind: req.query.sessionKind }

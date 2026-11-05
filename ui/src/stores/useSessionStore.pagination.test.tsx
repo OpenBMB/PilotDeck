@@ -67,6 +67,15 @@ it('leaves a failed page retryable without losing loaded messages', async () => 
   vi.restoreAllMocks();
 });
 
+it('requests the saved history window when restoring an older reading position', async () => {
+  const store = await setup();
+  vi.mocked(authenticatedFetch).mockResolvedValueOnce(response([message('old'), message('new')], 'before:old'));
+  await act(async () => { await store.fetchFromServer('s', { direction: 'backward', limit: 100, includeFromId: 'old' }); });
+  expect(String(vi.mocked(authenticatedFetch).mock.calls[1][0])).toContain('includeFromId=old');
+  expect(store.getMessages('s').map(message => message.id)).toEqual(['old', 'new']);
+  expect(store.getSessionSlot('s')?.historyCursor).toBe('before:old');
+});
+
 const turn = (id: string): NormalizedMessage[] => [
   { ...message(`${id}-user`), runId: id, content: `${id} question` },
   { ...message(`${id}-assistant`), runId: id, kind: 'text', role: 'assistant', content: `${id} answer`, isFinal: true,

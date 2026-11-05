@@ -1697,6 +1697,7 @@ export function useSessionStore() {
       limit?: number | null;
       offset?: number;
       direction?: 'forward' | 'backward';
+      includeFromId?: string;
     } = {},
   ) => {
     const slot = getSlot(sessionId);
@@ -1721,6 +1722,7 @@ export function useSessionStore() {
         params.append('offset', String(opts.offset ?? 0));
       }
       if (opts.direction) params.append('direction', opts.direction);
+      if (opts.includeFromId) params.append('includeFromId', opts.includeFromId);
 
       const qs = params.toString();
       const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
