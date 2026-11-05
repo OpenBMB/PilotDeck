@@ -321,3 +321,41 @@ test('file generation shows live path and size before writing, then opens a boun
   await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('File written successfully.', { exact: true })).toBeVisible();
 });
+
+test('file results wait for execution to stop and remain last when work is reopened', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+  await page.evaluate(() => {
+    window.streamFixture.beginTurn();
+    window.streamFixture.tool('write', 'write_file', { file_path: 'report.txt', content: 'Synthetic report.' });
+    window.streamFixture.finishTool('write', 'Written');
+    window.streamFixture.text('Checking the generated report.');
+    window.streamFixture.files('incomplete');
+    window.streamFixture.tool('verify', 'run_command', { command: 'verify report.txt' });
+    window.streamFixture.finishTool('verify', 'Verified');
+  });
+  const card = page.getByTestId('turn-changes-card');
+  await expect(card).toHaveCount(0);
+  await page.evaluate(() => window.streamFixture.complete(5000));
+  await expect(card).toBeVisible();
+  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'false');
+  expect(await card.evaluate(node => {
+    const work = [...document.querySelectorAll('[data-process-block]')].at(-1);
+    return Boolean(work.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
+      && !node.closest('[data-turn-process-region]');
+  })).toBe(true);
+  // A later final reply moves the one footer to the new tail, after all prose.
+  await page.evaluate(() => { window.streamFixture.text('Report complete.'); window.streamFixture.complete(5000); });
+  await expect(card).toHaveCount(1);
+  await expect(card).toBeVisible();
+  await expect(page.getByText('Report complete.', { exact: true })).toBeVisible();
+  expect(await card.evaluate(node => Boolean([...document.querySelectorAll('[data-assistant-quote-source]')].at(-1)
+    .compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  const turn = page.locator('[data-turn-process-header] button');
+  await expect(turn).toHaveAttribute('aria-expanded', 'false');
+  await turn.click();
+  await expect(page.getByText('Checking the generated report.', { exact: true })).toBeVisible();
+  await expect(card).toBeVisible();
+  await turn.click();
+  await expect(card).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('turn-file-footer.png'), animations: 'disabled' });
+});

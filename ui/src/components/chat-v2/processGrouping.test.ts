@@ -15,6 +15,28 @@ import {
 
 const baseTime = Date.parse('2026-05-18T08:00:00.000Z');
 
+describe('turn file result placement', () => {
+  it('keeps early artifacts at the turn tail and hides them until execution stops', () => {
+    const artifacts: NonNullable<ChatMessage['artifacts']> = [{ id: 'report', name: 'report.txt', path: 'report.txt',
+      operation: 'created', source: 'workspace_diff', status: 'incomplete', size: 42, sha256: 'a'.repeat(64), createdAt: timestamp(1000) }];
+    const messages: ChatMessage[] = [user('u1'), { ...assistant('progress', 'Checking the result'), turnId: 'turn-1', artifacts },
+      { ...tool('verify', 'run_command'), turnId: 'turn-1' }];
+    const project = (input: ChatMessage[], running: boolean) => groupProcessIntervals(input,
+      buildRenderableMessageItems(input, { isAssistantWorking: running }), running);
+    const live = project(messages, true);
+    expect(live.filter(item => item.turnFiles)).toHaveLength(1);
+    expect(live.at(-1)?.turnFiles).toEqual({ turnId: 'turn-1', artifacts, visible: false });
+    expect(live.find(item => item.message.id === 'progress')?.turnFiles).toBeUndefined();
+    const stopped = project(messages, false);
+    expect(stopped.at(-1)?.turnFiles).toEqual({ turnId: 'turn-1', artifacts, visible: true });
+    const completed = project([...messages, { ...assistant('final', 'Done'), turnId: 'turn-1-resumed' },
+      user('u2'), { ...assistant('next', 'Another turn'), turnId: 'turn-2' }], true);
+    expect(completed.find(item => item.message.id === 'final')?.turnFiles).toEqual({ turnId: 'turn-1-resumed', artifacts, visible: true });
+    expect(completed.at(-1)?.turnFiles).toEqual({ turnId: 'turn-2', artifacts: [], visible: false });
+    expect(messages[1].artifacts).toBe(artifacts);
+  });
+});
+
 function timestamp(offsetMs: number): string {
   return new Date(baseTime + offsetMs).toISOString();
 }

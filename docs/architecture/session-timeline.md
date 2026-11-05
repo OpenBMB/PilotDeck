@@ -112,6 +112,13 @@ lines, and reveal additional batches on request. Large edits use an explicitly
 labeled content preview instead of allocating a quadratic line-diff matrix.
 Copy retains the complete underlying content, including text outside the preview.
 
+File results are a turn footer rather than part of an assistant prose message.
+They stay hidden while the turn runs and appear after all prose, tools and other
+process events when execution stops, including interrupted turns without a final
+reply. Artifact ownership used by Markdown references is unchanged. The footer
+stays outside process disclosures, so reopening work never moves or hides it;
+checkpoint review and restoration remain available there.
+
 The left conversation navigation rail uses fixed-pitch turn marks with bounded plain
 text previews of user prompts and assistant replies. It excludes reasoning and
 tool output, follows the visible turn, supports keyboard navigation and virtual
@@ -137,7 +144,7 @@ its own long list scrolls independently of the transcript.
   navigation, distant virtual rows, reader ownership and responsive hiding.
 - `ui/e2e/process-transitions.spec.mjs`: bidirectional height transitions, stable
   widths, ordered turn folding, compact question/Todo tools, multi-select history
-  replay, question exits, batched final replies and reduced motion.
+  replay, question exits, batched final replies, file footer placement and reduced motion.
 - `tests/web/question-answer-history.spec.ts`: real elicitation output through
   canonical transcript and live Web projections, including comma-bearing labels.
 - `tests/gateway/file-input-progress.spec.ts`: pre-dispatch feedback, bounded

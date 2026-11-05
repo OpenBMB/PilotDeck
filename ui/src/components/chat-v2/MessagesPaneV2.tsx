@@ -19,6 +19,7 @@ import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import MessageRowV2 from './MessageRowV2';
+import { TurnFileFooter } from './TurnFileFooter';
 import { useLiveReplyKeys } from './useLiveReplyKeys';
 import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
 import { FileInputStatus } from './FileInputStatus';
@@ -185,8 +186,10 @@ function getMessageTextLength(message: ChatMessage): number {
 // eslint-disable-next-line react-refresh/only-export-components
 export function estimateMessageItemHeight(item: RenderableMessageItem): number {
   const turnHeaderHeight = (item.beforeTurnProcess ? 34 : 0) + (item.afterTurnProcess ? 34 : 0);
-  if (item.processRun && !item.processOutput && !item.processRun.defaultExpanded) return turnHeaderHeight;
-  if (item.turnTrace) return 50 + turnHeaderHeight;
+  const artifactCount = item.turnFiles?.visible ? item.turnFiles.artifacts.length : 0;
+  const artifactHeight = artifactCount > 0 ? Math.min(artifactCount, 3) * 64 + 34 : 0;
+  if (item.processRun && !item.processOutput && !item.processRun.defaultExpanded) return turnHeaderHeight + artifactHeight;
+  if (item.turnTrace) return 50 + turnHeaderHeight + artifactHeight;
   const textLength = getMessageTextLength(item.message);
   const roughLines = Math.ceil(textLength / 92);
   const baseHeight = item.message.type === 'user' ? 64 : 92;
@@ -195,8 +198,6 @@ export function estimateMessageItemHeight(item: RenderableMessageItem): number {
   const processSummaryHeight = processSummaryCount * 32;
   const runHeaderHeight = turnHeaderHeight + (item.beforeRunAttachment ? 34 : 0) + (item.afterRunAttachment ? 34 : 0);
   const attachmentHeight = Array.isArray(item.message.attachments) && item.message.attachments.length > 0 ? 56 : 0;
-  const artifactCount = Array.isArray(item.message.artifacts) ? item.message.artifacts.length : 0;
-  const artifactHeight = artifactCount > 0 ? Math.min(artifactCount, 3) * 64 + 34 : 0;
   const imageHeight = Array.isArray(item.message.images) && item.message.images.length > 0 ? 180 : 0;
   const toolHeight = item.message.isToolUse || item.message.toolName ? 140 : 0;
 
@@ -563,7 +564,11 @@ function MessagesPaneV2({
     return keyedMessageItems.map(item => {
       const measured = measuredHeightsRef.current.get(item.itemKey);
       const open = item.processOutput || (item.processRun && isProcessExpanded(turnProcessKey(messageWindowScope, item.processRun), item.processRun.defaultExpanded));
-      return open && (measured ?? item.estimatedHeight) === 0 ? 50 : measured ?? item.estimatedHeight;
+      const hasFiles = item.turnFiles?.visible && item.turnFiles.artifacts.length > 0;
+      // A previously hidden work seat can now own a visible file footer.
+      return (open || hasFiles) && (measured ?? item.estimatedHeight) === 0
+        ? hasFiles ? Math.max(50, item.estimatedHeight) : 50
+        : measured ?? item.estimatedHeight;
     });
   }, [heightVersion, keyedMessageItems, isProcessExpanded, messageWindowScope]);
   const shouldVirtualizeMessages = useMemo(() => (
@@ -996,6 +1001,7 @@ function MessagesPaneV2({
             {rowContent}
           </TurnProcessRegion> : rowContent}
           {item.afterTurnProcess ? renderTurnHeader(item.afterTurnProcess) : null}
+          {item.turnFiles ? <TurnFileFooter files={item.turnFiles} project={selectedProject} onBrowse={onFileOpen} /> : null}
         </MeasuredMessageItem>
       </Fragment>
     );

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Check, Copy, GitBranch, Loader2, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
-import TurnChangesCard from '../chat-review/TurnChangesCard';
 import { isImeEnterEvent } from '../../utils/ime.js';
 import { cn } from '../../lib/utils.js';
 import type { Project, SessionProvider } from '../../types/app';
@@ -589,7 +588,7 @@ function MessageRowV2({
   const assistantForkDisabled = Boolean(
     forkDisabled || isSessionRunning || message.isStreaming || !message.entryId,
   );
-  const assistantBody = (hasAssistantProse || showStreamingCursor || isTextRenderingPending || assistantArtifacts.length > 0 || (showAssistantActions === true && Boolean(message.turnId || message.runId))) ? (
+  const assistantBody = (hasAssistantProse || showStreamingCursor || isTextRenderingPending) ? (
     <div
       data-chat-search-render-pending={isTextRenderingPending ? 'true' : undefined}
       className="group/assistant-msg min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100"
@@ -607,14 +606,6 @@ function MessageRowV2({
           onFileOpen={onFileOpen} isStreaming={Boolean(message.isStreaming) || contentDisplayText !== formattedContent} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
         </div>
       )}
-      <TurnChangesCard
-        turnId={message.turnId || message.runId}
-        artifacts={assistantArtifacts}
-        project={selectedProject}
-        onBrowse={onFileOpen}
-        includeCheckpoint={showAssistantActions === true && !message.isStreaming}
-        streaming={Boolean(message.isStreaming)}
-      />
       {shouldRenderAssistantActions ? (
         <div
           data-testid="assistant-message-actions"

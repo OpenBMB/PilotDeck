@@ -86,6 +86,12 @@ function Fixture() {
     finishTool(id = 'fetch-1', content = '') {
       store.appendRealtime(sid, { ...base, id: `${id}-result`, kind: 'tool_result', toolId: id, content, isError: false });
     },
+    files(status = 'complete') {
+      store.appendRealtime(sid, { ...base, id: 'file-results', kind: 'file_artifacts', artifacts: [{
+        id: 'report', name: 'report.txt', path: 'report.txt', operation: 'created', source: 'workspace_diff',
+        status, size: 42, sha256: 'a'.repeat(64), createdAt: timestamp,
+      }] });
+    },
     text(text) { setWorking(true); store.finalizeStreamingThinking(sid, 'live'); store.updateStreaming(sid, text, 'pilotdeck', 'live'); },
     complete(durationMs) {
       store.finalizeStreamingThinking(sid, 'live'); store.finalizeStreaming(sid, 'live');

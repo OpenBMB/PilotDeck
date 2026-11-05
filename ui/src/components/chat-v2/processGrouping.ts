@@ -51,6 +51,8 @@ export type TurnProcessGroup = {
 };
 
 export type RenderableMessageItem = {
+  /** One file result surface at the end of the turn, outside process disclosures. */
+  turnFiles?: { turnId?: string; artifacts: NonNullable<ChatMessage['artifacts']>; visible: boolean };
   /** A separate media surface; the original tool call remains in the process. */
   mediaArtifact?: true;
   turnTrace?: { id: string; isLive: boolean; defaultExpanded: boolean; items: RenderableMessageItem[] };
@@ -1014,8 +1016,16 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
     while (cursor < items.length && items[cursor].originalIndex < turn.end) turnItems.push(items[cursor++]);
     if (!turnItems.length) continue;
     const raw = messages.slice(turn.start, turn.end);
+    const reversed = [...raw].reverse();
     const running = working && turnIndex === turns.length - 1;
-    const last = [...raw].reverse().find(message => !message.isAgentActivity && !message.isAgentActivitySummary
+    const artifacts = raw.flatMap(message => message.artifacts ?? []);
+    const fileHost = reversed.find(message => message.type === 'assistant' && (message.turnId || message.runId))
+      || reversed.find(message => message.turnId || message.runId);
+    const turnId = fileHost?.turnId || fileHost?.runId;
+    if (turnId || artifacts.length) {
+      turnItems[turnItems.length - 1].turnFiles = { turnId, artifacts, visible: !running };
+    }
+    const last = reversed.find(message => !message.isAgentActivity && !message.isAgentActivitySummary
       && !message.isCompactBoundary && !isEmptyAssistantShell(message));
     const interrupted = raw.some(message => message.type === 'error' || message.isInterruptedNotice)
       || Boolean(turn.summary?.message.state && turn.summary.message.state !== 'completed');

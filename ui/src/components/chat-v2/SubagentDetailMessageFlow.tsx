@@ -8,6 +8,7 @@ import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
 import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRowV2 from './MessageRowV2';
+import { TurnFileFooter } from './TurnFileFooter';
 import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
 import { FileInputStatus } from './FileInputStatus';
 import { pendingFileInputs } from './fileInputStatusUtils';
@@ -283,6 +284,7 @@ export default function SubagentDetailMessageFlow({
                     {rowContent}
                   </TurnProcessRegion> : rowContent}
                   {item.afterTurnProcess ? renderTurnHeader(item.afterTurnProcess) : null}
+                  {item.turnFiles ? <TurnFileFooter files={item.turnFiles} project={selectedProject} onBrowse={onFileOpen} /> : null}
                 </div>
               </Fragment>
             );

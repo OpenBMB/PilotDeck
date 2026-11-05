@@ -249,3 +249,18 @@ it('passes subagent lifecycle state to normalized tool cards and updates it with
   expect(screen.getByText('Success')).toBeTruthy();
   expect(screen.queryByText('Running…')).toBeNull();
 });
+
+it('places child file results after trailing tools and outside the process disclosure', () => {
+  const messages: ChatMessage[] = [
+    { ...assistant('child-progress', 'Checking generated files.'), turnId: 'child-turn', artifacts: [{
+      id: 'child-report', name: 'child.txt', path: 'child.txt', operation: 'created', source: 'workspace_diff',
+      status: 'incomplete', size: 42, sha256: 'a'.repeat(64), createdAt: timestamp(100),
+    }] },
+    { ...tool('child-verify', 'run_command'), turnId: 'child-turn', toolResult: { content: 'verified' } },
+  ];
+  const view = renderFlow(messages, false);
+  const card = screen.getByTestId('turn-changes-card');
+  const work = view.container.querySelector('[data-process-block]')!;
+  expect(work.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(card.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
+});
