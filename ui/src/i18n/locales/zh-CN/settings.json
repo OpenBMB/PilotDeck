@@ -40,11 +40,9 @@
     "preferenceFailed": "日志保留设置保存失败。"
   },
   "multimodalGeneration": {
-    "tabsLabel": "多模态生成",
+    "tabsLabel": "多模态",
     "image": "图像",
-    "video": "视频",
-    "enabled": "已开启",
-    "disabled": "已关闭"
+    "video": "视频"
   },
   "imageGeneration": {
     "enabled": "启用图像生成",
@@ -157,7 +155,7 @@
       "agentRoute": "路由",
       "agentMemory": "记忆",
       "agentResident": "常驻",
-      "multimodalGeneration": "多模态生成",
+      "multimodalGeneration": "多模态",
       "imageGeneration": "图像生成",
 
       "videoGeneration": "视频生成",
@@ -204,7 +202,7 @@
       "agentRoute": "智能体 / 路由",
       "agentMemory": "智能体 / 记忆",
       "agentResident": "智能体 / 常驻",
-      "multimodalGeneration": "多模态生成",
+      "multimodalGeneration": "多模态",
       "imageGeneration": "图像生成",
 
       "videoGeneration": "视频生成",

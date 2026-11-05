@@ -40,11 +40,9 @@
     "preferenceFailed": "Could not save the log retention preference."
   },
   "multimodalGeneration": {
-    "tabsLabel": "Multimodal generation",
+    "tabsLabel": "Multimodal",
     "image": "Images",
-    "video": "Video",
-    "enabled": "Enabled",
-    "disabled": "Disabled"
+    "video": "Video"
   },
   "imageGeneration": {
     "enabled": "Enable image generation",
@@ -157,7 +155,7 @@
       "agentRoute": "Route",
       "agentMemory": "Memory",
       "agentResident": "Always-On",
-      "multimodalGeneration": "Multimodal generation",
+      "multimodalGeneration": "Multimodal",
       "imageGeneration": "Image generation",
 
       "videoGeneration": "Video generation",
@@ -204,7 +202,7 @@
       "agentRoute": "Agents / Route",
       "agentMemory": "Agents / Memory",
       "agentResident": "Agents / Always-On",
-      "multimodalGeneration": "Multimodal generation",
+      "multimodalGeneration": "Multimodal",
       "imageGeneration": "Image generation",
 
       "videoGeneration": "Video generation",

@@ -47,7 +47,7 @@ const switchTab = (name: string | RegExp) => fireEvent.click(screen.getByRole('t
 
 it('uses a single sidebar entry, valid tab links and keyboard navigation', async () => {
   await mount();
-  expect(screen.getAllByRole('button', { name: '多模态生成' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: '多模态' })).toHaveLength(1);
   expect(screen.queryByRole('button', { name: '图像生成' })).toBeNull();
   expect(screen.queryByRole('button', { name: '视频生成' })).toBeNull();
   const image = screen.getByRole('tab', { name: /图像/ });

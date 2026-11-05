@@ -44,8 +44,7 @@ export default function MultimodalGenerationSettings() {
   return <div className="search-page-content multimodal-generation-content">
     <ConfigSaveError error={error} />
     <div className="multimodal-tabs" role="tablist" aria-label={t('multimodalGeneration.tabsLabel')}>
-      {modalities.map(({ tab, key, Icon }, index) => {
-        const enabled = config.tools?.[key]?.enabled === true;
+      {modalities.map(({ tab, Icon }, index) => {
         return <button key={tab} type="button" role="tab" id={`generation-tab-${tab}`}
           aria-controls={`generation-panel-${tab}`} aria-selected={active === tab} tabIndex={active === tab ? 0 : -1}
           className="multimodal-tab" onClick={() => select(tab)} onKeyDown={event => {
@@ -57,8 +56,6 @@ export default function MultimodalGenerationSettings() {
             document.getElementById(`generation-tab-${modalities[next].tab}`)?.focus();
           }}>
           <Icon size={17} aria-hidden="true" />{t(`multimodalGeneration.${tab}`)}
-          <span className={`multimodal-state-dot${enabled ? ' is-enabled' : ''}`} role="img"
-            aria-label={t(enabled ? 'multimodalGeneration.enabled' : 'multimodalGeneration.disabled')} />
         </button>;
       })}
     </div>

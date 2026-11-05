@@ -8549,18 +8549,6 @@
   outline-offset: 3px;
   border-radius: 3px;
 }
-:where(.pilotdeck-settings-app) .multimodal-state-dot {
-  width: 6px;
-  height: 6px;
-  margin-left: 2px;
-  border-radius: 50%;
-  background: var(--muted);
-  opacity: 0.6;
-}
-:where(.pilotdeck-settings-app) .multimodal-state-dot.is-enabled {
-  background: var(--success);
-  opacity: 1;
-}
 :where(.pilotdeck-settings-app) .multimodal-panels {
   min-width: 0;
   margin: 0;
