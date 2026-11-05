@@ -1,6 +1,6 @@
 import {MintAcpGateway} from '../../ui/server/services/mintAcpGateway.js';
 import {writeFile,readFile,readdir} from 'node:fs/promises';
-const root='/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime',cwd=process.env.PILOTDECK_MINT_PROJECT || root+'/provider-probe-project';
+const root=process.env.PILOTDECK_TEST_RUNTIME || '/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime',cwd=process.env.PILOTDECK_MINT_PROJECT || root+'/provider-probe-project';
 const body=Array.from({length:100},(_,i)=>`inventory row ${i}: apples pears apricots warehouse quantity ${i%47}`).join('\n');
 await writeFile(cwd+'/retention-large.txt',body);
 const gw=new MintAcpGateway({command:process.env.PILOTDECK_MINT_COMMAND || root+'/unified/launch.py',cwd,stateDir:root+'/unified/acp-map',env:{...process.env,PILOTDECK_MINT_STRUCTURED_INPUT:'1',MINT_RETENTION_MAX_BYTES:'3000'},timeoutMs:300000});

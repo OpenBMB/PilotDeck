@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { MintAcpGateway } from '../../ui/server/services/mintAcpGateway.js';
-const root='/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime',cwd=process.env.PILOTDECK_MINT_PROJECT || root+'/provider-probe-project';
+const root=process.env.PILOTDECK_TEST_RUNTIME || '/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime',cwd=process.env.PILOTDECK_MINT_PROJECT || root+'/provider-probe-project';
 const mode=process.env.MINT_COMPACTION_TEST_MODE || 'basic';
 const sessionKey='unified:compaction-'+mode+'-'+crypto.randomUUID();
 console.log(JSON.stringify({event:'compaction_session',sessionKey}));

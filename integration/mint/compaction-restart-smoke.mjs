@@ -1,8 +1,8 @@
 import { MintAcpGateway } from '../../ui/server/services/mintAcpGateway.js';
 import assert from 'node:assert/strict';
-const root='/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime';
+const root=process.env.PILOTDECK_TEST_RUNTIME || '/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime';
 const sessionKey='unified:compaction-restart-'+crypto.randomUUID();
-function gateway(){return new MintAcpGateway({command:process.env.PILOTDECK_MINT_COMMAND || root+'/unified/launch.py',cwd:process.env.PILOTDECK_MINT_PROJECT || root+'/provider-probe-project',stateDir:process.env.PILOTDECK_MINT_STATE_DIR || root+'/unified/acp-map',env:{...process.env,PILOTDECK_MINT_STRUCTURED_INPUT:'1',MINT_COMPACTION_TEST_MESSAGES:'7',MINT_COMPACTION_TEST_MODE:process.env.MINT_COMPACTION_TEST_MODE || 'basic'}});}
+function gateway(){return new MintAcpGateway({command:process.env.PILOTDECK_MINT_COMMAND || root+'/unified/launch.py',cwd:process.env.PILOTDECK_MINT_PROJECT || root+'/provider-probe-project',stateDir:process.env.PILOTDECK_MINT_STATE_DIR || root+'/unified/acp-map',env:{...process.env,PILOTDECK_MINT_STRUCTURED_INPUT:'1',MINT_COMPACTION_TEST_MESSAGES:process.env.MINT_COMPACTION_TEST_MESSAGES || '7',MINT_COMPACTION_TEST_MODE:process.env.MINT_COMPACTION_TEST_MODE || 'basic'}});}
 console.log(JSON.stringify({event:'restart_session',sessionKey}));
 let gw=gateway();
 try {

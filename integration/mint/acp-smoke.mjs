@@ -1,10 +1,15 @@
 import { MintAcpGateway } from '../../ui/server/services/mintAcpGateway.js';
 const project = process.env.PILOTDECK_MINT_PROJECT || '/Users/a1/Documents/ChatGPT/pilotdeck-mint-runtime';
+const command = process.env.PILOTDECK_MINT_COMMAND || project + '/runtime-bundle/bin/cpmrt-kernel';
+const stateDir = process.env.PILOTDECK_MINT_STATE_DIR || project + '/acp-smoke-state';
+const bridgeStateDir = process.env.PILOTDECK_MINT_BRIDGE_STATE_DIR || project + '/acp-bridge-state';
+const modelBaseUrl = process.env.PILOTDECK_MINT_MODEL_BASE_URL || 'http://127.0.0.1:11434/v1';
+const model = process.env.PILOTDECK_MINT_MODEL || 'mint-minicpm5:2.6b-q4_k_m';
 const gateway = new MintAcpGateway({
-  command: project + '/runtime-bundle/bin/cpmrt-kernel',
-  args: ['--state-dir', project + '/acp-smoke-state', '--model-base-url', 'http://127.0.0.1:11434/v1',
-    '--model', 'mint-minicpm5:2.6b-q4_k_m', '--', 'acp', '--cwd', project],
-  cwd: project, stateDir: project + '/acp-bridge-state',
+  command,
+  args: command.endsWith('launch.py') ? [] : ['--state-dir', stateDir, '--model-base-url', modelBaseUrl,
+    '--model', model, '--', 'acp', '--cwd', project],
+  cwd: project, stateDir: bridgeStateDir,
 });
 try {
   for (const message of ['Remember this word: apricot. Reply briefly.', 'What word did I ask you to remember?']) {
