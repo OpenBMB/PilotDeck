@@ -1521,9 +1521,8 @@ function applyTimelineFrames(slot: SessionSlot, frames: NormalizedMessage[]): bo
 }
 
 function reconcileTimelineHistory(slot: SessionSlot, messages: NormalizedMessage[], complete: boolean): void {
-  if (!complete) return;
   const timeline = slot.timeline ??= new SessionTimeline();
-  const removed = timeline.reconcileHistory(slot.serverMessages, messages);
+  const removed = timeline.reconcileHistory(slot.serverMessages, messages, complete);
   const keep = (message: NormalizedMessage) => !removed.has(message.runId || '')
     && !removed.has(message.turnId || '') && !removed.has(message.parentRunId || '');
   slot.realtimeMessages = slot.realtimeMessages.filter(keep);

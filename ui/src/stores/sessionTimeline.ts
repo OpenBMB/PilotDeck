@@ -134,23 +134,28 @@ export class SessionTimeline {
     if (terminal && runId && subagentId === undefined) this.terminalTurns.add(runId);
   }
 
-  removeTurn(runId: string): void {
-    this.removedTurns.add(runId);
-    this.clearGaps(message => turn(message) === runId || message.runId === runId);
-    for (const [id, message] of this.blocks) if (turn(message) === runId || message.runId === runId) {
+  private evictBlocks(matches: (message: NormalizedMessage) => boolean): void {
+    this.clearGaps(matches);
+    for (const [id, message] of this.blocks) if (matches(message)) {
       this.blocks.delete(id);
       this.rendered.delete(id);
       this.pending.delete(id);
       this.conflicts.delete(id);
     }
+  }
+
+  removeTurn(runId: string): void {
+    this.removedTurns.add(runId);
+    this.evictBlocks(message => turn(message) === runId || message.runId === runId);
     this.terminalTurns.add(runId);
   }
 
   /** A complete history replaces previously confirmed entities. Live-only
    * blocks are retained unless their previously confirmed user turn was removed.
-   * A page of history cannot prove that an absent entity was deleted.
+   * A replacement page evicts confirmed turns outside its window without
+   * tombstoning them, so older pages can restore those turns later.
    */
-  reconcileHistory(previous: NormalizedMessage[], next: NormalizedMessage[]): Set<string> {
+  reconcileHistory(previous: NormalizedMessage[], next: NormalizedMessage[], complete = true): Set<string> {
     const nextKeys = new Set(next.filter(isTimelineMessage).map(key));
     const nextTurns = new Set(next.map(turn));
     const removed = new Set<string>();
@@ -159,15 +164,20 @@ export class SessionTimeline {
       if (message.kind === 'text' && message.role === 'user' && !message.isSteer
           && runId && !nextTurns.has(runId)) removed.add(runId);
       if (!isTimelineMessage(message) || nextKeys.has(key(message))) continue;
+      // Partial history cannot disprove newer live blocks in a retained turn.
+      if (!complete && nextTurns.has(runId)) continue;
       const id = key(message);
-      this.removedBlocks.add(id);
+      if (complete) this.removedBlocks.add(id);
       this.blocks.delete(id);
       this.rendered.delete(id);
       this.pending.delete(id);
       this.conflicts.delete(id);
       this.missingPredecessors.delete(id);
     }
-    for (const runId of removed) this.removeTurn(runId);
+    for (const runId of removed) {
+      if (complete) this.removeTurn(runId);
+      else this.evictBlocks(message => turn(message) === runId || message.runId === runId || message.parentRunId === runId);
+    }
     return removed;
   }
 

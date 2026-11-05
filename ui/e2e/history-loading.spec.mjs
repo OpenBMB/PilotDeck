@@ -61,6 +61,36 @@ test('upward browsing automatically prepends history, preserves the reading anch
   expect(await page.locator('[data-chat-response-reserved-space]').count()).toBe(0);
 });
 
+test('reentering paginated versioned history never appends old replies without their user turns', async ({ page }) => {
+  const messages = history(120).map(message => message.role === 'assistant' ? {
+    ...message, isFinal: true,
+    timeline: { version: 1, turnId: message.runId, id: 'reply', order: 0, revision: 1 },
+  } : message);
+  await serve(page, messages);
+  await page.goto('/e2e/fixtures/history-loading.html');
+  await expect.poll(() => loadedCount(page)).toBe(100);
+  await reachTop(page);
+  await expect.poll(() => loadedCount(page)).toBe(200);
+  await page.getByRole('button', { name: 'Back to latest' }).click();
+  await expect(page.getByText('Question 119', { exact: true })).toBeVisible();
+  const expected = messages.slice(-100).map(message => message.content);
+  const requests = [];
+  page.on('request', request => {
+    if (request.url().includes('/api/sessions/a/messages')) requests.push(request.url());
+  });
+  await page.evaluate(() => window.historyFixture.setSession(1));
+  await expect.poll(() => page.evaluate(() => window.historyFixture.chat.currentSessionId)).toBe('b');
+  await page.evaluate(() => window.historyFixture.setSession(0));
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.historyFixture.chat.isLoadingSessionMessages)).toBe(false);
+  expect(await page.evaluate(() => window.historyFixture.store.getMessages('a').map(message => message.content))).toEqual(expected);
+  await expect(page.getByText('Question 119', { exact: true })).toBeVisible();
+  await reachTop(page);
+  await expect.poll(() => loadedCount(page)).toBe(200);
+  expect(await page.evaluate(() => window.historyFixture.store.getMessages('a').map(message => message.content)))
+    .toEqual(messages.slice(-200).map(message => message.content));
+});
+
 test('a long completed turn retains every step and retry recovers without repeated messages', async ({ page }) => {
   const messages = history(80);
   messages.push({ ...base, id: 'long-user', runId: 'long', kind: 'text', role: 'user', content: 'Inspect all steps' });

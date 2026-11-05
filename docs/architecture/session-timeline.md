@@ -171,6 +171,11 @@ cursors retain their existing behavior.
 The client automatically requests earlier pages near the top of the viewport.
 It coalesces concurrent requests, rejects pages overtaken by an authoritative
 refresh, deduplicates by message identity and stops non-progressing cursors.
+Replacing a page window on session re-entry, refresh or cursor reset evicts
+out-of-window confirmed turns from both history and timeline projections,
+including their child details and activity. Eviction does not tombstone those
+turns: an older page can restore their complete ordered sequence. Newer live
+revisions within retained turns remain intact.
 Identical prompts in separate turns remain distinct. Loading failures preserve
 the current transcript and provide a localized retry action. Normal browsing
 does not require a load-all control; explicit search and distant navigation can
