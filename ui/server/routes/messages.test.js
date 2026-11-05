@@ -9,6 +9,19 @@ afterEach(() => {
 });
 
 describe('message routes', () => {
+  it('forwards backward identity cursors and history replacement without converting them to offsets', async () => {
+    const read = vi.fn(async () => ({ messages: [], total: 250, nextCursor: 'before:old-user', historyReset: true }));
+    vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+      withPilotDeckGatewayReadRetry: operation => operation({ readSessionMessages: read }),
+    }));
+    const { default: routes } = await import('./messages.js');
+    const app = express(); app.use('/api/sessions', routes); const server = app.listen(0);
+    try {
+      const body = await (await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/s/messages?direction=backward&cursor=before%3Acurrent-user&limit=100`)).json();
+      expect(read.mock.calls[0][0]).toMatchObject({ sessionKey: 's', direction: 'backward', cursor: 'before:current-user', limit: 100 });
+      expect(body).toMatchObject({ hasMore: true, nextCursor: 'before:old-user', historyReset: true, total: 250 });
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
   it('forwards context inspection only when explicitly requested and keeps it out of normal history', async () => {
     const breakdown = { systemTokens: 2200, toolsTokens: 10200, messageTokens: 65500 };
     const read = vi.fn(async () => ({ messages: [], modelContext: { version: 1, systemPrompt: 'real prompt', breakdown } }));

@@ -48,7 +48,10 @@ router.get('/:sessionId/messages', async (req, res) => {
       projectKey: projectPath,
       ...(includeModelContext ? { includeModelContext: true } : {}),
       limit: limit ?? undefined,
-      cursor: offset > 0 ? String(offset) : undefined,
+      ...(req.query.direction === 'backward' ? {
+        direction: 'backward',
+        cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+      } : { cursor: offset > 0 ? String(offset) : undefined }),
       ...(typeof req.query.sessionKind === 'string' && req.query.sessionKind
         ? { sessionKind: req.query.sessionKind }
         : {}),
@@ -73,6 +76,8 @@ router.get('/:sessionId/messages', async (req, res) => {
       } } : {}),
       total: totalKnown,
       hasMore,
+      ...(result.historyReset ? { historyReset: true } : {}),
+      ...(typeof result.nextCursor === 'string' ? { nextCursor: result.nextCursor } : {}),
       offset,
       limit,
       ...(result.tokenUsage ? { tokenUsage: result.tokenUsage } : {}),

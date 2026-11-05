@@ -1782,16 +1782,18 @@ describe('chat response reserved space', () => {
     expect(getChatResponseReserveTarget(2000)).toBe(520);
   });
 
-  it('keeps space for follow-up turns even after the assistant stops', () => {
+  it('reserves reply space only while the assistant is working', () => {
     expect(shouldKeepChatResponseReservedSpace(-1, false)).toBe(false);
     expect(shouldKeepChatResponseReservedSpace(0, true)).toBe(true);
     expect(shouldKeepChatResponseReservedSpace(0, false)).toBe(false);
-    expect(shouldKeepChatResponseReservedSpace(2, false)).toBe(true);
+    expect(shouldKeepChatResponseReservedSpace(2, false)).toBe(false);
+    expect(shouldKeepChatResponseReservedSpace(2, true)).toBe(true);
   });
 
   it('renders the latest follow-up turn inside the reserved response area', () => {
     const { container } = renderPane({
       messages: [makeMessage(0), makeMessage(1), makeMessage(2), makeMessage(3)],
+      isAssistantWorking: true,
     });
 
     const reservedArea = container.querySelector('[data-chat-response-reserved-space="true"]');
@@ -1799,6 +1801,14 @@ describe('chat response reserved space', () => {
     expect((reservedArea as HTMLElement).style.minHeight).toBe('220px');
     expect(within(reservedArea as HTMLElement).getByText('Message 3')).toBeTruthy();
     expect(within(reservedArea as HTMLElement).queryByText('Message 2')).toBeNull();
+  });
+
+  it('releases the reply reserve after completion instead of leaving a blank conversation tail', () => {
+    const messages = [makeMessage(0), makeMessage(1), makeMessage(2), makeMessage(3)];
+    const view = renderPane({ messages, isAssistantWorking: true });
+    view.rerender(createPaneElement({ messages, isAssistantWorking: false }));
+    expect(view.container.querySelector('[data-chat-response-reserved-space]')).toBeNull();
+    expect((view.container.querySelector('.chat-current-turn-reserve') as HTMLElement).style.minHeight).toBe('0px');
   });
 });
 

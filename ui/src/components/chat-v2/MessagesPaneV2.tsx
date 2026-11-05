@@ -67,6 +67,7 @@ type MessagesPaneV2Props = {
   visibleMessages: ChatMessage[];
   visibleMessageCount: number;
   isLoadingMoreMessages: boolean;
+  historyLoadError?: boolean;
   hasMoreMessages: boolean;
   totalMessages: number;
   loadEarlierMessages: () => void;
@@ -101,6 +102,8 @@ type MessagesPaneV2Props = {
 };
 
 type KeyedRenderableMessageItem = RenderableMessageItem & {
+  layoutSignature: string;
+  closedHeight: number | null;
   itemKey: string;
   renderIndex: number;
   estimatedHeight: number;
@@ -252,6 +255,9 @@ function MeasuredMessageItem({
   compactBottomSpacing = false,
   flushBottomSpacing = false,
   onHeightChange,
+  onMountedChange,
+  layoutSignature,
+  toolLayoutVersion,
   children,
 }: {
   itemKey: string;
@@ -259,23 +265,31 @@ function MeasuredMessageItem({
   isLast: boolean;
   compactBottomSpacing?: boolean;
   flushBottomSpacing?: boolean;
-  onHeightChange: (itemKey: string, height: number) => void;
+  onHeightChange: (itemKey: string, height: number, signature: string, toolLayout: Map<string, boolean>) => void;
+  onMountedChange: (itemKey: string, mounted: boolean) => void;
+  layoutSignature: string;
+  toolLayoutVersion: Map<string, boolean>;
   children: ReactNode;
 }) {
   const itemRef = useRef<HTMLDivElement | null>(null);
+  const layoutRef = useRef({ layoutSignature, toolLayoutVersion });
+  layoutRef.current = { layoutSignature, toolLayoutVersion };
+  useLayoutEffect(() => {
+    const node = itemRef.current;
+    if (node) onHeightChange(itemKey, node.getBoundingClientRect().height, layoutSignature, toolLayoutVersion);
+  }, [itemKey, onHeightChange, layoutSignature, toolLayoutVersion]);
 
   useLayoutEffect(() => {
     const node = itemRef.current;
     if (!node) return undefined;
+    onMountedChange(itemKey, true);
 
     const reportHeight = () => {
-      onHeightChange(itemKey, node.getBoundingClientRect().height);
+      onHeightChange(itemKey, node.getBoundingClientRect().height, layoutRef.current.layoutSignature, layoutRef.current.toolLayoutVersion);
     };
 
     reportHeight();
-    if (typeof ResizeObserver === 'undefined') {
-      return undefined;
-    }
+    if (typeof ResizeObserver === 'undefined') return () => onMountedChange(itemKey, false);
 
     let rafId: number | null = null;
     const throttledReport = () => {
@@ -290,10 +304,11 @@ function MeasuredMessageItem({
     observer.observe(node);
 
     return () => {
+      onMountedChange(itemKey, false);
       observer.disconnect();
       if (rafId != null) cancelAnimationFrame(rafId);
     };
-  }, [itemKey, onHeightChange]);
+  }, [itemKey, onHeightChange, onMountedChange]);
 
   return (
     <div
@@ -355,10 +370,9 @@ function MessagesPaneV2({
   sendingInputs = [],
   activityMessages = [],
   visibleMessages,
-  visibleMessageCount,
   isLoadingMoreMessages,
+  historyLoadError = false,
   hasMoreMessages,
-  totalMessages,
   loadEarlierMessages,
   loadAllMessages,
   allMessagesLoaded,
@@ -386,11 +400,25 @@ function MessagesPaneV2({
   forkParentSessionTitle = null,
 }: MessagesPaneV2Props) {
   const { t } = useTranslation('chat');
+  const historySentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sentinel = historySentinelRef.current;
+    const root = scrollContainerRef.current;
+    if (!sentinel || !root || !hasMoreMessages || allMessagesLoaded || isLoadingMoreMessages || isLoadingSessionMessages
+      || historyLoadError || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) loadEarlierMessages();
+    }, { root, rootMargin: '300px 0px 0px', threshold: 0 });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [scrollContainerRef, hasMoreMessages, allMessagesLoaded, isLoadingMoreMessages, historyLoadError,
+    loadEarlierMessages, chatMessages.length, isLoadingSessionMessages]);
   const waitingFor = pendingPermissionRequests.some(request => /^(ask_?user_?question)$/i.test(request.toolName))
     ? 'question' : pendingPermissionRequests.length ? 'approval' : null;
   const messageKeyMapRef = useRef<WeakMap<ChatMessage, string>>(new WeakMap());
   const generatedMessageKeyCounterRef = useRef(0);
-  const measuredHeightsRef = useRef<Map<string, number>>(new Map());
+  const measuredHeightsRef = useRef(new Map<string, { height: number; signature: string; toolLayout: Map<string, boolean> }>());
+  const mountedItemKeys = useRef(new Set<string>());
   const heightVersionRafRef = useRef<number | null>(null);
   const [heightVersion, setHeightVersion] = useState(0);
   const [scrollViewport, setScrollViewport] = useState({ scrollTop: 0, height: 0 });
@@ -546,16 +574,29 @@ function MessagesPaneV2({
     [isAssistantWorking, renderableMessages],
   );
   const keyedMessageItems = useMemo<KeyedRenderableMessageItem[]>(
-    () => renderableMessageItems.map((item, index) => ({
-      ...item,
-      // Message ids are only guaranteed to be unique inside one conversation.
-      // Namespacing prevents a height measured in the previous session from
-      // being reused by a same-id row in the next session.
-      itemKey: `${messageWindowScope}:${getMessageKey(item.message, index)}`,
-      renderIndex: index,
-      estimatedHeight: estimateMessageItemHeight(item),
-    })),
-    [getMessageKey, messageWindowScope, renderableMessageItems],
+    () => renderableMessageItems.map((item, index) => {
+      const turnOpen = !item.processRun || item.processOutput || isProcessExpanded(turnProcessKey(messageWindowScope, item.processRun), item.processRun.defaultExpanded);
+      const traceOpen = !item.turnTrace || isProcessExpanded(`${messageWindowScope}:${item.turnTrace.id}`, item.turnTrace.defaultExpanded);
+      const chromeHeight = (item.beforeTurnProcess ? 34 : 0) + (item.afterTurnProcess ? 34 : 0)
+        + (item.turnFiles?.visible && item.turnFiles.artifacts.length ? Math.min(item.turnFiles.artifacts.length, 3) * 64 + 34 : 0);
+      const closedHeight = !turnOpen || (item.mediaArtifact && item.mediaExpanded === false) ? chromeHeight
+        : !traceOpen ? chromeHeight + 32 : null;
+      const version = (message: ChatMessage) => `${Boolean(message.isStreaming)}:${message.content?.length ?? 0}:${Boolean(message.toolResult)}:${typeof message.toolResult?.content === 'string' ? message.toolResult.content.length : 0}`;
+      const layoutSignature = `${Boolean(turnOpen)}:${Boolean(traceOpen)}:${item.mediaExpanded}:${chromeHeight}:` +
+        (closedHeight === null ? item.turnTrace ? item.turnTrace.items.map(child => version(child.message)).join('|') : version(item.message) : 'closed');
+      return {
+        ...item,
+        // Message ids are only guaranteed to be unique inside one conversation.
+        // Namespacing prevents a height measured in the previous session from
+        // being reused by a same-id row in the next session.
+        itemKey: `${messageWindowScope}:${getMessageKey(item.message, index)}`,
+        renderIndex: index,
+        estimatedHeight: estimateMessageItemHeight(item),
+        layoutSignature,
+        closedHeight,
+      };
+    }),
+    [getMessageKey, messageWindowScope, renderableMessageItems, isProcessExpanded],
   );
   const lastUserMessageItemKey = useMemo(() => {
     for (let index = keyedMessageItems.length - 1; index >= 0; index -= 1) {
@@ -566,7 +607,10 @@ function MessagesPaneV2({
   const measuredItemHeights = useMemo(() => {
     void heightVersion;
     return keyedMessageItems.map(item => {
-      const measured = measuredHeightsRef.current.get(item.itemKey);
+      const record = measuredHeightsRef.current.get(item.itemKey);
+      const mounted = mountedItemKeys.current.has(item.itemKey);
+      if (!mounted && item.closedHeight !== null) return item.closedHeight;
+      const measured = record && (mounted || (record.signature === item.layoutSignature && record.toolLayout === expandedToolSections)) ? record.height : undefined;
       const open = item.processOutput || (item.mediaArtifact && item.mediaExpanded !== false)
         || (item.processRun && isProcessExpanded(turnProcessKey(messageWindowScope, item.processRun), item.processRun.defaultExpanded));
       const hasFiles = item.turnFiles?.visible && item.turnFiles.artifacts.length > 0;
@@ -575,7 +619,7 @@ function MessagesPaneV2({
         ? hasFiles ? Math.max(50, item.estimatedHeight) : 50
         : measured ?? item.estimatedHeight;
     });
-  }, [heightVersion, keyedMessageItems, isProcessExpanded, messageWindowScope]);
+  }, [heightVersion, keyedMessageItems, isProcessExpanded, messageWindowScope, expandedToolSections]);
   const shouldVirtualizeMessages = useMemo(() => (
     keyedMessageItems.length > MESSAGE_VIRTUALIZATION_THRESHOLD
     // A modest number of long answers can be heavier than hundreds of short
@@ -777,14 +821,18 @@ function MessagesPaneV2({
     });
   }, []);
 
-  const handleMeasuredItemHeight = useCallback((itemKey: string, height: number) => {
+  const handleMountedItemChange = useCallback((itemKey: string, mounted: boolean) => {
+    if (mounted) mountedItemKeys.current.add(itemKey); else mountedItemKeys.current.delete(itemKey);
+  }, []);
+  const handleMeasuredItemHeight = useCallback((itemKey: string, height: number, signature: string, toolLayout: Map<string, boolean>) => {
     const normalizedHeight = Math.max(0, Math.ceil(height));
-    const currentHeight = measuredHeightsRef.current.get(itemKey);
-    if (currentHeight !== undefined && (currentHeight === normalizedHeight || (currentHeight > 0 && normalizedHeight > 0 && Math.abs(currentHeight - normalizedHeight) < 2))) {
+    const current = measuredHeightsRef.current.get(itemKey);
+    const currentHeight = current?.height;
+    if (current?.signature === signature && current.toolLayout === toolLayout && currentHeight !== undefined && (currentHeight === normalizedHeight || (currentHeight > 0 && normalizedHeight > 0 && Math.abs(currentHeight - normalizedHeight) < 2))) {
       return;
     }
 
-    measuredHeightsRef.current.set(itemKey, normalizedHeight);
+    measuredHeightsRef.current.set(itemKey, { height: normalizedHeight, signature, toolLayout });
     bumpHeightVersion();
   }, [bumpHeightVersion]);
 
@@ -992,6 +1040,9 @@ function MessagesPaneV2({
           compactBottomSpacing={Boolean(item.afterTurnProcess || item.turnTrace || item.message.isThinking || item.message.isToolUse)}
           flushBottomSpacing={Boolean(item.processRun || item.mediaArtifact)}
           onHeightChange={handleMeasuredItemHeight}
+          onMountedChange={handleMountedItemChange}
+          layoutSignature={item.layoutSignature}
+          toolLayoutVersion={expandedToolSections}
         >
           {item.beforeTurnProcess ? renderTurnHeader(item.beforeTurnProcess) : null}
           {item.processRun ? <TurnProcessRegion group={item.processRun} scope={messageWindowScope}
@@ -1011,6 +1062,8 @@ function MessagesPaneV2({
     activeRunId,
     createDiff,
     handleMeasuredItemHeight,
+    handleMountedItemChange,
+    expandedToolSections,
     handleOpenSubagentDetail,
     handleProcessExpandedChange,
     handleToolSectionExpandedChange,
@@ -1102,6 +1155,13 @@ function MessagesPaneV2({
 
   return (
     <div className="conversation-pane relative min-h-0 flex-1 overflow-hidden">
+      {isLoadingMoreMessages && !isLoadingAllMessages && !allMessagesLoaded ? (
+        <div role="status" className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
+          <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground shadow-sm">
+            {t('session.loading.olderMessages', { defaultValue: 'Loading older messages...' })}
+          </span>
+        </div>
+      ) : null}
       {hasLayoutWarning ? (
         <div role="alert" className="absolute inset-x-4 top-4 z-20 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
           <span>{t('common:uiText.chatLayoutError')}</span>
@@ -1230,49 +1290,14 @@ function MessagesPaneV2({
           data-rendered-message-count={windowedMessageItems.length}
           data-total-message-count={keyedMessageItems.length}
         >
-          {isLoadingMoreMessages && !isLoadingAllMessages && !allMessagesLoaded ? (
-            <div className="pb-3 text-center text-[12px] text-neutral-500 dark:text-neutral-400">
-              {t('session.loading.olderMessages', { defaultValue: 'Loading older messages...' })}
+            <div ref={historySentinelRef} data-history-sentinel={hasMoreMessages && !allMessagesLoaded ? 'true' : undefined} className="min-h-px">
+              {historyLoadError ? <div role="alert" className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
+                {t('session.messages.loadFailed', { defaultValue: 'Unable to load earlier messages.' })}
+                <button type="button" onClick={loadEarlierMessages} className="hover-brand-text underline">
+                  {t('session.retryLoad', { defaultValue: 'Retry' })}
+                </button>
+              </div> : null}
             </div>
-          ) : null}
-
-          {hasMoreMessages && !isLoadingMoreMessages && !allMessagesLoaded ? (
-            <div className="mb-8 flex items-center justify-between border-b border-neutral-200 pb-3 text-[12px] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-              <span>
-                {t('session.messages.showingOf', {
-                  shown: chatMessages.length,
-                  total: totalMessages,
-                  defaultValue: `Showing ${chatMessages.length} of ${totalMessages}`,
-                })}
-              </span>
-              <button
-                type="button"
-                onClick={loadEarlierMessages}
-                className="text-[12px] text-neutral-700 underline-offset-2 hover:underline dark:text-neutral-300"
-              >
-                {t('session.messages.loadEarlier', { defaultValue: 'Load earlier messages' })}
-              </button>
-            </div>
-          ) : null}
-
-          {!hasMoreMessages && chatMessages.length > visibleMessageCount ? (
-            <div className="mb-8 flex items-center justify-between border-b border-neutral-200 pb-3 text-[12px] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-              <span>
-                {t('session.messages.showingLast', {
-                  visibleCount: visibleMessageCount,
-                  total: chatMessages.length,
-                  defaultValue: `Showing last ${visibleMessageCount} of ${chatMessages.length}`,
-                })}
-              </span>
-              <button
-                type="button"
-                onClick={loadAllMessages}
-                className="text-[12px] text-neutral-700 underline-offset-2 hover:underline dark:text-neutral-300"
-              >
-                {t('session.messages.loadAll', { defaultValue: 'Load all messages' })}
-              </button>
-            </div>
-          ) : null}
 
           {isForkedChatSession(selectedSession) ? (
             <div className="mb-6 flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-300">
@@ -1295,9 +1320,9 @@ function MessagesPaneV2({
             .map(renderMessageItem)}
 
           <div
-            className={shouldReserveResponseSpace ? 'chat-current-turn-reserve' : undefined}
+            className="chat-current-turn-reserve motion-safe:transition-[min-height] motion-safe:duration-200"
             data-chat-response-reserved-space={shouldReserveResponseSpace ? 'true' : undefined}
-            style={shouldReserveResponseSpace && sendingInputs.length === 0 ? { minHeight: reservedSpaceTarget } : undefined}
+            style={{ minHeight: shouldReserveResponseSpace && sendingInputs.length === 0 ? reservedSpaceTarget : 0 }}
           >
             {latestUserRenderIndex >= 0
               ? windowedMessageItems

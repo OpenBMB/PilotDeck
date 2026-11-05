@@ -586,6 +586,7 @@
       "sessionMessages": "Loading session messages..."
     },
     "messages": {
+      "loadFailed": "Unable to load earlier messages.",
       "showingOf": "Showing {{shown}} of {{total}} messages",
       "scrollToLoad": "Scroll up to load more",
       "showingLast": "Showing last {{visibleCount}} of {{total}}",

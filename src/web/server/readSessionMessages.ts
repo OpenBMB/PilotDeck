@@ -11,9 +11,9 @@
  *     -> CanonicalMessage[]
  *     -> WebMessage[]
  *
- * Pagination is offset-based (`cursor` is a stringified integer). We do
- * NOT slice individual content blocks within a message — paging cuts at
- * `WebMessage` boundaries.
+ * Forward pagination retains numeric cursors. Backward pages use a stable
+ * before-message identity and extend to the start of the oldest included turn,
+ * so a long process is never severed from its user prompt.
  */
 
 import {
@@ -115,13 +115,26 @@ export async function readWebSessionMessages(
 
   const offset = parseCursor(input.cursor);
   const limit = input.limit ?? allMessages.length;
-  const sliceEnd = limit === 0 ? allMessages.length : offset + limit;
-  const slice = allMessages.slice(offset, sliceEnd);
+  const backward = input.direction === 'backward';
+  const beforeId = backward && input.cursor?.startsWith('before:') ? input.cursor.slice(7) : undefined;
+  const boundary = beforeId === undefined ? undefined : allMessages.findIndex(message => message.id === beforeId);
+  const historyReset = boundary === -1;
+  const sliceEnd = backward ? boundary !== undefined && boundary >= 0 ? boundary
+    : Math.min(allMessages.length, input.cursor === undefined || historyReset ? allMessages.length : offset)
+    : limit === 0 ? allMessages.length : offset + limit;
+  let sliceStart = backward ? Math.max(0, sliceEnd - (limit || sliceEnd)) : offset;
+  if (backward) {
+    // A page is a suffix of complete turns. The head identity remains stable
+    // when live events or delayed artifacts are inserted around the window.
+    while (sliceStart > 0 && !(allMessages[sliceStart]?.kind === 'text' && allMessages[sliceStart]?.role === 'user')) sliceStart--;
+  }
+  const slice = allMessages.slice(sliceStart, sliceEnd);
 
   return {
     ...(input.includeModelContext ? { modelContext } : {}),
     messages: slice,
-    nextCursor:
+    ...(historyReset ? { historyReset: true } : {}),
+    nextCursor: backward ? sliceStart > 0 ? `before:${slice[0]!.id}` : undefined :
       input.limit && offset + slice.length < allMessages.length
         ? String(offset + slice.length)
         : undefined,

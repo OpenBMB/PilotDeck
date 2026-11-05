@@ -218,6 +218,8 @@ export interface SessionSlot {
   total: number;
   hasMore: boolean;
   offset: number;
+  historyDirection?: 'forward' | 'backward';
+  historyCursor?: string;
   tokenUsage: unknown;
   /** Monotonic id assigned when a server-history request starts. */
   _serverRequestGeneration: number;
@@ -1692,6 +1694,7 @@ export function useSessionStore() {
       relativeTranscriptPath?: string;
       limit?: number | null;
       offset?: number;
+      direction?: 'forward' | 'backward';
     } = {},
   ) => {
     const slot = getSlot(sessionId);
@@ -1715,6 +1718,7 @@ export function useSessionStore() {
         params.append('limit', String(opts.limit));
         params.append('offset', String(opts.offset ?? 0));
       }
+      if (opts.direction) params.append('direction', opts.direction);
 
       const qs = params.toString();
       const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
@@ -1743,6 +1747,8 @@ export function useSessionStore() {
       slot.total = data.total ?? messages.length;
       slot.hasMore = Boolean(data.hasMore);
       slot.offset = (opts.offset ?? 0) + messages.length;
+      slot.historyDirection = opts.direction;
+      slot.historyCursor = data.nextCursor;
       slot.fetchedAt = Date.now();
       if (slot._serverLoadingGeneration === requestGeneration) {
         slot._serverLoadingGeneration = null;
@@ -1780,6 +1786,7 @@ export function useSessionStore() {
   /**
    * Load older (paginated) messages and prepend to serverMessages.
    */
+  const historyRequestsRef = useRef(new Map<string, Promise<SessionSlot | null>>());
   const fetchMore = useCallback(async (
     sessionId: string,
     opts: {
@@ -1794,47 +1801,76 @@ export function useSessionStore() {
   ) => {
     const slot = getSlot(sessionId);
     if (!slot.hasMore) return slot;
+    const pending = historyRequestsRef.current.get(sessionId);
+    if (pending) return pending;
+    const request = (async () => {
+      const appliedGeneration = slot._serverAppliedGeneration;
+      const requestedCursor = slot.historyCursor;
 
-    const params = new URLSearchParams();
-    if (opts.provider) params.append('provider', opts.provider);
-    if (opts.projectName) params.append('projectName', opts.projectName);
-    if (opts.projectPath) params.append('projectPath', opts.projectPath);
-    if (opts.sessionKind) params.append('sessionKind', opts.sessionKind);
-    if (opts.parentSessionId) params.append('parentSessionId', opts.parentSessionId);
-    if (opts.relativeTranscriptPath) {
-      params.append('relativeTranscriptPath', opts.relativeTranscriptPath);
-    }
-    const limit = opts.limit ?? 20;
-    params.append('limit', String(limit));
-    params.append('offset', String(slot.offset));
-
-    const qs = params.toString();
-    const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
-
-    try {
-      const response = await authenticatedFetch(url, { suppressServerErrorToast: true });
-      if (!response.ok) {
-        const statusError = await readAgentStatusErrorFromResponse(response, {
-          event: 'web_http_request_failed',
-          code: 'session_messages_load_failed',
-          message: `Unable to load conversation messages (HTTP ${response.status}).`,
-          scope: 'session',
-        });
-        throw new Error(statusError.message);
+      const params = new URLSearchParams();
+      if (opts.provider) params.append('provider', opts.provider);
+      if (opts.projectName) params.append('projectName', opts.projectName);
+      if (opts.projectPath) params.append('projectPath', opts.projectPath);
+      if (opts.sessionKind) params.append('sessionKind', opts.sessionKind);
+      if (opts.parentSessionId) params.append('parentSessionId', opts.parentSessionId);
+      if (opts.relativeTranscriptPath) {
+        params.append('relativeTranscriptPath', opts.relativeTranscriptPath);
       }
-      const data = await response.json();
-      const olderMessages: NormalizedMessage[] = data.messages || [];
+      const limit = opts.limit ?? 20;
+      params.append('limit', String(limit));
+      if (slot.historyDirection === 'backward') {
+        params.append('direction', 'backward');
+        if (requestedCursor !== undefined) params.append('cursor', requestedCursor);
+      } else params.append('offset', String(slot.offset));
 
-      // Prepend older messages (they're earlier in the conversation)
-      slot.serverMessages = [...olderMessages, ...slot.serverMessages];
-      slot.hasMore = Boolean(data.hasMore);
-      slot.offset = slot.offset + olderMessages.length;
-      recomputeMergedIfNeeded(slot);
-      notify(sessionId);
-      return slot;
-    } catch (error) {
-      console.error(`[SessionStore] fetchMore failed for ${sessionId}:`, error);
-      return slot;
+      const qs = params.toString();
+      const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
+
+      try {
+        const response = await authenticatedFetch(url, { suppressServerErrorToast: true });
+        if (!response.ok) {
+          const statusError = await readAgentStatusErrorFromResponse(response, {
+            event: 'web_http_request_failed',
+            code: 'session_messages_load_failed',
+            message: `Unable to load conversation messages (HTTP ${response.status}).`,
+            scope: 'session',
+          });
+          throw new Error(statusError.message);
+        }
+        const data = await response.json();
+        const olderMessages: NormalizedMessage[] = data.messages || [];
+        if (slot._serverAppliedGeneration !== appliedGeneration || slot.historyCursor !== requestedCursor) return slot;
+
+        // Prepend older messages (they're earlier in the conversation)
+        const existing = new Set(slot.serverMessages.map(message => message.id));
+        const additions = olderMessages.filter(message => {
+          if (existing.has(message.id)) return false;
+          existing.add(message.id);
+          return true;
+        });
+        if (data.historyReset) {
+          reconcileTimelineHistory(slot, olderMessages, !data.hasMore);
+          if (Array.isArray(data.stream?.messages)) applyTimelineFrames(slot, data.stream.messages);
+          slot.serverMessages = enrichConfirmedUsers(olderMessages, slot.realtimeMessages);
+          slot.realtimeMessages = getRealtimeMessagesToKeepAfterServerRefresh(slot.realtimeMessages, olderMessages);
+        } else slot.serverMessages = [...additions, ...slot.serverMessages];
+        slot.hasMore = Boolean(data.hasMore) && (data.historyReset ? olderMessages.length : additions.length) > 0
+          && (slot.historyDirection !== 'backward' || (typeof data.nextCursor === 'string' && data.nextCursor !== requestedCursor));
+        slot.historyCursor = data.nextCursor;
+        slot.total = data.total ?? slot.total;
+        slot.offset = slot.offset + olderMessages.length;
+        recomputeMergedIfNeeded(slot);
+        notify(sessionId);
+        return slot;
+      } catch (error) {
+        console.error(`[SessionStore] fetchMore failed for ${sessionId}:`, error);
+        return null;
+      }
+    })();
+    historyRequestsRef.current.set(sessionId, request);
+    try { return await request; }
+    finally {
+      if (historyRequestsRef.current.get(sessionId) === request) historyRequestsRef.current.delete(sessionId);
     }
   }, [getSlot, notify]);
 

@@ -567,6 +567,7 @@
       "sessionMessages": "正在加载会话消息..."
     },
     "messages": {
+      "loadFailed": "无法加载更早的消息。",
       "showingOf": "显示 {{shown}} / {{total}} 条消息",
       "scrollToLoad": "向上滚动以加载更多",
       "showingLast": "显示最近 {{visibleCount}} / {{total}} 条消息",

@@ -140,6 +140,31 @@ rows, and pauses automatic following on explicit jumps. Earlier known turns load
 history before landing. The rail is hidden when the conversation pane is narrow;
 its own long list scrolls independently of the transcript.
 
+## History loading and viewport
+
+Conversation history opens on the newest complete turns. Backward reads accept
+`direction: "backward"`, a soft `limit` and an optional `before:<messageId>` cursor.
+The oldest included turn extends to its user prompt even when it exceeds the
+budget. Pages remain chronological; appending events cannot shift their anchor.
+A missing anchor returns a fresh tail with `historyReset: true`. Forward numeric
+cursors retain their existing behavior.
+
+The client automatically requests earlier pages near the top of the viewport.
+It coalesces concurrent requests, rejects pages overtaken by an authoritative
+refresh, deduplicates by message identity and stops non-progressing cursors.
+Identical prompts in separate turns remain distinct. Loading failures preserve
+the current transcript and provide a localized retry action. Normal browsing
+does not require a load-all control; explicit search and distant navigation can
+still request full history. The disk reader currently replays the canonical
+transcript before selecting a page; this contract bounds transport and client
+rendering, not disk replay cost.
+
+Loaded messages are not truncated by raw message count. Virtual rows retain
+stable identities, bound the mounted DOM, preserve the reading anchor on
+prepend, and invalidate offscreen heights when their disclosure layout changes.
+The live reply reserve transitions to zero when execution stops, preventing a
+permanent empty tail after short or interrupted replies.
+
 ## Verification
 
 - `tests/model/streaming/timeline.spec.ts`: assembler → agent coordinates → Gateway
@@ -150,6 +175,11 @@ its own long list scrolls independently of the transcript.
   identity, and 150 deterministic randomized replay schedules.
 - `ui/src/stores/useSessionStore.timeline.test.tsx`: real store history/live race
   and edited-turn tombstones.
+- `tests/web/history-pagination.spec.ts` and
+  `ui/src/stores/useSessionStore.pagination.test.tsx`: complete-turn cursors,
+  repeated prompts, live appends, overlapping pages, refresh races and retries.
+- `ui/e2e/history-loading.spec.mjs`: automatic backward loading, bounded DOM,
+  prepend anchors, long turns and offscreen fold height invalidation.
 - `ui/src/components/chat-v2/ThinkingBlock.test.tsx`: localized clocks, completion,
   manual expansion and legacy-history fallback.
 - `ui/src/components/chat-v2/ConversationI18n.test.tsx`: in-place language changes

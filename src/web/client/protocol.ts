@@ -335,12 +335,16 @@ export type WebReadSessionMessagesInput = {
   sessionKind?: "background_task";
   parentSessionId?: string;
   relativeTranscriptPath?: string;
+  /** Soft message budget for backward pages, extended to the oldest included user turn. */
   limit?: number;
+  /** Forward: numeric offset. Backward: before:<messageId>, omitted for the newest page. */
   cursor?: string;
   direction?: "forward" | "backward";
 };
 
 export type WebReadSessionMessagesResult = {
+  /** A backward anchor disappeared after history replacement; this is a fresh tail. */
+  historyReset?: boolean;
   modelContext?: import('../../session/context/ModelContextSnapshot.js').ModelContextSnapshot | null;
   /** History plus an absolute active-turn baseline captured after the disk read. */
   stream?: GatewayActiveTurnSnapshot;
