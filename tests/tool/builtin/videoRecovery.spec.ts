@@ -181,3 +181,46 @@ test('tool-call replay reuses the accepted ID, while the same provider call ID i
   assert.equal((await manager.forCall('session', 'call', 'turn'))?.id, first.id);
   assert.equal((await manager.forCall('session', 'call', 'another-turn'))?.id, second.id);
 });
+
+test('background recovery fills free slots while another video remains queued', async t => {
+  const { store, context } = await fixture(t); let long = '', releaseLong = false, inFlight = 0, peak = 0;
+  const queried = new Set<string>(); let posted = 0;
+  const manager = new VideoJobManager({ store, getConfig: () => config, pollMs: 2, timeoutMs: 5000,
+    fetchImpl: async (url, init) => {
+      if (init?.method === 'POST') return json({ id: 'remote-' + posted++, status: 'queued' });
+      inFlight++; peak = Math.max(peak, inFlight);
+      try {
+        await delay(2);
+        const path = new URL(String(url)).pathname;
+        if (path.endsWith('/content')) return new Response(mp4);
+        const id = path.split('/').at(-1)!; queried.add(id);
+        return json({ status: id === long && !releaseLong ? 'queued' : 'completed' });
+      } finally { inFlight--; }
+    } });
+  for (let i = 0; i < 5; i++) await manager.submit(config, { prompt: 'ball', purpose: 'deliverable' }, { ...context, currentToolCallId: 'call-' + i });
+  const ordered = await manager.list('session'); long = ordered[0].remoteId; const fifth = ordered[4];
+  const stop = manager.startRecovery(5);
+  try {
+    await until(async () => (await manager.get('session', fifth.id)).state === 'completed');
+    assert.ok(queried.has(fifth.remoteId));
+    assert.equal((await manager.get('session', ordered[0].id)).state, 'tracking');
+    assert.ok(peak <= 4, `Recovery exceeded its concurrency bound: ${peak}`);
+  } finally {
+    stop(); releaseLong = true;
+    await Promise.all(ordered.map(job => manager.start(job)));
+  }
+});
+
+test('live process leases do not consume recovery slots or starve later jobs', async t => {
+  const { store, context } = await fixture(t); let posted = 0;
+  const manager = new VideoJobManager({ store, getConfig: () => config, pollMs: 2,
+    fetchImpl: async (url, init) => init?.method === 'POST' ? json({ id: 'remote-' + posted++, status: 'queued' })
+      : String(url).endsWith('/content') ? new Response(mp4) : json({ status: 'completed' }) });
+  for (let i = 0; i < 5; i++) await manager.submit(config, { prompt: 'ball', purpose: 'deliverable' }, { ...context, currentToolCallId: 'call-' + i });
+  const ordered = await manager.list('session');
+  const { createHash } = await import('node:crypto'); const directory = join(manager.root, createHash('sha256').update('session').digest('hex'));
+  for (const job of ordered.slice(0, 4)) await writeFile(join(directory, job.id + '.json.lease'), JSON.stringify({ pid: process.pid, nonce: job.id }));
+  const stop = manager.startRecovery(5); t.after(stop);
+  await until(async () => (await manager.get('session', ordered[4].id)).state === 'completed');
+  for (const job of ordered.slice(0, 4)) assert.equal((await manager.get('session', job.id)).state, 'tracking');
+});

@@ -14,6 +14,8 @@ export type VideoJob = {
   baseUrl: string; model?: string; purpose: VideoPurpose; state: VideoJobState;
   createdAt: number; updatedAt: number; reason?: "network" | "configuration" | "timeout" | "provider";
   video?: GeneratedVideo; exportError?: boolean; outputPath?: string;
+  /** Trusted child display scope of a completed task carried by a fork. */
+  forkSubagentId?: string;
   context: Pick<PilotDeckToolRuntimeContext, "cwd" | "permissionMode" | "permissionContext" | "messageId">;
 };
 export const unfinishedVideoJob = (job: VideoJob) => ["tracking", "reconnecting", "downloading"].includes(job.state);
@@ -65,6 +67,8 @@ export class VideoJobManager {
     const split = sessionId.lastIndexOf("::sub::");
     if (split < 0) return;
     const parent = sessionId.slice(0, split), suffix = sessionId.slice(split);
+    const carried = (await this.list(parent)).filter(job => job.forkSubagentId === suffix.slice(7) && matches(job));
+    if (carried.length === 1) return carried[0];
     for (const name of await readdir(join(this.root, "parents")).catch(() => [])) {
       const relation = JSON.parse(await readFile(join(this.root, "parents", name), "utf8"));
       if (relation.parent === parent && relation.child.endsWith(suffix)) {
@@ -210,10 +214,28 @@ export class VideoJobManager {
     try { job.state = "tracking"; job.reason = undefined; await this.write(job); } finally { await release(); }
     void this.start(job); return job;
   }
+  /** Register the fork's completed attachment without creating another remote
+   * task. The caller owns the copied file; this rollback removes only its ledger. */
+  async inheritCompleted(job: VideoJob, video: GeneratedVideo, subagentId?: string): Promise<() => Promise<void>> {
+    if (job.state !== "completed" || job.video?.videoId !== video.videoId || job.video.sessionId !== job.sessionId || job.sessionId === video.sessionId) {
+      throw new Error("Only completed video tasks can be inherited by another session.");
+    }
+    const inherited = { ...job, sessionId: video.sessionId, video, forkSubagentId: subagentId ?? job.forkSubagentId };
+    await this.write(inherited);
+    return () => unlink(this.file(inherited.sessionId, inherited.id)).catch(() => {});
+  }
+  private async hasLiveLease(job: VideoJob): Promise<boolean> {
+    try {
+      const owner = JSON.parse(await readFile(this.file(job.sessionId, job.id) + ".lease", "utf8"));
+      try { process.kill(owner.pid, 0); return true; }
+      catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH"; }
+    } catch { return false; }
+  }
   /** Run in the Web host, even if no chat or Agent turn is open. Cross-process
    * leases prevent racing the Gateway's original serial tool invocation. */
   startRecovery(intervalMs = 5000) {
     let stopped = false, scanning = false;
+    const running = new Set<string>();
     const scan = async () => {
       if (stopped || scanning) return; scanning = true;
       try {
@@ -226,8 +248,16 @@ export class VideoJobManager {
             } catch { /* Ignore an invalid record, without querying any service. */ }
           }
         }
-        // Bounded tracking concurrency; running jobs are protected by leases.
-        await Promise.all(jobs.slice(0, 4).map(job => this.start(job)));
+        // Only scanning holds this guard. Long-running polls must not block the
+        // next scan from filling slots vacated by completed jobs. Skip work
+        // already owned by the Gateway or another Web process.
+        for (const job of jobs) {
+          if (stopped || running.size >= 4) break;
+          const key = this.file(job.sessionId, job.id);
+          if (running.has(key) || active.has(key) || await this.hasLiveLease(job)) continue;
+          running.add(key);
+          void this.start(job).finally(() => running.delete(key));
+        }
       } finally { scanning = false; }
     };
     const timer = setInterval(() => { void scan().catch(() => {}); }, intervalMs); timer.unref(); void scan().catch(() => {});

@@ -3,12 +3,20 @@ import { authenticatedFetch } from '../../../utils/api';
 import type { ChatMessage } from '../types/types';
 import { videoAttachment, type VideoJobView } from './videoPresentation';
 
+function jobSession(message: ChatMessage): string | undefined {
+  if (typeof message.sessionId !== 'string' || !message.sessionId) return;
+  // Live child frames use their parent's transport session plus subagentId;
+  // history may already use the display scope or the actual child session.
+  const suffix = message.subagentId ? `::sub::${message.subagentId}` : '';
+  return suffix && !message.sessionId.endsWith(suffix) ? message.sessionId + suffix : message.sessionId;
+}
+
 /** Poll the host's durable record, never the provider or a model. This remains
  * mounted when execution traces are collapsed or the original turn has ended. */
 export function useVideoJobs(messages: ChatMessage[]) {
   const [jobs, setJobs] = useState<Record<string, VideoJobView>>({});
-  const calls = messages.filter(m => m.toolName === 'generate_video' && m.sessionId && m.toolId && !videoAttachment(m))
-    .map(m => ({ session: String(m.sessionId), call: m.toolId!, turn: m.turnId || m.runId || '', settled: Boolean(m.toolResult) }));
+  const calls = messages.filter(m => m.toolName === 'generate_video' && jobSession(m) && m.toolId && !videoAttachment(m))
+    .map(m => ({ session: jobSession(m)!, call: m.toolId!, turn: m.turnId || m.runId || '', settled: Boolean(m.toolResult) }));
   const scope = JSON.stringify(calls);
   useEffect(() => {
     if (!calls.length) return;
@@ -35,7 +43,7 @@ export function useVideoJobs(messages: ChatMessage[]) {
     return () => { disposed = true; controller.abort(); clearInterval(timer); };
   }, [scope]);
   return useMemo(() => messages.map(message => {
-    const job = jobs[JSON.stringify([message.sessionId, message.toolId, message.turnId || message.runId || ''])];
+    const job = jobs[JSON.stringify([jobSession(message), message.toolId, message.turnId || message.runId || ''])];
     if (!job) return message;
     return { ...message, videoJob: job, ...(job.video ? { toolResult: {
       ...message.toolResult, content: `Video recovered. video_id: ${job.video.videoId}.`, isError: false, toolUseResult: { videoGeneration: job.video },

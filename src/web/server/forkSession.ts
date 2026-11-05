@@ -1,3 +1,5 @@
+import { VideoJobManager, type VideoJob } from "../../tool/builtin/videos/VideoJobManager.js";
+import { toCanonicalToolResultBlock } from "../../tool/protocol/result.js";
 import { VideoStore, type GeneratedVideo } from "../../tool/builtin/videos/VideoStore.js";
 /**
  * Fork a web session transcript at a prior turn entry.
@@ -439,29 +441,80 @@ async function copySessionAuxDirs(sourceSessionDir: string, targetSessionDir: st
 class ForkMediaInheritance {
   private readonly images = new Map<string, GeneratedImage>();
   private readonly videos = new Map<string, GeneratedVideo>();
-  constructor(private readonly store: ImageStore, private readonly targetSessionId: string, private readonly videoStore: VideoStore) {}
+  private readonly jobRollbacks = new Map<string, () => Promise<void>>();
+  private readonly jobLists = new Map<string, Promise<VideoJob[]>>();
+  private readonly jobs: VideoJobManager;
+  constructor(private readonly store: ImageStore, private readonly targetSessionId: string, private readonly videoStore: VideoStore, private readonly sourceSessionId: string) {
+    this.jobs = new VideoJobManager({ store: videoStore, getConfig: () => undefined });
+  }
 
-  async rewrite(entries: AgentTranscriptEntry[]): Promise<AgentTranscriptEntry[]> {
+  private async inheritVideo(original: GeneratedVideo): Promise<GeneratedVideo> {
+    const existing = this.videos.get(original.videoId);
+    if (existing) return existing;
+    const video = await this.videoStore.inherit(original.sessionId, original.videoId, this.targetSessionId);
+    this.videos.set(video.videoId, video);
+    return video;
+  }
+  private async findRecovered(call: string, entry: AgentTranscriptEntry): Promise<VideoJob | undefined> {
+    const owners = new Set([this.sourceSessionId, entry.sessionId]);
+    for (const owner of owners) {
+      if (owner === this.targetSessionId) continue;
+      let pending = this.jobLists.get(owner);
+      if (!pending) { pending = this.jobs.list(owner); this.jobLists.set(owner, pending); }
+      const matches = (await pending).filter(job => job.toolCallId === call &&
+        (entry.type !== "control_boundary" || job.createdAt <= Date.parse(entry.createdAt)));
+      // A compact snapshot may no longer carry the original turn ID. Only
+      // resolve a unique, already-submitted task there; never pick a later
+      // task that happens to reuse the same provider call ID.
+      const job = entry.type === "control_boundary"
+        ? matches.length === 1 ? matches[0] : undefined
+        : matches.find(job => job.turnId === entry.turnId);
+      if (job?.state === "completed" && job.video) return job;
+    }
+  }
+  private async inheritJob(job: VideoJob, subagentId?: string) {
+    const video = await this.inheritVideo(job.video!);
+    this.jobRollbacks.set(job.id, await this.jobs.inheritCompleted(job, video, subagentId));
+    return video;
+  }
+
+  async rewrite(entries: AgentTranscriptEntry[], subagentId?: string): Promise<AgentTranscriptEntry[]> {
     const blocks = new Map<CanonicalContentBlock, CanonicalContentBlock>();
-    const references: Array<Extract<CanonicalContentBlock, { type: "tool_result" }>> = [];
+    const references: Array<{ block: Extract<CanonicalContentBlock, { type: "tool_call" | "tool_result" }>; entry: AgentTranscriptEntry }> = [];
+    const calls = new Set<string>();
     for (const entry of entries) mapTranscriptEntryMessages(entry, message => {
-      for (const block of message.content) if (block.type === "tool_result") references.push(block);
+      for (const block of message.content) {
+        if (block.type === "tool_call" || block.type === "tool_result") references.push({ block, entry });
+        if (block.type === "tool_call" && block.name === "generate_video") calls.add(JSON.stringify([entry.turnId, block.id]));
+      }
       return message;
     });
-    for (const block of references) {
+    for (const { block, entry } of references) {
+      if (block.type === "tool_call") {
+        if (block.name === "generate_video") {
+          const job = await this.findRecovered(block.id, entry);
+          if (job) await this.inheritJob(job, subagentId);
+        }
+        continue;
+      }
       const videoRaw = block.raw as { toolName?: string; data?: { videoGeneration?: GeneratedVideo } } | undefined;
-      if (videoRaw && ["generate_video", "save_generated_video"].includes(videoRaw.toolName ?? "")) {
-        const original = videoRaw.data?.videoGeneration;
+      const isVideo = videoRaw && ["generate_video", "save_generated_video"].includes(videoRaw.toolName ?? "");
+      const job = videoRaw?.toolName === "generate_video" || calls.has(JSON.stringify([entry.turnId, block.toolCallId]))
+        ? await this.findRecovered(block.toolCallId, entry) : undefined;
+      if (isVideo || job) {
+        const original = videoRaw?.data?.videoGeneration;
         if (original && typeof original.videoId === "string" && typeof original.sessionId === "string") {
-          let inherited = this.videos.get(original.videoId);
-          if (!inherited) {
-            inherited = await this.videoStore.inherit(original.sessionId, original.videoId, this.targetSessionId);
-            this.videos.set(original.videoId, inherited);
-          }
+          const inherited = await this.inheritVideo(original);
           const rewritten = replaceImagePath(block, original.path, inherited.path) as typeof block;
-          const raw = rewritten.raw as typeof videoRaw;
+          const raw = rewritten.raw as NonNullable<typeof videoRaw>;
           raw.data = { ...raw.data, videoGeneration: { ...original, ...inherited } };
           blocks.set(block, rewritten);
+          if (job?.video?.videoId === original.videoId) await this.inheritJob(job, subagentId);
+        } else if (job) {
+          const video = await this.inheritJob(job, subagentId);
+          blocks.set(block, toCanonicalToolResultBlock({ type: "success", toolName: "generate_video", toolCallId: block.toolCallId,
+            content: [{ type: "text", text: `Video recovered. video_id: ${video.videoId}. Attachment: ${video.path}` }],
+            data: { videoGeneration: video }, startedAt: new Date(job.createdAt).toISOString(), completedAt: new Date(job.updatedAt).toISOString() }));
         }
         continue;
       }
@@ -499,12 +552,13 @@ class ForkMediaInheritance {
       const child = await readTranscript(transcriptPath);
       // A fork must not inherit child output produced after its fork point.
       const carried = child.entries.filter(item => !(Date.parse(item.createdAt) > Date.parse(cutoff)));
-      const rewritten = await this.rewrite(carried);
+      const rewritten = await this.rewrite(carried, entry.subagentId);
       await writeFile(transcriptPath, rewritten.map(item => JSON.stringify(item) + "\n").join(""), "utf8");
     }
   }
 
   async rollback(): Promise<void> {
+    await Promise.all([...this.jobRollbacks.values()].map(rollback => rollback()));
     await Promise.all([...this.videos.values()].flatMap(video => [video.path, join(dirname(video.path), video.videoId + ".json")]).map(file => unlink(file).catch(() => {})));
     await Promise.all([...this.images.values()].flatMap(image => [image.path, join(dirname(image.path), image.imageId + ".json")])
       .map(file => unlink(file).catch(() => {})));
@@ -573,7 +627,7 @@ export async function forkWebSession(
   await mkdir(chatDir, { recursive: true, mode: 0o700 });
   await mkdir(newSessionDir, { recursive: true, mode: 0o700 });
   await copySessionAuxDirs(sourceSessionDir, newSessionDir);
-  const images = new ForkMediaInheritance(new ImageStore(join(options.pilotHome, "generated-images")), newSessionKey, new VideoStore(join(options.pilotHome, "generated-videos")));
+  const images = new ForkMediaInheritance(new ImageStore(join(options.pilotHome, "generated-images")), newSessionKey, new VideoStore(join(options.pilotHome, "generated-videos")), input.sessionKey);
   try {
     preserved = await images.rewrite(preserved);
     await images.rewriteSubagents(preserved, chatDir, newSessionDir, forkPoint.target.createdAt);
