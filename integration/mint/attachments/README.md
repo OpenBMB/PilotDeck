@@ -26,3 +26,7 @@ Mint整理分支 codex/attachments-owned-split，末端d4728cd8，代码与ae777
 日志：运行目录attachments-unified/data/supervisor/installed-rust-loop.log及attachments-registry-e2e.log。
 
 注意：fs.stat没有size，包按范围读取计算长度；使用前后mtime/path/kind检测变化，无法检测元数据完全相同的修改。图片验证仍不可用。
+
+网页验收：会话web:s_f6ba3146-960c-44b9-8ccf-d58be387aabd，上传后回答amber-618，追问回答青島；请求证据含原文青岛和🙂。截图位于运行目录attachments-browser-proof.png。
+
+构建验证针对ae777696（与d4728cd8代码一致）；收尾时工作区出现另一组上下文hooks修改，未纳入本次提交。
