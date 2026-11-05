@@ -64,6 +64,13 @@
     "copied": "Copied",
     "failed": "Copy failed. Try again."
   },
+  "mermaid": {
+    "showDiagram": "Show diagram",
+    "showSource": "Show source",
+    "loading": "Rendering diagram…",
+    "preview": "Mermaid diagram",
+    "failed": "Unable to render this diagram. The source is shown below."
+  },
   "codeBlock": {
     "copy": "Copy",
     "copied": "Copied",

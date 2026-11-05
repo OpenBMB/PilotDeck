@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FindShortcutProvider } from '../../src/contexts/FindShortcutContext';
+import { ThemeProvider } from '../../src/contexts/ThemeContext';
 import MessagesPane from '../../src/components/chat-v2/MessagesPaneV2';
 import { useScrollFollow } from '../../src/components/chat/hooks/useScrollFollow';
 import { normalizedToChatMessages } from '../../src/components/chat/hooks/useChatMessages';
@@ -73,4 +74,4 @@ function Fixture() {
     />
   </div></FindShortcutProvider>;
 }
-createRoot(document.getElementById('root')).render(<Fixture />);
+createRoot(document.getElementById('root')).render(<ThemeProvider><Fixture /></ThemeProvider>);

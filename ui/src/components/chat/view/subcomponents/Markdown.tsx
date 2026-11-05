@@ -4,12 +4,13 @@ import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { MarkdownCodeBlock, MarkdownTable, MarkdownSourceContext } from './MarkdownCopyBlocks';
 import { resolveMarkdownFileHref } from '../../utils/resolveMarkdownFileHref';
 import {
   createRemarkArtifactFileTextPlugin,
   type MarkdownArtifactFile,
 } from '../../utils/remarkArtifactFileText';
+import { MarkdownCodeBlock, MarkdownTable } from './MarkdownCopyBlocks';
+import { MarkdownSourceContext } from './MarkdownContext';
 
 type MarkdownProps = {
   children: React.ReactNode;
@@ -69,6 +70,7 @@ export const Markdown = React.memo(function Markdown({
   artifactFiles,
 }: MarkdownProps) {
   const content = String(children ?? '');
+  const sourceContext = useMemo(() => ({ source: content, isStreaming: Boolean(isStreaming) }), [content, isStreaming]);
 
   const components = useMemo(
     () => createMarkdownComponents(onFileOpen),
@@ -89,7 +91,7 @@ export const Markdown = React.memo(function Markdown({
 
   return (
     <div className={`chat-markdown ${className || ''} ${showFadeIn ? 'streaming-fade-in' : ''}`.trim()}>
-      <MarkdownSourceContext.Provider value={content}>
+      <MarkdownSourceContext.Provider value={sourceContext}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
           rehypePlugins={fullRehypePlugins}

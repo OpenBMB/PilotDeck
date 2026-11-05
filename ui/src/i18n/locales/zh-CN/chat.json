@@ -63,6 +63,13 @@
     "copied": "已复制",
     "failed": "复制失败，请重试"
   },
+  "mermaid": {
+    "showDiagram": "显示图表",
+    "showSource": "显示源码",
+    "loading": "正在渲染图表…",
+    "preview": "Mermaid 图表",
+    "failed": "无法渲染此图表，已显示源码。"
+  },
   "codeBlock": {
     "copy": "复制",
     "copied": "已复制",

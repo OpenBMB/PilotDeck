@@ -398,12 +398,25 @@ export function highlightSearchMatches(
     while (walker.nextNode()) {
       const textNode = walker.currentNode as Text;
       if (!textNode.textContent?.trim()) continue;
-      if (textNode.parentElement?.closest('mark')) continue;
+      if (textNode.parentElement?.closest('mark, [hidden]')) continue;
       textNodes.push(textNode);
     }
 
     let currentOccurrence = 0;
+    const countedSources = new Set<Element>();
     textNodes.forEach((textNode) => {
+      // Diagrams keep their original text in the search index. Count it once
+      // without inserting HTML marks into SVG or shifting later prose matches.
+      const sourceElement = textNode.parentElement?.closest('[data-chat-search-text]');
+      if (sourceElement) {
+        if (!countedSources.has(sourceElement)) {
+          const source = sourceElement.getAttribute('data-chat-search-text') || '';
+          currentOccurrence += countOccurrencesBeforeOffset(source, query, source.length);
+          countedSources.add(sourceElement);
+        }
+        return;
+      }
+      if (textNode.parentElement?.closest('svg, style, script')) return;
       const result = highlightTextNodeMatches(
         textNode,
         query,
