@@ -92,3 +92,19 @@ it.each(['generate_video', 'save_generated_video'])('retains %s attachment ident
     expect((await response.json()).messages[0]).toMatchObject({ kind: 'tool_result', toolId: 'video-call', toolUseResult: { videoGeneration } });
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
+
+it.each(['ask_user_question', 'AskUserQuestion'])('retains %s answers and multi-select boundaries through HTTP history recovery', async toolName => {
+  const payload = { questions: [{ question: 'Which paths?', header: 'Scope', multiSelect: true,
+    options: [{ label: 'A, B', description: 'A combined label' }, { label: 'C', description: 'Another path' }] }],
+    answers: { 'Which paths?': ['A, B', 'C', 'Custom, answer'] } };
+  vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+    withPilotDeckGatewayReadRetry: vi.fn(async () => ({ messages: [{ id: 'answer-result', kind: 'tool_result', toolName,
+      toolCallId: 'question-call', text: 'User has answered', ok: true, payload }] })),
+  }));
+  const { default: routes } = await import('./messages.js');
+  const app = express(); app.use('/api/sessions', routes); const server = app.listen(0);
+  try {
+    const response = await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/question-session/messages`);
+    expect((await response.json()).messages[0]).toMatchObject({ kind: 'tool_result', toolId: 'question-call', toolUseResult: payload });
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});

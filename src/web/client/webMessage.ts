@@ -315,6 +315,8 @@ export function applyWebGatewayEvent(
 
     case "tool_call_finished": {
       const normalizedErrorCode = normalizeToolErrorCode(event.errorCode, event.resultPreview);
+      const presentationData = event.data?.imageGeneration || event.data?.answers
+        ? event.data : undefined;
       const eventImages =
         Array.isArray(event.images) && event.images.length > 0
           ? event.images.map((image) => ({
@@ -334,7 +336,7 @@ export function applyWebGatewayEvent(
                   ok: event.ok,
                   text: limitToolResultPreview(event.resultPreview) ?? m.text,
                   ...(eventImages ? { images: eventImages } : {}),
-                  ...(event.data?.imageGeneration ? { payload: event.data } : {}),
+                  ...(presentationData ? { payload: presentationData } : {}),
                   ...(normalizedErrorCode && { errorCode: normalizedErrorCode }),
                 }
               : m,
@@ -354,7 +356,7 @@ export function applyWebGatewayEvent(
         ok: event.ok,
         text: limitToolResultPreview(event.resultPreview),
         ...(eventImages ? { images: eventImages } : {}),
-                  ...(event.data?.imageGeneration ? { payload: event.data } : {}),
+        ...(presentationData ? { payload: presentationData } : {}),
         ...(normalizedErrorCode && { errorCode: normalizedErrorCode }),
         source: "live",
       };

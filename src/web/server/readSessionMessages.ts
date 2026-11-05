@@ -1296,7 +1296,7 @@ function readPlanData(raw: unknown): Record<string, unknown> | undefined {
 function readToolPresentationData(raw: unknown): Record<string, unknown> | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const record = raw as { toolName?: unknown; data?: unknown };
-  if (!isSearchToolName(record.toolName) && !["generate_image", "edit_image", "save_generated_image", "generate_video", "save_generated_video"].includes(String(record.toolName))) return undefined;
+  if (!isSearchToolName(record.toolName) && !["ask_user_question", "AskUserQuestion", "generate_image", "edit_image", "save_generated_image", "generate_video", "save_generated_video"].includes(String(record.toolName))) return undefined;
   return record.data && typeof record.data === "object"
     ? record.data as Record<string, unknown>
     : undefined;

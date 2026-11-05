@@ -1405,7 +1405,7 @@ function createSubagentStatusFrames(event, base) {
 }
 
 function toolPresentationFields(toolName, data) {
-    return data && (isSearchToolName(toolName) || ['ask_user_question', 'generate_image', 'edit_image', 'save_generated_image', 'generate_video', 'save_generated_video'].includes(toolName))
+    return data && (isSearchToolName(toolName) || ['ask_user_question', 'AskUserQuestion', 'generate_image', 'edit_image', 'save_generated_image', 'generate_video', 'save_generated_video'].includes(toolName))
         ? { toolUseResult: data }
         : {};
 }

@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
 import { mapAgentEvent } from '../../src/gateway/client/InProcessGateway.ts';
+import { createAskUserQuestionTool } from '../../src/tool/builtin/askUserQuestion.ts';
+import { InMemoryElicitationChannel } from '../../src/tool/elicitation/PilotDeckElicitationChannel.ts';
 
 import {
     beginActivitySnapshotRead,
@@ -29,6 +31,21 @@ import {
     syncLocalActiveRunFromSnapshot,
     uiFilesToAttachments,
 } from './pilotdeck-bridge.js';
+
+it.each(['ask_user_question', 'AskUserQuestion'])('preserves %s multi-select data from the real elicitation tool through Gateway and the Web bridge', async toolName => {
+    const questions = [{ question: 'Which paths?', header: 'Scope', multiSelect: true,
+        options: [{ label: 'A, B', description: 'Combined path' }, { label: 'C', description: 'Another path' }] }];
+    const answers = { 'Which paths?': ['A, B', 'C', 'Custom, answer'] };
+    const output = await createAskUserQuestionTool().execute({ questions }, {
+        turnId: 'question-turn', elicitation: new InMemoryElicitationChannel(answers),
+    });
+    const events = mapAgentEvent({ type: 'tool_result', sessionId: 'question-session', turnId: 'question-turn', result: {
+        type: 'success', toolName, toolCallId: 'question-call', content: output.content, data: output.data,
+        startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:00:01Z',
+    } }, 'question-run');
+    const frame = events.flatMap(event => gatewayEventToFrames(event, 'question-session', 'pilotdeck')).find(frame => frame.kind === 'tool_result');
+    expect(frame).toMatchObject({ toolId: 'question-call', isError: false, toolUseResult: { questions, answers } });
+});
 
 it.each(['generate_image', 'edit_image', 'save_generated_image'])('preserves %s image identity through the subagent gateway and bridge while the parent is running', toolName => {
     const imageGeneration = { imageId: 'image-id', sessionId: '/project::sub::child', path: '/managed/image.png',
