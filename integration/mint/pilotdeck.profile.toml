@@ -29,3 +29,16 @@ order = [
 
 [model]
 provider = "pilotdeck/model-provider-openai-consumer"
+
+# Opaque package configuration consumed by the installed hooks. Runtime Assembly
+# forwards these values without embedding package-specific behavior in mint-core.
+[package_config."liyishan1/pilotdeck-context-time-consumer"]
+preparedContext = { systemPrompt = "You are a helpful assistant.", messages = [] }
+
+[package_config."liyishan1/pilotdeck-context-prompt-consumer"]
+provider = "mint"
+permissionMode = "default"
+environmentContext = ""
+
+[package_config."pilotdeck/context-retention"]
+retention = { maxResultSizeChars = 200000, previewBytes = 2048 }
