@@ -7,5 +7,5 @@ export function shouldKeepChatResponseReservedSpace(
   isAssistantWorking: boolean,
 ): boolean {
   if (latestUserRenderIndex < 0) return false;
-  return latestUserRenderIndex > 0 || isAssistantWorking;
+  return isAssistantWorking;
 }

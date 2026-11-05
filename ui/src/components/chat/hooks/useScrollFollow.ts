@@ -1,16 +1,20 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import { expandingDisclosure } from '../utils/disclosureInteraction';
 
 const BOTTOM_EPSILON = 2;
 const VIEWPORT_SELECTOR = '[data-stream-scroll-viewport]';
 const FOLLOW_CHANGE = 'stream-scroll-follow-change';
+const LAYOUT_CHANGE = 'stream-scroll-layout-change';
+/** Virtual rows can redistribute height while the content's total stays equal. */
+export function notifyScrollLayout(node: HTMLElement) { node.dispatchEvent(new Event(LAYOUT_CHANGE)); }
 const controllers = new WeakMap<HTMLElement, { resume: () => void }>();
 export type ReadingAnchor = { key: string; offset: number };
 type UserScroll = { top: number; direction: number; dragging?: boolean };
 
 /** Keep user intent, viewport geometry, and the return-to-latest affordance separate. */
 export function useScrollFollow({
-  containerRef, enabled = true, scopeKey, contentKey, contentSelector, canFollow,
+  containerRef, enabled = true, scopeKey, contentKey, contentSelector, canFollow, initialPositionKey,
 }: {
   containerRef: RefObject<HTMLDivElement | null>;
   enabled?: boolean;
@@ -18,16 +22,18 @@ export function useScrollFollow({
   contentKey?: unknown;
   contentSelector?: string;
   canFollow?: () => boolean;
+  initialPositionKey?: unknown;
 }) {
   const [isPaused, setIsPaused] = useState(false);
   const [canReturnToLatest, setCanReturnToLatest] = useState(false);
   const [hasOverflow, setHasOverflow] = useState(false);
   const pausedRef = useRef(false);
-  const optionsRef = useRef({ enabled, canFollow });
-  optionsRef.current = { enabled, canFollow };
+  const optionsRef = useRef({ enabled, canFollow, initialPositionKey });
+  optionsRef.current = { enabled, canFollow, initialPositionKey };
   const frameRef = useRef<number | null>(null);
   const initialFrameRef = useRef(false);
   const anchorRef = useRef<ReadingAnchor | null>(null);
+  const anchorElementRef = useRef<HTMLElement | null>(null);
   const metricsRef = useRef({ top: 0, height: 0, viewport: 0 });
   const programmaticTopRef = useRef<number | null>(null);
   const userScrollRef = useRef<UserScroll | null>(null);
@@ -63,10 +69,17 @@ export function useScrollFollow({
     const node = containerRef.current;
     if (!node || !contentSelector) return;
     const top = node.getBoundingClientRect().top;
-    const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-message-key]'));
-    const row = (typeof messageKey === 'string' ? rows.find(item => item.dataset.messageKey === messageKey) : undefined)
-      ?? rows.find(item => item.getBoundingClientRect().bottom > top);
-    anchorRef.current = row ? { key: row.dataset.messageKey!, offset: row.getBoundingClientRect().top - top } : null;
+    const rows = node.querySelectorAll<HTMLElement>('[data-message-key]');
+    let row: HTMLElement | undefined;
+    let rect: DOMRect | undefined;
+    if (typeof messageKey === 'string') row = Array.from(rows).find(item => item.dataset.messageKey === messageKey);
+    if (row) rect = row.getBoundingClientRect();
+    else for (const candidate of rows) {
+      const bounds = candidate.getBoundingClientRect();
+      if (bounds.bottom > top) { row = candidate; rect = bounds; break; }
+    }
+    anchorElementRef.current = row ?? null;
+    anchorRef.current = row && rect ? { key: row.dataset.messageKey!, offset: rect.top - top } : null;
     if (row) node.dataset.readingAnchorKey = row.dataset.messageKey;
     else delete node.dataset.readingAnchorKey;
   }, [containerRef, contentSelector]);
@@ -75,8 +88,12 @@ export function useScrollFollow({
     const node = containerRef.current;
     const anchor = anchorRef.current;
     if (!node || !anchor) return;
-    const row = Array.from(node.querySelectorAll<HTMLElement>('[data-message-key]'))
-      .find((item) => item.dataset.messageKey === anchor.key);
+    let row = anchorElementRef.current;
+    if (!row || row.dataset.messageKey !== anchor.key || !node.contains(row)) {
+      row = Array.from(node.querySelectorAll<HTMLElement>('[data-message-key]'))
+        .find((item) => item.dataset.messageKey === anchor.key) ?? null;
+      anchorElementRef.current = row;
+    }
     if (!row) return;
     const delta = row.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.offset;
     if (Math.abs(delta) > 0.5) {
@@ -106,6 +123,7 @@ export function useScrollFollow({
       captureAnchor();
     } else {
       anchorRef.current = null;
+      anchorElementRef.current = null;
       if (containerRef.current) delete containerRef.current.dataset.readingAnchorKey;
     }
     publish();
@@ -143,23 +161,39 @@ export function useScrollFollow({
   }, [containerRef, captureAnchor, rememberMetrics, publish]);
 
   const queuePosition = useCallback((initial: boolean) => {
+    const initialKey = optionsRef.current.initialPositionKey;
     const allowed = () => !pausedRef.current
+      && (!initial || optionsRef.current.initialPositionKey === initialKey)
       && (initial || optionsRef.current.enabled) && (optionsRef.current.canFollow?.() ?? true);
     if (!allowed()) return;
     if (initial) cancelFollow();
     if (frameRef.current !== null) return;
     initialFrameRef.current = initial;
-    frameRef.current = requestAnimationFrame(() => {
+    let previousSize = '';
+    let stableFrames = 0;
+    let attempts = 0;
+    const position = () => {
       frameRef.current = null;
-      initialFrameRef.current = false;
-      if (allowed()) writeBottom();
-    });
-  }, [cancelFollow, writeBottom]);
+      if (!allowed()) { initialFrameRef.current = false; return; }
+      writeBottom();
+      const node = containerRef.current;
+      const size = `${node?.scrollHeight}:${node?.clientHeight}`;
+      stableFrames = size === previousSize ? stableFrames + 1 : 0;
+      previousSize = size;
+      // Initial virtual rows can replace their estimates over several frames.
+      // Settle that first landing even with automatic following disabled. Any
+      // reader gesture/disclosure cancels this bounded initialization lease.
+      if (initial && stableFrames < 3 && ++attempts < 12) frameRef.current = requestAnimationFrame(position);
+      else initialFrameRef.current = false;
+    };
+    frameRef.current = requestAnimationFrame(position);
+  }, [cancelFollow, containerRef, writeBottom]);
   const scheduleFollow = useCallback(() => queuePosition(false), [queuePosition]);
   const scheduleInitialPosition = useCallback(() => queuePosition(true), [queuePosition]);
   const getIsPaused = useCallback(() => pausedRef.current, []);
   const pause = useCallback(() => setPaused(true), [setPaused]);
   const pauseAt = useCallback((messageKey?: string) => {
+    userScrollRef.current = null;
     setPaused(true);
     // A search hit may be nested deep inside one expanded process row. Keep
     // that message steady while the process above it finishes measuring.
@@ -185,6 +219,7 @@ export function useScrollFollow({
   useLayoutEffect(() => {
     cancelFollow();
     anchorRef.current = null;
+    anchorElementRef.current = null;
     if (containerRef.current) delete containerRef.current.dataset.readingAnchorKey;
     programmaticTopRef.current = null;
     userScrollRef.current = null;
@@ -250,6 +285,16 @@ export function useScrollFollow({
       }
     };
     const pointerUp = () => { if (userScrollRef.current?.dragging) userScrollRef.current = null; };
+    const click = (event: MouseEvent) => {
+      const trigger = expandingDisclosure(event.target);
+      if (trigger) pauseAt(trigger.closest<HTMLElement>('[data-message-key]')?.dataset.messageKey);
+    };
+    const layout = () => {
+      acceptUserDisplacement();
+      if (pausedRef.current || !optionsRef.current.enabled) restoreAnchor();
+      else scheduleFollow();
+      publish();
+    };
     const scroll = () => {
       const previous = metricsRef.current;
       const top = node.scrollTop;
@@ -261,37 +306,45 @@ export function useScrollFollow({
         return;
       }
       programmaticTopRef.current = null;
-      const layoutChanged = node.scrollHeight !== previous.height || node.clientHeight !== previous.viewport;
-      if (userMoved || !layoutChanged) {
-        if (!userMoved && top < previous.top) setPaused(true);
-        else if (top > previous.top && atBottom()) scrollToBottom();
-        if (pausedRef.current || !optionsRef.current.enabled) captureAnchor();
-      }
+      // Layout clamping, focus and our own writes also emit scroll events.
+      // Only an actual gesture can hand ownership back to automatic following.
+      if (userMoved && top > previous.top && atBottom()) scrollToBottom();
+      // acceptUserDisplacement already captured the new reading position.
+      // Measurement writes must not replace it before its virtual row settles.
+      if (!pausedRef.current && !atBottom()) scheduleFollow();
       rememberMetrics();
       publish();
     };
     controllers.set(node, { resume: resumeOwnViewport });
-    node.addEventListener(FOLLOW_CHANGE, updateAvailability);
+    const nestedFollowChanged = (event: Event) => {
+      // publish already updated this viewport; only nested controllers need a rescan.
+      if (event.target !== node) updateAvailability();
+    };
+    node.addEventListener(FOLLOW_CHANGE, nestedFollowChanged);
+    node.addEventListener(LAYOUT_CHANGE, layout);
     node.addEventListener('wheel', wheel, { capture: true, passive: true });
     node.addEventListener('touchstart', touchStart, { capture: true, passive: true });
     node.addEventListener('touchmove', touchMove, { capture: true, passive: true });
     node.addEventListener('keydown', keyDown, true);
     node.addEventListener('pointerdown', pointerDown, true);
+    node.addEventListener('click', click, true);
     window.addEventListener('pointerup', pointerUp);
     node.addEventListener('scroll', scroll, { passive: true });
     rememberMetrics();
     return () => {
       controllers.delete(node);
-      node.removeEventListener(FOLLOW_CHANGE, updateAvailability);
+      node.removeEventListener(FOLLOW_CHANGE, nestedFollowChanged);
+      node.removeEventListener(LAYOUT_CHANGE, layout);
       node.removeEventListener('wheel', wheel, true);
       node.removeEventListener('touchstart', touchStart, true);
       node.removeEventListener('touchmove', touchMove, true);
       node.removeEventListener('keydown', keyDown, true);
       node.removeEventListener('pointerdown', pointerDown, true);
+      node.removeEventListener('click', click, true);
       window.removeEventListener('pointerup', pointerUp);
       node.removeEventListener('scroll', scroll);
     };
-  }, [containerRef, scopeKey, contentKey, acceptUserDisplacement, captureAnchor, rememberMetrics, publish, resumeOwnViewport, scrollToBottom, setPaused, updateAvailability]);
+  }, [containerRef, scopeKey, contentKey, acceptUserDisplacement, captureAnchor, rememberMetrics, publish, resumeOwnViewport, scrollToBottom, setPaused, updateAvailability, pauseAt, scheduleFollow, restoreAnchor]);
 
   useLayoutEffect(() => {
     const node = containerRef.current;

@@ -1140,6 +1140,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 createNormalizedMessage({
                     ...base,
                     kind: 'complete',
+                    ...(event.startedAt && event.completedAt ? { turnTiming: { startedAt: event.startedAt, completedAt: event.completedAt, finishReason: event.finishReason } } : {}),
                     exitCode: 0,
                     success: true,
                     finishReason: event.finishReason,
@@ -1177,6 +1178,15 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 }),
             ];
         case 'agent_status': {
+            if (event.event === 'file_input_progress') {
+                const detail = event.detail || {};
+                return [createNormalizedMessage({ ...base, kind: 'agent_activity',
+                    id: detail.activityId, activityId: detail.activityId, phase: 'file_input', state: detail.state,
+                    toolId: detail.toolCallId, toolName: detail.toolName,
+                    fileInputProgress: { receivedBytes: detail.receivedBytes, filePath: detail.filePath },
+                    ...(detail.subagentId ? { subagentId: detail.subagentId, isSubagentDetail: true } : {}),
+                })];
+            }
             const subagentFrames = createSubagentStatusFrames(event, base);
             if (subagentFrames && subagentFrames.length > 0) return subagentFrames;
 
@@ -1405,7 +1415,7 @@ function createSubagentStatusFrames(event, base) {
 }
 
 function toolPresentationFields(toolName, data) {
-    return data && (isSearchToolName(toolName) || ['ask_user_question', 'generate_image', 'edit_image', 'save_generated_image', 'generate_video', 'save_generated_video'].includes(toolName))
+    return data && (isSearchToolName(toolName) || ['ask_user_question', 'AskUserQuestion', 'generate_image', 'edit_image', 'save_generated_image', 'generate_video', 'save_generated_video'].includes(toolName))
         ? { toolUseResult: data }
         : {};
 }

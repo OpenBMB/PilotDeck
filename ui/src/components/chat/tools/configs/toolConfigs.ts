@@ -321,13 +321,14 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       defaultOpen: false,
       contentType: 'todo-list',
       getContentProps: (input) => ({
-        todos: parseTodoMarkdown(input.markdown)
+        todos: Array.isArray(input.todos) ? input.todos : parseTodoMarkdown(input.markdown)
       })
     },
     result: {
+      hideOnSuccess: true,
       type: 'collapsible',
       contentType: 'success-message',
-      getMessage: () => 'Todo list updated'
+      getMessage: () => t('common:uiText.todoListUpdated')
     }
   },
 
@@ -338,13 +339,14 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       defaultOpen: false,
       contentType: 'todo-list',
       getContentProps: (input) => ({
-        todos: parseTodoMarkdown(input.markdown)
+        todos: Array.isArray(input.todos) ? input.todos : parseTodoMarkdown(input.markdown)
       })
     },
     result: {
+      hideOnSuccess: true,
       type: 'collapsible',
       contentType: 'success-message',
-      getMessage: () => 'Todo list updated'
+      getMessage: () => t('common:uiText.todoListUpdated')
     }
   },
 
@@ -666,7 +668,7 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
         const questions = Array.isArray(input.questions) ? input.questions : [];
         const count = questions.length;
         const resultAnswers = helpers?.toolResult?.toolUseResult?.answers;
-        const answers = input.answers || resultAnswers;
+        const answers = { ...(input.answers || {}), ...(resultAnswers || {}) };
         const hasAnswers =
           answers &&
           typeof answers === 'object' &&
@@ -687,7 +689,7 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
         const resultAnswers = helpers?.toolResult?.toolUseResult?.answers;
         return {
           questions: input.questions,
-          answers: input.answers || resultAnswers || {},
+          answers: { ...(input.answers || {}), ...(resultAnswers || {}) },
         };
       },
     },

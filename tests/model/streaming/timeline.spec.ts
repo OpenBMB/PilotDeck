@@ -10,6 +10,49 @@ import type { AgentEvent } from '../../../src/agent/protocol/events.js';
 import type { GatewayEvent } from '../../../src/gateway/protocol/types.js';
 
 const base = { sessionId: 's', turnId: 'turn' };
+for (const boundary of [
+  { type: 'text_delta', text: 'Next step' },
+  { type: 'tool_call_start', id: 'call', name: 'bash' },
+  { type: 'tool_call_end', toolCall: { id: 'call', name: 'bash', input: {} } },
+  { type: 'message_end', finishReason: 'stop' },
+  { type: 'error', error: { message: 'Synthetic error' } },
+] as CanonicalModelEvent[]) test(`reasoning duration stops at ${boundary.type} and survives wire/history reload`, () => {
+  const start = Date.parse('2026-01-01T00:00:00Z');
+  let now = start;
+  const timeline = new TurnTimeline('turn', () => now);
+  const first = timeline.event({ type: 'model_event', ...base, blockId: 'thought', event: { type: 'thinking_delta', text: 'Plan' } });
+  assert.equal(first.timeline?.startedAt, new Date(start).toISOString());
+  now += 1200;
+  const delta = timeline.event({ type: 'model_event', ...base, blockId: 'thought', event: { type: 'thinking_delta', text: ' carefully' } });
+  assert.equal(delta.timeline?.startedAt, first.timeline?.startedAt, 'token updates cannot reset the clock');
+  now += 1800;
+  timeline.event({ type: 'model_event', ...base, event: boundary, blockId: boundary.type === 'text_delta' ? 'text' : undefined });
+  now += 60000;
+  const message: CanonicalMessage = { role: 'assistant', content: [{ type: 'thinking', blockId: 'thought', text: 'Plan carefully' }] };
+  const settled = timeline.event({ type: 'assistant_message', ...base, message });
+  const [wire] = mapAgentEvent(settled, 'turn');
+  const [history] = flattenCanonicalMessage(JSON.parse(JSON.stringify(message)), { index: 0, sessionKey: 's' });
+  assert.equal(wire.timeline?.durationMs, 3000);
+  assert.equal(history.timeline?.durationMs, 3000);
+  assert.equal(history.timeline?.startedAt, first.timeline?.startedAt);
+});
+
+test('each reasoning block has its own clock across retries', () => {
+  let now = 1000;
+  const timeline = new TurnTimeline('turn', () => now);
+  timeline.event({ type: 'model_event', ...base, blockId: 'a', event: { type: 'thinking_delta', text: 'First' } });
+  now += 2500;
+  timeline.event({ type: 'model_request_started', ...base, model: 'test', provider: 'test' });
+  now += 10000;
+  timeline.event({ type: 'model_event', ...base, blockId: 'b', event: { type: 'thinking_delta', text: 'Second' } });
+  now += 500;
+  const message: CanonicalMessage = { role: 'assistant', content: [
+    { type: 'thinking', blockId: 'a', text: 'First' }, { type: 'thinking', blockId: 'b', text: 'Second' },
+  ] };
+  timeline.message(message);
+  assert.deepEqual(message.content.map(block => block.timeline?.durationMs), [2500, 500]);
+});
+
 test('the assembler, wire stream, and transcript share contiguous order and exact block identity', () => {
   const timeline = new TurnTimeline('turn');
   const assembler = createModelMessageAssemblerState('attempt');

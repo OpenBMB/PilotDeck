@@ -8,6 +8,19 @@ C:\research\notes\table.tex
 $\text{test}$` + '\n\tactual tab\r\nactual CRLF';
 
 describe('chat message content fidelity', () => {
+  it('preserves authoritative reasoning timing independently of history timestamps', () => {
+    const msg: NormalizedMessage = {
+      id: 'thought', sessionId: 's', runId: 'turn', timestamp: '2026-01-01T01:00:00Z', provider: 'pilotdeck',
+      kind: 'thinking', content: 'Plan', streamState: 'closed',
+      timeline: { version: 1, turnId: 'turn', id: 'thought', order: 0, revision: 2,
+        startedAt: '2026-01-01T00:00:00Z', durationMs: 4200 },
+    };
+    expect(normalizedToChatMessages([JSON.parse(JSON.stringify(msg))])[0]).toMatchObject({
+      isStreaming: false, startedAt: msg.timeline!.startedAt, durationMs: 4200,
+    });
+    expect(normalizedToChatMessages([{ ...msg, timeline: undefined }])[0].durationMs).toBeUndefined();
+  });
+
   it.each([
     ['user', 'text', 'user-1'], ['assistant', 'text', 'assistant-1'],
     ['assistant', 'stream_delta', '__streaming_assistant_1'],

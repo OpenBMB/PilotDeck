@@ -7,10 +7,27 @@ import { createTestI18n } from '../../i18n/testInstance';
 import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
 import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage } from '../chat/types/types';
-import SubagentDetailMessageFlow from './SubagentDetailMessageFlow';
 import * as api from '../../utils/api';
+import SubagentDetailMessageFlow from './SubagentDetailMessageFlow';
 
 const baseTime = Date.parse('2026-05-18T08:00:00.000Z');
+
+it('shows child file preparation before dispatch and retires it when the actual call appears', async () => {
+  const i18n = await createTestI18n('zh-CN');
+  const preparing: ChatMessage = { id: 'preparing', type: 'system', timestamp: baseTime, isAgentActivity: true,
+    activityId: 'file-input:child', phase: 'file_input', state: 'running', toolId: 'write', toolName: 'write_file',
+    fileInputProgress: { filePath: 'src/example.ts', receivedBytes: 2048 } };
+  const view = (messages: ChatMessage[]) => <I18nextProvider i18n={i18n}><FindShortcutProvider activeScope="chat">
+    <SubagentDetailMessageFlow messages={messages} provider="pilotdeck" selectedProject={null} createDiff={() => []} isRunning />
+  </FindShortcutProvider></I18nextProvider>;
+  const result = render(view([preparing]));
+  expect(screen.getByText('正在生成文件内容')).toBeTruthy();
+  expect(screen.getByText('已接收 2.0 KB')).toBeTruthy();
+  result.rerender(view([preparing, { id: 'write', type: 'assistant', content: '', timestamp: baseTime + 1,
+    isToolUse: true, toolId: 'write', toolName: 'write_file', toolInput: { file_path: 'src/example.ts', content: 'File content' } }]));
+  expect(result.container.querySelector('[data-file-input-status]')).toBeNull();
+  expect(screen.getByText('example.ts')).toBeTruthy();
+});
 
 beforeAll(() => {
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => (
@@ -115,7 +132,7 @@ it.each(['generate_image', 'edit_image'])('loads a live %s result before the chi
     expect(surface?.getAttribute('aria-busy')).toBe('false');
     expect(fetchImage).toHaveBeenCalledTimes(1);
     expect(fetchImage).toHaveBeenCalledWith('/api/image-generation/%2Fproject%3A%3Asub%3A%3Achild/image-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(screen.getByText('Continuing the subtask.')).toBeTruthy();
+    expect(await screen.findByText('Continuing the subtask.')).toBeTruthy();
   } finally {
     fetchImage.mockRestore(); URL.createObjectURL = previousCreate; URL.revokeObjectURL = previousRevoke;
   }
@@ -138,7 +155,7 @@ describe('SubagentDetailMessageFlow', () => {
     ]);
 
     const thinkingText = await screen.findByText('Choose the smallest patch.');
-    const status = screen.getByRole('status');
+    const status = document.querySelector('.tool-call') as HTMLElement;
 
     expect(screen.getAllByText('Choose the smallest patch.')).toHaveLength(1);
     expect(Boolean(thinkingText.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -155,28 +172,16 @@ describe('SubagentDetailMessageFlow', () => {
     expect(screen.getAllByText('Standalone thought two.')).toHaveLength(1);
   });
 
-  it('keeps completed subagent thinking in its own rows outside tool status details', () => {
-    renderFlow([
-      assistant('a-1', 'I will inspect the issue.', 100),
-      thinking('think-1', 'Completed thought one.', 200),
-      thinking('think-2', 'Completed thought two.', 300),
-      tool('read-1', 'Read', 400),
-    ], false);
-
-    expect(screen.getAllByRole('button', { name: /Thought process|思考过程/i })).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /Explored 1 file|已探索 1 个文件/i }));
-
-    const status = screen.getByRole('status');
-    const processRow = status.closest('.process-live-status');
-
-    expect(screen.getAllByText('Completed thought one.')).toHaveLength(1);
-    expect(screen.getAllByText('Completed thought two.')).toHaveLength(1);
-    expect(processRow?.textContent).not.toContain('Completed thought one.');
-    expect(processRow?.textContent).not.toContain('Completed thought two.');
-    expect(status.textContent).not.toContain('Completed thought one.');
-    expect(status.textContent).not.toContain('Completed thought two.');
-    expect(screen.queryByText('Thought through next step')).toBeNull();
-    expect(screen.getByText(/Explored 1 file|已探索 1 个文件/i)).toBeTruthy();
+  it('groups completed thinking and tools together while preserving the individual disclosures', () => {
+    renderFlow([assistant('a-1', 'I will inspect the issue.'), thinking('think-1', 'Completed thought one.'),
+      thinking('think-2', 'Completed thought two.'), tool('read-1', 'Read'), assistant('done', 'Finished')], false);
+    fireEvent.click(document.querySelector('[data-turn-process-header] button') as HTMLButtonElement);
+    const toggle = document.querySelector('[data-process-block] > button') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(screen.getAllByRole('button', { name: /Finished thinking|已思考/i })).toHaveLength(2);
+    expect(document.querySelectorAll('.tool-call')).toHaveLength(1);
+    expect(screen.getByText('Finished')).toBeTruthy();
   });
 
   it('opens local search and highlights subagent message content', async () => {
@@ -221,7 +226,6 @@ it('passes subagent lifecycle state to normalized tool cards and updates it with
     </I18nextProvider>
   );
   const view = render(pane(true));
-  fireEvent.click(view.container.querySelector('.process-live-status button[aria-expanded]') as HTMLButtonElement);
   fireEvent.click(view.container.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement);
   expect(screen.getByRole('button', { name: 'Running Build app' })).toBeTruthy();
   expect(screen.getAllByText('Running…').length).toBeGreaterThan(0);
@@ -244,4 +248,61 @@ it('passes subagent lifecycle state to normalized tool cards and updates it with
   expect(screen.getByText('Build complete.')).toBeTruthy();
   expect(screen.getByText('Success')).toBeTruthy();
   expect(screen.queryByText('Running…')).toBeNull();
+});
+
+it('places child file results after trailing tools and outside the process disclosure', () => {
+  const messages: ChatMessage[] = [
+    { ...assistant('child-progress', 'Checking generated files.'), turnId: 'child-turn', artifacts: [{
+      id: 'child-report', name: 'child.txt', path: 'child.txt', operation: 'created', source: 'workspace_diff',
+      status: 'incomplete', size: 42, sha256: 'a'.repeat(64), createdAt: timestamp(100),
+    }] },
+    { ...tool('child-verify', 'run_command'), turnId: 'child-turn', toolResult: { content: 'verified' } },
+  ];
+  const view = renderFlow(messages, false);
+  const card = screen.getByTestId('turn-changes-card');
+  const work = view.container.querySelector('[data-process-block]')!;
+  expect(work.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(card.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
+});
+
+it('keeps a recovering intermediate video visible after the child turn stops', () => {
+  const call: ChatMessage = { ...tool('child-video', 'generate_video'), toolInput: { purpose: 'intermediate' },
+    toolResult: { isError: true, content: 'Wait stopped' }, videoJob: { id: 'job', sessionId: 'child', toolCallId: 'child-video',
+      purpose: 'intermediate', state: 'reconnecting' } };
+  const view = renderFlow([call], false);
+  const surface = view.container.querySelector('.generated-image-surface')!;
+  expect(surface.getAttribute('aria-busy')).toBe('true');
+  expect(surface.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
+});
+
+it('shows the model-call spinner after a child tool finishes and hides it during output', () => {
+  const pending = tool('child-model-tool', 'Read');
+  const view = (messages: ChatMessage[]) => <FindShortcutProvider activeScope="chat">
+    <SubagentDetailMessageFlow messages={messages} provider="pilotdeck" selectedProject={null} createDiff={() => []} isRunning />
+  </FindShortcutProvider>;
+  const result = render(view([pending]));
+  const status = () => result.container.querySelector('[data-process-status="subagent-model-call"]');
+  expect(status()).toBeNull();
+  const finished = { ...pending, toolResult: { content: 'Read complete.' } };
+  result.rerender(view([finished, thinking('child-model-thought', 'Verify the result.')]));
+  expect(status()?.textContent).toContain('Calling model...');
+  expect(status()?.querySelector('svg')?.getAttribute('class')).toContain('motion-safe:animate-spin');
+  result.rerender(view([finished, streamingThinking('Continuing the reasoning.')]));
+  expect(status()).toBeNull();
+  result.rerender(view([finished, { ...assistant('child-model-reply', 'Done.'), isStreaming: true }]));
+  expect(status()).toBeNull();
+});
+
+it('keeps manually expanded child tool details visible after the child replies', () => {
+  const call = { ...tool('child-inspect', 'Read'), toolResult: { content: 'Inspectable file contents' } };
+  const element = (messages: ChatMessage[], running: boolean) => <FindShortcutProvider activeScope="chat">
+    <SubagentDetailMessageFlow messages={messages} provider="pilotdeck" selectedProject={null} createDiff={() => []} isRunning={running} />
+  </FindShortcutProvider>;
+  const view = render(element([call], true));
+  const toolToggle = view.container.querySelector('.tool-call > div > button')!;
+  fireEvent.click(toolToggle);
+  view.rerender(element([call, assistant('child-finished-inspection', 'Inspection complete.')], false));
+  expect(toolToggle.getAttribute('aria-expanded')).toBe('true');
+  expect(view.container.querySelector('[data-process-block] > button')?.getAttribute('aria-expanded')).toBe('true');
+  expect(view.container.querySelector('[data-turn-process-header] button')?.getAttribute('aria-expanded')).toBe('true');
 });

@@ -2,7 +2,7 @@
 import { useRef } from 'react';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useScrollFollow } from './useScrollFollow';
+import { notifyScrollLayout, useScrollFollow } from './useScrollFollow';
 
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame: number;
@@ -53,6 +53,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it('reuses the reading row across updates and reacquires it after virtual remount', () => {
+    const { node, metrics } = setup();
+    let inserted = 0;
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 750 + inserted - metrics.top, bottom: 1000 + inserted - metrics.top }) as DOMRect;
+    act(() => api.pauseAt('reading'));
+    const queries = vi.spyOn(node, 'querySelectorAll');
+    inserted = 40; metrics.height += 40;
+    resize();
+    expect(node.scrollTop).toBe(840);
+    expect(queries.mock.calls.filter(([selector]) => selector === '[data-message-key]')).toHaveLength(0);
+    const replacement = row.cloneNode(true) as HTMLElement;
+    replacement.getBoundingClientRect = row.getBoundingClientRect;
+    row.replaceWith(replacement);
+    inserted = 90; metrics.height += 50;
+    resize();
+    expect(node.scrollTop).toBe(890);
+    expect(queries.mock.calls.filter(([selector]) => selector === '[data-message-key]')).toHaveLength(1);
+    queries.mockRestore();
+  });
   it('anchors a search result inside an expanded process while content above the result resizes', () => {
     const { node, metrics } = setup();
     const process = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
@@ -129,6 +149,8 @@ describe('reader-owned scroll following', () => {
     view.rerender(<Harness enabled={false} version={1} />);
     flush();
     expect(node.scrollTop).toBe(800);
+    // Finish the initial virtual measurement frames before later content arrives.
+    flush(); flush(); flush(); flush();
     metrics.height += 100; resize(); flush();
     expect(node.scrollTop).toBe(800);
   });
@@ -146,10 +168,10 @@ describe('reader-owned scroll following', () => {
     const { node, metrics } = setup();
     fireEvent.wheel(node, { deltaY: -30 });
     node.scrollTop = 770; fireEvent.scroll(node);
-    node.scrollTop = 790; fireEvent.scroll(node);
+    fireEvent.wheel(node, { deltaY: 20 }); node.scrollTop = 790; fireEvent.scroll(node);
     resize(); flush();
     expect(node.scrollTop).toBe(790);
-    node.scrollTop = 800; fireEvent.scroll(node);
+    fireEvent.wheel(node, { deltaY: 20 }); node.scrollTop = 800; fireEvent.scroll(node);
     metrics.height += 40;
     resize(); flush();
     expect(node.scrollTop).toBe(840);
@@ -225,4 +247,73 @@ describe('reader-owned scroll following', () => {
     view.unmount();
     expect(frames.size).toBe(0);
   });
+});
+
+it.each(['resize-first', 'scroll-first'])('keeps following layout-only clamping without user input (%s)', order => {
+  const { node, metrics } = setup();
+  metrics.height = 700;
+  node.scrollTop = 500;
+  if (order === 'resize-first') { resize(); flush(); }
+  fireEvent.scroll(node);
+  metrics.height = 1200;
+  resize(); flush();
+  expect(api.isPaused).toBe(false);
+  expect(api.canReturnToLatest).toBe(false);
+  expect(node.scrollTop).toBe(1000);
+});
+
+it('ignores non-user upward scroll events after layout measurements have settled', () => {
+  const { node, metrics } = setup();
+  node.scrollTop = 680;
+  fireEvent.scroll(node);
+  resize(); flush();
+  expect(api.isPaused).toBe(false);
+  expect(node.scrollTop).toBe(metrics.height - metrics.viewport);
+});
+
+it('preserves an anchor when virtual measurements redistribute rows without resizing the content', () => {
+  const { node, metrics } = setup();
+  node.scrollTop = 500;
+  let shifted = 0;
+  const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+  row.getBoundingClientRect = () => ({ top: 750 + shifted - metrics.top, bottom: 1000 + shifted - metrics.top }) as DOMRect;
+  act(() => api.pauseAt('reading'));
+  const offset = row.getBoundingClientRect().top;
+  shifted = 4;
+  act(() => notifyScrollLayout(node));
+  expect(row.getBoundingClientRect().top).toBe(offset);
+  expect(api.isPaused).toBe(true);
+});
+
+it('settles the initial virtual tail with following disabled, then preserves the reader', () => {
+  const { node, metrics, view } = setup();
+  view.rerender(<Harness enabled={false} />);
+  act(() => api.scheduleInitialPosition());
+  flush();
+  metrics.height += 356;
+  resize(); flush();
+  expect(node.scrollTop).toBe(metrics.height - metrics.viewport);
+  flush(); flush(); flush(); flush();
+  const reading = node.scrollTop;
+  metrics.height += 100;
+  resize(); flush();
+  expect(node.scrollTop).toBe(reading);
+});
+
+it('pauses before intentional disclosure expansion and retains that ownership through layout changes', () => {
+  const { node, metrics } = setup();
+  const row = node.querySelector('[data-message-key="reading"]')!;
+  const button = document.createElement('button');
+  button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', 'details');
+  row.append(button);
+  fireEvent.click(button);
+  expect(api.isPaused).toBe(true);
+  metrics.height += 500;
+  resize(); flush();
+  expect(node.scrollTop).toBe(800);
+  act(() => api.scrollToBottom());
+  metrics.height += 50;
+  resize(); flush();
+  expect(node.scrollTop).toBe(1350);
+  expect(api.isPaused).toBe(false);
 });

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** Reveal text at the same pace on 60/120 Hz displays, draining the final tail. */
-export function useTypewriter(fullText: string, isStreaming: boolean, baseCharsPerFrame = 3): string {
-  const [displayLen, setDisplayLen] = useState(isStreaming ? 0 : fullText.length);
+export function useTypewriter(fullText: string, isStreaming: boolean, baseCharsPerFrame = 3, animateOnMount = false, restoreOnMount = false): string {
+  const [displayLen, setDisplayLen] = useState(!restoreOnMount && (isStreaming || animateOnMount) ? 0 : fullText.length);
   const lengthRef = useRef(displayLen);
-  const hasStreamedRef = useRef(isStreaming);
+  const hasStreamedRef = useRef(isStreaming || animateOnMount);
   const targetRef = useRef({ fullText, isStreaming, baseCharsPerFrame });
   targetRef.current = { fullText, isStreaming, baseCharsPerFrame };
   const frameRef = useRef<number | null>(null);

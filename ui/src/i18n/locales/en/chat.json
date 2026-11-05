@@ -1,4 +1,10 @@
 {
+  "turnNavigation": {
+    "label": "Conversation navigation",
+    "jump": "Jump to turn {{number}}",
+    "turn": "Turn {{number}}",
+    "loadEarlier": "Load earlier conversation turns"
+  },
   "context": {
     "tokenUnit": "tokens",
     "title": "Context budget",
@@ -180,6 +186,13 @@
     "waitingForWebFetch": "Fetching web content..."
   },
   "process": {
+    "group": { "details": "Work details", "running": "Working" },
+    "duration": {
+      "day": "{{count}}d",
+      "hour": "{{count}}h",
+      "minute": "{{count}}m",
+      "second": "{{count}}s"
+    },
     "summary": {
       "processed": "Processed {{duration}}",
       "completed": "Process completed",
@@ -203,6 +216,9 @@
       "searches": "Searched {{count}} times",
       "searches_one": "Searched {{count}} time",
       "searches_other": "Searched {{count}} times",
+      "webFetches": "Fetched {{count}} pages",
+      "webFetches_one": "Fetched {{count}} page",
+      "webFetches_other": "Fetched {{count}} pages",
       "commands": "Ran {{count}} commands",
       "commands_one": "Ran {{count}} command",
       "commands_other": "Ran {{count}} commands",
@@ -266,9 +282,23 @@
     "selectedOption": "✓ PilotDeck selected option {{number}}",
     "instructionDetail": "In the CLI, you would select this option interactively using arrow keys or by typing the number."
   },
+  "filePreparation": {
+    "write": "Generating file content",
+    "edit": "Preparing file changes",
+    "received": "{{kilobytes}} KB received"
+  },
+  "imagePreview": {
+    "label": "Preview image",
+    "named": "Preview {{name}}",
+    "uploaded": "Uploaded image",
+    "toolResult": "Tool result image"
+  },
   "thinking": {
     "title": "Thinking...",
     "completed": "Thought process",
+    "finished": "Finished thinking",
+    "runningDuration": "Thinking for {{count}}s",
+    "completedDuration": "Thought for {{count}}s",
     "emoji": "💭 Thinking...",
     "liveContentLabel": "Live thinking content"
   },
@@ -559,6 +589,7 @@
       "sessionMessages": "Loading session messages..."
     },
     "messages": {
+      "loadFailed": "Unable to load earlier messages.",
       "showingOf": "Showing {{shown}} of {{total}} messages",
       "scrollToLoad": "Scroll up to load more",
       "showingLast": "Showing last {{visibleCount}} of {{total}}",
@@ -757,6 +788,12 @@
   },
   "toolDisplay": {
     "copyCommand": "Copy command",
+    "previewLines": "Showing {{count}} of {{total}} lines",
+    "moreLines": "Show more lines",
+    "largeChangePreview": "Large change: showing a content preview. Full file content is available to copy.",
+    "longLinePreview": "Long lines are shortened in this preview. Copy to get the full content.",
+    "tool": "Tool",
+    "duration": "{{seconds}}s",
     "collapse": "Limit height",
     "full": "Expand fully",
     "copy": "Copy",
@@ -764,6 +801,7 @@
     "output": "Output",
     "success": "Success",
     "failed": "Failed",
+    "fetchFailed": "Fetch failed",
     "exitCode": "Exit {{code}}",
     "executing": "Running…",
     "actionRequired": "Action required",
@@ -779,6 +817,7 @@
       "read": "Reading",
       "search": "Searching",
       "tool": "Using",
+      "fetch": "Fetching",
       "skill": "Reading skill"
     },
     "pending": {
@@ -788,6 +827,7 @@
       "read": "Read",
       "search": "Search",
       "tool": "Tool",
+      "fetch": "Fetch",
       "skill": "Read skill"
     },
     "done": {
@@ -797,6 +837,7 @@
       "read": "Read",
       "search": "Searched",
       "tool": "Used",
+      "fetch": "Fetched",
       "skill": "Read skill"
     }
   },

@@ -10,8 +10,20 @@ export function ToolDetails({ title, copyContent, copyLabel, children, footer }:
   const [copied, setCopied] = useState(false);
   const [full, setFull] = useState(false);
   const [overflows, setOverflows] = useState(false);
+  const [naturalHeight, setNaturalHeight] = useState(320);
   const viewport = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   useEffect(() => setCopied(false), [copyContent]);
+  useLayoutEffect(() => {
+    const element = content.current;
+    if (!element) return;
+    const measure = () => setNaturalHeight(Math.ceil(element.getBoundingClientRect().height) + 12);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [children]);
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element || full) return;
@@ -33,8 +45,10 @@ export function ToolDetails({ title, copyContent, copyLabel, children, footer }:
           </button>}
         </div>
       </header>
-      <div ref={viewport} role="region" tabIndex={0} aria-label={t('toolDisplay.details')} className={`overflow-auto overscroll-contain px-3.5 pb-3 text-[12px] leading-5 focus-visible:outline-[var(--pd-accent,#8b5cf6)] ${full ? '' : 'max-h-80'}`}>
-        {children}
+      <div ref={viewport} role="region" tabIndex={0} aria-label={t('toolDisplay.details')}
+        style={{ maxHeight: full ? Math.max(320, naturalHeight) : 320, scrollbarGutter: 'stable' }}
+        className="overflow-auto overscroll-contain px-3.5 pb-3 text-[12px] leading-5 transition-[max-height] duration-200 ease-out focus-visible:outline-[var(--pd-accent,#8b5cf6)] motion-reduce:transition-none">
+        <div ref={content} className="flow-root min-w-0">{children}</div>
       </div>
       {footer && <footer className="flex justify-end gap-2 px-3.5 pb-2.5 text-xs text-neutral-500 dark:text-neutral-400">{footer}</footer>}
     </section>

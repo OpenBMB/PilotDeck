@@ -4,6 +4,10 @@
     "label": "Interface zoom",
     "reset": "Reset"
   },
+  "keyboard": {
+    "enter": "Enter",
+    "escape": "Esc"
+  },
   "buttons": {
     "save": "Save",
     "cancel": "Cancel",
@@ -759,6 +763,10 @@
     },
     "tasksCompleted": "{{completed}}/{{total}} completed",
     "updatingTodos": "Updating todo list",
+    "todoList": "Todo list",
+    "todoListUpdated": "Todo list updated",
+    "toolDetails": "Details",
+    "todoProgress": "{{completed}}/{{count}} completed",
     "taskList": "Task list",
     "taskDetails": "Task details",
     "subagentResult": "Subagent result",
@@ -823,7 +831,10 @@
     "questionsCount_one": "{{count}} question",
     "questionsCount_other": "{{count}} questions",
     "reloadInterface": "Reload interface",
-    "chatLayoutError": "Messages could not be displayed. Try reloading the interface."
+    "chatLayoutError": "Messages could not be displayed. Try reloading the interface.",
+    "questionAnswered": "Answered",
+    "answersProgress": "Answered {{answered}}/{{count}}",
+    "questionTool": "Questions"
   },
   "confirmDialog": {
     "title": "Confirm action",

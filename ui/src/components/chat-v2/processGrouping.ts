@@ -1,10 +1,9 @@
-import { isVideoDeliverable } from '../chat/tools/videoPresentation';
 import type { TFunction } from 'i18next';
+import { isMediaGeneration, isMediaSurfaceVisible } from '../chat/tools/mediaPresentation';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
-import { isReadOnlyModeToolDeny } from '../chat/utils/chatPermissions';
+import { isToolPermissionError } from '../chat/utils/chatPermissions';
 import type { ProcessTraceMetric, ProcessTraceStep } from './ProcessTrace';
 import { formatProcessDuration } from './processTraceUtils';
-import { isImageDeliverable } from '../chat/tools/imagePresentation';
 
 export type ProcessAttachmentImage = {
   data: string;
@@ -41,10 +40,31 @@ export type ProcessRunAttachment = {
   endIndex: number;
 };
 
+export type TurnProcessGroup = {
+  id: string;
+  isRunning: boolean;
+  defaultExpanded: boolean;
+  durationMs: number | null;
+  hasRecordedDuration?: boolean;
+  outcome?: 'completed' | 'cancelled' | 'failed';
+  startedAt?: string;
+  memberIds: string[];
+};
+
 export type RenderableMessageItem = {
+  /** One file result surface at the end of the turn, outside process disclosures. */
+  turnFiles?: { turnId?: string; artifacts: NonNullable<ChatMessage['artifacts']>; visible: boolean };
   /** A separate media surface; the original tool call remains in the process. */
   mediaArtifact?: true;
-  turnTrace?: { id: string; durationMs: number; items: RenderableMessageItem[] };
+  /** Pending generation is shown for assets too; completed assets fold away. */
+  mediaExpanded?: boolean;
+  turnTrace?: { id: string; isLive: boolean; defaultExpanded: boolean; items: RenderableMessageItem[] };
+  /** One shared disclosure owns all process seats in this user turn. */
+  processRun?: TurnProcessGroup;
+  /** The latest prose/artifact reply remains visible when the turn folds. */
+  processOutput?: boolean;
+  beforeTurnProcess?: TurnProcessGroup;
+  afterTurnProcess?: TurnProcessGroup;
   message: ChatMessage;
   originalIndex: number;
   beforeRunAttachment: ProcessRunAttachment | null;
@@ -93,6 +113,7 @@ type ProcessCounts = {
   editedTargets: string[];
   readTargets: string[];
   searchCount: number;
+  fetchCount: number;
   commandCount: number;
   subagentCount: number;
   compactCount: number;
@@ -104,6 +125,7 @@ type ProcessCounts = {
 
 const USER_VISIBLE_TOOL_NAMES = new Set([
   'AskUserQuestion',
+  'ask_user_question',
   'ExitPlanMode',
   'ExitPlanModeV2',
   'exit_plan_mode',
@@ -304,37 +326,7 @@ function hasToolError(message: ChatMessage): boolean {
 }
 
 function isPermissionToolError(message: ChatMessage): boolean {
-  if (!message.toolResult?.isError) {
-    return false;
-  }
-  if (isReadOnlyModeToolDeny(message)) {
-    return false;
-  }
-
-  const errorCode = typeof message.toolResult.errorCode === 'string'
-    ? message.toolResult.errorCode
-    : '';
-  if (
-    errorCode === 'permission_denied' ||
-    errorCode === 'permission_required' ||
-    errorCode === 'permission_cancelled'
-  ) {
-    return true;
-  }
-
-  const content = typeof message.toolResult.content === 'string'
-    ? message.toolResult.content
-    : '';
-  const lower = content.toLowerCase();
-  return (
-    lower.includes('permission') &&
-    (
-      lower.includes('denied') ||
-      lower.includes('not allowed') ||
-      lower.includes('requires') ||
-      lower.includes('grant')
-    )
-  );
+  return isToolPermissionError(message);
 }
 
 function isUserVisibleTool(message: ChatMessage): boolean {
@@ -424,7 +416,7 @@ function isCollapsibleCompletedProcessMessage(message: ChatMessage): boolean {
 
 export function getProcessToolKind(
   message: ChatMessage,
-): 'edit' | 'read' | 'search' | 'command' | 'subagent' | 'compact' | 'thinking' | 'tool' {
+): 'edit' | 'read' | 'search' | 'fetch' | 'command' | 'subagent' | 'compact' | 'thinking' | 'tool' {
   if (message.isCompactBoundary) return 'compact';
   if (message.isThinking) return 'thinking';
   if (message.isSubagentContainer || message.toolName === 'Task' || message.isTaskNotification) {
@@ -432,6 +424,7 @@ export function getProcessToolKind(
   }
 
   const toolName = String(message.toolName || '').toLowerCase();
+  if (isWebFetchToolMessage(message)) return 'fetch';
   if (/edit|write|applypatch|patch|update|create|modify|multi_edit|multiedit/.test(toolName)) {
     return 'edit';
   }
@@ -457,6 +450,7 @@ function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
     editedTargets: [],
     readTargets: [],
     searchCount: 0,
+    fetchCount: 0,
     commandCount: 0,
     subagentCount: 0,
     compactCount: 0,
@@ -466,7 +460,13 @@ function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
     toolErrorCount: 0,
   };
 
+  const seenCalls = new Set<string>();
   for (const message of messages) {
+    const identity = `${message.turnId || message.runId || ''}:${message.toolId || message.toolCallId || message.id || ''}`;
+    if ((message.isToolUse || message.toolName) && identity) {
+      if (seenCalls.has(identity)) continue;
+      seenCalls.add(identity);
+    }
     if (message.isToolUse || message.toolName) {
       counts.toolCallCount += 1;
     }
@@ -481,6 +481,8 @@ function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
       counts.readTargets.push(getToolTarget(message));
     } else if (kind === 'search') {
       counts.searchCount += 1;
+    } else if (kind === 'fetch') {
+      counts.fetchCount += 1;
     } else if (kind === 'command') {
       counts.commandCount += 1;
     } else if (kind === 'subagent') {
@@ -518,6 +520,8 @@ function getTurnEndIndex(messages: ChatMessage[], turn: MessageTurn): number {
 }
 
 function getTurnRunDurationMs(messages: ChatMessage[], turn: MessageTurn): number | null {
+  const timing = getRecordedTurnTiming(messages.slice(turn.start, turn.end));
+  if (timing) return timing.durationMs;
   const summaryDuration = turn.summary?.message.durationMs;
   if (typeof summaryDuration === 'number' && Number.isFinite(summaryDuration)) {
     return Math.max(0, summaryDuration);
@@ -530,6 +534,23 @@ function getTurnRunDurationMs(messages: ChatMessage[], turn: MessageTurn): numbe
   const endedAt = summaryEnd ?? messages[fallbackEndIndex]?.timestamp;
   const durationMs = getDurationMs(startedAt, endedAt);
   return durationMs > 0 ? durationMs : null;
+}
+
+function getRecordedTurnTiming(messages: ChatMessage[]): { startedAt: number; completedAt: number; durationMs: number } | null {
+  const bounds = messages.flatMap(message => {
+    const startedAt = parseMessageTime(message.turnTiming?.startedAt);
+    const completedAt = parseMessageTime(message.turnTiming?.completedAt);
+    return startedAt !== null && completedAt !== null && completedAt >= startedAt ? [{ startedAt, completedAt }] : [];
+  });
+  if (!bounds.length) return null;
+  bounds.sort((a, b) => a.startedAt - b.startedAt);
+  let completedAt = bounds[0].startedAt;
+  let durationMs = 0;
+  for (const bound of bounds) {
+    durationMs += Math.max(0, bound.completedAt - Math.max(completedAt, bound.startedAt));
+    completedAt = Math.max(completedAt, bound.completedAt);
+  }
+  return { startedAt: bounds[0].startedAt, completedAt, durationMs };
 }
 
 function hasCompletedTurnWork(messages: ChatMessage[], turn: MessageTurn): boolean {
@@ -555,6 +576,7 @@ function hasAgentActivitySummaryDetails(message: ChatMessage): boolean {
     'toolCallCount',
     'toolErrorCount',
     'ragSearchCount',
+    'webFetchCount',
     'editedFileCount',
     'exploredFileCount',
     'commandCount',
@@ -606,6 +628,7 @@ function createSyntheticProcessSummary(
     toolCallCount: counts.toolCallCount,
     toolErrorCount: counts.toolErrorCount,
     ragSearchCount: counts.searchCount,
+    webFetchCount: counts.fetchCount,
     editedFileCount: uniqueCount(counts.editedTargets),
     exploredFileCount: uniqueCount(counts.readTargets),
     commandCount: counts.commandCount,
@@ -772,11 +795,12 @@ export function buildRenderableMessageItems(
     if (message.isAgentActivitySummary) {
       return;
     }
-    const liveVideo = Boolean(liveTurn && originalIndex >= liveTurn.start && originalIndex < liveTurn.end);
-    if (isImageDeliverable(message) || (isVideoDeliverable(message) && (message.toolResult || message.videoJob || liveVideo))) {
+    const inLiveTurn = Boolean(liveTurn && originalIndex >= liveTurn.start && originalIndex < liveTurn.end);
+    if (isMediaGeneration(message)) {
       const callKey = message.toolId || message.toolCallId || message.id || String(originalIndex);
       syntheticItems.push({
         mediaArtifact: true,
+        mediaExpanded: isMediaSurfaceVisible(message, inLiveTurn),
         message: { ...message, renderKey: `media-artifact-${callKey}` },
         originalIndex: originalIndex + 0.001,
         beforeRunAttachment: null, afterRunAttachment: null,
@@ -923,75 +947,150 @@ export function buildRenderableMessageItems(
     .sort((a, b) => a.originalIndex - b.originalIndex);
 }
 
-/** Fold only completed turns with a final answer. Keep interrupted/unfinished work visible. */
-export function foldCompletedTurns(
+/** Preserve interleaved seats; the enclosing turn disclosure hides intermediate work and prose together. */
+export function groupProcessIntervals(
   messages: ChatMessage[],
   items: RenderableMessageItem[],
   isAssistantWorking: boolean,
 ): RenderableMessageItem[] {
+  const result: RenderableMessageItem[] = [];
+  const mediaByIndex = new Map<number, RenderableMessageItem[]>();
+  const existingByMessage = new Map<ChatMessage, RenderableMessageItem>();
+  for (const item of items) {
+    if (item.mediaArtifact) {
+      const index = Math.floor(item.originalIndex);
+      const surfaces = mediaByIndex.get(index) ?? [];
+      surfaces.push(item);
+      mediaByIndex.set(index, surfaces);
+    } else existingByMessage.set(item.message, item);
+  }
+  const clean = (message: ChatMessage, originalIndex: number): RenderableMessageItem => ({
+    message, originalIndex, beforeRunAttachment: null, afterRunAttachment: null,
+    beforeProcessAttachments: [], afterProcessAttachments: [],
+  });
+  let pending: RenderableMessageItem[] = [];
+  let turnKey = 'history';
+  const flush = (closed: boolean, live = false) => {
+    if (!pending.length) return;
+    const first = pending[0];
+    const id = `process-block-${turnKey}-${String(first.message.renderKey || first.message.compactionId || first.message.toolId || first.message.toolCallId || first.message.id || first.originalIndex)}`;
+    result.push({ ...clean({ id, renderKey: id, type: 'assistant', content: '', timestamp: first.message.timestamp }, first.originalIndex),
+      turnTrace: { id, isLive: live, defaultExpanded: !closed, items: pending } });
+    pending = [];
+  };
+  messages.forEach((message, index) => {
+    if (message.isAgentActivity || message.isAgentActivitySummary || isEmptyAssistantShell(message)) return;
+    const work = message.isThinking || isProcessMessage(message)
+      || (message.isToolUse && !isUserVisibleTool(message) && isPermissionToolError(message));
+    if (work) {
+      pending.push(clean(message, index));
+      // Delivered media stays visible even when the surrounding work closes.
+      result.push(...(mediaByIndex.get(index) ?? []));
+      return;
+    }
+    flush(message.type !== 'error' && !message.isInterruptedNotice);
+    if (message.type === 'user') turnKey = String(message.renderKey || message.id || index);
+    const existing = existingByMessage.get(message);
+    result.push({ ...clean(message, index),
+      beforeRunAttachment: existing?.beforeRunAttachment ?? null,
+      afterRunAttachment: existing?.afterRunAttachment ?? null });
+  });
+  flush(false, isAssistantWorking);
+  // Media may have arrived while a group was still accumulating. Preserve chronology.
+  const grouped = attachTurnProcessGroups(messages, result.sort((a, b) => a.originalIndex - b.originalIndex), isAssistantWorking);
+  for (const item of grouped) {
+    if (item.turnTrace && item.processRun?.defaultExpanded && item.turnTrace.items.some(child => isPermissionToolError(child.message))) {
+      item.turnTrace.defaultExpanded = true;
+    }
+  }
+  return grouped;
+}
+
+export function getTurnProcessMemberId(item: RenderableMessageItem): string {
+  return String(item.turnTrace?.id || item.message.renderKey || item.message.compactionId
+    || item.message.toolId || item.message.toolCallId || item.message.id || item.originalIndex);
+}
+
+export function turnProcessKey(scope: string, group: TurnProcessGroup) {
+  return `${scope}:${group.id}`;
+}
+
+export function turnProcessRegionId(scope: string, group: TurnProcessGroup, member: string) {
+  return `turn-process-region-${encodeURIComponent(`${scope}:${group.id}:${member}`)}`;
+}
+
+/** Keep process seats in place while their turn-level header controls visibility. */
+function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessageItem[], working: boolean) {
   const turns = createMessageTurns(messages);
   attachSummariesToTurns(messages, turns);
-  const result: RenderableMessageItem[] = [];
-  let itemCursor = 0;
+  let cursor = 0;
   for (const [turnIndex, turn] of turns.entries()) {
     const turnItems: RenderableMessageItem[] = [];
-    while (itemCursor < items.length && items[itemCursor].originalIndex < turn.end) {
-      turnItems.push(items[itemCursor++]);
-    }
+    while (cursor < items.length && items[cursor].originalIndex < turn.end) turnItems.push(items[cursor++]);
+    if (!turnItems.length) continue;
     const raw = messages.slice(turn.start, turn.end);
-    const last = [...raw].reverse().find((message) =>
-      !message.isAgentActivity && !message.isAgentActivitySummary && !message.isCompactBoundary
-      && !isEmptyAssistantShell(message),
-    );
-    const finalItem = turnItems.find((item) => item.message === last);
-    const abnormal = raw.some((message) => message.type === 'error' || message.isInterruptedNotice
-      || message.isInteractivePrompt || message.isStreaming
-      || (message.isCompactBoundary && message.compactState === 'running')
-      || (message.isAgentActivitySummary && message.state && message.state !== 'completed'));
-    const hasFinal = last?.type === 'assistant' && !last.isThinking && !last.isToolUse
-      && !last.isSubagentContainer && !last.isTaskNotification
+    const reversed = [...raw].reverse();
+    const running = working && turnIndex === turns.length - 1;
+    const artifacts = raw.flatMap(message => message.artifacts ?? []);
+    const fileHost = reversed.find(message => message.type === 'assistant' && (message.turnId || message.runId))
+      || reversed.find(message => message.turnId || message.runId);
+    const turnId = fileHost?.turnId || fileHost?.runId;
+    if (turnId || artifacts.length) {
+      turnItems[turnItems.length - 1].turnFiles = { turnId, artifacts, visible: !running };
+    }
+    const last = reversed.find(message => !message.isAgentActivity && !message.isAgentActivitySummary
+      && !message.isCompactBoundary && !isEmptyAssistantShell(message));
+    const reason = reversed.find(message => message.turnTiming?.finishReason)?.turnTiming?.finishReason;
+    const summaryState = turn.summary?.message.state;
+    const outcome: TurnProcessGroup['outcome'] = reason ? reason === 'completed' ? 'completed'
+      : reason.startsWith('aborted') ? 'cancelled' : 'failed'
+      : summaryState === 'completed' ? 'completed'
+      : summaryState === 'cancelled' || raw.some(message => message.isInterruptedNotice) ? 'cancelled'
+      : summaryState === 'failed' || raw.some(message => message.type === 'error') ? 'failed' : undefined;
+    const interrupted = outcome === 'cancelled' || outcome === 'failed';
+    const finalReply = last?.type === 'assistant' && !last.isThinking && !last.isToolUse
+      && !last.isSubagentContainer && !last.isInteractivePrompt && !last.isTaskNotification && !last.isStreaming
       && (Boolean(last.content?.trim()) || Boolean(last.artifacts?.length));
-    if ((isAssistantWorking && turnIndex === turns.length - 1) || abnormal || !hasFinal || !finalItem) {
-      result.push(...turnItems);
-      continue;
-    }
-    const clean = (item: RenderableMessageItem): RenderableMessageItem => ({
-      ...item, beforeRunAttachment: null, afterRunAttachment: null,
-      beforeProcessAttachments: [], afterProcessAttachments: [],
+    const completed = !running && !interrupted && (finalReply || turn.summary?.message.state === 'completed');
+    const isReply = (item: RenderableMessageItem) => item.message.type === 'assistant' && !item.mediaArtifact && !item.turnTrace
+      && !item.message.isThinking && !item.message.isToolUse && !item.message.isSubagentContainer
+      && !item.message.isInteractivePrompt && !item.message.isTaskNotification
+      && !item.message.isInterruptedNotice && !item.message.isAgentActivity && !item.message.isAgentActivitySummary;
+    const output = [...turnItems].reverse().find(isReply);
+    const seats = turnItems.filter(item => {
+      if (item.mediaArtifact || item.message.type === 'error' || item.message.isInterruptedNotice) return false;
+      if (item.turnTrace) return true;
+      if (isReply(item)) return true;
+      // Pending questions/approvals and permission actions must remain reachable.
+      if (!completed && isPermissionToolError(item.message)) return false;
+      if (isUserVisibleTool(item.message) && !item.message.toolResult) return false;
+      return Boolean(item.message.isThinking || item.message.isToolUse || item.message.isSubagentContainer
+        || (item.message.isInteractivePrompt && completed)
+        || item.message.isTaskNotification || item.message.isCompactBoundary);
     });
-    const traceItems: RenderableMessageItem[] = [];
-    const mediaItems = turnItems.filter(item => item.mediaArtifact);
-    for (const item of turnItems) {
-      // Only the media surface stays outside. Every original tool call,
-      // including delivered images and videos, remains available in the trace.
-      if (mediaItems.includes(item)) continue;
-      if (item.message.type !== 'user' && item !== finalItem) {
-        traceItems.push({ ...item, beforeRunAttachment: null, afterRunAttachment: null });
-      } else if (item.beforeProcessAttachments.length || item.afterProcessAttachments.length) {
-        // Process summaries may be hosted on either the user or the final answer.
-        // Move these into the trace while leaving the final answer/artifacts intact.
-        traceItems.push({
-          ...item, beforeRunAttachment: null, afterRunAttachment: null,
-          message: { id: `trace-attachments-${item.message.id}`, type: 'assistant', content: '', timestamp: item.message.timestamp },
-        });
-      }
+    const members = seats.filter(item => item !== output);
+    const durationMs = getTurnRunDurationMs(messages, turn);
+    const timing = getRecordedTurnTiming(raw);
+    if (!running && !seats.length && durationMs === null) continue;
+    const anchor = messages[turn.start];
+    const startedAtMs = parseMessageTime(anchor.timestamp);
+    const group: TurnProcessGroup = {
+      id: `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}`,
+      isRunning: running, defaultExpanded: !completed, durationMs,
+      outcome,
+      hasRecordedDuration: Boolean(timing) || (typeof turn.summary?.message.durationMs === 'number' && Number.isFinite(turn.summary.message.durationMs)),
+      startedAt: timing ? new Date(timing.startedAt).toISOString() : turn.summary?.message.startedAt || (startedAtMs !== null ? new Date(startedAtMs).toISOString() : undefined),
+      memberIds: members.map(getTurnProcessMemberId),
+    };
+    for (const item of turnItems) { item.beforeRunAttachment = null; item.afterRunAttachment = null; }
+    for (const item of seats) { item.processRun = group; item.processOutput = item === output; }
+    if (running || members.length || durationMs !== null) {
+      const user = turnItems.find(item => item.message.type === 'user');
+      if (user) user.afterTurnProcess = group;
+      else turnItems[0].beforeTurnProcess = group;
     }
-    if (!traceItems.length) {
-      result.push(...turnItems);
-      continue;
-    }
-    const id = `turn-trace-${getStableMessagePart(messages[turn.start], String(turn.start))}`;
-    result.push(...turnItems.filter((item) => item.message.type === 'user').map(clean));
-    result.push({
-      ...clean(finalItem),
-      originalIndex: turn.start + 0.01,
-      message: { id, type: 'assistant', content: '', timestamp: last!.timestamp },
-      turnTrace: { id, durationMs: getTurnRunDurationMs(messages, turn) ?? 0, items: traceItems },
-    });
-    result.push(...mediaItems.map(clean));
-    result.push(clean(finalItem));
   }
-  return result;
+  return items;
 }
 
 export function getLiveProcessDetailMessages(messages: ChatMessage[]): ChatMessage[] {
@@ -1114,7 +1213,7 @@ function getLatestToolMessage(group: LiveProcessGroup): ChatMessage | undefined 
   return [...group.messages].reverse().find((message) => message.isToolUse || message.type === 'tool');
 }
 
-function isPendingProcessMessage(message: ChatMessage): boolean {
+export function isPendingProcessMessage(message: ChatMessage): boolean {
   return (message.isCompactBoundary && message.compactState === 'running') || isPendingToolUseMessage(message);
 }
 
@@ -1177,6 +1276,7 @@ export function formatCompletedProcessTitle(
         editedTargets: [],
         readTargets: [],
         searchCount: numberField(messageOrMessages, 'ragSearchCount'),
+        fetchCount: numberField(messageOrMessages, 'webFetchCount'),
         commandCount: numberField(messageOrMessages, 'commandCount'),
         subagentCount: numberField(messageOrMessages, 'subagentCount'),
         compactCount: numberField(messageOrMessages, 'compactCount'),
@@ -1212,6 +1312,12 @@ export function formatCompletedProcessTitle(
       defaultValue: `Searched ${counts.searchCount} ${counts.searchCount === 1 ? 'time' : 'times'}`,
     }));
   }
+  if (counts.fetchCount > 0) {
+    labels.push(t('process.live.webFetches', {
+      count: counts.fetchCount,
+      defaultValue: `Fetched ${counts.fetchCount} ${counts.fetchCount === 1 ? 'page' : 'pages'}`,
+    }));
+  }
   if (counts.commandCount > 0) {
     labels.push(t('process.live.commands', {
       count: counts.commandCount,
@@ -1232,14 +1338,14 @@ export function formatCompletedProcessTitle(
         ? t('working.compactCancelled', { defaultValue: 'Context compaction stopped' })
         : t('process.live.compactCompleted', { defaultValue: 'Compacted context' }));
   }
-  if (counts.thinkingCount > 0 && labels.length === 0) {
-    labels.push(t('process.live.thoughtCompleted', { defaultValue: 'Thought through next step' }));
-  }
-  if (labels.length === 0 && counts.otherToolCount > 0) {
+  if (counts.otherToolCount > 0) {
     labels.push(t('process.live.toolCalls', {
       count: counts.otherToolCount,
       defaultValue: `Used ${counts.otherToolCount} ${counts.otherToolCount === 1 ? 'tool' : 'tools'}`,
     }));
+  }
+  if (counts.thinkingCount > 0 && labels.length === 0) {
+    labels.push(t('process.live.thoughtCompleted', { defaultValue: 'Thought through next step' }));
   }
 
   return labels.join(' ');
@@ -1340,6 +1446,7 @@ export function processSummaryToTrace(
   const rawStatus = String(message.state || 'completed');
   const duration = formatProcessDuration(
     typeof message.durationMs === 'number' ? message.durationMs : 0,
+    t,
   );
   const label = formatCompletedProcessTitle(message, t) ||
     t('process.summary.processed', {

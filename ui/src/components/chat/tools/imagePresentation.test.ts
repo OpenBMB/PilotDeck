@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { ChatMessage } from '../types/types';
+import { buildRenderableMessageItems, groupProcessIntervals, getLiveProcessDetailMessages, isProcessMessage } from '../../chat-v2/processGrouping';
 import { imagePurpose, isImageDeliverable } from './imagePresentation';
-import { buildRenderableMessageItems, foldCompletedTurns, getLiveProcessDetailMessages, isProcessMessage } from '../../chat-v2/processGrouping';
 
 const base = { id: 'draw', type: 'tool', isToolUse: true, toolName: 'generate_image', timestamp: new Date(), content: '' } as ChatMessage;
 
@@ -21,7 +21,7 @@ it('retains a running deliverable tool record independently of its pending image
   const call: ChatMessage = { ...base, toolInput: { purpose: 'deliverable' } };
   const messages: ChatMessage[] = [{ ...base, id: 'user', type: 'user', isToolUse: false, content: 'Draw' }, call];
   const items = buildRenderableMessageItems(messages, { isAssistantWorking: true });
-  expect(items.filter(item => item.mediaArtifact)).toHaveLength(1);
+  expect(items.filter(item => item.mediaArtifact && item.mediaExpanded)).toHaveLength(1);
   expect(getLiveProcessDetailMessages(messages)).toContain(call);
   expect(items.find(item => item.mediaArtifact)?.message.renderKey).toBe('media-artifact-draw');
 });
@@ -29,7 +29,7 @@ it('retains a running deliverable tool record independently of its pending image
 it('falls back to the ordinary tool record when a completed image result has no attachment identity', () => {
   const completed = { ...base, toolInput: { purpose: 'deliverable' }, toolResult: { content: 'Image attached' } };
   expect(isImageDeliverable(completed)).toBe(false);
-  expect(buildRenderableMessageItems([completed]).some(item => item.mediaArtifact)).toBe(false);
+  expect(buildRenderableMessageItems([completed]).some(item => item.mediaArtifact && item.mediaExpanded)).toBe(false);
 });
 
 it.each(['generate_image', 'edit_image'])('keeps only successful deliverables outside the completed %s trace', toolName => {
@@ -45,9 +45,9 @@ it.each(['generate_image', 'edit_image'])('keeps only successful deliverables ou
   expect(isProcessMessage(failed)).toBe(true);
   expect(isImageDeliverable(failed)).toBe(false);
   expect(isProcessMessage(delivered)).toBe(true);
-  const items = foldCompletedTurns(messages, buildRenderableMessageItems(messages), false);
-  expect(items.filter(item => item.message.isToolUse).map(item => item.message.id)).toEqual(['delivered']);
-  expect(items.filter(item => item.mediaArtifact)).toHaveLength(1);
+  const items = groupProcessIntervals(messages, buildRenderableMessageItems(messages), false);
+  expect(items.filter(item => item.message.isToolUse && (!item.mediaArtifact || item.mediaExpanded)).map(item => item.message.id)).toEqual(['delivered']);
+  expect(items.filter(item => item.mediaArtifact && item.mediaExpanded)).toHaveLength(1);
   const trace = items.find(item => item.turnTrace)?.turnTrace?.items ?? [];
   const details = trace.flatMap(item => [item.message, ...[...item.beforeProcessAttachments, ...item.afterProcessAttachments].flatMap(attachment => attachment.processDetailMessages)]);
   expect(details.map(message => message.id)).toEqual(expect.arrayContaining(['asset', 'failed', 'delivered']));

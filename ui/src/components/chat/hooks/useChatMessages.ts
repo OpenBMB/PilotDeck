@@ -79,6 +79,7 @@ function convertSingleMessage(
   options: ConvertSingleMessageOptions = {},
 ): ChatMessage | null {
   const turnIdentity = {
+    ...(msg.turnTiming ? { turnTiming: msg.turnTiming } : {}),
     ...(msg.renderKey ? { renderKey: msg.renderKey } : {}),
     ...(msg.runId ? { runId: msg.runId } : {}),
     ...(msg.turnId || msg.runId ? { turnId: msg.turnId || msg.runId } : {}),
@@ -226,6 +227,7 @@ function convertSingleMessage(
       const thinkingContent = msg.content?.trim()
         ? msg.content
         : msg.reasoningContent || '';
+      const isStreaming = msg.timeline ? msg.streamState === 'open' : msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_');
       if (thinkingContent.trim()) {
         return {
           id: msg.id,
@@ -235,7 +237,9 @@ function convertSingleMessage(
           timestamp: msg.timestamp,
           ...turnIdentity,
           isThinking: true,
-          isStreaming: msg.timeline ? msg.streamState === 'open' : msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_'),
+          isStreaming,
+          startedAt: msg.timeline?.startedAt ?? msg.startedAt ?? (isStreaming ? msg.timestamp : undefined),
+          durationMs: msg.timeline?.durationMs ?? msg.durationMs,
         };
       }
       return null;
@@ -313,6 +317,8 @@ function convertSingleMessage(
         runId: msg.runId,
         parentRunId: msg.parentRunId,
         activityId: msg.activityId,
+        subagentId: msg.subagentId,
+        fileInputProgress: msg.fileInputProgress,
         phase: msg.phase,
         state: msg.state,
         title: msg.title,
@@ -340,6 +346,7 @@ function convertSingleMessage(
         toolCallCount: msg.toolCallCount,
         toolErrorCount: msg.toolErrorCount,
         ragSearchCount: msg.ragSearchCount,
+        webFetchCount: msg.webFetchCount,
         editedFileCount: msg.editedFileCount,
         exploredFileCount: msg.exploredFileCount,
         commandCount: msg.commandCount,
@@ -364,8 +371,17 @@ function convertSingleMessage(
       }
       return null;
 
+    case 'complete': {
+      const timing = msg.turnTiming;
+      if (!timing) return null;
+      const durationMs = Date.parse(timing.completedAt) - Date.parse(timing.startedAt);
+      if (!Number.isFinite(durationMs) || durationMs < 0) return null;
+      const reason = String(msg.finishReason || timing.finishReason || 'completed');
+      return { id: msg.id, ...turnIdentity, type: 'system', content: '', timestamp: timing.completedAt,
+        isAgentActivitySummary: true, startedAt: timing.startedAt, endedAt: timing.completedAt, durationMs,
+        state: reason === 'completed' ? 'completed' : reason.startsWith('aborted') ? 'cancelled' : 'failed' };
+    }
     case 'stream_end':
-    case 'complete':
     case 'status':
     case 'permission_request':
     case 'permission_cancelled':

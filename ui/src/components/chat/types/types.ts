@@ -104,6 +104,7 @@ export interface ChatMessage {
   isToolUse?: boolean;
   toolName?: string;
   toolInput?: unknown;
+  fileInputProgress?: { receivedBytes: number; filePath?: string };
   toolResult?: ToolResult | null;
   toolId?: string;
   toolCallId?: string;
@@ -139,9 +140,11 @@ export interface ChatMessage {
   startedAt?: string;
   endedAt?: string | null;
   durationMs?: number | null;
+  turnTiming?: { startedAt: string; completedAt: string; finishReason?: string };
   toolCallCount?: number;
   toolErrorCount?: number;
   ragSearchCount?: number;
+  webFetchCount?: number;
   editedFileCount?: number;
   exploredFileCount?: number;
   commandCount?: number;

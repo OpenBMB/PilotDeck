@@ -190,6 +190,7 @@ function ChatInterfaceV2({
     isLoadingSessionMessages,
     sessionLoadError,
     isLoadingMoreMessages,
+    historyLoadError,
     hasMoreMessages,
     totalMessages,
     canAbortSession,
@@ -918,6 +919,7 @@ function ChatInterfaceV2({
           visibleMessages={visibleMessages}
           visibleMessageCount={visibleMessageCount}
           isLoadingMoreMessages={isLoadingMoreMessages}
+          historyLoadError={historyLoadError}
           hasMoreMessages={hasMoreMessages}
           totalMessages={totalMessages}
           loadEarlierMessages={loadEarlierMessages}

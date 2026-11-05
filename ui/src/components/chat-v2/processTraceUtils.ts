@@ -1,4 +1,6 @@
-export function formatProcessDuration(ms?: number | null): string {
+import type { TFunction } from 'i18next';
+
+export function formatProcessDuration(ms: number | null | undefined, t: TFunction<'chat'>): string {
   const rawMs = Number(ms);
   const totalSeconds = Number.isFinite(rawMs)
     ? Math.max(0, Math.floor(rawMs / 1000))
@@ -7,26 +9,28 @@ export function formatProcessDuration(ms?: number | null): string {
   const hours = Math.floor((totalSeconds % 86_400) / 3_600);
   const minutes = Math.floor((totalSeconds % 3_600) / 60);
   const seconds = totalSeconds % 60;
+  const unit = (value: number, name: 'day' | 'hour' | 'minute' | 'second', fallback: string) =>
+    t(`process.duration.${name}`, { count: value, defaultValue: `${value}${fallback}` });
 
   if (days > 0) {
     return [
-      `${days}d`,
-      hours > 0 ? `${hours}h` : null,
-      minutes > 0 ? `${minutes}m` : null,
+      unit(days, 'day', 'd'),
+      hours > 0 ? unit(hours, 'hour', 'h') : null,
+      minutes > 0 ? unit(minutes, 'minute', 'm') : null,
     ].filter(Boolean).join(' ');
   }
 
   if (hours > 0) {
     return [
-      `${hours}h`,
-      minutes > 0 ? `${minutes}m` : null,
-      seconds > 0 ? `${seconds}s` : null,
+      unit(hours, 'hour', 'h'),
+      minutes > 0 ? unit(minutes, 'minute', 'm') : null,
+      seconds > 0 ? unit(seconds, 'second', 's') : null,
     ].filter(Boolean).join(' ');
   }
 
   if (minutes > 0) {
-    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+    return [unit(minutes, 'minute', 'm'), seconds > 0 ? unit(seconds, 'second', 's') : null].filter(Boolean).join(' ');
   }
 
-  return `${seconds}s`;
+  return unit(seconds, 'second', 's');
 }

@@ -6,6 +6,9 @@ import { FindShortcutProvider } from '../../contexts/FindShortcutContext';
 import type { ChatMessage, ChatRunMode, PendingPermissionRequest, SessionRuntimeState } from '../chat/types/types';
 import type { QueuedInputSummary } from '../chat/types/queuedInput';
 import { normalizedToChatMessages } from '../chat/hooks/useChatMessages';
+import * as api from '../../utils/api';
+import { attachmentDisplayMetadata, rememberUploadedPreview } from '../chat/utils/uploadedAttachmentPreview';
+import { ChatReviewProvider } from '../chat-review/ChatReviewContext';
 import MessagesPaneV2 from './MessagesPaneV2';
 import { ThinkingBlock } from './ThinkingBlock';
 import {
@@ -13,8 +16,6 @@ import {
   shouldKeepChatResponseReservedSpace,
 } from './chatResponseReservedSpace';
 import { getContextStatus } from './ComposerV2';
-import * as api from '../../utils/api';
-import { attachmentDisplayMetadata, rememberUploadedPreview } from '../chat/utils/uploadedAttachmentPreview';
 
 vi.mock('./SubagentDetailModal', () => ({
   default: ({ isRunning }: { isRunning?: boolean }) => (
@@ -41,14 +42,13 @@ afterEach(() => {
 });
 
 describe('ThinkingBlock phase transitions', () => {
-  it('opens while streaming, respects manual collapse, and closes once on completion', () => {
+  it('opens while streaming, respects manual toggles, and closes once on completion', () => {
     const view = render(<ThinkingBlock content="First thought" isStreaming />);
     const toggle = screen.getByRole('button');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(toggle);
     view.rerender(<ThinkingBlock content="First thought and more" isStreaming />);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(toggle);
     view.rerender(<ThinkingBlock content="Completed thought" isStreaming={false} />);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
@@ -102,6 +102,20 @@ describe('getContextStatus', () => {
     expect(status.tone).toBe('normal');
   });
 });
+
+function processToggle(index = 0): HTMLButtonElement {
+  let toggle = document.querySelectorAll<HTMLButtonElement>('[data-process-block] > button')[index];
+  const hidden = toggle?.closest('[data-turn-process-region][aria-hidden="true"]');
+  // Tool-specific assertions first open the enclosing completed-turn disclosure.
+  if (!toggle || hidden) {
+    const header = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-turn-process-header] button'))
+      .find(button => button.getAttribute('aria-expanded') === 'false'
+        && (!hidden || button.getAttribute('aria-controls')?.split(' ').includes(hidden.id)));
+    if (header) fireEvent.click(header);
+    toggle = document.querySelectorAll<HTMLButtonElement>('[data-process-block] > button')[index];
+  }
+  return toggle;
+}
 
 function makeMessage(index: number): ChatMessage {
   return {
@@ -234,7 +248,7 @@ it.each(['generate_image', 'edit_image'])('keeps the %s record in the completed 
     await waitFor(() => expect(screen.getByRole('img', { name: 'imageGeneration.image' }).getAttribute('src')).toBe('blob:delivered-image'));
     fireEvent.load(screen.getByRole('img', { name: 'imageGeneration.image' }));
     expect(view.container.querySelector('.generated-image-surface')).toBe(surface);
-    fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
+    fireEvent.click(processToggle());
     const record = screen.getByRole('button', { name: `toolDisplay.done.tool ${toolName}` });
     fireEvent.click(record);
     expect(screen.getByText(/A blue house/)).toBeTruthy();
@@ -317,7 +331,7 @@ describe('MessagesPaneV2 render behavior', () => {
       sessionRuntimeState: 'running',
     });
 
-    expect(screen.getByText('Waiting for model response...')).toBeTruthy();
+    expect(screen.getByText('Calling model...')).toBeTruthy();
     expect(screen.queryByText('Thinking...')).toBeNull();
   });
 
@@ -377,7 +391,7 @@ describe('MessagesPaneV2 render behavior', () => {
       sessionRuntimeState: 'running',
     });
 
-    const toggle = screen.getByRole('button', { name: 'Thinking...' });
+    const toggle = screen.getByRole('button', { name: /^Thinking for \d+s$/ });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     const liveThinkingRegion = screen.getByRole('region', { name: 'Live thinking content' });
     expect(liveThinkingRegion).toBeTruthy();
@@ -392,7 +406,7 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
   });
 
-  it('expands live reasoning when thinking details are enabled during a run', () => {
+  it('opens live reasoning when thinking details are enabled during a run', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
       {
@@ -421,7 +435,7 @@ describe('MessagesPaneV2 render behavior', () => {
 
     view.rerender(createPaneElement({ ...options, showThinking: true }));
 
-    expect(screen.getByRole('button', { name: 'Thinking...' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: /^Thinking for \d+s$/ }).getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByRole('region', { name: 'Live thinking content' })).toBeTruthy();
   });
 
@@ -451,11 +465,11 @@ describe('MessagesPaneV2 render behavior', () => {
     const view = renderPane({ ...options, inlineThinking: true });
 
     const region = screen.getByRole('region', { name: 'Live thinking content' });
-    expect(screen.getAllByRole('button', { name: 'Thinking...' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Thinking for \d+s$/ })).toHaveLength(1);
 
     view.rerender(createPaneElement({ ...options, inlineThinking: false }));
 
-    expect(screen.getByRole('button', { name: 'Thinking...' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: /^Thinking for \d+s$/ }).getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByRole('region', { name: 'Live thinking content' })).toBe(region);
   });
 
@@ -697,8 +711,9 @@ describe('MessagesPaneV2 render behavior', () => {
 
     const { container } = renderPane({ messages, isAssistantWorking: true });
 
-    expect(container.querySelector('[data-total-message-count]')?.getAttribute('data-total-message-count')).toBe('0');
-    expect(screen.getByText('Reading Orphaned-3.tsx')).toBeTruthy();
+    expect(container.querySelector('[data-total-message-count]')?.getAttribute('data-total-message-count')).toBe('1');
+    expect(processToggle().getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Orphaned-3.tsx')).toBeTruthy();
   });
 
   it('resynchronizes a virtual window when the mounted pane changes sessions', async () => {
@@ -916,7 +931,8 @@ describe('MessagesPaneV2 render behavior', () => {
 
     const { container } = renderPane({ messages, isAssistantWorking: true, runMode: 'plan' });
 
-    expect(screen.queryByText(/Ran 1 command/)).toBeNull();
+    expect(processToggle().getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(processToggle());
     const toolButton = container.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement;
     expect(toolButton.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toolButton);
@@ -977,7 +993,7 @@ describe('MessagesPaneV2 render behavior', () => {
     ];
     rerender(createPaneElement({ messages: nextMessages, isAssistantWorking: true }));
 
-    const updatedStatus = screen.getByText('Searching Footer').closest('[role="status"]');
+    const updatedStatus = screen.getByText('Footer').closest('[data-process-block]');
     expect(updatedStatus).not.toBeNull();
     const updatedButton = updatedStatus?.querySelector('button');
     expect(updatedButton?.getAttribute('aria-expanded')).toBe('true');
@@ -1036,11 +1052,10 @@ describe('MessagesPaneV2 render behavior', () => {
       },
     ];
     rerender(createPaneElement({ messages: completedMessages }));
-    const turnToggle = screen.getByRole('button', { name: /^Processed / });
-    expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(turnToggle);
+    const turnToggle = processToggle();
+    expect(turnToggle.getAttribute('aria-expanded')).toBe('true');
 
-    expect(screen.queryByText('Explored 1 file')).toBeNull();
+    expect(screen.getByText('Explored 1 file')).toBeTruthy();
     const completedButton = screen.getByText('ReadHidden.tsx').closest('button');
     expect(completedButton?.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('ReadHidden.tsx')).toBeTruthy();
@@ -1109,11 +1124,11 @@ describe('MessagesPaneV2 render behavior', () => {
       },
     ];
     rerender(createPaneElement({ messages: persistedMessages }));
-    const turnToggle = screen.getByRole('button', { name: /^Processed / });
+    const turnToggle = processToggle();
     expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(turnToggle);
 
-    expect(screen.queryByText('Ran 1 command')).toBeNull();
+    expect(screen.getByText('Ran 1 command')).toBeTruthy();
     const persistedParameters = container.querySelector('.tool-call button[aria-expanded]');
     expect(persistedParameters?.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText(/print\(1\)/)).toBeTruthy();
@@ -1148,7 +1163,7 @@ describe('MessagesPaneV2 render behavior', () => {
     ];
 
     renderPane({ messages });
-    const turnToggle = screen.getByRole('button', { name: /^Processed / });
+    const turnToggle = processToggle();
     expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(turnToggle);
 
@@ -1299,7 +1314,7 @@ describe('MessagesPaneV2 render behavior', () => {
     renderPane({ messages, isAssistantWorking: true });
 
     const firstAssistant = screen.getByText('I will inspect files first.');
-    const firstStatus = screen.getByText('FirstHidden.tsx');
+    const firstStatus = processToggle();
     const secondAssistant = screen.getByText('Now I will verify the build.');
     const runningStatus = screen.getByText('npm run build');
 
@@ -1307,12 +1322,12 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(Boolean(firstStatus.compareDocumentPosition(secondAssistant) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean(secondAssistant.compareDocumentPosition(runningStatus) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
 
-    const expandButton = firstStatus.closest('button');
+    const expandButton = firstStatus;
     expect(expandButton?.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(expandButton as HTMLButtonElement);
 
     expect(screen.getByText('FirstHidden.tsx')).toBeTruthy();
-    expect(firstAssistant.closest('.chat-message')?.className).toContain('pb-2');
+    expect(firstAssistant.closest('.chat-message')?.className).not.toContain('pb-8');
   });
 
   it('keeps completed process rows in their original positions after the turn finishes', () => {
@@ -1367,11 +1382,12 @@ describe('MessagesPaneV2 render behavior', () => {
     ];
 
     renderPane({ messages });
-    const turnToggle = screen.getByRole('button', { name: /^Processed / });
+    const turnToggle = processToggle();
     expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(turnToggle);
 
     const firstAssistant = screen.getByText('I will inspect first.');
+    fireEvent.click(processToggle(1));
     const readSummary = screen.getByText('FirstHidden.tsx');
     const secondAssistant = screen.getByText('Now I will run checks.');
     const commandSummary = screen.getByText('npm test');
@@ -1383,7 +1399,7 @@ describe('MessagesPaneV2 render behavior', () => {
     expect(Boolean(commandSummary.compareDocumentPosition(finalAssistant) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
-  it('shows generating status after a closed live tool group while the assistant continues', () => {
+  it('shows model-call status after a closed live tool group while the assistant continues', () => {
     const now = new Date().toISOString();
     const messages: ChatMessage[] = [
       {
@@ -1432,8 +1448,10 @@ describe('MessagesPaneV2 render behavior', () => {
 
     renderPane({ messages, activityMessages, isAssistantWorking: true });
 
+    expect(processToggle().getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(processToggle());
     expect(screen.getByText('ClosedTool.tsx')).toBeTruthy();
-    expect(screen.getByText('Generating response')).toBeTruthy();
+    expect(screen.getByText('Calling model...')).toBeTruthy();
     expect(screen.queryByText('Reading file')).toBeNull();
   });
 
@@ -1482,9 +1500,8 @@ describe('MessagesPaneV2 render behavior', () => {
     ];
 
     const { container } = renderPane({ messages });
-    const turnToggle = screen.getByRole('button', { name: /^Processed / });
+    const turnToggle = processToggle();
     expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(turnToggle);
 
     expect(screen.queryByText('Tool error')).toBeNull();
     expect(screen.queryByText('FailedTool.tsx')).toBeNull();
@@ -1492,11 +1509,8 @@ describe('MessagesPaneV2 render behavior', () => {
     const summary = screen.getByText(/Edited 1 file.*Searched 1 time/);
     const button = summary.closest('button');
     expect(button).not.toBeNull();
-    expect(button?.className).toContain('inline-flex');
-    expect(button?.className).toContain('items-center');
-    expect(button?.className).toContain('text-[14px]');
-    expect(button?.className).toContain('leading-relaxed');
-    expect(button?.closest('.process-trace')?.className).not.toContain('my-');
+    expect(button?.getAttribute('aria-expanded')).toBe('false');
+    expect(button?.querySelector('.text-amber-600, .text-red-500')).toBeNull();
 
     fireEvent.click(button as HTMLButtonElement);
 
@@ -1597,9 +1611,9 @@ describe('MessagesPaneV2 render behavior', () => {
       { id: 'compact', type: 'system', content: 'Context compacted', timestamp: now, isCompactBoundary: true },
       { id: 'answer', type: 'assistant', content: 'Answer after compaction', timestamp: now },
     ] });
-    fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
-    const thought = screen.getByRole('button', { name: 'Thought process' });
-    const compact = screen.getByText('Compacted context');
+    fireEvent.click(processToggle());
+    const thought = screen.getByRole('button', { name: 'Finished thinking' });
+    const compact = within(document.querySelector('[data-turn-trace]') as HTMLElement).getByText('Compacted context');
     const answer = screen.getByText('Answer after compaction');
     expect(thought.compareDocumentPosition(compact) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(compact.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -1632,7 +1646,7 @@ describe('MessagesPaneV2 render behavior', () => {
     renderPane({ messages, isAssistantWorking: true, runMode: 'plan', planModeActive: true });
 
     expect(screen.getByText('I will make a plan first.')).toBeTruthy();
-    expect(screen.queryByText('Compacted context')).toBeNull();
+    expect(processToggle().getAttribute('aria-expanded')).toBe('false');
   });
 
   it('uses compact message spacing instead of the old large row gap', () => {
@@ -1659,41 +1673,44 @@ describe('MessagesPaneV2 render behavior', () => {
 
     renderPane({ messages, isAssistantWorking: true });
 
-    expect(screen.getByText('First assistant line.').closest('.chat-message')?.className).toContain('pb-4');
+    expect(screen.getByText('First assistant line.').closest('[data-turn-process-region]')?.querySelector('.pb-2')).toBeTruthy();
     expect(screen.getByText('First assistant line.').closest('.chat-message')?.className).not.toContain('pb-8');
   });
-  it('collapses the whole turn only at completion and preserves manual expansion on refresh', () => {
-    const messages: ChatMessage[] = [
-      makeMessage(0),
-      { ...makeMessage(1), content: 'Intermediate inspection.' },
-      { ...makeMessage(3), content: 'Final answer.' },
-    ];
-    const view = renderPane({ messages, isAssistantWorking: true });
-    expect(screen.getByText('Intermediate inspection.')).toBeTruthy();
-    view.rerender(createPaneElement({ messages }));
-    expect(screen.queryByText('Intermediate inspection.')).toBeNull();
-    expect(screen.getByText('Final answer.')).toBeTruthy();
-    const toggle = screen.getByRole('button', { name: /^Processed / });
-    fireEvent.click(toggle);
-    expect(screen.getByText('Intermediate inspection.')).toBeTruthy();
-    view.rerender(createPaneElement({ messages: messages.map((message) => ({ ...message })) }));
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByText('Final answer.')).toBeTruthy();
-    fireEvent.click(toggle);
-    expect(screen.queryByText('Intermediate inspection.')).toBeNull();
+  it('keeps prose mounted while work closes and preserves reopening across history refresh', async () => {
+    const user = makeMessage(0);
+    const thought: ChatMessage = { ...makeMessage(1), id: 'thought', isThinking: true, isStreaming: true, content: 'Inspecting' };
+    const interim = { ...makeMessage(3), content: 'Intermediate inspection.' };
+    const view = renderPane({ messages: [user, thought], isAssistantWorking: true });
+    const seat = view.container.querySelector('[data-process-block]');
+    expect(processToggle().getAttribute('aria-expanded')).toBe('true');
+    view.rerender(createPaneElement({ messages: [user, { ...thought, isStreaming: false }, interim], isAssistantWorking: true }));
+    expect(view.container.querySelector('[data-process-block]')).toBe(seat);
+    expect(processToggle().getAttribute('aria-expanded')).toBe('false');
+    const prose = await screen.findByText('Intermediate inspection.');
+    fireEvent.click(processToggle());
+    view.rerender(createPaneElement({ messages: [user, { ...thought, isStreaming: false }, { ...interim },
+      { ...makeMessage(5), content: 'Final answer.' }] }));
+    expect(processToggle().getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Intermediate inspection.')).toBe(prose);
+    expect(await screen.findByText('Final answer.')).toBeTruthy();
+    fireEvent.click(processToggle());
+    expect(screen.getByText('Intermediate inspection.')).toBe(prose);
   });
 
-  it('reveals a completed trace when searching for intermediate assistant text', async () => {
+  it('reveals a completed process when searching a tool title and leaves prose visible', async () => {
     renderPane({ messages: [makeMessage(0),
-      { ...makeMessage(1), content: 'Intermediate unique needle.' },
+      { ...makeMessage(1), isToolUse: true, toolName: 'Read', toolInput: { file_path: 'unique needle.ts' }, content: '' },
       { ...makeMessage(3), content: 'Final answer.' },
     ] });
-    expect(screen.queryByText('Intermediate unique needle.')).toBeNull();
+    const runToggle = document.querySelector('[data-turn-process-header] button')!;
+    expect(runToggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
     const input = screen.getByRole('search').querySelector('input')!;
     fireEvent.change(input, { target: { value: 'unique needle' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: /^Processed / }).getAttribute('aria-expanded')).toBe('true'));
+    await waitFor(() => expect(runToggle.getAttribute('aria-expanded')).toBe('true'));
+    await waitFor(() => expect(document.querySelector('[data-process-block] > button')?.getAttribute('aria-expanded')).toBe('true'));
     await waitFor(() => expect(document.querySelector('mark.chat-history-search-highlight-active')?.textContent).toBe('unique needle'));
+    expect(screen.getByText('Final answer.')).toBeTruthy();
   });
 
   it.each(['error', 'interrupted', 'no-final'])('keeps %s turns visible', (kind) => {
@@ -1703,9 +1720,58 @@ describe('MessagesPaneV2 render behavior', () => {
     if (kind === 'no-final') messages.push({ ...makeMessage(2), type: 'assistant', isToolUse: true, toolName: 'Bash', toolInput: { command: 'pwd' }, content: '' });
     renderPane({ messages });
     expect(screen.getByText('Working details.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Processed / })).toBeNull();
+    const header = document.querySelector('[data-turn-process-header] button');
+    if (header) expect(header.getAttribute('aria-expanded')).toBe('true');
   });
 
+});
+
+it('folds all intermediate prose and work in order while preserving the final output and disclosure state', async () => {
+  const user: ChatMessage = { id: 'run-user', type: 'user', content: 'Check the implementation', timestamp: '2026-11-05T00:00:00Z' };
+  const call: ChatMessage = { id: 'run-call', toolId: 'run-call', type: 'assistant', isToolUse: true,
+    toolName: 'Read', toolInput: { file_path: 'sample.ts' }, toolResult: { content: 'First result' }, timestamp: user.timestamp };
+  const progress: ChatMessage = { id: 'progress', type: 'assistant', content: 'First progress reply.', timestamp: user.timestamp };
+  const second = { ...call, id: 'run-second', toolId: 'run-second', toolName: 'Bash', toolInput: { command: 'pwd' } };
+  const live = [user, call, progress, second];
+  const view = render(createPaneElement({ messages: live, isAssistantWorking: true }));
+  const header = view.container.querySelector('[data-turn-process-header] button')!;
+  const region = view.container.querySelector('[data-turn-process-region]')!;
+  const prose = screen.getByText('First progress reply.');
+  expect(header.getAttribute('aria-expanded')).toBe('true');
+  expect(view.container.querySelectorAll('[data-process-block]')).toHaveLength(2);
+  const finished: ChatMessage[] = [...live, { id: 'final', type: 'assistant', content: 'Final answer.', timestamp: '2026-11-05T00:00:29Z' },
+    { id: 'summary', type: 'system', isAgentActivitySummary: true, content: '', state: 'completed', durationMs: 29000, timestamp: '2026-11-05T00:00:29Z' }];
+  view.rerender(createPaneElement({ messages: finished }));
+  expect(view.container.querySelector('[data-turn-process-header] button')).toBe(header);
+  expect(header.textContent).toBe('Processed 29s');
+  expect(header.getAttribute('aria-expanded')).toBe('false');
+  expect(view.container.querySelector('[data-turn-process-region]')).toBe(region);
+  expect(region.getAttribute('aria-hidden')).toBe('true');
+  expect(region.hasAttribute('inert')).toBe(true);
+  expect(screen.queryByRole('button', { name: /Explored 1 file|Ran 1 command/ })).toBeNull();
+  expect(screen.getByText('First progress reply.')).toBe(prose);
+  expect(prose.closest('[data-turn-process-region]')?.getAttribute('aria-hidden')).toBe('true');
+  const final = await screen.findByText('Final answer.');
+  expect(final.closest('[data-turn-process-output]')?.getAttribute('aria-hidden')).toBe('false');
+  const controlled = header.getAttribute('aria-controls')!.split(' ');
+  expect(controlled).toHaveLength(3);
+  expect(controlled.every(id => document.getElementById(id)?.getAttribute('aria-hidden') === 'true')).toBe(true);
+  fireEvent.click(header);
+  expect(region.getAttribute('aria-hidden')).toBe('false');
+  expect(screen.getByRole('button', { name: 'Explored 1 file' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Ran 1 command' })).toBeTruthy();
+  expect(prose.closest('[data-turn-process-region]')?.getAttribute('aria-hidden')).toBe('false');
+  const order = Array.from(view.container.querySelectorAll('[data-turn-process-region]')).map(region => region.textContent);
+  expect(order[0]).toContain('Explored 1 file');
+  expect(order[1]).toContain('First progress reply.');
+  expect(order[2]).toContain('Ran 1 command');
+  expect(order[3]).toContain('Final answer.');
+  view.rerender(createPaneElement({ messages: finished.map(message => ({ ...message })) }));
+  expect(header.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByText('First progress reply.')).toBe(prose);
+  view.rerender(createPaneElement({ messages: [...finished, { ...user, id: 'next-user', content: 'Continue' }], isAssistantWorking: true }));
+  expect(header.getAttribute('aria-expanded')).toBe('true');
+  expect(view.container.querySelectorAll('[data-turn-process-header]')).toHaveLength(2);
 });
 
 describe('chat response reserved space', () => {
@@ -1716,16 +1782,18 @@ describe('chat response reserved space', () => {
     expect(getChatResponseReserveTarget(2000)).toBe(520);
   });
 
-  it('keeps space for follow-up turns even after the assistant stops', () => {
+  it('reserves reply space only while the assistant is working', () => {
     expect(shouldKeepChatResponseReservedSpace(-1, false)).toBe(false);
     expect(shouldKeepChatResponseReservedSpace(0, true)).toBe(true);
     expect(shouldKeepChatResponseReservedSpace(0, false)).toBe(false);
-    expect(shouldKeepChatResponseReservedSpace(2, false)).toBe(true);
+    expect(shouldKeepChatResponseReservedSpace(2, false)).toBe(false);
+    expect(shouldKeepChatResponseReservedSpace(2, true)).toBe(true);
   });
 
   it('renders the latest follow-up turn inside the reserved response area', () => {
     const { container } = renderPane({
       messages: [makeMessage(0), makeMessage(1), makeMessage(2), makeMessage(3)],
+      isAssistantWorking: true,
     });
 
     const reservedArea = container.querySelector('[data-chat-response-reserved-space="true"]');
@@ -1733,6 +1801,14 @@ describe('chat response reserved space', () => {
     expect((reservedArea as HTMLElement).style.minHeight).toBe('220px');
     expect(within(reservedArea as HTMLElement).getByText('Message 3')).toBeTruthy();
     expect(within(reservedArea as HTMLElement).queryByText('Message 2')).toBeNull();
+  });
+
+  it('releases the reply reserve after completion instead of leaving a blank conversation tail', () => {
+    const messages = [makeMessage(0), makeMessage(1), makeMessage(2), makeMessage(3)];
+    const view = renderPane({ messages, isAssistantWorking: true });
+    view.rerender(createPaneElement({ messages, isAssistantWorking: false }));
+    expect(view.container.querySelector('[data-chat-response-reserved-space]')).toBeNull();
+    expect((view.container.querySelector('.chat-current-turn-reserve') as HTMLElement).style.minHeight).toBe('0px');
   });
 });
 
@@ -1836,8 +1912,8 @@ it('shows a single read directly and renders its image only once', () => {
     { id: 'answer', type: 'assistant', content: 'Image inspected.', timestamp: now },
   ];
   renderPane({ messages });
-  fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
-  expect(screen.queryByText('Explored 1 file')).toBeNull();
+  fireEvent.click(processToggle());
+  expect(screen.getByText('Explored 1 file')).toBeTruthy();
   expect(screen.getAllByRole('img', { name: 'preview.png' })).toHaveLength(1);
   const toolButton = document.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement;
   expect(toolButton.getAttribute('aria-expanded')).toBe('false');
@@ -1864,8 +1940,8 @@ it.each([true, false])('retains compaction next to a single tool (live=%s)', (li
   ];
   if (!live) messages.push({ id: 'compact-answer', type: 'assistant', content: 'Continuing after compaction', timestamp: '2026-09-15T09:00:02.000Z' });
   renderPane({ messages, isAssistantWorking: live });
-  if (!live) fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
-  expect(screen.getByText(live ? 'Compacting context...' : /Compacted context/)).toBeTruthy();
+  if (!live) fireEvent.click(processToggle());
+  expect(within(document.querySelector('[data-turn-trace]') as HTMLElement).getByText(live ? 'Compacting context...' : /Compacted context/)).toBeTruthy();
 });
 
 it.each([false, true])('preserves an inherited group toggle independently through completion (close parent=%s)', (closeParent) => {
@@ -1877,7 +1953,7 @@ it.each([false, true])('preserves an inherited group toggle independently throug
     toolResult: { content: 'second file content' },
   }];
   view.rerender(createPaneElement({ messages: grouped, isAssistantWorking: true }));
-  const groupToggle = screen.getByRole('button', { name: /Explored 2 files/ });
+  const groupToggle = processToggle();
   expect(groupToggle.getAttribute('aria-expanded')).toBe('true');
   fireEvent.click(screen.getByRole('button', { name: /first\.ts$/, expanded: true }));
   expect(groupToggle.getAttribute('aria-expanded')).toBe('true');
@@ -1885,13 +1961,14 @@ it.each([false, true])('preserves an inherited group toggle independently throug
   // A later child update must not reopen a manually closed parent.
   if (closeParent) fireEvent.click(groupToggle);
   view.rerender(createPaneElement({ messages: [...grouped], isAssistantWorking: true }));
-  expect(screen.getByRole('button', { name: /Explored 2 files/ }).getAttribute('aria-expanded')).toBe(String(!closeParent));
+  expect(processToggle().getAttribute('aria-expanded')).toBe(String(!closeParent));
   view.rerender(createPaneElement({ messages: [...grouped, {
     id: 'reg-answer', type: 'assistant', content: 'Inspection complete', timestamp: '2026-09-15T09:00:02.000Z',
   }] }));
-  fireEvent.click(screen.getByRole('button', { name: /^Processed / }));
-  expect(screen.getByRole('button', { name: /Explored 2 files/ }).getAttribute('aria-expanded')).toBe(String(!closeParent));
-  if (!closeParent) {
+  expect(processToggle().getAttribute('aria-expanded')).toBe(String(!closeParent));
+  if (closeParent) fireEvent.click(processToggle());
+  expect(processToggle().getAttribute('aria-expanded')).toBe('true');
+  {
     expect(screen.getByRole('button', { name: /first\.ts$/ }).getAttribute('aria-expanded')).toBe('false');
     expect(screen.getByRole('button', { name: /second\.ts$/ })).toBeTruthy();
   }
@@ -1903,7 +1980,7 @@ it('shows a static answer-waiting state instead of a running timer and resumes a
     const messages: ChatMessage[] = [{id:'wait-user',type:'user',content:'Ask a question',timestamp:new Date().toISOString()}];
     const pendingPermissionRequests = [{requestId:'q1',toolName:'AskUserQuestion',receivedAt:new Date()}];
     const view = renderPane({messages,isAssistantWorking:true,pendingPermissionRequests});
-    expect(screen.getAllByText(/Waiting for your answer|等待你回答/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Waiting for your answer|等待你回答/)).toBeNull();
     expect(screen.queryByText(/Processed \d|已处理 \d/)).toBeNull();
     expect(view.container.querySelector('.animate-spin')).toBeNull();
     act(() => vi.advanceTimersByTime(5000));
@@ -1912,4 +1989,147 @@ it('shows a static answer-waiting state instead of a running timer and resumes a
     expect(screen.queryByText(/Waiting for your answer|等待你回答/)).toBeNull();
     expect(screen.getByText(/Processed \d|已处理 \d/)).toBeTruthy();
   } finally { vi.useRealTimers(); }
+});
+
+it('reveals one file card at the turn tail after trailing tools, outside all process folds', () => {
+  const artifacts: NonNullable<ChatMessage['artifacts']> = [{ id: 'report', name: 'report.txt', path: 'report.txt',
+    operation: 'created', source: 'workspace_diff', status: 'incomplete', size: 42, sha256: 'a'.repeat(64), createdAt: '2026-11-01T00:00:00Z' }];
+  const messages: ChatMessage[] = [
+    { id: 'user-files', type: 'user', content: 'Create a report', timestamp: '2026-11-01T00:00:00Z' },
+    { id: 'progress-files', type: 'assistant', content: 'Checking the generated report.', timestamp: '2026-11-01T00:00:01Z', turnId: 'files-turn', artifacts },
+    { id: 'verify-files', type: 'assistant', content: '', turnId: 'files-turn', isToolUse: true,
+      timestamp: '2026-11-01T00:00:02Z', toolName: 'run_command', toolId: 'verify-files', toolInput: { command: 'verify report.txt' }, toolResult: { content: 'ok' } },
+  ];
+  const view = renderPane({ messages, isAssistantWorking: true });
+  expect(screen.queryByTestId('turn-changes-card')).toBeNull();
+  view.rerender(createPaneElement({ messages }));
+  const card = screen.getByTestId('turn-changes-card');
+  const trailingWork = view.container.querySelector('[data-process-block]')!;
+  expect(trailingWork.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(card.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
+  const finished: ChatMessage[] = [...messages, { id: 'final-files', type: 'assistant', content: 'Report complete.', timestamp: '2026-11-01T00:00:03Z', turnId: 'files-turn' }];
+  view.rerender(createPaneElement({ messages: finished }));
+  expect(screen.getAllByTestId('turn-changes-card')).toHaveLength(1);
+  const finalReply = screen.getByText('Report complete.');
+  const fileCard = screen.getByTestId('turn-changes-card');
+  expect(finalReply.compareDocumentPosition(fileCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const turnToggle = view.container.querySelector<HTMLButtonElement>('[data-turn-process-header] button')!;
+  expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(turnToggle);
+  expect(screen.getAllByTestId('turn-changes-card')).toHaveLength(1);
+  expect(fileCard.closest('[aria-hidden="true"]')).toBeNull();
+});
+
+it('keeps partial files accessible when a stopped turn has no prose reply', () => {
+  const messages = normalizedToChatMessages([{ id: 'partial-files', sessionId: 'partial', provider: 'pilotdeck',
+    kind: 'file_artifacts', runId: 'partial-turn', timestamp: '2026-11-01T00:00:00Z', artifacts: [{
+      id: 'partial-report', name: 'partial.txt', path: 'partial.txt', operation: 'created', source: 'workspace_diff',
+      status: 'incomplete', size: 42, sha256: 'a'.repeat(64), createdAt: '2026-11-01T00:00:00Z',
+    }] }]);
+  const view = renderPane({ messages });
+  expect(screen.getAllByTestId('turn-changes-card')).toHaveLength(1);
+  expect(view.container.querySelector('[data-turn-file="partial.txt"]')).toBeTruthy();
+  expect(view.container.querySelector('[data-testid="assistant-message-actions"]')).toBeNull();
+});
+
+it('places checkpoint-only changes at the tail and preserves incomplete-turn review', async () => {
+  const changes = [{ path: 'report.txt', operation: 'created', source: 'file_tool', added: 2, removed: 0, restorable: true, binary: false }];
+  const fetch = vi.spyOn(api, 'authenticatedFetch').mockResolvedValue({ ok: true, json: async () => ({
+    checkpoints: [{ id: 'files-checkpoint', phase: 'after', turnId: 'checkpoint-turn', status: 'incomplete', changes }],
+    sessionChanges: changes, operations: [], busy: false,
+  }) } as Response);
+  const messages: ChatMessage[] = [
+    { id: 'checkpoint-prose', type: 'assistant', content: 'Verifying the page.', timestamp: '2026-11-01T00:00:00Z', turnId: 'checkpoint-turn' },
+    { id: 'checkpoint-tool', type: 'assistant', content: '', isToolUse: true, toolId: 'checkpoint-tool',
+      timestamp: '2026-11-01T00:00:01Z', toolName: 'bash', toolInput: { command: 'verify report.txt' }, toolResult: { content: 'ok' }, turnId: 'checkpoint-turn' },
+  ];
+  const element = (running: boolean) => <ChatReviewProvider project={{ name: 'workspace', displayName: 'Workspace', fullPath: '/workspace' }}
+    session={{ id: 'files-session' }} onOpen={() => {}}>{createPaneElement({ messages, isAssistantWorking: running })}</ChatReviewProvider>;
+  try {
+    const view = render(element(true));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(screen.queryByTestId('turn-changes-card')).toBeNull();
+    view.rerender(element(false));
+    const card = await screen.findByTestId('turn-changes-card');
+    const work = view.container.querySelector('[data-process-block]')!;
+    expect(work.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(card).getByText('本轮执行未完成，已记录可用的文件变更')).toBeTruthy();
+    expect(within(card).getByRole('button', { name: '查看变更' })).toBeTruthy();
+    expect(within(card).getByRole('button', { name: '撤销' }).hasAttribute('disabled')).toBe(false);
+  } finally { fetch.mockRestore(); }
+});
+
+it.each(['generate_image', 'edit_image', 'generate_video'])('keeps pending intermediate %s animation outside folded work, then retires it', async toolName => {
+  const now = '2026-11-01T00:00:00Z';
+  const user: ChatMessage = { id: 'media-user', type: 'user', content: 'Create a site asset', timestamp: now };
+  const call: ChatMessage = { id: 'asset-call', toolId: 'asset-call', type: 'assistant', content: '', timestamp: now,
+    isToolUse: true, toolName, toolInput: { purpose: 'intermediate', output_path: 'assets/example.png', prompt: 'A small site asset' } };
+  const view = renderPane({ messages: [user, call], isAssistantWorking: true });
+  const surface = view.container.querySelector('.generated-image-surface')!;
+  expect(surface.getAttribute('aria-busy')).toBe('true');
+  expect(surface.closest('[data-turn-process-region], [data-process-block]')).toBeNull();
+  fireEvent.click(view.container.querySelector('[data-turn-process-header] button')!);
+  expect(surface.closest('[aria-hidden="true"]')).toBeNull();
+  const result = toolName === 'generate_video'
+    ? { videoGeneration: { videoId: 'video-1', sessionId: 'session-1', purpose: 'intermediate' } }
+    : { imageGeneration: { imageId: 'image-1', sessionId: 'session-1', purpose: 'intermediate', width: 24, height: 16, mimeType: 'image/png' } };
+  view.rerender(createPaneElement({ messages: [user, { ...call, toolResult: { content: 'Done', toolUseResult: result } },
+    { id: 'asset-answer', type: 'assistant', content: 'Site complete.', timestamp: now }] }));
+  expect(surface.closest('[data-media-surface]')?.getAttribute('aria-hidden')).toBe('true');
+  await waitFor(() => expect(view.container.querySelector('.generated-image-surface')).toBeNull());
+  expect(view.container.querySelector('video, img')).toBeNull();
+});
+
+it.each(['generate_image', 'edit_image'])('does not restart historical unfinished %s feedback in a later turn', toolName => {
+  const messages: ChatMessage[] = [
+    { id: 'old-media', type: 'assistant', content: '', timestamp: '2026-11-01T00:00:00Z', isToolUse: true,
+      toolId: 'old-media', toolName, toolInput: { purpose: 'deliverable' } },
+    { id: 'next-media-user', type: 'user', content: 'Continue with another task', timestamp: '2026-11-01T00:01:00Z' },
+  ];
+  const view = renderPane({ messages, isAssistantWorking: true });
+  expect(view.container.querySelector('.generated-image-surface')).toBeNull();
+});
+
+it('shows a model-call spinner between completed tools and the next model output', () => {
+  const now = '2026-11-01T00:00:00Z';
+  const user: ChatMessage = { id: 'model-user', type: 'user', content: 'Inspect a file', timestamp: now };
+  const call: ChatMessage = { id: 'model-tool', toolId: 'model-tool', type: 'assistant', content: '', timestamp: now,
+    isToolUse: true, toolName: 'bash', toolInput: { command: 'verify example.txt' } };
+  const thought: ChatMessage = { id: 'model-thought', type: 'assistant', content: 'Check the result.', timestamp: now, isThinking: true };
+  const view = renderPane({ messages: [user, call], isAssistantWorking: true });
+  const status = () => view.container.querySelector('[data-process-status="live-model-call"]');
+  expect(status()).toBeNull();
+  const finished = { ...call, toolResult: { content: '', isError: false } };
+  view.rerender(createPaneElement({ messages: [user, finished, thought], isAssistantWorking: true }));
+  expect(status()?.textContent).toContain('Calling model...');
+  expect(status()?.querySelector('svg')?.getAttribute('class')).toContain('motion-safe:animate-spin');
+  // Another tool or real model output replaces the fallback rather than duplicating it.
+  view.rerender(createPaneElement({ messages: [user, finished, { ...thought, isStreaming: true }], isAssistantWorking: true }));
+  expect(status()).toBeNull();
+  const reply: ChatMessage = { id: 'model-reply', type: 'assistant', content: 'The result is ready.', timestamp: now, isStreaming: true };
+  view.rerender(createPaneElement({ messages: [user, finished, thought, reply], isAssistantWorking: true }));
+  expect(status()).toBeNull();
+  view.rerender(createPaneElement({ messages: [user, finished, thought, { ...reply, isStreaming: false }], isAssistantWorking: true,
+    pendingPermissionRequests: [{ requestId: 'model-question', toolName: 'AskUserQuestion', receivedAt: new Date() }] }));
+  expect(status()).toBeNull();
+  view.rerender(createPaneElement({ messages: [user, finished, thought] }));
+  expect(status()).toBeNull();
+});
+
+it('retains manually inspected tools and their ancestors after new prose and completion', () => {
+  const messages = toolRegressionMessages();
+  const view = renderPane({ messages, isAssistantWorking: true });
+  const tool = screen.getByRole('button', { name: /first\.ts$/ });
+  fireEvent.click(tool);
+  const group = view.container.querySelector('[data-process-block] > button')!;
+  const turn = view.container.querySelector('[data-turn-process-header] button')!;
+  view.rerender(createPaneElement({ messages: [...messages, { id: 'inspection-reply', type: 'assistant',
+    content: 'The file is ready.', timestamp: '2026-09-15T09:00:02Z' }] }));
+  expect(tool.getAttribute('aria-expanded')).toBe('true');
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  expect(turn.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.click(tool);
+  view.rerender(createPaneElement({ messages: [...messages, { id: 'inspection-reply', type: 'assistant',
+    content: 'The file is ready. Another update.', timestamp: '2026-09-15T09:00:02Z' }] }));
+  expect(tool.getAttribute('aria-expanded')).toBe('false');
 });

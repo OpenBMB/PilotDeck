@@ -106,7 +106,7 @@ it.each(['fetchFromServer', 'refreshFromServer'] as const)('%s replaces remotely
   expect(result.current.getMessages('s').some(m => m.content?.includes('old answer'))).toBe(false);
 });
 
-it('a partial history page does not remove previously confirmed timeline blocks', async () => {
+it('a replacement partial page evicts an older reply together with its user anchor', async () => {
   let messages = [user('old', 'Old question'), answer('old', 'Old answer')];
   let hasMore = false;
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ messages, hasMore }))));
@@ -115,7 +115,7 @@ it('a partial history page does not remove previously confirmed timeline blocks'
   messages = [user('new', 'New question'), answer('new', 'New answer')];
   hasMore = true;
   await act(async () => { await result.current.fetchFromServer('s', { limit: 2 }); });
-  expect(result.current.getMessages('s').some(m => m.content === 'Old answer')).toBe(true);
+  expect(result.current.getMessages('s').map(m => m.content)).toEqual(['New question', 'New answer']);
 });
 
 it.each(['fetchFromServer', 'refreshFromServer'] as const)('%s preserves child errors through cached and restored protocol updates', async (method) => {

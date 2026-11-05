@@ -1,4 +1,5 @@
 import { ActiveTimeline } from "../stream/ActiveTimeline.js";
+import { FileInputProgress } from "../stream/FileInputProgress.js";
 import { withRequestContext } from "../../network/requestContext.js";
 import { normalizeSessionModelSelection } from "../dialog/modelCatalog.js";
 import { randomUUID } from "node:crypto";
@@ -485,6 +486,7 @@ export class InProcessGateway implements Gateway {
     let completedEventAt: number | undefined;
 
     // Background pump: agent events → queue.
+    const fileInputProgress = new FileInputProgress(runId);
     const pump = withRequestContext({
       ...input.requestContext,
       sessionId: input.sessionKey,
@@ -678,7 +680,7 @@ export class InProcessGateway implements Gateway {
             queue.enqueue(selectionEvent);
             lastEmittedModel = `${event.event.provider}\0${event.event.model}`;
           }
-          for (const gatewayEvent of mapAgentEvent(event, runId)) {
+          for (const gatewayEvent of [...fileInputProgress.accept(event), ...mapAgentEvent(event, runId)]) {
             if (gatewayEvent.type === "assistant_text_delta" && actualRequestModel) gatewayEvent.model = actualRequestModel;
             if (gatewayEvent.type === "input_accepted" && input.modelSelection) {
               gatewayEvent.modelSelection = { ...input.modelSelection };
@@ -734,6 +736,10 @@ export class InProcessGateway implements Gateway {
           queue.enqueue(gatewayEvent);
         }
       } finally {
+        for (const frame of fileInputProgress.finish()) {
+          this.recordActiveTurnEvent(input.sessionKey, frame);
+          queue.enqueue(frame);
+        }
         if (timeoutHandle) {
           clearTimeout(timeoutHandle);
           timeoutHandle = undefined;
@@ -2489,7 +2495,8 @@ function mapTurnCompleted(result: AgentTurnResult): GatewayEvent[] {
   if (result.structuredOutput !== undefined) {
     events.push({ type: "structured_output", payload: result.structuredOutput });
   }
-  events.push({ type: "turn_completed", usage: result.usage, finishReason: result.stopReason });
+  events.push({ type: "turn_completed", usage: result.usage, finishReason: result.stopReason,
+    startedAt: result.startedAt, completedAt: result.completedAt });
   return events;
 }
 

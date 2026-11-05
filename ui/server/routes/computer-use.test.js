@@ -63,12 +63,21 @@ describe('computer use HTTP API', () => {
   it('permits the local development frontend', async () => {
     expect((await request('/status', 'GET', undefined, { Origin: 'http://localhost:5173' })).code).toBe(200);
   });
-  it.each([undefined, '', 'typo', '0', 'false'])('accepts same-origin proxy requests with auth enabled (%s)', async value => {
+  it.each(['typo', '0', 'false'])('accepts same-origin proxy requests with auth enabled (%s)', async value => {
     if (value === undefined) delete env.PILOTDECK_DISABLE_LOCAL_AUTH;
     else env.PILOTDECK_DISABLE_LOCAL_AUTH = value;
     expect((await request('/status', 'GET', undefined, {
       Host: 'pilotdeck.example', Origin: 'https://pilotdeck.example', 'X-Forwarded-Proto': 'https',
     })).code).toBe(200);
+  });
+  it.each([undefined, ''])('protects native actions from DNS rebinding with default auth settings (%s)', async value => {
+    if (value === undefined) delete env.PILOTDECK_DISABLE_LOCAL_AUTH;
+    else env.PILOTDECK_DISABLE_LOCAL_AUTH = value;
+    expect((await request('/status')).code).toBe(200);
+    expect((await request('/enabled', 'PUT', { enabled: true }, {
+      Host: 'rebind.example', Origin: 'http://rebind.example',
+    })).code).toBe(403);
+    expect(service.setEnabled).not.toHaveBeenCalled();
   });
   it('keeps platform bypass restricted to local hosts', async () => {
     delete env.PILOTDECK_DISABLE_LOCAL_AUTH;

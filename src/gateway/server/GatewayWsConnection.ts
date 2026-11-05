@@ -111,7 +111,7 @@ export class GatewayWsConnection {
             id: frame.id,
             seq,
             final: true,
-            event: { type: "turn_completed", usage, finishReason },
+            event: lastCompleted ?? { type: "turn_completed", usage, finishReason },
           }),
         );
         return;
