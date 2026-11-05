@@ -45,6 +45,8 @@ export type TurnProcessGroup = {
   isRunning: boolean;
   defaultExpanded: boolean;
   durationMs: number | null;
+  hasRecordedDuration?: boolean;
+  outcome?: 'completed' | 'cancelled' | 'failed';
   startedAt?: string;
   memberIds: string[];
 };
@@ -111,6 +113,7 @@ type ProcessCounts = {
   editedTargets: string[];
   readTargets: string[];
   searchCount: number;
+  fetchCount: number;
   commandCount: number;
   subagentCount: number;
   compactCount: number;
@@ -443,7 +446,7 @@ function isCollapsibleCompletedProcessMessage(message: ChatMessage): boolean {
 
 export function getProcessToolKind(
   message: ChatMessage,
-): 'edit' | 'read' | 'search' | 'command' | 'subagent' | 'compact' | 'thinking' | 'tool' {
+): 'edit' | 'read' | 'search' | 'fetch' | 'command' | 'subagent' | 'compact' | 'thinking' | 'tool' {
   if (message.isCompactBoundary) return 'compact';
   if (message.isThinking) return 'thinking';
   if (message.isSubagentContainer || message.toolName === 'Task' || message.isTaskNotification) {
@@ -451,6 +454,7 @@ export function getProcessToolKind(
   }
 
   const toolName = String(message.toolName || '').toLowerCase();
+  if (isWebFetchToolMessage(message)) return 'fetch';
   if (/edit|write|applypatch|patch|update|create|modify|multi_edit|multiedit/.test(toolName)) {
     return 'edit';
   }
@@ -476,6 +480,7 @@ function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
     editedTargets: [],
     readTargets: [],
     searchCount: 0,
+    fetchCount: 0,
     commandCount: 0,
     subagentCount: 0,
     compactCount: 0,
@@ -485,7 +490,13 @@ function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
     toolErrorCount: 0,
   };
 
+  const seenCalls = new Set<string>();
   for (const message of messages) {
+    const identity = `${message.turnId || message.runId || ''}:${message.toolId || message.toolCallId || message.id || ''}`;
+    if ((message.isToolUse || message.toolName) && identity) {
+      if (seenCalls.has(identity)) continue;
+      seenCalls.add(identity);
+    }
     if (message.isToolUse || message.toolName) {
       counts.toolCallCount += 1;
     }
@@ -500,6 +511,8 @@ function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
       counts.readTargets.push(getToolTarget(message));
     } else if (kind === 'search') {
       counts.searchCount += 1;
+    } else if (kind === 'fetch') {
+      counts.fetchCount += 1;
     } else if (kind === 'command') {
       counts.commandCount += 1;
     } else if (kind === 'subagent') {
@@ -537,6 +550,8 @@ function getTurnEndIndex(messages: ChatMessage[], turn: MessageTurn): number {
 }
 
 function getTurnRunDurationMs(messages: ChatMessage[], turn: MessageTurn): number | null {
+  const timing = getRecordedTurnTiming(messages.slice(turn.start, turn.end));
+  if (timing) return timing.durationMs;
   const summaryDuration = turn.summary?.message.durationMs;
   if (typeof summaryDuration === 'number' && Number.isFinite(summaryDuration)) {
     return Math.max(0, summaryDuration);
@@ -549,6 +564,23 @@ function getTurnRunDurationMs(messages: ChatMessage[], turn: MessageTurn): numbe
   const endedAt = summaryEnd ?? messages[fallbackEndIndex]?.timestamp;
   const durationMs = getDurationMs(startedAt, endedAt);
   return durationMs > 0 ? durationMs : null;
+}
+
+function getRecordedTurnTiming(messages: ChatMessage[]): { startedAt: number; completedAt: number; durationMs: number } | null {
+  const bounds = messages.flatMap(message => {
+    const startedAt = parseMessageTime(message.turnTiming?.startedAt);
+    const completedAt = parseMessageTime(message.turnTiming?.completedAt);
+    return startedAt !== null && completedAt !== null && completedAt >= startedAt ? [{ startedAt, completedAt }] : [];
+  });
+  if (!bounds.length) return null;
+  bounds.sort((a, b) => a.startedAt - b.startedAt);
+  let completedAt = bounds[0].startedAt;
+  let durationMs = 0;
+  for (const bound of bounds) {
+    durationMs += Math.max(0, bound.completedAt - Math.max(completedAt, bound.startedAt));
+    completedAt = Math.max(completedAt, bound.completedAt);
+  }
+  return { startedAt: bounds[0].startedAt, completedAt, durationMs };
 }
 
 function hasCompletedTurnWork(messages: ChatMessage[], turn: MessageTurn): boolean {
@@ -574,6 +606,7 @@ function hasAgentActivitySummaryDetails(message: ChatMessage): boolean {
     'toolCallCount',
     'toolErrorCount',
     'ragSearchCount',
+    'webFetchCount',
     'editedFileCount',
     'exploredFileCount',
     'commandCount',
@@ -625,6 +658,7 @@ function createSyntheticProcessSummary(
     toolCallCount: counts.toolCallCount,
     toolErrorCount: counts.toolErrorCount,
     ragSearchCount: counts.searchCount,
+    webFetchCount: counts.fetchCount,
     editedFileCount: uniqueCount(counts.editedTargets),
     exploredFileCount: uniqueCount(counts.readTargets),
     commandCount: counts.commandCount,
@@ -1029,8 +1063,14 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
     }
     const last = reversed.find(message => !message.isAgentActivity && !message.isAgentActivitySummary
       && !message.isCompactBoundary && !isEmptyAssistantShell(message));
-    const interrupted = raw.some(message => message.type === 'error' || message.isInterruptedNotice)
-      || Boolean(turn.summary?.message.state && turn.summary.message.state !== 'completed');
+    const reason = reversed.find(message => message.turnTiming?.finishReason)?.turnTiming?.finishReason;
+    const summaryState = turn.summary?.message.state;
+    const outcome: TurnProcessGroup['outcome'] = reason ? reason === 'completed' ? 'completed'
+      : reason.startsWith('aborted') ? 'cancelled' : 'failed'
+      : summaryState === 'completed' ? 'completed'
+      : summaryState === 'cancelled' || raw.some(message => message.isInterruptedNotice) ? 'cancelled'
+      : summaryState === 'failed' || raw.some(message => message.type === 'error') ? 'failed' : undefined;
+    const interrupted = outcome === 'cancelled' || outcome === 'failed';
     const finalReply = last?.type === 'assistant' && !last.isThinking && !last.isToolUse
       && !last.isSubagentContainer && !last.isInteractivePrompt && !last.isTaskNotification && !last.isStreaming
       && (Boolean(last.content?.trim()) || Boolean(last.artifacts?.length));
@@ -1053,13 +1093,16 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
     });
     const members = seats.filter(item => item !== output);
     const durationMs = getTurnRunDurationMs(messages, turn);
+    const timing = getRecordedTurnTiming(raw);
     if (!running && !seats.length && durationMs === null) continue;
     const anchor = messages[turn.start];
     const startedAtMs = parseMessageTime(anchor.timestamp);
     const group: TurnProcessGroup = {
       id: `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}`,
       isRunning: running, defaultExpanded: !completed, durationMs,
-      startedAt: turn.summary?.message.startedAt || (startedAtMs !== null ? new Date(startedAtMs).toISOString() : undefined),
+      outcome,
+      hasRecordedDuration: Boolean(timing) || (typeof turn.summary?.message.durationMs === 'number' && Number.isFinite(turn.summary.message.durationMs)),
+      startedAt: timing ? new Date(timing.startedAt).toISOString() : turn.summary?.message.startedAt || (startedAtMs !== null ? new Date(startedAtMs).toISOString() : undefined),
       memberIds: members.map(getTurnProcessMemberId),
     };
     for (const item of turnItems) { item.beforeRunAttachment = null; item.afterRunAttachment = null; }
@@ -1256,6 +1299,7 @@ export function formatCompletedProcessTitle(
         editedTargets: [],
         readTargets: [],
         searchCount: numberField(messageOrMessages, 'ragSearchCount'),
+        fetchCount: numberField(messageOrMessages, 'webFetchCount'),
         commandCount: numberField(messageOrMessages, 'commandCount'),
         subagentCount: numberField(messageOrMessages, 'subagentCount'),
         compactCount: numberField(messageOrMessages, 'compactCount'),
@@ -1291,6 +1335,12 @@ export function formatCompletedProcessTitle(
       defaultValue: `Searched ${counts.searchCount} ${counts.searchCount === 1 ? 'time' : 'times'}`,
     }));
   }
+  if (counts.fetchCount > 0) {
+    labels.push(t('process.live.webFetches', {
+      count: counts.fetchCount,
+      defaultValue: `Fetched ${counts.fetchCount} ${counts.fetchCount === 1 ? 'page' : 'pages'}`,
+    }));
+  }
   if (counts.commandCount > 0) {
     labels.push(t('process.live.commands', {
       count: counts.commandCount,
@@ -1311,14 +1361,14 @@ export function formatCompletedProcessTitle(
         ? t('working.compactCancelled', { defaultValue: 'Context compaction stopped' })
         : t('process.live.compactCompleted', { defaultValue: 'Compacted context' }));
   }
-  if (counts.thinkingCount > 0 && labels.length === 0) {
-    labels.push(t('process.live.thoughtCompleted', { defaultValue: 'Thought through next step' }));
-  }
-  if (labels.length === 0 && counts.otherToolCount > 0) {
+  if (counts.otherToolCount > 0) {
     labels.push(t('process.live.toolCalls', {
       count: counts.otherToolCount,
       defaultValue: `Used ${counts.otherToolCount} ${counts.otherToolCount === 1 ? 'tool' : 'tools'}`,
     }));
+  }
+  if (counts.thinkingCount > 0 && labels.length === 0) {
+    labels.push(t('process.live.thoughtCompleted', { defaultValue: 'Thought through next step' }));
   }
 
   return labels.join(' ');

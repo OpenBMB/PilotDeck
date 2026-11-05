@@ -33,6 +33,17 @@ import {
     uiFilesToAttachments,
 } from './pilotdeck-bridge.js';
 
+it.each(['completed', 'aborted_streaming', 'aborted_tools', 'model_error'])('preserves execution timing through the real %s Gateway projection', reason => {
+    const result = { type: reason === 'completed' ? 'success' : reason.startsWith('aborted') ? 'aborted' : 'error',
+        sessionId: 's', turnId: 'r', stopReason: reason, usage: {}, permissionDenials: [], turns: 1,
+        startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z' };
+    const projected = mapAgentEvent({ type: 'turn_completed', sessionId: 's', turnId: 'r', result }, 'r');
+    const complete = projected.find(event => event.type === 'turn_completed');
+    expect(complete).toMatchObject({ startedAt: result.startedAt, completedAt: result.completedAt });
+    expect(gatewayEventToFrames(complete, 's', 'pilotdeck')[0]).toMatchObject({ kind: 'complete',
+        turnTiming: { startedAt: result.startedAt, completedAt: result.completedAt, finishReason: reason } });
+});
+
 it.each(['ask_user_question', 'AskUserQuestion'])('preserves %s multi-select data from the real elicitation tool through Gateway and the Web bridge', async toolName => {
     const questions = [{ question: 'Which paths?', header: 'Scope', multiSelect: true,
         options: [{ label: 'A, B', description: 'Combined path' }, { label: 'C', description: 'Another path' }] }];

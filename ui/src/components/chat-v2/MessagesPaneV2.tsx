@@ -1,8 +1,8 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { notifyScrollLayout } from '../chat/hooks/useScrollFollow';
 import { XCircle, GitBranch, ArrowDown } from 'lucide-react';
+import { notifyScrollLayout } from '../chat/hooks/useScrollFollow';
 import { recordUiDiagnostic, reloadUi } from '../../lib/uiDiagnostics';
 import type {
   ChatMessage,

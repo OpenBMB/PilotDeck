@@ -110,3 +110,37 @@ test('offscreen automatic folding invalidates expanded heights and leaves no pha
   }).toBeLessThan(120);
   await expect(page.locator('[data-turn-process-header] button').last()).toHaveAttribute('aria-expanded', 'false');
 });
+
+test('search/fetch summaries and recorded time remain correct after reload and language changes', async ({ page }) => {
+  const timing = { startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z', finishReason: 'completed' };
+  const messages = [{ ...base, id: 'u', kind: 'text', role: 'user', content: 'Check the web', turnTiming: timing }];
+  for (let i = 0; i < 6; i++) messages.push({ ...base, id: `fetch-${i}`, kind: 'tool_use', toolId: `fetch-${i}`, toolName: 'web_fetch', toolInput: { url: `https://example.com/${i}` } },
+    { ...base, id: `result-${i}`, kind: 'tool_result', toolId: `fetch-${i}`, content: 'Page received' });
+  messages.push({ ...base, id: 'search', kind: 'tool_use', toolId: 'search', toolName: 'web_search', toolInput: { query: 'Example' } },
+    { ...base, id: 'search-result', kind: 'tool_result', toolId: 'search', content: 'Found' },
+    { ...base, id: 'final', kind: 'text', role: 'assistant', content: 'Web results checked.', timestamp: '2026-09-01T00:00:32Z' });
+  await serve(page, messages);
+  await page.goto('/e2e/fixtures/history-loading.html');
+  await expect(page.getByText('Processed 1m 20s', { exact: true })).toBeVisible();
+  await page.locator('[data-turn-process-header] button').click();
+  await expect(page.locator('[data-process-block] > button')).toContainText('Searched 1 time Fetched 6 pages');
+  await page.evaluate(() => window.historyFixture.setLanguage('zh-CN'));
+  await expect(page.getByText('已处理 1 分 20 秒', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-process-block] > button')).toContainText('已搜索 1 次 已读取 6 个网页');
+  await page.reload();
+  await expect(page.getByText('Processed 1m 20s', { exact: true })).toBeVisible();
+});
+
+for (const reason of ['aborted_streaming', 'model_error']) test(`restored ${reason} keeps partial work accessible and does not show a successful duration`, async ({ page }) => {
+  const messages = [{ ...base, id: 'u', kind: 'text', role: 'user', content: 'Inspect partial work', turnTiming: {
+    startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z', finishReason: reason } },
+  { ...base, id: 'call', kind: 'tool_use', toolId: 'call', toolName: 'web_fetch', toolInput: { url: 'https://example.com' } },
+  { ...base, id: 'partial', kind: 'text', role: 'assistant', content: 'Partial result remains available.' }];
+  await serve(page, messages);
+  await page.goto('/e2e/fixtures/history-loading.html');
+  await expect(page.getByText(reason === 'model_error' ? 'Process failed' : 'Process stopped', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('Partial result remains available.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Calling model...', { exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-process-live="true"]')).toHaveCount(0);
+});

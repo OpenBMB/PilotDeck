@@ -105,7 +105,7 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "worktree_created"; runId: string; cwd: string }
   | { type: "worktree_removed"; cwd: string }
   | { type: "agent_status"; event: string; detail?: Record<string, unknown> }
-  | { type: "turn_completed"; usage: Record<string, number>; finishReason: string }
+  | { type: "turn_completed"; usage: Record<string, number>; finishReason: string; startedAt?: string; completedAt?: string }
   | {
       type: "error";
       message: string;

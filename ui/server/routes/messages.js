@@ -191,6 +191,7 @@ function mapWebMessageToNormalized(message, sessionId) {
   const base = {
     id: message.id,
     ...(message.blockId ? { blockId: message.blockId } : {}),
+    ...(message.turnTiming ? { turnTiming: message.turnTiming } : {}),
     ...(message.timeline ? { timeline: message.timeline, isFinal: true } : {}),
     sessionId,
     timestamp: message.createdAt,

@@ -106,6 +106,8 @@ export type WebMessage = {
   kind: WebMessageKind;
   /** Logical agent turn that owns this message. Stable across live/history projections. */
   turnId?: string;
+  /** Authoritative execution bounds from a persisted turn result. */
+  turnTiming?: { startedAt: string; completedAt: string; finishReason?: string };
   /** Shared identity of a model output block in live events and history. */
   blockId?: string;
   timeline?: TimelinePosition;
@@ -487,6 +489,7 @@ export function applyWebGatewayEvent(
         kind: "complete",
         usage: event.usage,
         finishReason: event.finishReason,
+        ...(event.startedAt && event.completedAt ? { turnTiming: { startedAt: event.startedAt, completedAt: event.completedAt, finishReason: event.finishReason } } : {}),
         source: "live",
       };
       return {

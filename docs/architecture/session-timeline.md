@@ -100,6 +100,19 @@ for a short height transition without delaying the submitted answer.
 Question tools use full-width compact transcripts with a separate disclosure
 header. Multi-select answers remain arrays through elicitation, live transport,
 canonical history and UI projection, preserving labels that contain commas.
+
+Turn completion carries execution `startedAt` and `completedAt` through Gateway
+and Web transports. Historical reads attach `turnTiming` to an existing turn
+anchor from its persisted result, including the finish reason. Process durations
+prefer these bounds over first-token timestamps. Resumed execution intervals are
+merged without double-counting overlaps or counting idle gaps. Locally observed
+completion freezes its clock until authoritative timing arrives. Stopped and
+failed turns show their terminal state and keep partial work expanded by default;
+they do not advertise a successful processed duration. A later successful result
+can settle a recovered run without an earlier recoverable error taking precedence.
+Searches, webpage fetches and other tool calls retain separate counts in mixed
+summaries. Replayed call identities do not increment counts; distinct runs remain
+distinct even if they reuse a tool-call identifier.
 The history reader retains structured question results instead of reconstructing
 answers from tool-result text. Todo updates use one progress header and checklist;
 successful acknowledgements do not create a second details row.
@@ -191,6 +204,9 @@ permanent empty tail after short or interrupted replies.
   replay, question exits, batched final replies, file footer placement and reduced motion.
 - `tests/web/question-answer-history.spec.ts`: real elicitation output through
   canonical transcript and live Web projections, including comma-bearing labels.
+- `tests/web/turn-timing-history.spec.ts` and
+  `ui/src/components/chat-v2/ProcessSummary.regressions.test.tsx`: recorded execution
+  bounds, stopped/failed outcomes, resumed intervals and mixed search/fetch counts.
 - `tests/gateway/file-input-progress.spec.ts`: pre-dispatch feedback, bounded
   metadata, throttling, coalesced snapshots, retry and child isolation.
 - `ui/e2e/reasoning-status.spec.mjs`: real row alignment across light palettes and

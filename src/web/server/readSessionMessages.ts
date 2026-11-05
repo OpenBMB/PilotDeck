@@ -112,6 +112,19 @@ export async function readWebSessionMessages(
   if (incompleteTurnIds.length > 0) {
     allMessages.push(createIncompleteTurnStatusMessage(input, incompleteTurnIds, options));
   }
+  // Keep timing on an existing anchor instead of adding history rows or using
+  // a text block's first-token timestamp as the execution end.
+  const completedTurns = new Map(entries.filter(entry => entry.type === 'turn_result')
+    .map(entry => [entry.turnId, entry.result]));
+  const timedTurns = new Set<string>();
+  for (const message of allMessages) {
+    if (!message.turnId || timedTurns.has(message.turnId)) continue;
+    const result = completedTurns.get(message.turnId);
+    if (!result || !Number.isFinite(Date.parse(result.startedAt)) || !Number.isFinite(Date.parse(result.completedAt))
+      || Date.parse(result.completedAt) < Date.parse(result.startedAt)) continue;
+    message.turnTiming = { startedAt: result.startedAt, completedAt: result.completedAt, finishReason: result.stopReason };
+    timedTurns.add(message.turnId);
+  }
 
   const offset = parseCursor(input.cursor);
   const limit = input.limit ?? allMessages.length;

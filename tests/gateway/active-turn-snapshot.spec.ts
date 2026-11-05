@@ -48,6 +48,26 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+test('WebSocket final completion retains execution timing and run identity', async () => {
+  const complete: GatewayEvent = { type: 'turn_completed', runId: 'timed-run', usage: {}, finishReason: 'model_error',
+    startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z' };
+  const socket = new FakeTextWebSocketConnection();
+  new GatewayWsConnection(socket as unknown as TextWebSocketConnection, {
+    token: 'secret', serverVersion: 'test', gateway: {
+      describeServer: async () => ({ mode: 'in_process' }),
+      submitTurn: async function* () { yield complete; },
+    } as unknown as Gateway,
+  });
+  socket.dispatch({ type: 'hello', protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION, clientName: 'test', clientVersion: 'test', token: 'secret' });
+  await flushAsyncWork();
+  socket.dispatch({ type: 'request', id: 'timed-submit', method: 'submit_turn', params: { sessionKey: 'web:timed' } });
+  await flushAsyncWork();
+  const events = socket.sent.filter((frame: any) => frame.type === 'event') as Array<{ event: GatewayEvent; final: boolean }>;
+  assert.equal(events.length, 2);
+  assert.equal(events.at(-1)?.final, true);
+  assert.deepEqual(events.map(frame => frame.event), [complete, complete]);
+});
+
 test("status-only active turn snapshots omit buffered events", async () => {
   const gateway = new InProcessGateway({} as SessionRouter);
   const event: GatewayEvent = { type: "assistant_text_delta", text: "still running" };

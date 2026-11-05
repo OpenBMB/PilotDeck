@@ -1140,6 +1140,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 createNormalizedMessage({
                     ...base,
                     kind: 'complete',
+                    ...(event.startedAt && event.completedAt ? { turnTiming: { startedAt: event.startedAt, completedAt: event.completedAt, finishReason: event.finishReason } } : {}),
                     exitCode: 0,
                     success: true,
                     finishReason: event.finishReason,

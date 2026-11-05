@@ -18,7 +18,8 @@ function Fixture() {
   const chat = useChatSessionState({ selectedProject: project, selectedSession: session,
     ws: null, sendMessage: noop, autoScrollToBottom: true, resetStreamingState: noop,
     pendingViewSessionRef: pending, sessionStore: store });
-  window.historyFixture = { store, chat, setSession: index => setSession(sessions[index]), setWorking };
+  window.historyFixture = { store, chat, setSession: index => setSession(sessions[index]), setWorking,
+    setLanguage: language => i18n.changeLanguage(language) };
   return <FindShortcutProvider activeScope="chat">
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <MessagesPane {...chat} provider="pilotdeck" selectedProject={project} selectedSession={session}

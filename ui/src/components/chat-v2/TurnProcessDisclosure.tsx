@@ -27,11 +27,14 @@ export function TurnProcessHeader({ group, scope, expanded, onExpandedChange, wa
   const parsedStart = Date.parse(group.startedAt || '');
   const start = Number.isFinite(parsedStart) ? parsedStart : observedStart.current;
   const end = group.isRunning ? now : current.stoppedAt;
-  const durationMs = !group.isRunning && group.durationMs !== null ? group.durationMs
-    : observedStart.current !== undefined && start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined;
+  const observedDuration = observedStart.current !== undefined && start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined;
+  const durationMs = !group.isRunning && group.hasRecordedDuration ? group.durationMs ?? undefined
+    : observedDuration ?? group.durationMs ?? undefined;
   const duration = formatProcessDuration(durationMs ?? 0, t);
-  const label = durationMs === undefined ? t('process.summary.completed', { defaultValue: 'Process completed' })
-    : t('process.summary.processed', { duration, defaultValue: `Processed ${duration}` });
+  const label = !group.isRunning && group.outcome === 'cancelled' ? t('process.summary.cancelled', { defaultValue: 'Process stopped' })
+    : !group.isRunning && group.outcome === 'failed' ? t('process.summary.failed', { defaultValue: 'Process failed' })
+    : durationMs === undefined ? t('process.summary.completed', { defaultValue: 'Process completed' })
+      : t('process.summary.processed', { duration, defaultValue: `Processed ${duration}` });
   if (waiting || (group.isRunning && !showWhileRunning)) return null;
   return <div data-turn-process-header={group.id}>
     <ProcessRunHeader label={label} expanded={expanded}

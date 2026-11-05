@@ -149,6 +149,8 @@ export interface NormalizedMessage {
   parentRunId?: string;
   /** Stable transcript turn identity; history maps this to runId as well. */
   turnId?: string;
+  turnTiming?: { startedAt: string; completedAt: string; finishReason?: string };
+  finishReason?: string;
   activityId?: string;
   phase?: string;
   state?: string;
@@ -161,6 +163,7 @@ export interface NormalizedMessage {
   toolCallCount?: number;
   toolErrorCount?: number;
   ragSearchCount?: number;
+  webFetchCount?: number;
   compactCount?: number;
   editedFileCount?: number;
   exploredFileCount?: number;

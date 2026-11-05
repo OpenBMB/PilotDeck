@@ -273,7 +273,7 @@ export type GatewayEvent = GatewayTurnScopedEventMetadata & (
       ratio: number;
       state: "ok" | "warning" | "blocking";
     }
-  | { type: "turn_completed"; usage: TurnUsage; finishReason: AgentTurnResult["stopReason"] | string }
+  | { type: "turn_completed"; usage: TurnUsage; finishReason: AgentTurnResult["stopReason"] | string; startedAt?: string; completedAt?: string }
   | { type: "agent_status"; event: string; detail?: Record<string, unknown> }
   | {
       type: "error";

@@ -9,6 +9,17 @@ afterEach(() => {
 });
 
 describe('message routes', () => {
+  it('retains authoritative timing on a historical turn anchor', async () => {
+    const turnTiming = { startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z', finishReason: 'model_error' };
+    vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+      withPilotDeckGatewayReadRetry: async () => ({ messages: [{ id: 'user', turnId: 'r', kind: 'text', role: 'user', text: 'Inspect', turnTiming }] }),
+    }));
+    const { default: routes } = await import('./messages.js'); const app = express(); app.use('/api/sessions', routes); const server = app.listen(0);
+    try {
+      const body = await (await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/s/messages`)).json();
+      expect(body.messages[0].turnTiming).toEqual(turnTiming);
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
   it('forwards backward identity cursors and history replacement without converting them to offsets', async () => {
     const read = vi.fn(async () => ({ messages: [], total: 250, nextCursor: 'before:old-user', historyReset: true }));
     vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
