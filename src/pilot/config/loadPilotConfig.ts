@@ -130,11 +130,13 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
   const alwaysOn = parseAlwaysOnConfig(rawConfig.alwaysOn, diagnostics);
   const cron = parseCronConfig(rawConfig.cron, diagnostics);
   const tools = parseToolsConfig(rawConfig.tools, diagnostics);
+  const runtime = parseRuntimeConfig(rawConfig.runtime, diagnostics);
   const telemetry = parseTelemetryConfig(rawConfig.telemetry);
   const proxy = parseProxyConfig(rawConfig, diagnostics);
   throwConfigErrorIfFatal(diagnostics);
 
   const redactedSnapshotConfig = redactConfig({
+    runtime,
     agent,
     model,
     extension,
@@ -156,6 +158,7 @@ export function loadPilotConfig(options: PilotConfigLoadOptions = {}): PilotConf
     sources,
     diagnostics,
     config: {
+      runtime,
       agent,
       model,
       extension,
@@ -302,6 +305,7 @@ function validateTopLevel(rawConfig: PilotRawConfig, diagnostics: PilotConfigDia
   }
 
   const allowedKeys = new Set([
+    "runtime",
     "schemaVersion",
     "agent",
     "model",
@@ -332,6 +336,17 @@ function validateTopLevel(rawConfig: PilotRawConfig, diagnostics: PilotConfigDia
       });
     }
   }
+}
+
+function parseRuntimeConfig(raw: unknown, diagnostics: PilotConfigDiagnostic[]): { python: { enabled: boolean } } {
+  const python = isRecord(raw) ? raw.python : undefined;
+  const enabled = isRecord(python) ? python.enabled : undefined;
+  if ((raw !== undefined && !isRecord(raw)) || (python !== undefined && !isRecord(python))
+    || (enabled !== undefined && typeof enabled !== 'boolean')) {
+    diagnostics.push({ code: 'CONFIG_RUNTIME_INVALID', severity: 'fatal', path: 'runtime.python.enabled',
+      message: 'runtime.python.enabled must be a boolean in a runtime.python object.', recoverable: false });
+  }
+  return { python: { enabled: enabled !== false } };
 }
 
 function parseAgent(

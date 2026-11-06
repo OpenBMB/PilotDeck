@@ -14,6 +14,22 @@ import { webSearchConfigForProvider } from '../../src/components/settings/view/a
 const nativeFetch = globalThis.fetch;
 const tempDirs = [];
 
+it('returns Python capability from the executing Gateway and handles disconnected hosts', async () => {
+  const status = { enabled: true, state: 'ready', version: '3.12.16', executable: '/execution-host/python', packages: { numpy: '2' } };
+  const pythonStatus = vi.fn().mockResolvedValueOnce(status).mockRejectedValueOnce(new Error('offline'));
+  const { requestStatus } = await createConfigApp({ pythonStatus });
+  expect((await requestStatus('/api/config/python-runtime')).body).toEqual(status);
+  expect((await requestStatus('/api/config/python-runtime')).status).toBe(503);
+});
+
+it('normalizes the Python preference to true and rejects non-boolean values', () => {
+  expect(validatePilotDeckConfig({}).config.runtime.python.enabled).toBe(true);
+  expect(validatePilotDeckConfig({ runtime: { python: { enabled: false } } }).config.runtime.python.enabled).toBe(false);
+  for (const runtime of [null, false, { python: null }, { python: { enabled: 'false' } }]) {
+    expect(validatePilotDeckConfig({ runtime }).errors).toContain('runtime.python.enabled must be a boolean');
+  }
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -2659,7 +2675,7 @@ describe('config routes invalid YAML fallback', () => {
   });
 });
 
-async function createConfigApp({ config = {}, probe } = {}) {
+async function createConfigApp({ config = {}, probe, pythonStatus } = {}) {
   const writePilotDeckConfig = vi.fn(async (nextConfig) => ({
     config: nextConfig,
     raw: stringifyYaml(nextConfig),
@@ -2689,7 +2705,7 @@ async function createConfigApp({ config = {}, probe } = {}) {
     };
   });
   vi.doMock('../pilotdeck-bridge.js', () => ({
-    getPilotDeckGateway: vi.fn(async () => ({ reloadConfig: vi.fn(async () => undefined) })),
+    getPilotDeckGateway: vi.fn(async () => ({ reloadConfig: vi.fn(async () => undefined), getPythonRuntimeStatus: pythonStatus })),
   }));
 
   const { default: configRoutes } = await import('./config.js');

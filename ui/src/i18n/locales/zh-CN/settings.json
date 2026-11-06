@@ -1,4 +1,21 @@
 {
+  "pythonRuntime": {
+    "title": "Python 环境",
+    "description": "PilotDeck 提供 Python 3.12 及常用的 Agent、数据和文档处理库。",
+    "enable": "使用内置 Python",
+    "toggleHint": "默认开启。切换对后续轮次生效，正在运行的任务继续使用原环境。后续安装的包保存在用户目录中。",
+    "checking": "正在检查执行主机的 Python 环境…",
+    "ready": "执行主机上的环境已就绪",
+    "disabled": "后续轮次已停用内置 Python",
+    "external": "优先使用已显式激活的虚拟环境",
+    "unavailable": "执行主机上的内置 Python 不可用。请检查应用安装与运行日志，然后重新检查。",
+    "statusFailed": "无法检查执行主机，请在 Gateway 连接后重试。",
+    "interpreter": "解释器",
+    "libraries": "预装库",
+    "refresh": "重新检查",
+    "saved": "已保存，正在运行的任务继续使用原环境。",
+    "saveFailed": "Python 设置保存失败，请重试。"
+  },
   "generalWorkspace": {
     "title": "通用对话",
     "directory": "工作目录",

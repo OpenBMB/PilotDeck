@@ -270,6 +270,9 @@ export class GatewayWsConnection {
           return this.options.gateway.reloadConfig();
         }
         return Promise.resolve({ reloaded: false, reason: "unsupported" });
+      case 'python_runtime_status':
+        return this.options.gateway.getPythonRuntimeStatus?.()
+          ?? Promise.resolve({ enabled: true, state: 'unavailable', reason: 'not-installed' });
       case "prepare_weixin_login":
         if (this.options.gateway.prepareWeixinLogin) {
           return this.options.gateway.prepareWeixinLogin();

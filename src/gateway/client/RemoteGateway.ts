@@ -244,6 +244,10 @@ export class RemoteGateway implements Gateway {
     return parseReloadConfigResult(await this.client.request("reload_config", {}));
   }
 
+  async getPythonRuntimeStatus(): Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus> {
+    return await this.client.request('python_runtime_status', {}) as import('../../runtime/pythonRuntime.js').PythonRuntimeStatus;
+  }
+
   async prepareWeixinLogin(): Promise<PrepareWeixinLoginResult> {
     return (await this.client.request("prepare_weixin_login", {})) as PrepareWeixinLoginResult;
   }

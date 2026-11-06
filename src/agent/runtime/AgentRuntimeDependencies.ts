@@ -85,6 +85,7 @@ export type AgentSubagentTranscriptHooks = {
 };
 
 export type AgentRuntimeDependencies = {
+  releaseSessionResources?: () => void;
   acquireTurnResources?: () => () => void;
   router: AgentRouterRuntime;
   tools: {

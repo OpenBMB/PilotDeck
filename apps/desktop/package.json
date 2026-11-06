@@ -66,6 +66,10 @@
     "afterPack": "scripts/after-pack.cjs",
     "extraResources": [
       {
+        "from": "resources/python-runtime",
+        "to": "python-runtime"
+      },
+      {
         "from": "resources/uninstall-data.cjs",
         "to": "uninstall-data.cjs"
       },

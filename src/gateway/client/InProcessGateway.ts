@@ -172,6 +172,7 @@ export type InProcessGatewayOptions = {
    * the PilotConfigStore + ProjectRuntimeRegistry lifecycle.
    */
   reloadConfig?: () => Promise<ReloadConfigResult>;
+  getPythonRuntimeStatus?: () => Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus>;
   prepareWeixinLogin?: () => Promise<PrepareWeixinLoginResult>;
   /**
    * Pluggable extension/MCP reload handler wired by `createLocalGateway`.
@@ -514,7 +515,7 @@ export class InProcessGateway implements Gateway {
           sessionKey: input.sessionKey,
           projectKey: input.projectKey,
           channelKey: input.channelKey,
-        });
+        }, runId);
         markTiming("sessionMs");
         if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
           timeoutHandle = setTimeout(() => {
@@ -1344,6 +1345,10 @@ export class InProcessGateway implements Gateway {
       return { reloaded: false, reason: "unsupported" };
     }
     return this.options.reloadConfig();
+  }
+
+  async getPythonRuntimeStatus(): Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus> {
+    return this.options.getPythonRuntimeStatus?.() ?? { enabled: true, state: 'unavailable', reason: 'not-installed' };
   }
 
   async prepareWeixinLogin(): Promise<PrepareWeixinLoginResult> {

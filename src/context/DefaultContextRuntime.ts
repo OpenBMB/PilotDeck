@@ -240,6 +240,7 @@ export class DefaultContextRuntime implements ContextRuntime {
       tools: input.tools,
       customSystemPrompt: input.customSystemPrompt,
       appendSystemPrompt: input.appendSystemPrompt,
+      pythonRuntime: input.pythonRuntime,
       now: () => new Date(promptTimestamp),
     });
 

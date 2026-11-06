@@ -2050,6 +2050,7 @@ export class AgentLoop {
       maxMessages: this.config.maxContextMessages,
       customSystemPrompt: this.config.systemPrompt,
       appendSystemPrompt: planTodo?.buildPromptAddendum(),
+      pythonRuntime: this.config.pythonRuntime,
       abortSignal: input.abortSignal,
     });
 
