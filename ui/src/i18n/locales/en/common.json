@@ -85,6 +85,10 @@
     }
   },
   "skillsTab": {
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "toggleSkill": "Enable {{name}}",
+    "enabledCount": "{{count}} of {{total}} enabled",
     "pickProject": "Open a project to manage its skills.",
     "generalChat": "General conversation",
     "refresh": "Refresh",

@@ -1013,3 +1013,18 @@
     max-height: 120px;
   }
 }
+
+/* Library switches use the same capsule geometry as Settings. */
+.skills-library-summary { margin-bottom: 12px; color: var(--skills-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.skills-library-item { position: relative; border-radius: 10px; }
+.skills-row-title { padding-right: 52px; min-height: 24px; align-items: center; }
+.skills-row-toggle { position: absolute; top: 12px; right: 12px; }
+.skills-row-menu { top: auto; bottom: 7px; }
+.skills-row-meta { padding-right: 24px; }
+.skills-library-item[data-enabled='false'] .skills-row-title { color: var(--skills-muted); }
+.skills-detail-toggle { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; color: var(--skills-muted); font-size: 12px; }
+.skills-workbench .route-switch { position: relative; width: 43px; height: 24px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 999px; background: hsl(var(--muted-foreground) / .28); cursor: pointer; transition: background .18s; }
+.skills-workbench .route-switch span { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px #30314438; transition: transform .18s; }
+.skills-workbench .route-switch.on { background: var(--skills-accent); }
+.skills-workbench .route-switch.on span { transform: translateX(19px); }
+@media (prefers-reduced-motion: reduce) { .skills-workbench .route-switch, .skills-workbench .route-switch span { transition: none; } }

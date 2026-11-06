@@ -94,6 +94,8 @@ import type {
   SkillAddressInput,
   SkillCreateInput,
   SkillCreateResult,
+  SkillSetEnabledInput,
+  SkillSetEnabledResult,
   SkillDeleteInput,
   SkillDeleteResult,
   SkillImportInput,
@@ -1400,6 +1402,10 @@ export class InProcessGateway implements Gateway {
 
   async skillCreate(input: SkillCreateInput): Promise<SkillCreateResult> {
     return this.requireSkills().create(input);
+  }
+
+  async skillSetEnabled(input: SkillSetEnabledInput): Promise<SkillSetEnabledResult> {
+    return this.requireSkills().setEnabled(input);
   }
 
   async skillDelete(input: SkillDeleteInput): Promise<SkillDeleteResult> {

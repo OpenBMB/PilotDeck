@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   read: vi.fn(),
   write: vi.fn(),
   remove: vi.fn(),
+  setEnabled: vi.fn(),
   import: vi.fn(),
 }));
 vi.mock('../pilotdeck-bridge.js', () => ({
@@ -15,6 +16,7 @@ vi.mock('../pilotdeck-bridge.js', () => ({
     skillRead: mocks.read,
     skillWrite: mocks.write,
     skillDelete: mocks.remove,
+    skillSetEnabled: mocks.setEnabled,
     skillImport: mocks.import,
   }),
 }));
@@ -124,4 +126,13 @@ it('copies a custom version from the gateway-resolved directory', async () => {
     mode: 'copy',
     force: false,
   });
+});
+
+it('toggles read-only built-ins by identity without attempting to edit their files', async () => {
+  mocks.setEnabled.mockResolvedValue({ ok: true, enabled: false });
+  const result = await invoke('/set-enabled', { scope: 'builtin', slug: skill.slug, enabled: false });
+  expect(mocks.setEnabled).toHaveBeenCalledWith({ scope: 'builtin', slug: skill.slug, projectKey: null, enabled: false });
+  expect(result.json).toHaveBeenCalledWith({ ok: true, enabled: false });
+  expect(mocks.write).not.toHaveBeenCalled();
+  expect((await invoke('/set-enabled', { scope: 'builtin', slug: '../escape', enabled: true })).status).toHaveBeenCalledWith(400);
 });

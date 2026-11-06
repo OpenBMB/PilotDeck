@@ -85,6 +85,10 @@
     }
   },
   "skillsTab": {
+    "enabled": "已开启",
+    "disabled": "已关闭",
+    "toggleSkill": "启用 {{name}}",
+    "enabledCount": "已开启 {{count}} / {{total}}",
     "pickProject": "选一个项目来管理它的技能。",
     "generalChat": "通用对话",
     "refresh": "刷新",
