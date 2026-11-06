@@ -20,6 +20,7 @@ import {
 import type { CronJobOverview, CronJobSchedule, CronJobsOverviewResponse, Project } from '../../types/app';
 import { cn } from '../../lib/utils.js';
 import { api } from '../../utils/api';
+import DateTimeField from '../ui/DateTimeField';
 import {
   buildSimpleCronExpression,
   getYearlyMonthDayCount,
@@ -1047,15 +1048,15 @@ function CronCreateView({
               <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">
                 {t('cron.create.fields.date', { defaultValue: 'Date' })}
               </span>
-              <input
+              <DateTimeField
                 type="date"
                 value={onceDraft.scheduleDate}
                 min={formatDateInTimezone(
                   new Date(),
                   isValidTimezone(timezone.trim()) ? timezone.trim() : getBrowserTimezone(),
                 )}
-                onChange={(event) => {
-                  setOnceDraft((current) => ({ ...current, scheduleDate: event.target.value }));
+                onValueChange={(value) => {
+                  setOnceDraft((current) => ({ ...current, scheduleDate: value }));
                   setHasOnceDraft(true);
                 }}
                 className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
@@ -1065,11 +1066,11 @@ function CronCreateView({
               <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">
                 {t('cron.create.fields.time', { defaultValue: 'Time' })}
               </span>
-              <input
+              <DateTimeField
                 type="time"
                 value={onceDraft.scheduleTime}
-                onChange={(event) => {
-                  setOnceDraft((current) => ({ ...current, scheduleTime: event.target.value }));
+                onValueChange={(value) => {
+                  setOnceDraft((current) => ({ ...current, scheduleTime: value }));
                   setHasOnceDraft(true);
                 }}
                 className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
@@ -1182,10 +1183,10 @@ function CronCreateView({
                 <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">
                   {t('cron.create.fields.time', { defaultValue: 'Time' })}
                 </span>
-                <input
+                <DateTimeField
                   type="time"
                   value={scheduleTime}
-                  onChange={(event) => updateRecurringDraft({ scheduleTime: event.target.value })}
+                  onValueChange={(value) => updateRecurringDraft({ scheduleTime: value })}
                   className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                 />
               </label>

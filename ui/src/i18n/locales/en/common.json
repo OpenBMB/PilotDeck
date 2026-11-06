@@ -1,4 +1,9 @@
 {
+  "formControls": {
+    "chooseDate": "Choose date", "chooseTime": "Choose time",
+    "previousMonth": "Previous month", "nextMonth": "Next month",
+    "hour": "Hour", "minute": "Minute", "clear": "Clear", "today": "Today", "apply": "Apply"
+  },
   "filePickerFailed": "Could not open or read the file selection. Please try again.",
   "zoomIndicator": {
     "label": "Interface zoom",

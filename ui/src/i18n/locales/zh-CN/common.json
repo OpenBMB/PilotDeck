@@ -1,4 +1,9 @@
 {
+  "formControls": {
+    "chooseDate": "选择日期", "chooseTime": "选择时间",
+    "previousMonth": "上个月", "nextMonth": "下个月",
+    "hour": "时", "minute": "分", "clear": "清空", "today": "今天", "apply": "确定"
+  },
   "filePickerFailed": "无法打开或读取文件选择，请重试。",
   "zoomIndicator": {
     "label": "界面缩放",

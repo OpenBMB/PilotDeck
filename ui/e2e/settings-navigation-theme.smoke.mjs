@@ -75,7 +75,14 @@ async function exercise(page, platform, resize) {
     await expect(page.locator('html')).toHaveAttribute('data-light-background','solid');
     for(const [route,ready] of pages) {
       await page.goto(`http://127.0.0.1:5187/settings/${route}`);
+      await expect(page.locator('.pd-startup-screen')).toHaveCount(0, { timeout: 60000 });
       await expect(page.locator(ready).first()).toBeVisible();
+      // Every mounted settings select, including disabled controls, shares the
+      // themed picker while preserving its existing value/save lifecycle.
+      for (const select of await page.locator('.settings-main select').all()) {
+        await expect(select).toHaveCSS('appearance', 'base-select');
+        await expect(select).toHaveCSS('opacity', '1');
+      }
       await expect(page.locator('.settings-main')).toHaveCSS('background-color','rgb(255, 255, 255)');
       await expect(page.locator('.topbar-config-icon')).toHaveCSS('color',color);
       await page.mouse.move(0,0);

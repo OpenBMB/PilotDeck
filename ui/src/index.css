@@ -431,54 +431,6 @@
     scrollbar-color: rgba(107, 114, 128, 0.5) rgba(31, 41, 55, 0.5);
   }
 
-  /* Ensure checkbox styling is preserved */
-  input[type="checkbox"] {
-    @apply accent-blue-600;
-    opacity: 1;
-  }
-
-  input[type="checkbox"]:focus {
-    opacity: 1;
-    outline: 2px solid hsl(var(--ring));
-    outline-offset: 2px;
-  }
-
-  /* Fix checkbox appearance in dark mode */
-  .dark input[type="checkbox"] {
-    background-color: rgb(31 41 55); /* gray-800 */
-    border-color: rgb(75 85 99); /* gray-600 */
-    color: var(--pd-accent, rgb(37 99 235)); /* blue-600 */
-    color-scheme: dark;
-  }
-
-  .dark input[type="checkbox"]:checked {
-    background-color: var(--pd-accent, rgb(37 99 235)); /* blue-600 */
-    border-color: var(--pd-accent, rgb(37 99 235)); /* blue-600 */
-  }
-
-  .dark input[type="checkbox"]:focus {
-    --tw-ring-color: var(--pd-focus, rgb(59 130 246)); /* blue-500 */
-    --tw-ring-offset-color: rgb(31 41 55); /* gray-800 */
-  }
-
-  /* Fix radio button appearance in dark mode */
-  .dark input[type="radio"] {
-    background-color: rgb(31 41 55); /* gray-800 */
-    border-color: rgb(75 85 99); /* gray-600 */
-    color: var(--pd-accent, rgb(37 99 235)); /* blue-600 */
-    color-scheme: dark;
-  }
-
-  .dark input[type="radio"]:checked {
-    background-color: var(--pd-accent, rgb(37 99 235)); /* blue-600 */
-    border-color: var(--pd-accent, rgb(37 99 235)); /* blue-600 */
-  }
-
-  .dark input[type="radio"]:focus {
-    --tw-ring-color: var(--pd-focus, rgb(59 130 246)); /* blue-500 */
-    --tw-ring-offset-color: rgb(31 41 55); /* gray-800 */
-  }
-
   /* Ensure textarea text is always visible in the active theme */
   textarea {
     color-scheme: light;
@@ -558,7 +510,6 @@
     /* Preserve checkbox visibility */
     input[type="checkbox"] {
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
-      opacity: 1 !important;
     }
 
     button,
@@ -639,7 +590,6 @@
     /* Preserve checkbox visibility on touch devices */
     input[type="checkbox"] {
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1) !important;
-      opacity: 1 !important;
     }
 
     /* Only disable hover states for interactive elements, not containers */
@@ -765,19 +715,6 @@
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-  }
-
-  /* Fix select option text in mobile */
-  select option {
-    font-size: 16px !important;
-    padding: 8px !important;
-    background-color: var(--background) !important;
-    color: var(--foreground) !important;
-  }
-
-  .dark select option {
-    background-color: rgb(31 41 55) !important;
-    color: rgb(243 244 246) !important;
   }
 
   /* Tool details chevron animation */

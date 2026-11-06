@@ -6813,10 +6813,8 @@
 }
 :where(.pilotdeck-settings-app) .office-service-choice:has(input:focus-visible) { outline: 2px solid var(--pd-focus, var(--brand)); outline-offset: 3px; }
 :where(.pilotdeck-settings-app) .office-service-choice input {
-  appearance: none; flex: 0 0 auto; width: 16px; height: 16px; margin: 3px 0 0;
-  border: 1px solid var(--pd-control-border, #aaaebc); border-radius: 50%; background: var(--surface); outline: none;
+  margin: 3px 0 0;
 }
-.pilotdeck-settings-app .office-service-choice input:checked { border: 5px solid var(--brand); background: var(--surface); }
 :where(.pilotdeck-settings-app) .office-service-choice > span { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 :where(.pilotdeck-settings-app) .office-service-choice strong { color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.5; }
 :where(.pilotdeck-settings-app) .office-service-description { color: var(--muted); font-size: 13px; line-height: 1.65; }
