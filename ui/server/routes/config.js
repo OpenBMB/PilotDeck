@@ -72,6 +72,14 @@ async function notifyGatewayConfigReload() {
 
 const router = express.Router();
 
+router.get('/python-runtime', async (_req, res) => {
+  try {
+    const gateway = await getPilotDeckGateway();
+    if (!gateway?.getPythonRuntimeStatus) return res.status(503).json({ error: 'Python runtime status is unavailable' });
+    res.json(await gateway.getPythonRuntimeStatus());
+  } catch { res.status(503).json({ error: 'Python runtime status is unavailable' }); }
+});
+
 const MASKED_SECRET = '********';
 
 function normalizeProviderProtocol(value) {
