@@ -342,7 +342,7 @@
   font-size: 14px;
 }
 
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .page-header h1 {
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .usage-page) .page-header h1 {
   font-size: 16px;
 }
 
