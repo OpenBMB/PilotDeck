@@ -10,6 +10,7 @@ import { createDesktopLifecycle } from "./desktopLifecycle";
 import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiagnostics';
 import { desktopInstallationRoot, withRuntimeCommandPath } from './runtimeEnvironment';
 import { findFreePort } from './startupNetwork';
+import { waitForPortOrProcessExit } from './runtimeReadiness';
 import { createRuntimeLogWriter, normalizeLogRetentionDays, redactDiagnostic, registerDiagnosticSecrets, setRuntimeLogRetention, type RuntimeLogWriter } from '@pilotdeck/config';
 import { startupProgress } from './startupPresentation';
 import { exportRuntimeLogs } from './runtimeLogExport';
@@ -27,7 +28,6 @@ import { createUpdateController } from "./updates";
 import { createUpdateNetwork } from "./updateNetwork";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -962,59 +962,6 @@ function ensurePilotHome(log: (message: string) => void): { pilotHome: string } 
   fs.mkdirSync(pilotHome, { recursive: true });
   log(`PilotDeck home ready at ${pilotHome}`);
   return { pilotHome };
-}
-
-function waitForPort(port: number, host: string, timeoutMs: number): Promise<void> {
-  const startedAt = Date.now();
-  return new Promise((resolve, reject) => {
-    const attempt = () => {
-      const socket = net.createConnection({ host, port });
-      socket.once("connect", () => {
-        socket.end();
-        resolve();
-      });
-      socket.once("error", () => {
-        socket.destroy();
-        if (Date.now() - startedAt > timeoutMs) {
-          reject(new Error(`Timed out waiting for ${host}:${port}`));
-          return;
-        }
-        setTimeout(attempt, 250);
-      });
-    };
-    attempt();
-  });
-}
-
-function waitForPortOrProcessExit(
-  child: ChildProcess,
-  name: string,
-  port: number,
-  host: string,
-  timeoutMs: number,
-  logPath: string,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (callback: () => void) => {
-      if (settled) return;
-      settled = true;
-      child.off("managed-exit", onExit);
-      child.off("error", onError);
-      callback();
-    };
-    const onExit = (code: number | null, signal: NodeJS.Signals | null, startupError?: string) => {
-      finish(() => {
-        reject(new Error(startupError || `${name} exited before it was ready (code=${code ?? "null"} signal=${signal ?? "null"}). See runtime log: ${logPath}`));
-      });
-    };
-    child.once("managed-exit", onExit);
-    const onError = (error: Error) => finish(() => reject(error));
-    child.once("error", onError);
-    waitForPort(port, host, timeoutMs)
-      .then(() => finish(resolve))
-      .catch((error) => finish(() => reject(error)));
-  });
 }
 
 async function killProcessTree(child: ChildProcess): Promise<void> {
