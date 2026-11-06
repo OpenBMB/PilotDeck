@@ -64,7 +64,8 @@ try {
       else if (p.includes('/files')) body = [];
       else if (p.includes('/tasks')) body = { tasks: [] };
       else if (p.includes('/cron')) body = { jobs: [] };
-      else if (p === '/api/config') body = { exists: true, raw: JSON.stringify({ model: { providers: {} }, memory: { enabled: false } }), validation: { valid: true, errors: [], warnings: [] } };
+      else if (p === '/api/usage') body = { today: '2026-01-15', timeZone: 'UTC', days: [{ date: '2026-01-15', tokens: 4200, callCount: 2 }], totalTokens: 4200, totalCalls: 2, updatedAt: '2026-01-15T12:00:00Z' };
+      else if (p === '/api/config') body = { exists: true, raw: JSON.stringify({ model: { providers: {} }, memory: { enabled: false }, tools: { webSearch: { enabled: true, provider: 'custom', endpoint: 'https://example.invalid/search', customProvider: { auth: 'none' } } } }), validation: { valid: true, errors: [], warnings: [] } };
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.routeWebSocket('**/ws**', socket => socket.onMessage(() => {}));
@@ -102,9 +103,22 @@ try {
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
     if (mode === 'dark' || preset !== 'default') await expect(toggle).toHaveCSS('background-color', await token(page, '--pd-accent'));
     if (preset === 'gray') await page.screenshot({ path: path.join(artifacts, `${preset}-${mode}-skills.png`) });
+    await page.goto(`${base}/settings/usage`);
+    await expect(page.locator('.usage-stat-today strong')).toBeVisible();
+    await readable(page.locator('.usage-stat-today strong'), `${preset} ${mode} usage total`);
+    await page.locator('.usage-refresh').hover();
+    await readable(page.locator('.usage-refresh'), `${preset} ${mode} usage refresh hover`);
+    await page.goto(`${base}/settings/agent-search`);
+    await expect(page.locator('.custom-search-help summary')).toBeVisible();
+    await readable(page.locator('.custom-search-help summary'), `${preset} ${mode} custom search help`);
+    const preview = page.locator('.custom-search-actions button:not(.custom-search-save)');
+    await preview.hover(); await readable(preview, `${preset} ${mode} search preview hover`);
+    const save = page.locator('.custom-search-save');
+    await readable(save, `${preset} ${mode} search save`);
+    await save.hover(); await readable(save, `${preset} ${mode} search save hover`);
     expect(errors).toEqual([]);
     results.push({ mode, preset, contrast: '>= 4.5', permission: 'semantic amber', menusAndSkills: 'theme accent' });
-    console.log(`PASS ${preset} ${mode}: warning, placeholder, selected menu, model menu, skills and hover`);
+    console.log(`PASS ${preset} ${mode}: warning, placeholder, menus, skills, usage, custom search and hover`);
     await context.close();
   }
   await fs.writeFile(path.join(artifacts, 'results.json'), JSON.stringify(results, null, 2));

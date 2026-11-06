@@ -10,14 +10,14 @@
 :where(.pilotdeck-settings-app) .usage-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
 :where(.pilotdeck-settings-app) .usage-header h1 { margin: 0; color: var(--ink); font-size: 21px; font-weight: 600; line-height: 1.3; letter-spacing: -0.4px; }
 :where(.pilotdeck-settings-app) .usage-refresh { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 6px; min-height: 30px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; transition: color 150ms, background 150ms; }
-:where(.pilotdeck-settings-app) .usage-refresh:hover { background: var(--brand-soft); color: var(--brand); }
+:where(.pilotdeck-settings-app) .usage-refresh:hover { background: var(--brand-soft); color: var(--brand-strong); }
 :where(.pilotdeck-settings-app) .usage-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; padding: 17px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 :where(.pilotdeck-settings-app) .usage-stat { display: flex; align-items: center; flex-direction: column; gap: 5px; padding: 0 10px; border-left: 1px solid var(--line); }
 :where(.pilotdeck-settings-app) .usage-stat:first-child { border-left: 0; }
 :where(.pilotdeck-settings-app) .usage-stat-label { color: var(--muted); font-size: 11px; line-height: 1.5; white-space: nowrap; }
 :where(.pilotdeck-settings-app) .usage-stat-value { display: flex; align-items: baseline; justify-content: center; gap: 4px; }
 :where(.pilotdeck-settings-app) .usage-stat strong { color: var(--ink); font-size: 20px; font-weight: 500; line-height: 1.2; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; }
-:where(.pilotdeck-settings-app) .usage-stat-today strong { color: var(--brand); font-weight: 600; }
+:where(.pilotdeck-settings-app) .usage-stat-today strong { color: var(--brand-strong); font-weight: 600; }
 :where(.pilotdeck-settings-app) .usage-stat-unit { color: var(--muted); font-size: 11px; }
 :where(.pilotdeck-settings-app) .usage-activity { margin-top: 38px; min-width: 0; }
 :where(.pilotdeck-settings-app) .usage-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
