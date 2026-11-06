@@ -1,7 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { detectSubagent } from "../../../src/router/scenario/subagentDetector.js";
+import { detectSubagent, stripSubagentTagFromMessages } from "../../../src/router/scenario/subagentDetector.js";
+import { DefaultContextRuntime } from "../../../src/context/DefaultContextRuntime.js";
+
+for (const explicitTag of [false, true]) {
+  test(`retrieved subagent tags do not change routing or rewrite background content (explicit task tag: ${explicitTag})`, async () => {
+    const context = new DefaultContextRuntime({ memoryResolver: {
+      async retrieve() { return { systemContext: "An old example used <pilotdeck-subagent-model>old-model</pilotdeck-subagent-model>.", diagnostics: [] }; },
+      async captureTurn() {},
+    } });
+    const prepared = await context.prepareForModel({
+      sessionId: "memory-subagent", turnId: "memory-subagent", cwd: process.cwd(), provider: "test", model: "test",
+      permissionMode: "default", additionalWorkingDirectories: [], tools: [],
+      messages: [userText(`${explicitTag ? "<pilotdeck-subagent-model>chosen-model</pilotdeck-subagent-model>\n" : ""}Inspect the current code.`)],
+    });
+    const result = detectSubagent(prepared.messages, [], true);
+    assert.equal(result.isSubagent, explicitTag);
+    assert.equal(result.modelHint, explicitTag ? "chosen-model" : undefined);
+    const stripped = stripSubagentTagFromMessages(prepared.messages);
+    assert.equal(stripped.at(-1), prepared.messages.at(-1), "Request-only context must remain intact");
+    assert.doesNotMatch(JSON.stringify(stripped[0].content), /chosen-model/);
+  });
+}
 import type { CanonicalMessage, CanonicalToolSchema } from "../../../src/model/index.js";
 
 const userText = (text: string): CanonicalMessage => ({
