@@ -142,9 +142,6 @@
     --line: var(--pd-border, #e4e5ee);
     /* Risk is independent of the selected accent. Each mode has a readable pair. */
     --pd-warning-ink: #80571b;
-    --pd-warning-soft: #fff4dc;
-    --pd-warning-hover: #ffebc2;
-    --pd-warning-border: #dec592;
     --pd-danger-ink: #b42335;
     --search-match-color: var(--brand-strong);
     --search-match-bg: color-mix(in srgb, var(--brand) 11%, transparent);
@@ -201,9 +198,6 @@
 
   .dark {
     --pd-warning-ink: #e7c487;
-    --pd-warning-soft: #3c3222;
-    --pd-warning-hover: #4b3d28;
-    --pd-warning-border: #76603d;
     --pd-danger-ink: #ef9ca5;
     /* V2 zinc/neutral palette — dark */
     --background: 0 0% 4%;
@@ -2305,17 +2299,9 @@
       box-shadow: none;
     }
     .pd-composer-container .home-send-button .icon { width: 16px; height: 16px; }
-    .dark .pd-composer-container .pd-composer-permission-bypass {
-      border-color: transparent !important;
-      background-color: transparent !important;
-    }
     .pd-composer-container .pd-composer-permission-button:hover,
     .pd-composer-container .pd-composer-permission-button[aria-expanded="true"] {
       background: rgb(120 113 108 / 0.08);
-    }
-    .dark .pd-composer-container .pd-composer-permission-bypass:hover,
-    .dark .pd-composer-container .pd-composer-permission-bypass[aria-expanded="true"] {
-      background-color: var(--pd-warning-hover) !important;
     }
   }
 

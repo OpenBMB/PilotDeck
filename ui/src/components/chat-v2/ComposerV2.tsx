@@ -1328,11 +1328,7 @@ export default function ComposerV2({
                         permissionSelectorDisabled
                           ? "cursor-not-allowed border-transparent text-[var(--pd-muted,#687080)] opacity-45 dark:text-[var(--pd-muted,#b4b6c0)]"
                           : permissionMode === "bypassPermissions"
-                            ? cn(
-                                "pd-composer-permission-bypass border-[var(--pd-warning-border)] bg-[var(--pd-warning-soft)] text-[var(--pd-warning-ink)] hover:bg-[var(--pd-warning-hover)]",
-                                isPermissionMenuOpen &&
-                                  "ring-1 ring-[var(--pd-warning-border)]",
-                              )
+                            ? "pd-composer-permission-bypass border-transparent bg-transparent text-[var(--pd-warning-ink)] hover:bg-neutral-100 dark:hover:bg-neutral-800"
                             : "border-transparent bg-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
                       )}
                       title={selectedPermissionLabel}
