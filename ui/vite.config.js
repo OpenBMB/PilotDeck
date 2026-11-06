@@ -131,22 +131,32 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
+      manifest: true,
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-            'vendor-codemirror': [
-              '@uiw/react-codemirror',
-              '@codemirror/lang-css',
-              '@codemirror/lang-html',
-              '@codemirror/lang-javascript',
-              '@codemirror/lang-json',
-              '@codemirror/lang-markdown',
-              '@codemirror/lang-python',
-              '@codemirror/theme-one-dark'
-            ],
-            'vendor-xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-clipboard', '@xterm/addon-webgl']
+          manualChunks(id) {
+            // Assign resolved package modules, including React's internal JSX
+            // implementation. Assigning only its entry facade lets an editor
+            // dependency capture that shared runtime and pull CodeMirror into startup.
+            const modulePath = id.replaceAll('\\', '/')
+            const vendorPackages = {
+              'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+              'vendor-codemirror': [
+                '@uiw/react-codemirror',
+                '@codemirror/lang-css',
+                '@codemirror/lang-html',
+                '@codemirror/lang-javascript',
+                '@codemirror/lang-json',
+                '@codemirror/lang-markdown',
+                '@codemirror/lang-python',
+                '@codemirror/theme-one-dark'
+              ],
+              'vendor-xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-clipboard', '@xterm/addon-webgl']
+            }
+            for (const [chunk, packages] of Object.entries(vendorPackages)) {
+              if (packages.some(name => modulePath.includes(`/node_modules/${name}/`))) return chunk
+            }
           }
         }
       }
