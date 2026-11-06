@@ -30,7 +30,9 @@ RUN npm install -g pnpm@10.32.1 \
 COPY src/ src/
 COPY scripts/ scripts/
 COPY ui/ ui/
-COPY apps/desktop/src/lightAppearance.ts apps/desktop/src/interfacePreferences.ts apps/desktop/src/appearance.ts apps/desktop/src/startupPresentation.ts apps/desktop/src/startupStyle.ts apps/desktop/src/
+COPY apps/desktop/src/lightAppearance.ts apps/desktop/src/appearancePalette.ts apps/desktop/src/themeScales.ts \
+    apps/desktop/src/interfacePreferences.ts apps/desktop/src/appearance.ts \
+    apps/desktop/src/startupPresentation.ts apps/desktop/src/startupStyle.ts apps/desktop/src/
 COPY skills/ skills/
 
 # Build edgeclaw-memory-core (src/ → lib/)

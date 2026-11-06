@@ -102,6 +102,40 @@ afterEach(() => {
 });
 
 describe('skills reading workbench', () => {
+  it('persists switches, refreshes the library and prevents using disabled skills', async () => {
+    mocks.fetch.mockImplementation(async (url: string, options: { body: string }) => {
+      if (url.endsWith('/set-enabled')) {
+        list = { ...list, builtin: [{ ...builtin, ...{ enabled: JSON.parse(options.body).enabled } }] };
+      }
+      return response(url.endsWith('/list') ? list : url.endsWith('/read') ? { content } : {});
+    });
+    render(<SkillsV2 selectedProject={project} projects={[project]} onUseSkill={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'Rendered instructions' });
+    const library = within(screen.getByRole('complementary', { name: 'Skill list' }));
+    expect(library.getByRole('switch', { name: 'Enable Core skill' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(library.getByRole('switch', { name: 'Enable Core skill' }));
+    await waitFor(() => expect(library.getByRole('switch').getAttribute('aria-checked')).toBe('false'));
+    const request = mocks.fetch.mock.calls.find(([url]) => url.endsWith('/set-enabled'));
+    expect(JSON.parse(request![1].body)).toEqual({ scope: 'builtin', slug: 'core', projectPath: '/project', enabled: false });
+    expect((screen.getByRole('button', { name: 'Use in conversation' }) as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+    render(<SkillsV2 selectedProject={project} projects={[project]} />);
+    await waitFor(() => expect(screen.getAllByRole('switch', { name: 'Enable Core skill' })[0].getAttribute('aria-checked')).toBe('false'));
+  });
+
+  it('keeps the previous switch state and surfaces a rejected save', async () => {
+    mocks.fetch.mockImplementation(async (url: string) => response(
+      url.endsWith('/list') ? list : url.endsWith('/read') ? { content } : { error: 'Unable to save skill preference' },
+      !url.endsWith('/set-enabled'),
+    ));
+    render(<SkillsV2 selectedProject={project} projects={[project]} />);
+    await screen.findByRole('heading', { name: 'Rendered instructions' });
+    const library = within(screen.getByRole('complementary', { name: 'Skill list' }));
+    fireEvent.click(library.getByRole('switch', { name: 'Enable Core skill' }));
+    await screen.findByText('Unable to save skill preference');
+    expect(library.getByRole('switch').getAttribute('aria-checked')).toBe('true');
+    expect((library.getByRole('switch') as HTMLButtonElement).disabled).toBe(false);
+  });
   it('renders Markdown and keeps a built-in source read-only', async () => {
     render(<SkillsV2 selectedProject={project} projects={[project]} />);
     expect(await screen.findByRole('heading', { name: 'Rendered instructions' })).toBeTruthy();
@@ -532,6 +566,26 @@ function ProjectSwitchHarness() {
     />
   );
 }
+it('refreshes the current project when a bundled switch finishes after changing projects', async () => {
+  const pending = pendingRequest();
+  let enabled = true;
+  mocks.fetch.mockImplementation(async (url: string, options: { body: string }) => {
+    const body = JSON.parse(options.body);
+    if (url.endsWith('/list')) return response({ ...list, projectPath: body.projectPath, builtin: [{ ...builtin, enabled }] });
+    if (url.endsWith('/read')) return response({ content });
+    if (url.endsWith('/set-enabled')) { await pending.promise; enabled = body.enabled; }
+    return response({ ok: true });
+  });
+  render(<ProjectSwitchHarness />);
+  const library = within(screen.getByRole('complementary', { name: 'Skill list' }));
+  fireEvent.click(await library.findByRole('switch', { name: 'Enable Core skill' }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Switch skill project' }), { target: { value: 'other' } });
+  await waitFor(() => expect(mocks.fetch.mock.calls.some(([url, options]) => url.endsWith('/list') && JSON.parse(options.body).projectPath === '/other')).toBe(true));
+  await act(async () => { pending.resolve(response({ ok: true })); });
+  await waitFor(() => expect(library.getByRole('switch', { name: 'Enable Core skill' }).getAttribute('aria-checked')).toBe('false'));
+  expect((screen.getByRole('combobox', { name: 'Switch skill project' }) as HTMLSelectElement).value).toBe('other');
+});
+
 function mockProjectSwitch(
   pending: ReturnType<typeof pendingRequest>,
   operation: 'delete' | 'move',

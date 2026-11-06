@@ -268,6 +268,15 @@ router.post('/list', async (req, res) => {
   }
 });
 
+router.post('/set-enabled', async (req, res) => {
+  try {
+    const address = await resolveSkillAddress(req.body);
+    res.json(await callGateway('skillSetEnabled', { ...address, enabled: req.body.enabled }));
+  } catch (error) {
+    sendGatewayError(res, error);
+  }
+});
+
 router.post('/read', async (req, res) => {
   try {
     const result = await callGateway('skillRead', await resolveSkillAddress(req.body));

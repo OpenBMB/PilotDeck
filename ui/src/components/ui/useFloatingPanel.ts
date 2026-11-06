@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject }
 
 type Rect = { left: number; right: number; top: number; bottom: number };
 type Viewport = { left: number; top: number; width: number; height: number };
-type Options = { width?: number; maxHeight?: number; side?: 'above' | 'below'; matchComposer?: boolean };
+type Options = { width?: number; maxHeight?: number; side?: 'above' | 'below'; matchComposer?: boolean; focusRef?: RefObject<HTMLElement | null> };
 
 export function placeFloatingPanel(anchor: Rect, viewport: Viewport, width: number, height: number, side = 'above'): CSSProperties {
   const edge = 8;
@@ -24,7 +24,7 @@ export function placeFloatingPanel(anchor: Rect, viewport: Viewport, width: numb
 }
 
 /** Render the panel in a portal; keep its anchor and viewport bounds current. */
-export function useFloatingPanel(open: boolean, anchorRef: RefObject<HTMLElement | null>, onClose?: () => void, { width = 280, maxHeight = 400, side = 'above', matchComposer = false }: Options = {}) {
+export function useFloatingPanel(open: boolean, anchorRef: RefObject<HTMLElement | null>, onClose?: () => void, { width = 280, maxHeight = 400, side = 'above', matchComposer = false, focusRef = anchorRef }: Options = {}) {
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -53,10 +53,12 @@ export function useFloatingPanel(open: boolean, anchorRef: RefObject<HTMLElement
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !closeRef.current) return;
+      // The browser owns Escape for a select above this panel's top layer.
+      if (globalThis.CSS?.supports?.('selector(select:open)') && document.querySelector('select:open')) return;
       event.preventDefault();
       event.stopPropagation();
       closeRef.current();
-      anchor.focus();
+      focusRef.current?.focus();
     };
     const observer = new ResizeObserver(update);
     // Ancestor resizing can move an unchanged-size trigger (e.g. a split pane).
@@ -79,6 +81,6 @@ export function useFloatingPanel(open: boolean, anchorRef: RefObject<HTMLElement
       document.removeEventListener('focusin', outside);
       document.removeEventListener('keydown', escape, true);
     };
-  }, [open, anchorRef, width, maxHeight, side, matchComposer]);
+  }, [open, anchorRef, width, maxHeight, side, matchComposer, focusRef]);
   return { panelRef, style };
 }

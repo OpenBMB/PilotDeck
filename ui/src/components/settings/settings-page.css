@@ -3,7 +3,8 @@
 
 .pilotdeck-settings-app {
   --ink: var(--pd-ink, #252737);
-  --muted: var(--pd-muted, #858998);
+  --muted: var(--pd-muted, #687080);
+  --settings-panel-muted: var(--pd-muted, #687080);
   --soft: #a0a4b2;
   --line: var(--pd-border, #e4e5ee);
   --line-strong: var(--pd-border, #d8d9e6);
@@ -70,28 +71,6 @@
   padding: 0 12px;
   border-bottom: 1px solid var(--pd-accent-border, rgb(225, 223, 240));
   background: transparent;
-}
-
-:where(.pilotdeck-settings-app) .sidebar-brand-logo {
-  /* Keep the wordmark aligned with the workspace's .brand-lockup. */
-  width: 165px;
-  max-width: 100%;
-  height: 36px;
-  display: block;
-  object-fit: contain;
-  object-position: left center;
-}
-
-:where(.pilotdeck-settings-app) .sidebar-brand-logo-dark {
-  display: none;
-}
-
-.dark :where(.pilotdeck-settings-app) .sidebar-brand-logo-light {
-  display: none;
-}
-
-.dark :where(.pilotdeck-settings-app) .sidebar-brand-logo-dark {
-  display: block;
 }
 
 .pilotdeck-settings-app .back-to-app,
@@ -212,7 +191,7 @@
 }
 
 :where(.pilotdeck-settings-app) .nav-item.active svg {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .nav-item .nav-dot {
@@ -363,14 +342,14 @@
   font-size: 14px;
 }
 
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .page-header h1 {
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .usage-page, .computer-use-page, .office-settings-page) .page-header h1 {
   font-size: 16px;
 }
 
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .page-header p,
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-card-header h2,
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-setting-title,
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-setting-copy p,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .computer-use-page, .office-settings-page) .page-header p,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .computer-use-page, .office-settings-page) .general-card-header h2,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .computer-use-page, .office-settings-page) .general-setting-title,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .computer-use-page, .office-settings-page) .general-setting-copy p,
 :where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-select-wrap select {
   font-size: 14px;
 }
@@ -443,7 +422,7 @@
   place-items: center;
   border-radius: 10px;
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .general-card-header-icon svg,
@@ -559,7 +538,7 @@
 }
 
 :where(.pilotdeck-settings-app) .general-select-wrap select:focus {
-  border-color: var(--pd-accent, #9294e9);
+  border-color: var(--pd-focus, #9294e9);
   box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   outline: none;
 }
@@ -687,7 +666,7 @@
 }
 
 :where(.pilotdeck-settings-app) .add-provider-rail-button:hover {
-  background: var(--brand-strong);
+  background: var(--pd-button-hover, var(--brand-strong));
 }
 
 :where(.pilotdeck-settings-app) .provider-search {
@@ -929,7 +908,7 @@
 
 :where(.pilotdeck-settings-app) .button.edit-provider-button {
   border-color: currentColor;
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .button.secondary:hover:not(:disabled) {
@@ -995,7 +974,7 @@
   place-items: center;
   border-radius: 999px;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
   font-size: 12px;
   font-weight: 700;
 }
@@ -1035,7 +1014,7 @@
 :where(.pilotdeck-settings-app) .field input:focus,
 :where(.pilotdeck-settings-app) .field select:focus,
 :where(.pilotdeck-settings-app) .model-token-field input:focus {
-  border-color: var(--pd-accent, #9294e9);
+  border-color: var(--pd-focus, #9294e9);
   box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   background: #fff;
 }
@@ -1075,7 +1054,7 @@
 }
 
 :where(.pilotdeck-settings-app) .secret-input:focus-within {
-  border-color: var(--pd-accent, #9294e9);
+  border-color: var(--pd-focus, #9294e9);
   box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   background: #fff;
 }
@@ -1121,7 +1100,7 @@
 }
 
 :where(.pilotdeck-settings-app) .fetch-models-button:hover {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .spin {
@@ -1222,7 +1201,7 @@
   border: 1px dashed var(--pd-accent-border, rgb(184, 188, 232));
   border-radius: 8px;
   background: var(--pd-neutral-soft, rgb(248, 248, 255));
-  color: var(--brand);
+  color: var(--brand-strong);
   font-size: 12px;
   font-weight: 650;
   white-space: nowrap;
@@ -1404,8 +1383,8 @@
 }
 
 :where(.pilotdeck-settings-app) .test-button:hover:not(:disabled) {
-  border-color: var(--pd-accent, #9294e9);
-  color: var(--brand);
+  border-color: var(--pd-focus, #9294e9);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .test-button.success {
@@ -1803,7 +1782,7 @@
 }
 
 .dark .pilotdeck-settings-app :is(.model-delete-modal, .provider-delete-modal) .provider-usage-model {
-  color: #aaa5ed;
+  color: var(--pd-accent-strong, #aaa5ed);
 }
 
 .dark .pilotdeck-settings-app :is(.model-delete-modal, .provider-delete-modal) .button.danger:disabled {
@@ -2026,15 +2005,15 @@
 }
 
 .dark :where(.pilotdeck-settings-app) .candidate-add-model {
-  border-color: #6b6cc8;
-  background: #1c1c32;
-  color: #b4b5f0;
+  border-color: var(--pd-accent-border, #6b6cc8);
+  background: var(--pd-accent-soft, #1c1c32);
+  color: var(--pd-accent-strong, #b4b5f0);
 }
 
 .dark :where(.pilotdeck-settings-app) .candidate-model-input {
   border-color: var(--brand);
   background: #12121a;
-  box-shadow: 0 0 0 3px #5b5ce230;
+  box-shadow: 0 0 0 3px var(--pd-accent-soft, #5b5ce230);
   color: #e4e4e7;
 }
 
@@ -2156,8 +2135,8 @@
 
 .dark :where(.pilotdeck-settings-app) .nav-item.active {
   background: var(--brand-soft);
-  border-color: #3b3b63;
-  color: #c4c4ff;
+  border-color: var(--pd-accent-border, #3b3b63);
+  color: var(--pd-accent-strong, #c4c4ff);
 }
 
 .dark :where(.pilotdeck-settings-app) .page-header h1,
@@ -2187,7 +2166,7 @@
 .dark :where(.pilotdeck-settings-app) .general-card-header-icon,
 .dark :where(.pilotdeck-settings-app) .general-setting-icon {
   background: var(--brand-tint);
-  color: #a5a6f0;
+  color: var(--pd-accent-strong, #a5a6f0);
 }
 
 .dark :where(.pilotdeck-settings-app) .general-select-wrap select {
@@ -2202,8 +2181,8 @@
 }
 
 .dark :where(.pilotdeck-settings-app) .general-select-wrap select:focus {
-  border-color: #9294e9;
-  box-shadow: 0 0 0 3px #5b5ce217;
+  border-color: var(--pd-focus, #9294e9);
+  box-shadow: 0 0 0 3px var(--pd-accent-soft, #5b5ce217);
   background: #14141c;
 }
 
@@ -3322,7 +3301,7 @@
 
 :where(.pilotdeck-settings-app) .search-provider-help:is(:hover, :focus-visible),
 :where(.pilotdeck-settings-app) .search-provider-help:is(:hover, :focus-visible) svg {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .search-provider-help:hover span {
@@ -3535,11 +3514,11 @@
 
 :where(.pilotdeck-settings-app) .search-test-footer .test-button:hover:not(:disabled) {
   border-color: var(--pd-accent-border, rgb(191, 192, 223));
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .search-test-footer .test-button.testing {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .search-test-footer .test-button:disabled {
@@ -3861,7 +3840,7 @@
   place-items: center;
   border-radius: 10px;
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .integration-gateway-copy {
@@ -4128,7 +4107,7 @@
 
 :where(.pilotdeck-settings-app) .integration-channel.expanded .integration-channel-toggle {
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .integration-channel-detail {
@@ -4490,7 +4469,7 @@
   justify-content: center;
   border-radius: 10px;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .route-switch {
@@ -4635,7 +4614,7 @@
 :where(.pilotdeck-settings-app) .route-tier-index.tone-1 { background: #eef7ff; color: #3976a8; }
 :where(.pilotdeck-settings-app) .route-tier-index.tone-2 { background: #eef8f1; color: #3c8055; }
 :where(.pilotdeck-settings-app) .route-tier-index.tone-3 { background: #fff5e9; color: #aa6a29; }
-:where(.pilotdeck-settings-app) .route-tier-index.tone-4 { background: var(--pd-accent-tint, #f5efff); color: var(--pd-accent-strong, #7551aa); }
+:where(.pilotdeck-settings-app) .route-tier-index.tone-4 { background: #f5efff; color: #7551aa; }
 
 :where(.pilotdeck-settings-app) .route-default-badge,
 :where(.pilotdeck-settings-app) .route-default-action {
@@ -4656,7 +4635,7 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--brand);
+  color: var(--brand-strong);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -4890,7 +4869,7 @@
 
 :where(.pilotdeck-settings-app) .advanced-edit-button {
   border-color: currentColor !important;
-  color: var(--brand) !important;
+  color: var(--brand-strong) !important;
 }
 
 :where(.pilotdeck-settings-app) .agent-route-page .button.primary {
@@ -5330,7 +5309,7 @@
 }
 
 .dark :where(.pilotdeck-settings-app) .integration-gateway-directory-row input:not([readonly]) {
-  border-color: #6f70d8;
+  border-color: var(--pd-focus, #6f70d8);
   background: #202027;
   color: #eeeeF4;
 }
@@ -5466,7 +5445,7 @@
 .dark :where(.pilotdeck-settings-app) .route-model-row.is-default-tier,
 .dark :where(.pilotdeck-settings-app) .route-heading-icon,
 .dark :where(.pilotdeck-settings-app) .route-row-icon {
-  background: #242239;
+  background: var(--pd-accent-soft, #242239);
 }
 
 .dark :where(.pilotdeck-settings-app) .route-tier-index {
@@ -5497,7 +5476,7 @@
 .dark :where(.pilotdeck-settings-app) .route-label-line .route-default-badge {
   border-color: #47466d;
   background: #292842;
-  color: #b8b8ff;
+  color: var(--pd-accent-strong, #b8b8ff);
 }
 
 .dark :where(.pilotdeck-settings-app) .route-card-heading h2,
@@ -5967,7 +5946,7 @@
 :where(.pilotdeck-settings-app) .mcp-server-rail > footer button:hover:not(:disabled) {
   border-color: var(--pd-accent-border, rgb(191, 192, 234));
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-rail > footer button:disabled {
@@ -6363,7 +6342,7 @@
 :where(.pilotdeck-settings-app) .mcp-add-row-button:hover:not(:disabled) {
   border-color: var(--pd-accent-border, rgb(188, 188, 231));
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-editor.readonly .mcp-add-row-button,
@@ -6437,7 +6416,7 @@
   place-items: center;
   border-radius: 13px;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .mcp-detail-empty strong {
@@ -6511,7 +6490,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-trigger > span svg:last-of-type {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-editor[open] .mcp-raw-trigger > span svg:first-child {
@@ -6720,7 +6699,7 @@
 .pilotdeck-settings-app .mcp-page-content .icon-button:hover {
   border-color: #dedfeb;
   background: #fff;
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 .pilotdeck-settings-app .mcp-page-content button {
@@ -6810,496 +6789,105 @@
   font-size: 14px !important;
 }
 
-/* Office preview */
-:where(.pilotdeck-settings-app) .office-page-content {
-  width: 100%;
-  padding-bottom: 28px;
-}
-
-:where(.pilotdeck-settings-app) .settings-page.office-settings-page .page-header h1 {
-  font-size: 16px;
-}
-
-:where(.pilotdeck-settings-app) .settings-page.office-settings-page .page-header p,
-.pilotdeck-settings-app .office-card :is(
-  button,
-  div,
-  input,
-  select,
-  span,
-  strong,
-  p,
-  code
-) {
-  font-size: 14px !important;
-}
-
-:where(.pilotdeck-settings-app) .office-settings-page .page-header {
-  padding-bottom: 18px;
-}
-
-:where(.pilotdeck-settings-app) .office-config-section > div:first-child {
-  display: none;
-}
-
-:where(.pilotdeck-settings-app) .office-settings-page .office-config-section > .office-card {
-  margin-top: 0 !important;
-}
-
-:where(.pilotdeck-settings-app) .office-card {
-  overflow: visible;
-  border: 1px solid rgb(222, 223, 235);
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: rgba(61, 60, 105, 0.055) 0 11px 30px;
-}
-
-:where(.pilotdeck-settings-app) .office-card-body {
-  overflow: visible;
-  border-radius: inherit;
-}
-
-:where(.pilotdeck-settings-app) .office-card .office-setting-row {
-  position: relative;
-  min-height: 86px;
-  padding: 14px 20px;
-  display: grid;
-  grid-template-columns: 36px minmax(250px, 0.42fr) minmax(340px, 1fr);
-  align-items: center;
-  gap: 14px;
-}
-
-:where(.pilotdeck-settings-app) .office-setting-row + .office-setting-row {
-  box-shadow: inset 0 1px 0 var(--line);
-}
-
-:where(.pilotdeck-settings-app) .office-setting-row::before {
-  content: "";
-  width: 34px;
-  height: 34px;
-  display: block;
-  border-radius: 10px;
-  background-color: var(--brand-tint);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: 19px;
-}
-
-:where(.pilotdeck-settings-app) .office-service-row::before {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='19' height='19' viewBox='0 0 256 256' fill='%236a6bce'%3E%3Cpath d='M213.66 82.34l-56-56A8 8 0 0 0 152 24H56a16 16 0 0 0-16 16v176a16 16 0 0 0 16 16h144a16 16 0 0 0 16-16V88a8 8 0 0 0-2.34-5.66ZM160 51.31 188.69 80H160ZM200 216H56V40h88v48a8 8 0 0 0 8 8h48v120Zm-32-80a8 8 0 0 1-8 8H96a8 8 0 0 1 0-16h64a8 8 0 0 1 8 8Zm0 32a8 8 0 0 1-8 8H96a8 8 0 0 1 0-16h64a8 8 0 0 1 8 8Z'/%3E%3C/svg%3E");
-}
-
-:where(.pilotdeck-settings-app) .office-path-row::before {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='19' height='19' viewBox='0 0 256 256' fill='%236a6bce'%3E%3Cpath d='M245 110.64A16 16 0 0 0 232 104h-16V88a16 16 0 0 0-16-16h-69.33l-27.73-20.8a16.14 16.14 0 0 0-9.6-3.2H40a16 16 0 0 0-16 16v144a8 8 0 0 0 8 8h179.1a8 8 0 0 0 7.59-5.47l28.49-85.47A16.05 16.05 0 0 0 245 110.64ZM93.34 64l29.86 22.4A8 8 0 0 0 128 88h72v16H69.77a16 16 0 0 0-15.18 10.94L40 158.7V64Zm112 136H43.1l26.67-80H232Z'/%3E%3C/svg%3E");
-}
-
-:where(.pilotdeck-settings-app) .office-setting-row > div {
-  min-width: 0;
-}
-
-:where(.pilotdeck-settings-app) .office-setting-row > div:first-of-type > div:first-child {
-  color: var(--settings-panel-ink, rgb(52, 56, 70));
-  font-size: 13px;
-  font-weight: 710;
-  line-height: 1.45;
-}
-
-:where(.pilotdeck-settings-app) .office-setting-row > div:first-of-type > div:last-child {
-  margin-top: 4px;
-  color: var(--settings-panel-muted, rgb(139, 143, 158));
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-:where(.pilotdeck-settings-app) .office-select-wrap {
-  width: 350px;
-  max-width: 100%;
-  justify-self: start;
-}
-
-:where(.pilotdeck-settings-app) .office-select-wrap > div > div:first-child {
-  width: 100%;
-  height: 40px;
-  padding: 0 38px 0 12px;
-  display: flex;
-  align-items: center;
-  border: 1px solid rgb(218, 220, 230);
-  border-radius: 9px;
-  background: rgb(255, 255, 255);
-  color: var(--settings-panel-ink, rgb(65, 69, 84));
-  font-size: 12px;
-  font-weight: 530;
-  box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
-  transition: border-color 0.16s, box-shadow 0.16s;
-}
-
-:where(.pilotdeck-settings-app) .office-select-wrap > div:hover > div:first-child {
-  border-color: rgb(193, 195, 212);
-}
-
-:where(.pilotdeck-settings-app) .office-select-wrap > div:focus-within > div:first-child {
-  border-color: var(--pd-accent, rgb(146, 148, 233));
-  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
-}
-
-:where(.pilotdeck-settings-app) .office-select-wrap > div > span {
-  right: 13px;
-  color: var(--settings-panel-muted, rgb(139, 143, 158));
-  font-size: 14px;
-}
-
-:where(.pilotdeck-settings-app) .office-path-control {
-  position: relative;
-  min-width: 0;
-}
-
-:where(.pilotdeck-settings-app) .office-path-input-row {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-}
-
-:where(.pilotdeck-settings-app) .office-path-input {
-  min-width: 0;
-}
-
-:where(.pilotdeck-settings-app) .office-path-input > div {
-  gap: 8px;
-}
-
-:where(.pilotdeck-settings-app) .office-path-input input {
-  width: 100%;
-  height: 40px;
-  min-width: 0;
-  padding: 0 12px;
-  border: 1px solid rgb(218, 220, 230);
-  border-radius: 9px;
-  background: rgb(248, 248, 251);
-  color: var(--settings-panel-muted, rgb(111, 116, 131));
-  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  box-shadow: none;
-}
-
-:where(.pilotdeck-settings-app) .office-path-input input:not([readonly]) {
-  border-color: var(--pd-accent, rgb(146, 148, 233));
-  background: rgb(255, 255, 255);
-  color: var(--settings-panel-ink, rgb(65, 69, 84));
-  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
-}
-
-:where(.pilotdeck-settings-app) .office-path-input button,
-:where(.pilotdeck-settings-app) .office-path-actions .button {
-  min-width: 66px;
-  min-height: 40px;
-  padding: 0 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px solid rgb(223, 224, 233);
-  border-radius: 9px;
-  background: rgb(255, 255, 255);
-  color: var(--settings-panel-ink, rgb(86, 91, 107));
-  font-size: 12px;
-  font-weight: 680;
-}
-
-:where(.pilotdeck-settings-app) .office-path-input button:hover,
-:where(.pilotdeck-settings-app) .office-path-actions .button:hover:not(:disabled) {
-  border-color: rgb(202, 203, 220);
-  background: var(--pd-neutral-soft, rgb(250, 250, 253));
-  color: var(--brand);
-}
-
-:where(.pilotdeck-settings-app) .office-path-actions .button.primary {
-  border-color: var(--brand);
-  background: var(--brand);
-  color: rgb(255, 255, 255);
-  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.2) 0 6px 14px;
-}
-
-:where(.pilotdeck-settings-app) .office-path-actions .button.primary:hover:not(:disabled) {
-  border-color: var(--brand-strong);
-  background: var(--brand-strong);
-  color: rgb(255, 255, 255);
-}
-
-:where(.pilotdeck-settings-app) .office-path-actions .button.secondary:disabled {
-  border-color: rgb(235, 232, 240);
-  background: var(--pd-neutral-soft, rgb(252, 251, 253));
-  color: var(--settings-panel-muted, rgb(181, 178, 190));
-  box-shadow: none;
-  cursor: not-allowed;
-  opacity: 1;
-}
-
-:where(.pilotdeck-settings-app) .office-path-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-:where(.pilotdeck-settings-app) .office-status-area {
-  padding: 0;
-}
-
-:where(.pilotdeck-settings-app) .office-status-panel {
-  margin: 0 12px 12px;
-  overflow: hidden;
-  border: 1px solid rgb(224, 225, 233);
-  border-radius: 12px;
-  background: var(--pd-neutral-soft, rgb(251, 251, 253));
-}
-
-:where(.pilotdeck-settings-app) .office-status-panel.available {
-  border-color: rgb(207, 231, 223);
-  background: linear-gradient(110deg, rgb(247, 252, 250), rgb(251, 252, 255));
-}
-
-:where(.pilotdeck-settings-app) .office-status-heading {
-  min-height: 52px;
-  padding: 0 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-:where(.pilotdeck-settings-app) .office-status-heading > div,
-:where(.pilotdeck-settings-app) .office-status-heading button {
-  display: flex;
-  align-items: center;
-}
-
-:where(.pilotdeck-settings-app) .office-status-heading > div {
-  min-width: 0;
-  gap: 9px;
-}
-
-:where(.pilotdeck-settings-app) .office-status-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: rgb(169, 173, 186);
-  box-shadow: rgba(169, 173, 186, 0.12) 0 0 0 4px;
-}
-
-:where(.pilotdeck-settings-app) .office-status-dot.checking {
-  background: rgb(214, 152, 53);
-  box-shadow: rgba(214, 152, 53, 0.12) 0 0 0 4px;
-}
-
-:where(.pilotdeck-settings-app) .office-status-panel.available .office-status-dot {
-  background: rgb(32, 172, 124);
-  box-shadow: rgba(32, 172, 124, 0.11) 0 0 0 4px;
-}
-
-:where(.pilotdeck-settings-app) .office-status-heading strong {
-  overflow: hidden;
-  color: var(--settings-panel-ink, rgb(79, 83, 98));
-  font-size: 12px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:where(.pilotdeck-settings-app) .office-status-panel.available .office-status-heading strong {
-  color: rgb(57, 112, 93);
-}
-
-:where(.pilotdeck-settings-app) .office-status-heading button {
-  min-height: 32px;
-  padding: 0 8px;
-  gap: 6px;
-  flex: 0 0 auto;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--settings-panel-muted, rgb(119, 124, 139));
-  font-size: 11px;
-  font-weight: 650;
-}
-
-:where(.pilotdeck-settings-app) .office-status-heading button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.82);
-  color: var(--brand);
-}
-
-:where(.pilotdeck-settings-app) .office-status-detail {
-  margin: 0 10px 10px;
-  padding: 10px 12px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-:where(.pilotdeck-settings-app) .office-status-detail p {
+/* Computer use: shared cards with platform-specific permission details. */
+:where(.pilotdeck-settings-app) .computer-use-note {
   margin: 0;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 8px;
-  color: var(--settings-panel-muted, rgb(133, 137, 152));
-  font-size: 11px;
-  line-height: 1.6;
+  padding: 16px 20px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
 }
 
-:where(.pilotdeck-settings-app) .office-status-detail p + p {
-  margin-top: 3px;
+:where(.pilotdeck-settings-app) .computer-use-note[role="alert"] {
+  color: var(--pd-danger-ink, #b42318);
 }
 
-:where(.pilotdeck-settings-app) .office-status-detail p > span {
-  color: var(--settings-panel-muted, rgb(154, 158, 171));
-}
-
-:where(.pilotdeck-settings-app) .office-status-detail code {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--settings-panel-muted, rgb(111, 116, 131));
-  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:where(.pilotdeck-settings-app) .office-builtin-note {
-  min-height: 78px;
-  margin: 0 12px 12px;
-  padding: 14px;
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+:where(.pilotdeck-settings-app) .computer-use-permission-state {
+  display: flex;
   align-items: center;
-  gap: 11px;
-  border: 1px solid var(--pd-accent-border, rgb(216, 215, 240));
-  border-radius: 12px;
-  background: linear-gradient(110deg, var(--pd-neutral-soft, rgb(248, 247, 255)), var(--pd-neutral-soft, rgb(251, 252, 255)));
-  color: var(--settings-panel-muted, rgb(133, 137, 152));
-  font-size: 12px;
-  line-height: 1.5;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
-:where(.pilotdeck-settings-app) .office-builtin-note::before {
-  content: "";
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background-color: var(--pd-accent-tint, rgb(233, 231, 255));
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='19' height='19' viewBox='0 0 256 256' fill='%235b5ce2'%3E%3Cpath d='M247.31 124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57 61.26 162.88 48 128 48S61.43 61.26 36.34 86.35C17.51 105.18 9 124 8.69 124.76a8 8 0 0 0 0 6.5c.35.79 8.82 19.57 27.65 38.4C61.43 194.74 93.12 208 128 208s66.57-13.26 91.66-38.34c18.83-18.83 27.3-37.61 27.65-38.4a8 8 0 0 0 0-6.5ZM128 192c-30.78 0-57.67-11.19-79.93-33.26A130.36 130.36 0 0 1 25 128a130.36 130.36 0 0 1 23.07-30.74C70.33 75.19 97.22 64 128 64s57.67 11.19 79.93 33.26A130.36 130.36 0 0 1 231 128c-7.21 13.46-42.78 64-103 64Zm0-112a48 48 0 1 0 48 48 48.05 48.05 0 0 0-48-48Zm0 80a32 32 0 1 1 32-32 32 32 0 0 1-32 32Z'/%3E%3C/svg%3E");
-  background-position: center;
-  background-repeat: no-repeat;
+:where(.pilotdeck-settings-app) .computer-use-permission-state[data-granted="true"] svg {
+  color: var(--pd-success-ink, #18794e);
 }
 
-:where(.pilotdeck-settings-app) .office-status-area > .border-amber-500\/30,
-:where(.pilotdeck-settings-app) .office-status-area > .border-destructive\/30 {
-  margin: 0 12px 12px;
+:where(.pilotdeck-settings-app) .computer-use-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.dark :where(.pilotdeck-settings-app) .office-card {
-  border-color: #2e2e3c;
-  background: #1c1c24;
-  box-shadow: 0 11px 30px rgba(0, 0, 0, 0.28);
+:where(.pilotdeck-settings-app) .computer-use-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.dark :where(.pilotdeck-settings-app) .office-setting-row > div:first-of-type > div:first-child {
-  color: #f4f4f5;
+:where(.pilotdeck-settings-app) .computer-use-fallback {
+  margin: 0 20px 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
 }
 
-.dark :where(.pilotdeck-settings-app) .office-setting-row > div:first-of-type > div:last-child {
-  color: #a1a1aa;
-}
-
-.dark :where(.pilotdeck-settings-app) .office-select-wrap > div > div:first-child,
-.dark :where(.pilotdeck-settings-app) .office-path-input button,
-.dark :where(.pilotdeck-settings-app) .office-path-actions .button {
-  border-color: #3a3a4a;
-  background: #202028;
-  color: #e4e4e7;
-}
-
-.dark :where(.pilotdeck-settings-app) .office-path-input input {
-  border-color: #333341;
-  background: #202028;
-  color: #b4b4c0;
-}
-
-.dark :where(.pilotdeck-settings-app) .office-status-panel {
-  border-color: #343442;
-  background: #202028;
-}
-
-.dark :where(.pilotdeck-settings-app) .office-status-panel.available {
-  border-color: rgba(45, 153, 116, 0.4);
-  background: linear-gradient(110deg, rgba(24, 70, 56, 0.36), #202028);
-}
-
-.dark :where(.pilotdeck-settings-app) .office-status-detail {
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.dark :where(.pilotdeck-settings-app) .office-status-detail code,
-.dark :where(.pilotdeck-settings-app) .office-builtin-note {
-  color: #a1a1aa;
-}
-
-.dark :where(.pilotdeck-settings-app) .office-builtin-note {
-  border-color: #3b3b63;
-  background: linear-gradient(110deg, #252545, #202028);
-}
-
-@media (max-width: 1120px) {
-  :where(.pilotdeck-settings-app) .office-card .office-setting-row {
-    grid-template-columns: 36px minmax(210px, 0.4fr) minmax(300px, 1fr);
+@media (max-width: 480px) {
+  :where(.pilotdeck-settings-app) .computer-use-permission-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
 
-  :where(.pilotdeck-settings-app) .office-path-input-row {
-    grid-template-columns: 1fr;
-  }
-
-  :where(.pilotdeck-settings-app) .office-path-actions {
-    justify-content: flex-start;
+  :where(.pilotdeck-settings-app) .computer-use-permission-row > button {
+    justify-self: start;
   }
 }
 
+/* Office preview: service choices and one save/check path flow. */
+:where(.pilotdeck-settings-app) .office-service-choices { min-width: 0; margin: 0; padding: 16px 20px; border: 0; }
+:where(.pilotdeck-settings-app) .office-service-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+:where(.pilotdeck-settings-app) .office-service-choice {
+  display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 16px;
+  border: 1px solid var(--pd-control-border, var(--line)); border-radius: 10px;
+  background: var(--surface); color: var(--ink); cursor: pointer;
+  transition: border-color 150ms, background-color 150ms;
+}
+:where(.pilotdeck-settings-app) .office-service-choice:hover { background: var(--pd-neutral-soft, #f7f7fa); }
+:where(.pilotdeck-settings-app) .office-service-choice[data-selected=true] {
+  border-color: var(--pd-accent-border, #bcb8ee); background: var(--pd-accent-tint, #f8f7ff);
+}
+:where(.pilotdeck-settings-app) .office-service-choice:has(input:focus-visible) { outline: 2px solid var(--pd-focus, var(--brand)); outline-offset: 3px; }
+:where(.pilotdeck-settings-app) .office-service-choice input { margin: 3px 0 0; }
+:where(.pilotdeck-settings-app) .office-service-choice > span { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+:where(.pilotdeck-settings-app) .office-service-choice strong { color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.5; }
+:where(.pilotdeck-settings-app) .office-service-description { color: var(--muted); font-size: 14px; line-height: 1.65; }
+:where(.pilotdeck-settings-app) .office-path-body { display: grid; gap: 14px; padding: 16px 20px; min-width: 0; }
+:where(.pilotdeck-settings-app) .office-path-input { min-width: 0; }
+:where(.pilotdeck-settings-app) .office-path-input input {
+  width: 100%; min-width: 0; height: 38px; padding: 0 11px; border: 1px solid var(--pd-control-border, var(--line));
+  border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 14px;
+}
+:where(.pilotdeck-settings-app) .office-path-input input:focus-visible { outline: 2px solid var(--pd-focus, var(--brand)); outline-offset: 2px; }
+:where(.pilotdeck-settings-app) .office-path-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+:where(.pilotdeck-settings-app) .office-status-panel { min-width: 0; padding-top: 16px; border-top: 1px solid var(--line); }
+:where(.pilotdeck-settings-app) .office-status-heading > div { display: flex; align-items: center; min-width: 0; gap: 8px; }
+:where(.pilotdeck-settings-app) .office-status-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--muted); }
+:where(.pilotdeck-settings-app) .office-status-dot.checking { background: var(--pd-warning-ink); }
+:where(.pilotdeck-settings-app) .office-status-panel.available .office-status-dot { background: var(--pd-success-ink, var(--success)); }
+:where(.pilotdeck-settings-app) .office-status-heading strong { color: var(--ink); font-size: 14px; font-weight: 600; }
+:where(.pilotdeck-settings-app) .office-status-detail { margin-top: 12px; }
+:where(.pilotdeck-settings-app) .office-status-detail p { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+:where(.pilotdeck-settings-app) .office-status-detail p + p { margin-top: 4px; }
+:where(.pilotdeck-settings-app) .office-status-detail code { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 12px; }
+:where(.pilotdeck-settings-app) .office-builtin-note { margin: 14px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+:where(.pilotdeck-settings-app) .office-status-note { margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+:where(.pilotdeck-settings-app) .office-status-note[role=alert] { color: var(--pd-danger-ink, #b42318); }
 @media (max-width: 767px) {
-  :where(.pilotdeck-settings-app) .office-card .office-setting-row {
-    min-height: 0;
-    padding: 14px 16px;
-    grid-template-columns: 34px minmax(0, 1fr);
-    gap: 12px;
-  }
-
-  :where(.pilotdeck-settings-app) .office-select-wrap,
-  :where(.pilotdeck-settings-app) .office-path-control {
-    width: 100%;
-    grid-column: 1 / -1;
-  }
-
-  :where(.pilotdeck-settings-app) .office-path-actions {
-    justify-content: stretch;
-  }
-
-  :where(.pilotdeck-settings-app) .office-path-actions .button {
-    flex: 1 1 0%;
-  }
-
-  :where(.pilotdeck-settings-app) .office-status-heading {
-    align-items: flex-start;
-    padding-block: 10px;
-  }
-
-  :where(.pilotdeck-settings-app) .office-status-detail p {
-    grid-template-columns: 1fr;
-    gap: 1px;
-  }
-
-  :where(.pilotdeck-settings-app) .office-status-detail code {
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
+  :where(.pilotdeck-settings-app) .office-service-grid { grid-template-columns: minmax(0, 1fr); }
 }
-
 /* Security & privacy */
 :where(.pilotdeck-settings-app) .settings-page.security-settings-page .page-header {
   padding-bottom: 18px;
@@ -7343,7 +6931,7 @@
   place-items: center;
   border-radius: 10px;
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .security-card-header h2,
@@ -7527,7 +7115,7 @@
 :where(.pilotdeck-settings-app) .security-add-button:hover {
   border-color: var(--pd-accent-border, rgb(170, 169, 228));
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .security-add-form {
@@ -7619,7 +7207,7 @@
 :where(.pilotdeck-settings-app) .security-quick-add button:hover {
   border-color: var(--pd-accent-border, rgb(201, 200, 235));
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .security-quick-add small {
@@ -7764,7 +7352,7 @@
   place-items: center;
   border-radius: 12px;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .agent-retry-header strong,
@@ -8263,7 +7851,7 @@
 .dark :where(.pilotdeck-settings-app) .mcp-project-options button small {
   border-color: #3a3a4a;
   background: #292936;
-  color: #c4c4ff;
+  color: var(--pd-accent-strong, #c4c4ff);
 }
 
 .dark :where(.pilotdeck-settings-app) .mcp-server-rail,
@@ -8326,8 +7914,8 @@
 .dark :where(.pilotdeck-settings-app) .mcp-server-options > button.selected,
 .dark :where(.pilotdeck-settings-app) .mcp-project-options button.selected {
   border-color: #45456c;
-  background: linear-gradient(90deg, #292947, #25253a);
-  color: #c4c4ff;
+  background: var(--pd-accent-selected, linear-gradient(90deg, #292947, #25253a));
+  color: var(--pd-accent-strong, #c4c4ff);
 }
 
 .dark :where(.pilotdeck-settings-app) .mcp-server-options em,
@@ -8542,7 +8130,7 @@
 }
 :where(.pilotdeck-settings-app) .multimodal-tab[aria-selected="true"] {
   border-bottom-color: var(--brand);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 :where(.pilotdeck-settings-app) .multimodal-tab:focus-visible {
   outline: 2px solid var(--brand);

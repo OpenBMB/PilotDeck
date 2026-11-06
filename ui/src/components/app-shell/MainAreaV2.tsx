@@ -151,7 +151,7 @@ const DASHBOARD_TABS: Tab[] = [
 ];
 
 const ACTIVE_TOOL_BUTTON_CLASS =
-  'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-950/70 dark:text-blue-200 dark:hover:bg-blue-900/70';
+  'bg-[var(--pd-accent-soft,#dbeafe)] text-[var(--pd-accent-strong,#1d4ed8)] hover:bg-[var(--pd-accent-hover,#bfdbfe)] dark:bg-[var(--pd-accent-selected,#172554)] dark:text-[var(--pd-accent-strong,#bfdbfe)] dark:hover:bg-[var(--pd-accent-hover,#1e3a8a)]';
 
 const ALWAYS_ON_EVENT_BADGE_POLL_INTERVAL_MS = 15_000;
 const ALWAYS_ON_LAST_VIEWED_MARKER_KEY = 'pilotdeck:always-on-last-viewed-marker';
@@ -412,7 +412,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
               {headerTitle}
             </h1>
           )}
-          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-neutral-400 dark:text-neutral-500">
+          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-[var(--pd-muted,#687080)]">
             <svg aria-hidden="true" className="icon" fill="none" height="13" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="13">
               <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
               <path d="M8 10v4" />
@@ -468,7 +468,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
                 {alwaysOnUnread ? (
                   <span
                     aria-hidden="true"
-                    className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-neutral-950"
+                    className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-[var(--pd-accent,#3b82f6)] ring-2 ring-white dark:ring-neutral-950"
                   />
                 ) : null}
               </button>
@@ -491,12 +491,12 @@ function MainAreaV2Content(props: MainAreaV2Props) {
                           chatHistorySearch.closeSearch();
                           setActiveTab(tab.id);
                         }}
-                        className="relative flex h-9 w-full items-center justify-center gap-2 rounded-lg px-2 text-[13px] text-neutral-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 focus:outline-none dark:text-neutral-300 dark:hover:bg-blue-950/60 dark:hover:text-blue-200 dark:focus:bg-blue-950/60 dark:focus:text-blue-200"
+                        className="relative flex h-9 w-full items-center justify-center gap-2 rounded-lg px-2 text-[13px] text-neutral-600 transition-colors hover:bg-[var(--pd-accent-hover,#eff6ff)] hover:text-[var(--pd-accent-strong,#1d4ed8)] focus:bg-[var(--pd-focus,#eff6ff)] focus:text-[var(--pd-accent-strong,#1d4ed8)] focus:outline-none dark:text-neutral-300 dark:hover:bg-[var(--pd-accent-hover,#172554)] dark:hover:text-[var(--pd-accent-strong,#bfdbfe)] dark:focus:bg-[var(--pd-focus,#172554)] dark:focus:text-[var(--pd-accent-strong,#bfdbfe)]"
                       >
                         <Icon className="h-4 w-4 shrink-0 text-neutral-400" strokeWidth={1.75} />
                         <span>{t(tab.labelKey)}</span>
                         {tab.id === 'always-on' && alwaysOnUnread ? (
-                          <span className="absolute right-2 h-2 w-2 rounded-full bg-blue-500" aria-label={t('common:uiText.unread')} />
+                          <span className="absolute right-2 h-2 w-2 rounded-full bg-[var(--pd-accent,#3b82f6)]" aria-label={t('common:uiText.unread')} />
                         ) : null}
                       </button>
                     );
@@ -505,7 +505,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
                       setDashboardMenuOpen(false);
                       chatHistorySearch.closeSearch();
                       setReviewOpenRequest(previous => ({ tab: 'changes', sequence: (previous?.sequence ?? 0) + 1 }));
-                    }} className="relative flex h-9 w-full items-center justify-center gap-2 rounded-lg px-2 text-[13px] text-neutral-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:bg-blue-50 focus:text-blue-700 focus:outline-none dark:text-neutral-300 dark:hover:bg-blue-950/60 dark:hover:text-blue-200 dark:focus:bg-blue-950/60 dark:focus:text-blue-200">
+                    }} className="relative flex h-9 w-full items-center justify-center gap-2 rounded-lg px-2 text-[13px] text-neutral-600 transition-colors hover:bg-[var(--pd-accent-hover,#eff6ff)] hover:text-[var(--pd-accent-strong,#1d4ed8)] focus:bg-[var(--pd-focus,#eff6ff)] focus:text-[var(--pd-accent-strong,#1d4ed8)] focus:outline-none dark:text-neutral-300 dark:hover:bg-[var(--pd-accent-hover,#172554)] dark:hover:text-[var(--pd-accent-strong,#bfdbfe)] dark:focus:bg-[var(--pd-focus,#172554)] dark:focus:text-[var(--pd-accent-strong,#bfdbfe)]">
                     <svg aria-hidden="true" className="h-4 w-4 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" viewBox="0 0 24 24">
                       <rect x="3" y="3" width="18" height="18" rx="4" />
                       <path d="M9 9h6m-3-3v6M9 16h6" />

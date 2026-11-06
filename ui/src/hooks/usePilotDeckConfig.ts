@@ -458,6 +458,9 @@ function usePilotDeckConfigState() {
   return {
     path,
     raw,
+    // Structured editors keep their own drafts; expose the last confirmed
+    // server snapshot separately from an optimistic or ambiguous save.
+    confirmedRaw: savedRawRef.current,
     revision,
     setRaw: updateRaw,
     restoreRawIfCurrent,

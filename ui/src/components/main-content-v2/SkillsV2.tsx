@@ -45,6 +45,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { zincDarkTheme, zincLightTheme } from '../code-editor/utils/zincThemes';
 import type { ConversationSkill } from '../../contexts/SkillConversationContext';
 import { cn } from '../../lib/utils.js';
+import SettingsToggle from '../settings/shared/view/SettingsToggle';
 import SkillDialog from './SkillDialog';
 import SkillMarkdown from './SkillMarkdown';
 import SkillReader from './SkillReader';
@@ -73,6 +74,7 @@ type Skill = {
   skillDir: string;
   scope: SkillScope;
   readonly: boolean;
+  enabled?: boolean;
   overriddenBy?: 'user' | 'project';
   overridesBuiltin?: boolean;
   mtime: number | null;
@@ -161,6 +163,8 @@ export default function SkillsV2({
   const [originalContent, setOriginalContent] = useState<string>('');
   const [editorLoading, setEditorLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const togglePending = useRef(false);
   const [showNew, setShowNew] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
   const [editing, setEditing] = useState(false);
@@ -228,6 +232,24 @@ export default function SkillsV2({
       if (isCurrentContext() && requestId === listRequest.current) setLoading(false);
     }
   }, [cwd, effectiveProjectPath, flashToast, localGeneralCwd, isCurrentContext]);
+  const latestRefresh = useRef(refresh);
+  latestRefresh.current = refresh;
+
+  const toggleSkill = async (skill: Skill, enabled: boolean) => {
+    if (togglePending.current) return;
+    togglePending.current = true;
+    setToggling(true);
+    try {
+      await api('/api/skills/set-enabled', { scope: skill.scope, slug: skill.slug, projectPath: effectiveProjectPath, enabled });
+      // Global/bundled switches also affect a project selected while saving.
+      if (mounted.current) await latestRefresh.current();
+    } catch (error) {
+      if (isCurrentContext()) flashToast({ kind: 'error', text: (error as Error).message });
+    } finally {
+      togglePending.current = false;
+      if (mounted.current) setToggling(false);
+    }
+  };
 
   const invalidateListRequests = useCallback(() => {
     listRequest.current++;
@@ -549,6 +571,8 @@ export default function SkillsV2({
             activeScope={activeScope}
             generalCwd={generalCwd}
             onSelect={handleSelect}
+            onToggle={toggleSkill}
+            toggling={toggling}
             selectedSkill={activeSkill}
             effectiveProjectPath={effectiveProjectPath}
             projects={projects}
@@ -594,6 +618,8 @@ export default function SkillsV2({
             {activeSkill ? (
               <SkillDetail
                 skill={activeSkill}
+                onToggle={toggleSkill}
+                toggling={toggling}
                 content={editorContent}
                 onChange={(content) => {
                   setEditorContent(content);
@@ -713,7 +739,7 @@ export default function SkillsV2({
               {t('skillsTab.overrideExplanation')}
             </p>
             {detailError ? (
-              <p role="alert" className="mt-3 text-[12px] text-destructive">
+              <p role="alert" className="mt-3 text-[12px] text-[var(--pd-danger-ink)]">
                 {detailError}
               </p>
             ) : null}
@@ -870,6 +896,8 @@ function SkillsList({
   activeScope,
   generalCwd,
   onSelect,
+  onToggle,
+  toggling,
   selectedSkill,
   effectiveProjectPath,
   projects,
@@ -888,6 +916,8 @@ function SkillsList({
   activeScope: SkillScope | null;
   generalCwd: boolean;
   onSelect: (s: Skill) => void;
+  onToggle: (s: Skill, enabled: boolean) => void;
+  toggling: boolean;
   selectedSkill: Skill | null;
   effectiveProjectPath: string | null;
   projects: Project[];
@@ -1061,6 +1091,10 @@ function SkillsList({
   return (
     <aside className={cn('skills-list', compact && 'w-full')} aria-label={t('skillsTab.listLabel')}>
       <div className="skills-list-controls">
+        <p className="skills-library-summary">{t('skillsTab.enabledCount', {
+          count: [...(skills?.builtin ?? []), ...(skills?.user ?? []), ...(skills?.project ?? [])].filter(skill => skill.enabled !== false).length,
+          total: (skills?.builtin.length ?? 0) + (skills?.user.length ?? 0) + (skills?.project.length ?? 0),
+        })}</p>
         <label className="skills-search">
           <Search size={15} />
           <input
@@ -1108,6 +1142,8 @@ function SkillsList({
               items={section.items}
               activeSlug={activeScope === section.scope ? activeSlug : null}
               onSelect={onSelect}
+              onToggle={onToggle}
+              toggling={toggling}
               onDelete={handleDeleteSkill}
               onMove={handleMoveSkill}
               moveTargets={moveTargets}
@@ -1148,6 +1184,8 @@ function ListSection({
   items,
   activeSlug,
   onSelect,
+  onToggle,
+  toggling,
   onDelete,
   onMove,
   moveTargets,
@@ -1158,6 +1196,8 @@ function ListSection({
   items: Skill[];
   activeSlug: string | null;
   onSelect: (s: Skill) => void;
+  onToggle: (s: Skill, enabled: boolean) => void;
+  toggling: boolean;
   onDelete: (s: Skill) => void;
   onMove: (s: Skill, target: MoveTarget) => void;
   moveTargets: { label: string; target: MoveTarget }[];
@@ -1205,7 +1245,7 @@ function ListSection({
       </div>
       <ul>
         {items.map((skill) => (
-          <li key={`${skill.scope}:${skill.slug}`} className="relative">
+          <li key={`${skill.scope}:${skill.slug}`} className="skills-library-item" data-enabled={skill.enabled !== false}>
             <button
               type="button"
               className="skills-row"
@@ -1227,9 +1267,8 @@ function ListSection({
                   {t(
                     `skillsTab.${skill.scope === 'user' ? 'scopeUser' : skill.scope === 'project' ? 'scopeProject' : 'scopeBuiltin'}`,
                   )}
-                  {skill.readonly ? ` · ${t('skillsTab.readOnly')}` : ''}
                 </span>
-                {skill.overriddenBy ? (
+                {skill.enabled === false ? <span className="skills-tag">{t('skillsTab.disabled')}</span> : skill.overriddenBy ? (
                   <span className="skills-tag">
                     {t('skillsTab.replacedBy', {
                       scope: t(
@@ -1244,6 +1283,9 @@ function ListSection({
                 ) : null}
               </div>
             </button>
+            <div className="skills-row-toggle">
+              <SettingsToggle checked={skill.enabled !== false} disabled={toggling} ariaLabel={t('skillsTab.toggleSkill', { name: skill.name })} showSuccessToast={false} onChange={enabled => onToggle(skill, enabled)} />
+            </div>
             {!skill.readonly ? (
               <button
                 type="button"
@@ -1294,7 +1336,7 @@ function ListSection({
           <button
             type="button"
             role="menuitem"
-            className="text-destructive"
+            className="text-[var(--pd-danger-ink)]"
             onClick={() => {
               onDelete(ctxMenu.skill);
               setCtxMenu(null);
@@ -1323,6 +1365,8 @@ function EmptyState({ t }: { t: ReturnType<typeof useTranslation>['t'] }) {
 
 function SkillDetail({
   skill,
+  onToggle,
+  toggling,
   content,
   onChange,
   isDirty,
@@ -1343,6 +1387,8 @@ function SkillDetail({
   t,
 }: {
   skill: Skill;
+  onToggle: (skill: Skill, enabled: boolean) => void;
+  toggling: boolean;
   content: string;
   onChange: (v: string) => void;
   isDirty: boolean;
@@ -1396,7 +1442,7 @@ function SkillDetail({
                 {skill.readonly ? ` · ${t('skillsTab.readOnly')}` : ''}
               </span>
               {skill.version ? <span className="skills-tag">v{skill.version}</span> : null}
-              {skill.overriddenBy ? (
+              {skill.enabled === false ? <span className="skills-tag">{t('skillsTab.disabled')}</span> : skill.overriddenBy ? (
                 <span className="skills-tag">
                   {t('skillsTab.replacedBy', {
                     scope: t(
@@ -1438,11 +1484,14 @@ function SkillDetail({
             ))}
           </div>
           <div className="skills-edit-actions">
+            <label className="skills-detail-toggle"><span>{t(skill.enabled === false ? 'skillsTab.disabled' : 'skillsTab.enabled')}</span>
+              <SettingsToggle checked={skill.enabled !== false} disabled={toggling} ariaLabel={t('skillsTab.toggleSkill', { name: skill.name })} showSuccessToast={false} onChange={enabled => onToggle(skill, enabled)} />
+            </label>
             {!editing && onUseSkill ? (
               <button
                 type="button"
                 className="skills-button skills-button-primary"
-                disabled={loading || !readReady || Boolean(skill.overriddenBy)}
+                disabled={loading || !readReady || skill.enabled === false || toggling || Boolean(skill.overriddenBy)}
                 title={skill.overriddenBy ? t('skillsTab.useEffectiveVersion') : undefined}
                 onClick={onUseSkill}
               >
@@ -1903,7 +1952,7 @@ function InstallFromClawHub({
       {errorText ? (
         <p
           role="alert"
-          className="mx-6 mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive"
+          className="mx-6 mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-[var(--pd-danger-ink)]"
         >
           {errorText}
         </p>

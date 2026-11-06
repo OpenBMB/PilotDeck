@@ -88,7 +88,7 @@ try {
       try {
         await page.goto(url, { waitUntil: 'domcontentloaded' });
         await expect(page.locator('#startup')).toBeVisible();
-        const expected = dark ? 'rgb(10, 10, 10)' : 'rgb(255, 255, 255)';
+        const expected = dark ? 'rgb(35, 37, 43)' : 'rgb(255, 255, 255)';
         await expect(page.locator('#startup')).toHaveCSS('background-color', expected);
         if (desktop) expect(await page.locator('#bar').evaluate(bar => bar.getBoundingClientRect().width / bar.parentElement.getBoundingClientRect().width * 100)).toBeGreaterThanOrEqual(96);
         await page.screenshot({ path: path.join(artifacts, `${name}-before-react.png`) });
@@ -112,7 +112,7 @@ try {
       const samples = await page.evaluate(() => window.startupSamples);
       expect(samples.length).toBeGreaterThan(1);
       for (let i = 0; i < samples.length; i++) {
-        expect(samples[i].background).toBe(dark ? 'rgb(10, 10, 10)' : 'rgb(255, 255, 255)');
+        expect(samples[i].background).toBe(dark ? 'rgb(35, 37, 43)' : 'rgb(255, 255, 255)');
         expect(samples[i].sameBar).toBe(true);
         expect(samples[i].frames).toBe(1);
         expect(Math.abs(samples[i].trackTop - samples[0].trackTop), 'loading bar must stay vertically fixed through caption, React handoff and fade-out').toBeLessThanOrEqual(.5);

@@ -18,10 +18,12 @@ import {
   MessageSquarePlus,
   Plus,
   Pencil,
+  PanelLeftOpen,
   GitBranch,
   Trash2,
 } from 'lucide-react';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
+import BrandWordmark from '../ui/BrandWordmark';
 import { cn } from '../../lib/utils.js';
 import { isImeEnterEvent } from '../../utils/ime';
 import {
@@ -31,8 +33,6 @@ import {
   setSessionCustomTitle,
   useCustomNamesVersion,
 } from '../../lib/customNames';
-import pilotdeckLogoDark from '../../assets/pilotdeck-wordmark-dark.png';
-import pilotdeckLogoLight from '../../assets/pilotdeck-wordmark-light.png';
 import { compareProjectsBySidebarOrder, isGeneralProject } from './appShellSelection';
 
 const asTimestamp = (value: unknown): number => {
@@ -1144,31 +1144,11 @@ export default function SidebarV2({
           className="compact-brand tooltip tooltip-right"
           onClick={expandCompactSidebar}
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            className="brand-mark"
-            src="/pilotdeck-p-mark-compact.png"
-          />
+          <PanelLeftOpen aria-hidden="true" size={20} strokeWidth={1.6} />
         </button>
       ) : (
         <header className="sidebar-brand-row">
-          <span className="brand-lockup" role="img" aria-label="PILOTDECK">
-            <img
-              alt=""
-              aria-hidden="true"
-              className="brand-lockup-image brand-lockup-light"
-              draggable={false}
-              src={pilotdeckLogoLight}
-            />
-            <img
-              alt=""
-              aria-hidden="true"
-              className="brand-lockup-image brand-lockup-dark"
-              draggable={false}
-              src={pilotdeckLogoDark}
-            />
-          </span>
+          <BrandWordmark className="brand-lockup" />
         </header>
       )}
 

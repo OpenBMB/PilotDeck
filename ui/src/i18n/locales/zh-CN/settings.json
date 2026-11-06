@@ -157,7 +157,6 @@
       "agentResident": "常驻",
       "multimodalGeneration": "多模态",
       "imageGeneration": "图像生成",
-
       "videoGeneration": "视频生成",
       "agentSearch": "搜索",
       "agentSchedule": "定时任务",
@@ -181,7 +180,6 @@
       "agentMemory": "持续整理并记住项目重要信息，在后续任务中自动使用。",
       "agentResident": "在用户离开后持续关注工作区变化，并在合适时机主动推进任务与同步进展。",
       "imageGeneration": "让智能体在对话和项目工作中生成、编辑图片。",
-
       "videoGeneration": "让智能体在对话和项目工作中生成视频。",
       "agentSearch": "让智能体能够检索实时网页信息，为回答补充最新内容与外部事实。",
       "agentSchedule": "按设定的时间自动唤起智能体执行任务，无需你持续在线。",
@@ -204,7 +202,6 @@
       "agentResident": "智能体 / 常驻",
       "multimodalGeneration": "多模态",
       "imageGeneration": "图像生成",
-
       "videoGeneration": "视频生成",
       "agentSearch": "智能体 / 搜索",
       "agentSchedule": "智能体 / 定时任务",
@@ -531,6 +528,8 @@
   },
   "saveStatus": {
     "success": "设置保存成功！",
+    "enabled": "{{label}}已开启",
+    "disabled": "{{label}}已关闭",
     "error": "保存设置失败",
     "saving": "保存中..."
   },
@@ -1092,8 +1091,8 @@
           },
           "binaryPath": {
             "label": "LibreOffice 可执行文件路径",
-            "description": "可选。自定义安装位置时填写 soffice 的完整路径；留空后可使用自动扫描。",
-            "placeholder": "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+            "description": "留空时自动检测；自定义安装位置时填写完整路径，修改后保存并检查。",
+            "placeholder": "LibreOffice 可执行文件的完整路径"
           },
           "detectedBinaryPath": {
             "label": "自动扫描结果",
@@ -1122,13 +1121,20 @@
           "unknown": "LibreOffice 状态暂不可用",
           "error": "无法检查 LibreOffice 状态",
           "refresh": "重新检查",
+          "saveAndCheck": "保存并检查",
+          "pending": "保存后检查此路径",
           "noDetectedPaths": "暂未扫描到可用候选路径。你仍然可以手动填写完整路径后重新检查。",
           "pathLabel": "路径",
           "versionLabel": "版本",
           "path": "路径：{{path}}",
           "version": "版本：{{version}}"
         },
-        "builtinNote": "内置预览开箱即用：DOCX 保留文档版式，XLSX 支持工作表切换和单元格选择，PPTX 支持幻灯片浏览。旧版 DOC、XLS、PPT 等格式需要 LibreOffice。",
+        "configurationTitle": "LibreOffice 配置",
+        "serviceDetails": {
+          "builtin": "无需安装，直接预览 DOCX、XLSX 和 PPTX。",
+          "libreoffice": "需本机安装，兼容旧版 DOC、XLS、PPT，使用打印版式预览。"
+        },
+        "builtinNote": "支持文档版式、工作表切换与单元格选择，以及幻灯片浏览。",
         "unavailableWarning": "当前选择了 LibreOffice，但本机没有可用的 LibreOffice/soffice。请安装 LibreOffice，或将预览服务切换为“内置预览”。"
       },
       "models": {
@@ -1973,15 +1979,16 @@
     "description": "调整显示模式、配色与背景。更改即时生效并自动保存。",
     "mode": "外观模式",
     "presets": "配色方案",
-    "presetHint": "强调色用于按钮与选中状态。",
+    "presetHint": "一种主题色，搭配有层次的背景与交互状态。每种配色均支持浅色、深色和跟随系统。",
     "autoSave": "更改自动保存",
     "preset": {
-      "default": "默认",
-      "blue": "雾蓝",
-      "mint": "薄荷",
-      "apricot": "暖杏",
+      "gray": "石墨灰",
+      "default": "鸢尾紫",
+      "blue": "雾霭蓝",
+      "mint": "薄荷绿",
+      "apricot": "暖杏橙",
       "lavender": "淡紫",
-      "rose": "玫瑰",
+      "rose": "蔷薇粉",
       "custom": "自定义"
     },
     "accent": "强调色",
@@ -2016,8 +2023,6 @@
     "previewText": "你选择的色彩，会陪伴每一次思考。",
     "deviceOnly": "外观偏好仅保存在此设备",
     "reset": "恢复默认",
-    "lightOnly": "这些配色和背景仅在浅色模式生效。深色外观保持不变。",
-    "editLight": "切换浅色并编辑",
     "saveFailed": "外观保存失败，已恢复上次保存的设置。请检查设备存储后重试。",
     "invalidImage": "请选择不超过 10 MB 的有效 PNG、JPEG 或 WebP 图片。",
     "imageSaveFailed": "图片无法读取或保存，请换一张图片或检查设备存储。",
@@ -2038,7 +2043,10 @@
     "hardwareAcceleration": "使用硬件（3D）加速",
     "hardwareHint": "使用 GPU 渲染界面。遇到显示异常时可关闭，修改后需完全退出并重新打开客户端。",
     "browserHardwareHint": "网页端的硬件加速由浏览器管理，请在浏览器设置中调整。",
-    "restartRequired": "设置已保存。完全退出并重新打开客户端后生效。"
+    "restartRequired": "设置已保存。完全退出并重新打开客户端后生效。",
+    "customHint": "自定义主题色，同时适配明暗外观。",
+    "lightBackgroundHint": "侧栏底色可在浅色模式下调整。",
+    "wallpaperLightOnly": "图片背景在浅色模式下显示。切换深色时，图片和调整参数仍会保留。"
   },
   "computerUse": {
     "controlTitle": "操作控制",
@@ -2085,6 +2093,21 @@
     "missingDriver": "部署环境中的电脑操控组件缺失。请重新部署 PilotDeck；组件随环境提供，无需另行安装。"
   },
   "usage": {
+    "overview": "历史用量概览",
+    "activeDays": "活跃天数",
+    "totalCalls": "累计调用",
+    "period": "统计时间范围",
+    "year": "{{year}} 年",
+    "activityView": "活动视图",
+    "views": { "daily": "每天", "weekly": "每周", "cumulative": "累计总量" },
+    "dailyChart": "每日 Token 活动，可用方向键查看日期。",
+    "weeklyChart": "每周 Token 用量，可用方向键查看各周。",
+    "cumulativeChart": "截至每周末的累计 Token，可用方向键查看各周。",
+    "weekDetail": "{{start}}至{{end}} · {{tokens}} Token · {{count, number}} 次调用",
+    "cumulativeDetail": "{{date}} · 累计 {{tokens}} Token",
+    "tokens": "Token",
+    "intensity": "相对于当前时段单日峰值的 Token 使用强度",
+    "totalToDate": "截至当日累计",
     "today": "今日 Token",
     "total": "累计 Token",
     "peak": "单日峰值",
@@ -2107,8 +2130,8 @@
     "legendBelow": "低于 {{max}} Token",
     "legendRange": "{{min}} 至 {{max}} Token（不含上限）",
     "legendAtLeast": "{{min}} Token 及以上",
-    "dayDetail": "{{date}} · {{tokens}} Token · {{count}} 次调用",
-    "calls": "{{count}} 次调用",
+    "dayDetail": "{{date}} · {{tokens}} Token · {{count, number}} 次调用",
+    "calls": "{{count, number}} 次调用",
     "timeZoneShort": "北京时间",
     "autoRefresh": "每 30 秒更新",
     "updatedShort": "更新于 {{time}}",

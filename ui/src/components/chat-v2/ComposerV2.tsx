@@ -438,9 +438,9 @@ function CapabilityOptionList({
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onSelect(value)}
             className={cn(
-              "grid h-[22px] grid-cols-[1fr_14px] items-center rounded-md border border-transparent px-[7px] text-left text-[11px] text-[#595b67] transition-colors hover:border-[var(--pd-accent-border,#e4e0fb)] hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#4742a9)] dark:text-neutral-300 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+              "grid h-[22px] grid-cols-[1fr_14px] items-center rounded-md border border-transparent px-[7px] text-left text-[11px] text-[#595b67] transition-colors hover:border-[var(--pd-accent-border,#e4e0fb)] hover:bg-[var(--pd-accent-hover,#f7f6ff)] hover:text-[var(--pd-accent-strong,#4742a9)] dark:text-neutral-300 dark:hover:border-[var(--pd-accent-border,#5b21b6)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]",
               selected
-                ? "border-[var(--pd-accent-border,#d6d1ff)] bg-[var(--pd-accent-soft,#eeecff)] font-[650] text-[var(--pd-accent-strong,#393393)] hover:border-[var(--pd-accent-border,#d6d1ff)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:border-violet-700 dark:bg-violet-950/70 dark:text-violet-200"
+                ? "border-[var(--pd-accent-border,#d6d1ff)] bg-[var(--pd-accent-selected,#eeecff)] font-[650] text-[var(--pd-accent-strong,#393393)] hover:border-[var(--pd-accent-border,#d6d1ff)] hover:bg-[var(--pd-accent-selected,#eeecff)] dark:border-[var(--pd-accent-border,#6d28d9)] dark:bg-[var(--pd-accent-selected,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)]"
                 : "",
             )}
           >
@@ -863,7 +863,7 @@ export default function ComposerV2({
             ) : null}
 
             {showFileDropdown ? createPortal(
-              <div ref={fileMenu.panelRef} style={fileMenu.style} className="shadow-[var(--pd-accent,#2e1065)]/10 flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 shadow-xl dark:border-violet-900/70 dark:bg-neutral-900">
+              <div ref={fileMenu.panelRef} style={fileMenu.style} className="shadow-black/10 flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 shadow-xl dark:border-[var(--pd-accent-border,#4c1d95)] dark:bg-neutral-900">
                 <div className="flex items-center justify-between px-2 pb-2 pt-1">
                   <span className="text-[12px] font-bold text-neutral-900 dark:text-neutral-100">
                     {t("input.projectFiles", { defaultValue: "Reference project content" })}
@@ -899,14 +899,14 @@ export default function ComposerV2({
                       {fileListError}
                     </div>
                   ) : isLoadingFiles && filteredFiles.length === 0 ? (
-                    <div className="flex items-center justify-center gap-2 px-4 py-6 text-[12px] text-neutral-400">
+                    <div className="flex items-center justify-center gap-2 px-4 py-6 text-[12px] text-[var(--pd-muted,#687080)]">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {t("input.projectFilesLoading", {
                         defaultValue: "Loading project files…",
                       })}
                     </div>
                   ) : filteredFiles.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-[12px] text-neutral-400">
+                    <div className="px-4 py-6 text-center text-[12px] text-[var(--pd-muted,#687080)]">
                       {t("input.projectFilesEmpty", {
                         defaultValue: "No matching project content",
                       })}
@@ -928,9 +928,9 @@ export default function ComposerV2({
                             role="option"
                             aria-selected={isSelectedMention}
                             className={cn(
-                              "grid min-h-12 w-full cursor-pointer grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 py-[5px] text-left text-neutral-700 transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#393393)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                              "grid min-h-12 w-full cursor-pointer grid-cols-[18px_minmax(0,1fr)] items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 py-[5px] text-left text-neutral-700 transition-colors hover:bg-[var(--pd-accent-hover,#f7f6ff)] hover:text-[var(--pd-accent-strong,#393393)] dark:text-neutral-200 dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]",
                               isActive
-                                ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                ? "bg-[var(--pd-accent-selected,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-selected,#eeecff)] dark:bg-[var(--pd-accent-selected,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)]"
                                 : "",
                             )}
                             onMouseDown={(event) => event.preventDefault()}
@@ -950,7 +950,7 @@ export default function ComposerV2({
                         );
                       })}
                       {isLoadingFiles ? (
-                        <div className="flex items-center justify-center gap-2 px-3 py-2 text-[11px] text-neutral-400">
+                        <div className="flex items-center justify-center gap-2 px-3 py-2 text-[11px] text-[var(--pd-muted,#687080)]">
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           {t("input.projectFilesLoadingMore", {
                             defaultValue: "Load more…",
@@ -1014,7 +1014,7 @@ export default function ComposerV2({
                   {selectedFileMentions.map((mention) => (
                     <span
                       key={mention.id || mention.path}
-                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-hover,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-[var(--pd-accent-border,#5b21b6)] dark:bg-[var(--pd-accent-soft,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)]"
                     >
                       <span className="min-w-0 truncate">{mention.name}</span>
                       <button
@@ -1038,7 +1038,7 @@ export default function ComposerV2({
                   {selectedSkills.map((skill) => (
                     <span
                       key={`${skill.slug}-${skill.command || ""}`}
-                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-hover,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-[var(--pd-accent-border,#5b21b6)] dark:bg-[var(--pd-accent-soft,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)]"
                     >
                       <span className="min-w-0 truncate">
                         {skill.name || skill.slug}
@@ -1064,7 +1064,7 @@ export default function ComposerV2({
                   {selectedCommands.map((command) => (
                     <span
                       key={command.name}
-                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                      className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-0 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-hover,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-[var(--pd-accent-border,#5b21b6)] dark:bg-[var(--pd-accent-soft,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)]"
                     >
                       <span className="min-w-0 truncate">{command.name}</span>
                       <button
@@ -1161,7 +1161,7 @@ export default function ComposerV2({
                         ref={addMenu.panelRef}
                         role="menu"
                         style={addMenu.style}
-                        className="shadow-[var(--pd-accent,#2e1065)]/10 flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left shadow-xl dark:border-violet-900/70 dark:bg-neutral-900"
+                        className="shadow-black/10 flex flex-col overflow-hidden rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left shadow-xl dark:border-[var(--pd-accent-border,#4c1d95)] dark:bg-neutral-900"
                       >
                         <div
                           className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:#cbc9d5_transparent] [scrollbar-width:thin]"
@@ -1173,12 +1173,12 @@ export default function ComposerV2({
                             setIsAddMenuOpen(false);
                             openImagePicker();
                           }}
-                          className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[#f2f1f6] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+                          className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-neutral-hover,#f2f1f6)] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]"
                         >
                           <span className="truncate text-[13px] font-medium text-inherit">
                             {t("input.files", { defaultValue: "Files" })}
                           </span>
-                          <span className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                          <span className="truncate text-[11px] text-[var(--pd-muted,#687080)] dark:text-[var(--pd-muted,#b4b6c0)]">
                             {t("input.filesAndFoldersDescription", {
                               defaultValue: "Add local content as task context",
                             })}
@@ -1191,12 +1191,12 @@ export default function ComposerV2({
                             setIsAddMenuOpen(false);
                             directoryInputRef.current?.click();
                           }}
-                          className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[#f2f1f6] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+                          className="grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-neutral-hover,#f2f1f6)] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]"
                         >
                           <span className="truncate text-[13px] font-medium text-inherit">
                             {t("input.folders", { defaultValue: "Folders" })}
                           </span>
-                          <span className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                          <span className="truncate text-[11px] text-[var(--pd-muted,#687080)] dark:text-[var(--pd-muted,#b4b6c0)]">
                             {t("input.foldersDescription", {
                               defaultValue: "Keep folder structure and upload all content",
                             })}
@@ -1222,9 +1222,9 @@ export default function ComposerV2({
                                 setIsAddMenuOpen(false);
                               }}
                               className={cn(
-                                "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[#f2f1f6] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                                "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-neutral-hover,#f2f1f6)] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]",
                                 isSelected
-                                  ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                  ? "bg-[var(--pd-accent-selected,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-selected,#eeecff)] dark:bg-[var(--pd-accent-selected,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)]"
                                   : "",
                               )}
                             >
@@ -1235,18 +1235,18 @@ export default function ComposerV2({
                                 />
                                 <span className="truncate">{label}</span>
                               </span>
-                              <span className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                              <span className="truncate text-[11px] text-[var(--pd-muted,#687080)] dark:text-[var(--pd-muted,#b4b6c0)]">
                                 {description}
                               </span>
                             </button>
                           );
                         })}
-                        <div className="mt-1 px-2 py-1 text-[11px] font-medium text-neutral-400">
+                        <div className="mt-1 px-2 py-1 text-[11px] font-medium text-[var(--pd-muted,#687080)]">
                           {t("input.skills", { defaultValue: "Skills" })}
                         </div>
                         <div className="grid gap-0.5">
                           {isSkillsLoading ? (
-                            <div className="flex items-center justify-center py-5 text-neutral-400">
+                            <div className="flex items-center justify-center py-5 text-[var(--pd-muted,#687080)]">
                               <Loader2 className="h-4 w-4 animate-spin" />
                             </div>
                           ) : skills.length > 0 ? (
@@ -1265,9 +1265,9 @@ export default function ComposerV2({
                                     setIsAddMenuOpen(false);
                                   }}
                                   className={cn(
-                                    "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-[var(--pd-ink,#343640)] transition-colors hover:bg-[#f2f1f6] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                                    "grid w-full grid-cols-[minmax(90px,0.6fr)_minmax(0,1.4fr)] gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-neutral-hover,#f2f1f6)] hover:text-[var(--pd-accent-strong,#302b8f)] dark:text-neutral-200 dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]",
                                     isSelected
-                                      ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                      ? "bg-[var(--pd-accent-selected,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-selected,#eeecff)] dark:bg-[var(--pd-accent-selected,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)]"
                                       : "",
                                   )}
                                 >
@@ -1277,7 +1277,7 @@ export default function ComposerV2({
                                       skillQuery,
                                     )}
                                   </span>
-                                  <span className="truncate text-neutral-500">
+                                  <span className="truncate text-[var(--pd-muted,#687080)]">
                                     {renderMatchHighlights(
                                       skill.description || "",
                                       skillQuery,
@@ -1287,7 +1287,7 @@ export default function ComposerV2({
                               );
                             })
                           ) : (
-                            <div className="px-3 py-4 text-center text-[12px] text-neutral-400">
+                            <div className="px-3 py-4 text-center text-[12px] text-[var(--pd-muted,#687080)]">
                               {t("input.noSkills", {
                                 defaultValue: "No skills available",
                               })}
@@ -1296,7 +1296,7 @@ export default function ComposerV2({
                         </div>
                         </div>
                         <div className="relative mt-1 shrink-0">
-                          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+                          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--pd-muted,#687080)]" />
                           <input
                             type="search"
                             value={skillQuery}
@@ -1308,7 +1308,7 @@ export default function ComposerV2({
                                 defaultValue: "Search skills",
                               }) as string
                             }
-                            className="h-8 w-full rounded-lg border border-neutral-200 bg-[#f8f7fa] pl-8 pr-2 text-[12px] outline-none focus:border-[var(--pd-accent-border,#c4b5fd)] dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-violet-700"
+                            className="h-8 w-full rounded-lg border border-neutral-200 bg-[#f8f7fa] pl-8 pr-2 text-[12px] outline-none focus:border-[var(--pd-accent-border,#c4b5fd)] dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-[var(--pd-focus,#6d28d9)]"
                           />
                         </div>
                       </div>, document.body
@@ -1326,13 +1326,9 @@ export default function ComposerV2({
                       className={cn(
                         "pd-composer-permission-button pd-composer-icon-button inline-flex h-8 min-w-28 max-w-[132px] items-center justify-center gap-1.5 rounded-md border px-2 text-[12px] font-medium transition-colors sm:max-w-[190px]",
                         permissionSelectorDisabled
-                          ? "cursor-not-allowed border-transparent text-neutral-400 opacity-45 dark:text-neutral-500"
+                          ? "cursor-not-allowed border-transparent text-[var(--pd-muted,#687080)] opacity-45 dark:text-[var(--pd-muted,#b4b6c0)]"
                           : permissionMode === "bypassPermissions"
-                            ? cn(
-                                "pd-composer-permission-bypass border-[var(--pd-accent-border,#ddd6fe)] bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#6d28d9)] hover:bg-[var(--pd-accent-tint,#ede9fe)] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
-                                isPermissionMenuOpen &&
-                                  "ring-1 ring-[var(--pd-accent-border,#ddd6fe)]",
-                              )
+                            ? "pd-composer-permission-bypass border-transparent bg-transparent text-[var(--pd-warning-ink)] hover:bg-neutral-100 dark:hover:bg-neutral-800"
                             : "border-transparent bg-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
                       )}
                       title={selectedPermissionLabel}
@@ -1362,7 +1358,7 @@ export default function ComposerV2({
                     {isPermissionMenuOpen ? createPortal(
                       <div ref={permissionMenu.panelRef} style={permissionMenu.style}
                         role="menu"
-                        className="shadow-[var(--pd-accent,#2e1065)]/10 overflow-y-auto overscroll-contain rounded-[10px] border border-[var(--pd-accent-border,#ddd6fe)] bg-[rgba(255,255,255,.995)] p-[5px] text-left font-sans tracking-normal shadow-xl [font-synthesis:none] dark:border-violet-900/70 dark:bg-neutral-900"
+                        className="shadow-black/10 overflow-y-auto overscroll-contain rounded-[10px] border border-[var(--pd-accent-border,#ddd6fe)] bg-[rgba(255,255,255,.995)] p-[5px] text-left font-sans tracking-normal shadow-xl [font-synthesis:none] dark:border-[var(--pd-accent-border,#4c1d95)] dark:bg-neutral-900"
                       >
                         {PERMISSION_MODE_OPTIONS.map((option) => {
                           const Icon = option.Icon;
@@ -1386,9 +1382,9 @@ export default function ComposerV2({
                                 setIsPermissionMenuOpen(false);
                               }}
                               className={cn(
-                                "relative grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-[5px] rounded-[7px] border-0 bg-transparent px-2 py-1 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] dark:text-neutral-200 dark:hover:bg-violet-950/40",
+                                "relative grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_14px] items-center gap-[5px] rounded-[7px] border-0 bg-transparent px-2 py-1 text-left text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-accent-hover,#f7f6ff)] dark:text-neutral-200 dark:hover:bg-[var(--pd-accent-hover,#2e1065)]",
                                 isSelected
-                                    ? "bg-[var(--pd-accent-soft,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                    ? "bg-[var(--pd-accent-selected,#eeecff)] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-selected,#eeecff)] dark:bg-[var(--pd-accent-selected,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)]"
                                     : "",
                               )}
                             >
@@ -1400,7 +1396,7 @@ export default function ComposerV2({
                                 <span className="block truncate text-[12px] font-semibold text-inherit">
                                   {label}
                                 </span>
-                                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--pd-muted,#9294a0)] dark:text-neutral-400">
+                                <span className={cn("mt-0.5 block text-[11px] leading-4", isSelected ? "text-inherit" : "text-[var(--pd-muted,#687080)]")}>
                                   {description}
                                 </span>
                               </span>
@@ -1426,7 +1422,7 @@ export default function ComposerV2({
                     return (
                       <span
                         key={option.mode}
-                        className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-1 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-soft,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+                        className="pd-composer-selection-chip group/chip inline-flex min-h-7 max-w-full items-center gap-1 rounded-lg border border-[var(--pd-border,#d7d2fb)] bg-[var(--pd-accent-soft,#f0edff)] px-2.5 text-[12px] font-[650] leading-none text-[var(--pd-accent-strong,#544dbd)] transition-colors duration-[120ms] hover:border-[var(--pd-border,#bdb5f2)] hover:bg-[var(--pd-accent-hover,#e9e5ff)] hover:text-[var(--pd-accent-strong,#433ba8)] dark:border-[var(--pd-accent-border,#5b21b6)] dark:bg-[var(--pd-accent-soft,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)]"
                       >
                         <Icon
                           className="h-3.5 w-3.5 shrink-0"
@@ -1470,9 +1466,9 @@ export default function ComposerV2({
                       onClick={() => { setIsModelMenuOpen((open) => !open); setAdvancedModelId(null); }}
                       className={cn(
                         "disabled:cursor-not-allowed disabled:opacity-40",
-                        "pd-composer-icon-button inline-flex h-8 max-w-[220px] items-center justify-center gap-1.5 rounded-lg border border-transparent px-2 text-[13px] font-medium text-neutral-700 transition-colors hover:border-[var(--pd-border,#ddd9f2)] hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#4440a8)] dark:text-neutral-200 dark:hover:border-violet-800 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                        "pd-composer-icon-button inline-flex h-8 max-w-[220px] items-center justify-center gap-1.5 rounded-lg border border-transparent px-2 text-[13px] font-medium text-neutral-700 transition-colors hover:border-[var(--pd-border,#ddd9f2)] hover:bg-[var(--pd-accent-hover,#f7f6ff)] hover:text-[var(--pd-accent-strong,#4440a8)] dark:text-neutral-200 dark:hover:border-[var(--pd-accent-border,#5b21b6)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]",
                         isModelMenuOpen &&
-                          "border-[var(--pd-border,#ddd9f2)] bg-[var(--pd-accent-soft,#f7f6ff)] text-[var(--pd-accent-strong,#4440a8)] dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
+                          "border-[var(--pd-border,#ddd9f2)] bg-[var(--pd-accent-soft,#f7f6ff)] text-[var(--pd-accent-strong,#4440a8)] dark:border-[var(--pd-accent-border,#5b21b6)] dark:bg-[var(--pd-accent-soft,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)]",
                       )}
                       title={
                         t("input.models.change", {
@@ -1484,7 +1480,7 @@ export default function ComposerV2({
                     >
                       <span className="min-w-0 truncate">{selectedModelLabel}</span>
                       {selectedReasoningLabel && (
-                        <span className="pd-composer-thinking-label shrink-0 font-normal text-neutral-400 dark:text-neutral-500">
+                        <span className="pd-composer-thinking-label shrink-0 font-normal text-[var(--pd-muted,#687080)] dark:text-[var(--pd-muted,#b4b6c0)]">
                           {selectedReasoningLabel}
                         </span>
                       )}
@@ -1507,11 +1503,11 @@ export default function ComposerV2({
                         }
                         ref={modelMenu.menuRef}
                         style={modelMenu.menuStyle}
-                        className="pd-composer-model-menu shadow-[var(--pd-accent,#2e1065)]/10 z-50 flex flex-col rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white text-left shadow-xl dark:border-violet-900/70 dark:bg-neutral-900"
+                        className="pd-composer-model-menu shadow-black/10 z-50 flex flex-col rounded-xl border border-[var(--pd-accent-border,#ddd6fe)] bg-white text-left shadow-xl dark:border-[var(--pd-accent-border,#4c1d95)] dark:bg-neutral-900"
                       >
                         <div className={cn("min-h-0 min-w-0 flex-col p-2", modelMenu.inline && advancedModel ? "hidden" : "flex")}>
                           <div className="relative mb-1.5 shrink-0">
-                            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+                            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--pd-muted,#687080)]" />
                             <input
                               type="search"
                               value={modelQuery}
@@ -1523,7 +1519,7 @@ export default function ComposerV2({
                                   defaultValue: "Search models",
                                 }) as string
                               }
-                              className="h-8 w-full rounded-lg border border-neutral-200 bg-neutral-50 pl-8 pr-2 text-[12px] outline-none focus:border-[var(--pd-accent-border,#c4b5fd)] focus:bg-white dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-violet-700"
+                              className="h-8 w-full rounded-lg border border-neutral-200 bg-neutral-50 pl-8 pr-2 text-[12px] outline-none focus:border-[var(--pd-accent-border,#c4b5fd)] focus:bg-white dark:border-neutral-700 dark:bg-neutral-800 dark:focus:border-[var(--pd-focus,#6d28d9)]"
                               autoFocus
                             />
                           </div>
@@ -1532,11 +1528,11 @@ export default function ComposerV2({
                               <div className="px-3 py-3 text-[12px] text-red-500" role="alert">{modelCatalogError}</div>
                             ) : null}
                             {isModelCatalogLoading ? (
-                              <div className="flex justify-center py-8 text-neutral-400">
+                              <div className="flex justify-center py-8 text-[var(--pd-muted,#687080)]">
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               </div>
                             ) : filteredModels.length === 0 ? (
-                              <div className="px-3 py-6 text-center text-[12px] text-neutral-400">
+                              <div className="px-3 py-6 text-center text-[12px] text-[var(--pd-muted,#687080)]">
                                 {t("input.models.empty", {
                                   defaultValue: "No matching models",
                                 })}
@@ -1554,7 +1550,7 @@ export default function ComposerV2({
                                   )}
                                 >
                                   {provider !== null ? (
-                                    <div className="sticky top-0 z-10 truncate bg-white px-[9px] pb-1 pt-2 text-[10px] font-medium text-neutral-400 dark:bg-neutral-900 dark:text-neutral-500" title={provider}>
+                                    <div className="sticky top-0 z-10 truncate bg-white px-[9px] pb-1 pt-2 text-[10px] font-medium text-[var(--pd-muted,#687080)] dark:bg-neutral-900 dark:text-[var(--pd-muted,#b4b6c0)]" title={provider}>
                                       {provider}
                                     </div>
                                   ) : null}
@@ -1569,9 +1565,9 @@ export default function ComposerV2({
                                       <div
                                         key={item.id}
                                         className={cn(
-                                          "group flex items-center rounded-lg text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#373390)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200",
+                                          "group flex items-center rounded-lg text-[var(--pd-ink,#343640)] transition-colors hover:bg-[var(--pd-accent-hover,#f7f6ff)] hover:text-[var(--pd-accent-strong,#373390)] dark:text-neutral-200 dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]",
                                           isSelected
-                                            ? "bg-[var(--pd-accent-soft,#eeecff)] font-[650] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70"
+                                            ? "bg-[var(--pd-accent-selected,#eeecff)] font-[650] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-selected,#eeecff)] dark:bg-[var(--pd-accent-selected,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)]"
                                             : "",
                                           !item.available &&
                                             !isAuto &&
@@ -1615,9 +1611,9 @@ export default function ComposerV2({
                                               )
                                             }
                                             className={cn(
-                                              "mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition hover:bg-[var(--pd-accent-soft,#ede9fe)] hover:text-[var(--pd-accent-strong,#6d28d9)] dark:hover:bg-violet-950/60 dark:hover:text-violet-200",
+                                              "mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--pd-muted,#687080)] transition hover:bg-[var(--pd-accent-hover,#ede9fe)] hover:text-[var(--pd-accent-strong,#6d28d9)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]",
                                               advancedModelId === item.id &&
-                                                "bg-[var(--pd-accent-soft,#ede9fe)] text-[var(--pd-accent-strong,#6d28d9)] dark:bg-violet-950/60 dark:text-violet-200",
+                                                "bg-[var(--pd-accent-soft,#ede9fe)] text-[var(--pd-accent-strong,#6d28d9)] dark:bg-[var(--pd-accent-soft,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)]",
                                             )}
                                             title={
                                               t("input.models.advanced", {
@@ -1664,10 +1660,10 @@ export default function ComposerV2({
                             data-side={modelMenu.side}
                             className={cn(
                               "min-h-0 overflow-y-auto overscroll-contain rounded-[10px] bg-white p-[9px] text-[var(--pd-muted,#505260)] dark:bg-neutral-900 dark:text-neutral-300",
-                              !modelMenu.inline && "border border-[var(--pd-accent-border,#c4b5fd)] shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 dark:border-violet-800",
+                              !modelMenu.inline && "border border-[var(--pd-accent-border,#c4b5fd)] shadow-xl shadow-black/10 dark:border-[var(--pd-accent-border,#5b21b6)]",
                             )}
                           >
-                            {modelMenu.inline && <button type="button" className="mb-2 flex w-full items-center gap-1 rounded-md px-1 py-1.5 text-left text-xs hover:bg-[var(--pd-accent-soft,#f5f3ff)] dark:hover:bg-violet-950/40"
+                            {modelMenu.inline && <button type="button" className="mb-2 flex w-full items-center gap-1 rounded-md px-1 py-1.5 text-left text-xs hover:bg-[var(--pd-accent-hover,#f5f3ff)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)]"
                               onClick={() => setAdvancedModelId(null)}>
                               <ChevronLeft className="h-3.5 w-3.5" />{t("input.models.backToModels")}
                             </button>}
@@ -1679,7 +1675,7 @@ export default function ComposerV2({
                                   })}
                                 </h2>
                                 <button type="button" aria-pressed={advancedParams.reasoning === undefined}
-                                  className="mb-1 w-full rounded-md px-[7px] py-1 text-left text-[11px] hover:bg-[var(--pd-accent-soft,#f5f3ff)] dark:hover:bg-violet-950/40"
+                                  className="mb-1 w-full rounded-md px-[7px] py-1 text-left text-[11px] hover:bg-[var(--pd-accent-hover,#f5f3ff)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)]"
                                   onClick={() => selectReasoning(advancedModel)}>
                                   {t('input.models.reasoningMenuLevels.default', { defaultValue: 'Default' })}
                                   {advancedParams.reasoning === undefined && <Check className="float-right h-3 w-3" />}
@@ -1738,7 +1734,7 @@ export default function ComposerV2({
                             ? "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
                             : contextStatus.tone === "normal"
                               ? "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                              : "text-neutral-400 hover:bg-neutral-100 dark:text-neutral-500 dark:hover:bg-neutral-800",
+                              : "text-[var(--pd-muted,#687080)] hover:bg-neutral-100 dark:text-[var(--pd-muted,#b4b6c0)] dark:hover:bg-neutral-800",
                       )}
                       title={contextStatusTitle}
                       aria-label={contextStatusTitle}

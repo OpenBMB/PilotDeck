@@ -20,16 +20,19 @@ test('Windows and Linux use a compact caption without changing macOS geometry', 
   assert.equal(load('windowChrome').MAC_CAPTION_HEIGHT, 48);
   assert.equal(windowChromeOptions('darwin', false).titleBarStyle, 'hiddenInset');
 });
-test('original light and dark window palettes remain unchanged on all desktop platforms', () => {
+test('default Windows light chrome lets the canvas through and preserves other platform palettes', () => {
   for (const platform of ['win32', 'linux', 'darwin']) {
-    assert.deepEqual(windowPalette(false, platform), { background: '#ffffff', caption: platform === 'darwin' ? '#fbfaff' : '#f4f4f5', symbol: '#262626' });
-    const dark = { background: '#0a0a0a', caption: platform === 'darwin' ? '#0a0a0a' : '#171717', symbol: '#e5e5e5' };
-    for (const preset of ['default', 'blue', 'mint', 'apricot', 'lavender', 'rose', 'custom']) assert.deepEqual(windowPalette(true, platform, { preset }), dark);
+    assert.deepEqual(windowPalette(false, platform), { background: '#ffffff', caption: platform === 'darwin' ? '#fbfaff' : platform === 'win32' ? '#00000000' : '#f4f4f5', symbol: '#262626' });
+    for (const preset of ['default', 'gray', 'blue', 'mint', 'apricot', 'lavender', 'rose', 'custom']) {
+      const colors = load('appearancePalette').deriveAppearanceColors(load('lightAppearance').normalizeLightAppearance({ preset }), true);
+      assert.deepEqual(windowPalette(true, platform, { preset }), { background: colors.background, caption: colors.sidebar, symbol: colors.ink });
+      assert.equal(windowChromeOptions(platform, true, { preset }).backgroundColor, colors.background);
+    }
   }
 });
 test('startup overlay and published palette share colors for presets and customized default backgrounds', () => {
   for (const appearance of [
-    { preset: 'mint' }, { preset: 'blue' }, { preset: 'apricot' }, { preset: 'lavender' }, { preset: 'rose' },
+    { preset: 'gray' }, { preset: 'mint' }, { preset: 'blue' }, { preset: 'apricot' }, { preset: 'lavender' }, { preset: 'rose' },
     { preset: 'custom', custom: { accent: '#126d71', background: '#b9dfce' } },
     { background: { type: 'image', imageId: '12345678-1234-1234-1234-123456789012.png' } },
   ]) {

@@ -21,7 +21,7 @@ export default function UninstallSection() {
         catch { setError(t('uninstall.failed')); }
         finally { setBusy(false); }
       }}>{t('uninstall.title')}</button>}
-      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-[var(--pd-danger-ink)]">{error}</p>}
     </div>
   </SettingsCard>;
 }

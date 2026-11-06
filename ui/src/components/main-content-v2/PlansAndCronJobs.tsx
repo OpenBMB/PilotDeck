@@ -58,7 +58,7 @@ function mapPlanStatus(status: DiscoveryPlanStatus): PlanDisplayStatus {
 const PLAN_STATUS_STYLE: Record<PlanDisplayStatus, string> = {
   created: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   preparingWorkspace: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  executing: 'bg-[var(--pd-accent-soft,#e0e7ff)] text-[var(--pd-accent-strong,#4338ca)] dark:bg-indigo-900/40 dark:text-indigo-300',
+  executing: 'bg-[var(--pd-accent-soft,#e0e7ff)] text-[var(--pd-accent-strong,#4338ca)] dark:bg-[var(--pd-accent-soft,#312e81)] dark:text-[var(--pd-accent-strong,#a5b4fc)]',
   completedWaiting: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   completedNoReport: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
@@ -630,7 +630,7 @@ function ItemRow({
             type="button"
             disabled={busy}
             onClick={() => void handleRetry()}
-            className="inline-flex h-7 items-center rounded-md bg-blue-600 px-2.5 text-[11px] font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-700 dark:hover:bg-blue-600"
+            className="inline-flex h-7 items-center rounded-md bg-[var(--pd-accent,#2563eb)] px-2.5 text-[11px] font-medium text-white transition hover:bg-[var(--pd-button-hover,#1d4ed8)] disabled:opacity-50 dark:bg-[var(--pd-accent,#1d4ed8)] dark:hover:bg-[var(--pd-button-hover,#2563eb)]"
           >
             {busy ? (
               <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />

@@ -79,7 +79,7 @@ export default function ModelSettingsModal({ modelId, protocol = 'openai', initi
   const status = (value?: string) => value === 'supported'
     ? <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-label={label('passed')} />
     : value === 'unsupported'
-      ? <XCircle className="h-4 w-4 text-destructive" aria-label={label('failed')} />
+      ? <XCircle className="h-4 w-4 text-[var(--pd-danger-ink)]" aria-label={label('failed')} />
       : <CircleHelp className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-label={label('unknown')} />;
   const probeMessage = result?.error?.message === 'The model replied without describing the test image.'
     ? label('imageNotDescribed')
@@ -133,13 +133,13 @@ export default function ModelSettingsModal({ modelId, protocol = 'openai', initi
         {running && <button type="button" disabled={task?.status === 'cancelling'} className="text-xs text-muted-foreground hover:text-foreground" onClick={onCancelTest}>{label('cancelTest')}</button>}
       </div>
       {reason && <p id={reasonId} role="status" className="mt-3 text-xs text-muted-foreground">{reason}</p>}
-      {blockingTask && onCancelBlockingTest && <button type="button" disabled={cancellingBlockedTest || blockingTask.status === 'cancelling' || blockingTask.status === 'savingTest'} onClick={onCancelBlockingTest} className="mt-2 text-xs text-primary hover:underline disabled:opacity-40">{label('cancelPreviousTest')}</button>}
+      {blockingTask && onCancelBlockingTest && <button type="button" disabled={cancellingBlockedTest || blockingTask.status === 'cancelling' || blockingTask.status === 'savingTest'} onClick={onCancelBlockingTest} className="mt-2 text-xs text-[var(--pd-accent-strong,#4948cf)] hover:underline disabled:opacity-40">{label('cancelPreviousTest')}</button>}
       {!running && result && <div className="mt-3 space-y-2 rounded-lg bg-muted/40 p-3 text-xs" role="status">
         <div className="flex items-center justify-between">{label('textRequest')}{status(result.textInput)}</div>
         <div className="flex items-center justify-between">{label('imageRequest')}{status(result.imageInput)}</div>
         {probeMessage && <p className={`break-words ${imageUnconfirmed ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{probeMessage}</p>}
       </div>}
-      {(testError || task?.message) && <p role="status" className="mt-3 text-xs text-destructive">{testError || task?.message}</p>}
+      {(testError || task?.message) && <p role="status" className="mt-3 text-xs text-[var(--pd-danger-ink)]">{testError || task?.message}</p>}
     </div>
   </ConfirmDialog>;
 }

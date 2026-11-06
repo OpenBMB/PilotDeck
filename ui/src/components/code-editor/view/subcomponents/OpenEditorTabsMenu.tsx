@@ -53,7 +53,7 @@ export default function OpenEditorTabsMenu({
             setOpen(true);
           }
         }}
-        className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 outline-none transition-colors hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 outline-none transition-colors hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:text-neutral-400 dark:hover:bg-neutral-800"
       >
         <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.75} />
       </button>

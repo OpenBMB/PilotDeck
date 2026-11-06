@@ -55,6 +55,10 @@ are independent of PR selection and remain mandatory.
 
 ## Maintained diagnostic checks
 
+With Vite on port 5187, `node ui/e2e/form-controls.smoke.mjs` checks the shared form chrome in all six paired palettes: grouped/disabled options, keyboard and pointer selection, nested-dialog Escape, native form values, calendar/time selection and a 1,000-option menu in a narrow viewport. `node ui/e2e/settings-navigation-theme.smoke.mjs` exercises actual settings persistence and native desktop navigation. These use synthetic data and isolated profiles.
+
+Windows Web tests use at most four workers to limit concurrent Node/jsdom and Git processes. Real repository update tests have a separate 60-second integration budget; UI assertions retain the default timeout, with cold backend imports completed in setup hooks. Directory-link security fixtures use Windows junctions and run without elevation. File-symlink cases run when the host permits them; only an actual Windows `EPERM` skips that individual case with a Developer Mode/elevation explanation. POSIX CI continues to exercise the file-link assertions.
+
 Checkpoint execution cases use separate Python, subagent and background-task
 files with a shared isolated workspace fixture. Each keeps the runner's 60-second
 file deadline instead of sharing one cumulative budget across all execution modes.
@@ -72,6 +76,6 @@ First build the relevant Core/Desktop/Web outputs when a command consumes compil
 | TUI permissions | `node --import tsx --test tests/adapters/tui-permissions.spec.tsx`; automatic temporary profile, mocked Gateway, no model calls |
 | UI import/export analysis | `node scripts/audit-ui-reachability.mjs --exports`; read-only candidates, not automatic deletion authority |
 
-Appearance, native file selection and window chrome acceptance use ui/e2e/appearance.smoke.mjs, file-picker.smoke.mjs and desktop-chrome.smoke.mjs. Prepare their Vite/Desktop prerequisites and isolated profiles. Preview pages do not replace the real startup-flow regression. Native package installation, update, signing and OS permission acceptance remain platform-specific.
+Appearance, native file selection and window chrome acceptance use ui/e2e/appearance.smoke.mjs, file-picker.smoke.mjs and desktop-chrome.smoke.mjs. With Vite on port 5187, run `node ui/e2e/theme-components.smoke.mjs` for all six light/dark palettes on the real chat menus and skills screen, including warning semantics, selected states, placeholders and text contrast. `node ui/e2e/dialog-appearance.smoke.mjs` checks confirmation actions and image overlays. Prepare their Vite/Desktop prerequisites and isolated profiles. Preview pages do not replace the real startup-flow regression. Native package installation, update, signing and OS permission acceptance remain platform-specific.
 
 Record commands, outcomes and limits in the PR/CI artifacts. Put temporary screenshots, logs, request dumps and benchmark data in ignored artifacts/<topic>/ or outputs/<topic>/, never in a new tracked delivery report. The [session timeline](architecture/session-timeline.md) and [reasoning reference](reasoning-settings.md) are durable contracts, not test-run logs.

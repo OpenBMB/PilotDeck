@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { Brain, ChevronRight } from 'lucide-react';
+import { Lightbulb, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AnimatedDisclosure } from '../ui/AnimatedDisclosure';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
@@ -55,7 +55,7 @@ export function ThinkingBlock({ content, isStreaming, startedAt, durationMs, inl
         onClick={() => setView({ ...phase, expanded: !expanded, pinnedOpen: !expanded })}
         className="chat-process-trigger hover-brand-text"
       >
-        <Brain aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${isStreaming ? 'motion-safe:animate-pulse' : ''}`} strokeWidth={1.8} />
+        <Lightbulb aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${isStreaming ? 'motion-safe:animate-pulse' : ''}`} strokeWidth={1.8} />
         <span className="min-w-0 truncate tabular-nums">{label}</span>
         <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} strokeWidth={1.8} />
       </button>

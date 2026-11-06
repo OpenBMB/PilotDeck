@@ -34,7 +34,7 @@ function WebAboutSections({ versionInfo }: { versionInfo: DesktopVersionCheckRes
             href="https://github.com/OpenBMB/PilotDeck/releases/latest"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block font-medium text-blue-600 underline-offset-2 hover:underline"
+            className="inline-block font-medium text-[var(--pd-accent-strong,#2563eb)] underline-offset-2 hover:underline"
           >
             {t("settingsPage.about.webReleaseLink")}
           </a>

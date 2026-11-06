@@ -92,10 +92,7 @@ jobs:
       - name: Test native computer use process and endpoint lifecycle
         run: node --test apps/desktop/scripts/computer-use.test.mjs
       - name: Test standalone macOS and Linux computer use
-        # The macOS host fixtures use POSIX app paths. Windows desktop uses
-        # the IPC controller and real named-pipe fixture tested above.
-        if: runner.os != 'Windows'
-        run: pnpm --dir ui exec vitest run server/services/standaloneComputerUse.test.js
+        run: pnpm --dir ui exec vitest run server/services/standaloneComputerUse.test.js server/services/macComputerUseRuntime.test.js
       - name: Test checkpoints, restore, Git operations and internal ignore rules
         run: pnpm run test:checkpoints
       - name: Test General workspace upgrades and continued conversations
@@ -116,6 +113,17 @@ jobs:
           server/routes/checkpoints.test.js
           server/utils/pilotPaths.test.js
           server/utils/pathSafety.test.js
+
+      - name: Test complete Windows Web UI and server regression
+        if: runner.os == 'Windows'
+        # The five updater suites require Desktop dependencies and run in Checks.
+        run: >-
+          pnpm --dir ui exec vitest run
+          --exclude 'server/services/desktopUpdateNetwork.test.ts'
+          --exclude 'server/services/desktopUpdateAvailability.test.ts'
+          --exclude 'server/services/desktopUpdates.spec.ts'
+          --exclude 'server/services/desktopAutoUpdate.test.ts'
+          --exclude 'server/services/jsonReleaseProvider.test.ts'
 
   static-checks:
     name: Checks

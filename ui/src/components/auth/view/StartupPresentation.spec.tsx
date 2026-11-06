@@ -46,7 +46,7 @@ it('finishes and fades smoothly even when a client is ready immediately', async 
 it.each([
   [undefined, '#ffffff'],
   [{ preset: 'default' }, '#ffffff'],
-  [{ preset: 'lavender' }, '#f1ecfa'],
+  [{ preset: 'lavender' }, '#eeebf3'],
   [{ preset: 'custom', custom: { background: '#b9dfce' } }, '#b9dfce'],
 ])('keeps the native startup canvas during the Web handoff with preference %j', (lightAppearance, expected) => {
   // Reproduce the default lavender application canvas being available before
@@ -98,7 +98,7 @@ it.each(['dark', 'system'] as const)('keeps dark startup colors with a custom li
   shell.innerHTML = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)![1]; document.body.append(shell);
   try {
     for (const script of shell.querySelectorAll('script')) new Function('window', 'document', 'navigator', 'localStorage', script.textContent!)(window, document, navigator, localStorage);
-    expect(document.documentElement.style.getPropertyValue('--startup-bg')).toBe('#0a0a0a');
+    expect(document.documentElement.style.getPropertyValue('--startup-bg')).toBe('#23252b');
   } finally { vi.unstubAllGlobals(); document.documentElement.removeAttribute('style'); }
 });
 

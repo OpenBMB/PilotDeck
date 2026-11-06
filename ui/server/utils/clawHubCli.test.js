@@ -42,7 +42,9 @@ it.each(['development', 'packaged'])(
       { moduleUrl: pathToFileURL(route), platform: 'win32' },
     );
     expect(execution.command).toBe(process.execPath);
-    expect(execution.args).toEqual([await fs.realpath(cli), ...args]);
+    // The module resolver can retain RUNNER~1 while native realpath expands it.
+    expect(await fs.realpath(execution.args[0])).toBe(await fs.realpath(cli));
+    expect(execution.args.slice(1)).toEqual(args);
     expect(execution.options).toMatchObject({ timeout: 1000, windowsHide: true });
     const { stdout } = await promisify(execFile)(
       execution.command,

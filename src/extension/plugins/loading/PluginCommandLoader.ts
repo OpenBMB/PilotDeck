@@ -86,7 +86,7 @@ async function collectMarkdownFiles(directory: string): Promise<string[]> {
   }
 
   for (const entry of entries) {
-    const fullPath = `${directory}/${entry}`;
+    const fullPath = join(directory, entry);
     let entryStat;
     try {
       entryStat = await stat(fullPath);

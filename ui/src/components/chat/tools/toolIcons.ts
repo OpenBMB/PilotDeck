@@ -1,5 +1,5 @@
 import {
-  AppWindow, Archive, BookOpen, Bot, Brain, Clapperboard, Code2, FilePenLine, FilePlus2,
+  AppWindow, Archive, BookOpen, Bot, Lightbulb, Clapperboard, Code2, FilePenLine, FilePlus2,
   FileSearch, FileText, Globe, Image, Layers3, ListTodo, ListTree, MessageCircleQuestion,
   Paperclip, Plug, Search, Terminal, Wrench, type LucideIcon,
 } from 'lucide-react';
@@ -24,7 +24,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
 
 const PHASE_ICONS: Record<string, LucideIcon> = {
   rag: Search, search: Search, read: FileText, edit: FilePenLine, write: FilePlus2,
-  command: Terminal, bash: Terminal, think: Brain, thinking: Brain, reasoning: Brain,
+  command: Terminal, bash: Terminal, think: Lightbulb, thinking: Lightbulb, reasoning: Lightbulb,
   plan: ListTree, subtask: Bot, tool: Wrench, skill: BookOpen, compact: Archive, compaction: Archive,
   code: Code2, review: FileSearch,
 };
@@ -46,7 +46,7 @@ export function getActivityIcon(phase?: string, toolName?: string): LucideIcon |
 /** Reasoning does not turn an otherwise single-category tool group into mixed work. */
 export function getProcessGroupIcon(messages: ChatMessage[]): LucideIcon {
   const work = messages.filter(message => !message.isThinking);
-  if (!work.length) return Brain;
+  if (!work.length) return Lightbulb;
   const icons = new Set(work.map(message => message.isCompactBoundary ? Archive
     : message.isSubagentContainer ? Bot : getToolIcon(message.toolName ?? '')));
   return icons.size === 1 ? [...icons][0] : Layers3;

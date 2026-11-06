@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fileSymlinkOrSkip } from '../test-support/symlink.js';
 import { parse as parseYaml } from 'yaml';
 import {
     applyConfigToProcessEnv,
@@ -274,15 +275,18 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
         expect(onWriteCommitted).not.toHaveBeenCalled();
     });
 
-    it('atomically updates a symlink target without replacing the symlink', async () => {
+    it.for(['directory', 'file'])('atomically updates a config through a %s link without replacing the link', async (type, context) => {
         const dir = mkdtempSync(join(tmpdir(), 'pilotdeck-config-symlink-test-'));
         tempDirs.push(dir);
         const managedDir = join(dir, 'managed');
         mkdirSync(managedDir);
         const targetPath = join(managedDir, 'pilotdeck.yaml');
-        const configPath = join(dir, 'pilotdeck.yaml');
+        const link = join(dir, type === 'file' ? 'pilotdeck.yaml' : 'linked');
+        const configPath = type === 'file' ? link : join(link, 'pilotdeck.yaml');
         writeFileSync(targetPath, 'schemaVersion: 1\ncustomEnv:\n  VALUE: first\n', 'utf8');
-        symlinkSync(targetPath, configPath);
+        if (type === 'file') {
+            if (!fileSymlinkOrSkip(context, targetPath, configPath)) return;
+        } else symlinkSync(managedDir, link, process.platform === 'win32' ? 'junction' : 'dir');
         process.env.PILOTDECK_CONFIG_PATH = configPath;
 
         const loaded = readPilotDeckConfigFile();
@@ -293,7 +297,7 @@ describe('readPilotDeckConfigFile fallback behavior', () => {
             expectedRevision: configRevision(loaded.raw),
         });
 
-        expect(lstatSync(configPath).isSymbolicLink()).toBe(true);
+        expect(lstatSync(link).isSymbolicLink()).toBe(true);
         expect(readFileSync(targetPath, 'utf8')).toContain('VALUE: updated');
         expect(readFileSync(configPath, 'utf8')).toBe(readFileSync(targetPath, 'utf8'));
     });

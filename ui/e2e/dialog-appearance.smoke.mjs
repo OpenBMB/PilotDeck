@@ -3,7 +3,7 @@ import { chromium, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const artifacts = process.env.PILOTDECK_DIALOG_ARTIFACTS || '/tmp/pilotdeck-dialog-appearance';
+const artifacts = process.env.PILOTDECK_DIALOG_ARTIFACTS || path.resolve('artifacts/dialog-appearance');
 await fs.mkdir(artifacts, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.PILOTDECK_TEST_BROWSER_CHANNEL || 'chrome', headless: true });
 const results = [];
@@ -15,7 +15,7 @@ try {
   await expect(page.getByRole('button', { name: 'Open images', exact: true })).toBeVisible();
   const presets = await page.evaluate(() => window.dialogAppearancePresets);
   const cases = [
-    ...presets.map(preset => ({ name: preset, value: { preset } })),
+    ...presets.flatMap(preset => [false, true].map(dark => ({ name: `${preset}-${dark ? 'dark' : 'light'}`, value: { preset }, dark }))),
     { name: 'custom-solid', value: { preset: 'custom', custom: { accent: '#7955b3', background: '#b9dfce' }, background: { type: 'solid' } } },
     { name: 'custom-bright', value: { preset: 'custom', custom: { accent: '#ffff00', background: '#ffffff' } } },
     { name: 'wallpaper', value: { preset: 'blue', background: { type: 'image', imageId: '12345678-1234-1234-1234-123456789012.png' }, transparency: 40 } },
@@ -26,7 +26,7 @@ try {
     await page.getByRole('button', { name: 'Open images', exact: true }).click();
     const preview = page.getByRole('dialog');
     await expect(preview).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.85)');
-    await expect(preview.getByRole('button', { name: 'Close preview' })).toHaveCSS('color', 'rgb(255, 255, 255)');
+    await expect(preview.getByRole('button', { name: 'Next image' })).toHaveCSS('color', 'rgb(255, 255, 255)');
     await expect(preview.locator('figcaption')).toHaveCSS('color', 'rgba(255, 255, 255, 0.8)');
     await expect(preview.locator('figcaption')).toContainText('1 / 2');
     await preview.getByRole('button', { name: 'Next image' }).click();
@@ -52,8 +52,8 @@ try {
     const themed = await panel.evaluate(element => {
       const root = document.documentElement;
       const probe = document.createElement('div');
-      probe.style.backgroundColor = root.hasAttribute('data-light-appearance') ? 'var(--pd-surface)' : 'hsl(var(--card))';
-      probe.style.borderColor = root.hasAttribute('data-light-appearance') ? 'var(--pd-border)' : 'hsl(var(--border))';
+      probe.style.backgroundColor = root.hasAttribute('data-appearance') ? 'var(--pd-elevated)' : 'hsl(var(--card))';
+      probe.style.borderColor = root.hasAttribute('data-appearance') ? 'var(--pd-border)' : 'hsl(var(--border))';
       document.body.append(probe);
       const actual = getComputedStyle(element), expected = getComputedStyle(probe);
       const result = { actual: [actual.backgroundColor, actual.borderTopColor], expected: [expected.backgroundColor, expected.borderTopColor] };
@@ -67,7 +67,7 @@ try {
       document.body.append(probe);
       probe.style.backgroundColor = 'var(--pd-accent, #5b5ce2)';
       const normal = getComputedStyle(probe).backgroundColor;
-      probe.style.backgroundColor = 'var(--pd-accent-strong, #4948cf)';
+      probe.style.backgroundColor = 'var(--pd-button-hover, #4948cf)';
       const hover = getComputedStyle(probe).backgroundColor;
       probe.remove();
       return { normal, hover };
@@ -99,7 +99,7 @@ try {
   await page.getByRole('button', { name: 'Open single image' }).click();
   await expect(page.getByRole('button', { name: 'Next image' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Previous image' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Close preview' }).click();
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Open images', exact: true }).click();
   await page.getByRole('dialog').click({ position: { x: 10, y: 10 } });

@@ -35,6 +35,18 @@ General uses a registered PilotDeckGeneral workspace (Documents on Windows, home
 
 Runtime logs are managed under userData/logs, or PILOT_HOME/logs for standalone services. The retention setting defaults to seven days. Download runtime logs exports redacted diagnostics; invalid configuration remains available for repair.
 
+## Preference persistence
+
+Ordinary application updates replace the installation payload and retain the user profile. Desktop theme mode, color palette, custom colors, wallpaper parameters and interface performance preferences live in Electron's `userData/appearance.json`; managed background images live in `userData/appearance-images/`. Language/theme updates merge into the saved appearance rather than replacing it. Model, tool and skill preferences live under `PILOT_HOME` (normally `~/.pilotdeck`); device UI choices also use the Web view's local storage. These locations must stay outside the installation directory. Desktop startup selects an available localhost port beginning at 3001; if it changes, local-storage-only choices such as project sorting and code editor options use a different origin and can appear reset. File-backed appearance, images and Gateway preferences are independent of that port.
+
+Browser deployments keep appearance settings in local storage and images in IndexedDB, scoped to the browser profile and site origin (scheme, hostname and port). Reinstalling with personal-data deletion, clearing site data, changing the application profile/identity or changing the Web origin is outside normal update retention. Storage keys remain stable across palette refinements; the retired lavender preset remains readable as a custom choice without overwriting separately saved custom colors; user custom colors and image effects are preserved.
+
+## Appearance tokens
+
+The six presets use paired 12-step sRGB scales exported from the [Radix custom palette tool](https://www.radix-ui.com/colors/custom); source inputs are recorded in [themeScales.ts](src/themeScales.ts). [appearancePalette.ts](src/appearancePalette.ts) maps backgrounds to steps 1–2, interactions to 3–5, borders to 6–8, solid actions to 9–10 and text to 11–12. Contrast checks protect button labels and selected text; custom accents use the same semantic roles with derived colors. The UI, native caption and memory dashboard share these tokens. The original default light styling remains opt-out; all six palettes support dark and system mode. Wallpaper effects remain light-only, with saved images and adjustments retained across mode changes.
+
+Use palette tokens for interactive accents (links, selection, focus, switches, progress and primary actions), including portalled menus and dark styles. Use `--pd-accent-strong` for colored text, `--pd-accent` / `--pd-button-hover` for solid buttons with white labels, and distinct soft/hover/selected tokens for their backgrounds. Permission bypass uses a separate amber warning pair. Success, errors, Git additions/deletions, file types, chart categories, product logos, document content and terminal/syntax colors retain their meanings across accents; their foreground/background pairs must still be readable in each mode. Editor chrome follows the palette while syntax categories remain distinct.
+
 ## Validation
 
 The Node helper suite is collected by the test command above. [Desktop chrome acceptance](../../ui/e2e/desktop-chrome.smoke.mjs), [lifecycle acceptance](scripts/verify-desktop-lifecycle.cjs) and native installer checks need their stated build/platform prerequisites and isolated profiles. They do not establish that a particular published package is signed; [release verification](../../docs/release.md) checks the actual payload.

@@ -38,7 +38,7 @@ export default function AgentRouteSections({ title: _title, reference }: AgentRo
   if (!parsedConfig) {
     return (
       <div className="route-page-content">
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-[var(--pd-danger-ink)]">
           {t("settingsPage.invalidYaml.agentRoute")}
         </div>
       </div>

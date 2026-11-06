@@ -25,7 +25,7 @@ const original = () => ({
 });
 const pages = [['general','.general-page-content'],['appearance','.appearance-settings'],['models','.model-pool-workspace'],
   ['agent-route','.route-card'],['agent-memory','.memory-card'],['agent-resident','.resident-card'],['agent-search','.search-card'],
-  ['agent-schedule','.scheduled-card'],['integrations','.integration-gateway-card'],['mcp','.mcp-config-card'],['office','.office-card'],
+  ['agent-schedule','.scheduled-card'],['integrations','.integration-gateway-card'],['mcp','.mcp-config-card'],['office','.office-page-content .general-card'],
   ['privacy','.security-card'],['advanced','.advanced-settings-card'],['about','[data-settings-surface=panel]']];
 async function exercise(page, platform, resize) {
   let config = original(), revision = 1, conflict = false;
@@ -39,7 +39,8 @@ async function exercise(page, platform, resize) {
     const request=route.request(), p=new URL(request.url()).pathname;
     let body={}, status=200;
     const response=()=>({exists:true,path:'/fixture/config.yaml',raw:JSON.stringify(config),revision:String(revision),validation:{valid:true,errors:[],warnings:[]}});
-    if(p==='/api/config/model-removal') {
+    if(p==='/api/settings/general-workspace') body={directory:'',effectiveDirectory:'/fixture/general',defaultDirectory:'/fixture/general'};
+    else if(p==='/api/config/model-removal') {
       const input=request.postDataJSON();const plan=planModelRemoval(config,input,{replacement:input.replacement});
       const {config:next,...publicPlan}=plan;
       if(input.dryRun) body={...publicPlan,revision:String(revision)};
@@ -67,14 +68,21 @@ async function exercise(page, platform, resize) {
   });
   await page.routeWebSocket('**/ws**', socket=>socket.onMessage(()=>{}));
   const report=[];
-  for(const [preset,color] of [['薄荷','rgb(24, 124, 101)'],['雾蓝','rgb(56, 106, 180)']]) {
+  for(const [preset,color] of [['薄荷绿','rgb(62, 121, 107)'],['雾霭蓝','rgb(83, 113, 166)']]) {
     await page.goto('http://127.0.0.1:5187/settings/appearance');
     await page.getByRole('button',{name:'浅色',exact:true}).click();
     await page.locator('#appearance-palette').getByRole('button', { name: preset, exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-light-background','solid');
     for(const [route,ready] of pages) {
       await page.goto(`http://127.0.0.1:5187/settings/${route}`);
+      await expect(page.locator('.pd-startup-screen')).toHaveCount(0, { timeout: 60000 });
       await expect(page.locator(ready).first()).toBeVisible();
+      // Every mounted settings select, including disabled controls, shares the
+      // themed picker while preserving its existing value/save lifecycle.
+      for (const select of await page.locator('.settings-main select').all()) {
+        await expect(select).toHaveCSS('appearance', 'base-select');
+        await expect(select).toHaveCSS('opacity', '1');
+      }
       await expect(page.locator('.settings-main')).toHaveCSS('background-color','rgb(255, 255, 255)');
       await expect(page.locator('.topbar-config-icon')).toHaveCSS('color',color);
       await page.mouse.move(0,0);
@@ -84,8 +92,8 @@ async function exercise(page, platform, resize) {
           let h=(max===rgb[0]?(rgb[1]-rgb[2])/d+(rgb[1]<rgb[2]?6:0):max===rgb[1]?(rgb[2]-rgb[0])/d+2:(rgb[0]-rgb[1])/d+4)*60;
           return h>=228&&h<=285&&d/(255-Math.abs(max+min-255))>.32;}
         return [...root.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().width>0).flatMap(e=>{
-          // The dark-mode thumbnail deliberately keeps its default palette.
-          if(e.closest('.appearance-preset, .appearance-miniature.is-dark')) return [];
+          // Preset previews and categorical/product identifiers intentionally keep their hues.
+          if(e.closest('.appearance-preset,.route-tier-index,.integration-platform-icon')) return [];
           const s=getComputedStyle(e);return ['color','backgroundColor','borderTopColor','boxShadow','backgroundImage'].filter(k=>isPurple(s[k])).map(k=>({class:e.className,property:k,value:s[k]}));
         });
       });
@@ -112,24 +120,40 @@ async function exercise(page, platform, resize) {
     await expect.poll(()=>new URL(page.url()).pathname).toBe(`/settings/${expected}`);
     expect(new URL(page.url()).searchParams.get('reference')).toBe(reference);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.locator('[data-reference-highlight]')).toHaveAttribute('data-model-reference',reference);
-    expect(await page.locator('[data-reference-highlight]').evaluate(e=>e.getBoundingClientRect().height)).toBeGreaterThan(30);
+    if (reference === 'agent.model') {
+      // The legacy reference still routes to the pool; primary-agent controls were retired.
+      await expect(page.locator('.model-pool-workspace')).toBeVisible();
+      await expect(page.locator('[data-model-reference="agent.model"]')).toHaveCount(0);
+    } else {
+      await expect(page.locator('[data-reference-highlight]')).toHaveAttribute('data-model-reference',reference);
+      expect(await page.locator('[data-reference-highlight]').evaluate(e=>e.getBoundingClientRect().height)).toBeGreaterThan(30);
+    }
     expect(mutations).toHaveLength(0);
     await page.screenshot({path:path.join(artifacts,`${platform}-reference-${reference.replace(/[^a-zA-Z0-9]/g,'_')}.png`)});
   }
   await page.goto('http://127.0.0.1:5187/settings/models');
-  const contextLimit=page.getByLabel('主智能体上下文上限',{exact:true});
-  await expect(contextLimit).toHaveValue('128000');
-  await contextLimit.fill('64000');await contextLimit.press('Tab');
-  await expect.poll(()=>config.agent.maxContextTokens).toBe(64000);
-  await page.reload();await expect(contextLimit).toHaveValue('64000');
-  await contextLimit.fill('');await contextLimit.press('Tab');
+  await expect(page.getByLabel('主智能体上下文上限',{exact:true})).toHaveCount(0);
+  expect(config.agent.maxContextTokens).toBe(128000);
+  const openModelSettings = async () => {
+    await page.locator('.provider-row').filter({hasText:'HX API'}).click();
+    await page.locator('.model-settings-trigger').filter({hasText:'qwen3.6/27b'}).click();
+  };
+  await openModelSettings();
+  const contextLimit=page.getByLabel('最大上下文 Token',{exact:true});
+  await contextLimit.fill('64000');
+  await page.getByRole('dialog').getByRole('button',{name:'保存',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(()=>config.model.providers['HX API'].models['qwen3.6/27b'].capabilities.maxContextTokens).toBe(64000);
   await expect.poll(()=>config.agent.maxContextTokens).toBeUndefined();
+  await page.reload();await openModelSettings();
+  await expect(contextLimit).toHaveValue('64000');
   for(const width of [960,1600,1320]) {
     await resize(width,900);
     await expect(contextLimit).toBeVisible();
-    await expect.poll(()=>page.locator('.model-pool-default').evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
+    await expect.poll(()=>page.locator('.model-pool-workspace').evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
+    await expect.poll(()=>page.getByRole('dialog').evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
   }
+  await page.getByRole('dialog').getByRole('button',{name:'取消',exact:true}).click();
   await page.goto('http://127.0.0.1:5187/settings/models');
   await page.locator('.provider-row').filter({hasText:'HX API'}).click();
   await page.locator('.button.destructive-outline').click();
@@ -155,12 +179,12 @@ async function exercise(page, platform, resize) {
   await page.goto('http://127.0.0.1:5187/settings/appearance');
   await page.getByRole('button',{name:'深色',exact:true}).click();
   await expect(page.locator('html')).not.toHaveAttribute('data-light-appearance');
-  await page.getByRole('button',{name:'切换浅色并编辑',exact:true}).click();
+  await page.getByRole('button',{name:'浅色',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-light-appearance');
   await page.reload();await expect(page.locator('#appearance-palette [data-preset=blue]')).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
-  await fs.writeFile(path.join(artifacts,`${platform}-checks.json`),JSON.stringify({pages:report,references,contextOverride:'saved/reloaded/cleared',resizeWidths:[960,1600,1320],mutations},null,2));
-  console.log(`PASS ${platform}: 10 reference links, retired route redirect, context override save/clear, resize, conflict/re-preview/atomic removal, last-model block and dark/reload`);
+  await fs.writeFile(path.join(artifacts,`${platform}-checks.json`),JSON.stringify({pages:report,references,modelContext:'saved/reloaded; legacy agent override retired on save',resizeWidths:[960,1600,1320],mutations},null,2));
+  console.log(`PASS ${platform}: 10 reference links, retired route redirect, model context save/reload and legacy migration, resize, conflict/re-preview/atomic removal, last-model block and dark/reload`);
 }
 if(!process.env.PILOTDECK_SKIP_BROWSER) {
  const browser=await chromium.launch({channel:process.env.PILOTDECK_TEST_BROWSER_CHANNEL||'chrome',headless:true});
@@ -171,5 +195,9 @@ if(!process.env.PILOTDECK_SKIP_ELECTRON) {
  await fs.writeFile(path.join(profile,'appearance.json'),JSON.stringify({language:'zh-CN',themeMode:'light'}));
  const app=await electron.launch({executablePath:createRequire(import.meta.url)(path.join(root,'apps/desktop/node_modules/electron')),
   args:[path.join(root,'apps/desktop/scripts/fixtures/appearance.cjs')],env:{...Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='ELECTRON_RUN_AS_NODE')),PILOTDECK_APPEARANCE_PROFILE:profile}});
- try{await exercise(await app.firstWindow(),'desktop',(width,height)=>app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(size.width,size.height),{width,height}));}finally{await app.close();}
+ try{
+  // A hidden native window can stop producing frames for Playwright screenshots.
+  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].showInactive());
+  await exercise(await app.firstWindow(),'desktop',(width,height)=>app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(size.width,size.height),{width,height}));
+ }finally{await app.close();}
 }

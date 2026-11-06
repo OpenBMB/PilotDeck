@@ -1,3 +1,5 @@
+import { dirname, resolve } from "node:path";
+import { isSkillEnabled, readSkillPreferences } from "../../skills/skillPreferences.js";
 import { resolvePluginDirectories } from "../discovery/PluginDirectoryResolver.js";
 import { discoverPluginPaths, discoverSkillPaths } from "../discovery/discoverLocalPlugins.js";
 import { loadPluginFromPath, loadSkillFromPath } from "../loading/PluginLoader.js";
@@ -131,7 +133,7 @@ export class PluginRuntime {
   }
 
   snapshotContributions(): PluginContributionSnapshot {
-    const plugins = this.registry.list();
+    const plugins = this.enabledPlugins();
     return {
       plugins,
       commands: plugins.flatMap((plugin) => (plugin.commands ?? []).map((command) => toCommandContribution(plugin, command))),
@@ -165,7 +167,7 @@ export class PluginRuntime {
   }
 
   async loadSkillPrompt(extensionId: string): Promise<string | undefined> {
-    const plugins = sortByResolutionPriority(this.registry.list());
+    const plugins = sortByResolutionPriority(this.enabledPlugins());
 
     for (const plugin of plugins) {
       const prompt = plugin.promptContributions?.find((contribution) => contribution.name === extensionId);
@@ -197,6 +199,19 @@ export class PluginRuntime {
       }
     }
     return undefined;
+  }
+
+  /** Existing sessions honor switches immediately, without waiting for a watcher. */
+  private enabledPlugins(): PilotDeckLoadedPlugin[] {
+    const preferences = readSkillPreferences(this.options.pilotHome);
+    const paths = resolvePluginDirectories(this.options);
+    return this.registry.list().filter(plugin => {
+      const parent = dirname(resolve(plugin.path));
+      const scope = this.options.builtinSkillsRoot && parent === resolve(this.options.builtinSkillsRoot) ? "builtin"
+        : parent === resolve(paths.globalSkillsDir) ? "user"
+          : parent === resolve(paths.projectSkillsDir) ? "project" : null;
+      return !scope || isSkillEnabled(preferences, { scope, slug: plugin.name, projectKey: this.options.projectRoot });
+    });
   }
 
   async refresh(): Promise<PilotDeckLoadedPlugin[]> {

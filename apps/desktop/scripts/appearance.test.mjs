@@ -36,11 +36,11 @@ test('startup UI translates controls without exposing technical details while lo
   assert.match(light, />Restart<\/button>/);
   assert.match(light, /prefers-color-scheme:\s*dark/);
 });
-test('custom startup canvas is validated and dark palette retains its original values', () => {
+test('custom startup canvas is validated and dark startup uses the shared charcoal canvas', () => {
   const appearance = normalizeAppearance({ language: 'en', themeMode: 'light', lightAppearance: { preset: 'rose' } });
   assert.equal(appearance.lightAppearance.version, 2);
-  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#faedf2/);
-  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#0a0a0a/);
+  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#fbf8f9/);
+  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#23252b/);
 });
 
 test('legacy solid panels migrate without losing desktop background assets or custom colors', () => {

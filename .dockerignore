@@ -20,6 +20,8 @@ apps/desktop/*
 !apps/desktop/src/
 apps/desktop/src/*
 !apps/desktop/src/lightAppearance.ts
+!apps/desktop/src/appearancePalette.ts
+!apps/desktop/src/themeScales.ts
 !apps/desktop/src/interfacePreferences.ts
 !apps/desktop/src/appearance.ts
 !apps/desktop/src/startupPresentation.ts

@@ -604,8 +604,8 @@ export default function FilesV2({
         onBlur={handleInlineBlur}
         className={cn(
           'min-w-0 flex-1 rounded border px-1.5 py-0.5 text-[13px] outline-none',
-          'border-blue-400 bg-white text-neutral-900 focus:ring-1 focus:ring-blue-400',
-          'dark:border-blue-500 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-blue-500',
+          'border-[var(--pd-accent-border,#60a5fa)] bg-white text-neutral-900 focus:ring-1 focus:ring-[var(--pd-focus,#60a5fa)]',
+          'dark:border-[var(--pd-accent-border,#3b82f6)] dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-[var(--pd-focus,#3b82f6)]',
         )}
       />
     </li>
@@ -820,8 +820,8 @@ export default function FilesV2({
                         onBlur={handleInlineBlur}
                         className={cn(
                           'min-w-0 flex-1 rounded border px-1.5 py-0.5 text-[13px] outline-none',
-                          'border-blue-400 bg-white text-neutral-900 focus:ring-1 focus:ring-blue-400',
-                          'dark:border-blue-500 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-blue-500',
+                          'border-[var(--pd-accent-border,#60a5fa)] bg-white text-neutral-900 focus:ring-1 focus:ring-[var(--pd-focus,#60a5fa)]',
+                          'dark:border-[var(--pd-accent-border,#3b82f6)] dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-[var(--pd-focus,#3b82f6)]',
                         )}
                       />
                     </div>

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Image as ImageIcon } from 'lucide-react';
 import { useTheme } from '../../../../contexts/ThemeContext';
-import { deriveLightColors, DEFAULT_TRANSPARENCY, hasBackgroundImage, LIGHT_PRESETS, MAX_TRANSPARENCY, MIN_TRANSPARENCY, selectedPalette, withoutMissingImage, type LightAppearance, type LightPalette, type LightPreset, type ThemeMode } from '../../../../lib/lightAppearance';
+import { deriveAppearanceColors, DEFAULT_TRANSPARENCY, hasBackgroundImage, LIGHT_PRESETS, MAX_TRANSPARENCY, MIN_TRANSPARENCY, selectedPalette, withoutMissingImage, normalizeLightAppearance, type LightAppearance, type LightPalette, type LightPreset, type ThemeMode } from '../../../../lib/lightAppearance';
 import { deleteBackgroundImage, saveBackgroundImage } from '../../../../lib/appearanceImages';
 import { normalizeInterfacePreferences, type InterfacePreferences } from '../../../../lib/interfacePreferences';
 import { GeneralSelectControl, GeneralSettingRow, GeneralSettingsIcon } from '../../shared/view/GeneralSettingsPrimitives';
@@ -26,8 +26,13 @@ function Slider({ label, detail, value, min = 0, max, unit, onChange }: { label:
     <div className="appearance-slider"><input id={id} type="range" min={min} max={max} value={value} onChange={event => onChange(Number(event.target.value))} /><input aria-label={`${label} (${unit})`} type="number" min={min} max={max} value={draft} onChange={event => { setDraft(event.target.value); if (event.target.value !== '' && event.target.validity.valid) onChange(Number(event.target.value)); }} onBlur={() => { const n = Number(draft); if (draft === '' || !Number.isFinite(n)) setDraft(String(value)); else { const bounded = Math.round(Math.min(max, Math.max(min, n))); setDraft(String(bounded)); onChange(bounded); } }} /><span aria-hidden="true">{unit}</span></div>
   </GeneralSettingRow>;
 }
-function Preview({ accent, background, dark = false, split = false }: { accent: string; background: string; dark?: boolean; split?: boolean }) {
-  return <span className={`appearance-miniature ${dark ? 'is-dark' : ''} ${split ? 'is-system' : ''}`} style={{ '--preview-accent': accent, '--preview-bg': background } as CSSProperties} aria-hidden="true">
+function presetPreview(preset: LightPreset, value: LightAppearance, dark: boolean) {
+  const appearance = normalizeLightAppearance({ preset, custom: value.custom });
+  const colors = deriveAppearanceColors(appearance, dark);
+  return { accent: colors.accent, background: colors.sidebar, surface: colors.surface, soft: colors.selected, line: colors.border };
+}
+function Preview({ accent, background, surface, soft, line }: ReturnType<typeof presetPreview>) {
+  return <span className="appearance-miniature" style={{ '--preview-accent': accent, '--preview-bg': background, '--preview-surface': surface, '--preview-soft': soft, '--preview-line': line } as CSSProperties} aria-hidden="true">
     <span className="mini-sidebar"><i /><i /><i /></span><span className="mini-main"><i /><i /><b /><i /></span>
   </span>;
 }
@@ -45,7 +50,6 @@ export default function AppearanceSettings() {
   // Image controls stay hidden until a saved image is available.
   const shown = withoutMissingImage(value, imageMissing);
   const showsImage = hasBackgroundImage(shown);
-  const colors = deriveLightColors(shown);
   const label = (key: string) => t(`lightAppearance.${key}`);
   const setColor = (key: keyof LightPalette, color: string) => void updateLightAppearance(current => ({ ...current, preset: 'custom', custom: { ...selectedPalette(current), [key]: color } }));
   const setBackground = (patch: Partial<LightAppearance['background']>) => { setError(null); void updateLightAppearance(current => ({ ...current, background: { ...current.background, ...patch } })); };
@@ -67,16 +71,15 @@ export default function AppearanceSettings() {
         <div className="general-setting-copy"><strong id="appearance-mode-label" className="general-setting-title">{label('mode')}</strong></div>
         <div className="appearance-modes" role="group" aria-labelledby="appearance-mode-label">
           {(['system', 'light', 'dark'] as const).map(mode => <button key={mode} className="appearance-choice appearance-mode" data-mode={mode} type="button" aria-pressed={themeMode === mode} onClick={() => setThemeMode(mode)}>
-            <Preview accent={mode === 'dark' ? LIGHT_PRESETS.default.accent : colors.accent} background={colors.background} dark={mode === 'dark'} split={mode === 'system'} />
+            {mode === 'system' ? <span className="appearance-system-preview"><Preview {...presetPreview(value.preset, value, false)} /><Preview {...presetPreview(value.preset, value, true)} /></span> : <Preview {...presetPreview(value.preset, value, mode === 'dark')} />}
             <span>{t(`settingsHome.appearanceMode.${mode}`)}</span>
           </button>)}
         </div>
       </div>
     </section>
 
-    {isDarkMode && <div className="appearance-notice"><span>{label('lightOnly')}</span><button type="button" onClick={() => setThemeMode('light')}>{label('editLight')}</button></div>}
     {(error || appearanceError || theme.preferencesError) && <p className="appearance-error" role="alert">{label(error || appearanceError || 'saveFailed')}</p>}
-    <fieldset disabled={isDarkMode || uploading} className="appearance-fields">
+    <fieldset disabled={uploading} className="appearance-fields">
       <section className="general-card appearance-card">
         <div className="appearance-palette-section">
           <div className="general-setting-copy appearance-palette-heading">
@@ -84,18 +87,20 @@ export default function AppearanceSettings() {
             <p>{label('presetHint')}</p>
           </div>
           <div id="appearance-palette" className="appearance-presets" role="group" aria-labelledby="appearance-palette-label">
-            {([...Object.entries(LIGHT_PRESETS), ['custom', value.custom]] as [LightPreset, LightPalette][]).map(([preset, colors]) =>
+            {(Object.keys(LIGHT_PRESETS) as LightPreset[]).map(preset =>
               <button key={preset} type="button" className="appearance-choice appearance-preset" data-preset={preset} aria-pressed={value.preset === preset}
-                onClick={() => { void updateLightAppearance(current => ({ ...current, preset })); if (preset === 'custom') accentControl.current?.open(); }}>
-                <Preview {...colors} /><span>{label(`preset.${preset}`)}</span>
+                onClick={() => { void updateLightAppearance(current => ({ ...current, preset })); }}>
+                <Preview {...presetPreview(preset, value, isDarkMode)} /><span>{label(`preset.${preset}`)}</span>
               </button>)}
           </div>
         </div>
-        <ColorControl ref={accentControl} label={label('accent')} value={palette.accent} disabled={isDarkMode || uploading} onChange={color => setColor('accent', color)} />
-        <ColorControl label={label('backgroundColor')} detail={label('backgroundHint')} value={palette.background} disabled={isDarkMode || uploading} onChange={color => setColor('background', color)} />
+        <div className="appearance-custom-row"><button type="button" className="appearance-button" aria-pressed={value.preset === 'custom' || value.preset === 'lavender'} onClick={() => { void updateLightAppearance(current => ({ ...current, preset: 'custom', custom: current.preset === 'lavender' ? selectedPalette(current) : current.custom })); accentControl.current?.open(); }}>{label('preset.custom')}</button><span>{label('customHint')}</span></div>
+        <ColorControl ref={accentControl} label={label('accent')} value={palette.accent} disabled={uploading} onChange={color => setColor('accent', color)} />
+        <ColorControl label={label('backgroundColor')} detail={label(isDarkMode ? 'lightBackgroundHint' : 'backgroundHint')} value={palette.background} disabled={isDarkMode || uploading} onChange={color => setColor('background', color)} />
       </section>
 
-      <section className="general-card appearance-card">
+      <fieldset disabled={isDarkMode} className="general-card appearance-card appearance-background-fields">
+        {isDarkMode && <p className="appearance-help">{label('wallpaperLightOnly')}</p>}
         <GeneralSettingRow title={label('background')}>
         <div className="appearance-segments" aria-label={label('backgroundType')}>
           {(['solid', 'image'] as const).map(type => <button type="button" key={type} aria-pressed={value.background.type === type} onClick={() => setBackground({ type })}>{label(type)}</button>)}
@@ -130,7 +135,7 @@ export default function AppearanceSettings() {
           </details>
           </>}
         </>}
-      </section>
+      </fieldset>
     </fieldset>
     <details className="appearance-advanced">
       <summary><span>{label('advanced')}</span><GeneralSettingsIcon icon={ChevronDown} className="appearance-disclosure-icon" /></summary>

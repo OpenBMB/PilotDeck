@@ -446,7 +446,7 @@ function MessageRowV2({
                       type="button"
                       key={index}
                       onClick={() => setUserImageLightbox(index)}
-                      className={cn('block max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900/40', visibleImages.length > 1 ? 'h-24 w-24' : 'w-72')}
+                      className={cn('block max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:border-neutral-700 dark:bg-neutral-900/40', visibleImages.length > 1 ? 'h-24 w-24' : 'w-72')}
                       aria-label={image.name ? t('imagePreview.named', { name: image.name, defaultValue: `Preview ${image.name}` }) : t('imagePreview.label', { defaultValue: 'Preview image' })}
                     >
                       <img
@@ -822,7 +822,7 @@ function ProcessAttachmentRow({
               type="button"
               key={`${attachment.inlineImages[idx].toolId || 'tool-image'}-${idx}`}
               onClick={() => setLightboxIndex(idx)}
-              className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900"
+              className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:border-neutral-700 dark:bg-neutral-900"
               aria-label={image.name ? t('imagePreview.named', { name: image.name, defaultValue: `Preview ${image.name}` }) : t('imagePreview.label', { defaultValue: 'Preview image' })}
             >
               <img

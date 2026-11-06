@@ -1617,6 +1617,7 @@ app.get('/api/office-preview/status', authenticateToken, officePreviewStatusRate
         ]);
         res.json({
             service: configuredPreview.service,
+            platform: process.platform,
             configuredBinaryPath: configuredPreview.binaryPath,
             libreOffice: {
                 ...libreOffice,
