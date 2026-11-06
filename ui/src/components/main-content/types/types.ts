@@ -49,7 +49,6 @@ export type MainContentProps = {
   onAlwaysOnSubTabChange?: (tab: AlwaysOnSubTab) => void;
   ws: WebSocket | null;
   sendMessage: (message: unknown) => void;
-  latestMessage: unknown;
   isMobile: boolean;
   onMenuClick: () => void;
   isLoading: boolean;

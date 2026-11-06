@@ -107,7 +107,7 @@ function AppShellContent() {
 
   const { isMobile } = useDeviceSettings({ trackPWA: false });
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
-  const { ws, sendMessage, latestMessage, isConnected, subscribe } = useWebSocket();
+  const { ws, sendMessage, isConnected, subscribe } = useWebSocket();
   const wasConnectedRef = useRef(false);
   const { user } = useAuth();
   const [readySessionId, setReadySessionId] = useState<string | null>(null);
@@ -151,7 +151,6 @@ function AppShellContent() {
   } = useProjectsState({
     sessionId,
     navigate,
-    latestMessage,
     subscribe,
     isMobile,
     activeSessions,
@@ -814,7 +813,6 @@ function AppShellContent() {
             setActiveTab={isSettingsRoute ? setActiveTab : handleSelectTab}
             ws={ws}
             sendMessage={sendMessage}
-            latestMessage={latestMessage}
             isMobile={isMobile}
             onMenuClick={onMenuClick}
             isLoading={isLoadingProjects}

@@ -219,7 +219,6 @@ function MainContent({
   onAlwaysOnSubTabChange,
   ws,
   sendMessage,
-  latestMessage,
   isMobile,
   onMenuClick,
   isLoading,
@@ -561,7 +560,6 @@ function MainContent({
           onAlwaysOnSubTabChange={onAlwaysOnSubTabChange}
           ws={ws}
           sendMessage={sendMessage}
-          latestMessage={latestMessage}
           handleFileOpen={openFileInWorkspace}
           onInputFocusChange={onInputFocusChange}
           onSessionActive={onSessionActive}
@@ -646,7 +644,6 @@ type SplitBodyProps = {
   onAlwaysOnSubTabChange: MainContentProps["onAlwaysOnSubTabChange"];
   ws: any;
   sendMessage: any;
-  latestMessage: any;
   handleFileOpen: (
     filePath: string,
     diffInfo?: CodeEditorDiffInfo | null,
@@ -711,7 +708,6 @@ function SplitBody(props: SplitBodyProps) {
     onAlwaysOnSubTabChange,
     ws,
     sendMessage,
-    latestMessage,
     handleFileOpen,
     onInputFocusChange,
     onSessionActive,
@@ -1586,7 +1582,6 @@ function SplitBody(props: SplitBodyProps) {
               selectedSession={selectedSession}
               ws={ws}
               sendMessage={sendMessage}
-              latestMessage={latestMessage}
               onFileOpen={handleFileOpen}
               onInputFocusChange={onInputFocusChange}
               onSessionActive={onSessionActive}
