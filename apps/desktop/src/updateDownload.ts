@@ -42,6 +42,7 @@ export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
   private readonly requests = new Set<ClientRequest>();
   private readonly activeRequests = new Set<ClientRequest>();
   private readonly blockmapRequests = new WeakSet<ClientRequest>();
+  private blockmapDownloads = 0;
   private readonly gates = new Set<DownloadGate>();
   private readonly metadataTokens = new Set<CancellationToken>();
 
@@ -78,8 +79,20 @@ export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
   }
 
   override async downloadToBuffer(...args: Parameters<ElectronHttpExecutor["downloadToBuffer"]>) {
-    const bytes = await super.downloadToBuffer(...args);
-    if (args[0].pathname.endsWith('.blockmap')) {
+    if (!args[0].pathname.endsWith('.blockmap')) return super.downloadToBuffer(...args);
+    // CDN redirects often replace the filename with an opaque blob path. Keep
+    // size/deadline policy attached to the operation, not the redirected URL.
+    const token = new CancellationToken(args[1].cancellationToken);
+    let previousTick = Date.now(), elapsed = 0;
+    this.blockmapDownloads++;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      if (!this.paused) elapsed += now - previousTick;
+      previousTick = now;
+      if (elapsed >= this.metadataTimeoutMs) token.cancel();
+    }, Math.min(250, this.metadataTimeoutMs));
+    try {
+      const bytes = await super.downloadToBuffer(args[0], { ...args[1], cancellationToken: token });
       // Bound expansion before upstream's synchronous, unbounded gunzip/parse.
       const map = JSON.parse(gunzipSync(bytes, { maxOutputLength: 32 * 1024 * 1024 }).toString());
       const file = map.files?.[0];
@@ -90,8 +103,15 @@ export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
         || !Number.isSafeInteger(file.sizes.reduce((sum: number, size: number) => sum + size, 0))) {
         throw new Error('Invalid update blockmap');
       }
+      return bytes;
+    } finally {
+      clearInterval(timer);
+      token.dispose();
+      this.blockmapDownloads--;
+      // Upstream buffer cancellation rejects its promise but does not abort
+      // the request. Close any outstanding redirect/body before full fallback.
+      for (const request of this.requests) if (this.blockmapRequests.has(request)) request.abort();
     }
-    return bytes;
   }
 
   // Scope the *whole* updater operation, including blockmaps and direct Range
@@ -138,7 +158,7 @@ export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
       if (!this.downloading || (!range && response.statusCode >= 300)) { callback(response); return; }
       const expected = range ? Number(range[2]) - Number(range[1]) + 1 : undefined;
       const gate = new DownloadGate(() => this.paused, bytes => { this.received += bytes; }, expected,
-        options.path?.split('?')[0].endsWith('.blockmap') ? 8 * 1024 * 1024 : Infinity);
+        this.blockmapRequests.has(request) ? 8 * 1024 * 1024 : Infinity);
       Object.assign(gate, { statusCode: response.statusCode, statusMessage: response.statusMessage, headers: response.headers });
       this.gates.add(gate);
       gate.once("close", () => this.gates.delete(gate));
@@ -157,7 +177,7 @@ export class PausableUpdateHttpExecutor extends ElectronHttpExecutor {
       response.pipe(gate);
     });
     if (this.downloading) {
-      if (options.path?.split('?')[0].endsWith('.blockmap')) this.blockmapRequests.add(request);
+      if (this.blockmapDownloads > 0 || options.path?.split('?')[0].endsWith('.blockmap')) this.blockmapRequests.add(request);
       this.requests.add(request);
       this.activeRequests.add(request);
       request.once('abort', () => { this.activeRequests.delete(request); this.requests.delete(request); });

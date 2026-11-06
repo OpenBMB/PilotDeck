@@ -50,14 +50,22 @@ const timeout = setTimeout(() => { console.error('Differential qualification tim
     let timer;
     res.once('close', () => { open--; clearInterval(timer); });
     const old = req.url.includes('2026.1105.0');
-    if (req.url.endsWith('.blockmap')) {
+    if (req.url.endsWith('.blockmap') && nameIsRedirectedMap()) {
+      res.writeHead(302, { Location: `http://127.0.0.1:${server.address().port}/map-content/${old ? '2026.1105.0' : '2026.1106.1'}` });
+      res.end(); return;
+    }
+    if (req.url.endsWith('.blockmap') || req.url.startsWith('/map-content/')) {
+      if (scenario === 'redirect-loop-map') {
+        res.writeHead(302, { Location: `http://127.0.0.1:${server.address().port}${req.url}` }); res.end(); return;
+      }
       if (scenario === 'missing-map' && old) { res.writeHead(404); res.end(); return; }
       if (['stalled-map', 'cancel-map'].includes(scenario)) return;
-      if (scenario === 'trickle-map') {
+      if (['trickle-map', 'redirect-trickle-map'].includes(scenario)) {
         timer = setInterval(() => { res.write(Buffer.from([0])); record.bytes++; }, 30);
         return;
       }
-      const bytes = scenario === 'corrupt-map' ? Buffer.from('bad map')
+      const bytes = scenario === 'redirect-oversized-map' ? Buffer.alloc(8 * 1024 * 1024 + 1)
+        : scenario === 'corrupt-map' ? Buffer.from('bad map')
         : scenario === 'invalid-map' ? gzipSync(JSON.stringify({ version: '2', files: [{ offset: 0, sizes: [-1], checksums: ['x'] }] }))
           : scenario === 'oversized-map' ? gzipSync(Buffer.alloc(33 * 1024 * 1024)) : old ? oldMap : newMap;
       res.end(bytes); record.bytes = bytes.length; return;
@@ -89,6 +97,7 @@ const timeout = setTimeout(() => { console.error('Differential qualification tim
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
+  function nameIsRedirectedMap() { return ['redirect-map', 'redirect-trickle-map', 'redirect-oversized-map', 'redirect-loop-map'].includes(scenario); }
   let count = 0;
   async function run(name, platform = 'win32', settings = {}) {
     scenario = name; records = [];
@@ -105,7 +114,7 @@ const timeout = setTimeout(() => { console.error('Differential qualification tim
     updater.logger = { info: x => logs.push(String(x)), warn: x => logs.push(String(x)), error: x => logs.push(String(x)), debug() {} };
     const control = installUpdateDownloadControl(updater);
     // Short, real inactivity deadlines only for fault scenarios.
-    if (name.startsWith('stalled') || ['pause-deadline', 'trickle-map'].includes(name)) control.metadataTimeoutMs = 150;
+    if (name.startsWith('stalled') || ['pause-deadline', 'trickle-map', 'redirect-trickle-map', 'redirect-loop-map'].includes(name)) control.metadataTimeoutMs = 150;
     const cache = path.join(directory, 'cache', 'fixture');
     await fs.mkdir(cache, { recursive: true });
     const oldFile = path.join(cache, platform === 'darwin' ? 'update.zip' : 'installer.exe');
@@ -180,10 +189,11 @@ const timeout = setTimeout(() => { console.error('Differential qualification tim
       assert.equal(controller.status().state, 'installing', `${name}: ${logs.join('\n')}`);
       assert.equal(installed, 1); assert.equal(stopped, 1);
       assert.deepEqual(await fs.readFile(path.join(cache, 'pending', filename)), newBytes);
-      const payload = records.filter(r => !r.path.endsWith('.blockmap'));
+      const payload = records.filter(r => !r.path.endsWith('.blockmap') && !r.path.startsWith('/map-content/'));
       const full = payload.filter(r => !r.range && r.bytes === newBytes.length);
       const expectFull = settings.full || ['missing-cache', 'corrupt-cache', 'missing-map', 'corrupt-map', 'invalid-map', 'oversized-map', 'trickle-map', 'ignore-range', 'wrong-range',
-        'reject-range', 'stalled-range', 'stalled-map', 'truncated-range', 'corrupt-range', 'route-fallback'].includes(name);
+        'reject-range', 'stalled-range', 'stalled-map', 'truncated-range', 'corrupt-range', 'route-fallback',
+        'redirect-trickle-map', 'redirect-oversized-map', 'redirect-loop-map'].includes(name);
       assert.equal(full.length, expectFull ? 1 : 0, `${name}: unexpected full transfer`);
       if (!expectFull) {
         assert.ok(payload.some(r => r.range));
@@ -192,6 +202,7 @@ const timeout = setTimeout(() => { console.error('Differential qualification tim
         assert.ok(!logs.some(line => line.includes('fallback to full download')), logs.join('\n'));
       }
       if (name === 'cached-map') assert.ok(!records.some(r => r.path.includes('2026.1105.0')));
+      if (name === 'redirect-oversized-map') assert.ok(logs.some(line => line.includes('Update response exceeds expected size')), logs.join('\n'));
       if (name === 'route-fallback') assert.ok(!payload.filter(r => !r.path.startsWith('/bad/')).some(r => r.range));
       if (platform === 'darwin' && !updater.disableDifferentialDownload) assert.deepEqual(await fs.readFile(oldFile), newBytes);
     }
@@ -200,7 +211,8 @@ const timeout = setTimeout(() => { console.error('Differential qualification tim
   for (const name of ['differential', 'cached-map', 'corrupt-cached-map', 'corrupt-pending-cache', 'missing-cache', 'corrupt-cache', 'missing-map', 'corrupt-map',
     'ignore-range', 'wrong-range', 'reject-range', 'truncated-range', 'corrupt-range', 'stalled-map', 'stalled-range', 'redirect',
     'chunked-range', 'pause', 'pause-deadline', 'cancel-paused', 'cancel-retry', 'cancel-before-headers', 'cancel-map', 'corrupt-all', 'publisher-rejected',
-    'invalid-map', 'oversized-map', 'trickle-map', 'disk-full', 'route-fallback']) await run(name);
+    'invalid-map', 'oversized-map', 'trickle-map', 'disk-full', 'route-fallback',
+    'redirect-map', 'redirect-trickle-map', 'redirect-oversized-map', 'redirect-loop-map']) await run(name);
   await run('legacy-manifest', 'win32', { release: { differentialUpdates: undefined }, full: true });
   await run('release-disabled', 'win32', { release: { differentialUpdates: false }, full: true });
   await run('local-disabled', 'win32', { controller: { disableDifferentialUpdates: true }, full: true });
