@@ -56,7 +56,7 @@ function CommitButtons({
         type="button"
         onClick={onSave}
         disabled={!canSave}
-        className="rounded border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] text-[var(--pd-accent-strong,#4948cf)] transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {t("settingsPage.actions.save")}
       </button>

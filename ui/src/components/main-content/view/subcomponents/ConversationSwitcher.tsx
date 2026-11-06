@@ -275,7 +275,7 @@ export default function ConversationSwitcher({
                     ) : isUnread ? (
                       <span
                         role="status"
-                        className="h-2 w-2 rounded-full bg-blue-500"
+                        className="h-2 w-2 rounded-full bg-[var(--pd-accent,#3b82f6)]"
                         aria-label={t('filesWorkbench.conversations.unread')}
                       />
                     ) : (

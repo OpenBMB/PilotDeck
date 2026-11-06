@@ -31,7 +31,7 @@ export default function AttachmentSpreadsheetPreview({ file, onError }: { file: 
   const sheet = sheets[active];
   return <div className="flex h-full w-full min-w-0 flex-col">
     <div className="flex shrink-0 gap-2 overflow-x-auto border-b p-2">{sheets.map((item, index) => <button type="button" key={index}
-      aria-pressed={index === active} onClick={() => setActive(index)} className="whitespace-nowrap rounded border px-3 py-1 text-sm aria-pressed:bg-violet-100 dark:aria-pressed:bg-violet-950">{item.name}</button>)}</div>
+      aria-pressed={index === active} onClick={() => setActive(index)} className="whitespace-nowrap rounded border px-3 py-1 text-sm aria-pressed:bg-[var(--pd-accent-soft,#ede9fe)] dark:aria-pressed:bg-[var(--pd-accent-soft,#2e1065)]">{item.name}</button>)}</div>
     {sheet?.truncated && <p className="p-2 text-xs text-amber-600">{t('attachmentPreview.sheetTruncated')}</p>}
     <div className="flex-1 overflow-auto"><table className="border-collapse text-xs"><tbody>{sheet?.rows.map((row, index) => <tr key={index}>
       <th className="sticky left-0 border bg-neutral-100 px-2 dark:bg-neutral-800">{index + 1}</th>

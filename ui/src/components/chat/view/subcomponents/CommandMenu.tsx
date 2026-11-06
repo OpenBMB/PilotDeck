@@ -112,7 +112,7 @@ export default function CommandMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="flex flex-col overflow-hidden rounded-[14px] border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left font-sans tracking-normal shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 [font-synthesis:none] dark:border-[var(--pd-accent-border,#4c1d95)] dark:bg-neutral-900"
+      className="flex flex-col overflow-hidden rounded-[14px] border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left font-sans tracking-normal shadow-xl shadow-black/10 [font-synthesis:none] dark:border-[var(--pd-accent-border,#4c1d95)] dark:bg-neutral-900"
       style={{ ...menuPosition, zIndex: 1000 }}
     >
       <div className="flex shrink-0 items-center justify-between gap-3 px-2 pb-2 pt-1">

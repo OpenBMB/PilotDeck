@@ -119,7 +119,7 @@ export function ImageGenerationForm({ config, onChange }: {
               value={draft[field]} placeholder={field === 'apiKey' && current.apiKey && sameAddress ? '********' : field === 'baseUrl' ? DEFAULT_IMAGE_BASE_URL : ''}
               onChange={event => { setDraft({ ...draft, [field]: event.target.value }); setErrors(previous => ({ ...previous, [field]: undefined })); resetTest(); }}
               onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && dirty) save(); }} />
-          </div>{errors[field] && <p id={'image-' + field + '-error'} role="alert" className="mt-1 text-sm text-destructive">{t(errors[field]!)}</p>}</div>
+          </div>{errors[field] && <p id={'image-' + field + '-error'} role="alert" className="mt-1 text-sm text-[var(--pd-danger-ink)]">{t(errors[field]!)}</p>}</div>
         </div>)}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5">

@@ -68,7 +68,7 @@ async function exercise(page, platform, resize) {
   });
   await page.routeWebSocket('**/ws**', socket=>socket.onMessage(()=>{}));
   const report=[];
-  for(const [preset,color] of [['薄荷绿','rgb(62, 121, 107)'],['雾霭蓝','rgb(83, 113, 166)']]) {
+  for(const [preset,color] of [['薄荷绿','rgb(37, 104, 89)'],['雾霭蓝','rgb(65, 95, 145)']]) {
     await page.goto('http://127.0.0.1:5187/settings/appearance');
     await page.getByRole('button',{name:'浅色',exact:true}).click();
     await page.locator('#appearance-palette').getByRole('button', { name: preset, exact: true }).click();
@@ -85,8 +85,8 @@ async function exercise(page, platform, resize) {
           let h=(max===rgb[0]?(rgb[1]-rgb[2])/d+(rgb[1]<rgb[2]?6:0):max===rgb[1]?(rgb[2]-rgb[0])/d+2:(rgb[0]-rgb[1])/d+4)*60;
           return h>=228&&h<=285&&d/(255-Math.abs(max+min-255))>.32;}
         return [...root.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().width>0).flatMap(e=>{
-          // Preset thumbnails intentionally preview other palette hues.
-          if(e.closest('.appearance-preset')) return [];
+          // Preset previews and categorical/product identifiers intentionally keep their hues.
+          if(e.closest('.appearance-preset,.route-tier-index,.integration-platform-icon')) return [];
           const s=getComputedStyle(e);return ['color','backgroundColor','borderTopColor','boxShadow','backgroundImage'].filter(k=>isPurple(s[k])).map(k=>({class:e.className,property:k,value:s[k]}));
         });
       });

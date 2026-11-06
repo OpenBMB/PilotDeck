@@ -96,7 +96,7 @@
 .onboarding-shell button:focus-visible,
 .onboarding-shell input:focus-visible,
 .onboarding-shell select:focus-visible {
-  outline: rgba(47, 107, 255, 0.22) solid 3px;
+  outline: var(--pd-focus, rgba(47, 107, 255, 0.22)) solid 3px;
   outline-offset: 2px;
 }
 
@@ -252,7 +252,7 @@
 .onboarding-shell .progress-rail li.active .step-marker {
   background: rgb(255, 255, 255);
   border-color: var(--pd-accent-border, rgb(169, 174, 234));
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
   box-shadow: rgba(var(--pd-accent-rgb, 78, 83, 157), 0.16) 0 5px 18px;
 }
 
@@ -318,7 +318,7 @@
 
 .onboarding-shell .eyebrow {
   margin: 0 0 12px;
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
   font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.06em;
@@ -355,7 +355,7 @@
   margin-bottom: 25px;
   display: grid;
   place-items: center;
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
 }
 
 .onboarding-shell .welcome-visual svg {
@@ -404,7 +404,7 @@
 }
 
 .onboarding-shell .language-option:hover {
-  border-color: rgb(189, 205, 241);
+  border-color: var(--pd-accent-border, rgb(189, 205, 241));
   transform: translateY(-1px);
 }
 
@@ -425,7 +425,7 @@
 }
 
 .onboarding-shell .language-option.selected .language-icon {
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
   background: var(--brand-soft);
 }
 
@@ -448,7 +448,7 @@
   position: absolute;
   right: 13px;
   top: 13px;
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
 }
 
 .onboarding-shell .welcome-action {
@@ -478,7 +478,7 @@
 }
 
 .onboarding-shell .provider-card:hover {
-  border-color: rgb(190, 203, 236);
+  border-color: var(--pd-accent-border, rgb(190, 203, 236));
   transform: translateY(-1px);
 }
 
@@ -518,7 +518,7 @@
 }
 
 .onboarding-shell .provider-card.selected .provider-icon {
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
   background: var(--brand-soft);
 }
 
@@ -1024,7 +1024,7 @@
 .onboarding-shell .selected-model-status.success { color: var(--success); }
 .onboarding-shell .selected-model-status.error { color: rgb(203, 67, 67); }
 .onboarding-shell .selected-model-status.testing,
-.onboarding-shell .selected-model-status.manual { color: var(--brand); }
+.onboarding-shell .selected-model-status.manual { color: var(--pd-accent-strong, var(--brand)); }
 
 .onboarding-shell .selected-model-test-button {
   display: inline-flex;
@@ -1036,7 +1036,7 @@
   border: 1px solid var(--pd-accent-border, rgb(217, 220, 234));
   border-radius: 7px;
   background: white;
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
   white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
@@ -1181,7 +1181,7 @@
   border: 1px dashed var(--pd-accent-border, rgb(184, 188, 232));
   border-radius: 9px;
   background: var(--pd-neutral-soft, rgb(248, 248, 255));
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
   font-size: 11px;
   font-weight: 650;
 }
@@ -1199,7 +1199,7 @@
 .onboarding-shell .field-help button {
   border: 0;
   background: transparent;
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
   font-size: 11px;
   font-weight: 650;
   padding: 0;
@@ -1501,7 +1501,7 @@
 }
 
 .onboarding-shell .workspace-type-card:hover {
-  border-color: rgb(188, 201, 230);
+  border-color: var(--pd-accent-border, rgb(188, 201, 230));
   transform: translateY(-1px);
 }
 
@@ -1524,7 +1524,7 @@
 
 .onboarding-shell .workspace-type-card.selected .workspace-type-icon {
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--pd-accent-strong, var(--brand));
 }
 
 .onboarding-shell .workspace-type-card strong,
@@ -1579,8 +1579,8 @@
 }
 
 .onboarding-shell .folder-browse-button:hover {
-  border-color: rgb(185, 200, 229);
-  color: var(--brand);
+  border-color: var(--pd-accent-border, rgb(185, 200, 229));
+  color: var(--pd-accent-strong, var(--brand));
 }
 
 .onboarding-shell .github-url-control {
@@ -1893,8 +1893,8 @@
 }
 
 .dark .onboarding-shell.create-workspace-dialog .workspace-simple-form input:focus {
-  border-color: #818cf8;
-  box-shadow: rgba(129, 140, 248, 0.2) 0 0 0 3px;
+  border-color: var(--pd-focus, #818cf8);
+  box-shadow: var(--pd-accent-soft, rgba(129, 140, 248, 0.2)) 0 0 0 3px;
 }
 
 .dark .onboarding-shell.create-workspace-dialog .workspace-form-row.invalid input {
@@ -1913,7 +1913,7 @@
 .dark .onboarding-shell.create-workspace-dialog .folder-browse-button:hover:not(:disabled),
 .dark .onboarding-shell.create-workspace-dialog .create-workspace-dialog-close:hover:not(:disabled) {
   background: #262626;
-  color: #c7d2fe;
+  color: var(--pd-accent-strong, #c7d2fe);
 }
 
 .dark .onboarding-shell.create-workspace-dialog .button.secondary {

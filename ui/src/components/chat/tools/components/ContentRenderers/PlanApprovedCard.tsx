@@ -21,7 +21,7 @@ export const PlanApprovedCard: React.FC<PlanApprovedCardProps> = ({
 
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--pd-accent-border,#c7d2fe)] bg-white dark:border-[var(--pd-accent-border,#312e81)] dark:bg-neutral-900">
-      <div className="flex items-center gap-2.5 border-b border-[var(--pd-accent-border,#e0e7ff)] bg-[var(--pd-accent-soft,#eef2ff)]/50 px-4 py-2.5 dark:border-[var(--pd-accent-border,#312e81)] dark:bg-[var(--pd-accent-soft,#1e1b4b)]">
+      <div className="flex items-center gap-2.5 border-b border-[var(--pd-accent-border,#e0e7ff)] bg-[var(--pd-accent-soft,#eef2ff)] px-4 py-2.5 dark:border-[var(--pd-accent-border,#312e81)] dark:bg-[var(--pd-accent-soft,#1e1b4b)]">
         <ClipboardList className="h-4 w-4 shrink-0 text-[var(--pd-accent-strong,#4f46e5)] dark:text-[var(--pd-accent-strong,#818cf8)]" strokeWidth={2} />
         <span className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100">
           {planTitle}

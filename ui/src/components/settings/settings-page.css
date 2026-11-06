@@ -213,7 +213,7 @@
 }
 
 :where(.pilotdeck-settings-app) .nav-item.active svg {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .nav-item .nav-dot {
@@ -444,7 +444,7 @@
   place-items: center;
   border-radius: 10px;
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .general-card-header-icon svg,
@@ -560,7 +560,7 @@
 }
 
 :where(.pilotdeck-settings-app) .general-select-wrap select:focus {
-  border-color: var(--pd-accent, #9294e9);
+  border-color: var(--pd-focus, #9294e9);
   box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   outline: none;
 }
@@ -930,7 +930,7 @@
 
 :where(.pilotdeck-settings-app) .button.edit-provider-button {
   border-color: currentColor;
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .button.secondary:hover:not(:disabled) {
@@ -996,7 +996,7 @@
   place-items: center;
   border-radius: 999px;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
   font-size: 12px;
   font-weight: 700;
 }
@@ -1036,7 +1036,7 @@
 :where(.pilotdeck-settings-app) .field input:focus,
 :where(.pilotdeck-settings-app) .field select:focus,
 :where(.pilotdeck-settings-app) .model-token-field input:focus {
-  border-color: var(--pd-accent, #9294e9);
+  border-color: var(--pd-focus, #9294e9);
   box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   background: #fff;
 }
@@ -1076,7 +1076,7 @@
 }
 
 :where(.pilotdeck-settings-app) .secret-input:focus-within {
-  border-color: var(--pd-accent, #9294e9);
+  border-color: var(--pd-focus, #9294e9);
   box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   background: #fff;
 }
@@ -1122,7 +1122,7 @@
 }
 
 :where(.pilotdeck-settings-app) .fetch-models-button:hover {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .spin {
@@ -1223,7 +1223,7 @@
   border: 1px dashed var(--pd-accent-border, rgb(184, 188, 232));
   border-radius: 8px;
   background: var(--pd-neutral-soft, rgb(248, 248, 255));
-  color: var(--brand);
+  color: var(--brand-strong);
   font-size: 12px;
   font-weight: 650;
   white-space: nowrap;
@@ -1405,8 +1405,8 @@
 }
 
 :where(.pilotdeck-settings-app) .test-button:hover:not(:disabled) {
-  border-color: var(--pd-accent, #9294e9);
-  color: var(--brand);
+  border-color: var(--pd-focus, #9294e9);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .test-button.success {
@@ -1804,7 +1804,7 @@
 }
 
 .dark .pilotdeck-settings-app :is(.model-delete-modal, .provider-delete-modal) .provider-usage-model {
-  color: #aaa5ed;
+  color: var(--pd-accent-strong, #aaa5ed);
 }
 
 .dark .pilotdeck-settings-app :is(.model-delete-modal, .provider-delete-modal) .button.danger:disabled {
@@ -2027,15 +2027,15 @@
 }
 
 .dark :where(.pilotdeck-settings-app) .candidate-add-model {
-  border-color: #6b6cc8;
-  background: #1c1c32;
-  color: #b4b5f0;
+  border-color: var(--pd-accent-border, #6b6cc8);
+  background: var(--pd-accent-soft, #1c1c32);
+  color: var(--pd-accent-strong, #b4b5f0);
 }
 
 .dark :where(.pilotdeck-settings-app) .candidate-model-input {
   border-color: var(--brand);
   background: #12121a;
-  box-shadow: 0 0 0 3px #5b5ce230;
+  box-shadow: 0 0 0 3px var(--pd-accent-soft, #5b5ce230);
   color: #e4e4e7;
 }
 
@@ -2157,8 +2157,8 @@
 
 .dark :where(.pilotdeck-settings-app) .nav-item.active {
   background: var(--brand-soft);
-  border-color: #3b3b63;
-  color: #c4c4ff;
+  border-color: var(--pd-accent-border, #3b3b63);
+  color: var(--pd-accent-strong, #c4c4ff);
 }
 
 .dark :where(.pilotdeck-settings-app) .page-header h1,
@@ -2188,7 +2188,7 @@
 .dark :where(.pilotdeck-settings-app) .general-card-header-icon,
 .dark :where(.pilotdeck-settings-app) .general-setting-icon {
   background: var(--brand-tint);
-  color: #a5a6f0;
+  color: var(--pd-accent-strong, #a5a6f0);
 }
 
 .dark :where(.pilotdeck-settings-app) .general-select-wrap select {
@@ -2203,8 +2203,8 @@
 }
 
 .dark :where(.pilotdeck-settings-app) .general-select-wrap select:focus {
-  border-color: #9294e9;
-  box-shadow: 0 0 0 3px #5b5ce217;
+  border-color: var(--pd-focus, #9294e9);
+  box-shadow: 0 0 0 3px var(--pd-accent-soft, #5b5ce217);
   background: #14141c;
 }
 
@@ -3323,7 +3323,7 @@
 
 :where(.pilotdeck-settings-app) .search-provider-help:is(:hover, :focus-visible),
 :where(.pilotdeck-settings-app) .search-provider-help:is(:hover, :focus-visible) svg {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .search-provider-help:hover span {
@@ -3536,11 +3536,11 @@
 
 :where(.pilotdeck-settings-app) .search-test-footer .test-button:hover:not(:disabled) {
   border-color: var(--pd-accent-border, rgb(191, 192, 223));
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .search-test-footer .test-button.testing {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .search-test-footer .test-button:disabled {
@@ -3862,7 +3862,7 @@
   place-items: center;
   border-radius: 10px;
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .integration-gateway-copy {
@@ -4129,7 +4129,7 @@
 
 :where(.pilotdeck-settings-app) .integration-channel.expanded .integration-channel-toggle {
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .integration-channel-detail {
@@ -4491,7 +4491,7 @@
   justify-content: center;
   border-radius: 10px;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .route-switch {
@@ -4636,7 +4636,7 @@
 :where(.pilotdeck-settings-app) .route-tier-index.tone-1 { background: #eef7ff; color: #3976a8; }
 :where(.pilotdeck-settings-app) .route-tier-index.tone-2 { background: #eef8f1; color: #3c8055; }
 :where(.pilotdeck-settings-app) .route-tier-index.tone-3 { background: #fff5e9; color: #aa6a29; }
-:where(.pilotdeck-settings-app) .route-tier-index.tone-4 { background: var(--pd-accent-tint, #f5efff); color: var(--pd-accent-strong, #7551aa); }
+:where(.pilotdeck-settings-app) .route-tier-index.tone-4 { background: #f5efff; color: #7551aa; }
 
 :where(.pilotdeck-settings-app) .route-default-badge,
 :where(.pilotdeck-settings-app) .route-default-action {
@@ -4657,7 +4657,7 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--brand);
+  color: var(--brand-strong);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -4891,7 +4891,7 @@
 
 :where(.pilotdeck-settings-app) .advanced-edit-button {
   border-color: currentColor !important;
-  color: var(--brand) !important;
+  color: var(--brand-strong) !important;
 }
 
 :where(.pilotdeck-settings-app) .agent-route-page .button.primary {
@@ -5331,7 +5331,7 @@
 }
 
 .dark :where(.pilotdeck-settings-app) .integration-gateway-directory-row input:not([readonly]) {
-  border-color: #6f70d8;
+  border-color: var(--pd-focus, #6f70d8);
   background: #202027;
   color: #eeeeF4;
 }
@@ -5467,7 +5467,7 @@
 .dark :where(.pilotdeck-settings-app) .route-model-row.is-default-tier,
 .dark :where(.pilotdeck-settings-app) .route-heading-icon,
 .dark :where(.pilotdeck-settings-app) .route-row-icon {
-  background: #242239;
+  background: var(--pd-accent-soft, #242239);
 }
 
 .dark :where(.pilotdeck-settings-app) .route-tier-index {
@@ -5498,7 +5498,7 @@
 .dark :where(.pilotdeck-settings-app) .route-label-line .route-default-badge {
   border-color: #47466d;
   background: #292842;
-  color: #b8b8ff;
+  color: var(--pd-accent-strong, #b8b8ff);
 }
 
 .dark :where(.pilotdeck-settings-app) .route-card-heading h2,
@@ -5968,7 +5968,7 @@
 :where(.pilotdeck-settings-app) .mcp-server-rail > footer button:hover:not(:disabled) {
   border-color: var(--pd-accent-border, rgb(191, 192, 234));
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-rail > footer button:disabled {
@@ -6364,7 +6364,7 @@
 :where(.pilotdeck-settings-app) .mcp-add-row-button:hover:not(:disabled) {
   border-color: var(--pd-accent-border, rgb(188, 188, 231));
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .mcp-server-editor.readonly .mcp-add-row-button,
@@ -6438,7 +6438,7 @@
   place-items: center;
   border-radius: 13px;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .mcp-detail-empty strong {
@@ -6512,7 +6512,7 @@
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-trigger > span svg:last-of-type {
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .mcp-raw-editor[open] .mcp-raw-trigger > span svg:first-child {
@@ -6721,7 +6721,7 @@
 .pilotdeck-settings-app .mcp-page-content .icon-button:hover {
   border-color: #dedfeb;
   background: #fff;
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 .pilotdeck-settings-app .mcp-page-content button {
@@ -7011,7 +7011,7 @@
 :where(.pilotdeck-settings-app) .office-path-actions .button:hover:not(:disabled) {
   border-color: rgb(202, 203, 220);
   background: var(--pd-neutral-soft, rgb(250, 250, 253));
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .office-path-actions .button.primary {
@@ -7127,7 +7127,7 @@
 
 :where(.pilotdeck-settings-app) .office-status-heading button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.82);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .office-status-detail {
@@ -7245,8 +7245,8 @@
 }
 
 .dark :where(.pilotdeck-settings-app) .office-builtin-note {
-  border-color: #3b3b63;
-  background: linear-gradient(110deg, #252545, #202028);
+  border-color: var(--pd-accent-border, #3b3b63);
+  background: var(--pd-neutral-soft, linear-gradient(110deg, #252545, #202028));
 }
 
 @media (max-width: 1120px) {
@@ -7344,7 +7344,7 @@
   place-items: center;
   border-radius: 10px;
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .security-card-header h2,
@@ -7528,7 +7528,7 @@
 :where(.pilotdeck-settings-app) .security-add-button:hover {
   border-color: var(--pd-accent-border, rgb(170, 169, 228));
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .security-add-form {
@@ -7620,7 +7620,7 @@
 :where(.pilotdeck-settings-app) .security-quick-add button:hover {
   border-color: var(--pd-accent-border, rgb(201, 200, 235));
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .security-quick-add small {
@@ -7765,7 +7765,7 @@
   place-items: center;
   border-radius: 12px;
   background: var(--brand-soft);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 
 :where(.pilotdeck-settings-app) .agent-retry-header strong,
@@ -8264,7 +8264,7 @@
 .dark :where(.pilotdeck-settings-app) .mcp-project-options button small {
   border-color: #3a3a4a;
   background: #292936;
-  color: #c4c4ff;
+  color: var(--pd-accent-strong, #c4c4ff);
 }
 
 .dark :where(.pilotdeck-settings-app) .mcp-server-rail,
@@ -8327,8 +8327,8 @@
 .dark :where(.pilotdeck-settings-app) .mcp-server-options > button.selected,
 .dark :where(.pilotdeck-settings-app) .mcp-project-options button.selected {
   border-color: #45456c;
-  background: linear-gradient(90deg, #292947, #25253a);
-  color: #c4c4ff;
+  background: var(--pd-accent-selected, linear-gradient(90deg, #292947, #25253a));
+  color: var(--pd-accent-strong, #c4c4ff);
 }
 
 .dark :where(.pilotdeck-settings-app) .mcp-server-options em,
@@ -8543,7 +8543,7 @@
 }
 :where(.pilotdeck-settings-app) .multimodal-tab[aria-selected="true"] {
   border-bottom-color: var(--brand);
-  color: var(--brand);
+  color: var(--brand-strong);
 }
 :where(.pilotdeck-settings-app) .multimodal-tab:focus-visible {
   outline: 2px solid var(--brand);

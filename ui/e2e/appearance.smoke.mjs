@@ -79,6 +79,7 @@ async function verifyBackgroundAndSharedStyle(page, platform) {
   await page.getByRole('button', { name: '浅色', exact: true }).click();
   await expect.poll(() => page.locator('.settings-sidebar').evaluate(e => getComputedStyle(e).backgroundColor)).toBe('rgb(193, 227, 212)');
   await page.reload();
+  await expect(page.locator('.appearance-settings')).toBeVisible({ timeout: 60000 });
   await expect(page.getByRole('button', { name: '侧栏底色', exact: true })).toContainText('#B9DFCE');
   // Choosing "local image" before uploading keeps the solid look (no white-out).
   await page.getByRole('button', { name: '本地图片', exact: true }).click();

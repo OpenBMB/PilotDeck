@@ -125,7 +125,7 @@ const COL = {
 
 const CRON_STATUS_STYLE: Record<'scheduled' | 'running', string> = {
   scheduled: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  running: 'bg-[var(--pd-accent-soft,#e0e7ff)] text-[var(--pd-accent-strong,#4338ca)] dark:bg-indigo-900/40 dark:text-indigo-300',
+  running: 'bg-[var(--pd-accent-soft,#e0e7ff)] text-[var(--pd-accent-strong,#4338ca)] dark:bg-[var(--pd-accent-soft,#312e81)] dark:text-[var(--pd-accent-strong,#a5b4fc)]',
 };
 
 const CRON_STATUS_LABEL: Record<'scheduled' | 'running', { key: string; defaultValue: string }> = {
@@ -526,7 +526,7 @@ export default function CronV2() {
               className={cn(
                 'inline-flex items-center gap-1.5 border-b-2 px-3 pb-2 text-[13px] font-medium transition-colors',
                 isActive
-                  ? 'border-blue-500 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                  ? 'border-[var(--pd-accent-border,#3b82f6)] text-[var(--pd-accent-strong,#2563eb)] dark:border-[var(--pd-accent-border,#60a5fa)] dark:text-[var(--pd-accent-strong,#60a5fa)]'
                   : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200',
               )}
             >
@@ -990,7 +990,7 @@ function CronCreateView({
             value={message}
             onChange={(event) => setMessage(event.target.value)}
             rows={5}
-            className="mt-1.5 w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+            className="mt-1.5 w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
             placeholder={t('cron.create.placeholders.prompt', { defaultValue: 'Describe what PilotDeck should do when this task runs.' })}
           />
         </label>
@@ -1003,7 +1003,7 @@ function CronCreateView({
             value={projectKey}
             onChange={(event) => setProjectKey(event.target.value)}
             disabled={isEditing}
-            className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950 dark:disabled:bg-neutral-900 dark:disabled:text-neutral-400"
+            className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)] dark:disabled:bg-neutral-900 dark:disabled:text-neutral-400"
           >
             <option value="">{t('cron.create.placeholders.workspace', { defaultValue: 'Select a workspace' })}</option>
             {isEditing && projectKey && !projectOptionExists ? <option value={projectKey}>{projectKey}</option> : null}
@@ -1028,7 +1028,7 @@ function CronCreateView({
                 className={cn(
                   'inline-flex h-8 items-center gap-1.5 rounded px-3 text-[12px] font-medium transition-colors',
                   scheduleKind === kind
-                    ? 'bg-white text-blue-600 shadow-sm dark:bg-neutral-800 dark:text-blue-300'
+                    ? 'bg-white text-[var(--pd-accent-strong,#2563eb)] shadow-sm dark:bg-neutral-800 dark:text-[var(--pd-accent-strong,#93c5fd)]'
                     : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100',
                 )}
               >
@@ -1058,7 +1058,7 @@ function CronCreateView({
                   setOnceDraft((current) => ({ ...current, scheduleDate: event.target.value }));
                   setHasOnceDraft(true);
                 }}
-                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
               />
             </label>
             <label className="block">
@@ -1072,7 +1072,7 @@ function CronCreateView({
                   setOnceDraft((current) => ({ ...current, scheduleTime: event.target.value }));
                   setHasOnceDraft(true);
                 }}
-                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
               />
             </label>
             <label className="block">
@@ -1082,7 +1082,7 @@ function CronCreateView({
               <input
                 value={timezone}
                 onChange={(event) => setTimezone(event.target.value)}
-                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
               />
             </label>
           </div>
@@ -1102,7 +1102,7 @@ function CronCreateView({
                       dayOfMonth: nextMode === 'yearly' ? Math.min(dayOfMonth, getYearlyMonthDayCount(monthOfYear)) : dayOfMonth,
                     });
                   }}
-                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                 >
                   {SIMPLE_RECURRENCE_MODES.map((mode) => (
                     <option key={mode.id} value={mode.id}>
@@ -1125,7 +1125,7 @@ function CronCreateView({
                     aria-label={t('cron.create.fields.weekday', { defaultValue: 'Day of week' })}
                     value={weekday}
                     onChange={(event) => updateRecurringDraft({ weekday: Number(event.target.value) })}
-                    className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                    className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                   >
                     {WEEKDAY_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1138,7 +1138,7 @@ function CronCreateView({
                     aria-label={t('cron.create.fields.monthDay', { defaultValue: 'Day of month' })}
                     value={dayOfMonth}
                     onChange={(event) => updateRecurringDraft({ dayOfMonth: Number(event.target.value) })}
-                    className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                    className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                   >
                     {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
                       <option key={day} value={day}>{day}</option>
@@ -1156,7 +1156,7 @@ function CronCreateView({
                           dayOfMonth: Math.min(dayOfMonth, getYearlyMonthDayCount(nextMonth)),
                         });
                       }}
-                      className="h-9 min-w-0 rounded-md border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                      className="h-9 min-w-0 rounded-md border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                     >
                       {MONTH_OPTIONS.map((month) => (
                         <option key={month.value} value={month.value}>
@@ -1168,7 +1168,7 @@ function CronCreateView({
                       aria-label={t('cron.create.fields.monthDay', { defaultValue: 'Day of month' })}
                       value={dayOfMonth}
                       onChange={(event) => updateRecurringDraft({ dayOfMonth: Number(event.target.value) })}
-                      className="h-9 min-w-0 rounded-md border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                      className="h-9 min-w-0 rounded-md border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                     >
                       {Array.from({ length: getYearlyMonthDayCount(monthOfYear) }, (_, index) => index + 1).map((day) => (
                         <option key={day} value={day}>{day}</option>
@@ -1186,7 +1186,7 @@ function CronCreateView({
                   type="time"
                   value={scheduleTime}
                   onChange={(event) => updateRecurringDraft({ scheduleTime: event.target.value })}
-                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                 />
               </label>
 
@@ -1197,7 +1197,7 @@ function CronCreateView({
                 <input
                   value={timezone}
                   onChange={(event) => setTimezone(event.target.value)}
-                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                 />
               </label>
             </div>
@@ -1244,7 +1244,7 @@ function CronCreateView({
                         ? 'cron-expression-format cron-expression-plan'
                         : 'cron-expression-format cron-expression-feedback'}
                       placeholder={t('cron.create.placeholders.expression', { defaultValue: '30 8 * * 1' })}
-                      className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 font-mono text-[13px] text-neutral-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-blue-500 dark:focus:ring-blue-950"
+                      className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 font-mono text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
                     />
                   </label>
                   <p id="cron-expression-format" className="mt-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
@@ -1285,7 +1285,7 @@ function CronCreateView({
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-700 dark:hover:bg-blue-600"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--pd-accent,#2563eb)] px-3 text-[12px] font-medium text-white transition hover:bg-[var(--pd-button-hover,#1d4ed8)] disabled:opacity-50 dark:bg-[var(--pd-accent,#1d4ed8)] dark:hover:bg-[var(--pd-button-hover,#2563eb)]"
           >
             {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} /> : isEditing ? <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} /> : <PlusCircle className="h-3.5 w-3.5" strokeWidth={1.75} />}
             {isEditing
@@ -1446,7 +1446,7 @@ function CronJobRow({
               type="button"
               disabled={busy}
               onClick={() => void runAction('runNow')}
-              className="inline-flex h-7 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[11px] font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-700 dark:hover:bg-blue-600"
+              className="inline-flex h-7 items-center gap-1 rounded-md bg-[var(--pd-accent,#2563eb)] px-2.5 text-[11px] font-medium text-white transition hover:bg-[var(--pd-button-hover,#1d4ed8)] disabled:opacity-50 dark:bg-[var(--pd-accent,#1d4ed8)] dark:hover:bg-[var(--pd-button-hover,#2563eb)]"
             >
               {busy ? (
                 <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
@@ -1463,7 +1463,7 @@ function CronJobRow({
               type="button"
               disabled={busy || editDisabledReason !== null}
               onClick={() => onEdit(job)}
-              className="inline-flex h-7 items-center rounded-md border border-neutral-200 px-2 text-neutral-500 transition hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:border-blue-700 dark:hover:text-blue-400"
+              className="inline-flex h-7 items-center rounded-md border border-neutral-200 px-2 text-neutral-500 transition hover:border-[var(--pd-accent-border,#93c5fd)] hover:text-[var(--pd-accent-strong,#2563eb)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:border-[var(--pd-accent-border,#1d4ed8)] dark:hover:text-[var(--pd-accent-strong,#60a5fa)]"
               aria-label={t('cron.actions.edit', { defaultValue: 'Edit' })}
             >
               <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -1542,7 +1542,7 @@ function DeleteCronJobDialog({
     <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-cron-job-title" onKeyDown={handleKeyDown}>
       <div data-dialog-surface className="flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl">
         <div className="flex items-start gap-3 border-b border-border p-5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-[var(--pd-danger-ink)]">
             <Trash2 className="h-5 w-5" strokeWidth={1.75} />
           </div>
           <div className="min-w-0 flex-1">
@@ -1560,7 +1560,7 @@ function DeleteCronJobDialog({
             {t('cron.deleteConfirm.description', { defaultValue: 'This cron task will be permanently deleted.' })}
           </p>
           {error ? (
-            <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-[var(--pd-danger-ink)]">
               {error}
             </div>
           ) : null}

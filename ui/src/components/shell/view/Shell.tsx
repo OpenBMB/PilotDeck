@@ -299,7 +299,7 @@ export default function Shell({
                     sendInput(opt.number);
                     setCliPromptOptions(null);
                   }}
-                  className="max-w-36 truncate rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+                  className="max-w-36 truncate rounded bg-[var(--pd-accent,#2563eb)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[var(--pd-button-hover,#1d4ed8)]"
                   title={`${opt.number}. ${opt.label}`}
                 >
                   {opt.number}. {opt.label}

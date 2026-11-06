@@ -75,7 +75,7 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
         {onTitleClick ? (
           <button
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTitleClick(); }}
-            className="flex-1 truncate text-left font-mono text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+            className="flex-1 truncate text-left font-mono text-[var(--pd-accent-strong,#2563eb)] transition-colors hover:text-[var(--pd-accent-strong,#1d4ed8)] hover:underline dark:text-[var(--pd-accent-strong,#60a5fa)] dark:hover:text-[var(--pd-accent-strong,#93c5fd)]"
           >
             {title}
           </button>

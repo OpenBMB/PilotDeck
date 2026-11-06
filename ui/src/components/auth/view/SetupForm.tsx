@@ -148,7 +148,7 @@ export default function SetupForm() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-md bg-blue-600 px-4 py-2 font-medium text-white transition-colors duration-200 hover:bg-blue-700 disabled:bg-blue-400"
+          className="w-full rounded-md bg-[var(--pd-accent,#2563eb)] px-4 py-2 font-medium text-white transition-colors duration-200 hover:bg-[var(--pd-button-hover,#1d4ed8)] disabled:bg-[var(--pd-accent,#60a5fa)]"
         >
           {isSubmitting ? t('common:uiText.settingUp') : t('common:uiText.createAccount')}
         </button>

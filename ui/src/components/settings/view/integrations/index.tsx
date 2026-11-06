@@ -36,7 +36,7 @@ export default function IntegrationsSections({
       ) : parsedConfig ? (
         <GatewayConfigSection config={parsedConfig} onChange={onFormChange} />
       ) : (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-[var(--pd-danger-ink)]">
           {t("settingsPage.invalidYaml.integrations")}
         </div>
       )}

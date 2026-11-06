@@ -494,7 +494,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                         type="button"
                         key={`${image.name || 'tool-image'}-${idx}`}
                         onClick={() => openLightbox(toolResultImages, idx)}
-                        className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900"
+                        className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:border-neutral-700 dark:bg-neutral-900"
                         aria-label={image.name ? `Preview ${image.name}` : 'Preview image'}
                       >
                         <img

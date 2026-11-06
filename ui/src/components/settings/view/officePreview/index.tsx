@@ -361,7 +361,7 @@ function OfficePreviewSection({
             )}
 
             {service === "libreoffice" && statusError && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] leading-5 text-destructive">
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] leading-5 text-[var(--pd-danger-ink)]">
                 {statusError}
               </div>
             )}
@@ -405,7 +405,7 @@ export default function OfficePreviewSections({
     return (
       <div className="space-y-6">
         <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-[var(--pd-danger-ink)]">
           {t("settingsPage.invalidYaml.officePreview")}
         </div>
       </div>

@@ -40,7 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
   failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   apply_failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   applying: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  applied: 'bg-[var(--pd-accent-soft,#f3e8ff)] text-[var(--pd-accent-strong,#7e22ce)] dark:bg-purple-900/40 dark:text-purple-300',
+  applied: 'bg-[var(--pd-accent-soft,#f3e8ff)] text-[var(--pd-accent-strong,#7e22ce)] dark:bg-[var(--pd-accent-soft,#581c87)] dark:text-[var(--pd-accent-strong,#d8b4fe)]',
   archived: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
 };
 
@@ -233,7 +233,7 @@ export default function RunDetail(props: RunDetailProps) {
                 <button
                   type="button"
                   onClick={() => onOpenExecutionSession?.(projectKey, effectiveRunId, projectName)}
-                  className="inline-flex items-center gap-1 text-[13px] font-medium text-blue-600 transition hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  className="inline-flex items-center gap-1 text-[13px] font-medium text-[var(--pd-accent-strong,#2563eb)] transition hover:text-[var(--pd-accent-strong,#1d4ed8)] dark:text-[var(--pd-accent-strong,#60a5fa)] dark:hover:text-[var(--pd-accent-strong,#93c5fd)]"
                 >
                   {t('dashboard.runDetail.openSession', { defaultValue: 'Open Session' })}
                   <ExternalLink className="h-3 w-3" strokeWidth={1.75} />

@@ -12,9 +12,9 @@
   font-size: 13px;
 }
 .dark .skills-workbench {
-  --skills-accent: #aaa7ff;
-  --skills-accent-ink: #c9c6ff;
-  --skills-selection: #2d2944;
+  --skills-accent: var(--pd-accent, #5b5ce2);
+  --skills-accent-ink: var(--pd-accent-strong, #c9c6ff);
+  --skills-selection: var(--pd-accent-selected, #2d2944);
 }
 .skills-page {
   display: flex;
@@ -81,7 +81,7 @@
   filter: brightness(0.95);
 }
 .dark .skills-button-primary {
-  color: #171528;
+  color: #fff;
 }
 .skills-workbench button:disabled {
   cursor: default;
@@ -155,7 +155,7 @@
   color: hsl(var(--muted-foreground));
 }
 .skills-search:focus-within {
-  border-color: var(--skills-accent);
+  border-color: var(--skills-accent-ink);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--skills-accent) 12%, transparent);
 }
 .skills-search input {
@@ -446,7 +446,7 @@
   border-radius: 7px;
   padding: 9px 12px;
   background: hsl(var(--destructive) / 0.08);
-  color: hsl(var(--destructive));
+  color: var(--pd-danger-ink);
   font-size: 12px;
 }
 .skills-markdown {
@@ -754,7 +754,7 @@
   border-radius: 8px;
 }
 .dark .skills-dialog button.bg-neutral-900 {
-  color: #171528;
+  color: #fff;
 }
 .skills-advanced {
   margin-top: 18px;

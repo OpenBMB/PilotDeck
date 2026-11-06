@@ -33,7 +33,7 @@ export default function GeneratedVideoCard({ message, running }: { message: Chat
     {video ? <VideoPlayer src={url} downloadUrl={appendAuthToken(`/api/video-generation/${encodeURIComponent(String(video.sessionId))}/${encodeURIComponent(String(video.videoId))}?download=1`)} name={`video-${video.videoId}.mp4`} />
       : <div className={`generated-image-surface ${waiting ? 'is-waiting' : ''}`} style={{ aspectRatio: '16 / 9' }} aria-busy={waiting}>
         <div className="generated-image-placeholder" role="status"><span className="generated-image-glyph" aria-hidden="true">✧</span><span>{t(`videoGeneration.${label}`)}</span>
-          {job?.state === 'paused' && <button type="button" disabled={busy} onClick={resume} className="rounded border px-3 py-1.5 text-sm hover:bg-violet-100 dark:hover:bg-violet-950">{t('videoGeneration.resume')}</button>}
+          {job?.state === 'paused' && <button type="button" disabled={busy} onClick={resume} className="rounded border px-3 py-1.5 text-sm hover:bg-[var(--pd-accent-hover,#ede9fe)] dark:hover:bg-[var(--pd-accent-hover,#2e1065)]">{t('videoGeneration.resume')}</button>}
           {retryError && <span>{t('videoGeneration.retryUnavailable')}</span>}
         </div>
       </div>}

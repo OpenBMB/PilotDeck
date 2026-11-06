@@ -16,7 +16,7 @@ export function StreamingScrollViewport({ children, label, enabled = true, class
       role="region"
       tabIndex={0}
       aria-label={label}
-      className={`max-h-64 overflow-y-auto ${hasOverflow ? 'overscroll-y-contain' : ''} outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${className}`}
+      className={`max-h-64 overflow-y-auto ${hasOverflow ? 'overscroll-y-contain' : ''} outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] ${className}`}
       style={{ overflowAnchor: 'none' }}
     >
       <div>{children}</div>

@@ -87,7 +87,7 @@
 .folder-picker-column-title { height: 32px; flex-shrink: 0; padding: 9px 12px 5px; font-size: 11px; color: var(--fp-muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .folder-picker-entries { flex: 1; overflow-y: auto; padding: 3px 6px 10px; }
 .folder-picker-entries button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px; text-align: left; margin-bottom: 2px; }
-.folder-picker-entries button > svg { width: 16px; height: 16px; color: #8c83bc; }
+.folder-picker-entries button > svg { width: 16px; height: 16px; color: var(--fp-muted); }
 .folder-picker-entries button > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder-picker-entries button .folder-picker-chevron { width: 12px; height: 12px; color: var(--fp-muted); }
 .folder-picker-empty { margin: 15px 6px; color: var(--fp-muted); font-size: 12px; }
@@ -95,7 +95,7 @@
 .folder-picker-new { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--fp-line); }
 .folder-picker-new input { flex: 1; }
 .folder-picker-new button { padding: 7px; color: var(--fp-brand); }
-.folder-picker-error { color: #e57686; margin: 8px 12px; font-size: 12px; }
+.folder-picker-error { color: var(--pd-danger-ink, #b42335); margin: 8px 12px; font-size: 12px; }
 .folder-picker-footer { border-top: 1px solid var(--fp-line); padding: 10px 16px 14px; }
 .folder-picker-selection { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--fp-muted); font-size: 11px; margin-bottom: 10px; }
 .folder-picker-selection code { font-size: 11px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -103,8 +103,8 @@
 .folder-picker-selection button svg { width: 15px; height: 15px; }
 .folder-picker-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .folder-picker-actions button { padding: 8px 16px; background: var(--fp-field); border: 1px solid var(--fp-line); }
-.folder-picker-actions button.folder-picker-confirm { background: #6558df; color: #fff; border-color: #6558df; }
-.folder-picker-actions button.folder-picker-confirm:hover:not(:disabled) { background: #7568e9; }
+.folder-picker-actions button.folder-picker-confirm { background: var(--pd-accent, #6558df); color: #fff; border-color: var(--pd-accent, #6558df); }
+.folder-picker-actions button.folder-picker-confirm:hover:not(:disabled) { background: var(--pd-button-hover, #7568e9); }
 @media (max-width: 640px) {
   .folder-picker-overlay { padding: 12px; }
   .folder-picker { height: min(640px, 90dvh); }

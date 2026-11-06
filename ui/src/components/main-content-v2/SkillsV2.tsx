@@ -739,7 +739,7 @@ export default function SkillsV2({
               {t('skillsTab.overrideExplanation')}
             </p>
             {detailError ? (
-              <p role="alert" className="mt-3 text-[12px] text-destructive">
+              <p role="alert" className="mt-3 text-[12px] text-[var(--pd-danger-ink)]">
                 {detailError}
               </p>
             ) : null}
@@ -1336,7 +1336,7 @@ function ListSection({
           <button
             type="button"
             role="menuitem"
-            className="text-destructive"
+            className="text-[var(--pd-danger-ink)]"
             onClick={() => {
               onDelete(ctxMenu.skill);
               setCtxMenu(null);
@@ -1952,7 +1952,7 @@ function InstallFromClawHub({
       {errorText ? (
         <p
           role="alert"
-          className="mx-6 mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive"
+          className="mx-6 mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-[var(--pd-danger-ink)]"
         >
           {errorText}
         </p>

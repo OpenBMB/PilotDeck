@@ -135,8 +135,8 @@ export default function ComputerUseSections() {
           </div>
         </div>
         {status?.phase === 'partial' && <p className="mt-3 text-xs leading-5 text-muted-foreground">{t('computerUse.waylandHint')}</p>}
-        {(error || loadError || status?.error) && <p role="alert" className="mt-3 text-xs leading-5 text-destructive">{error || loadError || status?.error}</p>}
-        {status && !status.available && <p role="alert" className="mt-3 text-xs text-destructive">{t('computerUse.missingDriver')}</p>}
+        {(error || loadError || status?.error) && <p role="alert" className="mt-3 text-xs leading-5 text-[var(--pd-danger-ink)]">{error || loadError || status?.error}</p>}
+        {status && !status.available && <p role="alert" className="mt-3 text-xs text-[var(--pd-danger-ink)]">{t('computerUse.missingDriver')}</p>}
       </SettingsCard>
     </SettingsSection>
   </div>;
