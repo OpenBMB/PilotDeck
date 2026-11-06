@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { useRegisterFindShortcutTarget } from '../../../contexts/FindShortcutContext';
 import { useGlobalSearch } from '../../global-search/GlobalSearchContext';
+import { getSessionRequestIdentity, type SessionRequestIdentity } from '../utils/sessionRequestIdentity';
 import {
   buildSearchableMessages,
   clearSearchHighlights,
@@ -25,6 +26,7 @@ type UseChatHistorySearchOptions = {
   historyReady?: boolean;
   loadAllMessages: () => void | Promise<void>;
   sessionId: string | null;
+  requestIdentity?: SessionRequestIdentity | null;
   captureFindShortcutInModal?: boolean;
   renderWindowKey?: string | number;
   onNavigate?: (match: ChatHistorySearchMatch) => void;
@@ -38,15 +40,28 @@ export function useChatHistorySearch({
   historyReady = true,
   loadAllMessages,
   sessionId,
+  requestIdentity,
   captureFindShortcutInModal = false,
   renderWindowKey = 0,
   onNavigate,
 }: UseChatHistorySearchOptions) {
   const [isOpen, setIsOpen] = useState(false);
   const globalSearch = useGlobalSearch();
-  const globalTarget = globalSearch?.target;
+  const candidateTarget = globalSearch?.target;
+  const scopeKey = requestIdentity?.key ?? sessionId;
+  const globalTarget = candidateTarget?.kind === 'chats' && requestIdentity
+    && getSessionRequestIdentity(candidateTarget.project, candidateTarget.sessionId ? { id: candidateTarget.sessionId } : null)?.transcriptKey !== requestIdentity.transcriptKey
+    ? undefined : candidateTarget;
   const consumedGlobalTarget = useRef<string | null>(null);
   const loadingGlobalTarget = useRef<string | null>(null);
+  const failedGlobalTarget = useRef<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const historyRequest = useRef<Promise<void> | null>(null);
+  const selectedScope = useRef({ sessionId, key: scopeKey, active: true });
+  if (selectedScope.current.key !== scopeKey) selectedScope.current = { sessionId, key: scopeKey, active: true };
+  const latestGlobalTarget = useRef(globalTarget);
+  latestGlobalTarget.current = globalTarget;
   const [query, setQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -95,8 +110,46 @@ export function useChatHistorySearch({
 
   const ensureAllMessagesLoaded = useCallback(async () => {
     if (allMessagesLoaded) return;
-    await loadAllMessages();
+    if (historyRequest.current) return historyRequest.current;
+    const scope = selectedScope.current;
+    setHistoryError(null);
+    setIsLoadingHistory(true);
+    let load: void | Promise<void>;
+    try { load = loadAllMessages(); } catch (error) { load = Promise.reject(error); }
+    const request = Promise.resolve(load).catch(error => {
+      if (selectedScope.current === scope && scope.active) setHistoryError(error instanceof Error ? error.message : String(error));
+      throw error;
+    }).finally(() => {
+      if (selectedScope.current === scope && scope.active) {
+        historyRequest.current = null;
+        setIsLoadingHistory(false);
+      }
+    });
+    historyRequest.current = request;
+    return request;
   }, [allMessagesLoaded, loadAllMessages]);
+
+  const loadGlobalHistory = useCallback(() => {
+    const target = latestGlobalTarget.current;
+    if (!target || target.kind !== 'chats' || target.sessionId !== selectedScope.current.sessionId) return;
+    const scope = selectedScope.current;
+    loadingGlobalTarget.current = target.requestId;
+    failedGlobalTarget.current = null;
+    void ensureAllMessagesLoaded().catch(() => {
+      if (selectedScope.current !== scope || !scope.active || latestGlobalTarget.current?.requestId !== target.requestId) return;
+      loadingGlobalTarget.current = null;
+      failedGlobalTarget.current = target.requestId;
+      setQuery(target.query);
+      setIsOpen(true);
+    });
+  }, [ensureAllMessagesLoaded]);
+
+  const retryHistory = useCallback(() => {
+    const target = latestGlobalTarget.current;
+    if (target?.kind === 'chats' && target.matchType === 'content' && target.sessionId === sessionId
+      && consumedGlobalTarget.current !== target.requestId) loadGlobalHistory();
+    else void ensureAllMessagesLoaded().catch(() => {});
+  }, [ensureAllMessagesLoaded, loadGlobalHistory, sessionId]);
 
   const applySearchHighlights = useCallback((match: ChatHistorySearchMatch | null) => {
     const container = scrollContainerRef.current;
@@ -116,14 +169,14 @@ export function useChatHistorySearch({
     pendingRevealRef.current = pending;
     onNavigate?.(match);
     try {
-      await ensureAllMessagesLoaded();
+      if (!historyError) await ensureAllMessagesLoaded();
     } catch {
       // Results already loaded remain searchable if fetching older history fails.
     }
     if (navigation !== navigationRef.current) return;
     pending.ready = true;
     refreshHighlightsRef.current();
-  }, [ensureAllMessagesLoaded, onNavigate]);
+  }, [ensureAllMessagesLoaded, historyError, onNavigate]);
 
   const goToMatch = useCallback((index: number) => {
     if (matches.length === 0) return;
@@ -152,17 +205,24 @@ export function useChatHistorySearch({
   }, [query]);
 
   useEffect(() => {
+    if (!selectedScope.current.active) selectedScope.current = { sessionId, key: scopeKey, active: true };
+    const scope = selectedScope.current;
     closeSearch();
-  }, [closeSearch, sessionId]);
+    historyRequest.current = null;
+    loadingGlobalTarget.current = null;
+    failedGlobalTarget.current = null;
+    setHistoryError(null);
+    setIsLoadingHistory(false);
+    return () => { scope.active = false; };
+  }, [closeSearch, sessionId, scopeKey]);
 
   useEffect(() => {
     if (!historyReady || !globalTarget || globalTarget.kind !== 'chats' || globalTarget.sessionId !== sessionId) return;
     if (globalTarget.matchType !== 'content') { closeSearch(); return; }
     if (consumedGlobalTarget.current === globalTarget.requestId) return;
     if (!allMessagesLoaded) {
-      if (loadingGlobalTarget.current !== globalTarget.requestId) {
-        loadingGlobalTarget.current = globalTarget.requestId;
-        void ensureAllMessagesLoaded().catch(() => { loadingGlobalTarget.current = null; });
+      if (loadingGlobalTarget.current !== globalTarget.requestId && failedGlobalTarget.current !== globalTarget.requestId) {
+        loadGlobalHistory();
       }
       return;
     }
@@ -177,7 +237,7 @@ export function useChatHistorySearch({
     setQuery(globalTarget.query);
     setActiveMatchIndex(index);
     setIsOpen(true);
-  }, [globalTarget, sessionId, historyReady, allMessagesLoaded, ensureAllMessagesLoaded, searchableMessages, closeSearch]);
+  }, [globalTarget, sessionId, historyReady, allMessagesLoaded, loadGlobalHistory, searchableMessages, closeSearch]);
 
   const openFromShortcut = useCallback(() => {
     if (isOpen) {
@@ -307,5 +367,8 @@ export function useChatHistorySearch({
     closeSearch,
     goToNext,
     goToPrevious,
+    historyError,
+    isLoadingHistory,
+    retryHistory,
   };
 }

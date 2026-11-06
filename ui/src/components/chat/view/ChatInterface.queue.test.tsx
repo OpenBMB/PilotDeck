@@ -110,6 +110,7 @@ const createChatSessionState = (overrides: Record<string, unknown> = {}) => ({
   setSessionRuntimeState: vi.fn(), activeRunId: 'run-active', setActiveRunId: vi.fn(),
   currentSessionId: 'web:s_queue', setCurrentSessionId: vi.fn(), isLoadingSessionMessages: false,
   sessionLoadError: null, isLoadingMoreMessages: false, hasMoreMessages: false, totalMessages: 0,
+  retrySessionMessages: vi.fn(), refreshSessionMessages: vi.fn().mockResolvedValue({ status: 'stale' }),
   canAbortSession: true, setCanAbortSession: vi.fn(), isAborting: false, setIsAborting: vi.fn(),
   setIsUserScrolledUp: vi.fn(), tokenBudget: null, setTokenBudget: vi.fn(), visibleMessageCount: 0,
   visibleMessages: [], loadEarlierMessages: vi.fn(), loadAllMessages: vi.fn(), allMessagesLoaded: true,
@@ -125,6 +126,17 @@ const emptyQueue = () => ({
 });
 
 describe('ChatInterface queue integration', () => {
+  it('routes history Retry to the scoped history loader', async () => {
+    const state = createChatSessionState({ isLoading: false, sessionLoadError: 'History unavailable' });
+    queueMocks.useChatSessionState.mockReturnValue(state);
+    queueMocks.useSessionInputQueue.mockReturnValue(emptyQueue());
+    render(<ChatInterface {...({ selectedProject: { name: 'fixture', fullPath: '/fixture' },
+      selectedSession: { id: 'web:s_queue' }, ws: null, sendMessage: vi.fn(),
+    } as any)} />);
+    await act(async () => { await queueMocks.messagesPane.mock.calls.at(-1)![0].onRetrySessionLoad(); });
+    expect(state.retrySessionMessages).toHaveBeenCalledTimes(1);
+    expect(state.refreshSessionMessages).not.toHaveBeenCalled();
+  });
   it('opens a completed fork without waiting for a stalled sidebar refresh', async () => {
     queueMocks.useChatSessionState.mockReturnValue(createChatSessionState({ isLoading: false }));
     queueMocks.useSessionInputQueue.mockReturnValue(emptyQueue());

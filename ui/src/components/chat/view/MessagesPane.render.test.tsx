@@ -10,6 +10,7 @@ import * as api from '../../../utils/api';
 import { attachmentDisplayMetadata, rememberUploadedPreview } from '../utils/uploadedAttachmentPreview';
 import { ChatReviewProvider } from '../../chat-review/ChatReviewContext';
 import MessagesPane from './MessagesPane';
+import { ChatHistorySearchControllerProvider } from './ChatHistorySearchController';
 import { ThinkingBlock } from './ThinkingBlock';
 import {
   getChatResponseReserveTarget,
@@ -299,6 +300,16 @@ function SessionPaneHarness({
 }
 
 describe('MessagesPane render behavior', () => {
+  it('keeps conversation-local search controls visible inside the application shell provider', async () => {
+    render(<ChatHistorySearchControllerProvider>{createPaneElement({ messages: [makeMessage(0), makeMessage(1)] })}</ChatHistorySearchControllerProvider>);
+    fireEvent.keyDown(document, { key: 'f', ctrlKey: true });
+    expect(screen.getByRole('search')).toBeTruthy();
+    const input = screen.getByRole('search').querySelector('input')!;
+    fireEvent.change(input, { target: { value: 'Message' } });
+    await waitFor(() => expect(document.querySelectorAll('mark.chat-history-search-highlight').length).toBeGreaterThan(0));
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('search')).toBeNull();
+  });
   it('offers editing only on the latest user message', () => {
     const now = new Date().toISOString();
     renderPane({

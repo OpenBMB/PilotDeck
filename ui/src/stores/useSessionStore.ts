@@ -2358,9 +2358,11 @@ export function useSessionStore() {
       }
       notify(sessionId, 'history');
       historyCache.confirmHistory(sessionId, slot, Boolean(data.stream?.messages?.length));
+      return slot;
     } catch (error) {
       if (requestGeneration < slot._serverAppliedGeneration) return;
       console.error(`[SessionStore] refresh failed for ${sessionId}:`, error);
+      return null;
     } finally {
       historyCache.endHistory(sessionId);
     }

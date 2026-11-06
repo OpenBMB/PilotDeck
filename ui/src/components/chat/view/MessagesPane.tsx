@@ -35,6 +35,7 @@ import SubagentDetailModal from './SubagentDetailModal';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import { useRegisterChatHistorySearchControls } from './ChatHistorySearchController';
 import { useChatHistorySearch } from '../hooks/useChatHistorySearch';
+import { getSessionRequestIdentity } from '../utils/sessionRequestIdentity';
 import type { SearchableChatMessageInput } from '../utils/chatHistorySearchUtils';
 import { useSubagentMessages } from '../hooks/useSubagentMessages';
 import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
@@ -72,7 +73,7 @@ type MessagesPaneProps = {
   hasMoreMessages: boolean;
   totalMessages: number;
   loadEarlierMessages: () => void;
-  loadAllMessages: () => void;
+  loadAllMessages: () => void | Promise<void>;
   allMessagesLoaded: boolean;
   isLoadingAllMessages: boolean;
   provider: SessionProvider;
@@ -1126,10 +1127,11 @@ function MessagesPane({
     hasMoreMessages,
     loadAllMessages,
     sessionId,
+    requestIdentity: getSessionRequestIdentity(selectedProject, selectedSession),
     renderWindowKey: `${virtualWindow.startIndex}:${virtualWindow.endIndex}`,
     onNavigate: revealSearchTrace,
   });
-  const searchIsRenderedByShell = useRegisterChatHistorySearchControls(chatHistorySearch);
+  useRegisterChatHistorySearchControls(chatHistorySearch);
   const [hasLayoutWarning, setHasLayoutWarning] = useState(false);
   useEffect(() => {
     setHasLayoutWarning(false);
@@ -1177,7 +1179,7 @@ function MessagesPane({
           </button>
         </div>
       ) : null}
-      {chatHistorySearch.isOpen && !searchIsRenderedByShell ? (
+      {chatHistorySearch.isOpen ? (
         <ChatHistorySearchBar
           query={chatHistorySearch.query}
           onQueryChange={chatHistorySearch.setQuery}
@@ -1187,6 +1189,9 @@ function MessagesPane({
           onNext={chatHistorySearch.goToNext}
           onClose={chatHistorySearch.closeSearch}
           inputRef={chatHistorySearch.inputRef}
+          historyError={chatHistorySearch.historyError}
+          isLoadingHistory={chatHistorySearch.isLoadingHistory}
+          onRetryHistory={chatHistorySearch.retryHistory}
         />
       ) : null}
       <div

@@ -127,6 +127,7 @@ function AppShellContent() {
     sidebarOpen,
     isLoadingProjects,
     externalMessageUpdate,
+    externalMessageUpdateTarget,
     setActiveTab,
     setSelectedSession,
     setSidebarOpen,
@@ -845,6 +846,7 @@ function AppShellContent() {
             isSidebarCollapsed={isMobile || !desktopSidebarOpen}
             onOpenSidebar={isMobile ? onMenuClick : onOpenDesktopSidebar}
             externalMessageUpdate={externalMessageUpdate}
+            externalMessageUpdateTarget={externalMessageUpdateTarget}
             misroutedFileFromUrl={misroutedFileFromUrl}
             onMisroutedFileUrlHandled={handleMisroutedFileUrlHandled}
           />

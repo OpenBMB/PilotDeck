@@ -241,6 +241,9 @@ export default function SubagentDetailMessageFlow({
           onNext={chatHistorySearch.goToNext}
           onClose={chatHistorySearch.closeSearch}
           inputRef={chatHistorySearch.inputRef}
+          historyError={chatHistorySearch.historyError}
+          isLoadingHistory={chatHistorySearch.isLoadingHistory}
+          onRetryHistory={chatHistorySearch.retryHistory}
         />
       ) : null}
       <div ref={scrollContainerRef} data-stream-scroll-viewport className="chat-panel-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden" style={{ overflowAnchor: 'none' }}>

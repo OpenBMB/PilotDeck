@@ -14,7 +14,7 @@ export function ConversationTurnNav({ messages, items, heights, scrollRef, onPau
   heights: number[];
   scrollRef: RefObject<HTMLDivElement>;
   onPause?: (key?: string) => void;
-  loadAll: () => void;
+  loadAll: () => void | Promise<void>;
   hasMore: boolean;
   loading: boolean;
 }) {

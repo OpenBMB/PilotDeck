@@ -241,6 +241,7 @@ function MainContent({
   onShowSettings,
   onSelectProjectByName,
   externalMessageUpdate,
+  externalMessageUpdateTarget,
   misroutedFileFromUrl,
   onMisroutedFileUrlHandled,
 }: MainContentProps) {
@@ -579,6 +580,7 @@ function MainContent({
           onSelectSession={onSelectSession}
           onShowSettings={onShowSettings}
           externalMessageUpdate={externalMessageUpdate}
+          externalMessageUpdateTarget={externalMessageUpdateTarget}
           autoExpandTools={autoExpandTools}
           showThinking={showThinking}
           inlineThinking={inlineThinking}
@@ -671,6 +673,7 @@ type SplitBodyProps = {
   onSelectSession: MainContentProps["onSelectSession"];
   onShowSettings: any;
   externalMessageUpdate: any;
+  externalMessageUpdateTarget?: MainContentProps['externalMessageUpdateTarget'];
   autoExpandTools: any;
   showThinking: any;
   inlineThinking: any;
@@ -727,6 +730,7 @@ function SplitBody(props: SplitBodyProps) {
     onSelectSession,
     onShowSettings,
     externalMessageUpdate,
+    externalMessageUpdateTarget,
     autoExpandTools,
     showThinking,
     inlineThinking,
@@ -1599,6 +1603,7 @@ function SplitBody(props: SplitBodyProps) {
               autoScrollToBottom={autoScrollToBottom}
               sendByCtrlEnter={sendByCtrlEnter}
               externalMessageUpdate={externalMessageUpdate}
+              externalMessageUpdateTarget={externalMessageUpdateTarget}
               onShowAllTasks={tasksEnabled ? () => setActiveTab("tasks") : null}
               forceWelcome={false}
               onExitWelcome={isFiles ? undefined : () => setActiveTab("chat")}

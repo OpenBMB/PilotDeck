@@ -82,6 +82,7 @@ function ChatInterface({
   autoScrollToBottom,
   sendByCtrlEnter,
   externalMessageUpdate,
+  externalMessageUpdateTarget,
   forceWelcome,
   onExitWelcome,
   compact = false,
@@ -186,6 +187,8 @@ function ChatInterface({
     setCurrentSessionId,
     isLoadingSessionMessages,
     sessionLoadError,
+    retrySessionMessages,
+    refreshSessionMessages,
     isLoadingMoreMessages,
     historyLoadError,
     hasMoreMessages,
@@ -220,6 +223,7 @@ function ChatInterface({
     sendMessage,
     autoScrollToBottom,
     externalMessageUpdate,
+    externalMessageUpdateTarget,
     processingSessions,
     resetStreamingState,
     pendingViewSessionRef,
@@ -236,11 +240,11 @@ function ChatInterface({
       if (!id || id !== (selectedSession?.id ?? currentSessionId) || !selectedProject) return;
       resetStreamingState();
       sessionStore.clearRealtime(id);
-      void sessionStore.refreshFromServer(id, { provider: 'pilotdeck', projectName: selectedProject.name, projectPath: selectedProject.fullPath || selectedProject.path || '', ...sessionRequestParams, afterRestore: true });
+      void refreshSessionMessages({ afterRestore: true });
     };
     window.addEventListener(REVIEW_RESTORED_EVENT, restored);
     return () => window.removeEventListener(REVIEW_RESTORED_EVENT, restored);
-  }, [selectedSession?.id, currentSessionId, selectedProject, sessionRequestParams, sessionStore.clearRealtime, sessionStore.refreshFromServer, resetStreamingState]);
+  }, [selectedSession?.id, currentSessionId, selectedProject, sessionStore.clearRealtime, refreshSessionMessages, resetStreamingState]);
 
   useEffect(() => {
     const ready = !isLoadingSessionMessages && !sessionLoadError && currentSessionId && currentSessionId === selectedSession?.id && chatMessages.length > 0;
@@ -387,14 +391,7 @@ function ChatInterface({
     streamBufferRef.current = '';
 
     if (shouldRefreshSessionOnReconnect({ isLoading, processingSessions, sessionId: selectedSession.id })) {
-      await refreshSessionAfterReconnect(() =>
-        sessionStore.refreshFromServer(selectedSession.id, {
-          provider: 'pilotdeck',
-          projectName: selectedProject.name,
-          projectPath: selectedProject.fullPath || selectedProject.path || '',
-          ...sessionRequestParams,
-        }),
-      );
+      await refreshSessionAfterReconnect(refreshSessionMessages);
     }
 
     // Ask the backend whether the session is still processing so the
@@ -410,7 +407,7 @@ function ChatInterface({
     selectedProject,
     selectedSession,
     sessionRequestParams,
-    sessionStore,
+    refreshSessionMessages,
     streamTimerRef,
     accumulatedStreamRef,
     streamBufferRef,
@@ -909,7 +906,7 @@ function ChatInterface({
           onPauseScroll={pauseScrollFollowing}
           isLoadingSessionMessages={isLoadingSessionMessages}
           sessionLoadError={sessionLoadError}
-          onRetrySessionLoad={handleWebSocketReconnect}
+          onRetrySessionLoad={retrySessionMessages}
           chatMessages={chatMessages}
           sendingInputs={sendingInputs}
           activityMessages={activityMessages}

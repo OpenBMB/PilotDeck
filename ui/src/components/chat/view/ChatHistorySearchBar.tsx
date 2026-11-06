@@ -24,6 +24,9 @@ type ChatHistorySearchBarProps = {
   onClose: () => void;
   inputRef: { current: HTMLInputElement | null };
   placement?: 'floating' | 'header';
+  historyError?: string | null;
+  isLoadingHistory?: boolean;
+  onRetryHistory?: () => void;
 };
 
 export default function ChatHistorySearchBar({
@@ -36,6 +39,9 @@ export default function ChatHistorySearchBar({
   onClose,
   inputRef,
   placement = 'floating',
+  historyError,
+  isLoadingHistory = false,
+  onRetryHistory,
 }: ChatHistorySearchBarProps) {
   const { t } = useTranslation();
   const [draftQuery, setDraftQuery] = useState(query);
@@ -123,6 +129,13 @@ export default function ChatHistorySearchBar({
       role="search"
       aria-label={t('chatSearch.ariaLabel', { defaultValue: 'Search in conversation' }) as string}
     >
+      {historyError ? <div role="alert" className="absolute left-0 right-0 top-full mt-1 flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-white px-3 py-2 text-xs text-amber-800 shadow-sm dark:border-amber-800 dark:bg-neutral-900 dark:text-amber-300">
+        <span>{t('chatSearch.historyLoadFailed', { defaultValue: 'Could not load earlier messages.' })}</span>
+        <button type="button" onClick={onRetryHistory} disabled={isLoadingHistory} className="shrink-0 underline underline-offset-2 disabled:opacity-50">
+          {t('chatSearch.retryHistory', { defaultValue: 'Retry' })}
+        </button>
+      </div> : null}
+      {isLoadingHistory ? <span role="status" className="sr-only">{t('chatSearch.loadingHistory', { defaultValue: 'Loading conversation history' })}</span> : null}
       <Search className="h-5 w-5 shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
       <input
         ref={setInputElement}

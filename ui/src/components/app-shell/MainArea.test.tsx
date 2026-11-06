@@ -18,26 +18,14 @@ vi.mock('../main-content/view/MainContent', async () => {
 
   function RegisteredSearchMock({ activeTab, reviewOpenRequest }: { activeTab: AppTab; reviewOpenRequest?: ReviewOpenRequest }) {
     const [isOpen, setIsOpen] = React.useState(false);
-    const [query, setQuery] = React.useState('');
-    const [activeMatchIndex, setActiveMatchIndex] = React.useState(0);
-    const inputRef = React.useRef<HTMLInputElement | null>(null);
     const openSearch = React.useCallback(() => setIsOpen(true), []);
     const closeSearch = React.useCallback(() => {
       setIsOpen(false);
-      setQuery('');
     }, []);
-    const matches = query ? [{}, {}] : [];
     useRegisterChatHistorySearchControls({
       isOpen,
       openSearch,
       closeSearch,
-      query,
-      setQuery,
-      matches,
-      activeMatchIndex,
-      goToPrevious: () => setActiveMatchIndex((index) => Math.max(0, index - 1)),
-      goToNext: () => setActiveMatchIndex((index) => Math.min(matches.length - 1, index + 1)),
-      inputRef,
     });
 
     return (
@@ -47,8 +35,6 @@ vi.mock('../main-content/view/MainContent', async () => {
         data-review-tab={reviewOpenRequest?.tab}
         data-review-request={reviewOpenRequest?.sequence}
         data-search-open={isOpen ? 'true' : 'false'}
-        data-search-query={query}
-        data-search-index={activeMatchIndex}
       >
         <button type="button" onClick={openSearch}>Open registered chat search</button>
       </div>
