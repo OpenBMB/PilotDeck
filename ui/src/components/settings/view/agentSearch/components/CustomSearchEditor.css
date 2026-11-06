@@ -124,7 +124,7 @@
 .custom-search-actions button svg { width: 16px; height: 16px; flex: none; }
 .custom-search-actions button:hover:not(:disabled) { border-color: var(--brand, #5b5ce2); color: var(--brand, #5b5ce2); }
 .custom-search-actions .custom-search-save { background: var(--brand, #5b5ce2); border-color: var(--brand, #5b5ce2); color: #fff; }
-.custom-search-actions .custom-search-save:hover:not(:disabled) { background: var(--brand-strong, #4948cf); color: #fff; }
+.custom-search-actions .custom-search-save:hover:not(:disabled) { background: var(--pd-button-hover, var(--brand-strong, #4948cf)); color: #fff; }
 .custom-search-actions button:disabled { cursor: not-allowed; }
 .custom-search-editor pre {
   overflow: auto;

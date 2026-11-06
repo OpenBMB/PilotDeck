@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 import { getConnectableHost, normalizeLoopbackHost } from './shared/networkHosts.js'
 import { isLocalAuthDisabled } from './shared/localAuth.js'
-import { LIGHT_PRESETS } from '../apps/desktop/src/lightAppearance'
+import { LEGACY_LIGHT_PRESETS, LIGHT_PRESETS } from '../apps/desktop/src/lightAppearance'
 import { renderLoadingHtml } from '../apps/desktop/src/appearance'
 import { startupLabels } from '../apps/desktop/src/startupPresentation'
 
@@ -84,11 +84,11 @@ export default defineConfig(({ mode }) => {
             if (!['light', 'dark', 'system'].includes(mode)) mode = 'system';
             var dark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
             document.documentElement.classList.toggle('dark', dark);
-            document.documentElement.style.backgroundColor = dark ? '#0a0a0a' : '#ffffff';
+            document.documentElement.style.backgroundColor = dark ? '#23252b' : '#ffffff';
             var preference = desktop?.lightAppearance || JSON.parse(localStorage.getItem('pilotdeck-light-appearance-v1') || 'null');
-            var presets = ${JSON.stringify(LIGHT_PRESETS)};
+            var presets = ${JSON.stringify({ ...LIGHT_PRESETS, ...LEGACY_LIGHT_PRESETS })};
             var background = preference?.preset === 'custom' ? preference.custom?.background : presets[preference?.preset]?.background;
-            document.documentElement.style.backgroundColor = dark ? '#0a0a0a' : /^#[0-9a-f]{6}$/i.test(background) ? background : '#ffffff';
+            document.documentElement.style.backgroundColor = dark ? '#23252b' : /^#[0-9a-f]{6}$/i.test(background) ? background : '#ffffff';
           } catch (_) {}
         ` }];
       },

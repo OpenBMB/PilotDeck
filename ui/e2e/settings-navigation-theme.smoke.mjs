@@ -39,7 +39,8 @@ async function exercise(page, platform, resize) {
     const request=route.request(), p=new URL(request.url()).pathname;
     let body={}, status=200;
     const response=()=>({exists:true,path:'/fixture/config.yaml',raw:JSON.stringify(config),revision:String(revision),validation:{valid:true,errors:[],warnings:[]}});
-    if(p==='/api/config/model-removal') {
+    if(p==='/api/settings/general-workspace') body={directory:'',effectiveDirectory:'/fixture/general',defaultDirectory:'/fixture/general'};
+    else if(p==='/api/config/model-removal') {
       const input=request.postDataJSON();const plan=planModelRemoval(config,input,{replacement:input.replacement});
       const {config:next,...publicPlan}=plan;
       if(input.dryRun) body={...publicPlan,revision:String(revision)};
@@ -67,7 +68,7 @@ async function exercise(page, platform, resize) {
   });
   await page.routeWebSocket('**/ws**', socket=>socket.onMessage(()=>{}));
   const report=[];
-  for(const [preset,color] of [['薄荷','rgb(24, 124, 101)'],['雾蓝','rgb(56, 106, 180)']]) {
+  for(const [preset,color] of [['薄荷绿','rgb(62, 121, 107)'],['雾霭蓝','rgb(83, 113, 166)']]) {
     await page.goto('http://127.0.0.1:5187/settings/appearance');
     await page.getByRole('button',{name:'浅色',exact:true}).click();
     await page.locator('#appearance-palette').getByRole('button', { name: preset, exact: true }).click();
@@ -84,8 +85,8 @@ async function exercise(page, platform, resize) {
           let h=(max===rgb[0]?(rgb[1]-rgb[2])/d+(rgb[1]<rgb[2]?6:0):max===rgb[1]?(rgb[2]-rgb[0])/d+2:(rgb[0]-rgb[1])/d+4)*60;
           return h>=228&&h<=285&&d/(255-Math.abs(max+min-255))>.32;}
         return [...root.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().width>0).flatMap(e=>{
-          // The dark-mode thumbnail deliberately keeps its default palette.
-          if(e.closest('.appearance-preset, .appearance-miniature.is-dark')) return [];
+          // Preset thumbnails intentionally preview other palette hues.
+          if(e.closest('.appearance-preset')) return [];
           const s=getComputedStyle(e);return ['color','backgroundColor','borderTopColor','boxShadow','backgroundImage'].filter(k=>isPurple(s[k])).map(k=>({class:e.className,property:k,value:s[k]}));
         });
       });
@@ -155,7 +156,7 @@ async function exercise(page, platform, resize) {
   await page.goto('http://127.0.0.1:5187/settings/appearance');
   await page.getByRole('button',{name:'深色',exact:true}).click();
   await expect(page.locator('html')).not.toHaveAttribute('data-light-appearance');
-  await page.getByRole('button',{name:'切换浅色并编辑',exact:true}).click();
+  await page.getByRole('button',{name:'浅色',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-light-appearance');
   await page.reload();await expect(page.locator('#appearance-palette [data-preset=blue]')).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);

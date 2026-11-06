@@ -76,7 +76,7 @@ async function verifyBackgroundAndSharedStyle(page, platform) {
   await expect(page.locator('.appearance-settings')).toBeVisible();
   await page.getByRole('button', { name: '深色', exact: true }).click();
   await expect(page.locator('html')).not.toHaveAttribute('data-light-appearance');
-  await page.getByRole('button', { name: '切换浅色并编辑', exact: true }).click();
+  await page.getByRole('button', { name: '浅色', exact: true }).click();
   await expect.poll(() => page.locator('.settings-sidebar').evaluate(e => getComputedStyle(e).backgroundColor)).toBe('rgb(193, 227, 212)');
   await page.reload();
   await expect(page.getByRole('button', { name: '侧栏底色', exact: true })).toContainText('#B9DFCE');
@@ -147,7 +147,7 @@ try {
   expect(await pane.evaluate(e => e.scrollTop)).toBe(0);
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1320, 900));
   await verifyBackgroundAndSharedStyle(page, 'desktop');
-  for (const [name, preset] of [['默认', 'default'], ['石墨灰', 'gray'], ['雾蓝', 'blue'], ['薄荷', 'mint'], ['暖杏', 'apricot'], ['淡紫', 'lavender'], ['玫瑰', 'rose'], ['自定义', 'custom']]) {
+  for (const [name, preset] of [['鸢尾紫', 'default'], ['石墨灰', 'gray'], ['雾霭蓝', 'blue'], ['薄荷绿', 'mint'], ['暖杏橙', 'apricot'], ['蔷薇粉', 'rose']]) {
     await page.locator('#appearance-palette').getByRole('button', { name: name, exact: true }).click();
     if (name === '自定义') await page.keyboard.press('Escape');
     await expect(page.locator(`#appearance-palette [data-preset="${preset}"]`)).toHaveAttribute('aria-pressed', 'true');
@@ -163,6 +163,30 @@ try {
     expect(await page.locator('.sidebar-brand').evaluate(e => getComputedStyle(e).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   }
   console.log('PASS: all light presets share native button and HTML caption colors');
+  await page.getByRole('button', { name: '深色', exact: true }).click();
+  const darkAccents = new Set();
+  await expect(page.locator('#appearance-palette button')).toHaveCount(6);
+  for (const preset of ['default', 'blue', 'mint', 'apricot', 'rose', 'gray']) {
+    const choice = page.locator('#appearance-palette [data-preset="' + preset + '"]');
+    await expect(choice).toBeEnabled(); await choice.click();
+    await expect(choice).toHaveAttribute('aria-pressed', 'true');
+    await verifyDesktopCaption(app, page);
+    const tokens = await page.evaluate(() => {
+      const css = getComputedStyle(document.documentElement);
+      return Object.fromEntries(['accent', 'surface', 'sidebar', 'accent-soft', 'accent-hover', 'accent-selected'].map(k => [k, css.getPropertyValue('--pd-' + k).trim()]));
+    });
+    darkAccents.add(tokens.accent);
+    expect(new Set([tokens['accent-soft'], tokens['accent-hover'], tokens['accent-selected']]).size).toBe(3);
+    await page.screenshot({ path: path.join(artifacts, 'desktop-dark-' + preset + '.png'), animations: 'disabled' });
+  }
+  expect(darkAccents.size).toBe(6);
+  await page.reload();
+  await expect(page.locator('#appearance-palette [data-preset=gray]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('html')).toHaveAttribute('data-appearance');
+  await page.getByRole('button', { name: '浅色', exact: true }).click();
+  await expect(page.locator('#appearance-palette [data-preset=gray]')).toHaveAttribute('aria-pressed', 'true');
+  console.log('PASS: six dark palettes, distinct interaction states, native captions and persisted mode/selection');
+
   await page.getByRole('button', { name: '本地图片', exact: true }).click();
   await chooseDesktopImage(app, page, []);
   await expect(page.locator('.appearance-image-upload img')).toHaveCount(0);
@@ -209,7 +233,7 @@ try {
   await expect(page.locator('html')).not.toHaveAttribute('data-light-appearance');
   await expect(page.locator('html')).toHaveAttribute('data-desktop-dark');
   await verifyDesktopCaption(app, page);
-  await page.getByRole('button', { name: '切换浅色并编辑', exact: true }).click();
+  await page.getByRole('button', { name: '浅色', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-light-appearance');
   await expect(page.locator('html')).not.toHaveAttribute('data-desktop-dark');
   await verifyDesktopCaption(app, page);
@@ -231,7 +255,7 @@ try {
   const memory = page.frameLocator('iframe[title="Memory 面板"]');
   await expect(memory.locator('#appScrim')).toBeAttached({ timeout: 30000 });
   await expect(memory.locator('#pilotdeck-memory-appearance')).toBeAttached();
-  expect(await memory.locator('html').evaluate(e => getComputedStyle(e).getPropertyValue('--accent').trim())).toBe('#397566');
+  expect(await memory.locator('html').evaluate(e => getComputedStyle(e).getPropertyValue('--accent').trim())).toBe('#3e796b');
   await expect.poll(() => memory.locator('html').evaluate(e => getComputedStyle(e).getPropertyValue('--status-project').trim()), { timeout: 15000 }).toBe('#2563eb');
   await page.screenshot({ path: path.join(artifacts, 'memory.png') });
   await page.goto('http://127.0.0.1:5187/settings/appearance');
@@ -294,7 +318,7 @@ try {
   await expect(page.locator('.appearance-settings')).toBeVisible({ timeout: 60000 });
   await verifyBackgroundAndSharedStyle(page, 'web');
   // Locale is selected by the application; set its supported persistence key.
-  const labels = [['默认', 'default'], ['石墨灰', 'gray'], ['雾蓝', 'blue'], ['薄荷', 'mint'], ['暖杏', 'apricot'], ['淡紫', 'lavender'], ['玫瑰', 'rose']];
+  const labels = [['鸢尾紫', 'default'], ['石墨灰', 'gray'], ['雾霭蓝', 'blue'], ['薄荷绿', 'mint'], ['暖杏橙', 'apricot'], ['蔷薇粉', 'rose']];
   for (const [name, preset] of labels) {
     await page.locator('#appearance-palette').getByRole('button', { name: name, exact: true }).click();
     if (name === '自定义') await page.keyboard.press('Escape');

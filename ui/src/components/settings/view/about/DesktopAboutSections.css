@@ -33,7 +33,7 @@
 .desktop-update-transfer-actions:empty { display: none; }
 .desktop-update-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 7px 13px; border-radius: 8px; border: 1px solid transparent; font-size: 13px; line-height: 1.4; font-weight: 500; transition: background .15s, border-color .15s; }
 .desktop-update-button.primary { color: white; background: var(--brand, #5b5ce2); }
-.desktop-update-button.primary:hover:not(:disabled) { background: var(--brand-strong, #4948cf); }
+.desktop-update-button.primary:hover:not(:disabled) { background: var(--pd-button-hover, var(--brand-strong, #4948cf)); }
 .desktop-update-button.secondary { color: var(--ink, hsl(var(--foreground))); background: var(--surface, hsl(var(--card))); border-color: var(--line, hsl(var(--border))); }
 .desktop-update-button.secondary:hover:not(:disabled) { color: var(--ink, hsl(var(--foreground))); border-color: var(--brand, #5b5ce2); }
 .desktop-update-button:focus-visible { outline: 2px solid var(--brand, #5b5ce2); outline-offset: 3px; }

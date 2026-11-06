@@ -9,7 +9,7 @@ it('migrates performance preferences without disabling acceleration by accident'
   expect(normalizeInterfacePreferences({ hardwareAcceleration: 'false', reducedMotion: 'bad' })).toEqual(normalizeInterfacePreferences());
   expect(normalizeInterfacePreferences({ hardwareAcceleration: false, reducedMotion: 'on' })).toEqual({ hardwareAcceleration: false, reducedMotion: 'on' });
 });
-it('maps only interface tokens in memory and removes light overrides in dark mode', () => {
+it('maps only interface tokens in memory and follows the selected palette in dark mode', () => {
   const doc = document.implementation.createHTMLDocument('Memory');
   const palette = normalizeLightAppearance({ preset: 'mint' });
   applyMemoryAppearance(doc, palette, false, true);
@@ -19,7 +19,8 @@ it('maps only interface tokens in memory and removes light overrides in dark mod
   expect(style.textContent).not.toContain('--danger');
   expect(style.textContent).toContain('animation-duration');
   applyMemoryAppearance(doc, palette, true, false);
-  expect(style.textContent).toBe('');
+  expect(style.textContent).toContain('--accent:');
+  expect(style.textContent).not.toContain('animation-duration');
   applyMemoryAppearance(doc, normalizeLightAppearance(), false, false);
   expect(style.textContent).toBe('');
 });

@@ -3,14 +3,16 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 export type LightPalette = { accent: string; background: string };
 export const LIGHT_PRESETS = {
   default: { accent: '#5b5ce2', background: '#eef0f8' },
-  gray: { accent: '#52565e', background: '#ebecee' },
-  blue: { accent: '#426787', background: '#eaf0f5' },
-  mint: { accent: '#397566', background: '#eaf1ed' },
-  apricot: { accent: '#936843', background: '#f4eee7' },
-  lavender: { accent: '#72618f', background: '#eeebf3' },
-  rose: { accent: '#9b5f72', background: '#f4ecef' },
+  blue: { accent: '#6286c4', background: '#f8f9fb' },
+  mint: { accent: '#4f9c89', background: '#f8faf9' },
+  apricot: { accent: '#c08a56', background: '#faf9f6' },
+  rose: { accent: '#bf7f98', background: '#fbf8f9' },
+  gray: { accent: '#7c8393', background: '#f8f9fa' },
 } satisfies Record<string, LightPalette>;
-export type LightPreset = keyof typeof LIGHT_PRESETS | 'custom';
+// Retain the retired preset as a saved custom choice without overwriting an
+// independently saved custom palette. Only the six current presets are listed.
+export const LEGACY_LIGHT_PRESETS = { lavender: { accent: '#72618f', background: '#eeebf3' } };
+export type LightPreset = keyof typeof LIGHT_PRESETS | 'lavender' | 'custom';
 export type LightAppearance = {
   version: 2;
   preset: LightPreset;
@@ -61,7 +63,7 @@ export function normalizeLightAppearance(value?: unknown): LightAppearance {
   const b = record(v.background);
   return {
     version: 2,
-    preset: v.preset === 'custom' || (typeof v.preset === 'string' && Object.prototype.hasOwnProperty.call(LIGHT_PRESETS, v.preset)) ? v.preset as LightPreset : 'default',
+    preset: v.preset === 'custom' || v.preset === 'lavender' || (typeof v.preset === 'string' && Object.prototype.hasOwnProperty.call(LIGHT_PRESETS, v.preset)) ? v.preset as LightPreset : 'default',
     custom: { accent: hex(c.accent, LIGHT_PRESETS.default.accent), background: hex(c.background, LIGHT_PRESETS.default.background) },
     background: {
       // The former gradient option is folded into solid: its start color is the
@@ -82,7 +84,7 @@ export function panelOpacities(value: LightAppearance) {
   return { sidebar, content: Math.min(MAX_CONTENT_OPACITY, sidebar + CONTENT_OPACITY_OFFSET) };
 }
 export function selectedPalette(value: LightAppearance): LightPalette {
-  return value.preset === 'custom' ? value.custom : LIGHT_PRESETS[value.preset];
+  return value.preset === 'custom' ? value.custom : value.preset === 'lavender' ? LEGACY_LIGHT_PRESETS.lavender : LIGHT_PRESETS[value.preset];
 }
 /** The image background only takes effect once an image exists. Until then
  * (or when the saved file is gone) the interface renders the solid background. */

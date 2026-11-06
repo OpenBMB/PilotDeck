@@ -98,7 +98,7 @@ it.each(['dark', 'system'] as const)('keeps dark startup colors with a custom li
   shell.innerHTML = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)![1]; document.body.append(shell);
   try {
     for (const script of shell.querySelectorAll('script')) new Function('window', 'document', 'navigator', 'localStorage', script.textContent!)(window, document, navigator, localStorage);
-    expect(document.documentElement.style.getPropertyValue('--startup-bg')).toBe('#0a0a0a');
+    expect(document.documentElement.style.getPropertyValue('--startup-bg')).toBe('#23252b');
   } finally { vi.unstubAllGlobals(); document.documentElement.removeAttribute('style'); }
 });
 

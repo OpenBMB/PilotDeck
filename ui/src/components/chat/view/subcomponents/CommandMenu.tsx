@@ -112,7 +112,7 @@ export default function CommandMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="flex flex-col overflow-hidden rounded-[14px] border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left font-sans tracking-normal shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 [font-synthesis:none] dark:border-violet-900/70 dark:bg-neutral-900"
+      className="flex flex-col overflow-hidden rounded-[14px] border border-[var(--pd-accent-border,#ddd6fe)] bg-white p-2 text-left font-sans tracking-normal shadow-xl shadow-[var(--pd-accent,#2e1065)]/10 [font-synthesis:none] dark:border-[var(--pd-accent-border,#4c1d95)] dark:bg-neutral-900"
       style={{ ...menuPosition, zIndex: 1000 }}
     >
       <div className="flex shrink-0 items-center justify-between gap-3 px-2 pb-2 pt-1">
@@ -146,9 +146,9 @@ export default function CommandMenu({
               role="option"
               aria-selected={isActive}
               className={cn(
-                'group relative grid min-h-[58px] cursor-pointer grid-cols-[minmax(0,1fr)_14px] items-center gap-2 rounded-[10px] px-3 py-2 text-[#343640] transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#373390)] dark:text-neutral-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200',
+                'group relative grid min-h-[58px] cursor-pointer grid-cols-[minmax(0,1fr)_14px] items-center gap-2 rounded-[10px] px-3 py-2 text-[#343640] transition-colors hover:bg-[var(--pd-accent-soft,#f7f6ff)] hover:text-[var(--pd-accent-strong,#373390)] dark:text-neutral-200 dark:hover:bg-[var(--pd-accent-hover,#2e1065)] dark:hover:text-[var(--pd-accent-strong,#ddd6fe)]',
                 isSelected || isActive
-                  ? 'bg-[var(--pd-accent-soft,#eeecff)] font-[650] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-violet-950/70 dark:text-violet-200 dark:hover:bg-violet-950/70'
+                  ? 'bg-[var(--pd-accent-soft,#eeecff)] font-[650] text-[var(--pd-accent-strong,#393393)] hover:bg-[var(--pd-accent-soft,#eeecff)] dark:bg-[var(--pd-accent-selected,#2e1065)] dark:text-[var(--pd-accent-strong,#ddd6fe)] dark:hover:bg-[var(--pd-accent-selected,#2e1065)]'
                   : '',
               )}
               onMouseEnter={() => onSelect?.(command, commandIndex, true)}

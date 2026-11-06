@@ -157,7 +157,6 @@
       "agentResident": "常驻",
       "multimodalGeneration": "多模态",
       "imageGeneration": "图像生成",
-
       "videoGeneration": "视频生成",
       "agentSearch": "搜索",
       "agentSchedule": "定时任务",
@@ -181,7 +180,6 @@
       "agentMemory": "持续整理并记住项目重要信息，在后续任务中自动使用。",
       "agentResident": "在用户离开后持续关注工作区变化，并在合适时机主动推进任务与同步进展。",
       "imageGeneration": "让智能体在对话和项目工作中生成、编辑图片。",
-
       "videoGeneration": "让智能体在对话和项目工作中生成视频。",
       "agentSearch": "让智能体能够检索实时网页信息，为回答补充最新内容与外部事实。",
       "agentSchedule": "按设定的时间自动唤起智能体执行任务，无需你持续在线。",
@@ -204,7 +202,6 @@
       "agentResident": "智能体 / 常驻",
       "multimodalGeneration": "多模态",
       "imageGeneration": "图像生成",
-
       "videoGeneration": "视频生成",
       "agentSearch": "智能体 / 搜索",
       "agentSchedule": "智能体 / 定时任务",
@@ -1973,16 +1970,16 @@
     "description": "调整显示模式、配色与背景。更改即时生效并自动保存。",
     "mode": "外观模式",
     "presets": "配色方案",
-    "presetHint": "强调色用于按钮与选中状态。",
+    "presetHint": "一种主题色，搭配有层次的背景与交互状态。每种配色均支持浅色、深色和跟随系统。",
     "autoSave": "更改自动保存",
     "preset": {
       "gray": "石墨灰",
-      "default": "默认",
-      "blue": "雾蓝",
-      "mint": "薄荷",
-      "apricot": "暖杏",
+      "default": "鸢尾紫",
+      "blue": "雾霭蓝",
+      "mint": "薄荷绿",
+      "apricot": "暖杏橙",
       "lavender": "淡紫",
-      "rose": "玫瑰",
+      "rose": "蔷薇粉",
       "custom": "自定义"
     },
     "accent": "强调色",
@@ -2017,8 +2014,6 @@
     "previewText": "你选择的色彩，会陪伴每一次思考。",
     "deviceOnly": "外观偏好仅保存在此设备",
     "reset": "恢复默认",
-    "lightOnly": "这些配色和背景仅在浅色模式生效。深色外观保持不变。",
-    "editLight": "切换浅色并编辑",
     "saveFailed": "外观保存失败，已恢复上次保存的设置。请检查设备存储后重试。",
     "invalidImage": "请选择不超过 10 MB 的有效 PNG、JPEG 或 WebP 图片。",
     "imageSaveFailed": "图片无法读取或保存，请换一张图片或检查设备存储。",
@@ -2039,7 +2034,10 @@
     "hardwareAcceleration": "使用硬件（3D）加速",
     "hardwareHint": "使用 GPU 渲染界面。遇到显示异常时可关闭，修改后需完全退出并重新打开客户端。",
     "browserHardwareHint": "网页端的硬件加速由浏览器管理，请在浏览器设置中调整。",
-    "restartRequired": "设置已保存。完全退出并重新打开客户端后生效。"
+    "restartRequired": "设置已保存。完全退出并重新打开客户端后生效。",
+    "customHint": "自定义主题色，同时适配明暗外观。",
+    "lightBackgroundHint": "侧栏底色可在浅色模式下调整。",
+    "wallpaperLightOnly": "图片背景在浅色模式下显示。切换深色时，图片和调整参数仍会保留。"
   },
   "computerUse": {
     "controlTitle": "操作控制",

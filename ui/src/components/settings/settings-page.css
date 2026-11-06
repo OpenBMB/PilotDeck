@@ -3,7 +3,8 @@
 
 .pilotdeck-settings-app {
   --ink: var(--pd-ink, #252737);
-  --muted: var(--pd-muted, #858998);
+  --muted: var(--pd-muted, #687080);
+  --settings-panel-muted: var(--pd-muted, #687080);
   --soft: #a0a4b2;
   --line: var(--pd-border, #e4e5ee);
   --line-strong: var(--pd-border, #d8d9e6);
@@ -687,7 +688,7 @@
 }
 
 :where(.pilotdeck-settings-app) .add-provider-rail-button:hover {
-  background: var(--brand-strong);
+  background: var(--pd-button-hover, var(--brand-strong));
 }
 
 :where(.pilotdeck-settings-app) .provider-search {
@@ -7022,7 +7023,7 @@
 
 :where(.pilotdeck-settings-app) .office-path-actions .button.primary:hover:not(:disabled) {
   border-color: var(--brand-strong);
-  background: var(--brand-strong);
+  background: var(--pd-button-hover, var(--brand-strong));
   color: rgb(255, 255, 255);
 }
 
