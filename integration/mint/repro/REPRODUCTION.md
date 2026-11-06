@@ -39,3 +39,7 @@ scenarios.mjs 提供 Instructions、Prompt、Time、Attachments、FS read/write�
 优先由上述包提供符合 Host 激活契约、构建依赖闭合的新版制品，Provider 的权限问题需联合核对激活时能力和显式 grants。发布修复版后更新精确清单和 lock，在另一空目录重跑。仅确需时改 Mint，不修改公共 iFace。
 
 逐项重跑结果：12 个可执行场景全部在同一必需插件装配失败处报告 failed（FS 场景同时代表 state-types 的运行消费验证未进入）。见 [scenarios.jsonl](evidence/scenarios.jsonl)。
+
+## Git 交付与前端启动
+
+代码锚点提交：`ea57f5fff7b3e1144f358631e335221f2596b0d0`（初始快照）；后续启动修正以 `codex/pilotdeck-mint-reproducible-deploy` 的最终固定提交为准。已从 GitHub 新克隆确认可获取。pnpm 10.32.1 frozen-lockfile 安装成功。Vite 必须从 ui 工作目录启动（配置按 cwd 解析 React），已修正实例启动器；独立端口 server 3187、web 5387 启动，前端 HTTP 200。浏览器聊天验收仍因 ACP 必需插件失败未通过。

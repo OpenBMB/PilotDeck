@@ -15,7 +15,7 @@ git clone --branch codex/pilotdeck-mint-reproducible-deploy \
   https://github.com/openbmb/pilotdeck.git pilotdeck
 cd pilotdeck
 # 固定为本次交付的代码锚点（部署报告记录完整提交）：
-git checkout codex/pilotdeck-mint-repro-code-20261106
+git checkout codex/pilotdeck-mint-repro-release-20261106
 pnpm install --frozen-lockfile
 ```
 

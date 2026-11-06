@@ -18,9 +18,9 @@ if a.action=='stop':
 if pids.exists():raise SystemExit('Instance has processes.json; stop it before restarting')
 logs=root/'logs';logs.mkdir(exist_ok=True);processes={}
 try:
- for name,cmd in [('server',['node','--import','tsx','ui/server/index.js']),('web',['node','ui/node_modules/vite/bin/vite.js','ui','--config','ui/vite.config.js','--host','127.0.0.1','--port',env['WEB_PORT'],'--strictPort'])]:
+ for name,cmd in [('server',['node','--import','tsx','ui/server/index.js']),('web',['node',str(repo/'ui/node_modules/vite/bin/vite.js'),'--config',str(repo/'ui/vite.config.js'),'--host','127.0.0.1','--port',env['WEB_PORT'],'--strictPort'])]:
   with (logs/(name+'.log')).open('ab') as f:
-   child=subprocess.Popen(cmd,cwd=repo,env=env,stdout=f,stderr=f,start_new_session=True)
+   child=subprocess.Popen(cmd,cwd=repo/'ui' if name=='web' else repo,env=env,stdout=f,stderr=f,start_new_session=True)
   processes[name]=child.pid;time.sleep(2)
   if child.poll() is not None:raise RuntimeError(f'{name} exited; inspect {logs/name}.log')
 finally:pids.write_text(json.dumps(processes))
