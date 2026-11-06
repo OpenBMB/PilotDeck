@@ -53,6 +53,29 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it('reacquires a visible anchor when a large wheel outruns the virtual window', () => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 750 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    fireEvent.wheel(node, { deltaY: -600 });
+    node.scrollTop = 200; fireEvent.scroll(node);
+    fireEvent(node, new Event('scrollend'));
+    // The old window is entirely below the viewport until React mounts it.
+    expect(api.getReadingAnchor()).toBeNull();
+    const replacement = document.createElement('div');
+    replacement.dataset.messageKey = 'new-window';
+    let inserted = 0;
+    replacement.getBoundingClientRect = () => ({ top: 190 + inserted - metrics.top, bottom: 400 + inserted - metrics.top }) as DOMRect;
+    row.replaceWith(replacement);
+    act(() => notifyScrollLayout(node));
+    expect(api.getReadingAnchor()).toEqual({ key: 'new-window', offset: -10 });
+    expect(node.scrollTop).toBe(200);
+    inserted = 80; metrics.height += 80;
+    resize(); flush();
+    expect(node.scrollTop).toBe(280);
+    expect(replacement.getBoundingClientRect().top).toBe(-10);
+  });
+
   it.each([-1, 1])('ignores a stale scrollend before the next gesture moves (%s)', direction => {
     const { node, metrics } = setup();
     const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;

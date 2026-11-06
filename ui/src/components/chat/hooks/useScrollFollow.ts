@@ -41,6 +41,7 @@ export function useScrollFollow({
   const initialFrameRef = useRef(false);
   const anchorRef = useRef<ReadingAnchor | null>(null);
   const anchorElementRef = useRef<HTMLElement | null>(null);
+  const anchorAwaitingRowsRef = useRef(false);
   const metricsRef = useRef({ top: 0, height: 0, viewport: 0 });
   const programmaticTopRef = useRef<number | null>(null);
   const userScrollRef = useRef<UserScroll | null>(null);
@@ -98,12 +99,22 @@ export function useScrollFollow({
     }
     anchorElementRef.current = row ?? null;
     anchorRef.current = row && rect ? { key: row.dataset.messageKey!, offset: rect.top - top } : null;
+    // A large native scroll can outrun the virtual window for one frame.
+    // Its first mounted row may now be entirely below the viewport. Keeping
+    // that offscreen row as the reading anchor would steer later measurements
+    // toward a row the reader has already left.
+    anchorAwaitingRowsRef.current = !messageKey && (!rect || rect.top >= top + node.clientHeight);
     if (row) node.dataset.readingAnchorKey = row.dataset.messageKey;
     else delete node.dataset.readingAnchorKey;
   }, [containerRef, contentSelector]);
 
   const restoreAnchor = useCallback(() => {
     const node = containerRef.current;
+    if (node && anchorAwaitingRowsRef.current) {
+      captureAnchor();
+      rememberMetrics();
+      return;
+    }
     const anchor = anchorRef.current;
     if (!node || !anchor) return;
     let row = anchorElementRef.current;
@@ -124,8 +135,9 @@ export function useScrollFollow({
     rememberMetrics();
   }, [containerRef, rememberMetrics, captureAnchor, writePosition]);
 
-  const getReadingAnchor = useCallback(() => anchorRef.current ? { ...anchorRef.current } : null, []);
+  const getReadingAnchor = useCallback(() => !anchorAwaitingRowsRef.current && anchorRef.current ? { ...anchorRef.current } : null, []);
   const restoreReadingAnchor = useCallback((anchor: ReadingAnchor) => {
+    anchorAwaitingRowsRef.current = false;
     anchorRef.current = { ...anchor };
     if (containerRef.current) containerRef.current.dataset.readingAnchorKey = anchor.key;
     restoreAnchor();
@@ -141,6 +153,7 @@ export function useScrollFollow({
     } else {
       anchorRef.current = null;
       anchorElementRef.current = null;
+      anchorAwaitingRowsRef.current = false;
       if (containerRef.current) delete containerRef.current.dataset.readingAnchorKey;
     }
     publish();
