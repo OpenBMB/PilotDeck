@@ -709,9 +709,9 @@ for (const removedPrefix of PROVIDER_REMOVED_PATHS) {
 // frontend back-compat (Dashboard tab + useRouterSettings) but the data
 // now comes from `src/router/stats/TokenStatsCollector` via the
 
-app.get('/api/ccr/dashboard', authenticateToken, (_req, res) => {
+app.get('/api/ccr/dashboard', authenticateToken, async (_req, res) => {
     try {
-        res.json(getRouterDashboardData());
+        res.json(await getRouterDashboardData());
     } catch (error) {
         console.error('[router-dashboard] failed:', error);
         res.status(500).json({ error: error?.message || 'router-dashboard failed' });
@@ -843,17 +843,17 @@ app.get('/api/ccr/config', authenticateToken, (_req, res) => {
     res.json(null);
 });
 
-app.get('/api/ccr/stats/summary', authenticateToken, (_req, res) => {
+app.get('/api/ccr/stats/summary', authenticateToken, async (_req, res) => {
     try {
-        res.json(getRouterStatsSummary());
+        res.json(await getRouterStatsSummary());
     } catch (error) {
         res.status(500).json({ error: error?.message || 'router-stats-summary failed' });
     }
 });
 
-app.get('/api/ccr/stats/sessions/:sessionId', authenticateToken, (req, res) => {
+app.get('/api/ccr/stats/sessions/:sessionId', authenticateToken, async (req, res) => {
     try {
-        const stats = getRouterSessionStats(req.params.sessionId);
+        const stats = await getRouterSessionStats(req.params.sessionId);
         if (!stats) {
             return res.status(404).json({ error: 'session_not_found' });
         }
