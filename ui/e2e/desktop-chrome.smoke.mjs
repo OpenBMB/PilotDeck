@@ -333,7 +333,7 @@ try {
       const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
     });
     const settingsLogo = await logoGeometry('.sidebar-brand .brand-wordmark');
-    expect(settingsLogo).toMatchObject({ x: 12, y: 66.5, height: 24 });
+    expect(settingsLogo).toMatchObject({ x: 24, y: 66.5, height: 24 });
     expect(settingsLogo.width).toBeLessThan(165);
     await expect(page.locator('.sidebar-brand .brand-wordmark-image:visible')).toHaveCSS('width', '152px');
     await page.goto('http://127.0.0.1:5187/p/demo');

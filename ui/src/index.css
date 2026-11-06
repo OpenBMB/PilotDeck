@@ -1242,6 +1242,7 @@
     position: relative;
     display: block;
     width: calc(var(--wordmark-image-width) * 4330 / 5810);
+    margin-inline-start: 12px;
     height: 24px;
     max-width: 100%;
     overflow: hidden;
