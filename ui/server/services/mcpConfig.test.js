@@ -47,6 +47,17 @@ describe('MCP config writable paths', () => {
     ).rejects.toThrow(/real project/i);
   });
 
+  it('does not leak mutations from a missing global config into project or later reads', async () => {
+    const global = await readMcpConfigFile('global');
+    global.config.mcpServers.qcc = { url: 'https://example.test/mcp' };
+    await writeMcpConfigFile('global', JSON.stringify(global.config));
+    const project = await readMcpConfigFile('project');
+    expect(project.config.mcpServers).toEqual({});
+    expect(JSON.parse(project.raw).mcpServers).toEqual({});
+    const otherProject = await readMcpConfigFile('project', join(root, 'other'));
+    expect(otherProject.config.mcpServers).toEqual({});
+  });
+
   it('writes global MCP config under pilotHome', async () => {
     const raw = JSON.stringify({
       mcpServers: {
