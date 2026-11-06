@@ -324,6 +324,9 @@ importers:
       lucide-react:
         specifier: ^0.515.0
         version: 0.515.0(react@18.3.1)
+      mermaid:
+        specifier: 11.15.0
+        version: 11.15.0
       mime-types:
         specifier: ^3.0.1
         version: 3.0.2

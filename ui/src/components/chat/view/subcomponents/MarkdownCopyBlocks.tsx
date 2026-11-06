@@ -1,11 +1,11 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import type { ExtraProps } from 'react-markdown';
 import { Check, Copy, AlertCircle, FileCode2, Code2, WrapText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { copyHtmlToClipboard, copyTextToClipboard } from '../../../../utils/clipboard';
-
-export const MarkdownSourceContext = createContext('');
+import { MarkdownSourceContext } from './MarkdownContext';
+import { MermaidDiagram } from './MermaidDiagram';
 
 function CopyButton({ label, onCopy, markdown = false }: {
   label: string;
@@ -55,6 +55,8 @@ function CopyButton({ label, onCopy, markdown = false }: {
 export function MarkdownCodeBlock({ node, children, ...props }: ComponentProps<'pre'> & ExtraProps) {
   const { t } = useTranslation('chat');
   const [wrap, setWrap] = useState(true);
+  const [showSource, setShowSource] = useState(false);
+  const { isStreaming } = useContext(MarkdownSourceContext);
   const code = node?.children.find((child) => child.type === 'element' && child.tagName === 'code');
   // remark adds one display newline to code.value. Remove only that newline,
   // never trim user indentation, blank lines, or literal backslash sequences.
@@ -66,6 +68,8 @@ export function MarkdownCodeBlock({ node, children, ...props }: ComponentProps<'
     .map(String).find(value => value.startsWith('language-'))?.slice('language-'.length);
   const languageLabel = language || t('copyBlock.plainText', { defaultValue: 'Plain text' });
   const wrapLabel = t('copyBlock.wrap', { defaultValue: 'Wrap code' });
+  const isDiagram = language?.toLowerCase() === 'mermaid' && !isStreaming;
+  const sourceBlock = <pre {...props} className={`${props.className || ''} !m-0 overflow-x-auto`}>{children}</pre>;
   return (
     <div className="markdown-code-block not-prose my-4 min-w-0 overflow-hidden rounded-xl border" data-wrap={wrap}>
       <div className="markdown-code-header flex min-w-0 items-center justify-between gap-3 px-4 py-2.5 text-xs">
@@ -74,6 +78,11 @@ export function MarkdownCodeBlock({ node, children, ...props }: ComponentProps<'
           <span className="truncate" title={languageLabel}>{languageLabel}</span>
         </span>
         <div className="flex shrink-0 items-center gap-1">
+          {isDiagram && <button type="button" aria-pressed={showSource} data-chat-search-text=""
+            onClick={() => setShowSource(value => !value)}
+            className="rounded px-2 py-1 hover:bg-black/10 focus-visible:outline focus-visible:outline-2 dark:hover:bg-white/10">
+            {showSource ? t('mermaid.showDiagram', { defaultValue: 'Show diagram' }) : t('mermaid.showSource', { defaultValue: 'Show source' })}
+          </button>}
           <button type="button" title={wrapLabel} aria-label={wrapLabel} aria-pressed={wrap}
             onClick={() => setWrap(value => !value)}
             className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-black/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 dark:hover:bg-white/10">
@@ -82,9 +91,10 @@ export function MarkdownCodeBlock({ node, children, ...props }: ComponentProps<'
           <CopyButton label={t('copyBlock.code', { defaultValue: 'Copy code' })} onCopy={() => copyTextToClipboard(text)} />
         </div>
       </div>
-      <pre {...props} className={`${props.className || ''} !m-0 overflow-x-auto`}>
-        {children}
-      </pre>
+      {isDiagram ? <>
+        <MermaidDiagram source={text} hidden={showSource} fallback={sourceBlock} />
+        {showSource && sourceBlock}
+      </> : sourceBlock}
     </div>
   );
 }
@@ -103,7 +113,7 @@ function tableClipboardContent(table: HTMLTableElement) {
 
 export function MarkdownTable({ node, children, ...props }: ComponentProps<'table'> & ExtraProps) {
   const { t } = useTranslation('chat');
-  const source = useContext(MarkdownSourceContext);
+  const { source } = useContext(MarkdownSourceContext);
   const ref = useRef<HTMLTableElement>(null);
   const start = node?.position?.start.offset;
   const end = node?.position?.end.offset;
