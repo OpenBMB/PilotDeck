@@ -153,7 +153,61 @@ The release download table and OBS website pointer list DMGs for Mac users.
 ZIPs remain in the full release assets for native automatic updates, including
 old clients; GitHub's raw Assets list still exposes them. CI verifies all ten
 payloads and eight generated feeds before publication and again before OBS sync.
-Full downloads are used; blockmaps and differential updates are not required.
+New releases also publish the four external `.exe.blockmap` and `.zip.blockmap`
+files. They are checksummed compatibility assets, not installer choices; the
+eight legacy YML feeds retain their existing shape. Release verification requires
+nonempty gzip v2 maps with valid block sizes covering the corresponding payload.
+GitHub publication and OBS synchronization include these files before promoting
+the release pointer. Older manifests without differential metadata remain valid
+for repair and installed-client compatibility.
+
+### Differential downloads and recovery
+
+The additive `release.json` boolean `differentialUpdates: true` enables best-effort
+block reuse on Windows NSIS and macOS ZIP updates when the selected architecture
+has a checksummed blockmap. Missing/false/unknown capability values, incompatible
+maps and Linux DEB/RPM targets retain full downloads. The client still reconstructs
+one complete package, verifies SHA-512 and SHA-256, and uses the same native
+installer and signature policy. This reduces network transfer, not the staging
+space or necessarily the extraction/install time. Shell and runtime versions
+remain one release; running files are never patched in place by the downloader.
+
+The pinned electron-updater uses a cached installer (`installer.exe` on Windows,
+`update.zip` on macOS) and an old blockmap. Historical map addresses use the same
+route's old release tag, including same-day revisions; no remote-supplied host is
+accepted. Single Range requests avoid reliance on multipart proxy/CDN support.
+Responses must honor the exact range and length. Unsupported Range, unavailable
+or malformed maps, missing/corrupt caches, reconstruction checksum failures and
+connection deadlines fall back to the full package. An unsuccessful attempt
+forces subsequent routes/retries to full download, with version and hashes still
+pinned. Cancellation aborts the operation instead of starting fallback downloads.
+Download failures do not stop services or install partial packages.
+
+Pause and cancellation cover blockmaps, full transfers and Range requests.
+Blockmaps have an 8 MiB compressed/32 MiB expanded limit and a 15-second request
+budget; active download connections have a 15-second inactivity deadline.
+Pausing suspends those download deadlines. Local block copying is excluded from
+the network stall watchdog; verification/installation still waits for Resume.
+Local copying may continue while network consumption is paused. Differential
+progress reports downloaded bytes, not bytes reused from disk.
+
+The existing OBS retention policy remains unchanged. If a historical map has
+expired and is absent from the local cache, full download remains supported.
+First updates after enabling this feature may be full, especially on macOS,
+where clients that disabled differential downloads did not retain `update.zip`.
+Real transfer savings depend on the changed artifacts and must be measured.
+
+To disable differential use for a release, set the repository Actions variable
+`PILOTDECK_DIFFERENTIAL_UPDATES=0` before publication (the same environment variable
+works for local manifest generation). Maps remain required so disabling the
+optimization cannot hide an incomplete build. Publish a new revision to change
+this policy; never mutate an immutable release or its checksums. An installed
+client can immediately use the full path with
+`PILOTDECK_DISABLE_DIFFERENTIAL_UPDATES=1` in its launch environment. These controls
+do not downgrade installed applications or roll back user data. Native installer
+file rollback and runtime recovery retain their existing platform-specific limits.
+
+### Download and installation lifecycle
 
 **Update and restart** is one explicit user action. The Electron main process
 uses the shared release discovery module, then gives electron-updater a custom
@@ -343,12 +397,23 @@ check with the installed development Electron binary:
 pnpm --filter pilotdeck-desktop compile
 pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-network.cjs
 pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-download.cjs
+pnpm --filter pilotdeck-desktop exec electron scripts/verify-differential-update.cjs
 node apps/desktop/scripts/verify-installer.cjs
 ```
 
 The download check also runs in Windows CI. It uses local HTTP fixtures to test
 pause/resume, cancellation, retry and a chunked transfer lasting more than 30 seconds
 without Content-Length or upstream progress events; installation is stubbed.
+
+The differential check runs in Windows and macOS CI. It generates blockmaps with
+the installed builder and uses real Electron requests and NSIS/Mac updater download
+paths against an isolated loopback origin. It requires actual reduced transfer,
+byte-identical reconstruction, full fallback for cache/map/Range failures, bounded
+stalls and trickling maps, pause/resume, cancellation without installation or
+fallback, route switching, kill switches, SHA rejection, injected publisher
+rejection and injected `ENOSPC`. The Mac native handoff and installer execution
+are intercepted; these tests do not certify Authenticode, macOS signatures,
+production CDN/proxies, actual volume exhaustion, or signed installed upgrades.
 
 The network check requires OpenSSL and uses a temporary local HTTPS origin and
 proxy, without contacting GitHub or installing anything. It covers both config
