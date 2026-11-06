@@ -319,8 +319,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     }
     // eslint-disable-next-line no-console
     console.log("[pilotdeck] Config reloaded, invalidating runtimes:", changedPaths.join(", "));
-    if (changedPaths.some(path => path === 'runtime' || path.startsWith('runtime.python'))) registry.retire();
-    else registry.invalidate();
+    registry.invalidate();
     if (memoryDiagnosticsEnabled) {
       logGatewayMemoryDiagnostic({
         event: "runtime_invalidated",
@@ -705,7 +704,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     configStore,
     registry,
     dispose: () => {
-      registry.invalidate();
+      registry.shutdown();
       router?.shutdown();
       stopConfigWatching();
       stopExtensionWatching();
@@ -880,10 +879,14 @@ class ProjectRuntimeRegistry {
     return count;
   }
 
-  /** Keep existing sessions, MCP and background tasks alive across a Python preference change. */
-  retire(): void {
-    for (const runtime of this.runtimes.values()) this.retired.add(runtime);
-    this.runtimes.clear();
+  /** Retire cached runtimes while their sessions, turns and tasks retain ownership. */
+  private retire(projectRoot?: string): void {
+    const selected = projectRoot === undefined ? undefined : resolve(projectRoot);
+    for (const [root, runtime] of this.runtimes) {
+      if (selected !== undefined && root !== selected) continue;
+      this.retired.add(runtime);
+      this.runtimes.delete(root);
+    }
     this.collectRetired();
   }
 
@@ -980,43 +983,33 @@ class ProjectRuntimeRegistry {
     return auto;
   }
 
-  /**
-   * Drop cached runtimes so the next `resolve()` call rebuilds from
-   * a fresh `loadPilotConfig()` snapshot. Gracefully shuts down any
-   * active MCP connections (both shared and per-session) before
-   * discarding the entry.
-   */
+  /** Rebuild on the next session without disconnecting an existing owner. */
   invalidate(projectRoot?: string): void {
+    this.retire(projectRoot);
+    // Per-session MCP connections belong to the session eviction callback.
+    // A project reload must neither stop another project's browser nor sever
+    // a connection that an in-flight turn is still using.
+    this.activeBackgroundTaskCount();
+  }
+
+  /** Force resource cleanup only when the owning Gateway is shutting down. */
+  shutdown(): void {
     for (const runtime of this.retired) {
-      if (projectRoot && runtime.projectRoot !== projectRoot) continue;
       runtime.mcpRuntime?.stop().catch(() => {});
       runtime.memoryService?.close();
       runtime.router.shutdown().catch(() => {});
-      this.retired.delete(runtime);
     }
+    this.retired.clear();
     for (const [, mcp] of this.sessionMcpRuntimes) {
       mcp.stop().catch(() => {});
     }
     this.sessionMcpRuntimes.clear();
-
-    if (projectRoot) {
-      const runtime = this.runtimes.get(projectRoot);
-      if (runtime?.mcpRuntime) {
-        runtime.mcpRuntime.stop().catch(() => {});
-      }
-      runtime?.memoryService?.close();
-      runtime?.router?.shutdown().catch(() => {});
-      this.runtimes.delete(projectRoot);
-    } else {
-      for (const [, runtime] of this.runtimes) {
-        if (runtime.mcpRuntime) {
-          runtime.mcpRuntime.stop().catch(() => {});
-        }
-        runtime.memoryService?.close();
-        runtime.router?.shutdown().catch(() => {});
-      }
-      this.runtimes.clear();
+    for (const runtime of this.runtimes.values()) {
+      runtime.mcpRuntime?.stop().catch(() => {});
+      runtime.memoryService?.close();
+      runtime.router.shutdown().catch(() => {});
     }
+    this.runtimes.clear();
     this.activeBackgroundTaskCount();
   }
 
