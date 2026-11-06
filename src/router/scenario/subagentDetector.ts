@@ -1,4 +1,5 @@
 import type { CanonicalMessage, CanonicalToolSchema } from "../../model/index.js";
+import { isRealUserRequestMessage } from "../../model/protocol/userRequest.js";
 
 const SUBAGENT_TAG_PATTERN =
   /<(?:pilotdeck|ccr)-subagent-model>([\s\S]+?)<\/(?:pilotdeck|ccr)-subagent-model>/i;
@@ -23,7 +24,7 @@ export function detectSubagent(
   let taggedInUserMessage = false;
 
   for (const message of messages) {
-    if (message.role !== "user") {
+    if (!isRealUserRequestMessage(message)) {
       continue;
     }
     for (const block of message.content) {
@@ -60,7 +61,7 @@ export function stripSubagentTagFromMessages(
   messages: CanonicalMessage[],
 ): CanonicalMessage[] {
   return messages.map((message) => {
-    if (message.role !== "user") {
+    if (!isRealUserRequestMessage(message)) {
       return message;
     }
     let mutated = false;

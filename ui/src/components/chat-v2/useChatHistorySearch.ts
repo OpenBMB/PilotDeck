@@ -10,8 +10,11 @@ import {
   scrollSearchTargetIntoView,
   scrollToMessageIndex,
   type ChatHistorySearchMatch,
+  type SearchableChatMessage,
   type SearchableChatMessageInput,
 } from './chatHistorySearchUtils';
+
+const EMPTY_SEARCHABLE_MESSAGES: SearchableChatMessage[] = [];
 
 type UseChatHistorySearchOptions = {
   scrollContainerRef: RefObject<HTMLElement | null>;
@@ -52,9 +55,16 @@ export function useChatHistorySearch({
   const pendingRevealRef = useRef<{ match: ChatHistorySearchMatch; navigation: number; ready: boolean; coarseJumped: boolean } | null>(null);
   const refreshHighlightsRef = useRef<() => void>(() => {});
 
+  // Streaming can update this list every frame. Do not parse tool payloads or
+  // scan message bodies until search needs them. A pending global result must
+  // still be indexed before it opens the local search UI.
+  const shouldIndex = isOpen || Boolean(historyReady && allMessagesLoaded
+    && globalTarget?.kind === 'chats' && globalTarget.matchType === 'content'
+    && globalTarget.sessionId === sessionId
+    && consumedGlobalTarget.current !== globalTarget.requestId);
   const searchableMessages = useMemo(
-    () => buildSearchableMessages(keyedMessages),
-    [keyedMessages],
+    () => shouldIndex ? buildSearchableMessages(keyedMessages) : EMPTY_SEARCHABLE_MESSAGES,
+    [keyedMessages, shouldIndex],
   );
 
   const matches = useMemo(

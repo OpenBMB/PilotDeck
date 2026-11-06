@@ -10,6 +10,7 @@ import {
   truncateHeadPreservingCheckpoint,
 } from "./compaction/CompactionEngine.js";
 import { buildCachePlan, stableSerialize } from "./cache/CachePlan.js";
+import { isRealUserRequestMessage } from "./compaction/toolPairIntegrity.js";
 import type { MicroCompactionEngine } from "./compaction/MicroCompactionEngine.js";
 import type { SnipEngine } from "./compaction/SnipEngine.js";
 import { ensureTrailingUserMessage } from "./compaction/toolPairIntegrity.js";
@@ -254,13 +255,9 @@ export class DefaultContextRuntime implements ContextRuntime {
         signal: input.abortSignal,
         timeoutMs: this.memoryRetrievalTimeoutMs,
       });
-      for (const block of memory.attachments) {
-        for (const content of block.content) {
-          if (content.type === "text" && content.text.trim().length > 0) {
-            parts.push(content.text);
-          }
-        }
-      }
+      // Retrieval varies with the live task. Keep it after history so stable
+      // instructions and prior messages remain eligible for prefix reuse.
+      requestMessages.push(...memory.attachments);
       for (const diagnostic of memory.diagnostics) {
         diagnostics.push({
           code: diagnostic.code,
@@ -317,15 +314,15 @@ export class DefaultContextRuntime implements ContextRuntime {
       messages: requestMessages,
       enabled: input.protocol === "anthropic" && input.supportsPromptCache === true,
     };
-    const cachePlanFingerprint = buildCachePlan(cachePlanInput, 0)?.fingerprint;
-    const cachePlan = buildCachePlan(
-      cachePlanInput,
-      input.previewOnly ? (this.cachePlanState.get(input.sessionId)?.generation ?? 0) : this.nextCachePlanGeneration(
+    const initialCachePlan = buildCachePlan(cachePlanInput, 0);
+    const generation = input.previewOnly
+      ? (this.cachePlanState.get(input.sessionId)?.generation ?? 0)
+      : this.nextCachePlanGeneration(
         input.sessionId,
-        cachePlanFingerprint,
+        initialCachePlan?.fingerprint,
         this.cacheResetSessions.delete(input.sessionId),
-      ),
-    );
+      );
+    const cachePlan = initialCachePlan ? { ...initialCachePlan, generation } : undefined;
 
     // Budget probes must not consume resets or commit hypothetical histories.
     if (!input.previewOnly) {
@@ -829,7 +826,7 @@ function instructionScopeDescription(scope: InstructionScope): string {
 function extractRecentUserText(messages: CanonicalMessage[]): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message.role !== "user") continue;
+    if (!isRealUserRequestMessage(message)) continue;
     for (const block of message.content) {
       if (block.type === "text" && block.text.trim().length > 0) {
         return block.text;

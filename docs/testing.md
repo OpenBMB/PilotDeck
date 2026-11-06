@@ -44,6 +44,12 @@ still run full Web/browser and Docker checks; manual Desktop runs and formal
 releases retain all native targets. Production signing and publication gates
 are independent of PR selection and remain mandatory.
 
+Web Regression also exercises tool input/registry/scheduling contracts, prompt
+capability and cache stability, live plugin preferences, and scoped runtime reload.
+These use synthetic tools/providers and isolated profiles; no real provider calls
+are required. UI tests cover lossless event delivery, render isolation and shared
+chat behavior, with browser acceptance validating streaming and history flows.
+
 ## Test quality and isolation
 
 - Every retained case must identify a meaningful regression it would catch. Assert user outcomes, wire payloads, persisted contents, exit results and resource release.

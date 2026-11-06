@@ -171,7 +171,6 @@ function propsFor(activeTab: AppTab, setActiveTab = vi.fn()) {
     setActiveTab,
     ws: null,
     sendMessage: vi.fn(),
-    latestMessage: null,
     isMobile: false,
     onMenuClick: vi.fn(),
     isLoading: false,

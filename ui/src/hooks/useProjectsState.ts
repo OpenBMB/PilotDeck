@@ -15,10 +15,9 @@ import { isBackgroundTaskSession } from '../types/app';
 type UseProjectsStateArgs = {
   sessionId?: string;
   navigate: NavigateFunction;
-  latestMessage: AppSocketMessage | null;
   isMobile: boolean;
   activeSessions: Set<string>;
-  subscribe?: (handler: (message: AppSocketMessage) => void) => () => void;
+  subscribe: (handler: (message: AppSocketMessage) => void) => () => void;
 };
 
 type FetchProjectsOptions = {
@@ -268,7 +267,6 @@ const readPersistedTab = (): AppTab => {
 export function useProjectsState({
   sessionId,
   navigate,
-  latestMessage,
   isMobile,
   activeSessions,
   subscribe,
@@ -308,7 +306,6 @@ export function useProjectsState({
   const projectListRevisionRef = useRef(0);
   const pendingCreatedProjectsRef = useRef(new Map<string, Project>());
   const activityRef = useRef(new ProjectActivity());
-  const handledSocketMessageRef = useRef<AppSocketMessage | null>(null);
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
@@ -335,8 +332,6 @@ export function useProjectsState({
       setSelectedProject((prev) => prev ? rollback(prev) : prev);
     }
   }, [deleteProjectSession]);
-  // Lifecycle events must not be lost when React batches multiple socket frames.
-  useEffect(() => subscribe?.(handleActivityMessage), [subscribe, handleActivityMessage]);
 
   // A registration confirms only one project, not the rest of the list.
   // Accept useful pre-registration snapshots and retain only the new entries
@@ -456,24 +451,20 @@ export function useProjectsState({
     }
   }, [isLoadingProjects, projects, selectedProject, sessionId]);
 
-  useEffect(() => {
-    if (!latestMessage) {
-      return;
-    }
-    // Selection/activity state can rerun this effect without a new frame.
-    if (handledSocketMessageRef.current === latestMessage) return;
-    handledSocketMessageRef.current = latestMessage;
-    if (!subscribe) handleActivityMessage(latestMessage);
+  // Deliver every frame, including list updates followed by streaming events
+  // in the same React batch. React state is the projection, not the event bus.
+  useEffect(() => subscribe((message) => {
+    handleActivityMessage(message);
 
-    if (latestMessage.type === 'loading_progress') {
+    if (message.type === 'loading_progress') {
       if (loadingProgressTimeoutRef.current) {
         clearTimeout(loadingProgressTimeoutRef.current);
         loadingProgressTimeoutRef.current = null;
       }
 
-      setLoadingProgress(latestMessage as LoadingProgress);
+      setLoadingProgress(message as LoadingProgress);
 
-      if (latestMessage.phase === 'complete') {
+      if (message.phase === 'complete') {
         loadingProgressTimeoutRef.current = setTimeout(() => {
           setLoadingProgress(null);
           loadingProgressTimeoutRef.current = null;
@@ -483,11 +474,11 @@ export function useProjectsState({
       return;
     }
 
-    if (latestMessage.type !== 'projects_updated') {
+    if (message.type !== 'projects_updated') {
       return;
     }
 
-    const projectsMessage = latestMessage as ProjectsUpdatedMessage;
+    const projectsMessage = message as ProjectsUpdatedMessage;
     if (projectsMessage.changedFile && selectedSession && selectedProject) {
       const normalized = projectsMessage.changedFile.replace(/\\/g, '/');
       const projectPrefix = `${selectedProject.name}/`;
@@ -615,7 +606,7 @@ export function useProjectsState({
     if (serialize(normalizedUpdatedSelectedSession) !== serialize(selectedSession)) {
       setSelectedSession(normalizedUpdatedSelectedSession);
     }
-  }, [latestMessage, selectedProject, selectedSession, activeSessions, retainPendingCreatedProjects, subscribe, handleActivityMessage]);
+  }), [selectedProject, selectedSession, activeSessions, retainPendingCreatedProjects, subscribe, handleActivityMessage]);
 
   useEffect(() => {
     return () => {

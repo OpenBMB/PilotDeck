@@ -138,6 +138,7 @@ export {
   type ContributedSkill,
   type ExtensionResolver,
   type McpServerInstruction,
+  type PromptContributions,
 } from "./extension/ExtensionResolver.js";
 export {
   PluginRuntimeExtensionResolver,

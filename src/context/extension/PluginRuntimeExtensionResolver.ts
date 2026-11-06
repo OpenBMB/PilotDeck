@@ -4,39 +4,40 @@ import type {
   ContributedSkill,
   ExtensionResolver,
   McpServerInstruction,
+  PromptContributions,
 } from "./ExtensionResolver.js";
 
 /**
- * Minimal runtime contract; extension owner has agreed to expose
- * `getAllCommands()` / `getAllSkills()` aggregators (review 2026-05). Until
- * those exist, we accept just `snapshot()` and flatMap manually with a TODO
- * marker.
- *
- * `ExtensionSnapshot` (turn-stable contribution view) is the long-term API;
- * this resolver will be migrated to read it once the extension owner ships it.
+ * A prompt metadata projection, independent of hook/MCP process ownership.
+ * Existing list aggregators and snapshot-only integrations remain compatible.
  */
 export type PluginRuntimeLike = {
   snapshot(): PilotDeckLoadedPlugin[];
+  getPromptContributions?(): PromptContributions;
   /** Optional aggregator preferred when available. */
   getAllCommands?(): ContributedCommand[];
   getAllSkills?(): ContributedSkill[];
-  /** Optional aggregator for MCP instructions. Phase 6 leaves this empty. */
+  /** Optional static MCP instructions, combined with connected server instructions. */
   getAllMcpInstructions?(): McpServerInstruction[];
 };
 
 /**
  * Wraps a `PluginRuntime` (or compatible) so context can read plugin-derived
  * info without reaching into `PilotDeckLoadedPlugin` directly.
- *
- * Decision §3.2 — read-only resolver, no separate registry. When extension
- * owner ships the `ExtensionSnapshot` API this implementation should switch
- * to consume it (deferred `context-extension-snapshot`).
  */
 export class PluginRuntimeExtensionResolver implements ExtensionResolver {
   constructor(
     private readonly runtime: PluginRuntimeLike,
     private readonly runtimeMcpInstructions: () => McpServerInstruction[] = () => [],
   ) {}
+
+  getPromptContributions(): PromptContributions {
+    const contributions = this.runtime.getPromptContributions?.();
+    if (!contributions) {
+      return { commands: this.listCommands(), skills: this.listSkills(), mcpInstructions: this.listMcpInstructions() };
+    }
+    return { ...contributions, mcpInstructions: [...contributions.mcpInstructions, ...this.runtimeMcpInstructions()] };
+  }
 
   listCommands(): ContributedCommand[] {
     if (this.runtime.getAllCommands) {

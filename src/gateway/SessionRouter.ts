@@ -62,6 +62,7 @@ export class SessionRouter {
   private readonly idleSweepTimer?: ReturnType<typeof setInterval>;
   private isShutdown = false;
   private runtimeRevision = 0;
+  private readonly projectRuntimeRevisions = new Map<string, number>();
 
   constructor(private readonly options: SessionRouterOptions) {
     this.idleSessionTimeoutMs = options.idleSessionTimeoutMs ?? DEFAULT_IDLE_SESSION_TIMEOUT_MS;
@@ -75,6 +76,10 @@ export class SessionRouter {
 
   async getOrCreate(context: GatewaySessionContext, turnRunId?: string): Promise<AgentSession> {
     const runtimeRevision = this.runtimeRevision;
+    const projectKey = this.sessions.get(context.sessionKey)?.context.projectKey ?? context.projectKey;
+    const projectRevision = this.projectRuntimeRevisions.get(projectKey ?? '');
+    const runtimeChanged = () => runtimeRevision !== this.runtimeRevision
+      || projectRevision !== this.projectRuntimeRevisions.get(projectKey ?? '');
     this.assertProjectOpen(context.projectKey);
     const generation = this.projectGenerations.get(context.projectKey ?? "");
     this.sweepIdle();
@@ -94,7 +99,7 @@ export class SessionRouter {
           throw new Error("Project was closed while recreating the session.");
         }
         cached.session = recreated;
-        cached.dirtyReason = runtimeRevision === this.runtimeRevision ? undefined : 'runtime_changed';
+        cached.dirtyReason = runtimeChanged() ? 'runtime_changed' : undefined;
       }
       cached.lastUsedAt = this.nowMs();
       return cached.session;
@@ -109,7 +114,7 @@ export class SessionRouter {
       session,
       lastUsedAt: this.nowMs(),
       context,
-      ...(runtimeRevision !== this.runtimeRevision ? { dirtyReason: 'runtime_changed' } : {}),
+      ...(runtimeChanged() ? { dirtyReason: 'runtime_changed' } : {}),
     });
     return session;
   }
@@ -226,7 +231,7 @@ export class SessionRouter {
   }
 
   markProjectDirty(projectKey: string, reason = "runtime_changed"): number {
-    this.runtimeRevision++;
+    this.projectRuntimeRevisions.set(projectKey, (this.projectRuntimeRevisions.get(projectKey) ?? 0) + 1);
     let count = 0;
     for (const record of this.sessions.values()) {
       if (record.context.projectKey !== projectKey) {

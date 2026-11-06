@@ -35,7 +35,7 @@ import { isSingleToolProcess, processSummaryToTrace, type ProcessAttachment } fr
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import { ThinkingBlock } from './ThinkingBlock';
-import DocumentReferenceChip from './DocumentReferenceChip';
+import DocumentReferenceChip from '../chat/view/subcomponents/DocumentReferenceChip';
 import ReplyQuoteChip from './ReplyQuoteChip';
 import { UserAttachmentCards } from './MessageFileCards';
 

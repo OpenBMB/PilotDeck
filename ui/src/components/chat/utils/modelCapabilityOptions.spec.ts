@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ChatModelCatalogItem } from "../chat/hooks/useChatProviderState";
+import type { ChatModelCatalogItem } from "../hooks/useChatProviderState";
 import {
   buildExplicitSelection,
   mergeModelSelections,

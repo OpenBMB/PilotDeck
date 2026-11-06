@@ -94,6 +94,7 @@ export {
   toolResultContentBlockToText,
 } from "./protocol/toolResultContent.js";
 export { cloneContentBlock, cloneMessage, cloneMessages, messageContent } from "./protocol/clone.js";
+export { isRealUserRequestMessage } from "./protocol/userRequest.js";
 export {
   ANTHROPIC_STRUCTURED_OUTPUT_TOOL_NAME,
   buildAnthropicRequest,

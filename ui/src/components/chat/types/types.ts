@@ -256,7 +256,6 @@ export interface ChatInterfaceProps {
   ws: WebSocket | null;
   sendMessage: (message: unknown) => boolean;
   subscribe?: (handler: (message: any) => void) => () => void;
-  latestMessage: any;
   onFileOpen?: (filePath: string, diffInfo?: any) => void;
   onInputFocusChange?: (focused: boolean) => void;
   onSessionActive?: (sessionId?: string | null) => void;

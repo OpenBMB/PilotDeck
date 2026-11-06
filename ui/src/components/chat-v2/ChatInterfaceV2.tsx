@@ -65,9 +65,6 @@ function ChatInterfaceV2({
   ws,
   sendMessage,
   subscribe,
-  // latestMessage is intentionally not consumed here — useChatRealtimeHandlers
-  // now subscribes to the WebSocket directly so React 18 state batching can't
-  // drop intermediate stream_delta events.
   onFileOpen,
   onInputFocusChange,
   onSessionActive,

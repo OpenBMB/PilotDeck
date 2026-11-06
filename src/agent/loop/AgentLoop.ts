@@ -6,7 +6,6 @@ import { randomUUID } from "node:crypto";
 import {
   applyModelEventToAssembler,
   assembleAssistantMessage,
-  cloneMessages,
   createModelMessageAssemblerState,
   getModelStreamBlockId,
   messageContent,
@@ -18,12 +17,9 @@ import {
   type CanonicalModelError,
   ModelProviderError,
   type CanonicalModelRequest,
-  type CanonicalToolSchema,
   type CanonicalUsage,
-  materializeMediaReferences,
 } from "../../model/index.js";
 import type {
-  PilotDeckToolDefinition,
   PilotDeckReadFileStateMap,
   PilotDeckSubagentForkApi,
   PilotDeckToolErrorResult,
@@ -42,8 +38,6 @@ import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
 import type { LifecycleDispatchResult } from "../../lifecycle/index.js";
 import type { PilotDeckHookEvent } from "../../extension/hooks/protocol/events.js";
-import { NullContextRuntime } from "../../context/NullContextRuntime.js";
-import { buildCachePlan } from "../../context/cache/CachePlan.js";
 import { truncateHeadPreservingCheckpoint } from "../../context/compaction/CompactionEngine.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type {
@@ -57,18 +51,13 @@ import { actualInputTokensFromUsage } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import type { AgentSteerMessage } from "../session/SteerMailbox.js";
+import { prepareModelRequest } from "./prepareModelRequest.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
 import { resolveOutputTokenRetryBump } from "./outputTokenRetry.js";
 import { projectToolResults } from "./projectToolResults.js";
-import { requiresPromptCapability } from "../../tool/userInteractionConstraints.js";
 import type { AgentRunMode } from "../protocol/input.js";
-import {
-  ASK_MODE_DESCRIPTION_SUFFIX,
-  isAskModeAllowedTool,
-} from "../../tool/askModeConstraints.js";
-import { buildAskModeAgentToolSchema } from "../../tool/builtin/agent.js";
 import { requestFingerprint } from "../../model/streaming/requestFingerprint.js";
 import {
   createAgentStatusDetail,
@@ -86,18 +75,6 @@ const CIRCUIT_BREAKER_GRACE_PROMPT = [
   "(2) explain the situation in text without calling tools,",
   "(3) if you believe the tool should work, try once more with corrected input.",
 ].join(" ");
-function planModeReminderMessage(planDirectory?: string): string {
-  return [
-    "Plan mode is active.",
-    planDirectory
-      ? `Read first using read-only tools, then use write_file/edit_file to write plan markdown ONLY under this absolute plan directory: ${planDirectory}`
-      : "Read first using read-only tools, then write or refine plan markdown only under `.pilotdeck/plans/`.",
-    ...(planDirectory ? ["Use that absolute directory for file paths and exit_plan_mode; do not assume cwd/.pilotdeck/plans is the plan directory."] : []),
-    "Do not make implementation changes while planning.",
-    "When the plan is ready for user review, call `exit_plan_mode` with the plan file path.",
-  ].join("\n");
-}
-
 function logAutoCompactFailure(
   stage: string,
   input: { sessionId: string; turnId: string },
@@ -2009,103 +1986,30 @@ export class AgentLoop {
     input: AgentLoopInput,
     options: { emitInstructionEvents?: boolean; previewOnly?: boolean } = {},
   ): Promise<CanonicalModelRequest> {
-    const contextRuntime = this.dependencies.context ?? new NullContextRuntime();
     const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
-    const canPrompt = input.canPrompt ?? this.config.permissionContext.canPrompt;
-    const promptBlockedToolNames = canPrompt
-      ? new Set<string>()
-      : new Set(
-          this.dependencies.tools.registry.list()
-            .filter((tool) => requiresPromptCapability(tool, {}))
-            .map((tool) => tool.name),
-        );
-    let toolDefinitions = this.dependencies.tools.registry.list()
-      .filter((tool) => !promptBlockedToolNames.has(tool.name));
-    if (input.allowPlanModeTools !== true) {
-      toolDefinitions = toolDefinitions.filter(
-        (tool) => tool.name !== "enter_plan_mode" && tool.name !== "exit_plan_mode",
-      );
-    }
-    const requestMessages = normalizeMessagesForModelRequest(messages);
-    let tools = toolDefinitions.map(toolToCanonicalSchema);
-    if (this.config.runMode === "ask") {
-      tools = filterAskModeTools(toolDefinitions);
-    }
-    const requestProvider = input.modelOverride?.provider ?? this.config.provider;
-    const requestModel = input.modelOverride?.model ?? this.config.model;
-    const prepared = await contextRuntime.prepareForModel({
-      previewOnly: options.previewOnly,
+    return prepareModelRequest(this.config, {
+      toolRegistry: this.dependencies.tools.registry,
+      context: this.dependencies.context,
+      getModelProtocol: (provider) => this.dependencies.getModelProtocol?.(provider),
+      getModelSupportsPromptCache: (provider, model) => this.dependencies.getModelSupportsPromptCache?.(provider, model),
+      getPromptAddendum: () => planTodo?.buildPromptAddendum(),
+      getPlanDirectoryPath: () => this.dependencies.planFileManager?.getPlanDirectoryPath(),
+      onInstructionsLoaded: options.emitInstructionEvents === false ? undefined : (hasSystemPrompt) => {
+        this.dispatchLifecycle(input, "InstructionsLoaded", { hasSystemPrompt }).catch(() => {});
+        this.dependencies.eventEmitter?.({
+          type: "instructions_loaded", sessionId: input.sessionId, turnId: input.turnId, hasSystemPrompt,
+        });
+      },
+    }, {
       sessionId: input.sessionId,
       turnId: input.turnId,
-      cwd: this.config.cwd,
-      provider: requestProvider,
-      model: requestModel,
-      protocol: this.dependencies.getModelProtocol?.(requestProvider),
-      supportsPromptCache: this.dependencies.getModelSupportsPromptCache?.(requestProvider, requestModel),
-      permissionMode: this.config.permissionMode,
-      runMode: this.config.runMode ?? "agent",
-      additionalWorkingDirectories: this.config.permissionContext.additionalWorkingDirectories,
-      messages: cloneMessages(requestMessages),
-      tools,
-      maxMessages: this.config.maxContextMessages,
-      customSystemPrompt: this.config.systemPrompt,
-      appendSystemPrompt: planTodo?.buildPromptAddendum(),
-      pythonRuntime: this.config.pythonRuntime,
+      messages,
+      canPrompt: input.canPrompt,
+      allowPlanModeTools: input.allowPlanModeTools,
+      modelOverride: input.modelOverride,
       abortSignal: input.abortSignal,
+      previewOnly: options.previewOnly,
     });
-
-    if (options.emitInstructionEvents !== false) {
-      this.dispatchLifecycle(input, "InstructionsLoaded", {
-        hasSystemPrompt: !!prepared.systemPrompt,
-      }).catch(() => {});
-      this.dependencies.eventEmitter?.({
-        type: "instructions_loaded",
-        sessionId: input.sessionId,
-        turnId: input.turnId,
-        hasSystemPrompt: !!prepared.systemPrompt,
-      });
-    }
-
-    const materialized = await materializeMediaReferences(prepared.messages);
-    for (const diagnostic of materialized.diagnostics) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[pilotdeck] ${diagnostic.code}: ${diagnostic.message} (${diagnostic.mediaType}, ${diagnostic.path})`,
-      );
-    }
-
-    const finalMessages = this.config.permissionMode === "plan"
-      ? appendPlanModeReminder(materialized.messages, this.dependencies.planFileManager?.getPlanDirectoryPath())
-      : materialized.messages;
-    const finalCachePlan = prepared.cachePlan
-      ? buildCachePlan({
-          provider: requestProvider,
-          model: requestModel,
-          systemPrompt: prepared.systemPrompt,
-          tools: prepared.tools,
-          messages: finalMessages,
-          enabled: true,
-        }, prepared.cachePlan.generation)
-      : undefined;
-    const finalCacheBreakpoints = finalCachePlan?.messages ?? (
-      this.config.permissionMode === "plan" ? undefined : prepared.cacheBreakpoints
-    );
-
-    return {
-      provider: requestProvider,
-      model: requestModel,
-      messages: finalMessages,
-      systemPrompt: prepared.systemPrompt ?? this.config.systemPrompt,
-      tools: prepared.tools,
-      toolChoice: this.config.toolChoice,
-      maxOutputTokens: this.config.maxOutputTokens,
-      speed: input.modelOverride?.speed,
-      thinking: input.modelOverride?.thinking ?? this.config.thinking,
-      stream: true,
-      metadata: this.config.metadata,
-      cacheBreakpoints: finalCacheBreakpoints,
-      cachePlan: finalCachePlan,
-    };
   }
 
   private createBudgetEvaluator(
@@ -2635,16 +2539,13 @@ export class AgentLoop {
     input: AgentLoopInput,
   ): AsyncGenerator<AgentEvent, PilotDeckToolResult[], unknown> {
     const activeSubagents = new Map<string, ActiveSubagentStatus>();
-    let results: PilotDeckToolResult[] | undefined;
-    let error: unknown;
     let settled = false;
 
     const execution = this.dependencies.tools.scheduler.executeAll(toolCalls, context)
-      .then((value) => {
-        results = value;
-      }, (err) => {
-        error = err;
-      })
+      .then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
       .finally(() => {
         settled = true;
       });
@@ -2658,8 +2559,9 @@ export class AgentLoop {
     }
 
     yield* this.drainToolEventBufferForSubagentStatus(input, activeSubagents);
-    if (error) throw error;
-    return results ?? [];
+    const result = await execution;
+    if (!result.ok) throw result.error;
+    return result.value;
   }
 
   private *drainToolEventBufferForSubagentStatus(
@@ -2831,28 +2733,6 @@ function mergeUserRules(target: PermissionRule[], userRules: PermissionRule[] | 
   target.splice(0, target.length, ...nonUserRules, ...(userRules ?? []));
 }
 
-function filterAskModeTools(tools: PilotDeckToolDefinition[]): CanonicalToolSchema[] {
-  const agentOverride = buildAskModeAgentToolSchema();
-  return tools
-    .filter(isAskModeAllowedTool)
-    .map((tool) => {
-      if (tool.name === "agent") {
-        return { ...toolToCanonicalSchema(tool), description: agentOverride.description, inputSchema: agentOverride.inputSchema };
-      }
-      const suffix = ASK_MODE_DESCRIPTION_SUFFIX[tool.name];
-      const schema = toolToCanonicalSchema(tool);
-      return suffix ? { ...schema, description: schema.description + suffix } : schema;
-    });
-}
-
-function toolToCanonicalSchema(tool: PilotDeckToolDefinition): CanonicalToolSchema {
-  return {
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-  };
-}
-
 function findLifecycleBlock(result: LifecycleDispatchResult): { reason: string; stopReason?: string } | undefined {
   return result.effects.find(
     (effect): effect is { type: "block"; reason: string; stopReason?: string } => effect.type === "block",
@@ -2958,17 +2838,6 @@ function hasReplayableReasoningContent(message: CanonicalMessage): boolean {
     block.type === "thinking" &&
     ((block.reasoningContent ?? block.text).length > 0 || block.reasoningContent === "")
   );
-}
-
-function appendPlanModeReminder(messages: CanonicalMessage[], planDirectory?: string): CanonicalMessage[] {
-  return [
-    ...messages,
-    {
-      role: "user",
-      content: [{ type: "text", text: planModeReminderMessage(planDirectory) }],
-      metadata: { synthetic: true, purpose: "plan_mode_reminder" },
-    },
-  ];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -3083,55 +2952,6 @@ function removeTransientPromptsById(
       transientIds.has(transientId)
     );
   });
-}
-
-function normalizeMessagesForModelRequest(messages: CanonicalMessage[]): CanonicalMessage[] {
-  const out: CanonicalMessage[] = [];
-  for (const rawMessage of messages) {
-    const message: CanonicalMessage = {
-      ...rawMessage,
-      content: messageContent(rawMessage),
-    };
-    const last = out[out.length - 1];
-    if (
-      last?.role === "assistant" &&
-      message.role === "assistant" &&
-      canMergeAssistantMessages(last, message)
-    ) {
-      out[out.length - 1] = {
-        role: "assistant",
-        content: [...messageContent(last), ...messageContent(message)],
-        metadata: mergeMessageMetadata(last.metadata, message.metadata),
-      };
-      continue;
-    }
-    if (message.role === "assistant" && message.content.length === 0) {
-      continue;
-    }
-    out.push(message);
-  }
-  return out;
-}
-
-function canMergeAssistantMessages(first: CanonicalMessage, second: CanonicalMessage): boolean {
-  return !hasToolCallBlock(first) && !hasToolCallBlock(second);
-}
-
-function hasToolCallBlock(message: CanonicalMessage): boolean {
-  return messageContent(message).some((block) => block.type === "tool_call");
-}
-
-function mergeMessageMetadata(
-  first: CanonicalMessage["metadata"],
-  second: CanonicalMessage["metadata"],
-): CanonicalMessage["metadata"] {
-  if (!first && !second) {
-    return undefined;
-  }
-  return {
-    ...(first ?? {}),
-    ...(second ?? {}),
-  };
 }
 
 function detectRepeatedToolFailure(

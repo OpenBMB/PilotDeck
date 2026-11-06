@@ -24,7 +24,7 @@ import type { Project } from '../../../../types/app';
 import { ToolRenderer, shouldHideToolResult } from '../../tools';
 import { UnifiedToolCall, usesUnifiedToolCall } from '../../tools/UnifiedToolCall';
 import { CollapsibleDisplay } from '../../tools/components';
-import DocumentReferenceChip from '../../../chat-v2/DocumentReferenceChip';
+import DocumentReferenceChip from './DocumentReferenceChip';
 import { Markdown } from './Markdown';
 import MessageCopyControl from './MessageCopyControl';
 import ConversationError from './ConversationError';

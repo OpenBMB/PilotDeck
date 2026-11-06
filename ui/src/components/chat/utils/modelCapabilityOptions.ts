@@ -2,7 +2,7 @@ import type {
   ChatModelCatalogItem,
   ChatModelSelection,
   ModelNumericCapability,
-} from "../chat/hooks/useChatProviderState";
+} from "../hooks/useChatProviderState";
 
 export type ModelParameterValues = {
   reasoning?: number;

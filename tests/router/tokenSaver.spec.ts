@@ -6,6 +6,49 @@ import { ModelProviderError } from "../../src/model/index.js";
 import { classifyAndRoute } from "../../src/router/index.js";
 import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
 
+test("classifies the latest real request after tool results, steering, artifacts and retrieved memory", async () => {
+  const task = "Find and repair the concurrent transaction failure.";
+  const context = new DefaultContextRuntime({
+    sessionArtifactContext: async () => "An earlier output is available as an attachment.",
+    memoryResolver: {
+      async retrieve() { return { systemContext: "An old task was a simple greeting.", diagnostics: [] }; },
+      async captureTurn() {},
+    },
+  });
+  const prepared = await context.prepareForModel({
+    sessionId: "memory-routing", turnId: "memory-routing", cwd: process.cwd(), provider: "main", model: "main-model",
+    permissionMode: "default", additionalWorkingDirectories: [], tools: [],
+    messages: [
+      { role: "user", content: [{ type: "text", text: "Inspect the project." }] },
+      { role: "assistant", content: [{ type: "tool_call", id: "read", name: "read_file", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", toolCallId: "read", content: [{ type: "text", text: "Source code" }] }] },
+      { role: "user", content: [{ type: "text", text: task }], metadata: { queueItemId: "user-steer" } },
+    ],
+  });
+  assert.equal(prepared.messages.at(-1)?.metadata?.purpose, "memory_context");
+  let prompt = "";
+  const judgeRuntime = { complete: async (request: CanonicalModelRequest) => {
+    prompt = JSON.stringify(request.messages);
+    return { role: "assistant", content: [{ type: "text", text: "<tier>medium</tier>" }], finishReason: "stop" };
+  } } as unknown as ModelRuntime;
+  await classifyAndRoute({ config: config(), messages: prepared.messages, judgeRuntime });
+  assert.ok(prompt.includes(task));
+  assert.doesNotMatch(prompt, /old task|earlier output|Source code|Inspect the project/);
+});
+
+test("request-only context without a real task does not invoke the routing judge", async () => {
+  let calls = 0;
+  const judgeRuntime = { complete: async () => {
+    calls++;
+    return { role: "assistant", content: [{ type: "text", text: "<tier>medium</tier>" }], finishReason: "stop" };
+  } } as unknown as ModelRuntime;
+  const result = await classifyAndRoute({ config: config(), judgeRuntime, messages: [
+    { role: "user", content: [{ type: "text", text: "Retrieved background." }], metadata: { synthetic: true, purpose: "memory_context" } },
+  ] });
+  assert.equal(result?.resolvedFrom, "default");
+  assert.equal(calls, 0);
+});
+
 test("classifies the real task after context appends a midnight date update", async () => {
   let now = new Date("2026-09-10T23:59:00Z");
   const context = new DefaultContextRuntime({ now: () => now });

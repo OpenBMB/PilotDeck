@@ -386,8 +386,11 @@ export function createRouterRuntime(
       (input.isMainAgent || subagentPolicy !== "skip")
     ) {
       let stickyHit = false;
+      // Request-only context (memory, date notices, artifact indexes) does not
+      // turn a fresh user request into an ongoing conversation.
+      const hasConversationHistory = input.request.messages.filter(message => message.metadata?.synthetic !== true).length > 1;
 
-      if (input.isMainAgent && input.request.messages.length > 1) {
+      if (input.isMainAgent && hasConversationHistory) {
         const mainSticky = sessionStore.get(input.sessionId, false);
         if (mainSticky?.stickyProvider && mainSticky.stickyModel) {
           selection = {
@@ -401,7 +404,7 @@ export function createRouterRuntime(
         }
       }
 
-      if (!input.isMainAgent && subagentPolicy === "judge" && input.request.messages.length > 1) {
+      if (!input.isMainAgent && subagentPolicy === "judge" && hasConversationHistory) {
         const subSticky = sessionStore.get(input.sessionId, true);
         if (subSticky?.stickyProvider && subSticky.stickyModel) {
           selection = {
