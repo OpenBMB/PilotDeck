@@ -6,6 +6,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
 } from 'react';
 import type { IWorkbookData } from '@univerjs/core';
@@ -36,7 +37,6 @@ import {
   type ReferenceCapabilities,
 } from '../../../../types/contentReference';
 import ContentReferenceMenu from './ContentReferenceMenu';
-import PdfDocumentPreview from './PdfDocumentPreview';
 import RegionSelectionOverlay, { type CapturedRegion } from './RegionSelectionOverlay';
 import SpreadsheetTabs, { type SpreadsheetSheetTab } from './SpreadsheetTabs';
 
@@ -49,6 +49,7 @@ const DocxBuiltinPreview = lazy(
 const PptxBuiltinPreview = lazy(
   () => import('./PptxBuiltinPreview'),
 );
+const LazyPdfDocumentPreview = lazy(() => import('./PdfDocumentPreview'));
 
 type CodeEditorBinaryFileProps = {
   file: CodeEditorFile;
@@ -666,6 +667,17 @@ function PreviewSpinner({ label }: { label?: string }) {
         <p className="text-[12px] text-neutral-500 dark:text-neutral-400">{label}</p>
       )}
     </div>
+  );
+}
+
+// Native PDFs and both converted Office paths share this loading boundary.
+// Their request, refresh and selection state stays in the existing parents.
+function PdfDocumentPreview(props: ComponentProps<typeof LazyPdfDocumentPreview>) {
+  const { t } = useTranslation('codeEditor');
+  return (
+    <Suspense fallback={<PreviewSpinner label={t('loading', { fileName: props.fileName })} />}>
+      <LazyPdfDocumentPreview {...props} />
+    </Suspense>
   );
 }
 
