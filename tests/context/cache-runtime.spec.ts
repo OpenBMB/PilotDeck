@@ -345,3 +345,94 @@ test("date notices preserve tool pairing and do not replace memory retrieval que
   assert.deepEqual(queries, ["request", "request"]);
   assert.equal(messages.length, 3);
 });
+
+test("memory attachments ride in the newest user message instead of the system prompt", async () => {
+  const runtime = new DefaultContextRuntime({
+    memoryResolver: {
+      async retrieve() {
+        return { systemContext: "relevant memory", diagnostics: [] };
+      },
+      async captureTurn() {},
+    },
+  });
+  const messages: CanonicalMessage[] = [
+    { role: "user", content: [{ type: "text", text: "hello" }] },
+    { role: "assistant", content: [{ type: "text", text: "hi" }] },
+    { role: "user", content: [{ type: "text", text: "latest question" }] },
+  ];
+  const prepared = await runtime.prepareForModel(input({ messages, protocol: "openai", supportsPromptCache: false }));
+
+  assert.ok(!prepared.systemPrompt?.includes("relevant memory"));
+  assert.ok(!prepared.systemPrompt?.includes("<memory-context>"));
+  assert.ok(prepared.systemPromptParts.every((part) => !part.includes("relevant memory")));
+  const last = prepared.messages.at(-1)!;
+  assert.equal(last.role, "user");
+  assert.equal(last.metadata?.synthetic, undefined);
+  assert.deepEqual(
+    last.content[0],
+    { type: "text", text: "<memory-context>\nrelevant memory\n</memory-context>\n\nlatest question" },
+  );
+  assert.deepEqual(prepared.messages[0]?.content[0], { type: "text", text: "hello" });
+  assert.deepEqual(prepared.messages[1]?.content[0], { type: "text", text: "hi" });
+});
+
+test("memory injection keeps the system prompt byte-stable across turns", async () => {
+  let systemContext = "memory-v1";
+  const runtime = new DefaultContextRuntime({
+    memoryResolver: {
+      async retrieve() {
+        return { systemContext, diagnostics: [] };
+      },
+      async captureTurn() {},
+    },
+  });
+  const turnOne: CanonicalMessage = { role: "user", content: [{ type: "text", text: "turn-1" }] };
+  const first = await runtime.prepareForModel(input({ messages: [turnOne], protocol: "openai", supportsPromptCache: false }));
+
+  assert.equal(first.messages.length, 1);
+  assert.ok(first.messages[0]!.content[0]!.type === "text" && first.messages[0]!.content[0]!.text.includes("memory-v1"));
+  assert.notEqual(first.messages[0], turnOne);
+  assert.equal(turnOne.content[0]!.type === "text" && turnOne.content[0]!.text, "turn-1");
+
+  systemContext = "memory-v2";
+  const turnTwo: CanonicalMessage[] = [
+    { role: "user", content: [{ type: "text", text: "turn-1" }] },
+    { role: "assistant", content: [{ type: "text", text: "reply-1" }] },
+    { role: "user", content: [{ type: "text", text: "turn-2" }] },
+  ];
+  const second = await runtime.prepareForModel(input({ messages: turnTwo, protocol: "openai", supportsPromptCache: false }));
+
+  assert.equal(second.systemPrompt, first.systemPrompt);
+  assert.deepEqual(second.messages.slice(0, 2), turnTwo.slice(0, 2));
+  const last = second.messages.at(-1)!;
+  assert.ok(last.content[0]!.type === "text" && last.content[0]!.text.includes("memory-v2"));
+  assert.ok(last.content[0]!.type === "text" && last.content[0]!.text.endsWith("turn-2"));
+});
+
+test("memory injection skips synthetic user messages and falls back to the system prompt", async () => {
+  const runtime = new DefaultContextRuntime({
+    memoryResolver: {
+      async retrieve() {
+        return { systemContext: "relevant memory", diagnostics: [] };
+      },
+      async captureTurn() {},
+    },
+  });
+  const syntheticOnly: CanonicalMessage[] = [
+    { role: "user", content: [{ type: "text", text: "<date-update>2026-09-12</date-update>" }], metadata: { synthetic: true, purpose: "date_update" } },
+  ];
+  const fallback = await runtime.prepareForModel(input({ messages: syntheticOnly, protocol: "openai", supportsPromptCache: false }));
+  assert.ok(fallback.systemPrompt?.includes("relevant memory"));
+  assert.deepEqual(fallback.messages, syntheticOnly);
+
+  const withSyntheticTail: CanonicalMessage[] = [
+    { role: "user", content: [{ type: "text", text: "real request" }] },
+    { role: "user", content: [{ type: "text", text: "<date-update>2026-09-12</date-update>" }], metadata: { synthetic: true, purpose: "date_update" } },
+  ];
+  const prepared = await runtime.prepareForModel(input({ messages: withSyntheticTail, protocol: "openai", supportsPromptCache: false }));
+  assert.ok(!prepared.systemPrompt?.includes("relevant memory"));
+  const realUser = prepared.messages[0]!;
+  assert.ok(realUser.content[0]!.type === "text" && realUser.content[0]!.text.startsWith("<memory-context>"));
+  assert.ok(realUser.content[0]!.type === "text" && realUser.content[0]!.text.endsWith("real request"));
+  assert.equal(prepared.messages.at(-1)?.metadata?.purpose, "date_update");
+});
