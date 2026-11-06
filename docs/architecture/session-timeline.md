@@ -90,6 +90,15 @@ Scroll following pauses on explicit upward wheel, touch, keyboard or scrollbar
 input, disclosure opening, search or turn navigation. Layout-driven scroll events
 and browser clamping do not transfer ownership. A paused reader keeps an anchor;
 scrolling down to the bottom or choosing Return to latest resumes following.
+One wheel, touch or keyboard gesture can produce multiple native scroll frames.
+The controller retains that gesture through its frames until scroll end or an
+idle timeout; a delayed end from the preceding scroll cannot cancel new input
+that has not moved yet. Virtual height corrections go through the same controller
+to rebase pending input without counting the correction as reader movement.
+When a large gesture outruns the mounted virtual rows, anchoring waits for a
+visible row instead of saving or restoring an offscreen placeholder position.
+Video previews reserve a 16:9, contained frame before metadata loads, so portrait
+and landscape media do not change row height during scrolling or virtual remount.
 The localized status shows elapsed seconds while live and the measured
 duration after completion. Legacy history without timing shows a completed label
 without a guessed duration. Reasoning and tool summaries share row metrics and
@@ -233,6 +242,12 @@ permanent empty tail after short or interrupted replies.
   dark mode, keyboard expansion, narrow layouts and reduced motion. Run with
   `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs` after
   installing Playwright Chromium; the suite also checks reading-position retention.
+- `ui/e2e/chat-media-scroll.spec.mjs`: delayed image/video decoding and repeated
+  wheel direction changes through virtualized media history. The same tests run
+  in an isolated Electron renderer with `PILOTDECK_SCROLL_ELECTRON=1` and
+  `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs chat-media-scroll.spec.mjs`
+  after installing desktop dependencies. This renderer fixture does not start
+  application services or use a real account/profile.
 
 ## Limits of this first version
 

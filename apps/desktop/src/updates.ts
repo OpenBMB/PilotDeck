@@ -5,7 +5,7 @@ import type { AppUpdater } from "electron-updater";
 import { JsonReleaseProvider, type JsonReleaseProviderOptions } from "./JsonReleaseProvider";
 
 export type ReleaseAsset = { name: string; size: number; sha256: string; sha512?: string; platform: string; arch: string; format?: string; roles?: string[] };
-export type Release = { version: string; tagName: string; publishedAt?: string; assets: ReleaseAsset[] };
+export type Release = { version: string; tagName: string; publishedAt?: string; assets: ReleaseAsset[]; differentialUpdates?: boolean };
 export type UpdateState = {
   state: "idle" | "checking" | "downloading" | "paused" | "cancelling" | "verifying" | "installing" | "recovering" | "failed" | "cancelled";
   progress: number;
@@ -59,6 +59,7 @@ export function createUpdateController(options: {
   version: string;
   packaged: boolean;
   linuxPackageType?: string;
+  disableDifferentialUpdates?: boolean;
   latestRelease: () => Promise<Release>;
   downloadBases?: (release: Release, asset: ReleaseAsset, signal: AbortSignal) => Promise<string[]>;
   downloadAvailable: (release: Release, asset: ReleaseAsset, signal?: AbortSignal) => Promise<boolean>;
@@ -69,7 +70,7 @@ export function createUpdateController(options: {
   prepareToInstall: () => Promise<void>;
   recoverRuntime: () => Promise<void>;
   verifyFile?: typeof verifyDownloadedFile;
-  downloadControl?: { pause: () => void; resume: () => void; cancel?: () => void; receivedBytes?: () => number };
+  downloadControl?: { pause: () => void; resume: () => void; cancel?: () => void; receivedBytes?: () => number; networkActive?: () => boolean };
 }) {
   const { updater } = options;
   updater.autoDownload = false;
@@ -173,6 +174,8 @@ export function createUpdateController(options: {
       : [`https://github.com/${options.repository}/releases/download/${release.tagName}/`];
     let lastError: unknown = new Error("updateFailed");
     let verified = false;
+    // Once an attempt fails, subsequent routes/retries use the proven full path.
+    let forceFull = false;
     // Try every route before retrying any one route. The release and hashes are
     // pinned for this whole operation, including retries after mirror sync lag.
     for (let round = 0; round < (options.downloadBases ? 2 : 1) && !verified; round++) {
@@ -181,7 +184,7 @@ export function createUpdateController(options: {
         state = { state: "checking", progress: 0, version: release.tagName };
         options.downloadControl?.resume();
         try {
-          await downloadAndVerify(base, release, round === 0 && bases.length > 1);
+          await downloadAndVerify(base, release, round === 0 && bases.length > 1, forceFull);
           try { options.downloadSucceeded?.(base, release); } catch { /* Route history is optional. */ }
           verified = true;
           break;
@@ -190,6 +193,7 @@ export function createUpdateController(options: {
           if (cancelled) throw new Error("cancelled");
           try { options.downloadFailed?.(base, release); } catch { /* Route history is optional. */ }
           lastError = error;
+          forceFull = true;
         } finally { cancellationToken = undefined; }
       }
     }
@@ -203,8 +207,15 @@ export function createUpdateController(options: {
     }
   }
 
-  async function downloadAndVerify(base: string, release: Release, allowSlowSwitch: boolean) {
+  async function downloadAndVerify(base: string, release: Release, allowSlowSwitch: boolean, forceFull: boolean) {
     const selected = selectUpdateAssets(release, options.platform, options.arch, options.linuxPackageType)!.asset;
+    const blockmap = release.assets.find(asset => asset.name === `${selected.name}.blockmap`);
+    updater.disableDifferentialDownload = forceFull || options.disableDifferentialUpdates === true
+      || process.env.PILOTDECK_DISABLE_DIFFERENTIAL_UPDATES === '1'
+      || release.differentialUpdates !== true || !['win32', 'darwin'].includes(options.platform)
+      || !blockmap || blockmap.platform !== options.platform || blockmap.arch !== options.arch
+      || !Number.isSafeInteger(blockmap.size) || blockmap.size <= 0
+      || !/^[a-f0-9]{64}$/.test(blockmap.sha256) || !/^[A-Za-z0-9+/]{86}==$/.test(blockmap.sha512 || '');
     const provider: JsonReleaseProviderOptions = {
       provider: "custom", updateProvider: JsonReleaseProvider, url: base,
       updateInfo: { version: release.version, releaseDate: release.publishedAt ?? release.tagName.slice(1, 11).replaceAll('.', '-'), path: selected.name, sha512: selected.sha512!,
@@ -229,7 +240,9 @@ export function createUpdateController(options: {
       const transferred = options.downloadControl?.receivedBytes?.();
       // Adapters without transport telemetry cannot establish a stall safely.
       if (transferred === undefined) return;
-      if (state.state !== "downloading") { windowStarted = now; windowBytes = transferred; return; }
+      // Reusing local blocks can take time on slow disks. No network request
+      // means there is no connection to classify as stalled or slow.
+      if (state.state !== "downloading" || options.downloadControl?.networkActive?.() === false) { windowStarted = now; windowBytes = transferred; return; }
       if (now - windowStarted < 30_000) return;
       const bytes = transferred - windowBytes;
       if (bytes <= 0 || (allowSlowSwitch && bytes * 1000 / (now - windowStarted) < 32 * 1024)) result.cancellationToken?.cancel();
@@ -243,7 +256,7 @@ export function createUpdateController(options: {
     if (state.state === "paused") await new Promise<void>(resolve => { resumeWaiting = resolve; });
     if (cancelled) throw new Error("cancelled");
     if (files.length !== 1) throw new Error("invalidUpdateMetadata");
-    state = { ...state, state: "verifying", progress: 1, transferred: asset.size, bytesPerSecond: 0 };
+    state = { ...state, state: "verifying", progress: 1, bytesPerSecond: 0 };
     try {
       await (options.verifyFile || verifyDownloadedFile)(files[0], asset);
     } catch (error) {

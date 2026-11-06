@@ -15,6 +15,7 @@ on:
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
       - tsconfig.json
+      - .npmrc
       - .github/workflows/desktop-*.yml
       - .github/workflows/release.yml
       - .github/workflows/release-retry.yml
@@ -32,10 +33,12 @@ env:
 
 jobs:
   changes:
-    name: Select native packaging checks
+    name: Select desktop checks
     runs-on: ubuntu-latest
     outputs:
       packaging: ${{ steps.paths.outputs.packaging }}
+      checks: ${{ steps.paths.outputs.checks }}
+      checkpoints: ${{ steps.paths.outputs.checkpoints }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,9 +52,13 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node apps/desktop/scripts/classify-ci-changes.mjs "$BASE_SHA" "$HEAD_SHA"
+      - name: Verify CI scope selection
+        run: node --test apps/desktop/scripts/classify-ci-changes.test.mjs
 
   checkpoint-regression:
     name: Checkpoints (${{ matrix.os }})
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.checkpoints == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -112,6 +119,8 @@ jobs:
 
   static-checks:
     name: Checks
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.checks == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -149,7 +158,7 @@ jobs:
           server/services/jsonReleaseProvider.test.ts
 
   # Packaging changes and manual runs exercise every release target. Ordinary
-  # app changes still receive the fast cross-platform and static checks above.
+  # app changes select the suites for their runtime/platform boundaries above.
   linux:
     name: Linux
     needs: changes

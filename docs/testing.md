@@ -21,6 +21,29 @@ Run from the repository root unless noted.
 
 Changed/related selection follows import edges, not every dynamically read template, workflow, icon or plugin. Broaden checks for shared protocols, native resources, dependency locks and build inputs. Real browser acceptance belongs under ui/e2e/ and is separate from Vitest discovery.
 
+## Pull request CI selection
+
+Web Regression and Desktop use `apps/desktop/scripts/classify-ci-changes.mjs` to
+select complete suites from the PR merge-base diff, including deleted files and
+both sides of renames. The lightweight selection jobs always validate routing;
+job-level conditions retain existing check names for unrelated changes.
+
+| Changed boundary | PR validation |
+| --- | --- |
+| Chat/UI components and styles | Full Web/client suite and browser acceptance; no unrelated checkpoint matrix, desktop helpers or Docker rebuild |
+| Backend, workspace or checkpoint paths | Web regression and the existing three-platform checkpoint suite; Docker for runtime/image inputs |
+| Desktop, installer or release inputs | Desktop helper checks and the complete relevant native packaging matrix |
+| Dependency locks, shared package inputs or routing policy | All affected execution boundaries |
+| Maintained documentation | Routing checks; runtime skills/resources Markdown still selects builds |
+| OBS scripts/workflows | Credential-free OBS tests; no live OBS access from PRs |
+
+The Web browser job pins Ubuntu 24.04 for the locked Playwright version. New PR
+pushes cancel superseded Web runs. Web Regression owns the single Docker build,
+with GHA layer caching and isolated runtime-import verification. Main pushes
+still run full Web/browser and Docker checks; manual Desktop runs and formal
+releases retain all native targets. Production signing and publication gates
+are independent of PR selection and remain mandatory.
+
 ## Test quality and isolation
 
 - Every retained case must identify a meaningful regression it would catch. Assert user outcomes, wire payloads, persisted contents, exit results and resource release.

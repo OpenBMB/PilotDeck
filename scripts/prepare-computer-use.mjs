@@ -35,7 +35,18 @@ export async function downloadDriverArchive(url, archive, { fetchImpl = fetch, w
           status: response.status, retryable: retryableStatuses.has(response.status),
         });
       }
-      await pipeline(response.body, createWriteStream(archive));
+      const output = createWriteStream(archive);
+      try {
+        await pipeline(response.body, output);
+      } finally {
+        // Web-stream rejection can settle pipeline before the file's pending
+        // open/close completes. Do not unlink or retry while it can recreate
+        // the archive, or while Windows still has the failed writer open.
+        if (!output.closed) await new Promise(resolve => {
+          output.once('close', resolve);
+          output.destroy();
+        });
+      }
       return;
     } catch (error) {
       // Never append to or reuse a truncated archive after a dropped stream.

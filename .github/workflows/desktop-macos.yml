@@ -136,6 +136,12 @@ jobs:
       - name: Verify macOS background and quit lifecycle
         run: node apps/desktop/scripts/verify-desktop-lifecycle.cjs
 
+      - name: Verify differential transport and ZIP cache recovery
+        timeout-minutes: 4
+        run: |
+          pnpm --filter pilotdeck-desktop run compile
+          pnpm --filter pilotdeck-desktop exec electron scripts/verify-differential-update.cjs
+
       - name: Set desktop release metadata
         run: node apps/desktop/scripts/set-ci-version.mjs
 
@@ -244,6 +250,7 @@ jobs:
           path: |
             apps/desktop/dist-electron/*-mac-${{ matrix.arch }}.dmg
             apps/desktop/dist-electron/*-mac-${{ matrix.arch }}.zip
+            apps/desktop/dist-electron/*-mac-${{ matrix.arch }}.zip.blockmap
             apps/desktop/dist-electron/latest-${{ matrix.arch }}-mac.yml
           if-no-files-found: error
           retention-days: 14

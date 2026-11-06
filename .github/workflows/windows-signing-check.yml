@@ -34,7 +34,8 @@ jobs:
         run: |
           $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
           $fixture = Join-Path $env:RUNNER_TEMP 'pilotdeck-signing-check.exe'
-          & $compiler /nologo /optimize+ /target:exe /platform:anycpu "/out:$fixture" apps/desktop/resources/installer/InstallPayload.cs
+          $source = Join-Path $env:GITHUB_WORKSPACE 'apps\desktop\resources\installer\InstallPayload.cs'
+          & $compiler /nologo /optimize+ /target:exe /platform:anycpu "/out:$fixture" $source
           if ($LASTEXITCODE -ne 0) { throw 'Signing fixture compilation failed.' }
 
       - name: Sign and verify certificate identity and trusted timestamp

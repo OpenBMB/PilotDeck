@@ -1,5 +1,6 @@
 .video-player { position: relative; width: 100%; overflow: hidden; border-radius: 14px; background: #111; }
-.video-player video { display: block; width: 100%; max-height: 70vh; object-fit: contain; }
+/* Reserve the same preview geometry before and after metadata arrives. */
+.video-player video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; max-height: 70vh; object-fit: contain; }
 .video-player-download { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #222; background: #fffffff0; opacity: 0; pointer-events: none; transition: opacity .15s; }
 .video-player:hover .video-player-download, .video-player:focus-within .video-player-download, .video-player-download.is-visible { opacity: 1; pointer-events: auto; }
 .video-player-download:focus-visible { outline: 2px solid var(--pd-accent, #8b5cf6); }

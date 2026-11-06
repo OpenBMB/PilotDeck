@@ -16,10 +16,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/*obs*.py'
-      - '.github/workflows/release-to-obs.yml'
-      - '.github/workflows/release.yml'
-      - 'apps/desktop/scripts/*release*'
-      - 'ui/shared/releaseArtifacts.js'
+      - '.github/workflows/*obs*.yml'
 
 permissions:
   contents: read

@@ -20,6 +20,7 @@ Development and packaging prepare an architecture-matched runtime and pinned nat
 - [main.ts](src/main.ts): application lifecycle, IPC and supervised Web/Gateway processes.
 - [preload.ts](src/preload.ts): the constrained renderer bridge.
 - [applicationMenu.ts](src/applicationMenu.ts): native commands and shortcuts.
+- [updates.ts](src/updates.ts), [JsonReleaseProvider.ts](src/JsonReleaseProvider.ts) and [updateDownload.ts](src/updateDownload.ts): pinned release identity, differential/full download recovery and transport control; see [release policy](../../docs/release.md#differential-downloads-and-recovery).
 - [build-runtime.mjs](scripts/build-runtime.mjs): runtime assembly; [installer documentation](resources/installer/README.md) explains transactional Windows payload replacement.
 - [rebuild-icon.mjs](scripts/rebuild-icon.mjs) regenerates platform icons; [rebuild-icon.ps1](scripts/rebuild-icon.ps1) preserves the Windows command entry.
 - [computerUse.ts](src/computerUse.ts): built-in native Driver lifecycle. Settings > External integrations > Computer Use controls it; macOS permissions belong to PilotDeck Computer Use, not the main app. See [MCP](../../src/mcp/README.md).

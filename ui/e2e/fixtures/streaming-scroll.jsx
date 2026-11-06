@@ -44,6 +44,21 @@ function Fixture() {
     ]).flat());
   }, [store]);
   window.streamFixture = {
+    mediaHistory(count = 100) {
+      setOlderMessages(Array.from({ length: count }, (_, index) => {
+        const turnId = `media-turn-${index}`;
+        const video = index % 2 === 1;
+        return [
+          { id: `media-user-${index}`, turnId, type: 'user', content: `Media question ${index}`, timestamp },
+          { id: `media-tool-${index}`, turnId, type: 'assistant', isToolUse: true, toolId: `media-tool-${index}`,
+            toolName: video ? 'generate_video' : 'generate_image', toolInput: { purpose: 'deliverable' }, timestamp,
+            toolResult: { content: 'Synthetic media', toolUseResult: video
+              ? { videoGeneration: { videoId: `video-${index}`, sessionId: 'scroll-media', purpose: 'deliverable' } }
+              : { imageGeneration: { imageId: `image-${index}`, sessionId: 'scroll-media', width: 320, height: 640, mimeType: 'image/svg+xml', purpose: 'deliverable' } } } },
+          { id: `media-answer-${index}`, turnId, type: 'assistant', content: `Media answer ${index}.\n\n${'A readable paragraph beside delayed media.\n\n'.repeat(5)}`, timestamp },
+        ];
+      }).flat());
+    },
     beginTurn(id = 'current-user') {
       const at = new Date().toISOString();
       store.appendRealtime(sid, { ...base, id, kind: 'text', role: 'user', content: 'Inspect the implementation', timestamp: at });

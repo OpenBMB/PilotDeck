@@ -105,6 +105,20 @@ test('reentry preserves an older reading anchor while refreshing newly appended 
   await expect.poll(() => loadedCount(page)).toBe(200);
   await page.mouse.wheel(0, -2500);
   await expect.poll(() => viewport(page).getAttribute('data-reading-anchor-key')).toMatch(/(?:u|a)-1[23456]\d/);
+  // A native wheel can span multiple compositor frames. Save a settled reading
+  // position, not an intermediate row that the same gesture is still leaving.
+  let previousPosition;
+  let stableSamples = 0;
+  await expect.poll(async () => {
+    const position = await viewport(page).evaluate(node => {
+      const key = node.dataset.readingAnchorKey;
+      const row = [...node.querySelectorAll('[data-message-key]')].find(row => row.dataset.messageKey === key);
+      return row ? JSON.stringify([key, node.scrollTop, row.getBoundingClientRect().top]) : null;
+    });
+    stableSamples = position && position === previousPosition ? stableSamples + 1 : 0;
+    previousPosition = position;
+    return stableSamples;
+  }, { intervals: [50] }).toBeGreaterThanOrEqual(3);
   const before = await viewport(page).evaluate(node => {
     const key = node.dataset.readingAnchorKey;
     const row = [...node.querySelectorAll('[data-message-key]')].find(row => row.dataset.messageKey === key);
