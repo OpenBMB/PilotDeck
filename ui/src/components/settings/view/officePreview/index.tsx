@@ -14,10 +14,7 @@ import {
   type OfficePreviewService,
   type OfficePreviewStatus,
 } from "../../../../utils/officePreviewStatus";
-import {
-  FormRow,
-  Select,
-} from "../../shared/components/Inputs";
+import { FormRow } from "../../shared/components/Inputs";
 import {
   ConfigSaveError,
   SettingsCard,
@@ -85,8 +82,7 @@ function OfficePreviewSection({
   const libreOfficeAvailable = status?.libreOffice?.available === true;
   const libreOfficeUnavailable =
     !statusLoading && status?.libreOffice?.available === false;
-  const showLibreOfficeStatus =
-    service === "libreoffice" && libreOfficeStatusKnown;
+  const showLibreOfficeStatus = service === "libreoffice";
   const libreOfficeUnknown =
     showLibreOfficeStatus &&
     !statusLoading &&
@@ -128,42 +124,24 @@ function OfficePreviewSection({
     >
       <SettingsCard className="office-card">
         <div className="office-card-body">
-          <FormRow
-            label={t(
-              "pilotDeckConfig.panels.officePreview.fields.service.label",
-            )}
-            description={t(
-              "pilotDeckConfig.panels.officePreview.fields.service.description",
-            )}
-            className="office-setting-row office-service-row"
-          >
-            <div className="office-select-wrap">
-              <Select
-                value={service}
-                onChange={(value) =>
-                  setService(value as OfficePreviewService)
-                }
-                options={[
-                  {
-                    value: "builtin",
-                    label: t(
-                      "pilotDeckConfig.panels.officePreview.options.builtin",
-                    ),
-                  },
-                  {
-                    value: "libreoffice",
-                    label: libreOfficeUnavailable
-                      ? t(
-                          "pilotDeckConfig.panels.officePreview.options.libreOfficeUnavailable",
-                        )
-                      : t(
-                          "pilotDeckConfig.panels.officePreview.options.libreOffice",
-                        ),
-                  },
-                ]}
-              />
+          <fieldset className="office-service-choices">
+            <legend>{t("pilotDeckConfig.panels.officePreview.fields.service.label")}</legend>
+            <div className="office-service-grid">
+              {(["builtin", "libreoffice"] as const).map(option => (
+                <label key={option} className="office-service-choice" data-selected={service === option}>
+                  <input type="radio" name="office-preview-service" value={option} checked={service === option}
+                    onChange={() => setService(option)} aria-label={t(`pilotDeckConfig.panels.officePreview.options.${option === "builtin" ? "builtin" : "libreOffice"}`)}
+                    aria-describedby={`office-service-${option}-description`} />
+                  <span>
+                    <strong>{t(`pilotDeckConfig.panels.officePreview.options.${option === "builtin" ? "builtin" : "libreOffice"}`)}</strong>
+                    <span id={`office-service-${option}-description`} className="office-service-description">
+                      {t(`pilotDeckConfig.panels.officePreview.serviceDetails.${option}`)}
+                    </span>
+                  </span>
+                </label>
+              ))}
             </div>
-          </FormRow>
+          </fieldset>
 
           {service === "libreoffice" && (
             <FormRow

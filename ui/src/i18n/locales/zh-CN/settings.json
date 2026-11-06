@@ -1125,7 +1125,11 @@
           "path": "路径：{{path}}",
           "version": "版本：{{version}}"
         },
-        "builtinNote": "内置预览开箱即用：DOCX 保留文档版式，XLSX 支持工作表切换和单元格选择，PPTX 支持幻灯片浏览。旧版 DOC、XLS、PPT 等格式需要 LibreOffice。",
+        "serviceDetails": {
+          "builtin": "无需安装，直接预览 DOCX、XLSX 和 PPTX。",
+          "libreoffice": "需本机安装，兼容旧版 DOC、XLS、PPT，使用打印版式预览。"
+        },
+        "builtinNote": "支持文档版式、工作表切换与单元格选择，以及幻灯片浏览。",
         "unavailableWarning": "当前选择了 LibreOffice，但本机没有可用的 LibreOffice/soffice。请安装 LibreOffice，或将预览服务切换为“内置预览”。"
       },
       "models": {

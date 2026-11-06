@@ -185,7 +185,7 @@
       "agentSchedule": "Wake agents automatically at scheduled times to run tasks without requiring you to stay online.",
       "integrations": "Connect Feishu, WeChat, and WeCom message channels.",
       "mcpServers": "Connect local tools and remote services so agents can safely use external capabilities and context.",
-      "officePreview": "Configure Office file preview.",
+      "officePreview": "Choose how Office documents are previewed. PDFs always open in the built-in viewer.",
       "computerUse": "Let PilotDeck view your screen and operate local applications.",
       "privacy": "Manage tool rules and anonymous usage data. The chat composer controls global access permissions.",
       "advanced": "Manage application retry, service, and environment variable settings.",
@@ -1125,7 +1125,11 @@
           "path": "Path: {{path}}",
           "version": "Version: {{version}}"
         },
-        "builtinNote": "Built-in preview works out of the box: DOCX keeps document layout, XLSX supports worksheet tabs and cell selection, and PPTX supports slide browsing. Legacy DOC, XLS, and PPT files require LibreOffice.",
+        "serviceDetails": {
+          "builtin": "Preview DOCX, XLSX and PPTX without installing anything.",
+          "libreoffice": "Requires a local installation. Supports legacy DOC, XLS and PPT in print layout."
+        },
+        "builtinNote": "Includes document layout, worksheet tabs and cell selection, and slide browsing.",
         "unavailableWarning": "LibreOffice is selected, but no LibreOffice/soffice executable is available on this machine. Install LibreOffice or switch to Built-in preview."
       },
       "models": {

@@ -2,6 +2,7 @@
 import { chromium, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { parse as parseYaml } from 'yaml';
 
 const artifacts = path.resolve('artifacts/theme-components');
 await fs.mkdir(artifacts, { recursive: true });
@@ -46,6 +47,8 @@ try {
     let bypass = true;
     const selection = { mode: 'model', provider: 'fixture', model: 'Theme model' };
     const skill = { slug: 'fixture', name: 'Theme fixture', description: 'Synthetic skill for appearance checks', scope: 'builtin', readonly: true, enabled: true, skillDir: '/fixture/skill', skillFile: '/fixture/skill/SKILL.md', version: null, mtime: null };
+    let config = { model: { providers: {} }, memory: { enabled: false }, tools: { webSearch: { enabled: true, provider: 'custom', endpoint: 'https://example.invalid/search', customProvider: { auth: 'none' } } }, webui: { officePreview: { service: 'builtin' } } };
+    let revision = 1;
     await page.route('**/api/**', async route => {
       const p = new URL(route.request().url()).pathname;
       let body = {};
@@ -65,7 +68,10 @@ try {
       else if (p.includes('/tasks')) body = { tasks: [] };
       else if (p.includes('/cron')) body = { jobs: [] };
       else if (p === '/api/usage') body = { today: '2026-01-15', timeZone: 'UTC', days: [{ date: '2026-01-15', tokens: 4200, callCount: 2 }], totalTokens: 4200, totalCalls: 2, updatedAt: '2026-01-15T12:00:00Z' };
-      else if (p === '/api/config') body = { exists: true, raw: JSON.stringify({ model: { providers: {} }, memory: { enabled: false }, tools: { webSearch: { enabled: true, provider: 'custom', endpoint: 'https://example.invalid/search', customProvider: { auth: 'none' } } } }), validation: { valid: true, errors: [], warnings: [] } };
+      else if (p === '/api/config') {
+        if (route.request().method() === 'PUT') { config = parseYaml(route.request().postDataJSON().raw); revision++; }
+        body = { exists: true, config, raw: JSON.stringify(config), revision: String(revision), validation: { valid: true, errors: [], warnings: [] } };
+      }
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.routeWebSocket('**/ws**', socket => socket.onMessage(() => {}));
@@ -73,6 +79,8 @@ try {
     const permission = page.locator('.pd-composer-permission-button');
     await expect(permission).toBeEnabled({ timeout: 60000 });
     await expect(permission).toHaveCSS('color', await token(page, '--pd-warning-ink'));
+    await expect(permission).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(permission).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     await readable(permission, `${preset} ${mode} full-access warning`);
     await readable(page.locator('.pd-composer-input-surface textarea'), `${preset} ${mode} composer placeholder`, '::placeholder');
     await permission.click();
@@ -116,9 +124,33 @@ try {
     const save = page.locator('.custom-search-save');
     await readable(save, `${preset} ${mode} search save`);
     await save.hover(); await readable(save, `${preset} ${mode} search save hover`);
+    await page.goto(`${base}/settings/office`);
+    await expect(page.locator('.pd-startup-screen')).toHaveCount(0, { timeout: 60000 });
+    await expect(page.locator('input[value=builtin]')).toBeVisible();
+    await expect(page.locator('input[value=builtin]')).toBeChecked();
+    for (const item of await page.locator('.office-service-choice strong, .office-service-description, .office-builtin-note').all()) {
+      await readable(item, `${preset} ${mode} office service choices`);
+    }
+    if (preset === 'gray') await page.screenshot({ path: path.join(artifacts, `${preset}-${mode}-office.png`) });
+    await page.locator('input[value=builtin]').focus();
+    await expect(page.locator('input[value=builtin]')).toBeFocused();
+    await page.locator('input[value=builtin]').press('ArrowRight');
+    await expect(page.locator('input[value=libreoffice]')).toBeChecked();
+    await expect.poll(() => config.webui.officePreview.service).toBe('libreoffice');
+    // A status endpoint without detection data must show an unknown state, not disappear.
+    await expect(page.locator('.office-status-heading strong')).toHaveText('LibreOffice status is temporarily unavailable');
+    await page.reload();
+    await expect(page.locator('.pd-startup-screen')).toHaveCount(0, { timeout: 60000 });
+    await expect(page.locator('input[value=libreoffice]')).toBeChecked();
+    if (preset === 'gray') {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.locator('.office-path-input input')).toBeVisible();
+      expect(await page.locator('.settings-main').evaluate(e => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: path.join(artifacts, `${preset}-${mode}-office-mobile.png`) });
+    }
     expect(errors).toEqual([]);
     results.push({ mode, preset, contrast: '>= 4.5', permission: 'semantic amber', menusAndSkills: 'theme accent' });
-    console.log(`PASS ${preset} ${mode}: warning, placeholder, menus, skills, usage, custom search and hover`);
+    console.log(`PASS ${preset} ${mode}: transparent warning, menus, skills, usage, custom search, office selection/reload and contrast`);
     await context.close();
   }
   await fs.writeFile(path.join(artifacts, 'results.json'), JSON.stringify(results, null, 2));
