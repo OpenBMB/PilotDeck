@@ -76,6 +76,21 @@ jobs:
           dist/tests/gateway/background-runtime-reload.spec.js
           dist/tests/agent/runtime-lease.spec.js
 
+      - name: Test tool scheduling and context preparation contracts
+        env:
+          PILOT_HOME: ${{ runner.temp }}/pilotdeck-harness-tests
+        run: >-
+          node --test --test-timeout 60000
+          dist/tests/tool/concurrent-tool-scheduler.spec.js
+          dist/tests/context/cache-plan.spec.js
+          dist/tests/context/cache-runtime.spec.js
+          dist/tests/context/prompt-skill-path.spec.js
+          dist/tests/context/prompt-file-delivery.spec.js
+          dist/tests/extension/plugins/prompt-contributions.spec.js
+          dist/tests/agent/loop/user-steer.spec.js
+          dist/tests/agent/session/steer-mailbox.spec.js
+          dist/tests/gateway/active-turn-snapshot.spec.js
+
       - name: Test Web UI and server
         # Vitest projects collect only src/ and server/ tests; browser E2E has
         # its own runner. Desktop Smoke runs updater tests with desktop dependencies.

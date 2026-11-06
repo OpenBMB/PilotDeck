@@ -89,6 +89,30 @@ test("non-Anthropic and unsupported models do not receive a cache plan", async (
   assert.equal(unsupported.cacheBreakpoints, undefined);
 });
 
+test("tool schema changes invalidate the cache without mutating prior plans or committing previews", async () => {
+  const runtime = new DefaultContextRuntime({ now: () => new Date("2026-01-01T00:00:00Z") });
+  const request = input({ tools: [structuredClone(tool)] });
+  const first = await runtime.prepareForModel(request);
+  assert.ok(first.cachePlan);
+  const originalPlan = structuredClone(first.cachePlan);
+  const repeated = await runtime.prepareForModel(request);
+  assert.deepEqual(repeated.cachePlan, originalPlan);
+
+  // Callers can reuse and mutate schema objects between preparations.
+  request.tools[0].inputSchema = { type: "object", properties: { path: { type: "string" } } };
+  const preview = await runtime.prepareForModel({ ...request, previewOnly: true });
+  assert.ok(preview.cachePlan);
+  assert.notEqual(preview.cachePlan.fingerprint, originalPlan.fingerprint);
+  assert.equal(preview.cachePlan.generation, originalPlan.generation);
+
+  const committed = await runtime.prepareForModel(request);
+  assert.ok(committed.cachePlan);
+  assert.equal(committed.cachePlan.fingerprint, preview.cachePlan.fingerprint);
+  assert.equal(committed.cachePlan.generation, originalPlan.generation + 1);
+  assert.deepEqual(first.cachePlan, originalPlan);
+  assert.equal(preview.cachePlan.generation, originalPlan.generation);
+});
+
 function message(text: string): CanonicalMessage {
   return { role: "user", content: [{ type: "text", text }] };
 }

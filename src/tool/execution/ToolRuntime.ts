@@ -294,6 +294,12 @@ ${formatValidationError(tool.name, updatedValidation.issues, {
       );
     }
 
+    // Permission hooks and audit sinks can yield while the turn is cancelled.
+    // Recheck before starting a body that may have irreversible side effects.
+    if (context.abortSignal?.aborted) {
+      return this.errorResult(call.id, tool.name, "tool_aborted", "Tool execution was aborted.", startedAt, context);
+    }
+
     executeInput = decision.updatedInput ?? executeInput;
     const baseContext: PilotDeckToolRuntimeContext = {
       ...context,

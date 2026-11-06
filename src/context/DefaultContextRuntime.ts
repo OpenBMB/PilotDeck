@@ -316,15 +316,17 @@ export class DefaultContextRuntime implements ContextRuntime {
       messages: requestMessages,
       enabled: input.protocol === "anthropic" && input.supportsPromptCache === true,
     };
-    const cachePlanFingerprint = buildCachePlan(cachePlanInput, 0)?.fingerprint;
-    const cachePlan = buildCachePlan(
-      cachePlanInput,
-      input.previewOnly ? (this.cachePlanState.get(input.sessionId)?.generation ?? 0) : this.nextCachePlanGeneration(
+    // Generation depends on the fingerprint, but is not itself hashed. Build
+    // the plan once instead of sorting/serializing the same payload twice.
+    const initialCachePlan = buildCachePlan(cachePlanInput, 0);
+    const generation = input.previewOnly
+      ? (this.cachePlanState.get(input.sessionId)?.generation ?? 0)
+      : this.nextCachePlanGeneration(
         input.sessionId,
-        cachePlanFingerprint,
+        initialCachePlan?.fingerprint,
         this.cacheResetSessions.delete(input.sessionId),
-      ),
-    );
+      );
+    const cachePlan = initialCachePlan ? { ...initialCachePlan, generation } : undefined;
 
     // Budget probes must not consume resets or commit hypothetical histories.
     if (!input.previewOnly) {

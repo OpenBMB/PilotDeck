@@ -145,11 +145,13 @@ export class PluginRuntime {
   }
 
   getAllCommands(): PluginCommandContribution[] {
-    return this.snapshotContributions().commands;
+    return this.registry.list().flatMap((plugin) =>
+      (plugin.commands ?? []).map((command) => toCommandContribution(plugin, command)),
+    );
   }
 
   getAllSkills(): PluginSkillContribution[] {
-    return this.snapshotContributions().skills;
+    return collectSkillContributions(this.registry.list());
   }
 
   lookupRouter(extensionId: string): PilotDeckCustomRouter | undefined {

@@ -10,4 +10,6 @@ The context popover requests `includeModelContext=summary` on authenticated mess
 
 Snapshots atomically replace a private `<transcript>.context.json` sidecar. Readers validate transcript ownership and reject snapshots from an older accepted turn. Session deletion removes the sidecar. Forked sessions without a fresh snapshot show unavailable estimates until their next model request.
 
+Each preparation builds its cache fingerprint once and assigns the session generation afterward. Budget previews do not commit generations or consume resets. Plugin command and skill projections read current contributions without rebuilding unrelated hooks and server configuration; they do not persist a cache across plugin refreshes.
+
 Tests: [tests/context](../../tests/context). See the [test guide](../../docs/testing.md) for runner selection.
