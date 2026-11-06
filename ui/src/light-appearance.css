@@ -216,7 +216,7 @@ html[data-appearance].dark .pilotdeck-settings-app :is(
   .mcp-raw-config-card, .mcp-config-card-header, .mcp-raw-config-header,
   .mcp-server-rail, .mcp-project-rail, .mcp-project-server-rail, .mcp-project-workbench,
   .mcp-detail-panel, .mcp-server-editor, .mcp-session-row, .mcp-http-note,
-  .office-card, .office-status-panel, .office-builtin-note, .security-card,
+  .security-card,
   .agent-retry-section, .advanced-settings-card, .detail-test-section,
   .model-pool-workspace, .provider-rail, .provider-detail
 ) { background: var(--pd-surface); border-color: var(--pd-border); box-shadow: none; }

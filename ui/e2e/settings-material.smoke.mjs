@@ -15,7 +15,7 @@ const routes = [
   ['agent-route', '.route-card'], ['agent-memory', '.memory-card'],
   ['agent-resident', '.resident-card'], ['agent-search', '.search-card'],
   ['agent-schedule', '.scheduled-card'], ['integrations', '.integration-gateway-card'],
-  ['mcp', '.mcp-config-card'], ['office', '.office-card'],
+  ['mcp', '.mcp-config-card'], ['office', '.office-page-content .general-card'],
   ['privacy', '.security-card'], ['advanced', '.advanced-settings-card'],
   ['about', '[data-settings-surface=panel]'],
 ];

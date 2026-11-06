@@ -864,6 +864,7 @@ router.get('/office-preview/status', async (req, res) => {
     ]);
     res.json({
       service: configuredPreview.service,
+      platform: process.platform,
       configuredBinaryPath: configuredPreview.binaryPath,
       libreOffice: {
         ...libreOffice,

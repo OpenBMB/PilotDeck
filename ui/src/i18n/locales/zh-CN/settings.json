@@ -1089,8 +1089,8 @@
           },
           "binaryPath": {
             "label": "LibreOffice 可执行文件路径",
-            "description": "可选。自定义安装位置时填写 soffice 的完整路径；留空后可使用自动扫描。",
-            "placeholder": "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+            "description": "留空时自动检测；自定义安装位置时填写完整路径，修改后保存并检查。",
+            "placeholder": "LibreOffice 可执行文件的完整路径"
           },
           "detectedBinaryPath": {
             "label": "自动扫描结果",
@@ -1119,12 +1119,15 @@
           "unknown": "LibreOffice 状态暂不可用",
           "error": "无法检查 LibreOffice 状态",
           "refresh": "重新检查",
+          "saveAndCheck": "保存并检查",
+          "pending": "保存后检查此路径",
           "noDetectedPaths": "暂未扫描到可用候选路径。你仍然可以手动填写完整路径后重新检查。",
           "pathLabel": "路径",
           "versionLabel": "版本",
           "path": "路径：{{path}}",
           "version": "版本：{{version}}"
         },
+        "configurationTitle": "LibreOffice 配置",
         "serviceDetails": {
           "builtin": "无需安装，直接预览 DOCX、XLSX 和 PPTX。",
           "libreoffice": "需本机安装，兼容旧版 DOC、XLS、PPT，使用打印版式预览。"

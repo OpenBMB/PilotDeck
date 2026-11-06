@@ -1089,8 +1089,8 @@
           },
           "binaryPath": {
             "label": "LibreOffice executable path",
-            "description": "Optional. Enter the full soffice/libreoffice path for custom installations; leave empty to auto-detect.",
-            "placeholder": "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+            "description": "Leave empty to detect automatically, or enter the full path for a custom installation. Save and check after making changes.",
+            "placeholder": "Full path to the LibreOffice executable"
           },
           "detectedBinaryPath": {
             "label": "Auto-scanned paths",
@@ -1119,12 +1119,15 @@
           "unknown": "LibreOffice status is temporarily unavailable",
           "error": "Could not check LibreOffice status",
           "refresh": "Check again",
+          "saveAndCheck": "Save and check",
+          "pending": "Save to check this path",
           "noDetectedPaths": "No candidate paths were found yet. You can still enter a full path manually and check again.",
           "pathLabel": "Path",
           "versionLabel": "Version",
           "path": "Path: {{path}}",
           "version": "Version: {{version}}"
         },
+        "configurationTitle": "LibreOffice setup",
         "serviceDetails": {
           "builtin": "Preview DOCX, XLSX and PPTX without installing anything.",
           "libreoffice": "Requires a local installation. Supports legacy DOC, XLS and PPT in print layout."

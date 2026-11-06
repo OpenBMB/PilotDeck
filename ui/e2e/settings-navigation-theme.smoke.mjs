@@ -25,7 +25,7 @@ const original = () => ({
 });
 const pages = [['general','.general-page-content'],['appearance','.appearance-settings'],['models','.model-pool-workspace'],
   ['agent-route','.route-card'],['agent-memory','.memory-card'],['agent-resident','.resident-card'],['agent-search','.search-card'],
-  ['agent-schedule','.scheduled-card'],['integrations','.integration-gateway-card'],['mcp','.mcp-config-card'],['office','.office-card'],
+  ['agent-schedule','.scheduled-card'],['integrations','.integration-gateway-card'],['mcp','.mcp-config-card'],['office','.office-page-content .general-card'],
   ['privacy','.security-card'],['advanced','.advanced-settings-card'],['about','[data-settings-surface=panel]']];
 async function exercise(page, platform, resize) {
   let config = original(), revision = 1, conflict = false;

@@ -1,403 +1,174 @@
-import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import {
-  AlertCircle,
-  Pencil,
-  RefreshCw,
-  Search,
-} from "lucide-react";
-import { usePilotDeckConfig } from "../../../../hooks/usePilotDeckConfig";
-import { cn } from "../../../../lib/utils";
-import {
-  normalizeOfficePreviewService,
-  readOfficePreviewStatus,
-  type OfficePreviewService,
-  type OfficePreviewStatus,
-} from "../../../../utils/officePreviewStatus";
-import { FormRow } from "../../shared/components/Inputs";
-import {
-  ConfigSaveError,
-  SettingsCard,
-  SettingsSection,
-} from "../../shared/view";
-import type { PilotDeckConfig } from "../modelPool/types";
-import { configToYamlString, safeParseYaml } from "../modelPool/utils/configYaml";
-import { patch } from "../modelPool/utils/patch";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { FileText, RefreshCw, Settings2 } from 'lucide-react';
+import { usePilotDeckConfig, type ConfigSaveResult } from '../../../../hooks/usePilotDeckConfig';
+import { cn } from '../../../../lib/utils';
+import { normalizeOfficePreviewService, officeBinaryPathExample, readOfficePreviewStatus,
+  type OfficePreviewService, type OfficePreviewStatus } from '../../../../utils/officePreviewStatus';
+import { ConfigSaveError } from '../../shared/view';
+import { GeneralCardHeader, GeneralSettingsIcon } from '../../shared/view/GeneralSettingsPrimitives';
+import type { PilotDeckConfig } from '../modelPool/types';
+import { configToYamlString, safeParseYaml } from '../modelPool/utils/configYaml';
+import { patch } from '../modelPool/utils/patch';
 
-type OfficePreviewSectionsProps = {
-  title: string;
-};
-
-function OfficePreviewSection({
-  config,
-  onChange,
-}: {
+function OfficePreviewSection({ config, onChange, saving }: {
   config: PilotDeckConfig;
-  onChange: (next: PilotDeckConfig) => void;
+  onChange: (next: PilotDeckConfig) => Promise<ConfigSaveResult>;
+  saving: boolean;
 }) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation('settings');
+  const key = 'pilotDeckConfig.panels.officePreview';
   const [status, setStatus] = useState<OfficePreviewStatus | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState('');
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusReloadKey, setStatusReloadKey] = useState(0);
-  const [binaryPathEditing, setBinaryPathEditing] = useState(false);
-  const service = normalizeOfficePreviewService(
-    config.webui?.officePreview?.service,
-  );
-  const configuredBinaryPath =
-    config.webui?.officePreview?.binaryPath ?? "";
-  const [binaryPathDraft, setBinaryPathDraft] = useState(
-    configuredBinaryPath,
-  );
+  const [pathEdited, setPathEdited] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const operationPending = useRef(false);
+  const service = normalizeOfficePreviewService(config.webui?.officePreview?.service);
+  const configuredBinaryPath = config.webui?.officePreview?.binaryPath ?? '';
+  const [binaryPathDraft, setBinaryPathDraft] = useState(configuredBinaryPath);
+
+  useEffect(() => {
+    if (!pathEdited && !checking) setBinaryPathDraft(configuredBinaryPath);
+  }, [configuredBinaryPath, pathEdited, checking]);
 
   useEffect(() => {
     let cancelled = false;
     setStatusLoading(true);
-    setStatusError(null);
-
+    setStatusError('');
     readOfficePreviewStatus({ refresh: statusReloadKey > 0 })
-      .then((body: OfficePreviewStatus) => {
+      .then(body => {
         if (cancelled) return;
         setStatus(body);
-        setStatusError(body.statusError || null);
+        setStatusError(body.statusError || '');
       })
       .catch((error: Error) => {
-        if (cancelled) return;
-        setStatusError(
-          error.message ||
-            t("pilotDeckConfig.panels.officePreview.status.error"),
-        );
+        if (!cancelled) setStatusError(error.message || t(`${key}.status.error`));
       })
-      .finally(() => {
-        if (!cancelled) setStatusLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setStatusLoading(false); });
+    return () => { cancelled = true; };
   }, [statusReloadKey, t]);
 
-  const libreOfficeStatusKnown =
-    status?.libreOffice?.available !== undefined;
-  const libreOfficeAvailable = status?.libreOffice?.available === true;
-  const libreOfficeUnavailable =
-    !statusLoading && status?.libreOffice?.available === false;
-  const showLibreOfficeStatus = service === "libreoffice";
-  const libreOfficeUnknown =
-    showLibreOfficeStatus &&
-    !statusLoading &&
-    !statusError &&
-    !libreOfficeStatusKnown;
-  useEffect(() => {
-    if (!binaryPathEditing) setBinaryPathDraft(configuredBinaryPath);
-  }, [binaryPathEditing, configuredBinaryPath]);
-
-  const setService = (next: OfficePreviewService) =>
-    onChange(
-      patch(config, ["webui", "officePreview", "service"], next),
-    );
-  const setBinaryPath = (next: string) =>
-    onChange(
-      patch(config, ["webui", "officePreview", "binaryPath"], next),
-    );
-  const scanLibreOfficePaths = () => {
-    setStatusReloadKey((value) => value + 1);
-  };
-  const startEditingBinaryPath = () => {
-    setBinaryPathDraft(configuredBinaryPath);
-    setBinaryPathEditing(true);
-  };
-  const cancelEditingBinaryPath = () => {
-    setBinaryPathDraft(configuredBinaryPath);
-    setBinaryPathEditing(false);
-  };
-  const saveBinaryPath = () => {
-    setBinaryPath(binaryPathDraft);
-    setBinaryPathEditing(false);
-  };
-
-  return (
-    <SettingsSection
-      title={t("pilotDeckConfig.panels.officePreview.title")}
-      description={t("pilotDeckConfig.panels.officePreview.description")}
-      className="office-config-section"
-    >
-      <SettingsCard className="office-card">
-        <div className="office-card-body">
-          <fieldset className="office-service-choices">
-            <legend>{t("pilotDeckConfig.panels.officePreview.fields.service.label")}</legend>
-            <div className="office-service-grid">
-              {(["builtin", "libreoffice"] as const).map(option => (
-                <label key={option} className="office-service-choice" data-selected={service === option}>
-                  <input type="radio" name="office-preview-service" value={option} checked={service === option}
-                    onChange={() => setService(option)} aria-label={t(`pilotDeckConfig.panels.officePreview.options.${option === "builtin" ? "builtin" : "libreOffice"}`)}
-                    aria-describedby={`office-service-${option}-description`} />
-                  <span>
-                    <strong>{t(`pilotDeckConfig.panels.officePreview.options.${option === "builtin" ? "builtin" : "libreOffice"}`)}</strong>
-                    <span id={`office-service-${option}-description`} className="office-service-description">
-                      {t(`pilotDeckConfig.panels.officePreview.serviceDetails.${option}`)}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          {service === "libreoffice" && (
-            <FormRow
-              label={t(
-                "pilotDeckConfig.panels.officePreview.fields.binaryPath.label",
-              )}
-              description={t(
-                "pilotDeckConfig.panels.officePreview.fields.binaryPath.description",
-              )}
-              className="office-setting-row office-path-row"
-            >
-              <div className="office-path-control">
-                <div className="office-path-input-row">
-                  <div className="office-path-input">
-                    <input
-                      value={
-                        binaryPathEditing
-                          ? binaryPathDraft
-                          : configuredBinaryPath
-                      }
-                      placeholder={t(
-                        "pilotDeckConfig.panels.officePreview.fields.binaryPath.placeholder",
-                      )}
-                      readOnly={!binaryPathEditing}
-                      aria-label={t(
-                        "pilotDeckConfig.panels.officePreview.fields.binaryPath.label",
-                      )}
-                      onChange={(event) =>
-                        setBinaryPathDraft(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") saveBinaryPath();
-                        if (event.key === "Escape") {
-                          cancelEditingBinaryPath();
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="office-path-actions">
-                    {binaryPathEditing ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={cancelEditingBinaryPath}
-                          className="button secondary"
-                        >
-                          {t("settingsPage.actions.cancel")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={saveBinaryPath}
-                          className="button primary"
-                        >
-                          {t("settingsPage.actions.save")}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={startEditingBinaryPath}
-                          className="button secondary"
-                        >
-                          <Pencil size={14} />
-                          {t("settingsPage.actions.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={scanLibreOfficePaths}
-                          disabled={statusLoading}
-                          className="button secondary"
-                        >
-                          <Search size={14} />
-                          {t(
-                            "pilotDeckConfig.panels.officePreview.scan.button",
-                          )}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </FormRow>
-          )}
-
-          <div className="office-status-area">
-            {showLibreOfficeStatus && (
-              <div
-                className={cn(
-                  "office-status-panel",
-                  libreOfficeAvailable && "available",
-                )}
-              >
-                <div className="office-status-heading">
-                  <div>
-                    <span
-                      className={cn(
-                        "office-status-dot",
-                        !libreOfficeAvailable &&
-                          !libreOfficeUnavailable &&
-                          !statusError &&
-                          "checking",
-                      )}
-                    />
-                    <strong>
-                      {statusLoading
-                        ? t(
-                            "pilotDeckConfig.panels.officePreview.status.checking",
-                          )
-                        : statusError
-                          ? t(
-                              "pilotDeckConfig.panels.officePreview.status.error",
-                            )
-                          : libreOfficeAvailable
-                              ? t(
-                                "pilotDeckConfig.panels.officePreview.status.available",
-                              )
-                            : libreOfficeUnavailable
-                              ? t(
-                                  "pilotDeckConfig.panels.officePreview.status.unavailable",
-                                )
-                              : libreOfficeUnknown
-                                ? t(
-                                    "pilotDeckConfig.panels.officePreview.status.unknown",
-                                  )
-                                : t(
-                                    "pilotDeckConfig.panels.officePreview.status.unavailable",
-                                  )}
-                    </strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setStatusReloadKey((value) => value + 1)
-                    }
-                  >
-                    <RefreshCw
-                      className={cn(
-                        "h-3.5 w-3.5",
-                        statusLoading && "animate-spin",
-                      )}
-                    />
-                    {t(
-                      "pilotDeckConfig.panels.officePreview.status.refresh",
-                    )}
-                  </button>
-                </div>
-
-                {libreOfficeAvailable &&
-                  (status?.libreOffice?.binaryPath ||
-                    status?.libreOffice?.version) && (
-                    <div className="office-status-detail">
-                      {status.libreOffice.binaryPath && (
-                        <p title={status.libreOffice.binaryPath}>
-                          <span>
-                            {t(
-                              "pilotDeckConfig.panels.officePreview.status.pathLabel",
-                            )}
-                          </span>
-                          <code>{status.libreOffice.binaryPath}</code>
-                        </p>
-                      )}
-                      {status.libreOffice.version && (
-                        <p title={status.libreOffice.version}>
-                          <span>
-                            {t(
-                              "pilotDeckConfig.panels.officePreview.status.versionLabel",
-                            )}
-                          </span>
-                          <code>{status.libreOffice.version}</code>
-                        </p>
-                      )}
-                    </div>
-                  )}
-              </div>
-            )}
-
-            {service === "builtin" && (
-              <div className="office-builtin-note">
-                {t(
-                  "pilotDeckConfig.panels.officePreview.builtinNote",
-                )}
-              </div>
-            )}
-
-            {service === "libreoffice" && libreOfficeUnavailable && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-700 dark:text-amber-300">
-                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                <div>
-                  {t(
-                    "pilotDeckConfig.panels.officePreview.unavailableWarning",
-                  )}
-                </div>
-              </div>
-            )}
-
-            {service === "libreoffice" && statusError && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] leading-5 text-[var(--pd-danger-ink)]">
-                {statusError}
-              </div>
-            )}
-          </div>
-        </div>
-      </SettingsCard>
-    </SettingsSection>
-  );
-}
-
-export default function OfficePreviewSections({
-  title,
-}: OfficePreviewSectionsProps) {
-  const { t } = useTranslation("settings");
-  const { raw, commitRaw, loading, error } = usePilotDeckConfig();
-  const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
-
-  const onFormChange = async (next: PilotDeckConfig) => {
+  const busy = saving || checking || statusLoading;
+  const checkPath = async () => {
+    if (busy || operationPending.current) return;
+    operationPending.current = true;
+    setChecking(true);
     try {
-      await commitRaw(configToYamlString(next));
-    } catch (caught) {
-      console.error(
-        "Failed to serialise Office preview config patch",
-        caught,
-      );
+      if (pathEdited) {
+        const result = await onChange(patch(config, ['webui', 'officePreview', 'binaryPath'], binaryPathDraft.trim()));
+        // Do not scan an old path, or discard the draft, after a rejected write.
+        if (!result.ok) return;
+        setPathEdited(false);
+      }
+      setStatusLoading(true);
+      setStatusReloadKey(value => value + 1);
+    } finally {
+      operationPending.current = false;
+      setChecking(false);
     }
   };
+  const cancelPath = () => { setBinaryPathDraft(configuredBinaryPath); setPathEdited(false); };
+  const setService = (next: OfficePreviewService) => {
+    void onChange(patch(config, ['webui', 'officePreview', 'service'], next));
+  };
+  const available = status?.libreOffice?.available === true;
+  const unavailable = !busy && !pathEdited && status?.libreOffice?.available === false;
+  const statusKey = pathEdited ? 'pending' : busy ? 'checking' : statusError ? 'error'
+    : available ? 'available' : unavailable ? 'unavailable' : 'unknown';
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-        <div className="py-6 text-xs text-muted-foreground">
-          {t("pilotDeckConfig.loading")}
+  return <>
+    <section className="general-section">
+      <article className="general-card">
+        <GeneralCardHeader icon={<GeneralSettingsIcon icon={FileText} />} title={t(`${key}.fields.service.label`)} />
+        <fieldset className="office-service-choices" disabled={saving || checking}>
+          <legend className="sr-only">{t(`${key}.fields.service.label`)}</legend>
+          <div className="office-service-grid">
+            {(['builtin', 'libreoffice'] as const).map(option => (
+              <label key={option} className="office-service-choice" data-selected={service === option}>
+                <input type="radio" name="office-preview-service" value={option} checked={service === option}
+                  onChange={() => setService(option)} aria-label={t(`${key}.options.${option === 'builtin' ? 'builtin' : 'libreOffice'}`)}
+                  aria-describedby={`office-service-${option}-description`} />
+                <span>
+                  <strong>{t(`${key}.options.${option === 'builtin' ? 'builtin' : 'libreOffice'}`)}</strong>
+                  <span id={`office-service-${option}-description`} className="office-service-description">{t(`${key}.serviceDetails.${option}`)}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {service === 'builtin' && <p className="office-builtin-note">{t(`${key}.builtinNote`)}</p>}
+        </fieldset>
+      </article>
+    </section>
+    {service === 'libreoffice' && <section className="general-section">
+      <article className="general-card office-path-card">
+        <GeneralCardHeader icon={<GeneralSettingsIcon icon={Settings2} />} title={t(`${key}.configurationTitle`)} />
+        <div className="office-path-body">
+          <div className="general-setting-copy">
+            <label className="general-setting-title" htmlFor="office-binary-path">{t(`${key}.fields.binaryPath.label`)}</label>
+            <p id="office-path-help">{t(`${key}.fields.binaryPath.description`)}</p>
+          </div>
+          <div className="office-path-input">
+            <input id="office-binary-path" value={binaryPathDraft} spellCheck={false} disabled={saving || checking}
+              placeholder={officeBinaryPathExample(status?.platform) ?? t(`${key}.fields.binaryPath.placeholder`)}
+              aria-describedby="office-path-help"
+              onChange={event => { setBinaryPathDraft(event.target.value); setPathEdited(true); }}
+              onKeyDown={event => {
+                if (event.nativeEvent.isComposing) return;
+                if (event.key === 'Enter') { event.preventDefault(); void checkPath(); }
+                if (event.key === 'Escape') { event.preventDefault(); cancelPath(); }
+              }} />
+          </div>
+          <div className="office-path-actions">
+            {pathEdited && <button type="button" className="button secondary compact" disabled={busy} onClick={cancelPath}>
+              {t('settingsPage.actions.cancel')}
+            </button>}
+            <button type="button" className={cn('button compact', pathEdited ? 'primary' : 'secondary')}
+              disabled={busy} onClick={() => { void checkPath(); }}>
+              <GeneralSettingsIcon icon={RefreshCw} className={busy ? 'animate-spin' : ''} />
+              {t(`${key}.status.${busy ? 'checking' : pathEdited ? 'saveAndCheck' : 'refresh'}`)}
+            </button>
+          </div>
+          <div className={cn('office-status-panel', statusKey === 'available' && 'available')} aria-busy={busy}>
+            <div className="office-status-heading" role="status" aria-live="polite">
+              <div><span className={cn('office-status-dot', busy && 'checking')} aria-hidden="true" />
+                <strong>{t(`${key}.status.${statusKey}`)}</strong>
+              </div>
+            </div>
+            {!pathEdited && !busy && !statusError && available && <div className="office-status-detail">
+              {(['binaryPath', 'version'] as const).map(field => status?.libreOffice?.[field] && <p key={field}>
+                <span>{t(`${key}.status.${field === 'binaryPath' ? 'pathLabel' : 'versionLabel'}`)}</span>
+                <code>{status.libreOffice[field]}</code>
+              </p>)}
+            </div>}
+            {unavailable && <p className="office-status-note">{t(`${key}.unavailableWarning`)}</p>}
+            {statusError && <p role="alert" className="office-status-note">{statusError}</p>}
+          </div>
         </div>
-      </div>
-    );
-  }
+      </article>
+    </section>}
+  </>;
+}
 
-  if (!parsedConfig) {
-    return (
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-[var(--pd-danger-ink)]">
-          {t("settingsPage.invalidYaml.officePreview")}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="office-page-content">
-      <h2 className="text-2xl font-semibold text-foreground">{title}</h2>
-      <ConfigSaveError error={error} />
-      <OfficePreviewSection
-        config={parsedConfig}
-        onChange={onFormChange}
-      />
-    </div>
-  );
+export default function OfficePreviewSections({ title: _title }: { title: string }) {
+  const { t } = useTranslation('settings');
+  const { raw, commitRaw, loading, saving, error } = usePilotDeckConfig();
+  const [serializationError, setSerializationError] = useState('');
+  const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
+  const onFormChange = async (next: PilotDeckConfig): Promise<ConfigSaveResult> => {
+    setSerializationError('');
+    try { return await commitRaw(configToYamlString(next)); }
+    catch (caught) {
+      const message = caught instanceof Error ? caught.message : t('settingsPage.invalidYaml.officePreview');
+      setSerializationError(message);
+      return { ok: false, error: message };
+    }
+  };
+  if (loading) return <div role="status" className="py-6 text-xs text-muted-foreground">{t('pilotDeckConfig.loading')}</div>;
+  if (!parsedConfig) return <ConfigSaveError error={t('settingsPage.invalidYaml.officePreview')} />;
+  return <div className="general-page-content office-page-content">
+    <ConfigSaveError error={serializationError || error} />
+    <OfficePreviewSection config={parsedConfig} onChange={onFormChange} saving={saving} />
+  </div>;
 }
