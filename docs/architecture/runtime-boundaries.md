@@ -89,7 +89,7 @@ Retain historical transcript migrations, compatibility adapters, runtime skills,
 distribution assets and genuine regression fixtures. Version labels alone do
 not establish that a file is obsolete.
 
-## Validation and design references
+## Validation
 
 See [testing](../testing.md) for deterministic contracts and browser acceptance.
 For a boundary change, compare baseline and updated behavior on the same inputs:
@@ -97,12 +97,3 @@ normal paths preserve their observable outputs, while a defect fixture must
 demonstrate the intended difference. Real-model evaluations use synthetic tools
 and isolated profiles; report provider availability and cache usage separately
 from deterministic correctness.
-
-Reference designs include [Codex app-server](https://learn.chatgpt.com/docs/app-server),
-[DeepSeek service packages](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/README.md),
-[DeepSeek prompt composition](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/system-prompt/README.md),
-[Gemini CLI core](https://geminicli.com/docs/core/),
-[Claude Agent SDK contracts](https://code.claude.com/docs/en/agent-sdk/overview),
-and [Llama Stack's OGX provider architecture](https://github.com/ogx-ai/ogx).
-The transferable principles are explicit contracts, scoped ownership,
-deterministic context and observable lifecycle behavior.
