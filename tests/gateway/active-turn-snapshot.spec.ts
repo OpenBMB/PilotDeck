@@ -48,6 +48,25 @@ async function flushAsyncWork(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+test('Python status is routed through remote and authenticated WebSocket Gateways', async () => {
+  const expected = { enabled: true, state: 'ready', version: '3.12.16', executable: '/execution-host/python' };
+  const remote = new RemoteGateway({ request: async (method: string) => {
+    assert.equal(method, 'python_runtime_status'); return expected;
+  } } as unknown as GatewayWsClient);
+  assert.deepEqual(await remote.getPythonRuntimeStatus(), expected);
+  const socket = new FakeTextWebSocketConnection();
+  new GatewayWsConnection(socket as unknown as TextWebSocketConnection, {
+    token: 'fixture-token', serverVersion: 'test', gateway: {
+      describeServer: async () => ({ mode: 'in_process' }), getPythonRuntimeStatus: async () => expected,
+    } as unknown as Gateway,
+  });
+  socket.dispatch({ type: 'hello', protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION, clientName: 'test', clientVersion: 'test', token: 'fixture-token' });
+  await flushAsyncWork();
+  socket.dispatch({ type: 'request', id: 'python', method: 'python_runtime_status', params: {} });
+  await flushAsyncWork();
+  assert.deepEqual(socket.sent.at(-1), { type: 'response', id: 'python', ok: true, result: expected });
+});
+
 test('WebSocket final completion retains execution timing and run identity', async () => {
   const complete: GatewayEvent = { type: 'turn_completed', runId: 'timed-run', usage: {}, finishReason: 'model_error',
     startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z' };

@@ -159,6 +159,7 @@ export type WebGatewayMethod =
   | "list_projects"
   | "describe_project"
   | "reload_config"
+  | "python_runtime_status"
   | "skill_list"
   | "skill_read"
   | "skill_write"

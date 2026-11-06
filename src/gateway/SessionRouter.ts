@@ -61,6 +61,7 @@ export class SessionRouter {
   private readonly now: () => Date;
   private readonly idleSweepTimer?: ReturnType<typeof setInterval>;
   private isShutdown = false;
+  private runtimeRevision = 0;
 
   constructor(private readonly options: SessionRouterOptions) {
     this.idleSessionTimeoutMs = options.idleSessionTimeoutMs ?? DEFAULT_IDLE_SESSION_TIMEOUT_MS;
@@ -72,7 +73,8 @@ export class SessionRouter {
     }
   }
 
-  async getOrCreate(context: GatewaySessionContext): Promise<AgentSession> {
+  async getOrCreate(context: GatewaySessionContext, turnRunId?: string): Promise<AgentSession> {
+    const runtimeRevision = this.runtimeRevision;
     this.assertProjectOpen(context.projectKey);
     const generation = this.projectGenerations.get(context.projectKey ?? "");
     this.sweepIdle();
@@ -81,7 +83,10 @@ export class SessionRouter {
     const cached = this.sessions.get(context.sessionKey);
     if (cached) {
       cached.context = mergeSessionContext(cached.context, context);
-      if (cached.dirtyReason && this.options.recreateSession) {
+      // A history/resume request must not recreate the session underneath a live
+      // turn. Only the turn that reserved this slot may refresh its runtime.
+      const activeRunId = this.inFlightTurns.get(context.sessionKey);
+      if (cached.dirtyReason && this.options.recreateSession && (!activeRunId || activeRunId === turnRunId)) {
         await this.emitSessionEvict(context.sessionKey, cached, "dirty_recreate");
         const recreated = await this.createTrackedSession(cached.context, () => this.options.recreateSession!(cached.context, cached.session));
         if (generation !== this.projectGenerations.get(context.projectKey ?? "")) {
@@ -89,7 +94,7 @@ export class SessionRouter {
           throw new Error("Project was closed while recreating the session.");
         }
         cached.session = recreated;
-        cached.dirtyReason = undefined;
+        cached.dirtyReason = runtimeRevision === this.runtimeRevision ? undefined : 'runtime_changed';
       }
       cached.lastUsedAt = this.nowMs();
       return cached.session;
@@ -104,6 +109,7 @@ export class SessionRouter {
       session,
       lastUsedAt: this.nowMs(),
       context,
+      ...(runtimeRevision !== this.runtimeRevision ? { dirtyReason: 'runtime_changed' } : {}),
     });
     return session;
   }
@@ -210,6 +216,7 @@ export class SessionRouter {
   }
 
   markAllDirty(reason = "runtime_changed"): number {
+    this.runtimeRevision++;
     let count = 0;
     for (const record of this.sessions.values()) {
       record.dirtyReason = reason;
@@ -219,6 +226,7 @@ export class SessionRouter {
   }
 
   markProjectDirty(projectKey: string, reason = "runtime_changed"): number {
+    this.runtimeRevision++;
     let count = 0;
     for (const record of this.sessions.values()) {
       if (record.context.projectKey !== projectKey) {

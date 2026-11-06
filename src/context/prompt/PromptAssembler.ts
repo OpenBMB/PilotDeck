@@ -1,4 +1,5 @@
 import type { CanonicalToolSchema } from "../../model/index.js";
+import { pythonRuntimeContext, type PythonRuntimeStatus } from '../../runtime/pythonRuntime.js';
 import type {
   ContributedCommand,
   ContributedSkill,
@@ -7,6 +8,7 @@ import type {
 } from "../extension/ExtensionResolver.js";
 
 export type PromptAssemblerInput = {
+  pythonRuntime?: PythonRuntimeStatus;
   cwd: string;
   provider: string;
   model: string;
@@ -148,6 +150,8 @@ export class PromptAssembler {
     }
     lines.push(`platform: ${process.platform}`);
     lines.push(`node: ${process.version}`);
+    const python = pythonRuntimeContext(input.pythonRuntime);
+    if (python) lines.push(`<python-runtime>\n${python}\n</python-runtime>`);
     lines.push("</user-context>");
     return [lines.join("\n")];
   }

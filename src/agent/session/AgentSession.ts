@@ -23,6 +23,7 @@ import {
 } from "./SteerMailbox.js";
 
 export type AgentSessionOptions = {
+  releaseSessionResources?: () => void;
   /** Hold runtime resources until the complete turn generator has closed. */
   acquireTurnResources?: () => () => void;
   sessionId: string;
@@ -45,6 +46,7 @@ export type AgentSessionRuntimeReloadSnapshot = {
 };
 
 export class AgentSession {
+  private disposal?: Promise<void>;
   private state: AgentSessionStateShape;
   private readonly steerMailbox = new SteerMailbox();
 
@@ -137,8 +139,13 @@ export class AgentSession {
   }
 
   async dispose(): Promise<void> {
-    if (this.state.status === "running") this.abort("session_closed");
-    await this.options.turnRunner.dispose?.();
+    this.disposal ??= (async () => {
+      try {
+        if (this.state.status === "running") this.abort("session_closed");
+        await this.options.turnRunner.dispose?.();
+      } finally { this.options.releaseSessionResources?.(); }
+    })();
+    await this.disposal;
   }
 
   abort(reason?: string): void {

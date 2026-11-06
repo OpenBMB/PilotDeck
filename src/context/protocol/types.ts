@@ -43,6 +43,7 @@ export type ModelContext = {
 };
 
 export type ContextPrepareInput = {
+  pythonRuntime?: import('../../runtime/pythonRuntime.js').PythonRuntimeStatus;
   /** Budget-only assembly; do not commit prompt time or cache state. */
   previewOnly?: boolean;
   sessionId: string;

@@ -660,6 +660,7 @@ export interface Gateway {
    * capability) may leave it undefined.
    */
   reloadConfig?(): Promise<ReloadConfigResult>;
+  getPythonRuntimeStatus?(): Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus>;
 
   /**
    * Ask the gateway host to start or restart the Weixin channel so it can

@@ -179,11 +179,12 @@ function createSubagentForkHarness(router: AgentRouterRuntime): {
 function sessionFor(
   definition: SubagentDefinition,
   registry: ToolRegistry,
+  config: AgentRuntimeConfig = parentConfig(),
 ): TestableSubAgentSession {
   const options: SubAgentSessionOptions = {
     definition,
     directive: "Inspect the workspace.",
-    parentConfig: parentConfig(),
+    parentConfig: config,
     parentDependencies: {
       router: {} as AgentRuntimeDependencies["router"],
       tools: {
@@ -198,6 +199,17 @@ function sessionFor(
   };
   return new SubAgentSession(options) as unknown as TestableSubAgentSession;
 }
+
+test('subagents retain the parent Python execution snapshot with their custom system prompt', () => {
+  const config = parentConfig();
+  config.env = Object.freeze({ PATH: '/managed/bin', UV_PYTHON: '/managed/bin/python' });
+  config.pythonRuntime = Object.freeze({ enabled: true, state: 'ready', version: '3.12.16', executable: '/managed/bin/python' });
+  const definition = Object.values(SUBAGENT_DEFINITIONS)[0]!;
+  const child = sessionFor(definition, new ToolRegistry(), config).buildConfig();
+  assert.equal(child.env, config.env);
+  assert.equal(child.pythonRuntime, config.pythonRuntime);
+  assert.ok(child.systemPrompt);
+});
 
 function runtimeContext(config: AgentRuntimeConfig): PilotDeckToolRuntimeContext {
   return {

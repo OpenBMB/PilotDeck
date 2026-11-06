@@ -24,6 +24,7 @@ export type AgentRuntimeConfig = {
   permissionModeBeforePlan?: PermissionMode;
   permissionContext: PermissionContext;
   env?: NodeJS.ProcessEnv;
+  pythonRuntime?: import('../../runtime/pythonRuntime.js').PythonRuntimeStatus;
   maxResultBytes?: number;
   metadata?: Record<string, unknown>;
   /** Marks the agent as a subagent. RouterRuntime uses this for sticky/scenario decisions. */

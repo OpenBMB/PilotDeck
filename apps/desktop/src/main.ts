@@ -216,6 +216,9 @@ class RuntimeManager {
       HOME: process.env.HOME || os.homedir(),
       HOST: "127.0.0.1",
       PILOTDECK_RUNTIME_ROOT: this.runtimeRoot,
+      PILOTDECK_PYTHON_ROOT: app.isPackaged
+        ? path.join(process.resourcesPath, 'python-runtime')
+        : path.join(__dirname, '..', 'resources', 'python-runtime'),
       PILOTDECK_DESKTOP_RUNTIME_ROOT: this.runtimeRoot,
       PILOTDECK_DESKTOP_INSTALL_ROOT: app.isPackaged ? desktopInstallationRoot(process.resourcesPath) : this.runtimeRoot,
       PILOT_HOME: config.pilotHome,
