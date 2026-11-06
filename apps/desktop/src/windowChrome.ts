@@ -18,9 +18,10 @@ export const WINDOWS_MENUS = [
   { id: 'menu-help', en: 'Help', zh: '帮助', key: 'h' },
 ] as const;
 
-/** One opaque palette for the native buttons and the adjacent HTML caption. */
+/** Native buttons and HTML caption share fills. The default Windows light
+ * caption is transparent so the original viewport gradient continues behind it. */
 export function windowPalette(dark: boolean, platform: NodeJS.Platform = process.platform, lightAppearance?: unknown) {
-  const palette = { background: dark ? '#0a0a0a' : '#ffffff', caption: platform === 'win32' || platform === 'linux' ? (dark ? '#171717' : '#f4f4f5') : (dark ? '#0a0a0a' : '#fbfaff'), symbol: dark ? '#e5e5e5' : '#262626' };
+  const palette = { background: dark ? '#0a0a0a' : '#ffffff', caption: platform === 'win32' || platform === 'linux' ? (dark ? '#171717' : platform === 'win32' ? '#00000000' : '#f4f4f5') : (dark ? '#0a0a0a' : '#fbfaff'), symbol: dark ? '#e5e5e5' : '#262626' };
   const appearance = normalizeLightAppearance(lightAppearance);
   if (!dark && isCustomizedLightAppearance(appearance)) {
     const colors = deriveLightColors(appearance);

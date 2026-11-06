@@ -46,7 +46,7 @@ it('finishes and fades smoothly even when a client is ready immediately', async 
 it.each([
   [undefined, '#ffffff'],
   [{ preset: 'default' }, '#ffffff'],
-  [{ preset: 'lavender' }, '#f1ecfa'],
+  [{ preset: 'lavender' }, '#eeebf3'],
   [{ preset: 'custom', custom: { background: '#b9dfce' } }, '#b9dfce'],
 ])('keeps the native startup canvas during the Web handoff with preference %j', (lightAppearance, expected) => {
   // Reproduce the default lavender application canvas being available before

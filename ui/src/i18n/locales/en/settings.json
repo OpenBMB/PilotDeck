@@ -1982,6 +1982,7 @@
     "presetHint": "Accent colors apply to buttons and selected states.",
     "autoSave": "Changes save automatically",
     "preset": {
+      "gray": "Graphite",
       "default": "Default",
       "blue": "Mist blue",
       "mint": "Mint",

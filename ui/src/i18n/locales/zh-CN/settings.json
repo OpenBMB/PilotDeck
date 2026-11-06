@@ -1976,6 +1976,7 @@
     "presetHint": "强调色用于按钮与选中状态。",
     "autoSave": "更改自动保存",
     "preset": {
+      "gray": "石墨灰",
       "default": "默认",
       "blue": "雾蓝",
       "mint": "薄荷",

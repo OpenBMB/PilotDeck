@@ -368,7 +368,7 @@ try {
   expect(await pageIdentity()).toEqual(darkPageIdentity);
   await page.screenshot({ path: path.join(artifactDir, `${platformName}-light.png`) });
   if (!mac) {
-    await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', 'rgb(244, 244, 245)');
+    await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', process.platform === 'win32' ? 'rgba(0, 0, 0, 0)' : 'rgb(244, 244, 245)');
     await verifyOriginalContentStyle();
     await expect(page.locator('.project-sidebar')).toHaveCSS('background-image', 'linear-gradient(rgb(251, 250, 255), rgb(244, 243, 255) 58%, rgb(240, 244, 255))');
 

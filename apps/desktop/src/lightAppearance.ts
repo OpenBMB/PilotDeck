@@ -3,11 +3,12 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 export type LightPalette = { accent: string; background: string };
 export const LIGHT_PRESETS = {
   default: { accent: '#5b5ce2', background: '#eef0f8' },
-  blue: { accent: '#386ab4', background: '#eaf1fb' },
-  mint: { accent: '#187c65', background: '#eaf5ef' },
-  apricot: { accent: '#a56028', background: '#fbf0e5' },
-  lavender: { accent: '#7955b3', background: '#f1ecfa' },
-  rose: { accent: '#b24d72', background: '#faedf2' },
+  gray: { accent: '#52565e', background: '#ebecee' },
+  blue: { accent: '#426787', background: '#eaf0f5' },
+  mint: { accent: '#397566', background: '#eaf1ed' },
+  apricot: { accent: '#936843', background: '#f4eee7' },
+  lavender: { accent: '#72618f', background: '#eeebf3' },
+  rose: { accent: '#9b5f72', background: '#f4ecef' },
 } satisfies Record<string, LightPalette>;
 export type LightPreset = keyof typeof LIGHT_PRESETS | 'custom';
 export type LightAppearance = {

@@ -39,7 +39,7 @@ test('startup UI translates controls without exposing technical details while lo
 test('custom startup canvas is validated and dark palette retains its original values', () => {
   const appearance = normalizeAppearance({ language: 'en', themeMode: 'light', lightAppearance: { preset: 'rose' } });
   assert.equal(appearance.lightAppearance.version, 2);
-  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#faedf2/);
+  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#f4ecef/);
   assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#0a0a0a/);
 });
 

@@ -35,6 +35,12 @@ General uses a registered PilotDeckGeneral workspace (Documents on Windows, home
 
 Runtime logs are managed under userData/logs, or PILOT_HOME/logs for standalone services. The retention setting defaults to seven days. Download runtime logs exports redacted diagnostics; invalid configuration remains available for repair.
 
+## Preference persistence
+
+Ordinary application updates replace the installation payload and retain the user profile. Desktop theme mode, light palette, custom colors, wallpaper parameters and interface performance preferences live in Electron's `userData/appearance.json`; managed background images live in `userData/appearance-images/`. Language/theme updates merge into the saved appearance rather than replacing it. Model, tool and skill preferences live under `PILOT_HOME` (normally `~/.pilotdeck`); device UI choices also use the Web view's local storage. These locations must stay outside the installation directory.
+
+Browser deployments keep appearance settings in local storage and images in IndexedDB, scoped to the browser profile and site origin (scheme, hostname and port). Reinstalling with personal-data deletion, clearing site data, changing the application profile/identity or changing the Web origin is outside normal update retention. Preset IDs and storage keys are stable across palette refinements; user custom colors and image effects are preserved.
+
 ## Validation
 
 The Node helper suite is collected by the test command above. [Desktop chrome acceptance](../../ui/e2e/desktop-chrome.smoke.mjs), [lifecycle acceptance](scripts/verify-desktop-lifecycle.cjs) and native installer checks need their stated build/platform prerequisites and isolated profiles. They do not establish that a particular published package is signed; [release verification](../../docs/release.md) checks the actual payload.
