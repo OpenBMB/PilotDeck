@@ -1,0 +1,3 @@
+{"case": "budget", "type": "input_accepted", "runId": "13560717-cd58-4ccd-8f77-8efdda4318b9"}
+{"case": "budget", "type": "turn_completed", "finishReason": "max_tokens", "runId": "13560717-cd58-4ccd-8f77-8efdda4318b9"}
+{"case": "budget", "status": "scenario_completed", "session": "repro:budget:108c2ecb-5c52-446e-8d23-3d1e5f7a600b", "note": "A completed answer alone does not prove package invocation; inspect model/hook/tool evidence."}

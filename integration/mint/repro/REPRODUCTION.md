@@ -1,47 +1,52 @@
 # 独立复现报告
 
-日期：2026-11-06。结论：**源码可获取、构建成功、13 包安装成功；固定新版包组合不能启动 ACP，端到端验收未通过。**
+日期：2026-11-06；本轮使用修复后发布版，精确版本以同目录 mint.toml / mint.lock 为准。
 
-## 已实际验证
+**结论：5 个包的激活错误已解决，干净实例可以启动 ACP 和 PilotDeck 对话；13 包完整端到端验收仍未通过。**
 
-- 通过远端 Git 新克隆 Host 提交 `0598599ef99671c1f03e7451b663a9f85428bc73`，构建 `cpmrt`（js-host）及 `mint-host` 成功。
-- 通过远端 Git 新克隆 CLI 提交 `437dece108b9a2843f7fea4b0d662a5e45fa20e6`，构建 `mint-cli --bin mint --release` 成功。
-- 使用新构建 CLI、新项目、新 Mint home、新缓存在线安装 13 个锁定包成功；同 lock 离线安装 13 包成功。见 [install.log](evidence/install.log)。
-- 新配置及测试入口通过 Python 编译和 Node 语法检查；ACP gateway 聚焦测试 5 passed。
-- Rust/Cargo 下载缓存沿用宿主工具链的缓存；Mint 包缓存和运行状态均为新建。这里不声称验证了没有任何 Rust/npm 下载缓存的机器。
+## 环境与来源
 
-## ACP 启动失败
+- Host 从远端 Git 新克隆并构建：`0598599ef99671c1f03e7451b663a9f85428bc73`；CLI 同样从远端构建：`437dece108b9a2843f7fea4b0d662a5e45fa20e6`。
+- 本轮新项目、新 Mint home、新 Mint 安装缓存、新状态目录。在线 locked 安装 13 包成功，同 lock 离线安装成功。[安装日志](evidence/fixed-20261106/install.log)。未复制旧安装目录，未修改下载后 JS。
+- macOS、Node 22、pnpm 10.32.1、Rust 1.99.1、Python 3，原始 Ollama OpenAI-compatible 接口，模型 `mint-minicpm5:2.6b-q4_k_m`。Rust/npm 下载缓存沿用宿主工具链缓存，不声称验证了整机零缓存。
+- 使用透明请求记录代理，原始请求 body 转发至 Ollama，不改写提示词/工具/历史；不是历史 Ollama adapter。
+- 运行路径为 `cpmrt acp --cwd PROJECT`，没有 installed_loop_worker，没有 PilotDeck TypeScript turn loop。本次未修改 Host 或公共 iFace。
 
-原始错误见 [provider-startup.log](evidence/provider-startup.log)。所有测试均使用同一套发布包，未修改 `.mint/packages`：
+## 包验收
 
-| 包 | 版本 | 原始错误 |
+| 包 | 版本 | 本轮结果与证据 |
 |---|---|---|
-| compaction-basic | 0.1.4 | plugin imports are disabled |
-| compaction-port-owner | 0.2.4 | plugin must export default { activate(ctx) } |
-| context-image-offload | 0.1.2 | plugin must export default { activate(ctx) } |
-| context-tool-result-pruner | 0.1.9 | plugin must export default { activate(ctx) } |
-| model-provider-openai-consumer | 0.1.5 | 激活时 ConsumerError permission_denied |
+| Instructions | 0.1.7 | 通过：最终 system 含 project-instructions 和 MINT_REPRO_13；配置修正为 workspace `/`。旧错误配置下模型自行 read_file 不计作注入通过。 |
+| Prompt | 0.1.4 | 请求注入通过：有包名段和环境提示；模型自称 Mint 导致旧回答断言失败，不代表请求未注入。 |
+| Time | 0.1.6 | 通过：最终 system 含 time consumer host-hooks、environment 日期。 |
+| Attachments | 0.1.3 | ACP 通过：最终 user 消息含 attachment 块、plum-742 / 青岛；本轮浏览器上传未覆盖。 |
+| FS Read | 0.1.5 | 文本读写通过：真实 write_file/read_file、审批、中文和 emoji 文件内容；图片读取失败。 |
+| FS State Types | 0.1.2 | iface 安装通过；FS consumer 文本操作通过。未额外记录独立类型契约调用轨迹。 |
+| Retention | 0.2.10 | 激活及普通工具场景通过；新发布版改为只读 projection，尚无足够隔离证据验证其截断/保留边界，不继承旧落盘验收结论。 |
+| Pruner | 0.1.10 | 通过：最终请求旧工具结果 967 字符、带 Old tool result content compacted，新结果 3065 字符；原始源文件各 100 行。 |
+| Budget | 0.3.7 | 超限拒绝通过：max_tokens + exceeds context budget，捕获请求中无该超长输入；估算 exact=false，不能写成精确 token 计数。 |
+| Compaction Port | 0.2.5 | 工具调用成功；只投影 budget intent，正式压缩/持久化收据未覆盖。 |
+| Compaction Basic | 0.1.5 | 失败：真实调用 readOnly 分支即返回 service not registered；ACP 装配未提供所需 compaction 服务。 |
+| Image Offload | 0.1.4 | 未通过：激活仅延迟绑定 owner；无替换证据；read_file tiny.png 返回失败，最终请求无 image_url；真实视觉回答未覆盖。 |
+| OpenAI Consumer | 0.1.6 | 激活通过、模型联网成功；固定 ACP Agent 从 config 加载内置 provider，未接 InstalledCompletionProvider，不能计为包调用通过。 |
 
-这些错误阻止整个必需插件装配就绪，因此 Instructions、Retention、Budget、Attachments、Prompt、Time、FS 和 Provider 也不能在此组合下进入真实对话验收。安装成功不等于运行成功；state-types 作为 iface 已成功安装，不单独激活。
+[请求证据检查](evidence/fixed-20261106/checks.jsonl)；[context 请求](evidence/fixed-20261106/context-request.json)；[附件请求](evidence/fixed-20261106/attachments-request.json)；[Pruner 请求](evidence/fixed-20261106/pruner-request.json)；[场景事件](evidence/fixed-20261106/scenarios.jsonl)；[压缩调用](evidence/fixed-20261106/compaction.jsonl)；[预算拒绝](evidence/fixed-20261106/budget.jsonl)。这些只含构造测试数据，无 API key。
 
-## 逐项验收状态
+## 浏览器与恢复
 
-scenarios.mjs 提供 Instructions、Prompt、Time、Attachments、FS read/write（包含 state-types 消费）、Retention、Pruner、Budget、Provider、Image、Compaction Basic/Port 的输入与事件日志。统一组合启动失败时，每项报告 failed，不换旧 Host、不删掉失败插件、不沿用旧结果。
+独立 server 3197、web 5397，空 pilot-home 经免账号 onboarding 进入工作区。
 
-- 新版 13 包运行：启动失败，未通过。
-- 压缩正式触发/收据：未覆盖。旧 example-only 测试环境变量不适用于固定 Rust ACP 路径。
-- 图片 offload/视觉调用：未覆盖，先被插件激活阻止。
-- 浏览器流式、工具审批、附件、取消、刷新、重启恢复：新版组合未通过端到端验收；历史实例证据不能替代。
-- Ollama 历史适配器不是默认路径；其简化提示词、工具列表和历史的结果不作为原始请求等价证据。
+- 流式回答 `MINT_FIXED_BROWSER_OK`、连续追问通过。
+- 页面显示 read_file browser-proof.txt 的审批请求，Allow once 后显示 `MINT_REPRO_FS 青岛 🙂`，通过。
+- 页面刷新后保留历史，通过。
+- run.py stop/start 重启本实例后刷新，历史及工具回答仍存在，通过；重启后的继续追问尚未单独覆盖。
+- 浏览器上传附件、取消、本轮真实视觉场景未覆盖；不能引用旧实例结果代替。
 
-## 后续修复边界
+## 验证入口与剩余接线
 
-优先由上述包提供符合 Host 激活契约、构建依赖闭合的新版制品，Provider 的权限问题需联合核对激活时能力和显式 grants。发布修复版后更新精确清单和 lock，在另一空目录重跑。仅确需时改 Mint，不修改公共 iFace。
+Gateway 聚焦测试 5/5 通过，新增 Python 入口编译、scenarios Node 语法检查通过。
+scenarios 的 scenario_completed 只表示回答/文件断言完成；新增工具失败检查，压缩无正式收据时明确 NOT_COVERED，绝不把普通 OK 回答算压缩成功。最终请求用 check-evidence.py 单独检查。
 
-逐项重跑结果：12 个可执行场景全部在同一必需插件装配失败处报告 failed（FS 场景同时代表 state-types 的运行消费验证未进入）。见 [scenarios.jsonl](evidence/scenarios.jsonl)。
+后续需补 ACP composition root 的 provider、compaction owner 服务和媒体 owner 接线；优先应用/包层，确需时改 Mint，禁止改公共 iFace。当前部署文档可复现基本对话及上述失败，不承诺“照着即可完整跑通13包”。
 
-## Git 交付与前端启动
-
-代码锚点提交：`ea57f5fff7b3e1144f358631e335221f2596b0d0`（初始快照）；后续启动修正以 `codex/pilotdeck-mint-reproducible-deploy` 的最终固定提交为准。已从 GitHub 新克隆确认可获取。pnpm 10.32.1 frozen-lockfile 安装成功。Vite 必须从 ui 工作目录启动（配置按 cwd 解析 React），已修正实例启动器；独立端口 server 3187、web 5387 启动，前端 HTTP 200。浏览器聊天验收仍因 ACP 必需插件失败未通过。
-
-浏览器检查：新实例显示 First-time setup（语言、模型、Workspace 引导），不要求创建账号；未完成聊天验证。部署代码最终固定提交为 `1b4a0b73`（完整提交可由 release tag 解析）；此段文档补充不改变运行代码。
+旧版 5 包激活失败证据仍保留在 evidence 根目录，仅作历史对照。本轮固定交付 tag：`codex/pilotdeck-mint-repro-fixed-20261106`（完整提交由 Git tag 解析）。

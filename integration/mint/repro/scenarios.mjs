@@ -16,8 +16,8 @@ const cases={
  budget:['Budget input '+ 'distinct budget input sentence '.repeat(15000),null],
  provider:['Reply exactly MINT_PROVIDER_OK.',/MINT_PROVIDER_OK/],
  image:['Call read_file exactly once with file_path tiny.png, then describe the image.',null],
- compaction_basic:['Do not use tools. Remember fruit apricot. Reply OK.',/OK/i],
- compaction_port:['Do not use tools. Remember fruit apricot. Reply OK.',/OK/i],
+ compaction_basic:['Call pilotdeck_compaction_basic with input_json equal to {"readOnly":true}. Report the tool result.',null],
+ compaction_port:['Call pilotdeck_compaction_budget_intent with budget_stage routed, trigger manual, max_context_tokens 32768, reserved_output_tokens 4096 and manual_force true. Report the result.',null],
 };
 await writeFile(cwd+'/attachment.txt','Acceptance code: plum-742; warehouse: 青岛.');
 for(const name of ['retention-large','pruner-one','pruner-two'])await writeFile(cwd+'/'+name+'.txt',Array.from({length:100},(_,i)=>`inventory row ${i}: apples pears apricots warehouse quantity ${i}`).join('\n'));
@@ -26,12 +26,14 @@ const selected=process.argv.slice(2).length?process.argv.slice(2):Object.keys(ca
 for(const name of selected){
  if(!cases[name])throw Error('Unknown case '+name);
  const gateway=new MintAcpGateway({command:process.env.PILOTDECK_MINT_COMMAND,cwd,stateDir:process.env.PILOTDECK_MINT_STATE_DIR,timeoutMs:120000});
- let answer='',finish='',key='repro:'+name+':'+randomUUID();
+ let answer='',finish='',toolFailures=0,key='repro:'+name+':'+randomUUID();
  try{
   for await(const event of gateway.submitTurn({sessionKey:key,message:cases[name][0],...(name==='attachments'?{attachments:[{type:'file',path:cwd+'/attachment.txt',name:'attachment.txt'}]}:{}),runId:randomUUID()})){
-   console.log(JSON.stringify({case:name,...event}));if(event.type==='assistant_text_delta')answer+=event.text;if(event.type==='turn_completed')finish=event.finishReason;if(event.type==='permission_request')await gateway.permissionDecide({requestId:event.requestId,decision:'allow'});
+   console.log(JSON.stringify({case:name,...event}));if(event.type==='tool_call_finished' && event.ok===false)toolFailures++;if(event.type==='assistant_text_delta')answer+=event.text;if(event.type==='turn_completed')finish=event.finishReason;if(event.type==='permission_request')await gateway.permissionDecide({requestId:event.requestId,decision:'allow'});
   }
+  assert.equal(toolFailures,0,'Tool execution failed; a completed answer is not success');
   if(name==='budget')assert.equal(finish,'max_tokens');else if(cases[name][1])assert.match(answer,cases[name][1]);
+  if(name==='compaction_basic'||name==='compaction_port')throw Error('NOT_COVERED: no official compaction trigger or receipt in this scenario');
   if(name==='fs')assert.match(await readFile(cwd+'/repro-output.txt','utf8'),/中文🙂 MINT_REPRO_FS/);
   console.log(JSON.stringify({case:name,status:'scenario_completed',session:key,note:'A completed answer alone does not prove package invocation; inspect model/hook/tool evidence.'}));
  }catch(error){failures++;console.log(JSON.stringify({case:name,status:'failed',error:error.message}));}

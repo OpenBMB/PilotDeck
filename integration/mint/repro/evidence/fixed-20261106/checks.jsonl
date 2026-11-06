@@ -1,0 +1,5 @@
+{"check": "instructions", "status": "pass", "requests": ["context-request.json", "pruner-request.json"]}
+{"check": "prompt", "status": "pass", "requests": ["attachments-request.json", "context-request.json", "pruner-request.json"]}
+{"check": "time", "status": "pass", "requests": ["attachments-request.json", "context-request.json", "pruner-request.json"]}
+{"check": "attachments", "status": "pass", "requests": ["attachments-request.json"]}
+{"check": "pruner", "status": "pass", "requests": ["pruner-request.json"]}

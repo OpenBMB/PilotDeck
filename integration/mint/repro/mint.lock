@@ -13,29 +13,29 @@ trust = "T1"
 
 [[package]]
 name = "liyishan1/pilotdeck-compaction-basic"
-version = "0.1.4"
+version = "0.1.5"
 kind = "plugin"
 source = "registry+https://mint-hub.ea.modelbest.co/index/"
-integrity = "h1:kQ/M8OAh8e6i9qVpqFwWOnTabZMagO7VKEFZncBM85E="
-cksum = "2eb88abe99091a1ca1167233dc6a0801658f5f156d5ad47b5ec49a4b75e0db54"
+integrity = "h1:Zigh+IVGH6cKBIrmS7s3vsTC7g9kLf1VKn6Mfx/2hqc="
+cksum = "f65febb52a95db11ce65bc7f33bc572c44364457a0645dba17a0b2a299bb11cb"
 trust = "T1"
 
 [[package]]
 name = "liyishan1/pilotdeck-compaction-port-owner"
-version = "0.2.4"
+version = "0.2.5"
 kind = "plugin"
 source = "registry+https://mint-hub.ea.modelbest.co/index/"
-integrity = "h1:5O4y5//93i+KoFEVhq2v5NfnbvBaqWwdZa8Iszsqf08="
-cksum = "4d853a092513af14276b3bedf3edfbb1fd67864483610e3bd947a19c123195c6"
+integrity = "h1:YSImrdfQT2niJkjCcvFNZmafRKoXEDiibNuUtI4kCns="
+cksum = "2ec5dcdda473b8c60d4690c09aa9653c1ecf2b673cbc939f971719764c0b18e1"
 trust = "T1"
 
 [[package]]
 name = "liyishan1/pilotdeck-context-image-offload"
-version = "0.1.2"
+version = "0.1.4"
 kind = "plugin"
 source = "registry+https://mint-hub.ea.modelbest.co/index/"
-integrity = "h1:kcQ/85VuFE0YbpV0I+l2N7Ocg4PMR1lMRJsgmqKxp0g="
-cksum = "fae348f479e394371738ab205f91caf227db48808f7efeca825f26d2ab263a0a"
+integrity = "h1:hL4NoAJlFrf/BctdVAPF9s1zgMP/59f+OlpQond9jx0="
+cksum = "9f042bf4f882ad62827443784845a67dfdb47a233d88dd27ccca96b1a0b3bc2c"
 trust = "T1"
 
 [[package]]
@@ -49,11 +49,11 @@ trust = "T1"
 
 [[package]]
 name = "liyishan1/pilotdeck-context-time-consumer"
-version = "0.1.4"
+version = "0.1.6"
 kind = "plugin"
 source = "registry+https://mint-hub.ea.modelbest.co/index/"
-integrity = "h1:ZgPuaX4D2qzpOLxKo8lrSFzXVUKz4nwU6DBkVUc+Vfk="
-cksum = "189fe7f64604001ee714c74c78b58894ecc7e8fd4c22480e7008079c5729b9c3"
+integrity = "h1:9w6FTrVjQjwMnF/oW2kgS7Q64p9gnAWSyzPfXXrpeI0="
+cksum = "52ee5f1d57cd27ebe9bc58256f0718a9c7069d17289585982aca0b66173eac8d"
 trust = "T1"
 
 [[package]]
@@ -85,29 +85,29 @@ trust = "T1"
 
 [[package]]
 name = "pilotdeck/context-retention"
-version = "0.2.7"
+version = "0.2.10"
 kind = "plugin"
 source = "registry+https://mint-hub.ea.modelbest.co/index/"
-integrity = "h1:QQvwHejf9wCvwvy8PIG81VcBOAzWBYhSv0qunzQHUQs="
-cksum = "0ebb145e1e9212a37304e5857e59c6fa017440bb9f3dde006ab1f9faa047a6bb"
+integrity = "h1:lvZYh0Rs4+nCR54wggLZR94W/yNRKF7iSlzyG8TjjwE="
+cksum = "49ad87bd86afe8618229d95f941e7021d4b2fc951c4b1f07a5101f1ebe19e8df"
 trust = "T1"
 
 [[package]]
 name = "pilotdeck/context-tool-result-pruner"
-version = "0.1.9"
+version = "0.1.10"
 kind = "plugin"
 source = "registry+https://mint-hub.ea.modelbest.co/index/"
-integrity = "h1:0GJjMcinutooztRQPvPRf2wOXB0HJhzaEpo/xJ3Xfwk="
-cksum = "bcc096ee0fb47c7303c303b3ad6be2299bc08025812f4f003fb71ffcdef8a749"
+integrity = "h1:37LGPOwAe0qMQGAOWYagQsKr8U3eSFE0/0I0JyJ64WY="
+cksum = "6fa015ef55115933e4a02e92a3e7948dbba9bc1e2ea436207c1f601138003626"
 trust = "T1"
 
 [[package]]
 name = "pilotdeck/model-provider-openai-consumer"
-version = "0.1.5"
+version = "0.1.6"
 kind = "plugin"
 source = "registry+https://mint-hub.ea.modelbest.co/index/"
-integrity = "h1:pIn0+jdEfO/E2RFdlc4HZmGKxedAkbXxvCuKLQXH9Rg="
-cksum = "469bda4f1e9b2ea65f7237dd86964d20632e23807144fc266c63971ac4d917fa"
+integrity = "h1:V0hlS0IluRKCf8O/S4ObKOGLTtRbQEPipNz/6bRoOcg="
+cksum = "8c6673fe7dcf9b4303c8df0821b98d31696547e2bef8c02a9db8833f8f8406fa"
 trust = "T1"
 
 [[package]]
