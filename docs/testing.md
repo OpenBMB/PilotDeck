@@ -50,6 +50,11 @@ These use synthetic tools/providers and isolated profiles; no real provider call
 are required. UI tests cover lossless event delivery, render isolation and shared
 chat behavior, with browser acceptance validating streaming and history flows.
 
+After `pnpm --dir ui build`, run `node scripts/check-ui-build-graph.mjs` to
+verify that the startup and text-editor import graphs exclude deferred features.
+`pnpm --dir ui exec playwright test -c e2e/editor-loading.config.mjs` serves the
+production build with synthetic APIs and checks editor/PDF requests and tab state.
+
 ## Test quality and isolation
 
 - Every retained case must identify a meaningful regression it would catch. Assert user outcomes, wire payloads, persisted contents, exit results and resource release.
