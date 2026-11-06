@@ -222,9 +222,9 @@ permanent empty tail after short or interrupted replies.
   repeated prompts, live appends, overlapping pages, refresh races and retries.
 - `ui/e2e/history-loading.spec.mjs`: automatic backward loading, bounded DOM,
   prepend anchors, long turns and offscreen fold height invalidation.
-- `ui/src/components/chat-v2/ThinkingBlock.test.tsx`: localized clocks, completion,
+- `ui/src/components/chat/view/ThinkingBlock.test.tsx`: localized clocks, completion,
   manual expansion and legacy-history fallback.
-- `ui/src/components/chat-v2/ConversationI18n.test.tsx`: in-place language changes
+- `ui/src/components/chat/view/ConversationI18n.test.tsx`: in-place language changes
   for process durations, question/Todo controls, tool fallbacks and image accessibility labels.
 - `ui/e2e/conversation-turn-nav.spec.mjs`: left-side positioning, previews, keyboard
   navigation, distant virtual rows, reader ownership and responsive hiding.
@@ -234,7 +234,7 @@ permanent empty tail after short or interrupted replies.
 - `tests/web/question-answer-history.spec.ts`: real elicitation output through
   canonical transcript and live Web projections, including comma-bearing labels.
 - `tests/web/turn-timing-history.spec.ts` and
-  `ui/src/components/chat-v2/ProcessSummary.regressions.test.tsx`: recorded execution
+  `ui/src/components/chat/view/ProcessSummary.regressions.test.tsx`: recorded execution
   bounds, stopped/failed outcomes, resumed intervals and mixed search/fetch counts.
 - `tests/gateway/file-input-progress.spec.ts`: pre-dispatch feedback, bounded
   metadata, throttling, coalesced snapshots, retry and child isolation.

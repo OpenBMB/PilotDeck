@@ -19,10 +19,14 @@ it('maps only interface tokens in memory and follows the selected palette in dar
   expect(style.textContent).not.toContain('--danger');
   expect(style.textContent).toContain('animation-duration');
   applyMemoryAppearance(doc, palette, true, false);
+  expect(doc.documentElement.classList.contains('dark')).toBe(true);
   expect(style.textContent).toContain('--accent:');
   expect(style.textContent).not.toContain('animation-duration');
   applyMemoryAppearance(doc, normalizeLightAppearance(), false, false);
-  expect(style.textContent).toBe('');
+  expect(style.textContent).toContain('--pd-elevated:');
+  expect(doc.documentElement.classList.contains('dark')).toBe(false);
+  expect(doc.querySelectorAll('#pilotdeck-memory-controls')).toHaveLength(1);
+  expect(doc.querySelectorAll('#pilotdeck-memory-appearance')).toHaveLength(1);
 });
 it('clamps image adjustments and migrates earlier configurations', () => {
   const v = normalizeLightAppearance({ background: { brightness: 900, saturation: -10, positionX: NaN, positionY: 101 } });

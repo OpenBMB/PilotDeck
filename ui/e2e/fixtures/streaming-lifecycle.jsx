@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FindShortcutProvider } from '../../src/contexts/FindShortcutContext';
-import MessagesPane from '../../src/components/chat-v2/MessagesPaneV2';
-import SubagentModal from '../../src/components/chat-v2/SubagentDetailModal';
-import SubagentFlow from '../../src/components/chat-v2/SubagentDetailMessageFlow';
+import MessagesPane from '../../src/components/chat/view/MessagesPane';
+import SubagentModal from '../../src/components/chat/view/SubagentDetailModal';
+import SubagentFlow from '../../src/components/chat/view/SubagentDetailMessageFlow';
 import { normalizedToChatMessages } from '../../src/components/chat/hooks/useChatMessages';
-import { useSubagentMessages } from '../../src/components/chat-v2/useSubagentMessages';
+import { useSubagentMessages } from '../../src/components/chat/hooks/useSubagentMessages';
 import { useChatSessionState } from '../../src/components/chat/hooks/useChatSessionState';
 import { useSessionStore } from '../../src/stores/useSessionStore';
 import '../../src/index.css';

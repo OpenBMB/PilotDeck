@@ -92,6 +92,9 @@ export type GatewayOutboundAttachment = {
 
 export type TurnUsage = CanonicalUsage;
 
+/** Local execution controls; never serialized into a turn's wire payload. */
+export type GatewayTurnOptions = { signal?: AbortSignal };
+
 export type GatewaySubmitTurnInput = {
   /** Opaque diagnostics supplied by an authenticated host; never authorization. */
   requestContext?: Pick<import("../../network/requestContext.js").RequestContext,
@@ -579,7 +582,7 @@ export type AlwaysOnRerunPlanResult = {
 
 export interface Gateway {
   manageCheckpoints?(input: import("../../session/checkpoints/WorkspaceCheckpoints.js").CheckpointRequest): Promise<unknown>;
-  submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent>;
+  submitTurn(input: GatewaySubmitTurnInput, options?: GatewayTurnOptions): AsyncIterable<GatewayEvent>;
   steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult>;
   cancelSteer(input: GatewayCancelSteerInput): Promise<GatewayCancelSteerResult>;
   abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void>;

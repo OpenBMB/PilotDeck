@@ -84,12 +84,16 @@ test('continuous upward wheels retain their visual displacement during a long li
   });
   try {
     for (let step = 0; step < 30; step++) {
-      await viewport(page).evaluate(node => node.addEventListener('wheel', () => {
-        const row = [...node.querySelectorAll('[data-message-key]')]
-          .find(item => item.getBoundingClientRect().bottom > node.getBoundingClientRect().top);
-        window.wheelReadingPosition = { key: row.dataset.messageKey, top: row.getBoundingClientRect().top };
-      }, { once: true, capture: true }));
+      await viewport(page).evaluate(node => {
+        window.wheelReadingPosition = undefined;
+        node.addEventListener('wheel', () => {
+          const row = [...node.querySelectorAll('[data-message-key]')]
+            .find(item => item.getBoundingClientRect().bottom > node.getBoundingClientRect().top);
+          window.wheelReadingPosition = { key: row.dataset.messageKey, top: row.getBoundingClientRect().top };
+        }, { once: true, capture: true });
+      });
       await page.mouse.wheel(0, -250);
+      await expect.poll(() => page.evaluate(() => Boolean(window.wheelReadingPosition))).toBe(true);
       // Check the visual position, not scrollTop: measuring rows above the
       // viewport legitimately changes scrollTop while preserving what is read.
       await expect.poll(() => viewport(page).evaluate(node => {

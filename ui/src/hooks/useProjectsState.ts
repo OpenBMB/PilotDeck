@@ -9,6 +9,7 @@ import type {
   Project,
   ProjectSession,
   ProjectsUpdatedMessage,
+  SessionMessagesUpdateTarget,
 } from '../types/app';
 import { isBackgroundTaskSession } from '../types/app';
 
@@ -291,6 +292,7 @@ export function useProjectsState({
   const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [externalMessageUpdate, setExternalMessageUpdate] = useState(0);
+  const [externalMessageUpdateTarget, setExternalMessageUpdateTarget] = useState<SessionMessagesUpdateTarget | null>(null);
 
   const loadingProgressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -496,6 +498,8 @@ export function useProjectsState({
         const isSessionActive = activeSessions.has(selectedSession.id);
 
         if (!isSessionActive) {
+          setExternalMessageUpdateTarget({ projectName: selectedProject.name, sessionId: selectedSession.id,
+            ...(selectedSession.relativeTranscriptPath ? { relativeTranscriptPath: selectedSession.relativeTranscriptPath } : {}) });
           setExternalMessageUpdate((prev) => prev + 1);
         }
       }
@@ -1016,6 +1020,7 @@ export function useProjectsState({
     loadingProgress,
     isInputFocused,
     externalMessageUpdate,
+    externalMessageUpdateTarget,
     setActiveTab,
     setSelectedSession,
     setSidebarOpen,

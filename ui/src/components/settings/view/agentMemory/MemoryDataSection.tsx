@@ -1,7 +1,8 @@
 import { ConfirmDialog, useConfirm } from '../../../ui/ConfirmDialog';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../../../lib/utils";
+import { Database } from "lucide-react";
+import { GeneralCardHeader, GeneralSelectControl, GeneralSettingRow, GeneralSettingsIcon } from "../../shared/view/GeneralSettingsPrimitives";
 import { authenticatedFetch } from "../../../../utils/api";
 import type { SettingsProject } from "../../shared/types";
 
@@ -87,21 +88,6 @@ function safeDownloadToken(value: string): string {
       .replace(/[^\w.-]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 64) || "memory"
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="14"
-      height="14"
-      fill="currentColor"
-      viewBox="0 0 256 256"
-      aria-hidden="true"
-    >
-      <path d="M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z" />
-    </svg>
   );
 }
 
@@ -362,41 +348,17 @@ export default function MemoryDataSection({
       className="memory-data-section"
       aria-labelledby="memory-data-title"
     >
-      <div className="memory-card memory-data-card">
-        <header className="memory-data-header">
-          <div>
-            <h2 id="memory-data-title">
-              {t("pilotDeckConfig.panels.memory.data.title")}
-            </h2>
-            <p>{t("pilotDeckConfig.panels.memory.data.description")}</p>
-          </div>
-        </header>
-        <div className="memory-data-selector-row">
-          <div className="memory-setting-copy">
-            <label htmlFor="memory-project">
-              {t("pilotDeckConfig.panels.memory.data.target.label")}
-            </label>
-          </div>
+      <div className="general-card">
+        <GeneralCardHeader icon={<GeneralSettingsIcon icon={Database} />} id="memory-data-title"
+          title={t("pilotDeckConfig.panels.memory.data.title")}
+          detail={t("pilotDeckConfig.panels.memory.data.description")} />
+        <GeneralSettingRow htmlFor="memory-project" title={t("pilotDeckConfig.panels.memory.data.target.label")}>
           <div className="memory-data-controls">
-            <div className="memory-select-wrap memory-project-select">
-              <select
-                id="memory-project"
-                value={selectedMemoryTarget}
-                onChange={(event) => {
-                  setSelectedMemoryTarget(event.target.value);
-                }}
-              >
-                {memoryTargetOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronIcon />
-            </div>
+            <GeneralSelectControl id="memory-project" value={selectedMemoryTarget}
+              onChange={setSelectedMemoryTarget} options={memoryTargetOptions} />
             <div className="memory-data-actions">
               <button
-                className="button secondary"
+                className="button secondary compact"
                 type="button"
                 disabled={actionsDisabled}
                 onClick={() => void handleExportMemory()}
@@ -404,19 +366,16 @@ export default function MemoryDataSection({
                 <ExportIcon />
                 {t("pilotDeckConfig.panels.memory.data.actions.export")}
               </button>
-              <label
-                className={cn(
-                  "button secondary memory-import-button",
-                  actionsDisabled && "disabled",
-                )}
-              >
+              <button className="button secondary compact" type="button" disabled={actionsDisabled}
+                onClick={() => importInputRef.current?.click()}>
                 <ImportIcon />
                 <span>
                   {t("pilotDeckConfig.panels.memory.data.actions.import")}
                 </span>
+              </button>
                 <input
                   ref={importInputRef}
-                  className="memory-import-input"
+                  hidden
                   accept=".json"
                   aria-label={t(
                     "pilotDeckConfig.panels.memory.data.actions.import",
@@ -432,9 +391,8 @@ export default function MemoryDataSection({
                     );
                   }}
                 />
-              </label>
               <button
-                className="button danger memory-clear-button"
+                className="button destructive-outline compact"
                 type="button"
                 disabled={actionsDisabled}
                 onClick={handleClearMemory}
@@ -444,7 +402,7 @@ export default function MemoryDataSection({
               </button>
             </div>
           </div>
-        </div>
+        </GeneralSettingRow>
       </div>
     </section>
     {clearModalOpen ? (

@@ -12,7 +12,7 @@ import { mergeUserAttachments, parseUserAttachmentNote } from '../utils/attachme
 // When patchMergedStreamingMessage creates a new object for the streaming
 // message, only THAT entry misses — all other messages hit the cache,
 // preventing expensive re-creation of ChatMessage objects that would bust
-// memo(MessageRowV2) for every message in the session.
+// memo(MessageRow) for every message in the session.
 const msgConversionCache = new WeakMap<NormalizedMessage, ChatMessage | null>();
 
 type ConvertSingleMessageOptions = {

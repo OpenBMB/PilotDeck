@@ -176,7 +176,7 @@ async function getProjects(progressCallback = null) {
     // The gateway's heuristic decoder for project ids (which collapses
     // `-` back into `/`) may produce a path that differs from the
     // verbatim path stored in `.cwd`, yet both encode to the same id —
-    // and the SidebarV2 keys rows by that id. A raw-path Set would let
+    // and the Sidebar keys rows by that id. A raw-path Set would let
     // both rows through and produce a visible duplicate that share an
     // expand-state.
     //
@@ -286,7 +286,7 @@ async function getProjects(progressCallback = null) {
     // Virtual "general" conversation space. Its session identity remains
     // rooted at PILOT_HOME for backwards-compatible transcript discovery,
     // while agent execution uses a separate managed workspace directory.
-    // SidebarV2 looks for a project whose `name` or
+    // Sidebar looks for a project whose `name` or
     // `displayName` equals 'general' to populate the dedicated "General"
     // toggle section. PilotDeck's gateway.listProjects() only returns
     // real project directories, so we synthesize one here. New chats

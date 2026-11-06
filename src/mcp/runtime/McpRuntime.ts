@@ -9,6 +9,7 @@
  */
 
 import { McpClient, McpClientError, type McpClientOptions } from "../client/McpClient.js";
+import { awaitWithAbort } from "../../runtime/abort.js";
 import type {
   PilotDeckMcpClientStatusEntry,
   PilotDeckMcpServerInstructions,
@@ -25,6 +26,11 @@ export type McpRuntimeOptions = {
 
 export class McpRuntime {
   private readonly clients = new Map<string, McpClient>();
+  private readonly catalogs = new Map<string, PilotDeckMcpToolSpec[]>();
+  private refreshInFlight?: Promise<PilotDeckMcpToolSpec[]>;
+  private stopVersion = 0;
+  private stopped = false;
+  private stopInFlight?: Promise<void>;
   private readonly options: Required<Pick<McpRuntimeOptions, "connectConcurrency">> &
     Pick<McpRuntimeOptions, "clientOptions">;
 
@@ -43,6 +49,8 @@ export class McpRuntime {
 
   /** Start each client. Errors are captured per server (do not abort the rest). */
   async start(): Promise<PilotDeckMcpClientStatusEntry[]> {
+    this.stopped = false;
+    const stopVersion = this.stopVersion;
     const queue = [...this.clients.values()];
     const concurrency = Math.max(1, Math.min(this.options.connectConcurrency, queue.length));
     const results: PilotDeckMcpClientStatusEntry[] = [];
@@ -52,6 +60,7 @@ export class McpRuntime {
       workers.push(
         (async () => {
           while (queue.length > 0) {
+            if (stopVersion !== this.stopVersion) break;
             const client = queue.shift();
             if (!client) break;
             try {
@@ -86,7 +95,44 @@ export class McpRuntime {
   }
 
   async stop(): Promise<void> {
-    await Promise.all([...this.clients.values()].map((c) => c.close()));
+    if (this.stopped) return this.stopInFlight;
+    this.stopped = true;
+    this.stopVersion++;
+    this.refreshInFlight = undefined;
+    const pending = Promise.all([...this.clients.values()].map(c => c.close())).then(() => {});
+    this.stopInFlight = pending;
+    try { await pending; }
+    finally { if (this.stopInFlight === pending) this.stopInFlight = undefined; }
+  }
+
+  /** Refresh ready or previously discovered servers, retaining failed servers' last complete catalog. */
+  async refreshToolCatalog(signal?: AbortSignal): Promise<PilotDeckMcpToolSpec[]> {
+    signal?.throwIfAborted();
+    if (this.stopped) throw new Error("MCP runtime is stopped");
+    if (!this.refreshInFlight) {
+      const pending = this.refreshCatalog();
+      this.refreshInFlight = pending;
+      void pending.finally(() => { if (this.refreshInFlight === pending) this.refreshInFlight = undefined; }).catch(() => {});
+    }
+    return structuredClone(await awaitWithAbort(signal, () => this.refreshInFlight!));
+  }
+
+  private async refreshCatalog(): Promise<PilotDeckMcpToolSpec[]> {
+    const stopVersion = this.stopVersion;
+    const next = new Map(this.catalogs);
+    const queue = [...this.clients.values()].filter(client => client.getStatus() === "ready" || next.has(client.spec.id));
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(this.options.connectConcurrency, queue.length)) }, async () => {
+      while (queue.length) {
+        if (stopVersion !== this.stopVersion) return;
+        const client = queue.shift()!;
+        try { next.set(client.spec.id, await client.listTools()); }
+        catch { /* Keep the last complete contract until this server recovers. */ }
+      }
+    }));
+    if (stopVersion !== this.stopVersion) throw new Error("MCP runtime stopped during catalog refresh");
+    this.catalogs.clear();
+    for (const [id, tools] of next) this.catalogs.set(id, tools);
+    return [...next.values()].flat();
   }
 
   /** Aggregate every advertised tool across every client. */
@@ -96,6 +142,7 @@ export class McpRuntime {
       if (client.getStatus() !== "ready") continue;
       try {
         const tools = await client.listTools();
+        this.catalogs.set(client.spec.id, tools);
         out.push(...tools);
       } catch {
         // skip — `start()` already recorded the error

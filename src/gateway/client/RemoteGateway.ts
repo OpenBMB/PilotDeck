@@ -9,6 +9,7 @@ import type {
   GatewayPermissionDecisionInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayTurnOptions,
   GatewayCancelSteerInput,
   GatewayCancelSteerResult,
   GatewaySteerTurnInput,
@@ -95,8 +96,8 @@ export class RemoteGateway implements Gateway {
     this.client.onDisconnect(handler);
   }
 
-  submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
-    return this.client.stream("submit_turn", input);
+  submitTurn(input: GatewaySubmitTurnInput, options?: GatewayTurnOptions): AsyncIterable<GatewayEvent> {
+    return this.client.stream("submit_turn", input, options);
   }
 
   async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {

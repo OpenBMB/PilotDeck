@@ -112,6 +112,7 @@ import type { EdgeClawMemoryProvider } from "../context/index.js";
 import { loadBuiltinPlugins } from "../extension/plugins/builtin/loadBuiltinPlugins.js";
 import { SkillManager, migrateLegacyBundledSkillCopies } from "../extension/skills/index.js";
 import { getPilotDeckInstallCommand, patchProjectScopedMcpSpec } from "../mcp/runtime/projectMcpSpec.js";
+import { createMcpToolCatalogRefresher } from "../mcp/runtime/McpToolRegistryBinding.js";
 import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatchManager.js";
 import { createTelemetryCollector, type TelemetryClient } from "../telemetry/index.js";
 import { UploadStore } from "../gateway/dialog/UploadStore.js";
@@ -1279,7 +1280,6 @@ class ProjectRuntimeRegistry {
       });
       return resumed.session;
     } catch (error) {
-      this.evictSessionMcp(context.sessionKey);
       prepared.baseDependencies.releaseSessionResources?.();
       throw error;
     }
@@ -1315,7 +1315,6 @@ class ProjectRuntimeRegistry {
       });
       return session;
     } catch (error) {
-      this.evictSessionMcp(context.sessionKey);
       prepared.baseDependencies.releaseSessionResources?.();
       throw error;
     }
@@ -1329,22 +1328,24 @@ class ProjectRuntimeRegistry {
     const runtime = this.resolve(context.projectKey);
     runtime.users++;
     let released = false;
+    const disposers: (() => void)[] = [];
     const releaseSessionResources = () => {
       if (released) return;
       released = true;
+      for (const dispose of disposers) dispose();
       runtime.users--;
       this.collectRetired();
     };
     try {
-      return await this.prepareLeasedSessionRuntime(context, runtime, releaseSessionResources);
+      return await this.prepareLeasedSessionRuntime(context, runtime, releaseSessionResources, dispose => disposers.push(dispose));
     } catch (error) {
-      this.evictSessionMcp(context.sessionKey);
       releaseSessionResources();
       throw error;
     }
   }
 
-  private async prepareLeasedSessionRuntime(context: GatewaySessionContext, runtime: ProjectRuntime, releaseSessionResources: () => void) {
+  private async prepareLeasedSessionRuntime(context: GatewaySessionContext, runtime: ProjectRuntime, releaseSessionResources: () => void,
+    ownResource: (dispose: () => void) => void) {
     runtime.python ??= await this.python.resolve(runtime.snapshot.config.runtime?.python.enabled ?? true);
     await runtime.pluginRuntime.refresh();
     await this.ensureMcpReady(runtime);
@@ -1352,9 +1353,10 @@ class ProjectRuntimeRegistry {
 
     // -- per-session MCP runtime (e.g. browser-use) --------------------
     let sessionTools: ToolRegistry = runtime.tools;
+    let sessionMcp: McpRuntime | undefined;
     const perSpecs = runtime.perSessionServerSpecs;
     const maxInstances = runtime.snapshot.config.gateway?.maxPerSessionMcpInstances ?? 5;
-    if (perSpecs && perSpecs.length > 0 && this.sessionMcpRuntimes.size < maxInstances) {
+    if (perSpecs && perSpecs.length > 0 && (this.sessionMcpRuntimes.has(context.sessionKey) || this.sessionMcpRuntimes.size < maxInstances)) {
       this.evictSessionMcp(context.sessionKey);
       const patchedPerSpecs = perSpecs.map((spec) => {
         if (spec.transport === "stdio" && spec.id === "browser-use") {
@@ -1372,8 +1374,13 @@ class ProjectRuntimeRegistry {
         }
         return spec;
       });
-      const sessionMcp = new McpRuntime(patchedPerSpecs);
+      sessionMcp = new McpRuntime(patchedPerSpecs);
       this.sessionMcpRuntimes.set(context.sessionKey, sessionMcp);
+      const ownedMcp = sessionMcp;
+      ownResource(() => {
+        if (this.sessionMcpRuntimes.get(context.sessionKey) === ownedMcp) this.sessionMcpRuntimes.delete(context.sessionKey);
+        ownedMcp.stop().catch(() => {});
+      });
       try {
         const statuses = await sessionMcp.start();
         for (const status of statuses) {
@@ -1446,6 +1453,11 @@ class ProjectRuntimeRegistry {
     });
     sessionTools = availability.registry;
     runtime.unavailableTools = availability.unavailable;
+    const excludedTools = new Set(override?.excludeTools ?? []);
+    const catalog = createMcpToolCatalogRefresher([runtime.mcpRuntime, sessionMcp].filter((mcp): mcp is McpRuntime => mcp !== undefined),
+      tool => !excludedTools.has(tool.name) && !(tool.aliases ?? []).some(alias => excludedTools.has(alias))
+        && !/^mcp__pilotdeck-computer-use__(check_for_update|install_extension|install_ffmpeg|set_config|get_config|replay_trajectory)$/.test(tool.name));
+    ownResource(() => catalog.dispose());
 
     // Inject the gateway's interactive permission hook so the agent's
     // PermissionRequest lifecycle is round-tripped through whichever
@@ -1486,7 +1498,7 @@ class ProjectRuntimeRegistry {
       );
     }
     const lifecycle = new LifecycleRuntime(hookRuntime);
-    const sessionMcpInstructions = this.sessionMcpRuntimes.get(context.sessionKey);
+    const sessionMcpInstructions = sessionMcp;
     const extension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime, () => [
       ...(runtime.mcpRuntime?.getInstructions() ?? []),
       ...(sessionMcpInstructions?.getInstructions() ?? []),
@@ -1500,6 +1512,7 @@ class ProjectRuntimeRegistry {
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
       releaseSessionResources,
+      refreshToolCatalog: catalog.refresh,
       acquireTurnResources: () => {
         const tasks = runtime.backgroundTasks;
         this.taskRuntimes.add(tasks);

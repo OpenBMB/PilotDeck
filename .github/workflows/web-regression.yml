@@ -81,6 +81,8 @@ jobs:
           dist/tests/gateway/background-runtime-reload.spec.js
           dist/tests/gateway/extension-runtime-reload.spec.js
           dist/tests/gateway/session-runtime-invalidation.spec.js
+          dist/tests/gateway/turn-ownership.spec.js
+          dist/tests/gateway/transport-ownership.spec.js
           dist/tests/agent/runtime-lease.spec.js
 
       - name: Test tool, prompt and extension contracts
@@ -95,6 +97,12 @@ jobs:
           dist/tests/context/python-awareness.spec.js
           dist/tests/extension/plugins/prompt-contributions.spec.js
           dist/tests/agent/loop/request-preparation.spec.js
+          dist/tests/agent/loop/request-attempt.spec.js
+          dist/tests/model/request/media-preparation.spec.js
+          dist/tests/agent/sub/SubAgentSession.spec.js
+          dist/tests/mcp/live-catalog.spec.js
+          dist/tests/mcp/client/McpClient.spec.js
+          dist/tests/mcp/runtime/McpRuntime.spec.js
           dist/tests/agent/loop/tool-failure-propagation.spec.js
           dist/tests/router/cache-plan-routing.spec.js
           dist/tests/router/tokenSaver.spec.js
@@ -115,7 +123,7 @@ jobs:
         if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
         run: pnpm --dir ui exec playwright install --with-deps chromium
 
-      - name: Test chat scrolling, history, search and delayed media
+      - name: Test chat scrolling, history, search, media and settings
         if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
         run: pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs
 

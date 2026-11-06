@@ -22,6 +22,7 @@ export type Plugin = {
 
 type PluginsContextValue = {
   plugins: Plugin[];
+  pluginRevisions: Record<string, number>;
   loading: boolean;
   pluginsError: string | null;
   refreshPlugins: () => Promise<void>;
@@ -43,10 +44,11 @@ export function usePlugins() {
 
 export function PluginsProvider({ children }: { children: ReactNode }) {
   const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [pluginRevisions, setPluginRevisions] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [pluginsError, setPluginsError] = useState<string | null>(null);
 
-  const refreshPlugins = useCallback(async () => {
+  const refreshPlugins = useCallback(async (updatedPlugin?: string) => {
     try {
       const res = await authenticatedFetch('/api/plugins');
       if (res.ok) {
@@ -68,6 +70,7 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
       setPluginsError(message);
       console.error('[Plugins] Failed to fetch plugins:', err);
     } finally {
+      if (updatedPlugin) setPluginRevisions(current => ({ ...current, [updatedPlugin]: (current[updatedPlugin] ?? 0) + 1 }));
       setLoading(false);
     }
   }, []);
@@ -116,7 +119,7 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
       });
       const data = await res.json();
       if (res.ok) {
-        await refreshPlugins();
+        await refreshPlugins(name);
         return { success: true };
       }
       return { success: false, error: data.details || data.error || 'Update failed' };
@@ -150,7 +153,7 @@ export function PluginsProvider({ children }: { children: ReactNode }) {
   }, [refreshPlugins]);
 
   return (
-    <PluginsContext.Provider value={{ plugins, loading, pluginsError, refreshPlugins, installPlugin, uninstallPlugin, updatePlugin, togglePlugin }}>
+    <PluginsContext.Provider value={{ plugins, pluginRevisions, loading, pluginsError, refreshPlugins, installPlugin, uninstallPlugin, updatePlugin, togglePlugin }}>
       {children}
     </PluginsContext.Provider>
   );

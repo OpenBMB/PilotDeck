@@ -108,9 +108,7 @@ html[data-light-background=image]:not(.dark) .pilotdeck-settings-app {
   --settings-panel-muted: var(--pd-muted);
 }
 html[data-light-background=image]:not(.dark) .pilotdeck-settings-app :is(
-  [data-settings-surface=panel], .general-card, .memory-card,
-  .resident-project-panel, .resident-card, .search-card, .scheduled-card,
-  .route-card, .route-model-row.is-default-tier,
+  [data-settings-surface=panel], .general-card, .resident-project-panel, .resident-card, .search-card, .route-card, .route-model-row.is-default-tier,
   .integration-gateway-card, .integration-gateway-directory-row,
   .integration-channel.expanded, .integration-setup-panel,
   .mcp-config-card, .mcp-raw-config-card, .mcp-config-card-header,
@@ -120,8 +118,7 @@ html[data-light-background=image]:not(.dark) .pilotdeck-settings-app :is(
   .office-card, .office-status-panel, .office-status-detail, .office-builtin-note,
   .security-card, .security-tool-empty, .agent-retry-section,
   .advanced-settings-card, .detail-test-section, .search-test-footer,
-  .model-pool-workspace, .provider-rail, .provider-detail,
-  .memory-action-status:not(.success):not(.error)
+  .model-pool-workspace, .provider-rail, .provider-detail
 ) {
   background: transparent;
   border-color: var(--pd-border);
@@ -137,7 +134,7 @@ html[data-light-background=image]:not(.dark) .pilotdeck-settings-app .settings-c
   .mcp-repeatable-row, .appearance-button, .appearance-notice button,
   .integration-setup-choice, .integration-scan-launcher,
   .button.secondary, .test-button:not(.success),
-  .memory-edit-button:not(.editing), .search-edit-button, .scheduled-edit-button,
+  .search-edit-button, .scheduled-edit-button,
   .advanced-add-button, .security-add-button, .security-quick-add button,
   .office-path-input button, .office-path-actions .button.secondary,
   .mcp-server-rail > footer button, .mcp-add-row-button
@@ -210,8 +207,8 @@ html[data-appearance].dark :is(.app-main, .pd-workspace-content, .pd-workspace-b
   background: var(--pd-surface); color: var(--pd-ink);
 }
 html[data-appearance].dark .pilotdeck-settings-app :is(
-  [data-settings-surface=panel], .memory-card, .resident-project-panel, .resident-card,
-  .search-card, .scheduled-card, .route-card, .integration-gateway-card,
+  [data-settings-surface=panel], .resident-project-panel, .resident-card,
+  .search-card, .route-card, .integration-gateway-card,
   .integration-channel.expanded, .integration-setup-panel, .mcp-config-card,
   .mcp-raw-config-card, .mcp-config-card-header, .mcp-raw-config-header,
   .mcp-server-rail, .mcp-project-rail, .mcp-project-server-rail, .mcp-project-workbench,

@@ -62,7 +62,10 @@
     "noMatches": "无匹配结果",
     "previous": "上一个匹配项",
     "next": "下一个匹配项",
-    "close": "关闭搜索"
+    "close": "关闭搜索",
+    "historyLoadFailed": "无法加载更早的消息。",
+    "retryHistory": "重试",
+    "loadingHistory": "正在加载对话历史"
   },
   "filesWorkbench": {
     "openFileTitle": "打开文件开始工作",

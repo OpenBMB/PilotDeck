@@ -2,6 +2,7 @@ import type {
   Project,
   ProjectSession,
   SessionProvider,
+  SessionMessagesUpdateTarget,
 } from '../../../types/app';
 import type { ContentReference } from '../../../types/contentReference';
 
@@ -281,9 +282,10 @@ export interface ChatInterfaceProps {
   autoScrollToBottom?: boolean;
   sendByCtrlEnter?: boolean;
   externalMessageUpdate?: number;
+  externalMessageUpdateTarget?: SessionMessagesUpdateTarget | null;
   onTaskClick?: (...args: unknown[]) => void;
   onShowAllTasks?: (() => void) | null;
-  // V2 only: when true, ignore session/messages and render the welcome layout:
+  // When true, ignore session/messages and render the welcome layout:
   // centered headline + big composer in the middle of the pane.
   forceWelcome?: boolean;
   // Fired the moment the user submits their first message from welcome

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Clock3 } from "lucide-react";
+import { Clock3, Pencil, Save, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import SettingsToggle from "../../../shared/view/SettingsToggle";
-import { GeneralSettingsIcon } from "../../../shared/view/GeneralSettingsPrimitives";
+import { GeneralSettingRow, GeneralSelectControl, GeneralSettingsIcon } from "../../../shared/view/GeneralSettingsPrimitives";
 import { isCronConfigEnabled } from "../utils/cron";
 import { patch } from "../../modelPool/utils/patch";
 import type { PilotDeckConfig } from "../../modelPool/types";
@@ -22,66 +22,6 @@ const TIMEZONES = [
   "Europe/London",
   "America/Los_Angeles",
 ];
-
-function ChevronIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="14"
-      height="14"
-      fill="currentColor"
-      viewBox="0 0 256 256"
-      aria-hidden="true"
-    >
-      <path d="M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z" />
-    </svg>
-  );
-}
-
-function EditIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="15"
-      height="15"
-      fill="currentColor"
-      viewBox="0 0 256 256"
-      aria-hidden="true"
-    >
-      <path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" />
-    </svg>
-  );
-}
-
-function CancelIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="15"
-      height="15"
-      fill="currentColor"
-      viewBox="0 0 256 256"
-      aria-hidden="true"
-    >
-      <path d="M208.49,191.51a12,12,0,0,1-17,17L128,145,64.49,208.49a12,12,0,0,1-17-17L111,128,47.51,64.49a12,12,0,0,1,17-17L128,111l63.51-63.52a12,12,0,0,1,17,17L145,128Z" />
-    </svg>
-  );
-}
-
-function SaveIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="15"
-      height="15"
-      fill="currentColor"
-      viewBox="0 0 256 256"
-      aria-hidden="true"
-    >
-      <path d="M222.14,69.17,186.83,33.86A19.86,19.86,0,0,0,172.69,28H48A20,20,0,0,0,28,48V208a20,20,0,0,0,20,20H208a20,20,0,0,0,20-20V83.31A19.86,19.86,0,0,0,222.14,69.17ZM164,204H92V160h72Zm40,0H188V156a20,20,0,0,0-20-20H88a20,20,0,0,0-20,20v48H52V52H171l33,33ZM164,84a12,12,0,0,1-12,12H96a12,12,0,0,1,0-24h56A12,12,0,0,1,164,84Z" />
-    </svg>
-  );
-}
 
 export default function CronSection({ config, onChange }: CronSectionProps) {
   const { t } = useTranslation("settings");
@@ -148,7 +88,7 @@ export default function CronSection({ config, onChange }: CronSectionProps) {
           type="button"
           onClick={cancelEdit}
         >
-          <CancelIcon />
+          <GeneralSettingsIcon icon={X} />
           {t("settingsPage.actions.cancel")}
         </button>
         <button
@@ -157,104 +97,52 @@ export default function CronSection({ config, onChange }: CronSectionProps) {
           disabled={!canSave}
           onClick={onSave}
         >
-          <SaveIcon />
+          <GeneralSettingsIcon icon={Save} />
           {t("settingsPage.actions.save")}
         </button>
       </div>
     ) : (
       <button
-        className="button secondary compact scheduled-edit-button"
+        className="button secondary compact"
         type="button"
         disabled={editingField !== null}
         onClick={() => startEdit(field)}
       >
-        <EditIcon />
+        <GeneralSettingsIcon icon={Pencil} />
         {t("settingsPage.actions.edit")}
       </button>
     );
 
   return (
     <>
-    <section className="route-card route-enable-card scheduled-enable-card">
-      <div className="route-card-heading">
-        <span className="route-heading-icon"><GeneralSettingsIcon icon={Clock3} /></span>
-        <h2>{t("pilotDeckConfig.panels.cron.enableLabel")}</h2>
-      </div>
-      <SettingsToggle checked={isCronConfigEnabled(config)} ariaLabel={t("pilotDeckConfig.panels.cron.enableLabel")}
-        suppressNextSaveToast onChange={enabled => { onChange(patch(config, ["cron", "enabled"], enabled)); setEditingField(null); }} />
+    <section className="general-card">
+      <GeneralSettingRow icon={<GeneralSettingsIcon icon={Clock3} />} title={t("pilotDeckConfig.panels.cron.enableLabel")}>
+        <SettingsToggle checked={isCronConfigEnabled(config)} ariaLabel={t("pilotDeckConfig.panels.cron.enableLabel")}
+          suppressNextSaveToast onChange={enabled => { onChange(patch(config, ["cron", "enabled"], enabled)); setEditingField(null); }} />
+      </GeneralSettingRow>
     </section>
-    <section
-      className="scheduled-card"
-      aria-label={t("pilotDeckConfig.panels.cron.configAria")}
-    >
-      <div className="scheduled-setting-row">
-        <div className="scheduled-setting-copy">
-          <label htmlFor="scheduled-timezone">
-            {t("pilotDeckConfig.panels.cron.timezone.label")}
-          </label>
-          <p>{t("pilotDeckConfig.panels.cron.timezone.description")}</p>
-        </div>
+    <section className="general-card" aria-label={t("pilotDeckConfig.panels.cron.configAria")}>
+      <GeneralSettingRow htmlFor="scheduled-timezone" title={t("pilotDeckConfig.panels.cron.timezone.label")}
+        detail={t("pilotDeckConfig.panels.cron.timezone.description")}>
         <div className="scheduled-control-area">
-          <div className="scheduled-select-wrap">
-            <select
-              id="scheduled-timezone"
-              value={editingField === "timezone" ? timezoneDraft : timezone}
-              disabled={editingField !== "timezone"}
-              onChange={(event) => setTimezoneDraft(event.target.value)}
-            >
-              {timezoneOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-            <ChevronIcon />
-          </div>
-          {renderActions(
-            "timezone",
-            timezoneDraft !== timezone,
-            saveTimezone,
-          )}
+          <GeneralSelectControl id="scheduled-timezone"
+            value={editingField === "timezone" ? timezoneDraft : timezone}
+            disabled={editingField !== "timezone"} onChange={setTimezoneDraft}
+            options={timezoneOptions.map(value => ({ value, label: value }))} />
+          {renderActions("timezone", timezoneDraft !== timezone, saveTimezone)}
         </div>
-      </div>
-
-      <div className="scheduled-setting-row">
-        <div className="scheduled-setting-copy">
-          <label htmlFor="scheduled-concurrency">
-            {t("pilotDeckConfig.panels.cron.maxConcurrentRuns.label")}
-          </label>
-          <p>
-            {t("pilotDeckConfig.panels.cron.maxConcurrentRuns.description")}
-          </p>
-        </div>
+      </GeneralSettingRow>
+      <GeneralSettingRow htmlFor="scheduled-concurrency" title={t("pilotDeckConfig.panels.cron.maxConcurrentRuns.label")}
+        detail={t("pilotDeckConfig.panels.cron.maxConcurrentRuns.description")}>
         <div className="scheduled-control-area">
-          <div className="scheduled-input-wrap">
-            <input
-              id="scheduled-concurrency"
-              type="number"
-              min={1}
-              max={20}
-              inputMode="numeric"
-              value={
-                editingField === "maxConcurrentRuns"
-                  ? concurrencyDraft
-                  : maxConcurrentRuns
-              }
-              disabled={editingField !== "maxConcurrentRuns"}
-              aria-invalid={
-                editingField === "maxConcurrentRuns" && !concurrencyIsValid
-              }
-              onChange={(event) => setConcurrencyDraft(event.target.value)}
-            />
-          </div>
-          {renderActions(
-            "maxConcurrentRuns",
-            concurrencyIsValid &&
-              parsedConcurrency !== maxConcurrentRuns,
-            saveConcurrency,
-          )}
+          <input id="scheduled-concurrency" className="general-input" type="number" min={1} max={20} inputMode="numeric"
+            value={editingField === "maxConcurrentRuns" ? concurrencyDraft : maxConcurrentRuns}
+            disabled={editingField !== "maxConcurrentRuns"}
+            aria-invalid={editingField === "maxConcurrentRuns" && !concurrencyIsValid}
+            onChange={event => setConcurrencyDraft(event.target.value)} />
+          {renderActions("maxConcurrentRuns", concurrencyIsValid && parsedConcurrency !== maxConcurrentRuns, saveConcurrency)}
         </div>
-      </div>
+      </GeneralSettingRow>
     </section>
     </>
   );

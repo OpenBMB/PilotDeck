@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { buildRenderableMessageItems, groupProcessIntervals } from '../../chat-v2/processGrouping';
+import { buildRenderableMessageItems, groupProcessIntervals } from '../utils/processGrouping';
 import type { ChatMessage } from '../types/types';
 import { isBinaryFile, isVideoFile } from '../../code-editor/utils/binaryFile';
 import { attachmentPreviewKind } from '../utils/attachmentPreviewKind';

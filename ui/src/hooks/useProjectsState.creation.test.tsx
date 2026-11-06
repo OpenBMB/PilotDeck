@@ -143,6 +143,7 @@ describe('new project visibility', () => {
       changedFile: 'existing/session-1.jsonl',
     });
     expect(result.current.externalMessageUpdate).toBe(previousUpdates + 1);
+    expect(result.current.externalMessageUpdateTarget).toEqual({ projectName: 'existing', sessionId: 'session-1' });
     expect(result.current.projects).toHaveLength(1);
   });
 

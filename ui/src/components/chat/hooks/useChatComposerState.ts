@@ -800,7 +800,7 @@ export function useChatComposerState({
         case 'switchProject': {
           // The server validates that an arg was supplied; project lookup
           // happens here because the client already holds the projects list.
-          // window.switchProject is registered by AppShellV2 and returns
+          // window.switchProject is registered by AppShell and returns
           // false when no project matches, letting us surface a helpful
           // "not found" message in chat without leaving the page.
           if (data.error) {

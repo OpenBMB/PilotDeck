@@ -40,7 +40,7 @@ export function useDesktopCommands(options: {
         lastState = serialized;
         void bridge.setMenuState!(next).catch(error => console.warn('Could not sync desktop menu', error));
       }
-      const candidate = document.querySelector('[data-sidebar-v2-root]');
+      const candidate = document.querySelector('[data-sidebar-root]');
       if (sidebar !== candidate) {
         if (sidebar) resize?.unobserve(sidebar);
         sidebar = candidate;
@@ -60,7 +60,7 @@ export function useDesktopCommands(options: {
       if (!frame) frame = requestAnimationFrame(() => { frame = 0; sync(); });
     };
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    const relevant = '[aria-modal="true"], [data-modal-overlay], [data-sidebar-v2-root], .workspace-header, .settings-main > .topbar, [data-file-search-surface], [data-chat-search-surface], [data-chat-history-search]';
+    const relevant = '[aria-modal="true"], [data-modal-overlay], [data-sidebar-root], .workspace-header, .settings-main > .topbar, [data-file-search-surface], [data-chat-search-surface], [data-chat-history-search]';
     const affectsChrome = (node: Node) => node instanceof Element
       && (node.matches(relevant) || Boolean(node.querySelector(relevant)));
     const observer = new MutationObserver(records => {

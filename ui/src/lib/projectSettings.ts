@@ -1,7 +1,4 @@
-// Settings-shaped projection of a Project — used by the Settings modal so
-// we don't pass through optional fields it doesn't need. Lives in `lib/`
-// (vs. the legacy `components/sidebar/`) because the V2 shell is the only
-// remaining caller after the V1 sidebar tear-down.
+// Project fields shared by the settings page and application shell.
 import type { Project } from '../types/app';
 
 export type SettingsProject = Pick<Project, 'name' | 'displayName' | 'fullPath' | 'path'>;
