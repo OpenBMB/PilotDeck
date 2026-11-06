@@ -626,7 +626,6 @@ export class AgentLoop {
       }
       request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
       if (input.abortSignal?.aborted) continue;
-      this.clearAttemptOutputTokenCap(decision.provider, decision.model);
       if (pendingContextBudget && !emittedContextBudget) {
         yield {
           type: "context_budget",
@@ -653,6 +652,7 @@ export class AgentLoop {
       const assembler = createModelMessageAssemblerState(randomUUID());
       let executedRequest: { provider: string; model: string; fingerprint?: string } | undefined;
       let contextCommitted = false;
+      const dispatchedTargets = new Map([[this.tokenCapKey(decision.provider, decision.model), decision]]);
       const commitRequest = prepareCandidate ? async (actual: CanonicalModelRequest) => {
         // Assigning a cache generation is bookkeeping, not a change to the
         // tokenized request. Content/media/fallback changes still disqualify it.
@@ -673,6 +673,7 @@ export class AgentLoop {
           projectPath: this.config.cwd,
           abortSignal: input.abortSignal,
           requestForTarget: prepareCandidate ? async target => {
+            dispatchedTargets.set(this.tokenCapKey(target.provider, target.model), { ...decision, ...target });
             const prepared = await prepareCandidate(messages, target);
             return this.applyTokenCapsToRequest(prepared.request, target.provider, target.model);
           } : undefined,
@@ -752,6 +753,10 @@ export class AgentLoop {
         await captureTurn(result.type === "error");
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages };
+      } finally {
+        // Route projection and fallback are part of this dispatch. Consume
+        // one-attempt caps only after all requests in it have been prepared.
+        for (const target of dispatchedTargets.values()) this.clearAttemptOutputTokenCap(target.provider, target.model);
       }
 
       if (input.abortSignal?.aborted) {

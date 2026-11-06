@@ -270,3 +270,38 @@ test("cancelling pending context work stops awaiting it and prevents later stage
   finally { release(); }
   assert.equal(discovered, 0);
 });
+
+for (const recoveryType of ["adjust_output_and_retry", "compact_and_retry"] as const) {
+  test(`real routing retains ${recoveryType} output caps until dispatch completes`, async t => {
+    const f = fixture();
+    f.context.recoverFromModelError = async () => recoveryType === "adjust_output_and_retry"
+      ? { type: recoveryType, maxOutputTokens: 20, scope: "attempt", reason: "synthetic cap" }
+      : { type: recoveryType, maxOutputTokens: 20, reason: "synthetic cap" };
+    const wire: number[] = [];
+    const router = createRouterRuntime({ enabled: false, stats: { enabled: false } }, { modelRuntime: {
+      async *stream(request) {
+        wire.push(request.maxOutputTokens!);
+        if (wire.length === 1) {
+          yield { type: "error", error: { provider: "synthetic", protocol: "anthropic", code: "invalid_request",
+            message: "Synthetic token limit", retryable: false } };
+          return;
+        }
+        yield { type: "message_start", role: "assistant" };
+        yield { type: "text_delta", text: "done" };
+        yield { type: "message_end", finishReason: "stop" };
+      },
+      async complete() { throw new Error("Unexpected completion"); },
+      getProviderProtocol: () => "anthropic", getProviderBaseUrl: () => undefined,
+      getMultimodal: () => ({ input: ["text"] }),
+      getCapabilities: () => ({ supportsToolUse: true, supportsStreaming: true, supportsParallelToolCalls: true,
+        supportsThinking: false, supportsJsonSchema: false, supportsSystemPrompt: true, supportsPromptCache: true,
+        maxContextTokens: 100_000, maxOutputTokens: 100 }),
+    } });
+    t.after(() => router.shutdown());
+    f.dependencies.router = router;
+    await f.run();
+    assert.deepEqual(wire, [100, 20]);
+    await f.run("next-turn");
+    assert.deepEqual(wire, [100, 20, 100]);
+  });
+}
