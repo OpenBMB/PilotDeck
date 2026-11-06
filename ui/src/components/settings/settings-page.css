@@ -73,28 +73,6 @@
   background: transparent;
 }
 
-:where(.pilotdeck-settings-app) .sidebar-brand-logo {
-  /* Keep the wordmark aligned with the workspace's .brand-lockup. */
-  width: 165px;
-  max-width: 100%;
-  height: 36px;
-  display: block;
-  object-fit: contain;
-  object-position: left center;
-}
-
-:where(.pilotdeck-settings-app) .sidebar-brand-logo-dark {
-  display: none;
-}
-
-.dark :where(.pilotdeck-settings-app) .sidebar-brand-logo-light {
-  display: none;
-}
-
-.dark :where(.pilotdeck-settings-app) .sidebar-brand-logo-dark {
-  display: block;
-}
-
 .pilotdeck-settings-app .back-to-app,
 .pilotdeck-settings-app .nav-item {
   font-size: 14px;

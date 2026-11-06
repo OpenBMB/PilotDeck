@@ -21,6 +21,7 @@ vi.mock('lucide-react', () => ({
   MessageSquarePlus: () => null,
   Plus: () => null,
   Pencil: () => null,
+  PanelLeftOpen: () => null,
   Trash2: () => null,
 }));
 
@@ -110,16 +111,15 @@ describe('SidebarV2 layout', () => {
     expect(screen.getByText('PilotDeck')).toBeTruthy();
   });
 
-  it('shows the P mark logo when the sidebar is compact', () => {
+  it('keeps a sidebar expansion control when the wordmark is collapsed', () => {
     localStorage.setItem('sidebar-v2-width', '76');
     renderSidebar(null);
 
     expect(screen.queryByRole('img', { name: 'PILOTDECK' })).toBeNull();
-    const mark = document.querySelector('.brand-mark');
-    expect(mark).toBeInstanceOf(HTMLImageElement);
-    expect((mark as HTMLImageElement).getAttribute('src')).toBe(
-      '/pilotdeck-p-mark-compact.png',
-    );
+    const expand = screen.getByRole('button', { name: /Expand project sidebar|展开项目侧栏/ });
+    expect(expand.querySelector('img')).toBeNull();
+    fireEvent.click(expand);
+    expect(screen.getByRole('img', { name: 'PILOTDECK' })).toBeTruthy();
   });
 
   it('opens scheduled tasks from the sidebar quick action', () => {

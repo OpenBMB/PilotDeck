@@ -171,7 +171,7 @@ try {
       if (width === 76) await page.screenshot({ path: path.join(artifactDir, 'mac-compact-sidebar.png') });
     }
     await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    // The original compact logo still expands the sidebar below the controls.
+    // The compact expansion control stays below the native window controls.
     const resizer = await page.locator('.sidebar-resizer').boundingBox();
     await page.mouse.move(resizer.x, resizer.y + 180); await page.mouse.down();
     await page.mouse.move(resizer.x - 144, resizer.y + 180); await page.mouse.up();
@@ -332,14 +332,16 @@ try {
     const logoGeometry = selector => page.locator(selector).evaluate(el => {
       const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
     });
-    const settingsLogo = await logoGeometry('.sidebar-brand-logo:visible');
-    expect(settingsLogo).toEqual({ x: 12, y: 60.5, width: 165, height: 36 });
+    const settingsLogo = await logoGeometry('.sidebar-brand .brand-wordmark');
+    expect(settingsLogo).toMatchObject({ x: 12, y: 66.5, height: 24 });
+    expect(settingsLogo.width).toBeLessThan(165);
+    await expect(page.locator('.sidebar-brand .brand-wordmark-image:visible')).toHaveCSS('width', '152px');
     await page.goto('http://127.0.0.1:5187/p/demo');
     await expect(page.locator('.sidebar-brand-row')).toBeVisible();
     expect(await logoGeometry('.brand-lockup')).toEqual(settingsLogo);
     await page.goto('http://127.0.0.1:5187/settings/about');
     await expect(page.getByText('AGPL-3.0-only', { exact: true })).toBeVisible();
-    console.log('PASS: workspace/settings logos share original 165x36 size and x/y alignment');
+    console.log('PASS: workspace/settings wordmarks share the smaller size and x/y alignment');
   }
   const previousChecks = await app.evaluate(() => global.chromeTest.checks());
   await command('check-updates');

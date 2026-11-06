@@ -1235,31 +1235,32 @@
     border-bottom: 1px solid rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
   }
 
-  .brand-lockup {
+  .brand-wordmark {
+    /* Original artwork: 5810px wide; the lettering starts at x=1482.
+       Scale the 165px lockup down slightly, then clip only the emblem/gap. */
+    --wordmark-image-width: 152px;
+    position: relative;
     display: block;
-    height: 36px;
-    width: 165px;
+    width: calc(var(--wordmark-image-width) * 4330 / 5810);
+    height: 24px;
     max-width: 100%;
+    overflow: hidden;
   }
 
-  .brand-lockup-image {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: left center;
+  .brand-wordmark-image {
+    position: absolute;
+    left: calc(var(--wordmark-image-width) * -1480 / 5810);
+    top: 50%;
+    width: var(--wordmark-image-width);
+    height: auto;
+    max-width: none;
+    transform: translateY(-50%);
+    pointer-events: none;
   }
 
-  .brand-lockup-dark {
-    display: none;
-  }
-
-  .brand-mark {
-    display: block;
-    width: 34px;
-    height: 34px;
-    object-fit: contain;
-  }
+  .brand-wordmark-dark { display: none; }
+  .dark .brand-wordmark-light { display: none; }
+  .dark .brand-wordmark-dark { display: block; }
 
   .primary-actions {
     display: grid;
@@ -1513,6 +1514,7 @@
     border: 0;
     border-bottom: 1px solid rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
     background: transparent;
+    color: var(--pd-sidebar-ink, var(--pd-ink, #687080));
     cursor: pointer;
   }
 
@@ -2029,14 +2031,6 @@
   .dark .sidebar-brand-row,
   .dark .compact-brand {
     border-bottom-color: #262626;
-  }
-
-  .dark .brand-lockup-light {
-    display: none;
-  }
-
-  .dark .brand-lockup-dark {
-    display: block;
   }
 
   .dark .primary-action {
