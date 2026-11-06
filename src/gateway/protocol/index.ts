@@ -14,6 +14,7 @@ export type {
   GatewayServerInfo,
   GatewaySessionInfo,
   GatewaySubmitTurnInput,
+  GatewayTurnOptions,
   GatewayCancelSteerInput,
   GatewayCancelSteerResult,
   GatewaySteerTurnInput,

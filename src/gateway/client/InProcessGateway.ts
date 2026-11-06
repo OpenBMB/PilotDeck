@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
-import type { AgentEvent, AgentInput, AgentTurnResult } from "../../agent/index.js";
+import type { AgentEvent, AgentInput, AgentSession, AgentTurnResult } from "../../agent/index.js";
 import {
   flattenToolResultBlockText,
   type CanonicalContentBlock,
@@ -34,6 +34,7 @@ import type {
   GatewaySessionPermissionGrantInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayTurnOptions,
   GatewayCancelSteerInput,
   GatewayCancelSteerResult,
   GatewaySteerTurnInput,
@@ -269,16 +270,9 @@ export class InProcessGateway implements Gateway {
    */
   private readonly permissionBus = new GatewayPermissionBus();
   private readonly sessionPermissionGrants = new Map<string, PermissionRule[]>();
-  /**
-   * Per-session "turn ended" deferreds. Set when `submitTurn`'s consumer
-   * loop starts and resolved in its `finally` after `router.endTurn` has
-   * cleared `inFlightTurns`. `abortTurn` awaits this so callers see a
-   * consistent contract: once `abortTurn` resolves, a fresh `submitTurn`
-   * for the same session is guaranteed not to be rejected with
-   * `session_busy`. Without it the gateway's `abort_turn` RPC could return
-   * while `inFlightTurns` was still populated, racing the next submit.
-   */
+  /** Execution owns the reservation until it drains, independently of readers. */
   private readonly turnCompletions = new Map<string, Promise<void>>();
+  private readonly turnCancellations = new Map<string, { runId: string; cancel(reason: string): void }>();
   constructor(
     private readonly router: SessionRouter,
     private readonly options: InProcessGatewayOptions = {},
@@ -353,7 +347,7 @@ export class InProcessGateway implements Gateway {
     this.emitForSession(detail.sessionId, event);
   }
 
-  async *submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
+  async *submitTurn(input: GatewaySubmitTurnInput, options: GatewayTurnOptions = {}): AsyncIterable<GatewayEvent> {
     input = {
       ...input,
       ...(input.modelSelection ? { modelSelection: normalizeSessionModelSelection(input.modelSelection) } : {}),
@@ -385,6 +379,10 @@ export class InProcessGateway implements Gateway {
     input = plannedInput;
 
     const runId = input.runId ?? this.uuid();
+    if (options.signal?.aborted) {
+      yield { type: "turn_completed", runId, usage: {}, finishReason: "aborted" };
+      return;
+    }
     const replacementClaim = this.claimPendingTurnReplacement(input.sessionKey, runId);
     if (replacementClaim === "conflict") {
       const message = "This session is waiting for its edited replacement turn to be accepted.";
@@ -442,6 +440,27 @@ export class InProcessGateway implements Gateway {
     });
     this.turnCompletions.set(input.sessionKey, turnDone);
 
+    let cancelled = false;
+    let sessionStarted = false;
+    let runningSession: AgentSession | undefined;
+    const cancellation = {
+      runId,
+      cancel: (reason: string) => {
+        if (cancelled) return;
+        cancelled = true;
+        this.elicitationBus.rejectSession(input.sessionKey, reason);
+        this.permissionBus.rejectSession(input.sessionKey, reason);
+        if (sessionStarted) runningSession?.abort(reason);
+      },
+    };
+    this.turnCancellations.set(input.sessionKey, cancellation);
+    const onAbort = () => {
+      try { cancellation.cancel(String(options.signal?.reason ?? "aborted")); }
+      catch { /* A host cancellation observer must not throw from AbortSignal dispatch. */ }
+    };
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
+
     const queue = new AsyncQueue<GatewayEvent>();
     this.activeTurnReplays.set(input.sessionKey, {
       sessionKey: input.sessionKey,
@@ -470,10 +489,6 @@ export class InProcessGateway implements Gateway {
       return recorded;
     };
 
-    if (input.workspaceCwd && this.options.setSessionCwd) {
-      this.options.setSessionCwd(input.sessionKey, input.workspaceCwd);
-    }
-
     const telemetryContext = resolveSubmitTurnTelemetry(input);
     let timeoutHandle: NodeJS.Timeout | undefined;
     let timedOut = false;
@@ -487,6 +502,35 @@ export class InProcessGateway implements Gateway {
       timingPrevious = current;
     };
     let completedEventAt: number | undefined;
+    let pumpFinished = false;
+    let finishing: Promise<void> | undefined;
+    const finish = (): Promise<void> => finishing ??= (async () => {
+      try {
+        // Hard timeouts quarantine the old session even when its tool ignores
+        // cancellation. SessionRouter also invalidates a still-running factory.
+        if (timedOut) await this.router.close(input.sessionKey);
+      } finally {
+        options.signal?.removeEventListener("abort", onAbort);
+        if (this.turnCompletions.get(input.sessionKey) === turnDone) {
+          this.emitSinks.delete(input.sessionKey);
+          this.activeTurnReplays.delete(input.sessionKey);
+          this.elicitationBus.rejectSession(input.sessionKey, "turn_ended");
+          this.permissionBus.rejectSession(input.sessionKey, "turn_ended");
+          this.turnCompletions.delete(input.sessionKey);
+          this.turnCancellations.delete(input.sessionKey);
+          this.router.endTurn(input.sessionKey, runId);
+        }
+        resolveTurnDone();
+        this.releasePendingTurnReplacementClaim(input.sessionKey, runId);
+        if (completedEventAt !== undefined) {
+          const releaseMs = Math.round(performance.now() - completedEventAt);
+          if (releaseMs >= 200) console.info("[gateway:turn-timing]", JSON.stringify({
+            sessionKey: input.sessionKey, runId, phase: "released", releaseMs,
+          }));
+        }
+        this.options.afterTurnCompleted?.({ sessionKey: input.sessionKey, projectKey: input.projectKey, runId });
+      }
+    })();
 
     // Background pump: agent events → queue.
     const fileInputProgress = new FileInputProgress(runId);
@@ -498,6 +542,25 @@ export class InProcessGateway implements Gateway {
       purpose: "conversation",
     }, async () => {
       try {
+        if (input.workspaceCwd && this.options.setSessionCwd) this.options.setSessionCwd(input.sessionKey, input.workspaceCwd);
+        if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
+          timeoutHandle = setTimeout(() => {
+            timedOut = true;
+            const message = `Turn exceeded the ${input.timeoutMs}ms timeout.`;
+            void emitGatewayFailureStatus(createGatewayFailureStatus({
+              event: "turn_timeout", code: "turn_timeout", message,
+              userHint: "The turn exceeded its wall-clock limit. Retry with a smaller task or increase the timeout.",
+              detail: { timeoutMs: input.timeoutMs },
+            }));
+            const gatewayEvent: GatewayEvent = { type: "error", runId, code: "turn_timeout", message, recoverable: false,
+              userHint: "The turn exceeded its wall-clock limit. Retry with a smaller task or increase the timeout." };
+            this.recordActiveTurnEvent(input.sessionKey, gatewayEvent);
+            queue.enqueue(gatewayEvent);
+            try { cancellation.cancel(`timeout:${runId}`); } catch { /* Still quarantine a faulty abort implementation. */ }
+            queue.close();
+            void finish().catch(() => undefined);
+          }, input.timeoutMs);
+        }
         // Refresh only after beginTurn has reserved the session. Replacement
         // submissions claim their transaction before this await, so an
         // expiration callback cannot roll the transcript back underneath a
@@ -511,44 +574,15 @@ export class InProcessGateway implements Gateway {
           }
         }
         markTiming("configMs");
+        if (cancelled) return;
         const session = await this.router.getOrCreate({
           sessionKey: input.sessionKey,
           projectKey: input.projectKey,
           channelKey: input.channelKey,
         }, runId);
+        runningSession = session;
         markTiming("sessionMs");
-        if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
-          timeoutHandle = setTimeout(() => {
-            timedOut = true;
-            const message = `Turn exceeded the ${input.timeoutMs}ms timeout.`;
-            void emitGatewayFailureStatus(createGatewayFailureStatus({
-              event: "turn_timeout",
-              code: "turn_timeout",
-              message,
-              userHint: "The turn exceeded its wall-clock limit. Retry with a smaller task or increase the timeout.",
-              detail: { timeoutMs: input.timeoutMs },
-            }));
-            const gatewayEvent: GatewayEvent = {
-              type: "error",
-              runId,
-              code: "turn_timeout",
-              message,
-              recoverable: false,
-              userHint: "The turn exceeded its wall-clock limit. Retry with a smaller task or increase the timeout.",
-            };
-            this.recordActiveTurnEvent(input.sessionKey, gatewayEvent);
-            queue.enqueue(gatewayEvent);
-            this.elicitationBus.rejectSession(input.sessionKey, "turn_timeout");
-            this.permissionBus.rejectSession(input.sessionKey, "turn_timeout");
-            queue.close();
-            try {
-              session.abort(`timeout:${runId}`);
-            } catch {
-              // The queue is already closed, so a faulty abort implementation
-              // cannot defeat the hard turn timeout.
-            }
-          }, input.timeoutMs);
-        }
+        if (cancelled) return;
         const permissionSettings = readPermissionSettings();
         const inputMode = normalizeGatewayModeForLegacyInput((input as { mode?: unknown }).mode);
         const runMode = normalizeGatewayRunMode((input as { runMode?: unknown }).runMode)
@@ -578,6 +612,7 @@ export class InProcessGateway implements Gateway {
         const uploaded = input.uploadedAttachments?.length
           ? await this.resolveUploadedAttachments(input)
           : [];
+        if (cancelled) return;
         const attachments = [...(input.attachments ?? []), ...uploaded];
         const allowedReadFiles = await collectRegisteredAttachmentReadFiles(attachments);
         const agentInput = await buildAgentInputWithAttachments(
@@ -587,6 +622,7 @@ export class InProcessGateway implements Gateway {
           input.projectKey,
           this.options.funasrInstallCommand ?? getPilotDeckInstallCommand(),
         );
+        if (cancelled) return;
         const syntheticMessages: CanonicalMessage[] = (input.syntheticMessages ?? []).map((s) => ({
           role: "user" as const,
           content: [{ type: "text" as const, text: s.text }],
@@ -600,6 +636,7 @@ export class InProcessGateway implements Gateway {
               ? { selection: input.modelSelection?.mode === "model" ? input.modelSelection : input.modelOverride, source: "turn" as const }
               : { source: "default" as const };
         markTiming("selectionMs");
+        if (cancelled) return;
         let lastEmittedModel: string | undefined;
         let actualRequestModel: string | undefined;
         if (modelSelection.selection) {
@@ -616,6 +653,7 @@ export class InProcessGateway implements Gateway {
           queue.enqueue(event);
           lastEmittedModel = `${modelSelection.selection.provider}\0${modelSelection.selection.model}`;
         }
+        sessionStarted = true;
         for await (const event of session.submit(
           agentInput,
           {
@@ -719,7 +757,7 @@ export class InProcessGateway implements Gateway {
             channelKey: input.channelKey,
           },
         });
-        if (this.turnCompletions.get(input.sessionKey) === turnDone) {
+        if (!cancelled && this.turnCompletions.get(input.sessionKey) === turnDone) {
           const message = error instanceof Error ? error.message : String(error);
           await emitGatewayFailureStatus(createGatewayFailureStatus({
             event: "gateway_submit_failed",
@@ -739,15 +777,19 @@ export class InProcessGateway implements Gateway {
           queue.enqueue(gatewayEvent);
         }
       } finally {
-        for (const frame of fileInputProgress.finish()) {
-          this.recordActiveTurnEvent(input.sessionKey, frame);
-          queue.enqueue(frame);
+        pumpFinished = true;
+        if (this.turnCompletions.get(input.sessionKey) === turnDone) {
+          if (cancelled && !sessionStarted && !timedOut) queue.enqueue({ type: "turn_completed", runId, usage: {}, finishReason: "aborted" });
+          for (const frame of fileInputProgress.finish()) {
+            this.recordActiveTurnEvent(input.sessionKey, frame);
+            queue.enqueue(frame);
+          }
         }
         if (timeoutHandle) {
           clearTimeout(timeoutHandle);
           timeoutHandle = undefined;
         }
-        queue.close();
+        try { await finish(); } finally { queue.close(); }
       }
     });
 
@@ -756,43 +798,15 @@ export class InProcessGateway implements Gateway {
         yield event;
       }
     } finally {
-      // Clean up the emit-sink and any orphaned elicitation / permission
-      // entries before returning so a subsequent turn doesn't see stale
-      // state.
-      this.emitSinks.delete(input.sessionKey);
-      this.activeTurnReplays.delete(input.sessionKey);
-      this.elicitationBus.rejectSession(input.sessionKey, "turn_ended");
-      this.permissionBus.rejectSession(input.sessionKey, "turn_ended");
-      this.router.endTurn(input.sessionKey, runId);
-      if (completedEventAt !== undefined) {
-        const releaseMs = Math.round(performance.now() - completedEventAt);
-        if (releaseMs >= 200) console.info("[gateway:turn-timing]", JSON.stringify({
-          sessionKey: input.sessionKey, runId, phase: "released", releaseMs,
-        }));
-      }
+      if (!pumpFinished && !timedOut) cancellation.cancel("consumer_closed");
       if (timedOut) {
-        // The timed-out AgentSession is never safe to reuse. Do not await a
-        // misbehaving tool here: the hard timeout must release the Cron run.
-        await this.router.close(input.sessionKey);
+        await finish();
         void pump.catch(() => undefined);
       } else {
-        // Defensive — make sure the pump promise is settled before we resolve.
-        await pump.catch(() => undefined);
+        // A later hard timeout can quarantine a non-cooperative pump even if
+        // the consumer had already returned before its deadline.
+        await Promise.race([pump.catch(() => undefined), turnDone]);
       }
-      // Signal any in-flight `abortTurn` awaiters that the session slot
-      // has been released. Drop our deferred only if we still own it —
-      // a later turn for the same session may have already installed
-      // its own.
-      if (this.turnCompletions.get(input.sessionKey) === turnDone) {
-        this.turnCompletions.delete(input.sessionKey);
-      }
-      resolveTurnDone();
-      this.releasePendingTurnReplacementClaim(input.sessionKey, runId);
-      this.options.afterTurnCompleted?.({
-        sessionKey: input.sessionKey,
-        projectKey: input.projectKey,
-        runId,
-      });
     }
   }
 
@@ -839,14 +853,18 @@ export class InProcessGateway implements Gateway {
   }
 
   async abortTurn(input: { sessionKey: string; runId?: string; reason?: string }): Promise<void> {
+    const cancellation = this.turnCancellations.get(input.sessionKey);
+    const activeRunId = cancellation?.runId ?? this.router.activeTurnRunId(input.sessionKey);
+    if (input.runId && input.runId !== activeRunId) return;
     const reason = input.reason ?? (input.runId ? `aborted:${input.runId}` : "aborted");
-    await this.router.abort(input.sessionKey, reason);
+    const pending = this.turnCompletions.get(input.sessionKey);
+    if (cancellation) cancellation.cancel(reason);
+    else await this.router.abort(input.sessionKey, reason);
     // Wait for the in-flight `submitTurn` (if any) to fully unwind so
     // `inFlightTurns` has been cleared by the time the RPC response is
     // sent. Otherwise a fast "stop → re-send" from a client races the
     // gateway's own cleanup and the next submit is rejected with
     // `session_busy`.
-    const pending = this.turnCompletions.get(input.sessionKey);
     if (!pending) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const completed = await Promise.race([
