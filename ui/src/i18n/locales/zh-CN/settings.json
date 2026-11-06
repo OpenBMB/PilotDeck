@@ -528,6 +528,8 @@
   },
   "saveStatus": {
     "success": "设置保存成功！",
+    "enabled": "{{label}}已开启",
+    "disabled": "{{label}}已关闭",
     "error": "保存设置失败",
     "saving": "保存中..."
   },

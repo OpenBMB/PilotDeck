@@ -528,6 +528,8 @@
   },
   "saveStatus": {
     "success": "Settings saved successfully!",
+    "enabled": "{{label}} enabled",
+    "disabled": "{{label}} disabled",
     "error": "Failed to save settings",
     "saving": "Saving..."
   },

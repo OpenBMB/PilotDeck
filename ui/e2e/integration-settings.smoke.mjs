@@ -118,11 +118,15 @@ try {
       await expect(page.locator('input[value=libreoffice]')).toBeChecked();
       await expect.poll(() => config.webui.officePreview.service).toBe('libreoffice');
     }
+    if (language === 'en') {
+      await input.fill(examples[platform]); await input.press('Enter');
+      await expect(page.locator('.settings-success-toast')).toHaveText(translations.saveStatus.success);
+    }
     await expect(page.getByRole('button', { name: office.status.refresh, exact: true })).toBeEnabled();
-    await page.screenshot({ path: join(output, `${language}-${mode}-office.png`) });
+    await page.screenshot({ path: join(output, `${language}-${mode}-office.png`), animations: 'disabled' });
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.locator('.settings-main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
-    await page.screenshot({ path: join(output, `${language}-${mode}-office-mobile.png`) });
+    await page.screenshot({ path: join(output, `${language}-${mode}-office-mobile.png`), animations: 'disabled' });
     await page.setViewportSize({ width: 1129, height: 1039 });
     await page.goto(`${base}/settings/computer-use`); await ready(page);
     const toggle = page.getByRole('switch', { name: computer.enable });
@@ -140,12 +144,12 @@ try {
       await page.getByRole('button', { name: computer.openPermissions, exact: true }).first().click();
       await expect(page.getByText(computer.granted, { exact: true })).toHaveCount(1);
     }
-    await page.screenshot({ path: join(output, `${language}-${mode}-computer.png`) });
+    await page.screenshot({ path: join(output, `${language}-${mode}-computer.png`), animations: 'disabled' });
     await page.getByRole('button', { name: computer.stop, exact: true }).click();
     await expect(toggle).toHaveAttribute('aria-checked', 'false');
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.locator('.settings-main').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
-    await page.screenshot({ path: join(output, `${language}-${mode}-computer-mobile.png`) });
+    await page.screenshot({ path: join(output, `${language}-${mode}-computer-mobile.png`), animations: 'disabled' });
     expect(errors).toEqual([]);
     console.log(`PASS ${language} ${mode} ${preset} ${platform}: Office host hints, shared chrome, computer controls, desktop/mobile`);
     await context.close();
