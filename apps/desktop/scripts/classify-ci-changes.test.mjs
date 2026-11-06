@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { classifyCiChanges, needsNativePackaging } from './classify-ci-changes.mjs';
 
 test('ordinary UI, gateway and documentation changes keep fast regressions', () => {
-  assert.equal(needsNativePackaging(['ui/src/components/chat-v2/ComposerV2.tsx', 'src/agent/loop/AgentLoop.ts', 'docs/desktop.md']), false);
+  assert.equal(needsNativePackaging(['ui/src/components/chat/view/Composer.tsx', 'src/agent/loop/AgentLoop.ts', 'docs/desktop.md']), false);
 });
 
 test('chat UI keeps full Web and browser regression without unrelated native or image builds', () => {

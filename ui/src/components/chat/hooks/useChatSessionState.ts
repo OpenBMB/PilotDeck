@@ -83,7 +83,7 @@ export function didLoadedSessionChange(
 /**
  * Whether the optimistic "pending user message" bubble should render in the
  * currently active view. The pending bubble is hook-wide singleton state on
- * `ChatInterfaceV2`; without this gate, switching sessions while it's queued
+ * `ChatInterface`; without this gate, switching sessions while it's queued
  * would prepend the optimistic text onto the WRONG session's transcript —
  * surfaced as "the latest query I just typed appears at the top of an
  * unrelated session I just opened".

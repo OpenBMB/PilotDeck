@@ -7,9 +7,8 @@
  * - Fallback to English for missing translations
  * - Development mode warnings for missing keys
  *
- * Supported locales: en, zh-CN. Other locales were retired during the
- * V1 cleanup; add new locale bundles in `./locales/<lang>/` and register
- * them in `resources` + `./languages.js` to bring them back.
+ * Supported locales: en, zh-CN. Register new locale bundles from
+ * `./locales/<lang>/` in `resources` and `./languages.js`.
  */
 
 import i18n from 'i18next';

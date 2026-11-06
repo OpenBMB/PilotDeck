@@ -1,6 +1,6 @@
 /**
  * Skills HTTP shim — translates the existing `/api/skills/*` REST
- * contract that `ui/src/components/main-content-v2/SkillsV2.tsx` was
+ * contract that `ui/src/components/skills/view/SkillsPanel.tsx` was
  * built against into the gateway's `skill_*` RPCs. The gateway is the
  * authoritative skill manager (see `src/extension/skills/SkillManager.ts`)
  * backed by release-bundled skills, `~/.pilotdeck/skills/`, and

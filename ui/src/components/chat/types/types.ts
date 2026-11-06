@@ -283,7 +283,7 @@ export interface ChatInterfaceProps {
   externalMessageUpdate?: number;
   onTaskClick?: (...args: unknown[]) => void;
   onShowAllTasks?: (() => void) | null;
-  // V2 only: when true, ignore session/messages and render the welcome layout:
+  // When true, ignore session/messages and render the welcome layout:
   // centered headline + big composer in the middle of the pane.
   forceWelcome?: boolean;
   // Fired the moment the user submits their first message from welcome

@@ -1,5 +1,5 @@
 import type { AlwaysOnSubTab, AppTab, Project, ProjectSession } from '../../../types/app';
-import type { WorkspaceUploadController } from '../../main-content-v2/useWorkspaceUpload';
+import type { WorkspaceUploadController } from '../../file-tree/hooks/useWorkspaceUpload';
 import type { ReviewOpenRequest } from '../../chat-review/ChatReviewContext';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;

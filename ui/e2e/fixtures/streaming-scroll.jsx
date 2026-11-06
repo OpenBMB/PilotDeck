@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FindShortcutProvider } from '../../src/contexts/FindShortcutContext';
 import PermissionRequestsBanner from '../../src/components/chat/view/subcomponents/PermissionRequestsBanner';
-import MessagesPane from '../../src/components/chat-v2/MessagesPaneV2';
+import MessagesPane from '../../src/components/chat/view/MessagesPane';
 import { useScrollFollow } from '../../src/components/chat/hooks/useScrollFollow';
 import { normalizedToChatMessages } from '../../src/components/chat/hooks/useChatMessages';
 import { useSessionStore } from '../../src/stores/useSessionStore';

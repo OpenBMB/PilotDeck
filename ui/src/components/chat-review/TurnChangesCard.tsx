@@ -3,7 +3,7 @@ import { ChevronDown, Download, Eye, Files, MessageSquarePlus, Undo2 } from 'luc
 import type { ChatFileArtifact } from '../chat/types/types';
 import type { Project } from '../../types/app';
 import { FileTypeIcon } from '../file-tree/components/FileTypeIcon';
-import { useWorkspaceFileActions } from '../chat-v2/useWorkspaceFileActions';
+import { useWorkspaceFileActions } from '../chat/hooks/useWorkspaceFileActions';
 import FileActionsMenu from './FileActionsMenu';
 import { activeRestoration, useChatReview } from './ChatReviewContext';
 import { formatFileSize, isPreviewFile, mergeTurnFiles, type TurnFile } from './turnFiles';

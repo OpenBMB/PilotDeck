@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { afterEach, expect, it } from 'vitest';
 import { createTestI18n } from '../../../../i18n/testInstance';
-import MessageRowV2 from '../../../chat-v2/MessageRowV2';
+import MessageRow from '../MessageRow';
 import MessageComponent from './MessageComponent';
 import { conversationError } from '../../utils/conversationErrors';
 
@@ -30,7 +30,7 @@ it.each(['current', 'legacy'])('keeps raw diagnostic details collapsed in the %s
   const i18n = await createTestI18n();
   const message = { type: 'error', content: 'HTTP 429: provider response\nrequest_id=diagnostic-123\n{"error":"rate_limit"}', timestamp: 0 };
   render(<I18nextProvider i18n={i18n}>{renderer === 'current'
-    ? <MessageRowV2 message={message} prevMessage={null} provider="pilotdeck" selectedProject={null} createDiff={() => []} />
+    ? <MessageRow message={message} prevMessage={null} provider="pilotdeck" selectedProject={null} createDiff={() => []} />
     : <MessageComponent message={message} prevMessage={null} provider="pilotdeck" createDiff={() => []} />}</I18nextProvider>);
   expect(screen.getByRole('alert').textContent).toContain('The model service is limiting requests');
   const disclosure = document.querySelector('details')!;
