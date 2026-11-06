@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
 import { useSessionStore, type SessionStore } from '../../../stores/useSessionStore';
 import {
@@ -20,6 +20,13 @@ vi.mock('../../../contexts/WebSocketContext', () => ({
 
 const provider = 'pilotdeck' as SessionProvider;
 const noop = () => undefined;
+let gatewayEventToFrames: (event: Record<string, unknown>, sessionId: string, provider: SessionProvider) => unknown[];
+beforeAll(async () => {
+  // Keep cold backend initialization outside React test lifetimes and the
+  // per-assertion timeout while still exercising the real transport mapper.
+  const bridgePath = '../../../../server/pilotdeck-bridge.js';
+  ({ gatewayEventToFrames } = await import(bridgePath));
+}, 60_000);
 afterEach(cleanup);
 
 function createSessionStore() {
@@ -119,12 +126,6 @@ describe('useChatRealtimeHandlers terminal errors', () => {
   });
 
   it.each([false, true])('preserves first WS child termination and error details (existing cache: %s)', async (cached) => {
-    // Load the Node bridge at runtime without adding its backend dependencies
-    // to the browser TypeScript project. Exercise the real transport mapping.
-    const bridgePath = '../../../../server/pilotdeck-bridge.js';
-    const { gatewayEventToFrames } = await import(bridgePath) as {
-      gatewayEventToFrames: (event: Record<string, unknown>, sessionId: string, provider: SessionProvider) => unknown[];
-    };
     const { result } = renderHook(useSessionStore);
     const sessionStore = result.current;
     renderHook(() => useChatRealtimeHandlers({

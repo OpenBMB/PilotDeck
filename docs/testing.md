@@ -55,6 +55,8 @@ are independent of PR selection and remain mandatory.
 
 ## Maintained diagnostic checks
 
+Windows Web tests use at most four workers to limit concurrent Node/jsdom and Git processes. Real repository update tests have a separate 60-second integration budget; UI assertions retain the default timeout, with cold backend imports completed in setup hooks. Directory-link security fixtures use Windows junctions and run without elevation. File-symlink cases run when the host permits them; only an actual Windows `EPERM` skips that individual case with a Developer Mode/elevation explanation. POSIX CI continues to exercise the file-link assertions.
+
 Checkpoint execution cases use separate Python, subagent and background-task
 files with a shared isolated workspace fixture. Each keeps the runner's 60-second
 file deadline instead of sharing one cumulative budget across all execution modes.

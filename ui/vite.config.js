@@ -152,6 +152,9 @@ export default defineConfig(({ mode }) => {
       }
     },
     test: {
+      // Real Git integration cases share the host with large Node/jsdom graphs.
+      // Bound Windows process pressure without changing per-test assertions.
+      maxWorkers: process.platform === 'win32' ? 4 : undefined,
       projects: [
         {
           extends: true,
