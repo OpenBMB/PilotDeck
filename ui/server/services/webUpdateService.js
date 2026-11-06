@@ -67,7 +67,9 @@ export function createWebUpdateService({
     if (env.PILOTDECK_RESTART_MODE === 'dev' || env.NODE_ENV === 'development') throw updateError('development');
     try {
       if (!statSync(path.join(projectRoot, '.git')).isDirectory()) throw updateError('development');
-      if (realpathSync(await git(['rev-parse', '--show-toplevel'])) !== realpathSync(projectRoot)) throw updateError('notGit');
+      // Native realpath expands Windows 8.3 aliases; relative also handles
+      // case-insensitive drive/directory spelling without weakening identity.
+      if (path.relative(realpathSync.native(await git(['rev-parse', '--show-toplevel'])), realpathSync.native(projectRoot)) !== '') throw updateError('notGit');
     } catch (error) { throw error.reason ? error : updateError('notGit'); }
     if (!ownsUpdateLock && existsSync(path.join(projectRoot, '.git', 'pilotdeck-update.lock'))) throw updateError('lockBusy');
     const branch = await git(['branch', '--show-current']);

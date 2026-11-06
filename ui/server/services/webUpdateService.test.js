@@ -54,6 +54,10 @@ describe('web deployment eligibility', { timeout: 60_000 }, () => {
     expect(await f.create().check()).toMatchObject({ canUpdate: true, hasUpdate: true, latest: f.target });
     expect(git(f.root, 'rev-parse', 'HEAD')).toBe(f.oldSha);
   });
+  it.skipIf(process.platform !== 'win32')('recognizes a Windows checkout with alternate directory casing', async () => {
+    const f = fixture();
+    expect(await f.create({ projectRoot: f.root.toUpperCase() }).check()).toMatchObject({ canUpdate: true, hasUpdate: true });
+  });
   it.each([
     ['development', (f) => git(f.root, 'switch', '-qc', 'feature')],
     ['development', (f) => git(f.root, 'checkout', '--detach')],
