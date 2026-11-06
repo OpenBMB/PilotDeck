@@ -221,9 +221,17 @@ export class AgentLoop {
         yield timeline.event(next.value);
       }
     } finally {
-      // Forward consumer cancellation to the underlying agent iterator. Its
-      // return value is intentionally unused when the consumer has stopped.
-      if (!completed) await generator.return(undefined as never);
+      try {
+        // Forward consumer cancellation to the underlying agent iterator. Its
+        // return value is intentionally unused when the consumer has stopped.
+        if (!completed) await generator.return(undefined as never);
+      } finally {
+        try {
+          this.dependencies.context?.releaseTurn?.({ sessionId: input.sessionId, turnId: input.turnId });
+        } catch {
+          // Cleanup must never replace the turn result or its original error.
+        }
+      }
     }
   }
 
