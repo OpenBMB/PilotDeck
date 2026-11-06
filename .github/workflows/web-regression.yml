@@ -74,7 +74,26 @@ jobs:
           dist/tests/context/token-accounting-runtime.spec.js
           dist/tests/gateway/gateway-server-port.spec.js
           dist/tests/gateway/background-runtime-reload.spec.js
+          dist/tests/gateway/extension-runtime-reload.spec.js
+          dist/tests/gateway/session-runtime-invalidation.spec.js
           dist/tests/agent/runtime-lease.spec.js
+
+      - name: Test tool, prompt and extension contracts
+        env:
+          PILOT_HOME: ${{ runner.temp }}/pilotdeck-contract-tests
+        run: >-
+          node --test --test-timeout 60000
+          dist/tests/tool/execution-contracts.spec.js
+          dist/tests/tool/scheduler-ordering.spec.js
+          dist/tests/context/prompt-preparation-contracts.spec.js
+          dist/tests/context/cache-runtime.spec.js
+          dist/tests/context/python-awareness.spec.js
+          dist/tests/extension/plugins/prompt-contributions.spec.js
+          dist/tests/agent/loop/request-preparation.spec.js
+          dist/tests/agent/loop/tool-failure-propagation.spec.js
+          dist/tests/router/cache-plan-routing.spec.js
+          dist/tests/router/tokenSaver.spec.js
+          dist/tests/router/scenario/subagentDetector.spec.js
 
       - name: Test Web UI and server
         # Vitest projects collect only src/ and server/ tests; browser E2E has

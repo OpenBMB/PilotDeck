@@ -18,6 +18,6 @@ Start with the [contribution rules](../CONTRIBUTING.md). Module READMEs are shor
 - [Chat/composer API](dialog-improvement-api.md), [onboarding API](onboarding-api.md) and its [OpenAPI schema](pilotdeck-onboarding-api.openapi.yaml).
 - [Model pool API](model-pool-settings-api.md), [reasoning settings](reasoning-settings.md), [settings/background-task TRDs](trd/README.md).
 - [Video generation](video-generation.md): optional configuration, durable job recovery, session-scoped media and exports.
-- [Session timeline](architecture/session-timeline.md), [telemetry receiver contract](telemetry/receiver-contract.md).
+- [Runtime boundaries](architecture/runtime-boundaries.md), [session timeline](architecture/session-timeline.md), [telemetry receiver contract](telemetry/receiver-contract.md).
 
 Update the relevant guide with the code. Keep one detailed source for each contract and link to it instead of duplicating it in module introductions. Store one-run evidence in PRs/CI artifacts or ignored local output directories.
