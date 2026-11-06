@@ -68,7 +68,7 @@ async function exercise(page, platform, resize) {
   });
   await page.routeWebSocket('**/ws**', socket=>socket.onMessage(()=>{}));
   const report=[];
-  for(const [preset,color] of [['薄荷绿','rgb(37, 104, 89)'],['雾霭蓝','rgb(65, 95, 145)']]) {
+  for(const [preset,color] of [['薄荷绿','rgb(62, 121, 107)'],['雾霭蓝','rgb(83, 113, 166)']]) {
     await page.goto('http://127.0.0.1:5187/settings/appearance');
     await page.getByRole('button',{name:'浅色',exact:true}).click();
     await page.locator('#appearance-palette').getByRole('button', { name: preset, exact: true }).click();
