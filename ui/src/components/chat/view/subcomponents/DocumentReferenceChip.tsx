@@ -1,17 +1,17 @@
 import { Scan, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '../../lib/utils.js';
+import { cn } from '../../../../lib/utils.js';
 import {
   getContentReferenceSummary,
   normalizeContentReference,
   type ContentReference,
-} from '../../types/contentReference';
-import type { DocumentSelectionReference } from '../../types/documentSelection';
-import { FileTypeIcon } from '../file-tree/components/FileTypeIcon';
+} from '../../../../types/contentReference';
+import type { DocumentSelectionReference } from '../../../../types/documentSelection';
+import { FileTypeIcon } from '../../../file-tree/components/FileTypeIcon';
 import {
   getFileVisualCategory,
   type FileVisualCategory,
-} from '../file-tree/constants/fileIcons';
+} from '../../../file-tree/constants/fileIcons';
 
 type DocumentReferenceFileMeta = {
   label: string;

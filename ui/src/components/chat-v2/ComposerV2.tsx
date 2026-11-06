@@ -51,7 +51,7 @@ import ReplyQuoteChip from "./ReplyQuoteChip";
 import WorkspacePickerBar from "./WorkspacePickerBar";
 import { getComposerPrimaryAction } from "./composerPrimaryAction";
 import { useModelMenuLayout } from "./useModelMenuLayout";
-import DocumentReferenceChip from "./DocumentReferenceChip";
+import DocumentReferenceChip from "../chat/view/subcomponents/DocumentReferenceChip";
 import {
   buildExplicitSelection,
   capabilityValues,
@@ -60,7 +60,7 @@ import {
   preserveParamsForModel,
   sameCapabilityValue,
   speedOptionValues,
-} from "./modelCapabilityOptions";
+} from "../chat/utils/modelCapabilityOptions";
 
 interface MentionableFile {
   id?: string;
