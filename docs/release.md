@@ -325,12 +325,12 @@ work on those systems.
 
 ## Required GitHub Secrets
 
-Release builds deliberately fail when macOS code signing or notarization is
-unavailable. Windows release signing is controlled by
-`PILOTDECK_WINDOWS_SIGNING_ENABLED`: when enabled, the signing job must succeed;
-otherwise the daily Windows packages are unsigned. Configure and validate the
-[Windows signing environment](#windows-signing)
-before enabling it. Passing helper tests or checksum checks does not establish
+Release builds deliberately fail when macOS code signing/notarization or Windows
+code signing is unavailable. Daily Release always requires the signed Windows
+job to succeed before publication; there is no unsigned release fallback.
+Configure and validate the [Windows signing environment](#windows-signing)
+before releasing. PR CI remains unsigned and does not receive signing secrets.
+Passing helper tests or checksum checks does not establish
 that a published installer has a valid publisher signature.
 
 macOS:
@@ -529,13 +529,12 @@ node apps/desktop/scripts/windows-signing.cjs verify PATH_TO_SETUP_EXE
 
 ### GitHub hosted runner option
 
-The Windows workflow supports an opt-in cloud backend using the independent
+The Windows workflow uses a cloud backend for signed builds using the independent
 [ssign client](https://github.com/Le-Syl21/ssign). It does not need a self-hosted
 runner or an online desktop PC. `setup-cloud-signing.ps1` pins v0.1.8 and the ZIP's
 SHA-256 digest; this version includes the Certum EV intermediate certificate fix.
 This is not a Certum-supported integration. A successful local SignTool test does
-not validate the cloud client; complete a real cloud build before enabling daily
-release signing.
+not validate the cloud client; complete a real cloud build before releasing.
 
 Repository administrator setup:
 
@@ -552,10 +551,17 @@ Repository administrator setup:
    small real signature/verification probe, then run the **Windows** workflow
    with `require_windows_signing=true`. It builds both native architectures, signs
    each EXE before generating updater hashes, and fails on invalid signatures.
-5. Only after that succeeds, set the repository variable
-   `PILOTDECK_WINDOWS_SIGNING_ENABLED=true`. Daily Release then requires the signed
-   Windows job to succeed. Until enabled, existing daily Windows builds remain
-   unsigned. Manual Desktop Build also exposes `require_windows_signing`.
+5. Daily Release always passes `require_windows_signing=true`; the legacy
+   `PILOTDECK_WINDOWS_SIGNING_ENABLED` variable is no longer used. Missing or
+   invalid credentials, signatures or timestamps stop the Windows job before
+   artifact upload and block the entire release. PR checks retain the reusable
+   workflow's unsigned default. Manual Desktop Build exposes
+   `require_windows_signing` and only uploads build artifacts, never a Release.
+
+The independent published-signature audit remains a second check after release;
+it is not a substitute for the build-time signing and verification gate. Sign
+the final installer before generating its blockmap and updater checksums; do not
+sign or replace immutable release assets after publication.
 
 An activation QR backup must contain the actual TOTP seed/`otpauth://` URI for
 this client. An activation URL alone is not sufficient; do not upload the QR image

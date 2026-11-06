@@ -70,14 +70,17 @@ test('shared native builds cannot select arbitrary source or request release wri
   }
 });
 
-test('PR checks do not inherit signing secrets or enable production macOS packaging', () => {
+test('PR checks do not inherit signing secrets or enable production signing', () => {
   const pr = workflow('desktop-smoke');
   assert.equal(pr.permissions.contents, 'read');
   for (const job of Object.values(pr.jobs)) {
     assert.equal(job.secrets, undefined);
     assert.notEqual(job.with?.require_macos_signing, true);
+    assert.equal(job.with?.require_windows_signing ?? false, false);
   }
   const mac = workflow('desktop-macos');
+  const windows = workflow('desktop-windows');
+  assert.equal(windows.on.workflow_call.inputs.require_windows_signing.default, false);
   assert.equal(mac.on.workflow_call.inputs.require_macos_signing.default, false);
   for (const name of ['Import Developer ID certificate', 'Verify production macOS identity and notarization',
     'Prepare architecture-specific macOS update feed', 'Upload macOS installer']) {
@@ -89,6 +92,7 @@ test('only the final release job can publish after all platform checks succeed',
   const release = workflow('release');
   assert.equal(release.permissions.contents, 'read');
   assert.equal(release.jobs.macos.with.require_macos_signing, true);
+  assert.equal(release.jobs.windows.with.require_windows_signing, true);
   for (const [name, job] of Object.entries(release.jobs)) {
     assert.equal(job.permissions?.contents === 'write', name === 'release');
   }
@@ -97,6 +101,30 @@ test('only the final release job can publish after all platform checks succeed',
   const verification = steps.findIndex(step => step.run?.includes('verify-release-assets.mjs'));
   const publication = steps.findIndex(step => step.run?.includes('gh release create'));
   assert.ok(verification >= 0 && publication > verification);
+});
+
+test('Windows release signing failures block artifact upload and publication', () => {
+  const windows = workflow('desktop-windows').jobs.build;
+  const evaluate = (expression, required) => runInNewContext(expression.slice(3, -2), { inputs: { require_windows_signing: required } });
+  assert.equal(evaluate(windows.environment, true), 'windows-signing');
+  assert.equal(evaluate(windows.environment, false), '');
+  const steps = windows.steps;
+  const signed = steps.findIndex(step => step.name === 'Build signed Windows ${{ matrix.arch }} installer');
+  const unsigned = steps.find(step => step.name === 'Build Windows ${{ matrix.arch }} installer');
+  const upload = steps.findIndex(step => step.name === 'Upload Windows installer');
+  assert.ok(signed >= 0 && upload > signed);
+  assert.equal(evaluate(steps[signed].if, true), true);
+  assert.equal(evaluate(steps[signed].if, false), false);
+  assert.equal(evaluate(unsigned.if, true), false);
+  assert.equal(evaluate(unsigned.if, false), true);
+  assert.equal(steps[signed].env.PILOTDECK_WINDOWS_SIGNING, 'required');
+  assert.match(steps[signed].run, /windows-signing\.cjs verify/);
+  assert.match(steps[signed].run, /throw 'Windows signature verification failed\.'/);
+  assert.notEqual(windows['continue-on-error'], true);
+  assert.notEqual(steps[signed]['continue-on-error'], true);
+  assert.equal(steps[upload].if, undefined); // Implicit success(), never always().
+  const release = workflow('release').jobs.release;
+  assert.match(release.if, /needs\.windows\.result == 'success'/);
 });
 
 test('Windows and macOS publish blockmaps and run real differential qualification', () => {
