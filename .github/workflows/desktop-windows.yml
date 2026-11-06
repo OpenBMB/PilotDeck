@@ -159,6 +159,10 @@ jobs:
         timeout-minutes: 3
         run: pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-download.cjs
 
+      - name: Verify differential updates and full-download recovery
+        timeout-minutes: 4
+        run: pnpm --filter pilotdeck-desktop exec electron scripts/verify-differential-update.cjs
+
       - name: Build signed Windows ${{ matrix.arch }} installer
         if: ${{ inputs.require_windows_signing }}
         env:
@@ -224,6 +228,7 @@ jobs:
           overwrite: true
           path: |
             apps/desktop/dist-electron/*-win-${{ matrix.arch }}-setup.exe
+            apps/desktop/dist-electron/*-win-${{ matrix.arch }}-setup.exe.blockmap
             apps/desktop/dist-electron/latest-${{ matrix.arch }}.yml
           if-no-files-found: error
           retention-days: 14

@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import { describeReleaseAsset, compatibilityFeeds } from '../../../ui/shared/releaseArtifacts.js';
 
 export function verifyReleaseAssets(directory) {
@@ -20,6 +21,25 @@ export function verifyReleaseAssets(directory) {
   ];
   const payloadNames = [...expected.map(([name]) => name), ...['x64', 'arm64'].map(arch => `${prefix}-mac-${arch}.dmg`)];
   const requiredNames = [...payloadNames, ...expected.map(([, feed]) => feed)];
+  // Old immutable releases remain verifiable for OBS repair. New manifests
+  // require maps even when the release's emergency switch disables their use.
+  if (manifest.differentialUpdates !== undefined) {
+    assert.equal(typeof manifest.differentialUpdates, 'boolean', 'Invalid differential capability');
+    for (const name of payloadNames.filter(name => /\.(exe|zip)$/.test(name))) {
+      requiredNames.push(`${name}.blockmap`);
+      const bytes = readFileSync(join(directory, `${name}.blockmap`));
+      assert.ok(bytes.length > 0 && bytes.length <= 8 * 1024 * 1024, `Invalid blockmap size: ${name}`);
+      const map = JSON.parse(gunzipSync(bytes, { maxOutputLength: 32 * 1024 * 1024 }).toString());
+      assert.equal(map.version, '2', `Unsupported blockmap: ${name}`);
+      assert.equal(map.files?.length, 1, `Invalid blockmap files: ${name}`);
+      const file = map.files[0];
+      assert.equal(file.offset, 0, `Invalid blockmap offset: ${name}`);
+      assert.ok(file.checksums?.length > 0 && file.checksums.length === file.sizes?.length, `Invalid blockmap blocks: ${name}`);
+      assert.ok(file.sizes.every(n => Number.isSafeInteger(n) && n > 0), `Invalid block sizes: ${name}`);
+      assert.ok(file.checksums.every(hash => typeof hash === 'string' && hash.length > 0), `Invalid block hashes: ${name}`);
+      assert.equal(file.sizes.reduce((a, b) => a + b, 0), statSync(join(directory, name)).size, `Blockmap payload size differs: ${name}`);
+    }
+  }
   const checksums = readFileSync(join(directory, 'SHA256SUMS.txt'), 'utf8');
   assert.equal(new Set(manifest.assets.map(a => a.name)).size, manifest.assets.length, 'Duplicate manifest asset');
   for (const asset of manifest.assets) {

@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createRequire } from 'node:module';
+import { gzipSync } from 'node:zlib';
 import { verifyReleaseAssets } from './verify-release-assets.mjs';
 const { parseUpdateInfo } = createRequire(import.meta.url)('electron-updater/out/providers/Provider');
 
@@ -36,15 +37,19 @@ test("unified release manifest links the source tag and checksummed installers",
       "latest-rpm-linux-arm64.yml",
     ]) {
       writeFileSync(resolve(assetsDir, name), name);
+      if (/\.(exe|zip)$/.test(name)) writeFileSync(resolve(assetsDir, `${name}.blockmap`), gzipSync(JSON.stringify({
+        version: '2', files: [{ name: 'file', offset: 0, sizes: [Buffer.byteLength(name)], checksums: ['synthetic-block'] }],
+      })));
     }
 
-    const result = spawnSync(
+    const generate = (differentialUpdates = '') => spawnSync(
       process.execPath,
       [resolve(scriptsRoot, "create-release-manifest.mjs"), assetsDir],
       {
         encoding: "utf8",
         env: {
           ...process.env,
+          PILOTDECK_DIFFERENTIAL_UPDATES: differentialUpdates,
           PILOTDECK_RELEASE_VERSION: "2026.903.0",
           PILOTDECK_RELEASE_TAG: "v2026.09.03",
           PILOTDECK_RELEASE_DATE: "2026-09-03",
@@ -54,6 +59,7 @@ test("unified release manifest links the source tag and checksummed installers",
         },
       },
     );
+    const result = generate();
     assert.equal(result.status, 0, result.stderr || result.stdout);
 
     const manifest = JSON.parse(readFileSync(resolve(assetsDir, "release.json"), "utf8"));
@@ -64,6 +70,9 @@ test("unified release manifest links the source tag and checksummed installers",
     assert.equal(manifest.date, "2026-09-03");
     assert.equal(manifest.schemaVersion, 1);
     assert.equal(manifest.artifactSchemaVersion, 1);
+    assert.equal(manifest.differentialUpdates, true);
+    assert.deepEqual(manifest.assets.filter(a => a.format === 'blockmap').map(a => a.name).sort(),
+      manifest.assets.filter(a => /\.(exe|zip)$/.test(a.name)).map(a => `${a.name}.blockmap`).sort());
     assert.deepEqual(verifyReleaseAssets(assetsDir), { installers: 10, feeds: 8 });
     for (const feed of manifest.assets.filter(a => a.format === 'yml')) {
       const parsed = parseUpdateInfo(readFileSync(join(assetsDir, feed.name), 'utf8'), feed.name, new URL('https://example.invalid/'));
@@ -91,6 +100,7 @@ test("unified release manifest links the source tag and checksummed installers",
     }
     assert.deepEqual(
       manifest.assets
+        .filter(a => a.format !== 'blockmap')
         .map(({ name, platform, arch }) => ({ name, platform, arch }))
         .sort((left, right) => left.name.localeCompare(right.name)),
       [
@@ -114,6 +124,10 @@ test("unified release manifest links the source tag and checksummed installers",
         { name: "PilotDeck-2026.903.0-linux-arm64.deb", platform: "linux", arch: "arm64" },
       ].sort((left, right) => left.name.localeCompare(right.name)),
     );
+    const disabled = generate('0');
+    assert.equal(disabled.status, 0, disabled.stderr || disabled.stdout);
+    assert.equal(JSON.parse(readFileSync(resolve(assetsDir, 'release.json'), 'utf8')).differentialUpdates, false);
+    assert.deepEqual(verifyReleaseAssets(assetsDir), { installers: 10, feeds: 8 });
   } finally {
     rmSync(assetsDir, { recursive: true, force: true });
   }

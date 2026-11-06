@@ -98,3 +98,15 @@ test('only the final release job can publish after all platform checks succeed',
   const publication = steps.findIndex(step => step.run?.includes('gh release create'));
   assert.ok(verification >= 0 && publication > verification);
 });
+
+test('Windows and macOS publish blockmaps and run real differential qualification', () => {
+  for (const platform of ['windows', 'macos']) {
+    const data = workflow(`desktop-${platform}`);
+    const steps = Object.values(data.jobs).flatMap(job => job.steps ?? []);
+    assert.ok(steps.some(step => step.run?.includes('verify-differential-update.cjs')));
+    const uploads = steps.filter(step => step.uses?.startsWith('actions/upload-artifact@'));
+    assert.ok(uploads.some(step => step.with.path.includes(platform === 'windows' ? '.exe.blockmap' : '.zip.blockmap')));
+  }
+  const createManifest = workflow('release').jobs.release.steps.find(step => step.name === 'Create release manifest and checksums');
+  assert.equal(createManifest.env.PILOTDECK_DIFFERENTIAL_UPDATES, '${{ vars.PILOTDECK_DIFFERENTIAL_UPDATES }}');
+});

@@ -125,6 +125,7 @@ jobs:
 
       - name: Create release manifest and checksums
         env:
+          PILOTDECK_DIFFERENTIAL_UPDATES: ${{ vars.PILOTDECK_DIFFERENTIAL_UPDATES }}
           PILOTDECK_RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
           PILOTDECK_RELEASE_TAG: ${{ steps.metadata.outputs.release_tag }}
           PILOTDECK_RELEASE_DATE: ${{ steps.metadata.outputs.release_date }}

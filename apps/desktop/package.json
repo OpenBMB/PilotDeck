@@ -164,6 +164,7 @@
       ]
     },
     "nsis": {
+      "differentialPackage": true,
       "artifactName": "${productName}-${version}-${os}-${arch}-setup.${ext}",
       "oneClick": false,
       "perMachine": true,
