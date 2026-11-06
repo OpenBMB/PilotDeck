@@ -88,6 +88,7 @@ jobs:
           dist/tests/context/prompt-file-delivery.spec.js
           dist/tests/extension/plugins/prompt-contributions.spec.js
           dist/tests/agent/loop/model-request-preparation.spec.js
+          dist/tests/agent/loop/tool-scheduler-failure.spec.js
           dist/tests/agent/loop/model-override-defaults.spec.js
           dist/tests/agent/loop/user-steer.spec.js
           dist/tests/agent/session/steer-mailbox.spec.js

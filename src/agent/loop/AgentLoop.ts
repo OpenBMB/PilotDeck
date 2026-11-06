@@ -2539,16 +2539,13 @@ export class AgentLoop {
     input: AgentLoopInput,
   ): AsyncGenerator<AgentEvent, PilotDeckToolResult[], unknown> {
     const activeSubagents = new Map<string, ActiveSubagentStatus>();
-    let results: PilotDeckToolResult[] | undefined;
-    let error: unknown;
     let settled = false;
 
     const execution = this.dependencies.tools.scheduler.executeAll(toolCalls, context)
-      .then((value) => {
-        results = value;
-      }, (err) => {
-        error = err;
-      })
+      .then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
       .finally(() => {
         settled = true;
       });
@@ -2562,8 +2559,9 @@ export class AgentLoop {
     }
 
     yield* this.drainToolEventBufferForSubagentStatus(input, activeSubagents);
-    if (error) throw error;
-    return results ?? [];
+    const result = await execution;
+    if (!result.ok) throw result.error;
+    return result.value;
   }
 
   private *drainToolEventBufferForSubagentStatus(

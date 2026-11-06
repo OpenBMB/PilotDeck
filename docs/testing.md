@@ -44,8 +44,9 @@ still run full Web/browser and Docker checks; manual Desktop runs and formal
 releases retain all native targets. Production signing and publication gates
 are independent of PR selection and remain mandatory.
 
-Web Regression also runs the tool scheduler, context cache, plugin prompt projection,
-steering and active-turn snapshot contracts against the built backend. These checks
+Web Regression also runs tool scheduling and failure propagation, model request
+preparation, context cache, plugin prompt projection, steering and active-turn
+snapshot contracts against the built backend. These checks
 use an isolated `PILOT_HOME` and synthetic runtimes without real provider calls.
 
 ## Test quality and isolation
