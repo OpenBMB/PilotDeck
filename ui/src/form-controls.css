@@ -102,7 +102,7 @@ select option, select optgroup { font: inherit; }
   select optgroup::legend { padding: 7px 10px 4px; color: var(--pd-muted, #687080); font-size: 11px; font-weight: 600; }
   select optgroup + optgroup { margin-top: 4px; border-top: 1px solid var(--pd-border, #dedfe8); }
   /* These wrappers predate the shared picker and supply a second arrow. */
-  :is(.general-select-wrap, .memory-select-wrap, .scheduled-select-wrap, .resident-select-wrap, .search-select-wrap,
+  :is(.general-select-wrap, .resident-select-wrap, .search-select-wrap,
     .route-select-wrap, .route-model-select, .integration-select-control,
     .custom-search-select) > svg { display: none; }
   @media (pointer: coarse) { select option { min-height: 44px; } }
@@ -212,3 +212,16 @@ select option, select optgroup { font: inherit; }
 .pd-clock-fields label { display: grid; gap: 6px; flex: 1; color: var(--pd-muted, #687080); }
 .pd-clock-fields select { width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--pd-control-border, #aaaebc); border-radius: 7px; background: var(--pd-surface, #fff); color: var(--pd-ink, #252737); }
 .pd-clock-fields > span { line-height: 38px; }
+
+/* Text fields used by feature forms share the settings controls' dimensions. */
+.pd-form-field {
+  width: 100%; min-width: 0; min-height: 40px; padding: 0 12px;
+  border: 1px solid var(--pd-border, #dadce6); border-radius: 9px;
+  background: var(--pd-elevated, #fff); color: var(--pd-ink, #414554);
+  font-size: 14px; font-weight: 530; outline: none;
+  transition: border-color .16s, box-shadow .16s, background .16s;
+}
+textarea.pd-form-field { padding-block: 8px; resize: vertical; }
+.pd-form-field:focus-visible { border-color: var(--pd-focus, #9294e9); box-shadow: 0 0 0 3px var(--pd-accent-soft, #5b5ce217); }
+.pd-form-field:disabled { opacity: .55; cursor: not-allowed; }
+.pd-form-field[aria-invalid="true"] { border-color: var(--pd-danger-ink, #b55260); }

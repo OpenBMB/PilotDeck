@@ -55,7 +55,7 @@ try {
   for (const width of [1320, 1600, 960]) {
     await page.setViewportSize({ width, height: 900 });
     const cards = [];
-    for (const [route, selector] of [['general', '.general-card'], ['agent-route', '.route-card'], ['agent-memory', '.memory-enable-card'], ['appearance', '.appearance-card']]) {
+    for (const [route, selector] of [['general', '.general-card'], ['agent-route', '.route-card'], ['agent-memory', '.general-card'], ['appearance', '.appearance-card']]) {
       await page.goto('http://127.0.0.1:5187/settings/' + route);
       const card = page.locator(selector).first(); await expect(card).toBeVisible();
       cards.push(await card.evaluate(element => { const r = element.getBoundingClientRect(); return { left: r.left, width: r.width }; }));
@@ -68,7 +68,7 @@ try {
   await page.goto('http://127.0.0.1:5187/settings/agent-route');
   const routeFont = await page.locator('.route-card-heading h2').first().evaluate(element => getComputedStyle(element).fontSize);
   await page.goto('http://127.0.0.1:5187/settings/agent-memory');
-  const memoryFont = await page.locator('.memory-enable-card h2').evaluate(element => getComputedStyle(element).fontSize);
+  const memoryFont = await page.locator('.memory-page-content .general-setting-title').first().evaluate(element => getComputedStyle(element).fontSize);
   expect(routeFont).toBe('14px'); expect(memoryFont).toBe(routeFont);
   await page.goto('http://127.0.0.1:5187/settings/appearance');
   await expect(page.locator('#appearance-palette')).toBeVisible();
@@ -139,7 +139,7 @@ try {
 
   await page.goto('http://127.0.0.1:5187/settings/agent-schedule');
   const scheduling = page.getByRole('switch', { name: '启用定时任务', exact: true });
-  await expect(page.locator('.scheduled-enable-card h2')).toHaveCSS('font-size', routeFont);
+  await expect(page.locator('.scheduled-page-content .general-setting-title').first()).toHaveCSS('font-size', routeFont);
   await scheduling.click(); await expect.poll(() => config.cron.enabled).toBe(true);
   await scheduling.click(); await expect.poll(() => config.cron.enabled).toBe(false);
   expect(config.cron.timezone).toBe('Asia/Shanghai'); expect(config.cron.maxConcurrentRuns).toBe(2);

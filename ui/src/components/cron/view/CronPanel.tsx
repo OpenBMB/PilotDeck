@@ -991,7 +991,7 @@ function CronCreateView({
             value={message}
             onChange={(event) => setMessage(event.target.value)}
             rows={5}
-            className="mt-1.5 w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+            className="pd-form-field mt-1.5"
             placeholder={t('cron.create.placeholders.prompt', { defaultValue: 'Describe what PilotDeck should do when this task runs.' })}
           />
         </label>
@@ -1004,7 +1004,7 @@ function CronCreateView({
             value={projectKey}
             onChange={(event) => setProjectKey(event.target.value)}
             disabled={isEditing}
-            className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)] dark:disabled:bg-neutral-900 dark:disabled:text-neutral-400"
+            className="pd-form-field mt-1.5"
           >
             <option value="">{t('cron.create.placeholders.workspace', { defaultValue: 'Select a workspace' })}</option>
             {isEditing && projectKey && !projectOptionExists ? <option value={projectKey}>{projectKey}</option> : null}
@@ -1050,6 +1050,7 @@ function CronCreateView({
               </span>
               <DateTimeField
                 type="date"
+                aria-label={t("cron.create.fields.date")}
                 value={onceDraft.scheduleDate}
                 min={formatDateInTimezone(
                   new Date(),
@@ -1059,7 +1060,7 @@ function CronCreateView({
                   setOnceDraft((current) => ({ ...current, scheduleDate: value }));
                   setHasOnceDraft(true);
                 }}
-                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                className="pd-form-field mt-1.5"
               />
             </label>
             <label className="block">
@@ -1068,12 +1069,13 @@ function CronCreateView({
               </span>
               <DateTimeField
                 type="time"
+                aria-label={t("cron.create.fields.time")}
                 value={onceDraft.scheduleTime}
                 onValueChange={(value) => {
                   setOnceDraft((current) => ({ ...current, scheduleTime: value }));
                   setHasOnceDraft(true);
                 }}
-                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                className="pd-form-field mt-1.5"
               />
             </label>
             <label className="block">
@@ -1083,7 +1085,7 @@ function CronCreateView({
               <input
                 value={timezone}
                 onChange={(event) => setTimezone(event.target.value)}
-                className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                className="pd-form-field mt-1.5"
               />
             </label>
           </div>
@@ -1103,7 +1105,7 @@ function CronCreateView({
                       dayOfMonth: nextMode === 'yearly' ? Math.min(dayOfMonth, getYearlyMonthDayCount(monthOfYear)) : dayOfMonth,
                     });
                   }}
-                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                  className="pd-form-field mt-1.5"
                 >
                   {SIMPLE_RECURRENCE_MODES.map((mode) => (
                     <option key={mode.id} value={mode.id}>
@@ -1126,7 +1128,7 @@ function CronCreateView({
                     aria-label={t('cron.create.fields.weekday', { defaultValue: 'Day of week' })}
                     value={weekday}
                     onChange={(event) => updateRecurringDraft({ weekday: Number(event.target.value) })}
-                    className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                    className="pd-form-field mt-1.5"
                   >
                     {WEEKDAY_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1139,7 +1141,7 @@ function CronCreateView({
                     aria-label={t('cron.create.fields.monthDay', { defaultValue: 'Day of month' })}
                     value={dayOfMonth}
                     onChange={(event) => updateRecurringDraft({ dayOfMonth: Number(event.target.value) })}
-                    className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                    className="pd-form-field mt-1.5"
                   >
                     {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
                       <option key={day} value={day}>{day}</option>
@@ -1157,7 +1159,7 @@ function CronCreateView({
                           dayOfMonth: Math.min(dayOfMonth, getYearlyMonthDayCount(nextMonth)),
                         });
                       }}
-                      className="h-9 min-w-0 rounded-md border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                      className="pd-form-field"
                     >
                       {MONTH_OPTIONS.map((month) => (
                         <option key={month.value} value={month.value}>
@@ -1169,7 +1171,7 @@ function CronCreateView({
                       aria-label={t('cron.create.fields.monthDay', { defaultValue: 'Day of month' })}
                       value={dayOfMonth}
                       onChange={(event) => updateRecurringDraft({ dayOfMonth: Number(event.target.value) })}
-                      className="h-9 min-w-0 rounded-md border border-neutral-200 bg-white px-2 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                      className="pd-form-field"
                     >
                       {Array.from({ length: getYearlyMonthDayCount(monthOfYear) }, (_, index) => index + 1).map((day) => (
                         <option key={day} value={day}>{day}</option>
@@ -1185,9 +1187,10 @@ function CronCreateView({
                 </span>
                 <DateTimeField
                   type="time"
+                aria-label={t("cron.create.fields.time")}
                   value={scheduleTime}
                   onValueChange={(value) => updateRecurringDraft({ scheduleTime: value })}
-                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                  className="pd-form-field mt-1.5"
                 />
               </label>
 
@@ -1198,7 +1201,7 @@ function CronCreateView({
                 <input
                   value={timezone}
                   onChange={(event) => setTimezone(event.target.value)}
-                  className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                  className="pd-form-field mt-1.5"
                 />
               </label>
             </div>
@@ -1245,7 +1248,7 @@ function CronCreateView({
                         ? 'cron-expression-format cron-expression-plan'
                         : 'cron-expression-format cron-expression-feedback'}
                       placeholder={t('cron.create.placeholders.expression', { defaultValue: '30 8 * * 1' })}
-                      className="mt-1.5 h-9 w-full rounded-md border border-neutral-200 bg-white px-3 font-mono text-[13px] text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#60a5fa)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#3b82f6)] dark:focus:ring-[var(--pd-focus,#172554)]"
+                      className="pd-form-field mt-1.5 font-mono"
                     />
                   </label>
                   <p id="cron-expression-format" className="mt-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">

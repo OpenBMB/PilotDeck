@@ -24,8 +24,8 @@ const original = () => ({
   tools: { webSearch: { enabled: false } }, gateway: { enabled: false }, webui: { officePreview: { service: 'builtin' } },
 });
 const pages = [['general','.general-page-content'],['appearance','.appearance-settings'],['models','.model-pool-workspace'],
-  ['agent-route','.route-card'],['agent-memory','.memory-card'],['agent-resident','.resident-card'],['agent-search','.search-card'],
-  ['agent-schedule','.scheduled-card'],['integrations','.integration-gateway-card'],['mcp','.mcp-config-card'],['office','.office-page-content .general-card'],
+  ['agent-route','.route-card'],['agent-memory','.general-card'],['agent-resident','.resident-card'],['agent-search','.search-card'],
+  ['agent-schedule','.general-card'],['integrations','.integration-gateway-card'],['mcp','.mcp-config-card'],['office','.office-page-content .general-card'],
   ['privacy','.security-card'],['advanced','.advanced-settings-card'],['about','[data-settings-surface=panel]']];
 async function exercise(page, platform, resize) {
   let config = original(), revision = 1, conflict = false;
@@ -81,7 +81,8 @@ async function exercise(page, platform, resize) {
       // themed picker while preserving its existing value/save lifecycle.
       for (const select of await page.locator('.settings-main select').all()) {
         await expect(select).toHaveCSS('appearance', 'base-select');
-        await expect(select).toHaveCSS('opacity', '1');
+        const disabledGeneralControl = await select.evaluate(node => node.disabled && !!node.closest('.general-select-wrap'));
+        await expect(select).toHaveCSS('opacity', disabledGeneralControl ? '0.55' : '1');
       }
       await expect(page.locator('.settings-main')).toHaveCSS('background-color','rgb(255, 255, 255)');
       await expect(page.locator('.topbar-config-icon')).toHaveCSS('color',color);
