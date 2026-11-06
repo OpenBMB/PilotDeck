@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -59,6 +59,15 @@ for (const status of [401, 403, 404]) test(`fails permanent HTTP ${status} witho
 
 test('retries dropped connections and body streams without appending partial bytes', async t => {
   const { archive } = target(t);
+  // A Web stream can fail while the destination's asynchronous open is still
+  // pending. Reproduce that ordering rather than depending on runner timing.
+  const open = fs.open;
+  let pendingOpens = 0;
+  t.mock.method(fs, 'open', (...args) => {
+    pendingOpens++;
+    const callback = args.pop();
+    setTimeout(() => open(...args, (...result) => { pendingOpens--; callback(...result); }), 30);
+  });
   let requests = 0;
   writeFileSync(archive, 'stale prefix');
   const reset = () => Object.assign(new TypeError('connection reset'), { cause: { code: 'ECONNRESET' } });
@@ -75,7 +84,10 @@ test('retries dropped connections and body streams without appending partial byt
       }
       return new Response('verified bytes');
     },
-    wait: async () => { assert.equal(existsSync(archive), false); },
+    wait: async () => {
+      assert.equal(pendingOpens, 0, 'A failed writer can still recreate the removed archive');
+      assert.equal(existsSync(archive), false);
+    },
   });
   assert.equal(requests, 3);
   assert.equal(readFileSync(archive, 'utf8'), 'verified bytes');
