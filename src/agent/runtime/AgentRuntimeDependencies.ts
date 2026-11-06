@@ -7,6 +7,7 @@ import type {
   PilotDeckToolScheduler,
   ToolRegistry,
   PilotDeckToolResult,
+  PilotDeckToolDefinition,
 } from "../../tool/index.js";
 import type { PlanFileManager } from "../../tool/builtin/planFile.js";
 import type { PlanTodoStateManager } from "./PlanTodoState.js";
@@ -87,6 +88,8 @@ export type AgentSubagentTranscriptHooks = {
 export type AgentRuntimeDependencies = {
   releaseSessionResources?: () => void;
   acquireTurnResources?: () => () => void;
+  /** Refresh only the supplied registry at a request boundary; child scopes stay restricted. */
+  refreshToolCatalog?: (registry: ToolRegistry, signal?: AbortSignal, include?: (tool: PilotDeckToolDefinition) => boolean) => Promise<void>;
   router: AgentRouterRuntime;
   tools: {
     scheduler: PilotDeckToolScheduler;

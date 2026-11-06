@@ -10,6 +10,8 @@ Within one loop iteration, runtimes supporting staged preparation resolve each h
 
 Tool execution events are drained before results or failures leave the loop. Rejections retain their original reason, including falsy values, so every requested tool call receives a paired result during recovery.
 
+The optional `refreshToolCatalog` dependency updates the owning registry before request preparation. Subagents pass their own registry and tool allowlist; refresh cannot expand their permission surface or mutate a parent's active tool batch. A failed refresh retains the previous complete contracts, and cancellation prevents model dispatch.
+
 Use structured todo updates for multi-step work and verify outcomes before reporting completion; todo tool ownership stays in the tool module.
 
 Tests: [tests/agent](../../tests/agent). See the [test guide](../../docs/testing.md) for runner selection.

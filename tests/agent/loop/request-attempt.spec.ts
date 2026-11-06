@@ -80,6 +80,39 @@ test("an unchanged attempt budgets and sends one resolved context; the next turn
   assert.notDeepEqual(f.sent[0].messages, f.sent[1].messages);
 });
 
+test("tool refresh happens before budget preparation and never publishes a partially failed catalog", async () => {
+  const f = fixture();
+  let refreshed = 0;
+  f.dependencies.refreshToolCatalog = async registry => {
+    assert.equal(registry, f.dependencies.tools.registry);
+    refreshed++;
+    if (refreshed > 1) throw new Error("synthetic refresh failure");
+    registry.register({ name: "synthetic_live", kind: "custom", description: "Synthetic live tool", inputSchema: { type: "object" },
+      isReadOnly: () => true, isConcurrencySafe: () => true, execute: async () => ({ content: [] }) });
+  };
+  await f.run();
+  assert.equal(refreshed, 1);
+  assert.deepEqual(f.measured[0].tools?.map(tool => tool.name), ["synthetic_live"]);
+  assert.deepEqual(f.sent[0].tools, f.measured[0].tools);
+  await f.run("next-turn");
+  assert.equal(refreshed, 2);
+  assert.deepEqual(f.sent[1].tools, f.sent[0].tools);
+});
+
+test("cancellation while awaiting tool refresh prevents context and model dispatch", async () => {
+  const abort = new AbortController();
+  const f = fixture({ abort });
+  f.dependencies.refreshToolCatalog = async (_registry, signal) => {
+    assert.equal(signal, abort.signal);
+    abort.abort(new Error("synthetic cancellation"));
+    await new Promise<void>(() => {});
+  };
+  await f.run();
+  assert.deepEqual(f.counts, { memory: 0, instructions: 0, artifacts: 0 });
+  assert.equal(f.sent.length, 0);
+  assert.ok(f.events.some(event => event.type === "turn_completed" && event.result.type === "aborted"));
+});
+
 test("selected route owns prompt identity, cache plan and model-start event", async () => {
   const f = fixture({ route: "model-b" });
   await f.run();

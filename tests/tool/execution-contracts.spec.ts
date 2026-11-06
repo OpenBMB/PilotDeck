@@ -53,6 +53,23 @@ function rewrittenRuntime(t: TestContext, stage: "pre" | "permission", tool: Pil
 }
 
 const plans = join(process.cwd(), ".pilotdeck", "plans");
+
+test("group replacement validates every alias before publishing removals or additions", () => {
+  const registry = new ToolRegistry();
+  const old = definition({ name: "old", aliases: ["old_alias"] });
+  const other = definition({ name: "other", aliases: ["other_alias"] });
+  registry.register(old);
+  registry.register(other);
+  const next = definition({ name: "next", aliases: ["next_alias"] });
+  assert.throws(() => registry.replaceGroup([old.name], [next, definition({ name: "conflict", aliases: ["other_alias"] })]));
+  assert.equal(registry.get("old_alias"), old);
+  assert.equal(registry.get("other_alias"), other);
+  assert.equal(registry.has("next"), false);
+  registry.replaceGroup([old.name], [next]);
+  assert.equal(registry.has("old_alias"), false);
+  assert.equal(registry.get("next_alias"), next);
+  assert.equal(registry.get("other_alias"), other);
+});
 const policyCases = [
   {
     name: "ask-mode commands", code: "ask_mode_violation",

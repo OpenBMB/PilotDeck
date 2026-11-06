@@ -453,6 +453,16 @@ export class AgentLoop {
         yield event;
       }
 
+      if (this.dependencies.refreshToolCatalog) {
+        try {
+          await awaitWithAbort(input.abortSignal, () => this.dependencies.refreshToolCatalog!(this.dependencies.tools.registry, input.abortSignal));
+        } catch {
+          if (input.abortSignal?.aborted) continue;
+          // Failed discovery leaves the last complete catalog available.
+          console.warn("[pilotdeck] Tool catalog refresh failed; retaining the previous tool contracts.");
+        }
+      }
+
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
       const ctx = this.dependencies.context;
       const prepareCandidate = this.createCandidatePreparation(input);

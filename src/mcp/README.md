@@ -4,6 +4,10 @@ Loads MCP server configuration, manages client transports and exposes approved t
 
 Entry points: [index.ts](index.ts), [McpClient.ts](client/McpClient.ts), [projectMcpSpec.ts](runtime/projectMcpSpec.ts).
 
+Tool catalogs refresh after `tools/list_changed`, reconnect or cache expiry. Discovery coalesces concurrent readers, follows pagination and retains the last complete server catalog on failure. Each session and child registry publishes schema, permission flags and scheduling flags together at its next request boundary; child allowlists and session exclusions remain in force. A queued call using an obsolete contract fails before dispatch and asks the model to retry with the refreshed schema. Already dispatched calls continue normally.
+
+Per-session transports belong to the session resource lease. Disposal releases the captured instance even when initialization finishes late, without removing a newer same-key instance. Stopping a runtime prevents queued startup and discovery work from opening another connection.
+
 Built-in computer use is controlled in Settings > External integrations > Computer Use. It uses the pinned Driver manifest, the backend host desktop and the current task permissions; do not add a duplicate manual MCP entry.
 
 Enable the component, grant the required operating-system permissions, and recheck its status before a task. The model needs image input support. Multiple tasks share the logged-in desktop, so use one desktop-control task at a time. After a lost connection, observe the current state before repeating an action whose outcome is unknown.

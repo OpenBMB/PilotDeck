@@ -22,6 +22,8 @@ async function fixture(t: TestContext, beforeTools?: () => Promise<void>) {
   const running = new Set<McpClient>();
   const closed: McpClient[] = [];
   const called: McpClient[] = [];
+  const calledTools: string[] = [];
+  let toolNames = ['probe'];
   t.mock.method(McpClient.prototype, 'start', async function (this: McpClient) {
     clients.push(this);
     running.add(this);
@@ -30,13 +32,14 @@ async function fixture(t: TestContext, beforeTools?: () => Promise<void>) {
     return running.has(this) ? 'ready' : 'idle';
   });
   t.mock.method(McpClient.prototype, 'listTools', async function (this: McpClient) {
-    return [{ serverId: this.spec.id, toolName: 'probe', wireName: `mcp__${this.spec.id}__probe`,
+    return toolNames.map(name => ({ serverId: this.spec.id, toolName: name, wireName: `mcp__${this.spec.id}__${name}`,
       description: 'Synthetic resource ownership probe', inputSchema: { type: 'object' },
-      annotations: { readOnlyHint: true } }];
+      annotations: { readOnlyHint: true } }));
   });
-  t.mock.method(McpClient.prototype, 'callTool', async function (this: McpClient) {
+  t.mock.method(McpClient.prototype, 'callTool', async function (this: McpClient, name: string) {
     assert.ok(running.has(this), 'A retained session must keep its MCP client connected');
     called.push(this);
+    calledTools.push(name);
     return { content: [{ type: 'text', text: `connected:${this.spec.id}` }] };
   });
   t.mock.method(McpClient.prototype, 'close', async function (this: McpClient) {
@@ -99,7 +102,8 @@ telemetry: { enabled: false }
     assert.equal(closed.length, clients.length, 'Each MCP client is closed exactly once');
     await rm(home, { recursive: true, force: true });
   });
-  return { local, projects, clients, running, closed, called,
+  return { local, projects, clients, running, closed, called, calledTools,
+    setTools(names: string[]) { toolNames = names; },
     async turn(index: number) {
       const events: GatewayEvent[] = [];
       for await (const event of local.gateway.submitTurn({ projectKey: projects[index], sessionKey: `web:project-${index}`,
@@ -128,6 +132,58 @@ test('project extension reload preserves other projects and replaces only the ne
   assert.deepEqual(new Set(f.closed), new Set(oldA));
   assert.equal(f.closed.length, 2, 'Each replaced client closes exactly once');
   assert.ok(oldB.every(client => f.running.has(client)));
+});
+
+test('live catalog replacement reaches the next request without recreating session clients', async t => {
+  const f = await fixture(t);
+  await f.turn(0);
+  const original = [...f.clients];
+  f.setTools(['replacement']);
+  await f.turn(0);
+  assert.deepEqual(f.clients, original);
+  assert.deepEqual(f.closed, []);
+  assert.equal(f.called.length, 4, 'Both replacement tools must execute successfully on existing clients');
+  assert.deepEqual(f.calledTools, ['probe', 'probe', 'replacement', 'replacement']);
+});
+
+test('session disposal alone releases its per-session MCP resources', async t => {
+  const f = await fixture(t);
+  const session = await f.local.registry.createSession({ sessionKey: 'orphan', projectKey: f.projects[0], channelKey: 'web' });
+  const owned = f.clients.find(client => client.spec.id.endsWith('_session'))!;
+  assert.ok(f.running.has(owned));
+  await session.dispose();
+  assert.equal(f.running.has(owned), false);
+  assert.equal(f.closed.filter(client => client === owned).length, 1);
+});
+
+test('disposing a late session factory releases its own MCP lease without removing its replacement', async t => {
+  const f = await fixture(t);
+  const entered = deferred(), finishDiscovery = deferred();
+  const listTools = McpClient.prototype.listTools;
+  let first: McpClient | undefined;
+  t.mock.method(McpClient.prototype, 'listTools', async function (this: McpClient, ...args: Parameters<McpClient['listTools']>) {
+    if (this.spec.id.endsWith('_session') && !first) {
+      first = this;
+      entered.resolve();
+      await finishDiscovery.promise;
+    }
+    return listTools.apply(this, args);
+  });
+  const context = { sessionKey: 'web:project-0', projectKey: f.projects[0], channelKey: 'web' };
+  const pending = f.local.registry.createSession(context);
+  await entered.promise;
+  const replacement = await f.local.registry.createSession(context);
+  const current = f.clients.find(client => client !== first && client.spec.id.endsWith('_session'))!;
+  assert.ok(current);
+  finishDiscovery.resolve();
+  const orphan = await pending;
+  await orphan.dispose();
+  assert.ok(f.running.has(current), 'Old lease cleanup must not stop the newer same-key runtime');
+  f.local.registry.evictSessionMcp(context.sessionKey);
+  assert.equal(f.running.has(current), false, 'Old lease cleanup must not remove the newer map entry');
+  await replacement.dispose();
+  assert.equal(f.closed.filter(client => client === first).length, 1);
+  assert.equal(f.closed.filter(client => client === current).length, 1);
 });
 
 test('global extension reload lets the active turn finish before retiring its runtime', async t => {

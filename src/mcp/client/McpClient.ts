@@ -26,16 +26,19 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { recursivelySanitizeUnicode } from "../runtime/sanitize.js";
 import { truncateMcpToolDescription } from "../runtime/truncate.js";
 import { buildMcpToolWireName } from "../runtime/wireName.js";
 import { networkFetch } from "../../network/fetch.js";
+import { awaitWithAbort } from "../../runtime/abort.js";
+import { toolContractFingerprint } from "../runtime/toolContract.js";
 import type {
   PilotDeckMcpServerSpec,
   PilotDeckMcpStatus,
@@ -66,6 +69,7 @@ export class McpClientError extends Error {
       | "mcp_call_timeout"
       | "mcp_session_expired"
       | "mcp_call_failed"
+      | "mcp_catalog_changed"
       | "mcp_unsupported_transport",
     public readonly serverId?: string,
   ) {
@@ -84,6 +88,9 @@ export class McpClient {
   private transport: Transport | null = null;
   private status: PilotDeckMcpStatus = "idle";
   private listToolsCache: ListToolsCache | null = null;
+  private listToolsInFlight?: Promise<PilotDeckMcpToolSpec[]>;
+  private catalogVersion = 0;
+  private closeVersion = 0;
   private serverInstructions = "";
   private connectPromise: Promise<void> | null = null;
   private reconnectInFlight = false;
@@ -105,22 +112,28 @@ export class McpClient {
   /** M1 — memoized connect. */
   async start(): Promise<void> {
     if (this.connectPromise) return this.connectPromise;
-    this.connectPromise = this.runConnect();
+    const pending = this.runConnect();
+    this.connectPromise = pending;
     try {
-      await this.connectPromise;
+      await pending;
     } catch (err) {
-      this.connectPromise = null;
+      if (this.connectPromise === pending) this.connectPromise = null;
       throw err;
     }
   }
 
   private async runConnect(): Promise<void> {
+    const closeVersion = this.closeVersion;
     this.status = "connecting";
     const transport = this.buildTransport();
+    const ownedDirectory = this.perSessionDir;
     const client = new Client(
       { name: "pilotdeck", version: "0.1.0" },
       { capabilities: { elicitation: {} } },
     );
+    client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+      if (this.client === client) this.invalidateToolCatalog();
+    });
     client.onclose = () => {
       // A stopped external server must not leave a memoized, dead connection.
       // Ignore late close events from clients already replaced by reconnect.
@@ -139,9 +152,15 @@ export class McpClient {
             this.spec.id,
           ),
       );
+      if (closeVersion !== this.closeVersion) {
+        await client.close();
+        throw new McpClientError("MCP client closed during connection", "mcp_handshake_failed", this.spec.id);
+      }
     } catch (err) {
-      this.status = "error";
+      if (closeVersion === this.closeVersion) this.status = "error";
       try { await client.close(); } catch { /* best effort cleanup of a failed handshake */ }
+      removeSessionDirectory(ownedDirectory);
+      if (this.perSessionDir === ownedDirectory) this.perSessionDir = null;
       throw err instanceof McpClientError
         ? err
         : new McpClientError(
@@ -203,55 +222,97 @@ export class McpClient {
   }
 
   /** M6 — LRU-cached tools/list. */
-  async listTools(): Promise<PilotDeckMcpToolSpec[]> {
+  async listTools(options: { signal?: AbortSignal } = {}): Promise<PilotDeckMcpToolSpec[]> {
+    options.signal?.throwIfAborted();
     const cached = this.listToolsCache;
-    if (cached && cached.expiresAt > Date.now()) return cached.tools;
-
-    await this.start();
-    if (!this.client) {
-      throw new McpClientError("Client not connected", "mcp_handshake_failed", this.spec.id);
+    if (cached && cached.expiresAt > Date.now()) return structuredClone(cached.tools);
+    if (!this.listToolsInFlight) {
+      const pending = this.refreshToolCatalog();
+      this.listToolsInFlight = pending;
+      void pending.finally(() => { if (this.listToolsInFlight === pending) this.listToolsInFlight = undefined; }).catch(() => {});
     }
-    const sdkResult = await this.callWithReconnect(() =>
-      this.client!.listTools(undefined, {
-        timeout: this.options.callTimeoutMs ?? this.spec.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS,
-      }),
-    );
+    return structuredClone(await awaitWithAbort(options.signal, () => this.listToolsInFlight!));
+  }
 
-    const tools = (sdkResult.tools ?? []).map((tool: unknown) => this.toToolSpec(tool));
-    this.listToolsCache = {
-      tools,
-      expiresAt: Date.now() + LIST_TOOLS_CACHE_TTL_MS,
-    };
-    return tools;
+  private invalidateToolCatalog(): void {
+    this.catalogVersion++;
+    this.listToolsCache = null;
+  }
+
+  private async refreshToolCatalog(): Promise<PilotDeckMcpToolSpec[]> {
+    const closeVersion = this.closeVersion;
+    while (true) {
+      if (closeVersion !== this.closeVersion) throw new McpClientError("MCP client closed during tool discovery", "mcp_call_failed", this.spec.id);
+      await this.start();
+      const version = this.catalogVersion;
+      const tools: PilotDeckMcpToolSpec[] = [];
+      const cursors = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const result = await this.callWithReconnect(() => this.client!.listTools(cursor ? { cursor } : undefined, {
+          timeout: this.options.callTimeoutMs ?? this.spec.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS,
+        }));
+        tools.push(...result.tools.map(tool => this.toToolSpec(tool)));
+        cursor = result.nextCursor;
+        if (cursor && cursors.has(cursor)) throw new McpClientError("MCP tool discovery returned a repeated page cursor", "mcp_call_failed", this.spec.id);
+        if (cursor) cursors.add(cursor);
+      } while (cursor);
+      if (closeVersion !== this.closeVersion) throw new McpClientError("MCP client closed during tool discovery", "mcp_call_failed", this.spec.id);
+      if (version !== this.catalogVersion) continue;
+      this.listToolsCache = { tools, expiresAt: Date.now() + LIST_TOOLS_CACHE_TTL_MS };
+      return tools;
+    }
   }
 
   /** Reconnect once; only replay tools advertised as read-only or idempotent. */
   async callTool(
     toolName: string,
     args: unknown,
-    options: { signal?: AbortSignal; timeoutMs?: number } = {},
+    options: { signal?: AbortSignal; timeoutMs?: number; expectedContract?: string } = {},
   ): Promise<{ content: unknown; structuredContent?: unknown; isError?: boolean }> {
     options.signal?.throwIfAborted();
-    const tools = await this.listTools();
+    let tools: PilotDeckMcpToolSpec[];
+    let version: number;
+    do {
+      version = this.catalogVersion;
+      tools = await this.listTools({ signal: options.signal });
+    } while (version !== this.catalogVersion);
     options.signal?.throwIfAborted();
     if (!this.client) {
       throw new McpClientError("Client not connected", "mcp_handshake_failed", this.spec.id);
     }
     const timeoutMs = options.timeoutMs ?? this.options.callTimeoutMs ?? this.spec.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+    const matchesContract = (catalog: PilotDeckMcpToolSpec[]) => {
+      if (!options.expectedContract) return true;
+      const current = catalog.find(tool => tool.toolName === toolName);
+      return current !== undefined && toolContractFingerprint(current) === options.expectedContract;
+    };
+    if (!matchesContract(tools)) throw new McpClientError(
+      "MCP tool catalog changed before dispatch. Retry using the refreshed tool schema and permissions.", "mcp_catalog_changed", this.spec.id);
     const advertisedReplay = (tools: PilotDeckMcpToolSpec[]) => {
       const annotations = tools.find(tool => tool.toolName === toolName)?.annotations;
       return annotations?.readOnlyHint === true || annotations?.idempotentHint === true;
     };
     const mayReplay = advertisedReplay(tools);
-    const result = await this.callWithReconnect(() =>
-      this.client!.callTool(
+    const result = await this.callWithReconnect(() => {
+      // Reconnect replay has asynchronous policy checks. A notification in
+      // that interval must not dispatch against the just-invalidated catalog.
+      if (options.expectedContract && (!this.listToolsCache || !matchesContract(this.listToolsCache.tools))) {
+        throw new McpClientError("MCP tool catalog changed before dispatch. Retry using the refreshed tool schema and permissions.",
+          "mcp_catalog_changed", this.spec.id);
+      }
+      return this.client!.callTool(
         { name: toolName, arguments: (args ?? {}) as Record<string, unknown> },
         undefined,
         {
           timeout: timeoutMs,
           signal: options.signal,
         },
-      ), async () => mayReplay && advertisedReplay(await this.listTools()), options.signal,
+      );
+    }, async () => {
+        const current = await this.listTools({ signal: options.signal });
+        return mayReplay && advertisedReplay(current) && matchesContract(current);
+      }, options.signal,
     );
     return {
       content: recursivelySanitizeUnicode(result.content),
@@ -264,16 +325,19 @@ export class McpClient {
 
   /** Recover an expired session without blindly replaying a dispatched mutation. */
   private async callWithReconnect<T>(fn: () => Promise<T>, mayReplay: boolean | (() => Promise<boolean>) = true, signal?: AbortSignal): Promise<T> {
+    const closeVersion = this.closeVersion;
     try {
       return await fn();
     } catch (err) {
       // The SDK can use its timeout error code for cancellation too. Preserve
       // the caller's abort rather than recycling a healthy transport or replaying.
       if (signal?.aborted) throw signal.reason ?? err;
+      if (closeVersion !== this.closeVersion) throw new McpClientError("MCP client closed during request", "mcp_call_failed", this.spec.id);
       if (this.isReconnectableError(err) && !this.reconnectInFlight) {
         this.reconnectInFlight = true;
         try {
           await this.reconnect();
+          if (closeVersion !== this.closeVersion) throw new McpClientError("MCP client closed during reconnect", "mcp_call_failed", this.spec.id);
           signal?.throwIfAborted();
           // Retry only if both generations advertise a safe replay. The new
           // server may have removed the annotation while we were disconnected.
@@ -336,7 +400,7 @@ export class McpClient {
     this.client = null;
     this.transport = null;
     this.connectPromise = null;
-    this.listToolsCache = null;
+    this.invalidateToolCatalog();
     this.perSessionDir = null;
     this.status = "error";
     void (async () => {
@@ -345,48 +409,33 @@ export class McpClient {
       } catch {
         // best effort — the subprocess may already be wedged
       }
-      if (oldDir) {
-        try {
-          rmSync(oldDir, { recursive: true, force: true });
-        } catch {
-          // best effort cleanup
-        }
-      }
+      removeSessionDirectory(oldDir);
     })();
   }
 
   /** M5 — close the existing client and reconnect. */
   private async reconnect(): Promise<void> {
-    this.status = "connecting";
-    this.listToolsCache = null;
-    try {
-      await this.client?.close();
-    } catch {
-      // ignore close errors during reconnect
-    }
-    this.client = null;
-    this.transport = null;
-    this.connectPromise = null;
+    this.recycleTransport();
     await this.start();
   }
 
   async close(): Promise<void> {
-    try {
-      await this.client?.close();
-    } catch {
-      // best effort
-    }
+    this.closeVersion++;
+    const client = this.client;
+    const directory = this.perSessionDir;
     this.client = null;
     this.transport = null;
     this.connectPromise = null;
+    this.listToolsInFlight = undefined;
+    this.perSessionDir = null;
     this.status = "idle";
-    this.listToolsCache = null;
-    if (this.perSessionDir) {
-      try {
-        rmSync(this.perSessionDir, { recursive: true, force: true });
-      } catch { /* best effort cleanup */ }
-      this.perSessionDir = null;
+    this.invalidateToolCatalog();
+    try {
+      await client?.close();
+    } catch {
+      // best effort
     }
+    removeSessionDirectory(directory);
   }
 
   private toToolSpec(raw: unknown): PilotDeckMcpToolSpec {
@@ -408,6 +457,13 @@ export class McpClient {
       meta: sanitized._meta,
     };
   }
+}
+
+function removeSessionDirectory(directory: string | null): void {
+  if (!directory) return;
+  const target = resolve(directory);
+  if (dirname(target) !== resolve(tmpdir()) || !basename(target).startsWith("pilotdeck-mcp-")) return;
+  try { rmSync(target, { recursive: true, force: true }); } catch { /* best effort cleanup of owned temporary storage */ }
 }
 
 function withTimeout<T>(
