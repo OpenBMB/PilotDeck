@@ -208,8 +208,8 @@ try {
     expect(await app.evaluate(({ nativeTheme }) => nativeTheme.shouldUseDarkColors)).toBe(true);
     const caption = page.locator('#pilotdeck-window-caption');
     await expect(caption.locator('button')).toHaveCount(5);
-    await expect(caption).toHaveCSS('background-color', 'rgb(23, 23, 23)');
-    await expect(page.locator('.project-sidebar')).toHaveCSS('background-color', 'rgb(10, 10, 10)');
+    await expect(caption).toHaveCSS('background-color', 'rgb(43, 44, 46)');
+    await expect(page.locator('.project-sidebar')).toHaveCSS('background-color', 'rgb(43, 44, 46)');
     // Both platforms delegate popup rendering and keyboard navigation to Electron.
     const menuCycle = [['File', 'menu-file'], ['Edit', 'menu-edit'], ['View', 'menu-view']];
     // Exercise repeated native teardown before reusing the same caption entries.
