@@ -1,11 +1,56 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 
 const { parse } = createRequire(new URL('../../../package.json', import.meta.url))('yaml');
 const workflow = name => parse(readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), 'utf8'));
+
+test('OBS PR validation is limited to OBS code and workflow changes', () => {
+  const obs = workflow('release-to-obs');
+  assert.deepEqual(obs.on.pull_request.paths, ['.github/scripts/*obs*.py', '.github/workflows/*obs*.yml']);
+  assert.ok(obs.jobs.tests.steps.some(step => step.run?.includes("test_*obs*.py")));
+  assert.equal(obs.jobs.tests.environment, undefined);
+});
+
+test('application PR suites honor selected boundaries while main and manual runs retain coverage', () => {
+  const desktop = workflow('desktop-smoke');
+  const web = workflow('web-regression');
+  const evaluate = (job, event, outputs) => runInNewContext(job.if, { github: { event_name: event }, needs: { changes: { outputs } } });
+  for (const [job, scope] of [[desktop.jobs['checkpoint-regression'], 'checkpoints'], [desktop.jobs['static-checks'], 'checks'],
+    [desktop.jobs.windows, 'packaging'], [desktop.jobs.macos, 'packaging'], [desktop.jobs.linux, 'packaging']]) {
+    assert.equal(job.needs, 'changes');
+    assert.equal(evaluate(job, 'pull_request', { [scope]: 'false' }), false);
+    assert.equal(evaluate(job, 'pull_request', { [scope]: 'true' }), true);
+    assert.equal(evaluate(job, 'workflow_dispatch', {}), true);
+  }
+  for (const [job, scope] of [[web.jobs.web, 'web'], [web.jobs.docker, 'docker']]) {
+    assert.equal(job.needs, 'changes');
+    assert.equal(evaluate(job, 'pull_request', { [scope]: 'false' }), false);
+    assert.equal(evaluate(job, 'pull_request', { [scope]: 'true' }), true);
+    assert.equal(evaluate(job, 'push', {}), true);
+  }
+  assert.equal(web.jobs.web['runs-on'], 'ubuntu-24.04');
+  assert.deepEqual(web.on.push.branches, ['main']);
+  assert.equal(web.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
+  for (const step of web.jobs.web.steps.filter(step => step.run?.includes('exec playwright'))) {
+    assert.equal(evaluate(step, 'pull_request', { browser: 'false' }), false);
+    assert.equal(evaluate(step, 'pull_request', { browser: 'true' }), true);
+    assert.equal(evaluate(step, 'push', {}), true);
+  }
+});
+
+test('one Docker build retains cached image construction and isolated runtime verification', () => {
+  assert.equal(existsSync(new URL('../../../.github/workflows/docker-build.yml', import.meta.url)), false);
+  const steps = workflow('web-regression').jobs.docker.steps;
+  const build = steps.find(step => step.uses?.startsWith('docker/build-push-action@'));
+  assert.equal(build.with.push, false);
+  assert.equal(build.with.load, true);
+  assert.match(build.with['cache-from'], /type=gha/);
+  assert.match(build.with['cache-to'], /type=gha/);
+  assert.ok(steps.some(step => step.run?.includes("import './ui/server/runtimeBootstrap.js'")));
+});
 
 test('OBS publication follows the exact completed release and retains manual repair', () => {
   const release = workflow('release');

@@ -20,6 +20,9 @@ limit and one shared min(50 minutes, credential expiry minus two minutes) budget
 All object names, sizes and full content must pass before latest publication.
 No delete operations are used. Branch push/PR CI only runs credential-free tests;
 it cannot enter the production job or publish a pointer.
+PR tests run only for OBS Python or OBS workflow changes. Generic release and
+installer changes use their own verifier tests; production synchronization still
+verifies the pinned release assets before requesting credentials.
 
 Runs serialize with repair jobs. A delayed older tag cannot replace a newer
 pointer. Existing version objects must already match the pinned release bytes;
