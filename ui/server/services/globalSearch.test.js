@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createGlobalSearch } from './globalSearch.js';
 import { getPilotProjectChatDir } from '../../../src/pilot/paths.js';
+import { fileSymlinkOrSkip } from '../test-support/symlink.js';
 
 const temporary = [];
 const services = [];
@@ -82,8 +83,9 @@ test('searches file names, paths and text with line navigation, respecting ignor
   await writeFile(path.join(workspace, 'needle.pdf'), Buffer.from([0, 1, 2]));
   await mkdir(path.join(workspace, 'node_modules'));
   await writeFile(path.join(workspace, 'node_modules', 'needle.txt'), 'needle dependency');
-  await writeFile(path.join(root, 'outside-needle.txt'), 'needle secret');
-  await symlink(path.join(root, 'outside-needle.txt'), path.join(workspace, 'linked.txt'));
+  await mkdir(path.join(root, 'outside'));
+  await writeFile(path.join(root, 'outside', 'needle.txt'), 'needle secret');
+  await symlink(path.join(root, 'outside'), path.join(workspace, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
   const result = await search({ query: 'needle', kind: 'files' });
   assert.equal(result.counts.files, 2);
   const content = result.groups.files.find(item => item.path === 'docs/needle-guide.md');
@@ -91,6 +93,14 @@ test('searches file names, paths and text with line navigation, respecting ignor
   assert.equal(content.column, 1);
   assert.ok(result.groups.files.some(item => item.path === 'needle.pdf'));
   assert.deepEqual(result.partial, []);
+});
+
+test('does not index file symlinks outside the workspace', async context => {
+  const { search, workspace, root } = await fixture();
+  const target = path.join(root, 'outside-needle.txt');
+  await writeFile(target, 'needle secret');
+  if (!fileSymlinkOrSkip(context, target, path.join(workspace, 'needle.txt'))) return;
+  assert.equal((await search({ query: 'needle', kind: 'files' })).counts.files, 0);
 });
 
 test('supports project scope and result pagination and safely treats regex syntax literally', async () => {

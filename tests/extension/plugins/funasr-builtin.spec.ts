@@ -36,6 +36,8 @@ test("built-in FunASR plugin exposes a local per-session Node MCP", () => {
 });
 
 test("FunASR MCP receives Node, project-root, runtime-root, and entrypoint markers", () => {
+  const projectRoot = join(tmpdir(), "pilotdeck-project");
+  const pilotHome = join(tmpdir(), "pilotdeck-home");
   const patched = patchProjectScopedMcpSpec(
     {
       id: "funasr",
@@ -51,16 +53,16 @@ test("FunASR MCP receives Node, project-root, runtime-root, and entrypoint marke
         PILOTDECK_FUNASR_INSTALL_COMMAND_MARKER,
       ],
     },
-    "/tmp/pilotdeck-project",
-    "/tmp/pilotdeck-home",
+    projectRoot,
+    pilotHome,
   );
 
   assert.equal(patched.transport, "stdio");
   if (patched.transport !== "stdio") throw new Error("expected stdio MCP spec");
   assert.equal(patched.command, process.execPath);
-  assert.equal(patched.cwd, "/tmp/pilotdeck-project");
+  assert.equal(patched.cwd, projectRoot);
   assert.deepEqual(patched.args?.slice(1, 5), [
-    "--project-root", "/tmp/pilotdeck-project", "--runtime-root", "/tmp/pilotdeck-home/funasr",
+    "--project-root", projectRoot, "--runtime-root", join(pilotHome, "funasr"),
   ]);
   assert.match(patched.args?.[0] ?? "", /funasr-local-mcp\.mjs$/);
   assert.match(patched.args?.[6] ?? "", /npm --prefix/);
