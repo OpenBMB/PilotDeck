@@ -342,14 +342,14 @@
   font-size: 14px;
 }
 
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .usage-page) .page-header h1 {
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .usage-page, .computer-use-page) .page-header h1 {
   font-size: 16px;
 }
 
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .page-header p,
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-card-header h2,
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-setting-title,
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-setting-copy p,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .computer-use-page) .page-header p,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .computer-use-page) .general-card-header h2,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .computer-use-page) .general-setting-title,
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .computer-use-page) .general-setting-copy p,
 :where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page) .general-select-wrap select {
   font-size: 14px;
 }
@@ -6791,6 +6791,62 @@
 
 /* Office preview: flat service choices and quiet supporting details. */
 :where(.pilotdeck-settings-app) .office-page-content { width: 100%; max-width: 820px; padding-bottom: 28px; }
+:where(.pilotdeck-settings-app) .computer-use-note {
+  margin: 0;
+  padding: 16px 20px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+:where(.pilotdeck-settings-app) .computer-use-note[role="alert"] {
+  color: var(--pd-danger-ink, #b42318);
+}
+
+:where(.pilotdeck-settings-app) .computer-use-permission-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+:where(.pilotdeck-settings-app) .computer-use-permission-state[data-granted="true"] svg {
+  color: var(--pd-success-ink, #18794e);
+}
+
+:where(.pilotdeck-settings-app) .computer-use-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:where(.pilotdeck-settings-app) .computer-use-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:where(.pilotdeck-settings-app) .computer-use-fallback {
+  margin: 0 20px 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 480px) {
+  :where(.pilotdeck-settings-app) .computer-use-permission-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  :where(.pilotdeck-settings-app) .computer-use-permission-row > button {
+    justify-self: start;
+  }
+}
+
 :where(.pilotdeck-settings-app) .office-settings-page .page-header { padding-bottom: 24px; }
 :where(.pilotdeck-settings-app) .office-settings-page .page-header h1 { font-size: 18px; font-weight: 600; }
 :where(.pilotdeck-settings-app) .office-settings-page .page-header p { max-width: 760px; font-size: 14px; line-height: 1.7; color: var(--muted); }

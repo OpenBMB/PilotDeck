@@ -1,19 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Activity, Circle, CircleCheck, MousePointer2, RefreshCw, ShieldCheck, Square } from 'lucide-react';
 import type { ComputerUseStatus } from '../../../../../shared/computerUse';
-import { SettingsCard, SettingsSection } from '../../shared/view';
+import { GeneralCardHeader, GeneralSettingRow, GeneralSettingsIcon } from '../../shared/view/GeneralSettingsPrimitives';
 import SettingsToggle from '../../shared/view/SettingsToggle';
 import { computerUseApi } from './api';
-
-function Icon({ name, size = 14, className = '' }: { name: 'check' | 'circle' | 'refresh' | 'stop'; size?: number; className?: string }) {
-  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {name === 'circle' && <circle cx="12" cy="12" r="9" />}
-    {name === 'check' && <><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>}
-    {name === 'refresh' && <><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 12-1l2 2M4 16l2 2a7 7 0 0 0 12-1" /></>}
-    {name === 'stop' && <rect x="5" y="5" width="14" height="14" rx="2" />}
-  </svg>;
-}
 
 export default function ComputerUseSections() {
   const { t } = useTranslation('settings');
@@ -56,41 +47,40 @@ export default function ComputerUseSections() {
     catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
     finally { operationPending.current = false; setBusy(false); }
   };
-  return <div className="space-y-6">
-    <SettingsSection title={t('computerUse.controlTitle')}>
-      <SettingsCard className="p-5">
-        <div className="flex items-center justify-between gap-6">
-          <div><div className="text-sm font-medium">{t('computerUse.enable')}</div>
-            <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">{t('computerUse.enableDescription')}</p></div>
+  return <div className="general-page-content computer-use-content">
+    <section className="general-section">
+      <article className="general-card">
+        <GeneralCardHeader icon={<GeneralSettingsIcon icon={MousePointer2} />} title={t('computerUse.controlTitle')} />
+        <GeneralSettingRow title={t('computerUse.enable')} detail={t('computerUse.enableDescription')}>
           <SettingsToggle checked={status?.enabled === true} disabled={busy || !status || !status.available}
             ariaLabel={t('computerUse.enable')} showSuccessToast={false}
             onChange={enabled => { void run(() => bridge.setEnabled(enabled)); }} />
-        </div>
-      </SettingsCard>
-    </SettingsSection>
+        </GeneralSettingRow>
+      </article>
+    </section>
 
-    <SettingsSection title={t('computerUse.permissionsTitle')}>
-      <SettingsCard divided>
+    <section className="general-section">
+      <article className="general-card">
+        <GeneralCardHeader icon={<GeneralSettingsIcon icon={ShieldCheck} />} title={t('computerUse.permissionsTitle')} />
         {status?.permissions ? (['accessibility', 'screenRecording'] as const).map(permission => {
           const granted = status.permissions![permission];
-          return <div key={permission} className="flex items-center justify-between gap-4 p-5">
-            <div><div className="text-sm font-medium">{t(`computerUse.permissions.${permission}`)}</div>
-              <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Icon name={granted ? 'check' : 'circle'} className={granted ? 'text-green-600' : ''} />
+          return <div key={permission} className="general-setting-row general-toggle-row computer-use-permission-row">
+            <div className="general-setting-copy"><strong className="general-setting-title">{t(`computerUse.permissions.${permission}`)}</strong>
+              <div className="computer-use-permission-state" data-granted={granted === true}>
+                <GeneralSettingsIcon icon={granted ? CircleCheck : Circle} />
                 {t(granted === null ? (status.error ? 'computerUse.permissionCheckFailed' : 'computerUse.checking') : granted ? 'computerUse.granted' : 'computerUse.notGranted')}
               </div></div>
-            <button className="button secondary compact shrink-0 disabled:opacity-50" disabled={busy || !status.available} onClick={() => { void run(() => bridge.requestPermission(permission)); }}>
+            <button type="button" className="button secondary compact shrink-0 disabled:opacity-50" disabled={busy || !status.available} onClick={() => { void run(() => bridge.requestPermission(permission)); }}>
               {t('computerUse.openPermissions')}
             </button>
           </div>;
-        }) : <p className="p-5 text-xs leading-5 text-muted-foreground">
+        }) : <p className="computer-use-note">
           {t(!status ? 'computerUse.checking' : status.platform === 'win32' ? 'computerUse.windowsPermissions' : 'computerUse.linuxPermissions')}
         </p>}
-      </SettingsCard>
-      {status?.platform === 'darwin' && <p className="text-xs leading-5 text-muted-foreground">{t('computerUse.permissionHint', { owner: permissionOwner })}</p>}
+      {status?.platform === 'darwin' && <p className="computer-use-note">{t('computerUse.permissionHint', { owner: permissionOwner })}</p>}
       {status?.platform === 'darwin' && status.permissionAppPath && <details
         open={status.permissions && (status.permissions.accessibility === false || status.permissions.screenRecording === false) ? true : undefined}
-        className="rounded-lg border bg-muted/20 p-4 text-xs leading-5">
+        className="computer-use-fallback text-xs leading-5">
         <summary className="cursor-pointer font-medium">{t('computerUse.permissionFallbackTitle')}</summary>
         <div className="mt-3 space-y-3">
           <p className="text-muted-foreground">{t('computerUse.permissionFallbackIntro', { owner: permissionOwner })}</p>
@@ -100,9 +90,9 @@ export default function ComputerUseSections() {
             <li>{t('computerUse.permissionFallbackFinish')}</li>
           </ol>
           <div className="flex flex-wrap items-center gap-2">
-            <button className="button secondary compact disabled:opacity-50" disabled={busy || !status.available}
+            <button type="button" className="button secondary compact disabled:opacity-50" disabled={busy || !status.available}
               onClick={() => { void run(() => bridge.revealPermissionApp()); }}>{t('computerUse.revealPermissionApp')}</button>
-            <button className="button secondary compact disabled:opacity-50" disabled={busy}
+            <button type="button" className="button secondary compact disabled:opacity-50" disabled={busy}
               onClick={async () => {
                 setError(''); setPathCopied(false);
                 try { await navigator.clipboard.writeText(status.permissionAppPath!); setPathCopied(true); }
@@ -115,29 +105,31 @@ export default function ComputerUseSections() {
             onFocus={event => event.currentTarget.select()} className="w-full rounded-md border bg-background px-3 py-2 font-mono text-xs" />
         </div>
       </details>}
-    </SettingsSection>
+      </article>
+    </section>
 
-    <SettingsSection title={t('computerUse.statusTitle')}>
-      <SettingsCard className="p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div role="status" aria-live="polite">
-            <div className="text-sm font-medium">{status ? t(`computerUse.phases.${status.phase}`) : t('computerUse.checking')}</div>
-            {status && <p className="mt-1 text-xs text-muted-foreground">{t('computerUse.version', { version: status.version })}
+    <section className="general-section">
+      <article className="general-card">
+        <GeneralCardHeader icon={<GeneralSettingsIcon icon={Activity} />} title={t('computerUse.statusTitle')} />
+        <div className="general-setting-row computer-use-status-row">
+          <div className="general-setting-copy" role="status" aria-live="polite">
+            <strong className="general-setting-title">{status ? t(`computerUse.phases.${status.phase}`) : t('computerUse.checking')}</strong>
+            {status && <p>{t('computerUse.version', { version: status.version })}
               {status.desktopSession ? ` · ${status.desktopSession === 'x11' ? 'X11' : status.desktopSession === 'wayland' ? 'Wayland' : t('computerUse.unknownSession')}` : ''}</p>}
           </div>
-          <div className="flex gap-2">
-            <button className="button secondary compact disabled:opacity-50" disabled={busy || !status} onClick={() => { void run(() => bridge.refresh()); }}>
-              <Icon name="refresh" className={busy ? 'animate-spin' : ''} />{t('computerUse.refresh')}
+          <div className="computer-use-actions">
+            <button type="button" className="button secondary compact disabled:opacity-50" disabled={busy || !status} onClick={() => { void run(() => bridge.refresh()); }}>
+              <GeneralSettingsIcon icon={RefreshCw} className={busy ? 'animate-spin' : ''} />{t('computerUse.refresh')}
             </button>
-            {status?.enabled && <button className="button secondary compact disabled:opacity-50" disabled={busy} onClick={() => { void run(() => bridge.setEnabled(false)); }}>
-              <Icon name="stop" />{t('computerUse.stop')}
+            {status?.enabled && <button type="button" className="button secondary compact disabled:opacity-50" disabled={busy} onClick={() => { void run(() => bridge.setEnabled(false)); }}>
+              <GeneralSettingsIcon icon={Square} />{t('computerUse.stop')}
             </button>}
           </div>
         </div>
-        {status?.phase === 'partial' && <p className="mt-3 text-xs leading-5 text-muted-foreground">{t('computerUse.waylandHint')}</p>}
-        {(error || loadError || status?.error) && <p role="alert" className="mt-3 text-xs leading-5 text-[var(--pd-danger-ink)]">{error || loadError || status?.error}</p>}
-        {status && !status.available && <p role="alert" className="mt-3 text-xs text-[var(--pd-danger-ink)]">{t('computerUse.missingDriver')}</p>}
-      </SettingsCard>
-    </SettingsSection>
+        {status?.phase === 'partial' && <p className="computer-use-note">{t('computerUse.waylandHint')}</p>}
+        {(error || loadError || status?.error) && <p role="alert" className="computer-use-note">{error || loadError || status?.error}</p>}
+        {status && !status.available && <p role="alert" className="computer-use-note">{t('computerUse.missingDriver')}</p>}
+      </article>
+    </section>
   </div>;
 }
