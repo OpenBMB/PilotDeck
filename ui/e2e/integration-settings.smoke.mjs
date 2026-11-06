@@ -97,6 +97,9 @@ try {
         await expect(page.getByRole('button', { name: office.status.saveAndCheck, exact: true })).toBeEnabled();
         expect(probes.length).toBe(before); await expect(input).toHaveValue('C:\\custom\\soffice.com');
       }
+      await page.getByRole('button', { name: translations.settingsPage.actions.cancel, exact: true }).click();
+      await expect(input).toHaveValue('');
+      await input.fill('C:\\custom\\soffice.com');
       rejectSave = 0; operations.length = 0;
       await input.press('Enter');
       await expect(page.getByRole('button', { name: office.status.refresh, exact: true })).toBeEnabled();

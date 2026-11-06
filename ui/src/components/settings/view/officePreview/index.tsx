@@ -73,8 +73,9 @@ function OfficePreviewSection({ config, onChange, saving }: {
   const setService = (next: OfficePreviewService) => {
     void onChange(patch(config, ['webui', 'officePreview', 'service'], next));
   };
-  const available = status?.libreOffice?.available === true;
-  const unavailable = !busy && !pathEdited && status?.libreOffice?.available === false;
+  const statusMatchesPath = status?.configuredBinaryPath === configuredBinaryPath;
+  const available = statusMatchesPath && status?.libreOffice?.available === true;
+  const unavailable = statusMatchesPath && !busy && !pathEdited && status?.libreOffice?.available === false;
   const statusKey = pathEdited ? 'pending' : busy ? 'checking' : statusError ? 'error'
     : available ? 'available' : unavailable ? 'unavailable' : 'unknown';
 
@@ -153,9 +154,9 @@ function OfficePreviewSection({ config, onChange, saving }: {
 
 export default function OfficePreviewSections({ title: _title }: { title: string }) {
   const { t } = useTranslation('settings');
-  const { raw, commitRaw, loading, saving, error } = usePilotDeckConfig();
+  const { confirmedRaw, commitRaw, loading, saving, error } = usePilotDeckConfig();
   const [serializationError, setSerializationError] = useState('');
-  const parsedConfig = useMemo(() => safeParseYaml(raw), [raw]);
+  const parsedConfig = useMemo(() => safeParseYaml(confirmedRaw), [confirmedRaw]);
   const onFormChange = async (next: PilotDeckConfig): Promise<ConfigSaveResult> => {
     setSerializationError('');
     try { return await commitRaw(configToYamlString(next)); }
