@@ -51,7 +51,8 @@ import { actualInputTokensFromUsage } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import type { AgentSteerMessage } from "../session/SteerMailbox.js";
-import { prepareModelRequest } from "./prepareModelRequest.js";
+import { prepareModelRequest, prepareModelRequestAttempt, type ModelRequestPreparationDependencies } from "./prepareModelRequest.js";
+import type { RouterDecision } from "../../router/protocol/decision.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
@@ -59,6 +60,7 @@ import { resolveOutputTokenRetryBump } from "./outputTokenRetry.js";
 import { projectToolResults } from "./projectToolResults.js";
 import type { AgentRunMode } from "../protocol/input.js";
 import { requestFingerprint } from "../../model/streaming/requestFingerprint.js";
+import { awaitWithAbort } from "../../runtime/abort.js";
 import {
   createAgentStatusDetail,
   createVisibleErrorStatusDetail,
@@ -453,6 +455,7 @@ export class AgentLoop {
 
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
       const ctx = this.dependencies.context;
+      const prepareCandidate = this.createCandidatePreparation(input);
       const preRoutingMaxContextTokens = this.preRoutingMaxContextTokens();
       if (ctx?.tryAutoCompact) {
         try {
@@ -464,6 +467,7 @@ export class AgentLoop {
             abortSignal: input.abortSignal,
             reservedOutputTokens,
             budgetEvaluator: this.createBudgetEvaluator(input, {
+              prepareRequest: prepareCandidate ? async candidate => (await prepareCandidate(candidate)).request : undefined,
               maxContextTokens: preRoutingMaxContextTokens,
               reservedOutputTokens,
             }),
@@ -490,6 +494,7 @@ export class AgentLoop {
           }
           pendingContextBudget = compact.snapshot;
         } catch (error: unknown) {
+          if (input.abortSignal?.aborted) continue;
           logAutoCompactFailure("pre-routing", input, error);
           // Auto-compaction must never block the model call — proceed with
           // the original messages if evaluation or summarization fails.
@@ -497,7 +502,13 @@ export class AgentLoop {
         yield* this.drainEventBuffer();
       }
 
-      let request = await this.createModelRequest(messages, input);
+      let request: CanonicalModelRequest;
+      try {
+        request = prepareCandidate ? (await prepareCandidate(messages)).request : await this.createModelRequest(messages, input);
+      } catch (error) {
+        if (input.abortSignal?.aborted) continue;
+        throw error;
+      }
       if (input.abortSignal?.aborted) {
         const result = this.createTurnResult(input, {
           type: "aborted",
@@ -516,41 +527,34 @@ export class AgentLoop {
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages };
       }
-      this.dispatchLifecycle(input, "PreModelRequest", {
-        provider: request.provider,
-        model: request.model,
-      }).catch(() => {});
-      yield {
-        type: "model_request_started",
-        sessionId: input.sessionId,
-        turnId: input.turnId,
-        model: request.model,
-        provider: request.provider,
-      };
-
       // Split decide + execute so we can insert a post-routing compact pass
       // when the routed model's context window differs from the agent's
       // default model (the window used by the first tryAutoCompact above).
-      const decision = input.modelOverride ? {
-        provider: input.modelOverride.provider,
-        model: input.modelOverride.model,
-        scenarioType: "explicit" as const,
-        isSubagent: Boolean(this.config.isSubagent),
-        orchestrating: false,
-        resolvedFrom: "explicit" as const,
-        mutations: {},
-      } : await this.dependencies.router.decide({
-        request,
-        sessionId: input.sessionId,
-        isMainAgent: !this.config.isSubagent,
-        metadata: stickyInfo
-          ? {
-            previousTier,
-            previousProvider: stickyInfo.previousProvider,
-            previousModel: stickyInfo.previousModel,
-          }
-          : previousTier ? { previousTier } : undefined,
-      });
+      let decision: RouterDecision;
+      try {
+        decision = input.modelOverride ? {
+          provider: input.modelOverride.provider,
+          model: input.modelOverride.model,
+          scenarioType: "explicit" as const,
+          isSubagent: Boolean(this.config.isSubagent),
+          orchestrating: false,
+          resolvedFrom: "explicit" as const,
+          mutations: {},
+        } : await awaitWithAbort(input.abortSignal, () => this.dependencies.router.decide({
+          request,
+          sessionId: input.sessionId,
+          abortSignal: input.abortSignal,
+          isMainAgent: !this.config.isSubagent,
+          metadata: stickyInfo
+            ? { previousTier, previousProvider: stickyInfo.previousProvider, previousModel: stickyInfo.previousModel }
+            : previousTier ? { previousTier } : undefined,
+        }));
+        input.abortSignal?.throwIfAborted();
+        if (prepareCandidate) request = (await prepareCandidate(messages, decision)).request;
+      } catch (error) {
+        if (input.abortSignal?.aborted) continue;
+        throw error;
+      }
       const routedLimits = this.getModelTokenLimits(decision.provider, decision.model);
       const routedMaxOutputTokens = routedLimits?.maxOutputTokens;
 
@@ -558,7 +562,9 @@ export class AgentLoop {
       if (ctx?.tryAutoCompact) {
         const routedMaxCtx = this.currentMaxContextTokens(decision.provider, decision.model);
         const currentBudgetMaxCtx = preRoutingMaxContextTokens;
-        if (routedMaxCtx !== undefined && routedMaxCtx !== currentBudgetMaxCtx) {
+        const routeChanged = prepareCandidate && (decision.provider !== (input.modelOverride?.provider ?? this.config.provider)
+          || decision.model !== (input.modelOverride?.model ?? this.config.model) || decision.requestPatch !== undefined);
+        if (routedMaxCtx !== undefined && (routedMaxCtx !== currentBudgetMaxCtx || routeChanged)) {
           try {
             const reservedOutputTokens = this.getReservedOutputTokens(decision.provider, decision.model);
             const recompact = yield* this.awaitCompactionWithEvents(ctx.tryAutoCompact({
@@ -569,6 +575,7 @@ export class AgentLoop {
               maxContextTokens: routedMaxCtx,
               reservedOutputTokens,
               budgetEvaluator: this.createBudgetEvaluator(input, {
+                prepareRequest: prepareCandidate ? async candidate => (await prepareCandidate(candidate, decision)).request : undefined,
                 decision,
                 baseRequest: request,
                 maxContextTokens: routedMaxCtx,
@@ -578,7 +585,7 @@ export class AgentLoop {
             if (recompact.type === "compacted") {
               messages = recompact.messages;
               this.tokenCalibrationByRoute.clear();
-              request = await this.createModelRequest(messages, input);
+              request = prepareCandidate ? (await prepareCandidate(messages, decision)).request : await this.createModelRequest(messages, input);
               request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
               await this.persistCompactSnapshot(input, recompact);
               yield {
@@ -611,12 +618,14 @@ export class AgentLoop {
             };
             emittedContextBudget = true;
           } catch (error: unknown) {
+            if (input.abortSignal?.aborted) continue;
             logAutoCompactFailure("post-routing", input, error);
             // Post-routing compaction must never block the model call.
           }
         }
       }
       request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
+      if (input.abortSignal?.aborted) continue;
       this.clearAttemptOutputTokenCap(decision.provider, decision.model);
       if (pendingContextBudget && !emittedContextBudget) {
         yield {
@@ -630,23 +639,47 @@ export class AgentLoop {
       const calibrationRequest = this.dependencies.router.materializeRequest
         ? this.dependencies.router.materializeRequest(decision, request)
         : { ...request, provider: decision.provider, model: decision.model };
+      this.dispatchLifecycle(input, "PreModelRequest", { provider: decision.provider, model: decision.model }).catch(() => {});
+      yield { type: "model_request_started", sessionId: input.sessionId, turnId: input.turnId,
+        model: decision.model, provider: decision.provider };
       const requestInputEstimate = this.dependencies.tokenAccounting?.estimateRequestInput?.(calibrationRequest);
-      if (input.onModelContext) {
+      if (input.onModelContext && !prepareCandidate) {
         try {
           await input.onModelContext(createModelContextSnapshot(calibrationRequest, input.turnId,
             this.dependencies.tokenAccounting?.estimateRequestBreakdown?.(calibrationRequest)));
         } catch (error) { console.warn('[pilotdeck] Could not save context inspection snapshot:', error); }
       }
-      const calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
+      let calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
       const assembler = createModelMessageAssemblerState(randomUUID());
       let executedRequest: { provider: string; model: string; fingerprint?: string } | undefined;
+      let contextCommitted = false;
+      const commitRequest = prepareCandidate ? async (actual: CanonicalModelRequest) => {
+        // Assigning a cache generation is bookkeeping, not a change to the
+        // tokenized request. Content/media/fallback changes still disqualify it.
+        const matchesCalibration = requestFingerprint({ ...calibrationRequest, cachePlan: actual.cachePlan }) === requestFingerprint(actual);
+        (await prepareCandidate(messages, actual)).commit(actual);
+        if (matchesCalibration) calibrationRequestFingerprint = requestFingerprint(actual);
+        contextCommitted = true;
+        if (input.onModelContext) {
+          try { await input.onModelContext(createModelContextSnapshot(actual, input.turnId,
+            this.dependencies.tokenAccounting?.estimateRequestBreakdown?.(actual))); }
+          catch (error) { console.warn('[pilotdeck] Could not save context inspection snapshot:', error); }
+        }
+      } : undefined;
       try {
         for await (const event of this.dependencies.router.execute(decision, request, {
           sessionId: input.sessionId,
           turnId: input.turnId,
           projectPath: this.config.cwd,
           abortSignal: input.abortSignal,
+          requestForTarget: prepareCandidate ? async target => {
+            const prepared = await prepareCandidate(messages, target);
+            return this.applyTokenCapsToRequest(prepared.request, target.provider, target.model);
+          } : undefined,
+          onRequestPrepared: commitRequest,
         })) {
+          // Custom routers may not implement the optional preparation callback.
+          if (commitRequest && !contextCommitted) await commitRequest(calibrationRequest);
           if (event.type === "request_started") {
             executedRequest = {
               provider: event.provider,
@@ -1986,30 +2019,49 @@ export class AgentLoop {
     input: AgentLoopInput,
     options: { emitInstructionEvents?: boolean; previewOnly?: boolean } = {},
   ): Promise<CanonicalModelRequest> {
+    return prepareModelRequest(this.config, this.modelRequestDependencies(input, options.emitInstructionEvents), {
+      sessionId: input.sessionId, turnId: input.turnId, messages, canPrompt: input.canPrompt,
+      allowPlanModeTools: input.allowPlanModeTools, modelOverride: input.modelOverride,
+      abortSignal: input.abortSignal, previewOnly: options.previewOnly,
+    });
+  }
+
+  private createCandidatePreparation(input: AgentLoopInput) {
+    if (!this.dependencies.context?.prepareForModelAttempt) return undefined;
+    const candidates = new Map<string, ReturnType<typeof prepareModelRequestAttempt>>();
+    return async (messages: CanonicalMessage[], target?: { provider: string; model: string }) => {
+      // Default compactors return new arrays; custom implementations may edit
+      // a candidate in place. Hash content instead of trusting array identity.
+      const key = requestFingerprint({ provider: this.config.provider, model: this.config.model, messages });
+      let candidate = candidates.get(key);
+      if (!candidate) {
+        candidate = prepareModelRequestAttempt(this.config, this.modelRequestDependencies(input), {
+          sessionId: input.sessionId, turnId: input.turnId, messages, canPrompt: input.canPrompt,
+          allowPlanModeTools: input.allowPlanModeTools, modelOverride: input.modelOverride,
+          abortSignal: input.abortSignal, previewOnly: true,
+        });
+        candidates.set(key, candidate);
+      }
+      return (await candidate).project(target);
+    };
+  }
+
+  private modelRequestDependencies(input: AgentLoopInput, emitInstructionEvents?: boolean): ModelRequestPreparationDependencies {
     const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
-    return prepareModelRequest(this.config, {
+    return {
       toolRegistry: this.dependencies.tools.registry,
       context: this.dependencies.context,
       getModelProtocol: (provider) => this.dependencies.getModelProtocol?.(provider),
       getModelSupportsPromptCache: (provider, model) => this.dependencies.getModelSupportsPromptCache?.(provider, model),
       getPromptAddendum: () => planTodo?.buildPromptAddendum(),
       getPlanDirectoryPath: () => this.dependencies.planFileManager?.getPlanDirectoryPath(),
-      onInstructionsLoaded: options.emitInstructionEvents === false ? undefined : (hasSystemPrompt) => {
+      onInstructionsLoaded: emitInstructionEvents === false ? undefined : (hasSystemPrompt) => {
         this.dispatchLifecycle(input, "InstructionsLoaded", { hasSystemPrompt }).catch(() => {});
         this.dependencies.eventEmitter?.({
           type: "instructions_loaded", sessionId: input.sessionId, turnId: input.turnId, hasSystemPrompt,
         });
       },
-    }, {
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      messages,
-      canPrompt: input.canPrompt,
-      allowPlanModeTools: input.allowPlanModeTools,
-      modelOverride: input.modelOverride,
-      abortSignal: input.abortSignal,
-      previewOnly: options.previewOnly,
-    });
+    };
   }
 
   private createBudgetEvaluator(
@@ -2019,6 +2071,7 @@ export class AgentLoop {
       baseRequest?: CanonicalModelRequest;
       maxContextTokens?: number;
       reservedOutputTokens: number;
+      prepareRequest?: (messages: CanonicalMessage[]) => Promise<CanonicalModelRequest>;
     },
   ): ((candidateMessages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>) | undefined {
     const tokenAccounting = this.dependencies.tokenAccounting;
@@ -2027,7 +2080,7 @@ export class AgentLoop {
       return undefined;
     }
     return async (candidateMessages) => {
-      let candidateRequest = await this.createModelRequest(candidateMessages, input, {
+      let candidateRequest = options.prepareRequest ? await options.prepareRequest(candidateMessages) : await this.createModelRequest(candidateMessages, input, {
         emitInstructionEvents: false,
         previewOnly: true,
       });

@@ -10,6 +10,20 @@ import type { RouterConfig } from "../../src/router/config/schema.js";
 import { calculateInputCost, calculateCacheReadCost } from "../../src/router/utils/modelPricing.js";
 import { currentRequestContext, requestContextHeaders, withRequestContext } from "../../src/network/requestContext.js";
 import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
+import { buildCachePlan } from "../../src/context/cache/CachePlan.js";
+
+test("same-route patches rebuild cache identity from the final request", async t => {
+  const router = createRouterRuntime(config, { modelRuntime: runtime });
+  t.after(() => router.shutdown());
+  const request: CanonicalModelRequest = { provider: "primary", model: "main", systemPrompt: "initial",
+    messages: [{ role: "user", content: [{ type: "text", text: "synthetic" }] }], tools: [] };
+  request.cachePlan = buildCachePlan({ ...request, tools: [], enabled: true }, 7);
+  const decision = await router.decide({ request, sessionId: "patch-cache", isMainAgent: true });
+  decision.requestPatch = { systemPrompt: "patched", tools: [{ name: "synthetic", inputSchema: { type: "object" } }] };
+  const actual = router.materializeRequest(decision, request);
+  assert.deepEqual(actual.cachePlan, buildCachePlan({ ...actual, tools: actual.tools ?? [], enabled: true }, 7));
+  assert.notEqual(actual.cachePlan?.fingerprint, request.cachePlan?.fingerprint);
+});
 
 const capabilities = {
   supportsToolUse: true,

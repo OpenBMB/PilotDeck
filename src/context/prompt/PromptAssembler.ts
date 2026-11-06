@@ -53,8 +53,14 @@ export type PromptAssemblerResult = {
 export class PromptAssembler {
   constructor(private readonly extension: ExtensionResolver) {}
 
-  assemble(input: PromptAssemblerInput): PromptAssemblerResult {
-    const sections = this.buildSections(input);
+  /** Freeze extension metadata for route projections of one request candidate. */
+  prepare(input: PromptAssemblerInput): (target: Pick<PromptAssemblerInput, "provider" | "model">) => PromptAssemblerResult {
+    const contributions = input.customSystemPrompt !== undefined ? undefined : structuredClone(this.resolveContributions());
+    return target => this.assemble({ ...input, ...target }, contributions);
+  }
+
+  assemble(input: PromptAssemblerInput, contributions?: PromptContributions): PromptAssemblerResult {
+    const sections = this.buildSections(input, contributions);
     const parts: string[] = [];
     const useCustom = input.customSystemPrompt !== undefined;
 
@@ -80,15 +86,18 @@ export class PromptAssembler {
     return { parts, joined, sections };
   }
 
-  private buildSections(input: PromptAssemblerInput): PromptAssemblerSections {
+  private resolveContributions(): PromptContributions {
+    return this.extension.getPromptContributions?.() ?? {
+      commands: this.extension.listCommands(), skills: this.extension.listSkills(),
+      mcpInstructions: this.extension.listMcpInstructions(),
+    };
+  }
+
+  private buildSections(input: PromptAssemblerInput, snapshot?: PromptContributions): PromptAssemblerSections {
     if (input.customSystemPrompt !== undefined) {
       return { defaultSystemPrompt: [], userContext: this.buildUserContext(input), systemContext: [] };
     }
-    const contributions = this.extension.getPromptContributions?.() ?? {
-      commands: this.extension.listCommands(),
-      skills: this.extension.listSkills(),
-      mcpInstructions: this.extension.listMcpInstructions(),
-    };
+    const contributions = snapshot ?? this.resolveContributions();
     return {
       defaultSystemPrompt: this.buildDefaultSystemPrompt(input, contributions),
       userContext: this.buildUserContext(input),

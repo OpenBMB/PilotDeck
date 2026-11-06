@@ -5,6 +5,46 @@ import type { CanonicalModelRequest, ModelRuntime } from "../../src/model/index.
 import { ModelProviderError } from "../../src/model/index.js";
 import { classifyAndRoute } from "../../src/router/index.js";
 import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
+import { setImmediate as tick } from "node:timers/promises";
+
+test("cancellation stops awaiting a judge that ignores its signal", async () => {
+  const abort = new AbortController();
+  let started!: () => void;
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  let signal: AbortSignal | undefined;
+  const judgeRuntime = { complete: async (_request, options) => {
+    signal = options?.signal;
+    started();
+    return new Promise(() => {});
+  } } as ModelRuntime;
+  const pending = classifyAndRoute({ config: config(), messages: [{ role: "user", content: [{ type: "text", text: "synthetic task" }] }],
+    judgeRuntime, abortSignal: abort.signal });
+  await entered;
+  const reason = new Error("synthetic stop");
+  abort.abort(reason);
+  await assert.rejects(pending, error => error === reason);
+  assert.equal(signal?.aborted, true);
+});
+
+test("cancellation during judge retry backoff starts no new provider request", async () => {
+  const abort = new AbortController();
+  let calls = 0;
+  const judgeRuntime = { complete: async () => {
+    calls++;
+    return { role: "assistant", content: [], finishReason: "stop" };
+  } } as unknown as ModelRuntime;
+  let settled = false;
+  const pending = classifyAndRoute({ config: config(), messages: [{ role: "user", content: [{ type: "text", text: "synthetic task" }] }],
+    judgeRuntime, abortSignal: abort.signal }).finally(() => { settled = true; });
+  await tick();
+  const reason = new Error("synthetic stop");
+  const rejection = assert.rejects(pending, error => error === reason);
+  abort.abort(reason);
+  await tick();
+  assert.equal(settled, true, "Cancellation must not await the one-second retry delay");
+  await rejection;
+  assert.equal(calls, 1);
+});
 
 test("classifies the latest real request after tool results, steering, artifacts and retrieved memory", async () => {
   const task = "Find and repair the concurrent transaction failure.";

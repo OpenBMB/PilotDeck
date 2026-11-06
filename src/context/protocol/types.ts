@@ -73,6 +73,15 @@ export type ContextPrepareInput = {
   maxMessages?: number;
 };
 
+export type ContextModelTarget = Pick<ContextPrepareInput, "provider" | "model" | "protocol" | "supportsPromptCache">;
+
+/** Resolved inputs for one history candidate; projecting a route never repeats I/O. */
+export type ContextPreparation = {
+  project(target: ContextModelTarget): ModelContext;
+  /** Commit a dispatched projection once, using its final provider-bound cache plan. */
+  commit(context: ModelContext): void;
+};
+
 export type ContextToolResultInput = {
   sessionId: string;
   turnId: string;
@@ -133,6 +142,7 @@ export type ContextCaptureTurnInput = {
  */
 export interface ContextRuntime {
   prepareForModel(input: ContextPrepareInput): Promise<ModelContext>;
+  prepareForModelAttempt?(input: ContextPrepareInput): Promise<ContextPreparation>;
   applyToolResults(input: ContextToolResultInput): Promise<ContextToolResultResult>;
   recoverFromModelError(input: ContextRecoveryInput): Promise<ContextRecoveryDecision>;
   /**

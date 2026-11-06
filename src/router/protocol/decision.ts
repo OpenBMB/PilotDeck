@@ -88,4 +88,8 @@ export type RouterExecuteContext = {
   turnId: string;
   projectPath?: string;
   abortSignal?: AbortSignal;
+  /** Reproject already resolved context for a selected or fallback provider. */
+  requestForTarget?: (target: { provider: string; model: string }) => Promise<import("../../model/protocol/canonical.js").CanonicalModelRequest>;
+  /** Final wire-bound request after routing patches and media projection. */
+  onRequestPrepared?: (request: import("../../model/protocol/canonical.js").CanonicalModelRequest) => void | Promise<void>;
 };

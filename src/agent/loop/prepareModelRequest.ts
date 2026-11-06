@@ -8,6 +8,7 @@ import {
   type ModelProtocol,
 } from "../../model/index.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
+import type { ContextModelTarget, ContextPrepareInput, ModelContext } from "../../context/protocol/types.js";
 import { NullContextRuntime } from "../../context/NullContextRuntime.js";
 import { buildCachePlan } from "../../context/cache/CachePlan.js";
 import type { PilotDeckToolDefinition, ToolRegistry } from "../../tool/index.js";
@@ -34,7 +35,7 @@ export type ModelRequestPreparationInput = {
 
 export type ModelRequestPreparationDependencies = {
   toolRegistry: Pick<ToolRegistry, "list">;
-  context?: Pick<AgentContextRuntime, "prepareForModel">;
+  context?: Pick<AgentContextRuntime, "prepareForModel" | "prepareForModelAttempt">;
   getModelProtocol?: (provider: string) => ModelProtocol | undefined;
   getModelSupportsPromptCache?: (provider: string, model: string) => boolean | undefined;
   getPromptAddendum?: () => string | undefined;
@@ -49,7 +50,76 @@ export async function prepareModelRequest(
   dependencies: ModelRequestPreparationDependencies,
   input: ModelRequestPreparationInput,
 ): Promise<CanonicalModelRequest> {
+  input.abortSignal?.throwIfAborted();
   const contextRuntime = dependencies.context ?? new NullContextRuntime();
+  const contextInput = createContextInput(config, dependencies, input);
+  const prepared = await contextRuntime.prepareForModel(contextInput);
+  return finishRequest(config, dependencies, input, contextInput, prepared);
+}
+
+export type PreparedModelRequest = {
+  request: CanonicalModelRequest;
+  commit(finalRequest?: CanonicalModelRequest): void;
+};
+
+/** One candidate's external inputs, reused across budget and selected-route projections. */
+export async function prepareModelRequestAttempt(
+  config: ModelRequestConfig,
+  dependencies: ModelRequestPreparationDependencies,
+  input: ModelRequestPreparationInput,
+): Promise<{ project(target?: Pick<ContextModelTarget, "provider" | "model">): Promise<PreparedModelRequest> }> {
+  input.abortSignal?.throwIfAborted();
+  // The staged API defers mutation itself; it projects the eventual committed
+  // prompt, including a new compaction date, rather than a legacy preview.
+  const contextInput = createContextInput(config, dependencies, { ...input, previewOnly: undefined });
+  const begin = dependencies.context?.prepareForModelAttempt;
+  if (!begin) throw new Error("The context runtime does not support staged preparation.");
+  const preparation = await begin.call(dependencies.context, contextInput);
+  const projections = new Map<string, Promise<PreparedModelRequest>>();
+  const media = new Map<CanonicalMessage[], ReturnType<typeof materializeMediaReferences>>();
+  return {
+    project(target = contextInput) {
+      const key = JSON.stringify([target.provider, target.model]);
+      let projection = projections.get(key);
+      if (!projection) {
+        projection = (async () => {
+          const modelTarget = { ...target, protocol: dependencies.getModelProtocol?.(target.provider),
+            supportsPromptCache: dependencies.getModelSupportsPromptCache?.(target.provider, target.model) };
+          const prepared = preparation.project(modelTarget);
+          let materialized = media.get(prepared.messages);
+          if (!materialized) {
+            materialized = materializeMediaReferences(prepared.messages, { signal: input.abortSignal });
+            media.set(prepared.messages, materialized);
+          }
+          const request = await finishRequest(config, { ...dependencies, onInstructionsLoaded: undefined }, input, modelTarget, prepared, materialized);
+          let committed = false;
+          let committedFingerprint: string | undefined;
+          let generation: number | undefined;
+          return { request, commit(finalRequest = request) {
+            input.abortSignal?.throwIfAborted();
+            if (committed && committedFingerprint === finalRequest.cachePlan?.fingerprint) {
+              if (finalRequest.cachePlan && generation !== undefined) finalRequest.cachePlan.generation = generation;
+              return;
+            }
+            prepared.cachePlan = finalRequest.cachePlan;
+            preparation.commit(prepared);
+            request.cachePlan = finalRequest.cachePlan;
+            request.cacheBreakpoints = finalRequest.cacheBreakpoints;
+            generation = finalRequest.cachePlan?.generation;
+            committedFingerprint = finalRequest.cachePlan?.fingerprint;
+            if (!committed) dependencies.onInstructionsLoaded?.(!!finalRequest.systemPrompt);
+            committed = true;
+          } };
+        })();
+        projections.set(key, projection);
+      }
+      return projection;
+    },
+  };
+}
+
+function createContextInput(config: ModelRequestConfig, dependencies: ModelRequestPreparationDependencies,
+  input: ModelRequestPreparationInput): ContextPrepareInput {
   const canPrompt = input.canPrompt ?? config.permissionContext.canPrompt;
   let toolDefinitions = dependencies.toolRegistry.list();
   if (!canPrompt) toolDefinitions = toolDefinitions.filter((tool) => !requiresPromptCapability(tool, {}));
@@ -62,7 +132,7 @@ export async function prepareModelRequest(
   const tools = config.runMode === "ask" ? filterAskModeTools(toolDefinitions) : toolDefinitions.map(toolToCanonicalSchema);
   const requestProvider = input.modelOverride?.provider ?? config.provider;
   const requestModel = input.modelOverride?.model ?? config.model;
-  const prepared = await contextRuntime.prepareForModel({
+  return {
     previewOnly: input.previewOnly,
     sessionId: input.sessionId,
     turnId: input.turnId,
@@ -81,12 +151,18 @@ export async function prepareModelRequest(
     appendSystemPrompt: dependencies.getPromptAddendum?.(),
     pythonRuntime: config.pythonRuntime,
     abortSignal: input.abortSignal,
-  });
+  };
+}
 
+async function finishRequest(config: ModelRequestConfig, dependencies: ModelRequestPreparationDependencies,
+  input: ModelRequestPreparationInput, target: Pick<ContextModelTarget, "provider" | "model">,
+  prepared: ModelContext, media?: ReturnType<typeof materializeMediaReferences>): Promise<CanonicalModelRequest> {
+  input.abortSignal?.throwIfAborted();
   const systemPrompt = prepared.systemPrompt ?? config.systemPrompt;
   dependencies.onInstructionsLoaded?.(!!systemPrompt);
 
-  const materialized = await materializeMediaReferences(prepared.messages);
+  const materialized = await (media ?? materializeMediaReferences(prepared.messages, { signal: input.abortSignal }));
+  input.abortSignal?.throwIfAborted();
   for (const diagnostic of materialized.diagnostics) {
     // eslint-disable-next-line no-console
     console.warn(
@@ -99,8 +175,8 @@ export async function prepareModelRequest(
     : materialized.messages;
   const finalCachePlan = prepared.cachePlan
     ? buildCachePlan({
-        provider: requestProvider,
-        model: requestModel,
+        provider: target.provider,
+        model: target.model,
         systemPrompt,
         tools: prepared.tools,
         messages: finalMessages,
@@ -112,8 +188,8 @@ export async function prepareModelRequest(
   );
 
   return {
-    provider: requestProvider,
-    model: requestModel,
+    provider: target.provider,
+    model: target.model,
     messages: finalMessages,
     systemPrompt,
     tools: prepared.tools,
@@ -158,7 +234,7 @@ function toolToCanonicalSchema(tool: PilotDeckToolDefinition): CanonicalToolSche
   return {
     name: tool.name,
     description: tool.description,
-    inputSchema: tool.inputSchema,
+    inputSchema: structuredClone(tool.inputSchema),
   };
 }
 
