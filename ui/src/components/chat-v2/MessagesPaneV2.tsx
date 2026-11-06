@@ -382,10 +382,14 @@ function MessagesPaneV2({
   const { t } = useTranslation('chat');
   const [runtimeCanEdit, setRuntimeCanEdit] = useState(true);
   useEffect(() => {
+    // A new, unbound pane has no runtime to query yet. Waiting until the
+    // project/session is selected also avoids a capability request racing
+    // attachment preview loading during initial rendering.
+    if (!selectedProject && !selectedSession) return;
     let active=true;
     void authenticatedFetch('/api/runtime-capabilities').then(r=>r.json()).then(v=>{if(active)setRuntimeCanEdit(v.editPreviousTurns!==false);}).catch(()=>{});
     return ()=>{active=false;};
-  }, []);
+  }, [selectedProject, selectedSession]);
   const waitingFor = pendingPermissionRequests.some(request => /^(ask_?user_?question)$/i.test(request.toolName))
     ? 'question' : pendingPermissionRequests.length ? 'approval' : null;
   const messageKeyMapRef = useRef<WeakMap<ChatMessage, string>>(new WeakMap());

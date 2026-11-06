@@ -12,7 +12,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parent
 env = dict(os.environ)
 config = json.loads((root / 'env.json').read_text()) if (root / 'env.json').is_file() else {}
-env.update(config)
+env = {**config, **env}
 for key in ('MINT_MODEL_API_KEY', 'MINT_MODEL_ENDPOINT', 'MINT_MODEL'):
     if key in os.environ:
         env[key] = os.environ[key]
@@ -24,20 +24,24 @@ if sidecar:
         raise SystemExit('PILOTDECK_MINT_SIDECAR_ARGS must be a JSON string array')
     os.execve(sidecar, [sidecar, *args], env)
 
-# Keep the old cpmrt route explicit for diagnostic compatibility. It is not
-# the production integration route and cannot silently select an installed
-# loop worker.
+# The formal local sidecar is the Rust ACP binary itself. With no external
+# kernel argument, cpmrt uses the Rust Agent/turn loop and loads the project
+# Mint Host directly; this path never starts installed_loop_worker.
 cpmrt = os.environ.get('PILOTDECK_MINT_CPMRT_BIN') or env.get('PILOTDECK_MINT_CPMRT_BIN')
+if cpmrt:
+    project = env.get('MINT_PROJECT') or env.get('PILOTDECK_MINT_PROJECT')
+    if not project:
+        raise SystemExit('Mint sidecar requires MINT_PROJECT or PILOTDECK_MINT_PROJECT')
+    args = [cpmrt, 'acp', '--cwd', project]
+    os.execve(cpmrt, args, env)
+
+# A legacy external-kernel path is diagnostic-only and must be fully explicit.
 kernel = os.environ.get('PILOTDECK_MINT_KERNEL_BIN') or env.get('PILOTDECK_MINT_KERNEL_BIN')
 loop = os.environ.get('PILOTDECK_MINT_LOOP_BIN') or env.get('PILOTDECK_MINT_LOOP_BIN')
-if not (cpmrt and kernel and loop):
+if not (kernel and loop):
     raise SystemExit(
-        'Mint sidecar is not configured. Set PILOTDECK_MINT_SIDECAR_BIN; '
-        'legacy cpmrt diagnostics require PILOTDECK_MINT_CPMRT_BIN, '
+        'Mint sidecar is not configured. Set PILOTDECK_MINT_SIDECAR_BIN or '
+        'PILOTDECK_MINT_CPMRT_BIN; legacy external-kernel diagnostics require '
         'PILOTDECK_MINT_KERNEL_BIN and PILOTDECK_MINT_LOOP_BIN.'
     )
-args = [cpmrt, 'acp', '--cwd', env['MINT_PROJECT'], '--kernel-command', kernel,
-        '--kernel-arg=--config', '--kernel-arg=' + str(root / 'kernel.toml'),
-        '--kernel-arg=--data-dir', '--kernel-arg=' + str(root / 'data'),
-        '--kernel-arg=--components-dir', '--kernel-arg=' + str(root / 'components')]
-os.execve(cpmrt, args, env)
+raise SystemExit('legacy external-kernel mode requires an explicit cpmrt binary')

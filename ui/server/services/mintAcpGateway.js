@@ -36,6 +36,7 @@ export class MintAcpGateway {
     this.permissions = new Map();
     this.nextId = 1;
     this.creatingSessions = new Map();
+    this.startupErrors = [];
   }
   async start() {
     if (this.starting) return this.starting;
@@ -98,8 +99,13 @@ export class MintAcpGateway {
     if (frame.method === 'session/update') {
       const state = [...this.sessions.values()].find(s => s.id === frame.params.sessionId);
       if (state?.push) {
-        if(frame.params._meta?.['mint/error']) state.runtimeError=frame.params.update.content?.text || 'Mint runtime failed';
+        const notice = frame.params.update.content?.text || '';
+        if (frame.params._meta?.['mint/error']) state.runtimeError = notice || 'Mint runtime failed';
         for (const event of acpUpdateToEvents(frame.params.update)) state.push(event);
+      }
+      const notice = frame.params.update?.content?.text || '';
+      if (frame.params._meta?.['mint/notice'] && /JS package .* unavailable/i.test(notice)) {
+        this.startupErrors.push(notice);
       }
       return;
     }
@@ -153,6 +159,11 @@ export class MintAcpGateway {
     }
     const state = { key, id: result.sessionId || result.id, turns: result.turns || {}, projectKey: result.projectKey || this.config.cwd };
     if (!state.id) throw new Error('Mint did not return a sessionId');
+    if (this.startupErrors.length) {
+      const errors = [...new Set(this.startupErrors)];
+      this.startupErrors = [];
+      throw new Error(`Mint package activation failed: ${errors.join(' | ')}`);
+    }
     const file = this.mappingPath(key);
     const temp = file + '.' + randomUUID();
     await writeFile(temp, JSON.stringify({ id: state.id, turns: state.turns, projectKey: state.projectKey }), { mode: 0o600 });

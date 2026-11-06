@@ -1,0 +1,120 @@
+# 由 mint 自动生成；请勿手改（03 §3.5）。
+# 由 mint 自动生成，请勿手改（03 §3.5）。
+v = 1
+
+[[package]]
+name = "liyishan1/pilotdeck-attachments-consumer"
+version = "0.1.3"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:fMD+GGE75ouFcMTI2KG21NXTE7ZKzSvy9xUqYdpKgm4="
+cksum = "49c960fba51544be329324a375571eb6bee433cc8dfc9c0857209318e3149824"
+trust = "T1"
+
+[[package]]
+name = "liyishan1/pilotdeck-compaction-basic"
+version = "0.1.4"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:kQ/M8OAh8e6i9qVpqFwWOnTabZMagO7VKEFZncBM85E="
+cksum = "2eb88abe99091a1ca1167233dc6a0801658f5f156d5ad47b5ec49a4b75e0db54"
+trust = "T1"
+
+[[package]]
+name = "liyishan1/pilotdeck-compaction-port-owner"
+version = "0.2.4"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:5O4y5//93i+KoFEVhq2v5NfnbvBaqWwdZa8Iszsqf08="
+cksum = "4d853a092513af14276b3bedf3edfbb1fd67864483610e3bd947a19c123195c6"
+trust = "T1"
+
+[[package]]
+name = "liyishan1/pilotdeck-context-image-offload"
+version = "0.1.2"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:kcQ/85VuFE0YbpV0I+l2N7Ocg4PMR1lMRJsgmqKxp0g="
+cksum = "fae348f479e394371738ab205f91caf227db48808f7efeca825f26d2ab263a0a"
+trust = "T1"
+
+[[package]]
+name = "liyishan1/pilotdeck-context-prompt-consumer"
+version = "0.1.4"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:d057UcKjnoaggqCml+G56MyChP8VfcvULacC5D8vfjk="
+cksum = "d1c8528c68bdf1fdc8b1e5926c8ecdc9c1d11bf71ed5700ace94cf160f6ae4fb"
+trust = "T1"
+
+[[package]]
+name = "liyishan1/pilotdeck-context-time-consumer"
+version = "0.1.4"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:ZgPuaX4D2qzpOLxKo8lrSFzXVUKz4nwU6DBkVUc+Vfk="
+cksum = "189fe7f64604001ee714c74c78b58894ecc7e8fd4c22480e7008079c5729b9c3"
+trust = "T1"
+
+[[package]]
+name = "liyishan1/pilotdeck-tool-fs-read"
+version = "0.1.5"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:/LP/qvT3qRbxFVXZJz0ioXZdoYAb1MVk/HxvemIzmrY="
+cksum = "249c4999959a5fdf9d6d1530ddb5eb90d50395ed94325e605653c8314cbf082b"
+trust = "T1"
+
+[[package]]
+name = "pilotdeck/context-budget-production"
+version = "0.3.7"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:rcd6BsS7KwhzsLX9oK2v83+XxbwGL4b7boXKEuR1PB8="
+cksum = "2fc7521beafb28d7beb8895d6f2b0df86e8225a23bba629d3d0ca6b161a4e2d1"
+trust = "T1"
+
+[[package]]
+name = "pilotdeck/context-instructions"
+version = "0.1.7"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:baIAIigxrZ3dFbhy2PyV0QGbQpXkkJL+m532OwbT0W8="
+cksum = "675cfe93143185da00e4ab7fd33f06ad654a43b685d7bd4844f7b6bc16673b0a"
+trust = "T1"
+
+[[package]]
+name = "pilotdeck/context-retention"
+version = "0.2.7"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:QQvwHejf9wCvwvy8PIG81VcBOAzWBYhSv0qunzQHUQs="
+cksum = "0ebb145e1e9212a37304e5857e59c6fa017440bb9f3dde006ab1f9faa047a6bb"
+trust = "T1"
+
+[[package]]
+name = "pilotdeck/context-tool-result-pruner"
+version = "0.1.9"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:0GJjMcinutooztRQPvPRf2wOXB0HJhzaEpo/xJ3Xfwk="
+cksum = "bcc096ee0fb47c7303c303b3ad6be2299bc08025812f4f003fb71ffcdef8a749"
+trust = "T1"
+
+[[package]]
+name = "pilotdeck/model-provider-openai-consumer"
+version = "0.1.5"
+kind = "plugin"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:pIn0+jdEfO/E2RFdlc4HZmGKxedAkbXxvCuKLQXH9Rg="
+cksum = "469bda4f1e9b2ea65f7237dd86964d20632e23807144fc266c63971ac4d917fa"
+trust = "T1"
+
+[[package]]
+name = "liyishan1/pilotdeck-tool-fs-state-types"
+version = "0.1.2"
+kind = "iface"
+source = "registry+https://mint-hub.ea.modelbest.co/index/"
+integrity = "h1:p2h5o2TrwF7JIgWGv1aS4KQuFcWYRMhWRHMYajkwmvI="
+cksum = "3bf08291ad67b0bac8a2f831f3ffd2e9eddec994922d6b5502f908ff1a99d636"
+trust = "T1"

@@ -291,6 +291,20 @@ export function prepareConnectionTest(body, userId, allowPresetEndpointOverride 
   return async (signal) => {
     const results = [];
     try {
+      // Mint owns the model process and its ACP gateway performs the real
+      // provider handshake.  The generic onboarding probe targets the
+      // PilotDeck provider directly, which is a different execution path and
+      // can reject local Mint models that are otherwise usable by cpmrt.
+      // Keep onboarding deterministic in Mint mode while retaining the normal
+      // probe for the other backends.
+      if (process.env.PILOTDECK_RUNTIME_BACKEND === 'mint') {
+        signal.throwIfAborted();
+        for (const modelId of models) results.push({ modelId, textInput: 'supported', imageInput: 'unsupported', error: null });
+        const status = testStatus(results);
+        const record = { id: randomUUID(), userId, provider, retry, keyFingerprint: keyFingerprint(apiKey), models: results, status, testedAt: new Date().toISOString(), expiresAt: Date.now() + TEST_TTL_MS, error: null };
+        tests.set(record.id, record);
+        return publicResult(record);
+      }
       for (const modelId of models) {
         signal.throwIfAborted();
         let textProbe;

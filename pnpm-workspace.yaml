@@ -12,6 +12,7 @@ allowBuilds:
   node-pty: true
   protobufjs: true
   sharp: true
+  tree-sitter-bash: true
   unrs-resolver: true
 
 # Native/build-time packages that are allowed to run lifecycle scripts during
@@ -26,4 +27,5 @@ onlyBuiltDependencies:
   - node-pty
   - protobufjs
   - sharp
+  - tree-sitter-bash
   - unrs-resolver

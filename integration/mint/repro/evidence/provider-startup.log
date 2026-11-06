@@ -1,0 +1,24 @@
+std 宿主桥已编入；启动后以真实 host/init 结果判定 JS 就绪。宿主不可用时明确降级为 core 基础能力；WASM/code mode 尚未接入。
+2026-11-06T04:26:34.586914Z ERROR cpmrt failed error=required JS plugins failed: liyishan1/pilotdeck-compaction-basic, liyishan1/pilotdeck-compaction-port-owner, liyishan1/pilotdeck-context-image-offload, pilotdeck/context-tool-result-pruner, pilotdeck/model-provider-openai-consumer; JS package liyishan1/pilotdeck-compaction-basic unavailable: plugin/load: plugin imports are disabled (-32001); JS package liyishan1/pilotdeck-compaction-port-owner unavailable: plugin/load: MintError: plugin must export default { activate(ctx) }
+    at fail (<mint-prelude>:57:43)
+    at activate (<mint-prelude>:416:57) (-32001); JS package liyishan1/pilotdeck-context-image-offload unavailable: plugin/load: MintError: plugin must export default { activate(ctx) }
+    at fail (<mint-prelude>:57:43)
+    at activate (<mint-prelude>:416:57) (-32001); JS package pilotdeck/context-tool-result-pruner unavailable: plugin/load: MintError: plugin must export default { activate(ctx) }
+    at fail (<mint-prelude>:57:43)
+    at activate (<mint-prelude>:416:57) (-32001); JS package pilotdeck/model-provider-openai-consumer unavailable: plugin/load: ConsumerError: {"code":"permission_denied","retryable":false}
+    at fail (plugin:pilotdeck/model-provider-openai-consumer/index.js?v=h1:pIn0+jdEf:469:9)
+    at ensureNet (plugin:pilotdeck/model-provider-openai-consumer/index.js?v=h1:pIn0+jdEf:484:89)
+    at Object.activate (plugin:pilotdeck/model-provider-openai-consumer/index.js?v=h1:pIn0+jdEf:551:3)
+    at activate (<mint-prelude>:417:19) (-32001) code=1
+错误：required JS plugins failed: liyishan1/pilotdeck-compaction-basic, liyishan1/pilotdeck-compaction-port-owner, liyishan1/pilotdeck-context-image-offload, pilotdeck/context-tool-result-pruner, pilotdeck/model-provider-openai-consumer; JS package liyishan1/pilotdeck-compaction-basic unavailable: plugin/load: plugin imports are disabled (-32001); JS package liyishan1/pilotdeck-compaction-port-owner unavailable: plugin/load: MintError: plugin must export default { activate(ctx) }
+    at fail (<mint-prelude>:57:43)
+    at activate (<mint-prelude>:416:57) (-32001); JS package liyishan1/pilotdeck-context-image-offload unavailable: plugin/load: MintError: plugin must export default { activate(ctx) }
+    at fail (<mint-prelude>:57:43)
+    at activate (<mint-prelude>:416:57) (-32001); JS package pilotdeck/context-tool-result-pruner unavailable: plugin/load: MintError: plugin must export default { activate(ctx) }
+    at fail (<mint-prelude>:57:43)
+    at activate (<mint-prelude>:416:57) (-32001); JS package pilotdeck/model-provider-openai-consumer unavailable: plugin/load: ConsumerError: {"code":"permission_denied","retryable":false}
+    at fail (plugin:pilotdeck/model-provider-openai-consumer/index.js?v=h1:pIn0+jdEf:469:9)
+    at ensureNet (plugin:pilotdeck/model-provider-openai-consumer/index.js?v=h1:pIn0+jdEf:484:89)
+    at Object.activate (plugin:pilotdeck/model-provider-openai-consumer/index.js?v=h1:pIn0+jdEf:551:3)
+    at activate (<mint-prelude>:417:19) (-32001)
+{"case":"provider","status":"failed","error":"Mint runtime exited (1)"}

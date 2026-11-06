@@ -1,0 +1,17 @@
+{
+  "pilotdeck": {
+    "url": "https://github.com/openbmb/pilotdeck.git",
+    "branch": "codex/pilotdeck-mint-reproducible-deploy",
+    "upstream_main": "32a291f65417af9358a54e13072f5a8a1752ad18"
+  },
+  "host": {
+    "url": "git@codehub.devcloud.cn-north-4.huaweicloud.com:5a5fe37f080d4dcdab39d8b3ea837bb1/agent-kernel.git",
+    "branch": "codex/pilotdeck-mint-sidecar-integration",
+    "commit": "0598599ef99671c1f03e7451b663a9f85428bc73"
+  },
+  "cli": {
+    "url": "git@codehub.devcloud.cn-north-4.huaweicloud.com:5a5fe37f080d4dcdab39d8b3ea837bb1/agent-kernel.git",
+    "branch": "codex/mint-iface-kind",
+    "commit": "437dece108b9a2843f7fea4b0d662a5e45fa20e6"
+  }
+}

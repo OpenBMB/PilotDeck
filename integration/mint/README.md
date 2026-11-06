@@ -1,3 +1,7 @@
+# 独立部署入口
+
+面向新环境的部署以 [DEPLOYMENT.md](DEPLOYMENT.md) 和 [复现报告](repro/REPRODUCTION.md) 为准。下面保留的是历史本机集成记录，不作为新版发布包的部署步骤。
+
 # PilotDeck + Mint 本机集成
 
 页面：http://127.0.0.1:5273/ 。使用上游免账号配置 `PILOTDECK_DISABLE_LOCAL_AUTH=1`。
@@ -60,6 +64,8 @@ Mint不支持的编辑重跑和分叉已禁用。高级工作流不属于本次�
 仅 provider 使用 `streaming-consumer.mjs` 本地覆盖，仍使用发布codec0.1.2；
 原制品保存为 `.published`，项目 LOCAL-OVERRIDE.md 记录范围。结果依赖此覆盖，
 不代表未经修改的发布provider已满足实时增量要求。未发布任何MintHub包。
+
+为验证媒体工具结果，测试实例另保留一份 `pilotdeck-tool-fs-read@0.1.3` 本地覆盖：PNG/JPEG/GIF/WebP 由 `read_file` 返回 image block，原发布 `dist/index.js` 保存在 `.published`。该覆盖只存在于 `/tmp/pilotdeck-mint-sidecar-test-20261106`，未发布 MintHub。
 
 压缩使用 `MINT_COMPACTION_TEST_MESSAGES` 与 `MINT_COMPACTION_TEST_MODE=basic|port`
 受控触发，已验证正式收据和继续对话；尚未实现产品化的自动压缩策略。
