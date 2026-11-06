@@ -193,6 +193,10 @@ jobs:
 
       - name: Build macOS ${{ matrix.arch }} installer
         shell: bash
+        env:
+          # Vite's document-preview chunks exceed Node's ~2 GiB ARM heap default.
+          # Scope the larger budget to packaging, including its bundled Node child.
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           if [ "$PILOTDECK_DESKTOP_REQUIRE_SIGNING" = 1 ]; then
             pnpm --filter pilotdeck-desktop run dist:mac:${{ matrix.arch }}
