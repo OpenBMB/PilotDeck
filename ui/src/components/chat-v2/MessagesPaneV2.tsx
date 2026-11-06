@@ -2,7 +2,7 @@ import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { XCircle, GitBranch, ArrowDown } from 'lucide-react';
-import { notifyScrollLayout } from '../chat/hooks/useScrollFollow';
+import { adjustScrollLayout, notifyScrollLayout } from '../chat/hooks/useScrollFollow';
 import { recordUiDiagnostic, reloadUi } from '../../lib/uiDiagnostics';
 import type {
   ChatMessage,
@@ -653,7 +653,7 @@ function MessagesPaneV2({
       heights: measuredItemHeights,
     };
     if (virtualAnchorDelta && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = projectedScrollTop;
+      adjustScrollLayout(scrollContainerRef.current, projectedScrollTop);
       setScrollViewport((current) => ({ ...current, scrollTop: scrollContainerRef.current!.scrollTop }));
     }
     if (shouldVirtualizeMessages && scrollContainerRef.current) notifyScrollLayout(scrollContainerRef.current);

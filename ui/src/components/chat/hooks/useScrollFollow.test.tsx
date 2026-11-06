@@ -2,7 +2,7 @@
 import { useRef } from 'react';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { notifyScrollLayout, useScrollFollow } from './useScrollFollow';
+import { adjustScrollLayout, notifyScrollLayout, useScrollFollow } from './useScrollFollow';
 
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame: number;
@@ -53,6 +53,74 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it.each([-1, 1])('ignores a stale scrollend before the next gesture moves (%s)', direction => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.wheel(node, { deltaY: direction * 30 });
+    node.scrollTop += direction * 30; fireEvent.scroll(node);
+    fireEvent.wheel(node, { deltaY: direction * 30 });
+    fireEvent(node, new Event('scrollend'));
+    node.scrollTop += direction * 30; fireEvent.scroll(node);
+    resize(); flush();
+    expect(node.scrollTop).toBe(500 + direction * 60);
+  });
+
+  it.each(['scrollend', 'idle'])('stops attributing later layout movement to a finished gesture (%s)', ending => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.wheel(node, { deltaY: -30 });
+    node.scrollTop = 470; fireEvent.scroll(node);
+    if (ending === 'scrollend') fireEvent(node, new Event('scrollend'));
+    const now = vi.spyOn(Date, 'now');
+    if (ending === 'idle') now.mockReturnValue(Date.now() + 1000);
+    try {
+      node.scrollTop = 440; fireEvent.scroll(node);
+      resize(); flush();
+      expect(node.scrollTop).toBe(470);
+    } finally { now.mockRestore(); }
+  });
+
+  it.each([-1, 1])('does not consume virtual layout corrections as wheel displacement (%s)', direction => {
+    const { node, metrics } = setup();
+    let inserted = 0;
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 750 + inserted - metrics.top, bottom: 1000 + inserted - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.wheel(node, { deltaY: direction * 30 });
+    inserted = direction * 100; metrics.height += inserted;
+    act(() => { adjustScrollLayout(node, 500 + inserted); notifyScrollLayout(node); });
+    fireEvent.scroll(node);
+    expect(node.scrollTop).toBe(500 + inserted);
+    node.scrollTop += direction * 30;
+    fireEvent.scroll(node); resize(); flush();
+    expect(node.scrollTop).toBe(500 + inserted + direction * 30);
+  });
+
+  it.each([-1, 1])('retains every native scroll frame from one wheel gesture (%s)', direction => {
+    const { node, metrics, view } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.wheel(node, { deltaY: direction * 120 });
+    for (let frame = 1; frame <= 4; frame++) {
+      node.scrollTop = 500 + direction * frame * 30;
+      fireEvent.scroll(node);
+      view.rerender(<Harness version={frame} />);
+      resize(); flush();
+      expect(node.scrollTop).toBe(500 + direction * frame * 30);
+    }
+    fireEvent(node, new Event('scrollend'));
+    expect(api.isPaused).toBe(true);
+  });
+
   it('reuses the reading row across updates and reacquires it after virtual remount', () => {
     const { node, metrics } = setup();
     let inserted = 0;
