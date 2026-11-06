@@ -43,3 +43,5 @@ scenarios.mjs 提供 Instructions、Prompt、Time、Attachments、FS read/write�
 ## Git 交付与前端启动
 
 代码锚点提交：`ea57f5fff7b3e1144f358631e335221f2596b0d0`（初始快照）；后续启动修正以 `codex/pilotdeck-mint-reproducible-deploy` 的最终固定提交为准。已从 GitHub 新克隆确认可获取。pnpm 10.32.1 frozen-lockfile 安装成功。Vite 必须从 ui 工作目录启动（配置按 cwd 解析 React），已修正实例启动器；独立端口 server 3187、web 5387 启动，前端 HTTP 200。浏览器聊天验收仍因 ACP 必需插件失败未通过。
+
+浏览器检查：新实例显示 First-time setup（语言、模型、Workspace 引导），不要求创建账号；未完成聊天验证。部署代码最终固定提交为 `1b4a0b73`（完整提交可由 release tag 解析）；此段文档补充不改变运行代码。

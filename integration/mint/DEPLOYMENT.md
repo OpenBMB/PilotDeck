@@ -109,7 +109,7 @@ python3 integration/mint/repro/run.py --root "$INSTANCE" start
 
 访问 `http://127.0.0.1:5273/`。server 通过 Mint ACP gateway 启动 `cpmrt acp --cwd <project>`；未配置外部 kernel 或 installed_loop_worker。上下文 owner 的代码来自本仓库，仅负责上下文处理，不执行 TypeScript turn loop。
 
-本机实例设置 `PILOTDECK_DISABLE_LOCAL_AUTH=1`，免首次注册，绑定本机地址。配置或插件启动失败直接进入日志/页面，不回退其他后端。
+本机实例设置 `PILOTDECK_DISABLE_LOCAL_AUTH=1`，免首次注册，绑定本机地址。空 pilot-home 仍会显示语言、模型和工作目录引导；免账号不等于跳过产品引导。引导中的连接探测不能替代前面的真实 ACP 冒烟结果。配置或插件启动失败直接进入日志/页面，不回退其他后端。
 
 停止并保留状态：
 
