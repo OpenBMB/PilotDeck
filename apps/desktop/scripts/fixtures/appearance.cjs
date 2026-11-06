@@ -1,5 +1,10 @@
 // Real Electron/preload/image decoding and disk persistence; isolated test data.
 const { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, dialog } = require('electron');
+// A fixture failure belongs in the test log, not a native modal that blocks
+// unattended runs or interrupts the desktop user. Exit unsuccessfully.
+const fail = error => { console.error('[appearance fixture]', error); app.exit(1); };
+process.on('uncaughtException', fail);
+process.on('unhandledRejection', fail);
 const fs = require('node:fs');
 const path = require('node:path');
 const { normalizeAppearance } = require('../../dist/appearance');

@@ -1,4 +1,4 @@
-// Run Vite on 5187. Real app routes in Chromium and Electron, isolated settings.
+// Compile apps/desktop and run Vite on 5187. Real app routes with isolated settings.
 import { chromium, _electron as electron, expect } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -198,7 +198,8 @@ if(!process.env.PILOTDECK_SKIP_ELECTRON) {
   args:[path.join(root,'apps/desktop/scripts/fixtures/appearance.cjs')],env:{...Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='ELECTRON_RUN_AS_NODE')),PILOTDECK_APPEARANCE_PROFILE:profile}});
  try{
   // A hidden native window can stop producing frames for Playwright screenshots.
+  const window = await app.firstWindow();
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].showInactive());
-  await exercise(await app.firstWindow(),'desktop',(width,height)=>app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(size.width,size.height),{width,height}));
+  await exercise(window,'desktop',(width,height)=>app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(size.width,size.height),{width,height}));
  }finally{await app.close();}
 }
