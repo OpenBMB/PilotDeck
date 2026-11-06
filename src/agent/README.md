@@ -8,6 +8,8 @@ Entry points: [index.ts](index.ts), [AgentLoop.ts](loop/AgentLoop.ts).
 
 AgentLoop retains routing, recovery, budgets, lifecycle dispatch and tool execution. Both normal requests and budget probes use the same preparation path. Changes to request assembly must preserve model overrides, permissions, plan paths, media fallback and cache fingerprints; validate these contracts with `tests/agent/loop/model-request-preparation.spec.ts` and the existing loop/context regression suites.
 
+Instruction events and cache plans describe the effective system prompt, including the configured fallback when context omits one.
+
 Tool scheduling failures retain their rejection reason through event delivery and result pairing, including non-Error values; validate that boundary with `tests/agent/loop/tool-scheduler-failure.spec.ts`.
 
 Use structured todo updates for multi-step work and verify outcomes before reporting completion; todo tool ownership stays in the tool module.

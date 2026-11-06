@@ -149,6 +149,25 @@ test("regular preparations emit instruction events but budget previews can suppr
   assert.deepEqual(f.instructionEvents, [true]);
 });
 
+for (const systemPrompt of [undefined, "", "assembled prompt"]) {
+  test(`cache plans and instruction events use the effective system prompt (${JSON.stringify(systemPrompt)})`, async () => {
+    const f = fixture({ systemPrompt: "configured prompt" }, { context: { async prepareForModel(input) {
+      const result = { ...prepared(input), systemPrompt };
+      return { ...result, cachePlan: buildCachePlan({
+        ...result, provider: input.provider, model: input.model, enabled: true,
+      }, 3) };
+    } } });
+    const first = await f.prepare();
+    assert.equal(first.systemPrompt, systemPrompt ?? "configured prompt");
+    assert.deepEqual(first.cachePlan, buildCachePlan({ ...first, tools: first.tools ?? [], enabled: true }, 3));
+    assert.deepEqual(f.instructionEvents, [Boolean(first.systemPrompt)]);
+
+    f.config.systemPrompt = "updated configured prompt";
+    const second = await f.prepare();
+    assert.equal(second.cachePlan?.fingerprint === first.cachePlan?.fingerprint, systemPrompt !== undefined);
+  });
+}
+
 test("media bodies and plan reminders participate in final cache fingerprints without changing history", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "pilotdeck-request-media-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

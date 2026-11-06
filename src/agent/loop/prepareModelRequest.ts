@@ -86,7 +86,8 @@ export async function prepareModelRequest(
     abortSignal: input.abortSignal,
   });
 
-  dependencies.onInstructionsLoaded?.(!!prepared.systemPrompt);
+  const systemPrompt = prepared.systemPrompt ?? config.systemPrompt;
+  dependencies.onInstructionsLoaded?.(!!systemPrompt);
 
   const materialized = await materializeMediaReferences(prepared.messages);
   for (const diagnostic of materialized.diagnostics) {
@@ -103,7 +104,7 @@ export async function prepareModelRequest(
     ? buildCachePlan({
         provider: requestProvider,
         model: requestModel,
-        systemPrompt: prepared.systemPrompt,
+        systemPrompt,
         tools: prepared.tools,
         messages: finalMessages,
         enabled: true,
@@ -117,7 +118,7 @@ export async function prepareModelRequest(
     provider: requestProvider,
     model: requestModel,
     messages: finalMessages,
-    systemPrompt: prepared.systemPrompt ?? config.systemPrompt,
+    systemPrompt,
     tools: prepared.tools,
     toolChoice: config.toolChoice,
     maxOutputTokens: config.maxOutputTokens,
