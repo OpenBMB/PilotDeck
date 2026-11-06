@@ -78,6 +78,8 @@ export function validateReleaseManifest(manifest, repository = RELEASE_REPOSITOR
   return {
     tagName: manifest.tag, version: manifest.version, sourceSha: manifest.sourceSha, assets, downloads: installerDownloads(assets),
     publishedAt: manifest.date, body: '',
+    // Absent/unknown capability values fail closed to the full-download path.
+    differentialUpdates: manifest.differentialUpdates === true,
     htmlUrl: `https://github.com/${repository}/releases/tag/${manifest.tag}`,
   };
 }

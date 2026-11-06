@@ -28,6 +28,42 @@ function setup(overrides: Record<string, unknown> = {}) {
   return { controller, updater, cancel, release, latestRelease, prepareToInstall, recoverRuntime, verifyFile };
 }
 describe('automatic update policy', () => {
+  it('requires explicit differential capability and a compatible checksummed map', async () => {
+    for (const mode of ['enabled', 'legacy', 'disabled', 'local-disabled', 'wrong-arch', 'invalid-hash', 'missing-map']) {
+      const { controller, updater, release } = setup({ disableDifferentialUpdates: mode === 'local-disabled' });
+      release.differentialUpdates = mode === 'legacy' ? undefined : mode !== 'disabled';
+      const map = { ...release.assets[0], name: `${release.assets[0].name}.blockmap` };
+      if (mode === 'wrong-arch') map.arch = 'x64';
+      if (mode === 'invalid-hash') map.sha512 = 'invalid';
+      if (mode !== 'missing-map') release.assets.push(map);
+      // A blockmap is a helper, never a second installable file in UpdateInfo.
+      updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true,
+        updateInfo: { version: release.version, files: [{ url: release.assets[0].name, sha512: release.assets[0].sha512!, size: release.assets[0].size }] },
+        cancellationToken: { cancel: vi.fn() } });
+      controller.start(); await controller.wait();
+      expect(updater.disableDifferentialDownload, mode).toBe(mode !== 'enabled');
+      expect(updater.quitAndInstall, mode).toHaveBeenCalledTimes(1);
+    }
+  });
+  it('forces full downloads after a failed differential route, keeping the version pinned', async () => {
+    const { controller, updater, release } = setup({ downloadBases: async () => ['https://first.example/', 'https://second.example/'] });
+    release.differentialUpdates = true;
+    release.assets.push({ ...release.assets[0], name: `${release.assets[0].name}.blockmap` });
+    updater.checkForUpdates.mockResolvedValue({ isUpdateAvailable: true,
+      updateInfo: { version: release.version, files: [{ url: release.assets[0].name, sha512: release.assets[0].sha512!, size: release.assets[0].size }] },
+      cancellationToken: { cancel: vi.fn() } });
+    const attempts: boolean[] = [];
+    updater.downloadUpdate.mockImplementation(async () => {
+      attempts.push(updater.disableDifferentialDownload);
+      if (attempts.length === 1) throw new Error('connection failed');
+      return ['/tmp/pilotdeck-auto-update-test-missing.zip'];
+    });
+    controller.start(); await controller.wait();
+    expect(attempts).toEqual([false, true]);
+    expect(updater.quitAndInstall).toHaveBeenCalledOnce();
+    const providers = updater.setFeedURL.mock.calls.map(([provider]) => provider);
+    expect(providers[0].updateInfo).toEqual(providers[1].updateInfo);
+  });
   it.each([['darwin', 'arm64'], ['darwin', 'x64'], ['win32', 'x64'], ['win32', 'arm64']])('requires the exact %s %s payload without requiring a legacy feed', (platform, arch) => {
     const release = releaseFor(platform, arch);
     expect(selectUpdateAssets(release, platform, arch)?.asset).toEqual(asset(platform, arch));

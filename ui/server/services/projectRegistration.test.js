@@ -59,7 +59,7 @@ describe('registered project resolution', () => {
       await expect(resolveRegisteredProject(id, f.home)).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
     }
     await fs.rm(storage, { recursive: true });
-    await fs.symlink(legacy, storage);
+    await fs.symlink(legacy, storage, process.platform === 'win32' ? 'junction' : 'dir');
     await expect(resolveRegisteredProject(id, f.home)).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
   });
   it('resolves registered identities after the workspace is removed', async () => {

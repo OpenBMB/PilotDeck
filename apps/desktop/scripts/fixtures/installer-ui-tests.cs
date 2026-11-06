@@ -124,12 +124,20 @@ class InstallerUiTests
                         if (!onInstallPage && IsWindowEnabled(next) && timer.ElapsedMilliseconds >= nextClick)
                         {
                             // Uncheck the finish-page 'run' option (fixture app is data).
+                            bool runOptionVisible = false;
                             foreach (var child in children)
                                 if (IsCheckbox(child))
                                 {
-                                    sawRunOption = true;
+                                    string label = Text(child).Replace("&", "");
+                                    if (label == "Start PilotDeck" || label == "启动 PilotDeck")
+                                        runOptionVisible = sawRunOption = true;
                                     SendMessage(child, 0x00F1, IntPtr.Zero, IntPtr.Zero);
                                 }
+                            // NSIS can enable Finish before its child controls
+                            // become visible. Do not close that page mid-poll;
+                            // a missing run option must still fail the deadline.
+                            // The shortcut checkbox is not a run-option substitute.
+                            if (mode == "approve-updated" && sawProgress && !runOptionVisible) continue;
                             Click(next);
                             nextClick = timer.ElapsedMilliseconds + 250;
                         }

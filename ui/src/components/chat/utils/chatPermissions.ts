@@ -111,6 +111,15 @@ export function isReadOnlyModeToolDeny(message: ChatMessage | null | undefined):
 
 export const isPlanModeToolDeny = isReadOnlyModeToolDeny;
 
+/** Structured runtime codes take precedence over words in a remote tool response. */
+export function isToolPermissionError(message: ChatMessage | null | undefined): boolean {
+  if (!message?.toolResult?.isError || isReadOnlyModeToolDeny(message)) return false;
+  const code = message.toolResult.errorCode;
+  if (code) return PERMISSION_ERROR_CODES.has(code);
+  const content = String(message.toolResult.content || '').replace(/^\s*<tool_use_error>\s*/i, '').trim();
+  return /^(?:Error:\s*)?(?:Permission\s+(?:denied|required|cancelled)\b|(?:Network (?:fetch|search)|Tool [^\n]+) requires permission\b)/i.test(content);
+}
+
 export function getPilotDeckPermissionSuggestion(
   message: ChatMessage | null | undefined,
   _provider: string,
@@ -118,15 +127,7 @@ export function getPilotDeckPermissionSuggestion(
   // migration every provider routes tool calls through the same gateway
   // PermissionContext, so the "Permission added" affordance is useful
   // regardless of which model is selected.
-  if (!message?.toolResult?.isError) return null;
-  if (isReadOnlyModeToolDeny(message)) return null;
-
-  // Only offer the rule-grant affordance for genuine permission failures.
-  // For historical / replayed messages without an `errorCode` we fall back to
-  // the legacy behaviour (showing the suggestion) so users on older
-  // transcripts still see it.
-  const errorCode = message.toolResult.errorCode;
-  if (errorCode && !PERMISSION_ERROR_CODES.has(errorCode)) return null;
+  if (!message || !isToolPermissionError(message)) return null;
 
   const toolName = message?.toolName;
   const entry = buildPilotDeckToolPermissionEntry(toolName, message.toolInput);

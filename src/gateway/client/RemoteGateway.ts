@@ -47,6 +47,8 @@ import type {
   SkillAddressInput,
   SkillCreateInput,
   SkillCreateResult,
+  SkillSetEnabledInput,
+  SkillSetEnabledResult,
   SkillDeleteInput,
   SkillDeleteResult,
   SkillImportInput,
@@ -264,6 +266,10 @@ export class RemoteGateway implements Gateway {
 
   async skillCreate(input: SkillCreateInput): Promise<SkillCreateResult> {
     return (await this.client.request("skill_create", input)) as SkillCreateResult;
+  }
+
+  async skillSetEnabled(input: SkillSetEnabledInput): Promise<SkillSetEnabledResult> {
+    return (await this.client.request("skill_set_enabled", input)) as SkillSetEnabledResult;
   }
 
   async skillDelete(input: SkillDeleteInput): Promise<SkillDeleteResult> {

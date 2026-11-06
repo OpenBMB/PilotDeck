@@ -29,6 +29,7 @@ function publishWindowState() {
   win.webContents.send('pilotdeck:window-state', state);
 }
 nativeTheme.on('updated', publishWindowState);
+ipcMain.on('pilotdeck:get-runtime-status', event => { event.returnValue = { phase: 'ready', progress: 100, completed: true }; });
 ipcMain.on('pilotdeck:get-appearance', e => { e.returnValue = read(); });
 ipcMain.on('pilotdeck:get-window-state', e => { e.returnValue = windowState(); });
 ipcMain.handle('pilotdeck:set-appearance', (_e, value) => {

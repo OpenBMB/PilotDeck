@@ -108,6 +108,16 @@ jobs:
           EXPECTED_HOST_ARCH: ${{ matrix.host_arch }}
         run: test "$(uname -m)" = "$EXPECTED_HOST_ARCH"
 
+      - name: Prepare Electron before native lifecycle checks
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm --filter pilotdeck-desktop exec node node_modules/electron/install.js; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep "$((attempt * 2))"
+          done
+
       - name: Verify managed process ownership and crash cleanup
         run: node --test apps/desktop/scripts/process-scope.test.mjs
 
@@ -125,6 +135,12 @@ jobs:
 
       - name: Verify macOS background and quit lifecycle
         run: node apps/desktop/scripts/verify-desktop-lifecycle.cjs
+
+      - name: Verify differential transport and ZIP cache recovery
+        timeout-minutes: 4
+        run: |
+          pnpm --filter pilotdeck-desktop run compile
+          pnpm --filter pilotdeck-desktop exec electron scripts/verify-differential-update.cjs
 
       - name: Set desktop release metadata
         run: node apps/desktop/scripts/set-ci-version.mjs
@@ -178,8 +194,9 @@ jobs:
       - name: Build macOS ${{ matrix.arch }} installer
         shell: bash
         env:
-          # Match Linux's build heap budget for the Mermaid-enabled UI bundle.
-          NODE_OPTIONS: --max-old-space-size=2560
+          # Vite's document-preview chunks exceed Node's ~2 GiB ARM heap default.
+          # Scope the larger budget to packaging, including its bundled Node child.
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           if [ "$PILOTDECK_DESKTOP_REQUIRE_SIGNING" = 1 ]; then
             pnpm --filter pilotdeck-desktop run dist:mac:${{ matrix.arch }}
@@ -237,6 +254,7 @@ jobs:
           path: |
             apps/desktop/dist-electron/*-mac-${{ matrix.arch }}.dmg
             apps/desktop/dist-electron/*-mac-${{ matrix.arch }}.zip
+            apps/desktop/dist-electron/*-mac-${{ matrix.arch }}.zip.blockmap
             apps/desktop/dist-electron/latest-${{ matrix.arch }}-mac.yml
           if-no-files-found: error
           retention-days: 14

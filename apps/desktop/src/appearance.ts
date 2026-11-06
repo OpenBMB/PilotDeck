@@ -1,6 +1,6 @@
 import { startupLabels, startupVisualProgress } from './startupPresentation';
 import { startupStyle } from './startupStyle';
-import { LIGHT_PRESETS, normalizeLightAppearance, deriveLightColors, type LightAppearance } from './lightAppearance';
+import { LEGACY_LIGHT_PRESETS, LIGHT_PRESETS, normalizeLightAppearance, deriveLightColors, type LightAppearance } from './lightAppearance';
 import { normalizeInterfacePreferences, type InterfacePreferences } from './interfacePreferences';
 export type DesktopAppearance = { language: 'en' | 'zh-CN'; themeMode: 'light' | 'dark' | 'system'; lightAppearance?: LightAppearance; interfacePreferences?: InterfacePreferences };
 
@@ -49,8 +49,8 @@ export function renderLoadingHtml(appearance: DesktopAppearance, web = false): s
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>PilotDeck</title>
 <style>
 :root{color-scheme:light;--startup-bg:${canvas};--startup-fg:#171717;--startup-muted:#737373;--startup-line:#e5e5e5}
-:root[data-theme="dark"]{color-scheme:dark;--startup-bg:#0a0a0a;--startup-fg:#f5f5f5;--startup-muted:#a3a3a3;--startup-line:#262626}
-@media(prefers-color-scheme:dark){:root[data-theme="system"]{color-scheme:dark;--startup-bg:#0a0a0a;--startup-fg:#f5f5f5;--startup-muted:#a3a3a3;--startup-line:#262626}}
+:root[data-theme="dark"]{color-scheme:dark;--startup-bg:#23252b;--startup-fg:#f5f5f5;--startup-muted:#a3a3a3;--startup-line:#262626}
+@media(prefers-color-scheme:dark){:root[data-theme="system"]{color-scheme:dark;--startup-bg:#23252b;--startup-fg:#f5f5f5;--startup-muted:#a3a3a3;--startup-line:#262626}}
 ${startupStyle}
 #failure{display:none}#startup[data-error=true] #loading{display:none}#startup[data-error=true] #failure{display:block}#saveStatus:empty{display:none}
 </style></head><body style="margin:0"><div class="pd-startup-screen" id="startup"><main><h1 class="pd-startup-brand">PilotDeck</h1>
@@ -67,10 +67,10 @@ if(web){
  // The application's default canvas is lavender. Keep the startup canvas the
  // same as the native document, even after the application's CSS has loaded.
  let preference=appearance.lightAppearance;try{preference??=JSON.parse(saved('pilotdeck-light-appearance-v1')||'null')}catch{}
- const presets=${JSON.stringify(LIGHT_PRESETS)};
+ const presets=${JSON.stringify({ ...LIGHT_PRESETS, ...LEGACY_LIGHT_PRESETS })};
  const background=preference?.preset==='custom'?preference.custom?.background:preference?.preset!=='default'?presets[preference?.preset]?.background:null;
  const dark=appearance.themeMode==='dark'||appearance.themeMode==='system'&&window.matchMedia?.('(prefers-color-scheme: dark)').matches;
- document.documentElement.style.setProperty('--startup-bg',dark?'#0a0a0a':/^#[0-9a-f]{6}$/i.test(background)?background:'#ffffff');
+ document.documentElement.style.setProperty('--startup-bg',dark?'#23252b':/^#[0-9a-f]{6}$/i.test(background)?background:'#ffffff');
 }
 const root=document.getElementById('startup'),bar=document.getElementById('bar'),message=document.getElementById('message');
 const visualProgress=${startupVisualProgress.toString()};

@@ -125,7 +125,7 @@ export function VideoGenerationForm({ config, onChange }: {
               value={draft[field]} placeholder={field === 'apiKey' && current.apiKey && sameAddress ? '********' : field === 'baseUrl' ? DEFAULT_VIDEO_BASE_URL : ''}
               onChange={event => { setDraft({ ...draft, [field]: event.target.value }); setErrors(previous => ({ ...previous, [field]: undefined })); resetTest(); }}
               onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && dirty) save(); }} />
-          </div>{errors[field] && <p id={'video-' + field + '-error'} role="alert" className="mt-1 text-sm text-destructive">{t(errors[field]!)}</p>}</div>
+          </div>{errors[field] && <p id={'video-' + field + '-error'} role="alert" className="mt-1 text-sm text-[var(--pd-danger-ink)]">{t(errors[field]!)}</p>}</div>
         </div>)}
       </div>
       <details className="border-t border-border p-5">
@@ -135,7 +135,7 @@ export function VideoGenerationForm({ config, onChange }: {
         <textarea id="video-extraParams" rows={4} value={draft.extraParams} disabled={saving} spellCheck={false}
           aria-invalid={Boolean(errors.extraParams)} className="w-full rounded-lg border border-border bg-background p-3 font-mono text-sm"
           onChange={event => { setDraft({ ...draft, extraParams: event.target.value }); setErrors(previous => ({ ...previous, extraParams: undefined })); resetTest(); }} />
-        {errors.extraParams && <p role="alert" className="mt-1 text-sm text-destructive">{t(errors.extraParams)}</p>}
+        {errors.extraParams && <p role="alert" className="mt-1 text-sm text-[var(--pd-danger-ink)]">{t(errors.extraParams)}</p>}
       </details>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5">
         <span role="status" className="text-sm text-muted-foreground">{status}</span>

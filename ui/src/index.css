@@ -2,6 +2,99 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .conversation-pane { container-type: inline-size; min-width: 0; max-width: 100%; }
+  .conversation-turn-nav {
+    position: absolute;
+    z-index: 20;
+    top: 50%;
+    left: 12px;
+    width: 28px;
+    max-height: calc(100% - 80px);
+    transform: translateY(-50%);
+  }
+  .conversation-turn-scroller {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+  .conversation-turn-scroller::-webkit-scrollbar { display: none; }
+  .conversation-turn-mark {
+    position: absolute;
+    left: 0;
+    width: 28px;
+    height: 10px;
+    border-radius: 4px;
+  }
+  .conversation-turn-mark::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 0;
+    width: 13px;
+    height: 2px;
+    border-radius: 2px;
+    background: hsl(var(--muted-foreground) / 0.35);
+    transition: width 140ms ease, background-color 140ms ease;
+  }
+  .conversation-turn-mark[aria-current="true"]::before,
+  .conversation-turn-mark:hover::before { width: 22px; background: hsl(var(--foreground)); }
+  .conversation-turn-mark:focus-visible { outline: 1px solid var(--brand); outline-offset: -1px; }
+  .conversation-turn-mark:focus-visible::before { width: 22px; background: var(--brand); }
+  .conversation-turn-mark[aria-busy="true"]::before { animation: pulse 1s ease-in-out infinite; }
+  .conversation-turn-load { position: absolute; top: -22px; left: 0; color: hsl(var(--muted-foreground)); }
+  .conversation-turn-preview {
+    position: absolute;
+    left: 38px;
+    width: min(300px, calc(100cqw - 100px));
+    max-height: 110px;
+    overflow: hidden;
+    padding: 12px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 14px;
+    background: hsl(var(--card));
+    box-shadow: 0 6px 24px hsl(var(--foreground) / 0.08);
+    pointer-events: none;
+    animation: turn-preview-enter 140ms ease-out;
+    transition: top 140ms ease-out;
+  }
+  @keyframes turn-preview-enter { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+  @container (max-width: 900px) { .conversation-turn-nav { display: none; } }
+  /* Shared metrics keep reasoning, individual tools and grouped steps aligned. */
+  .chat-process-trigger {
+    @apply flex min-h-6 w-fit min-w-0 max-w-full items-center gap-2 rounded text-left text-[13px] font-normal leading-6 text-muted-foreground transition-colors;
+  }
+
+  .chat-process-trigger:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 3px;
+  }
+
+  .chat-process-disclosure {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease-out;
+  }
+
+  .chat-process-disclosure[data-expanded="true"] {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  /* Assistant seats own the outer rhythm; Markdown only spaces interior blocks. */
+  [data-turn-process-prose] .prose > :first-child { margin-top: 0; }
+  [data-turn-process-prose] .prose > :last-child { margin-bottom: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-process-disclosure { transition: none; }
+    .conversation-turn-mark::before, .conversation-turn-preview { transition: none; animation: none; }
+  }
+}
+
 /* Global spinner animation - defined early to ensure it loads */
 @keyframes spin {
   0% {
@@ -47,6 +140,9 @@
     --ink: var(--pd-ink, #252737);
     --app-muted: var(--pd-muted, #858998);
     --line: var(--pd-border, #e4e5ee);
+    /* Risk is independent of the selected accent. Each mode has a readable pair. */
+    --pd-warning-ink: #80571b;
+    --pd-danger-ink: #b42335;
     --search-match-color: var(--brand-strong);
     --search-match-bg: color-mix(in srgb, var(--brand) 11%, transparent);
     --search-match-active-bg: var(--brand);
@@ -68,7 +164,7 @@
     --muted-foreground: 0 0% 45%;
     --accent: 0 0% 96%;
     --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 351 54% 46%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 90%;
     --input: 0 0% 90%;
@@ -101,6 +197,8 @@
   }
 
   .dark {
+    --pd-warning-ink: #e7c487;
+    --pd-danger-ink: #ef9ca5;
     /* V2 zinc/neutral palette — dark */
     --background: 0 0% 4%;
     --foreground: 0 0% 96%;
@@ -116,7 +214,7 @@
     --muted-foreground: 0 0% 64%;
     --accent: 0 0% 15%;
     --accent-foreground: 0 0% 96%;
-    --destructive: 0 62.8% 45%;
+    --destructive: 351 54% 46%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 15%;
     --input: 0 0% 25%;
@@ -126,8 +224,8 @@
     --ink: #f5f5f5;
     --app-muted: #a3a3a3;
     --line: #262626;
-    --brand-soft: #1e1b4b;
-    --brand-strong: #a5b4fc;
+    --brand-soft: var(--pd-accent-soft, #1e1b4b);
+    --brand-strong: var(--pd-accent-strong, #a5b4fc);
     color-scheme: dark;
   }
 }
@@ -333,54 +431,6 @@
     scrollbar-color: rgba(107, 114, 128, 0.5) rgba(31, 41, 55, 0.5);
   }
 
-  /* Ensure checkbox styling is preserved */
-  input[type="checkbox"] {
-    @apply accent-blue-600;
-    opacity: 1;
-  }
-
-  input[type="checkbox"]:focus {
-    opacity: 1;
-    outline: 2px solid hsl(var(--ring));
-    outline-offset: 2px;
-  }
-
-  /* Fix checkbox appearance in dark mode */
-  .dark input[type="checkbox"] {
-    background-color: rgb(31 41 55); /* gray-800 */
-    border-color: rgb(75 85 99); /* gray-600 */
-    color: rgb(37 99 235); /* blue-600 */
-    color-scheme: dark;
-  }
-
-  .dark input[type="checkbox"]:checked {
-    background-color: rgb(37 99 235); /* blue-600 */
-    border-color: rgb(37 99 235); /* blue-600 */
-  }
-
-  .dark input[type="checkbox"]:focus {
-    --tw-ring-color: rgb(59 130 246); /* blue-500 */
-    --tw-ring-offset-color: rgb(31 41 55); /* gray-800 */
-  }
-
-  /* Fix radio button appearance in dark mode */
-  .dark input[type="radio"] {
-    background-color: rgb(31 41 55); /* gray-800 */
-    border-color: rgb(75 85 99); /* gray-600 */
-    color: rgb(37 99 235); /* blue-600 */
-    color-scheme: dark;
-  }
-
-  .dark input[type="radio"]:checked {
-    background-color: rgb(37 99 235); /* blue-600 */
-    border-color: rgb(37 99 235); /* blue-600 */
-  }
-
-  .dark input[type="radio"]:focus {
-    --tw-ring-color: rgb(59 130 246); /* blue-500 */
-    --tw-ring-offset-color: rgb(31 41 55); /* gray-800 */
-  }
-
   /* Ensure textarea text is always visible in the active theme */
   textarea {
     color-scheme: light;
@@ -432,57 +482,14 @@
     -webkit-text-fill-color: rgb(243 244 246) !important;
   }
 
-  /* Fix placeholder text color to be properly gray */
-  textarea::placeholder {
-    color: rgb(156 163 175) !important; /* gray-400 */
-    opacity: 1 !important;
+  /* Chromium and Firefox inherit text-fill from the textarea. Reset both so
+     placeholders stay readable in either mode, including transparent inputs. */
+  :is(input, textarea)::placeholder {
+    color: var(--pd-muted, #687080) !important;
+    -webkit-text-fill-color: var(--pd-muted, #687080) !important;
+    opacity: 1;
   }
 
-  .dark textarea::placeholder {
-    color: rgb(75 85 99) !important; /* gray-600 - darker gray */
-    opacity: 1 !important;
-  }
-
-  /* More specific selector for chat input textarea */
-  .dark .bg-gray-800 textarea::placeholder,
-  .dark textarea.bg-transparent::placeholder {
-    color: rgb(75 85 99) !important; /* gray-600 - darker gray */
-    opacity: 1 !important;
-    -webkit-text-fill-color: rgb(75 85 99) !important;
-  }
-
-  /* WebKit specific placeholder styles */
-  textarea::-webkit-input-placeholder {
-    color: rgb(156 163 175) !important;
-    opacity: 1 !important;
-  }
-
-  .dark textarea::-webkit-input-placeholder {
-    color: rgb(75 85 99) !important; /* gray-600 - darker gray */
-    opacity: 1 !important;
-  }
-
-  /* Mozilla specific placeholder styles */
-  textarea::-moz-placeholder {
-    color: rgb(156 163 175) !important;
-    opacity: 1 !important;
-  }
-
-  .dark textarea::-moz-placeholder {
-    color: rgb(75 85 99) !important; /* gray-600 - darker gray */
-    opacity: 1 !important;
-  }
-
-  /* IE/Edge specific placeholder styles */
-  textarea:-ms-input-placeholder {
-    color: rgb(156 163 175) !important;
-    opacity: 1 !important;
-  }
-
-  .dark textarea:-ms-input-placeholder {
-    color: rgb(75 85 99) !important; /* gray-600 - darker gray */
-    opacity: 1 !important;
-  }
 }
 
 /* Mobile optimizations and components */
@@ -503,7 +510,6 @@
     /* Preserve checkbox visibility */
     input[type="checkbox"] {
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
-      opacity: 1 !important;
     }
 
     button,
@@ -584,7 +590,6 @@
     /* Preserve checkbox visibility on touch devices */
     input[type="checkbox"] {
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1) !important;
-      opacity: 1 !important;
     }
 
     /* Only disable hover states for interactive elements, not containers */
@@ -712,19 +717,6 @@
     appearance: none;
   }
 
-  /* Fix select option text in mobile */
-  select option {
-    font-size: 16px !important;
-    padding: 8px !important;
-    background-color: var(--background) !important;
-    color: var(--foreground) !important;
-  }
-
-  .dark select option {
-    background-color: rgb(31 41 55) !important;
-    color: rgb(243 244 246) !important;
-  }
-
   /* Tool details chevron animation */
   details[open] summary svg[class*="group-open"] {
     transform: rotate(180deg);
@@ -834,7 +826,7 @@
 
   .dark .app-root {
     background:
-      radial-gradient(circle at 8% 0%, rgba(99, 102, 241, 0.12), transparent 28%),
+      radial-gradient(circle at 8% 0%, var(--pd-accent-soft, rgba(99, 102, 241, 0.12)), transparent 28%),
       radial-gradient(circle at 98% 100%, rgba(59, 130, 246, 0.1), transparent 25%),
       #0a0a0a;
   }
@@ -1180,31 +1172,33 @@
     border-bottom: 1px solid rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
   }
 
-  .brand-lockup {
+  .brand-wordmark {
+    /* Original artwork: 5810px wide; the lettering starts at x=1482.
+       Scale the 165px lockup down slightly, then clip only the emblem/gap. */
+    --wordmark-image-width: 152px;
+    position: relative;
     display: block;
-    height: 36px;
-    width: 165px;
+    width: calc(var(--wordmark-image-width) * 4330 / 5810);
+    margin-inline-start: 12px;
+    height: 24px;
     max-width: 100%;
+    overflow: hidden;
   }
 
-  .brand-lockup-image {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: left center;
+  .brand-wordmark-image {
+    position: absolute;
+    left: calc(var(--wordmark-image-width) * -1480 / 5810);
+    top: 50%;
+    width: var(--wordmark-image-width);
+    height: auto;
+    max-width: none;
+    transform: translateY(-50%);
+    pointer-events: none;
   }
 
-  .brand-lockup-dark {
-    display: none;
-  }
-
-  .brand-mark {
-    display: block;
-    width: 34px;
-    height: 34px;
-    object-fit: contain;
-  }
+  .brand-wordmark-dark { display: none; }
+  .dark .brand-wordmark-light { display: none; }
+  .dark .brand-wordmark-dark { display: block; }
 
   .primary-actions {
     display: grid;
@@ -1420,7 +1414,7 @@
     background: var(--pd-accent, #7060e8);
   }
   .dark .session-indicator { color: #a1a1aa; }
-  .dark .session-indicator[data-status="unread"] .conversation-dot { background: #a78bfa; }
+  .dark .session-indicator[data-status="unread"] .conversation-dot { background: var(--pd-accent, #a78bfa); }
 
   .conversation-dot {
     width: 5px;
@@ -1458,6 +1452,7 @@
     border: 0;
     border-bottom: 1px solid rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
     background: transparent;
+    color: var(--pd-sidebar-ink, var(--pd-ink, #687080));
     cursor: pointer;
   }
 
@@ -1848,6 +1843,7 @@
   }
 
   .chat-panel-scrollbar {
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: #c1c1c1 transparent;
   }
@@ -1940,9 +1936,9 @@
   }
 
   .dark .file-entry[aria-pressed="true"] {
-    border-color: rgba(129, 140, 248, 0.35);
-    background: rgba(30, 58, 138, 0.45);
-    color: #bfdbfe;
+    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.35));
+    background: var(--pd-accent-selected, rgba(30, 58, 138, 0.45));
+    color: var(--pd-accent-strong, #bfdbfe);
     box-shadow: none;
   }
 
@@ -1975,22 +1971,14 @@
     border-bottom-color: #262626;
   }
 
-  .dark .brand-lockup-light {
-    display: none;
-  }
-
-  .dark .brand-lockup-dark {
-    display: block;
-  }
-
   .dark .primary-action {
     color: #e5e5e5;
   }
 
   .dark .primary-action:hover,
   .dark .primary-action.active {
-    border-color: rgba(129, 140, 248, 0.28);
-    background: rgba(99, 102, 241, 0.16);
+    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.28));
+    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.16));
     color: var(--brand-strong);
   }
 
@@ -2001,7 +1989,7 @@
   }
 
   .dark .tree-heading {
-    color: #c4b5fd;
+    color: var(--pd-accent-strong, #c4b5fd);
   }
 
   .dark .tree-row {
@@ -2009,7 +1997,7 @@
   }
 
   .dark .tree-row.project-row.active {
-    color: #c4b5fd;
+    color: var(--pd-accent-strong, #c4b5fd);
   }
 
   .dark .tree-row.project-row:hover,
@@ -2023,7 +2011,7 @@
   .dark .project-chat-icon button:hover,
   .dark .project-chat-icon button:focus-visible {
     background: rgba(255, 255, 255, 0.06);
-    color: #c4b5fd;
+    color: var(--pd-accent-strong, #c4b5fd);
   }
 
   .dark .project-conversation {
@@ -2032,9 +2020,9 @@
 
   .dark .project-conversation.active,
   .dark .tree-row.chat-row.active {
-    border-color: rgba(129, 140, 248, 0.32);
-    background: rgba(99, 102, 241, 0.16);
-    color: #e0e7ff;
+    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.32));
+    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.16));
+    color: var(--pd-accent-strong, #e0e7ff);
   }
 
   .dark .conversation-dot {
@@ -2054,14 +2042,14 @@
   }
 
   .dark .compact-project-entry.active {
-    border-color: rgba(129, 140, 248, 0.32);
-    background: rgba(99, 102, 241, 0.16);
-    color: #c4b5fd;
+    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.32));
+    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.16));
+    color: var(--pd-accent-strong, #c4b5fd);
   }
 
   .dark .recent-list button:hover,
   .dark .recent-list button.active {
-    border-color: rgba(129, 140, 248, 0.28);
+    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.28));
     background: rgba(255, 255, 255, 0.06);
     color: var(--brand-strong);
     box-shadow: none;
@@ -2073,8 +2061,8 @@
   }
 
   .dark .dock-panel.file-panel.file-panel-drop-active {
-    background: rgba(99, 102, 241, 0.12);
-    box-shadow: inset 0 0 0 2px #818cf8;
+    background: var(--pd-accent-soft, rgba(99, 102, 241, 0.12));
+    box-shadow: inset 0 0 0 2px var(--pd-focus, #818cf8);
   }
 
   .dark .dock-panel-header {
@@ -2115,8 +2103,8 @@
   }
 
   .dark .file-action-button:hover:not(:disabled) {
-    border-color: rgba(129, 140, 248, 0.28);
-    background: rgba(99, 102, 241, 0.16);
+    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.28));
+    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.16));
     color: var(--brand-strong);
   }
 
@@ -2150,7 +2138,7 @@
 
   .dark .file-tree-scroll .folder-row.active,
   .dark .file-tree-scroll .file-row.active {
-    background: rgba(99, 102, 241, 0.16);
+    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.16));
     color: var(--brand-strong);
   }
 
@@ -2166,10 +2154,10 @@
   }
 
   .dark .right-rail button.active {
-    border-color: #818cf8;
-    background: rgba(99, 102, 241, 0.18);
-    color: #c7d2fe;
-    box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.18);
+    border-color: var(--pd-focus, #818cf8);
+    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.18));
+    color: var(--pd-accent-strong, #c7d2fe);
+    box-shadow: 0 0 0 2px var(--pd-accent-border, rgba(129, 140, 248, 0.18));
   }
 
   .dark .message-actions button:hover:not(:disabled) {
@@ -2243,17 +2231,9 @@
       box-shadow: none;
     }
     .pd-composer-container .home-send-button .icon { width: 16px; height: 16px; }
-    .dark .pd-composer-container .pd-composer-permission-bypass {
-      border-color: transparent !important;
-      background-color: transparent !important;
-    }
     .pd-composer-container .pd-composer-permission-button:hover,
     .pd-composer-container .pd-composer-permission-button[aria-expanded="true"] {
       background: rgb(120 113 108 / 0.08);
-    }
-    .dark .pd-composer-container .pd-composer-permission-bypass:hover,
-    .dark .pd-composer-container .pd-composer-permission-bypass[aria-expanded="true"] {
-      background-color: rgb(139 92 246 / 0.12) !important;
     }
   }
 

@@ -1,19 +1,12 @@
 import { useMemo, useState } from 'react';
 import {
-  Activity,
-  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Code2,
-  FileSearch,
   Loader2,
-  Pencil,
-  Search,
-  Terminal,
   Wrench,
-  type LucideIcon,
 } from 'lucide-react';
+import { getActivityIcon } from '../chat/tools/toolIcons';
 import type { ProcessTraceStep } from './ProcessTrace';
 
 const PHASE_LABELS: Record<string, string> = {
@@ -30,22 +23,6 @@ const PHASE_LABELS: Record<string, string> = {
   subtask: 'Sub-task',
   code: 'Coding',
   review: 'Reviewing',
-};
-
-const PHASE_ICONS: Record<string, LucideIcon> = {
-  rag: Search,
-  search: Search,
-  read: FileSearch,
-  edit: Pencil,
-  write: Pencil,
-  tool: Wrench,
-  command: Terminal,
-  bash: Terminal,
-  think: BookOpen,
-  plan: BookOpen,
-  subtask: Activity,
-  code: Code2,
-  review: FileSearch,
 };
 
 export type TimelineGroup = {
@@ -124,7 +101,7 @@ function TimelineGroupRow({
   defaultExpanded: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const Icon = PHASE_ICONS[group.phase] || Wrench;
+  const Icon = getActivityIcon(group.phase, group.steps[0]?.toolName) || Wrench;
   const label = PHASE_LABELS[group.phase] || group.phase;
   const count = group.steps.length;
   const allDone = group.steps.every((s) => s.state === 'completed' || s.state === 'cancelled');
@@ -142,7 +119,7 @@ function TimelineGroupRow({
       >
         <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
           {group.isRunning ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" strokeWidth={2} />
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--pd-accent-strong,#3b82f6)]" strokeWidth={2} />
           ) : allDone ? (
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2} />
           ) : (

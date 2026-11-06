@@ -4,6 +4,7 @@ export type OfficePreviewService = 'builtin' | 'libreoffice';
 
 export type OfficePreviewStatus = {
   service: OfficePreviewService;
+  platform?: string;
   configuredBinaryPath?: string;
   libreOffice?: {
     available?: boolean;
@@ -19,6 +20,16 @@ export type OfficePreviewStatus = {
   statusError?: string;
   statusUnavailable?: boolean;
 };
+
+// Use the preview host, which may differ from the browser's operating system.
+export function officeBinaryPathExample(platform?: string): string | undefined {
+  switch (platform) {
+    case 'win32': return 'C:\\Program Files\\LibreOffice\\program\\soffice.com';
+    case 'darwin': return '/Applications/LibreOffice.app/Contents/MacOS/soffice';
+    case 'linux': return '/usr/bin/soffice';
+    default: return undefined;
+  }
+}
 
 export function normalizeOfficePreviewService(value: unknown): OfficePreviewService {
   return String(value || '').trim().toLowerCase() === 'libreoffice' ? 'libreoffice' : 'builtin';
@@ -79,6 +90,7 @@ export async function readOfficePreviewStatus(options: { refresh?: boolean } = {
     }
     return {
       service: normalizeOfficePreviewService(body?.service),
+      platform: typeof body?.platform === 'string' ? body.platform : undefined,
       configuredBinaryPath: String(body?.configuredBinaryPath || '').trim(),
       libreOffice: body?.libreOffice,
     };

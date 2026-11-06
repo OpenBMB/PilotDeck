@@ -1,8 +1,17 @@
 {
+  "formControls": {
+    "chooseDate": "Choose date", "chooseTime": "Choose time",
+    "previousMonth": "Previous month", "nextMonth": "Next month",
+    "hour": "Hour", "minute": "Minute", "clear": "Clear", "today": "Today", "apply": "Apply"
+  },
   "filePickerFailed": "Could not open or read the file selection. Please try again.",
   "zoomIndicator": {
     "label": "Interface zoom",
     "reset": "Reset"
+  },
+  "keyboard": {
+    "enter": "Enter",
+    "escape": "Esc"
   },
   "buttons": {
     "save": "Save",
@@ -81,6 +90,10 @@
     }
   },
   "skillsTab": {
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "toggleSkill": "Enable {{name}}",
+    "enabledCount": "{{count}} of {{total}} enabled",
     "pickProject": "Open a project to manage its skills.",
     "generalChat": "General conversation",
     "refresh": "Refresh",
@@ -759,6 +772,10 @@
     },
     "tasksCompleted": "{{completed}}/{{total}} completed",
     "updatingTodos": "Updating todo list",
+    "todoList": "Todo list",
+    "todoListUpdated": "Todo list updated",
+    "toolDetails": "Details",
+    "todoProgress": "{{completed}}/{{count}} completed",
     "taskList": "Task list",
     "taskDetails": "Task details",
     "subagentResult": "Subagent result",
@@ -823,7 +840,10 @@
     "questionsCount_one": "{{count}} question",
     "questionsCount_other": "{{count}} questions",
     "reloadInterface": "Reload interface",
-    "chatLayoutError": "Messages could not be displayed. Try reloading the interface."
+    "chatLayoutError": "Messages could not be displayed. Try reloading the interface.",
+    "questionAnswered": "Answered",
+    "answersProgress": "Answered {{answered}}/{{count}}",
+    "questionTool": "Questions"
   },
   "confirmDialog": {
     "title": "Confirm action",

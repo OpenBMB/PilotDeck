@@ -3,6 +3,7 @@ import React, { memo, useMemo, useCallback } from 'react';
 import type { Project } from '../../../types/app';
 import type { SubagentChildTool } from '../types/types';
 import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
+import { TodoToolContent } from './components/ContentRenderers/TodoToolContent';
 import { OneLineDisplay, CollapsibleDisplay, ToolDiffViewer, MarkdownContent, FileListContent, TodoListContent, TaskListContent, TextContent, QuestionAnswerContent, SubagentContainer, PlanApprovedCard } from './components';
 
 type DiffLine = {
@@ -216,9 +217,9 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
         () => typeof displayConfig.title === 'function'
           ? displayConfig.title(parsedData, { toolResult })
           : displayConfig.title,
-        'Details',
+        t('uiText.toolDetails'),
       ),
-      'Details',
+      t('uiText.toolDetails'),
     );
 
     const defaultOpen = displayConfig.defaultOpen !== undefined
@@ -275,6 +276,9 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
         break;
 
       case 'todo-list':
+        if (mode === 'input' && !contentOnly && ['TodoWrite', 'todo_write'].includes(canonicalToolName)) {
+          return <TodoToolContent todos={contentProps.todos || []} resolved={Boolean(toolResult && !toolResult.isError)} />;
+        }
         if (contentProps.todos?.length > 0) {
           contentComponent = (
             <TodoListContent
@@ -321,8 +325,8 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
 
       case 'success-message': {
         const msg = toDisplayString(
-          safeCall('success message getter', toolName, () => displayConfig.getMessage?.(parsedData), 'Success'),
-          'Success',
+          safeCall('success message getter', toolName, () => displayConfig.getMessage?.(parsedData), t('status.success')),
+          t('status.success'),
         );
         contentComponent = (
           <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
@@ -336,7 +340,7 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
       }
     }
 
-    if (contentOnly) return contentComponent;
+    if (contentOnly || canonicalToolName === 'AskUserQuestion') return contentComponent;
 
     // For edit tools, make the title (filename) clickable to open the file
     const handleTitleClick = (canonicalToolName === 'Edit' || canonicalToolName === 'Write' || canonicalToolName === 'ApplyPatch') && contentProps.filePath && onFileOpen

@@ -46,11 +46,17 @@ function fixture() {
   return { root, upstream, oldSha, newSha, target, create, build, latestRelease };
 }
 
-describe('web deployment eligibility', () => {
+// These integration cases create real repositories and run dozens of Git
+// processes. Keep their budget separate from the default 5s unit-test budget.
+describe('web deployment eligibility', { timeout: 60_000 }, () => {
   it('allows a clean main checkout behind the release', async () => {
     const f = fixture();
     expect(await f.create().check()).toMatchObject({ canUpdate: true, hasUpdate: true, latest: f.target });
     expect(git(f.root, 'rev-parse', 'HEAD')).toBe(f.oldSha);
+  });
+  it.skipIf(process.platform !== 'win32')('recognizes a Windows checkout with alternate directory casing', async () => {
+    const f = fixture();
+    expect(await f.create({ projectRoot: f.root.toUpperCase() }).check()).toMatchObject({ canUpdate: true, hasUpdate: true });
   });
   it.each([
     ['development', (f) => git(f.root, 'switch', '-qc', 'feature')],
@@ -109,7 +115,7 @@ describe('web deployment eligibility', () => {
   });
 });
 
-describe('staged web updates', () => {
+describe('staged web updates', { timeout: 60_000 }, () => {
   it('installs the selected release, relocates shims, and requires a restart', async () => {
     const f = fixture(); const service = f.create();
     git(f.upstream, 'merge', '--ff-only', f.newSha);
@@ -192,7 +198,7 @@ describe('staged web updates', () => {
 });
 
 
-describe('build version metadata', () => {
+describe('build version metadata', { timeout: 60_000 }, () => {
   it('records both build locations and marks modified source as unsupported', () => {
     const f = fixture();
     mkdirSync(path.join(f.root, 'scripts'));

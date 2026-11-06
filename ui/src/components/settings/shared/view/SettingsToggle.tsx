@@ -1,4 +1,5 @@
 import { cn } from "../../../../lib/utils";
+import { useTranslation } from "react-i18next";
 import {
   queueSettingsSaveSuccess,
   showSettingsSuccess,
@@ -23,9 +24,10 @@ export default function SettingsToggle({
   successLabel = ariaLabel,
   showSuccessToast = true,
 }: SettingsToggleProps) {
+  const { t } = useTranslation('settings');
   const handleClick = () => {
     const nextValue = !checked;
-    const message = `${successLabel}已${nextValue ? "开启" : "关闭"}`;
+    const message = t(nextValue ? 'saveStatus.enabled' : 'saveStatus.disabled', { label: successLabel });
     if (showSuccessToast && suppressNextSaveToast) {
       queueSettingsSaveSuccess(message);
     }

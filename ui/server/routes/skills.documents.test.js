@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileSymlinkOrSkip } from '../test-support/symlink.js';
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), list: vi.fn() }));
 vi.mock('../pilotdeck-bridge.js', () => ({
@@ -17,7 +18,10 @@ beforeAll(async () => {
   await fs.writeFile(path.join(skillPath, 'SKILL.md'), '# Skill');
   await fs.writeFile(path.join(skillPath, 'references', 'guide.md'), '# Guide');
   await fs.writeFile(path.join(temporary, 'outside.md'), 'private');
-  await fs.symlink(path.join(temporary, 'outside.md'), path.join(skillPath, 'escape.md'));
+  const outside = path.join(temporary, 'outside');
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(outside, 'secret.md'), 'private');
+  await fs.symlink(outside, path.join(skillPath, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
   await fs.writeFile(path.join(skillPath, 'script.sh'), 'echo run');
   await fs.writeFile(path.join(skillPath, 'large.md'), 'a'.repeat(1024 * 1024 + 1));
   vi.stubEnv('PILOTDECK_BUNDLED_SKILLS_DIR', path.join(temporary, 'other-web-release', 'skills'));
@@ -56,8 +60,13 @@ it('reads a reference inside the skill folder', async () => {
   const response = await invoke('/read-document', 'references/guide.md');
   expect(response.json).toHaveBeenCalledWith({ file: 'references/guide.md', content: '# Guide' });
 });
-it.each(['../../outside.md', 'escape.md'])('rejects an escaping reference %s', async (file) => {
+it.each(['../../outside.md', 'escape/secret.md'])('rejects an escaping reference %s', async (file) => {
   expect((await invoke('/read-document', file)).status).toHaveBeenCalledWith(403);
+});
+it('rejects and omits a file symlink escaping the skill folder', async context => {
+  if (!fileSymlinkOrSkip(context, path.join(temporary, 'outside.md'), path.join(skillPath, 'escape.md'))) return;
+  expect((await invoke('/read-document', 'escape.md')).status).toHaveBeenCalledWith(403);
+  expect((await invoke('/documents')).json.mock.calls[0][0].files).not.toContain('escape.md');
 });
 it.each(['/etc/secret.md', 'script.sh'])('rejects unsupported document paths %s', async (file) => {
   expect((await invoke('/read-document', file)).status).toHaveBeenCalledWith(400);

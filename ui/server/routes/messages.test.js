@@ -9,6 +9,32 @@ afterEach(() => {
 });
 
 describe('message routes', () => {
+  it('retains authoritative timing on a historical turn anchor', async () => {
+    const turnTiming = { startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z', finishReason: 'model_error' };
+    vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+      withPilotDeckGatewayReadRetry: async () => ({ messages: [{ id: 'user', turnId: 'r', kind: 'text', role: 'user', text: 'Inspect', turnTiming }] }),
+    }));
+    const { default: routes } = await import('./messages.js'); const app = express(); app.use('/api/sessions', routes); const server = app.listen(0);
+    try {
+      const body = await (await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/s/messages`)).json();
+      expect(body.messages[0].turnTiming).toEqual(turnTiming);
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
+  it('forwards backward identity cursors and history replacement without converting them to offsets', async () => {
+    const read = vi.fn(async () => ({ messages: [], total: 250, nextCursor: 'before:old-user', historyReset: true }));
+    vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+      withPilotDeckGatewayReadRetry: operation => operation({ readSessionMessages: read }),
+    }));
+    const { default: routes } = await import('./messages.js');
+    const app = express(); app.use('/api/sessions', routes); const server = app.listen(0);
+    try {
+      const body = await (await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/s/messages?direction=backward&cursor=before%3Acurrent-user&limit=100`)).json();
+      expect(read.mock.calls[0][0]).toMatchObject({ sessionKey: 's', direction: 'backward', cursor: 'before:current-user', limit: 100 });
+      expect(body).toMatchObject({ hasMore: true, nextCursor: 'before:old-user', historyReset: true, total: 250 });
+      await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/s/messages?direction=backward&includeFromId=old-user&limit=100`);
+      expect(read.mock.calls[1][0]).toMatchObject({ direction: 'backward', includeFromId: 'old-user', limit: 100 });
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
   it('forwards context inspection only when explicitly requested and keeps it out of normal history', async () => {
     const breakdown = { systemTokens: 2200, toolsTokens: 10200, messageTokens: 65500 };
     const read = vi.fn(async () => ({ messages: [], modelContext: { version: 1, systemPrompt: 'real prompt', breakdown } }));
@@ -90,5 +116,21 @@ it.each(['generate_video', 'save_generated_video'])('retains %s attachment ident
   try {
     const response = await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/web:session/messages`);
     expect((await response.json()).messages[0]).toMatchObject({ kind: 'tool_result', toolId: 'video-call', toolUseResult: { videoGeneration } });
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+it.each(['ask_user_question', 'AskUserQuestion'])('retains %s answers and multi-select boundaries through HTTP history recovery', async toolName => {
+  const payload = { questions: [{ question: 'Which paths?', header: 'Scope', multiSelect: true,
+    options: [{ label: 'A, B', description: 'A combined label' }, { label: 'C', description: 'Another path' }] }],
+    answers: { 'Which paths?': ['A, B', 'C', 'Custom, answer'] } };
+  vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+    withPilotDeckGatewayReadRetry: vi.fn(async () => ({ messages: [{ id: 'answer-result', kind: 'tool_result', toolName,
+      toolCallId: 'question-call', text: 'User has answered', ok: true, payload }] })),
+  }));
+  const { default: routes } = await import('./messages.js');
+  const app = express(); app.use('/api/sessions', routes); const server = app.listen(0);
+  try {
+    const response = await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/question-session/messages`);
+    expect((await response.json()).messages[0]).toMatchObject({ kind: 'tool_result', toolId: 'question-call', toolUseResult: payload });
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });

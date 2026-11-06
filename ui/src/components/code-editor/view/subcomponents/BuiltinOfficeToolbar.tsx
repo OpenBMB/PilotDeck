@@ -171,7 +171,7 @@ export default function BuiltinOfficeToolbar({
       <Separator />
       <button
         type="button"
-        className={`${buttonClass} ${searchOpen ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' : ''}`}
+        className={`${buttonClass} ${searchOpen ? 'bg-[var(--pd-accent-soft,#eff6ff)] text-[var(--pd-accent-strong,#1d4ed8)] dark:bg-[var(--pd-accent-soft,#172554)] dark:text-[var(--pd-accent-strong,#93c5fd)]' : ''}`}
         title={t('builtinOfficePreview.search')}
         aria-label={t('builtinOfficePreview.search')}
         onClick={() => {

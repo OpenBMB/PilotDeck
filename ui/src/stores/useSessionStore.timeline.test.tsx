@@ -1,8 +1,15 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { useSessionStore, type NormalizedMessage } from './useSessionStore';
 vi.mock('../utils/api', () => ({ authenticatedFetch: (...args: unknown[]) => fetch(...args as Parameters<typeof fetch>), readAgentStatusErrorFromResponse: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
+let gatewayEventToFrames: (event: unknown, sessionId: string, provider: string) => NormalizedMessage[];
+beforeAll(async () => {
+  // Load the real backend once, before any React hooks or fetch mocks exist.
+  // Its cold dependency graph is setup work, not part of a 5s UI assertion.
+  const bridgePath = '../../server/pilotdeck-bridge.js';
+  ({ gatewayEventToFrames } = await import(bridgePath));
+}, 60_000);
 const thought = (revision: number, content: string, offset?: number): NormalizedMessage => ({
   id: 'wire', sessionId: 's', runId: 'run', kind: 'thinking', provider: 'pilotdeck', timestamp: '2026-01-01', content,
   timeline: { version: 1, turnId: 'run', id: 'thought', order: 0, revision, offset },
@@ -106,7 +113,7 @@ it.each(['fetchFromServer', 'refreshFromServer'] as const)('%s replaces remotely
   expect(result.current.getMessages('s').some(m => m.content?.includes('old answer'))).toBe(false);
 });
 
-it('a partial history page does not remove previously confirmed timeline blocks', async () => {
+it('a replacement partial page evicts an older reply together with its user anchor', async () => {
   let messages = [user('old', 'Old question'), answer('old', 'Old answer')];
   let hasMore = false;
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ messages, hasMore }))));
@@ -115,7 +122,7 @@ it('a partial history page does not remove previously confirmed timeline blocks'
   messages = [user('new', 'New question'), answer('new', 'New answer')];
   hasMore = true;
   await act(async () => { await result.current.fetchFromServer('s', { limit: 2 }); });
-  expect(result.current.getMessages('s').some(m => m.content === 'Old answer')).toBe(true);
+  expect(result.current.getMessages('s').map(m => m.content)).toEqual(['New question', 'New answer']);
 });
 
 it.each(['fetchFromServer', 'refreshFromServer'] as const)('%s preserves child errors through cached and restored protocol updates', async (method) => {
@@ -144,11 +151,6 @@ it.each(['fetchFromServer', 'refreshFromServer'] as const)('%s preserves child e
 
 for (const method of ['fetchFromServer', 'refreshFromServer'] as const) {
   it.each(['http-first', 'ws-first'])(`${method} deduplicates restored child errors (%s) without merging separate failures`, async (order) => {
-    // Runtime import keeps Node-only bridge dependencies out of browser types.
-    const bridgePath = '../../server/pilotdeck-bridge.js';
-    const { gatewayEventToFrames } = await import(bridgePath) as {
-      gatewayEventToFrames: (event: unknown, sessionId: string, provider: string) => NormalizedMessage[];
-    };
     const event = { type: 'agent_status', runId: 'run', event: 'subagent_model_error',
       detail: { subagentId: 'child', errorId: 'failure-1', message: 'Timed out' } };
     // Each transport independently deserializes and converts the same event.

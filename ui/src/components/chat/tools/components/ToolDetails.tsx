@@ -10,8 +10,20 @@ export function ToolDetails({ title, copyContent, copyLabel, children, footer }:
   const [copied, setCopied] = useState(false);
   const [full, setFull] = useState(false);
   const [overflows, setOverflows] = useState(false);
+  const [naturalHeight, setNaturalHeight] = useState(320);
   const viewport = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   useEffect(() => setCopied(false), [copyContent]);
+  useLayoutEffect(() => {
+    const element = content.current;
+    if (!element) return;
+    const measure = () => setNaturalHeight(Math.ceil(element.getBoundingClientRect().height) + 12);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [children]);
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element || full) return;
@@ -27,14 +39,16 @@ export function ToolDetails({ title, copyContent, copyLabel, children, footer }:
       <header className="flex min-w-0 items-center justify-between gap-3 px-3.5 py-2 text-xs text-neutral-500 dark:text-neutral-400">
         <div className="min-w-0 truncate">{title}</div>
         <div className="flex shrink-0 items-center gap-3">
-          {(overflows || full) && <button type="button" onClick={() => setFull(!full)} aria-expanded={full} className="hover:text-[var(--pd-accent-strong,#7c3aed)] dark:hover:text-violet-400">{t(full ? 'toolDisplay.collapse' : 'toolDisplay.full')}</button>}
-          {copyContent != null && <button type="button" aria-label={copyLabel || t('toolDisplay.copy')} title={copyLabel || t('toolDisplay.copy')} className="rounded p-1 hover:text-[var(--pd-accent-strong,#7c3aed)] focus-visible:outline-[var(--pd-accent,#8b5cf6)] dark:hover:text-violet-400" onClick={async () => { if (await copyTextToClipboard(copyContent)) setCopied(true); }}>
+          {(overflows || full) && <button type="button" onClick={() => setFull(!full)} aria-expanded={full} className="hover:text-[var(--pd-accent-strong,#7c3aed)] dark:hover:text-[var(--pd-accent-strong,#a78bfa)]">{t(full ? 'toolDisplay.collapse' : 'toolDisplay.full')}</button>}
+          {copyContent != null && <button type="button" aria-label={copyLabel || t('toolDisplay.copy')} title={copyLabel || t('toolDisplay.copy')} className="rounded p-1 hover:text-[var(--pd-accent-strong,#7c3aed)] focus-visible:outline-[var(--pd-accent,#8b5cf6)] dark:hover:text-[var(--pd-accent-strong,#a78bfa)]" onClick={async () => { if (await copyTextToClipboard(copyContent)) setCopied(true); }}>
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </button>}
         </div>
       </header>
-      <div ref={viewport} role="region" tabIndex={0} aria-label={t('toolDisplay.details')} className={`overflow-auto overscroll-contain px-3.5 pb-3 text-[12px] leading-5 focus-visible:outline-[var(--pd-accent,#8b5cf6)] ${full ? '' : 'max-h-80'}`}>
-        {children}
+      <div ref={viewport} role="region" tabIndex={0} aria-label={t('toolDisplay.details')}
+        style={{ maxHeight: full ? Math.max(320, naturalHeight) : 320, scrollbarGutter: 'stable' }}
+        className="overflow-auto overscroll-contain px-3.5 pb-3 text-[12px] leading-5 transition-[max-height] duration-200 ease-out focus-visible:outline-[var(--pd-accent,#8b5cf6)] motion-reduce:transition-none">
+        <div ref={content} className="flow-root min-w-0">{children}</div>
       </div>
       {footer && <footer className="flex justify-end gap-2 px-3.5 pb-2.5 text-xs text-neutral-500 dark:text-neutral-400">{footer}</footer>}
     </section>

@@ -106,6 +106,8 @@ export type WebMessage = {
   kind: WebMessageKind;
   /** Logical agent turn that owns this message. Stable across live/history projections. */
   turnId?: string;
+  /** Authoritative execution bounds from a persisted turn result. */
+  turnTiming?: { startedAt: string; completedAt: string; finishReason?: string };
   /** Shared identity of a model output block in live events and history. */
   blockId?: string;
   timeline?: TimelinePosition;
@@ -315,6 +317,8 @@ export function applyWebGatewayEvent(
 
     case "tool_call_finished": {
       const normalizedErrorCode = normalizeToolErrorCode(event.errorCode, event.resultPreview);
+      const presentationData = event.data?.imageGeneration || event.data?.answers
+        ? event.data : undefined;
       const eventImages =
         Array.isArray(event.images) && event.images.length > 0
           ? event.images.map((image) => ({
@@ -334,7 +338,7 @@ export function applyWebGatewayEvent(
                   ok: event.ok,
                   text: limitToolResultPreview(event.resultPreview) ?? m.text,
                   ...(eventImages ? { images: eventImages } : {}),
-                  ...(event.data?.imageGeneration ? { payload: event.data } : {}),
+                  ...(presentationData ? { payload: presentationData } : {}),
                   ...(normalizedErrorCode && { errorCode: normalizedErrorCode }),
                 }
               : m,
@@ -354,7 +358,7 @@ export function applyWebGatewayEvent(
         ok: event.ok,
         text: limitToolResultPreview(event.resultPreview),
         ...(eventImages ? { images: eventImages } : {}),
-                  ...(event.data?.imageGeneration ? { payload: event.data } : {}),
+        ...(presentationData ? { payload: presentationData } : {}),
         ...(normalizedErrorCode && { errorCode: normalizedErrorCode }),
         source: "live",
       };
@@ -485,6 +489,7 @@ export function applyWebGatewayEvent(
         kind: "complete",
         usage: event.usage,
         finishReason: event.finishReason,
+        ...(event.startedAt && event.completedAt ? { turnTiming: { startedAt: event.startedAt, completedAt: event.completedAt, finishReason: event.finishReason } } : {}),
         source: "live",
       };
       return {

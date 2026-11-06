@@ -369,6 +369,7 @@ describe("usePilotDeckConfig saves", () => {
       "model.providers.provider1.apiKey is required",
     );
     expect(result.current.raw).toBe("confirmed");
+    expect(result.current.confirmedRaw).toBe("confirmed");
     expect(result.current.isDirty).toBe(false);
   });
 
@@ -407,6 +408,7 @@ describe("usePilotDeckConfig saves", () => {
       error: "Reload failed after write",
     });
     expect(result.current.raw).toBe("possibly saved draft");
+    expect(result.current.confirmedRaw).toBe("confirmed");
     expect(result.current.isDirty).toBe(true);
   });
 

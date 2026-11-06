@@ -56,7 +56,7 @@ function CommitButtons({
         type="button"
         onClick={onSave}
         disabled={!canSave}
-        className="rounded border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] text-[var(--pd-accent-strong,#4948cf)] transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {t("settingsPage.actions.save")}
       </button>
@@ -391,50 +391,34 @@ export function Select({
   const selectedOption = options.find((opt) => opt.value === value);
   const selectedLabel = selectedOption?.label ?? "";
   return (
-    <div className="relative min-w-0">
-      <div
-        className={cn(
-          "pointer-events-none flex w-full min-w-0 items-center rounded-md border border-border bg-background px-2 py-1.5 pr-8 text-[13px] leading-5",
-          selectedOption?.disabled || disabled
-            ? "bg-muted/40 text-muted-foreground"
-            : "text-foreground",
-        )}
-      >
-        <span className="block min-w-0 truncate" title={selectedLabel}>
-          {selectedLabel}
-        </span>
-      </div>
-      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-        ▾
-      </span>
-      <select
-        value={value ?? ""}
-        onChange={(e) => {
-          const nextValue = e.target.value;
-          const nextLabel =
-            options.find((option) => option.value === nextValue)?.label ??
-            nextValue;
-          if (fieldLabel) {
-            queueSettingsSaveSuccess(
-              `${fieldLabel}已切换为 ${nextLabel}`,
-            );
-          }
-          onChange(nextValue);
-        }}
-        disabled={disabled}
-        className={cn(
-          "absolute inset-0 h-full w-full opacity-0",
-          disabled ? "cursor-default" : "cursor-pointer",
-        )}
-        aria-label={selectedLabel}
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value} disabled={opt.disabled}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <select
+      value={value ?? ""}
+      onChange={(e) => {
+        const nextValue = e.target.value;
+        const nextLabel =
+          options.find((option) => option.value === nextValue)?.label ??
+          nextValue;
+        if (fieldLabel) {
+          queueSettingsSaveSuccess(
+            `${fieldLabel}已切换为 ${nextLabel}`,
+          );
+        }
+        onChange(nextValue);
+      }}
+      disabled={disabled}
+      className={cn(
+        "w-full min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-[13px] leading-5",
+        selectedOption?.disabled || disabled ? "bg-muted/40 text-muted-foreground" : "text-foreground",
+      )}
+      title={selectedLabel}
+      aria-label={selectedLabel}
+    >
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
   );
 }
 

@@ -44,6 +44,11 @@ const permissionRequiredMessage: ChatMessage = {
 };
 
 describe('MessageComponent tool errors', () => {
+  it.each([undefined, 'tool_execution_failed'])('does not offer a local permission grant for remote fetch failure text (%s)', errorCode => {
+    renderToolMessage({ ...permissionRequiredMessage, toolName: 'web_fetch', toolInput: { url: 'https://example.com' },
+      toolResult: { isError: true, errorCode, content: 'HTTP 403: Permission denied; the remote site requires authentication.' } });
+    expect(screen.queryByRole('button', { name: /permissions\.grant|Grant .* for this chat/ })).toBeNull();
+  });
   it('opens the dedicated search settings for web-search setup errors', () => {
     const openSettings = vi.fn();
     window.openSettings = openSettings;

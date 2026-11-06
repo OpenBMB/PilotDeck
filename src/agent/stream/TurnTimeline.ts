@@ -4,7 +4,7 @@ import type { TimelinePosition } from '../../model/protocol/timeline.js';
 
 /** One allocator owns live and durable coordinates for a turn. */
 export class TurnTimeline {
-  constructor(private readonly turnId: string) {}
+  constructor(private readonly turnId: string, private readonly now: () => number = Date.now) {}
   private lastModelPosition?: TimelinePosition;
   private previousId?: string;
   private nextOrder = 0;
@@ -12,6 +12,14 @@ export class TurnTimeline {
   private positions = new Map<string, TimelinePosition>();
   private provisionalTools = new Set<string>();
   private offsets = new Map<string, number>();
+  private thinking?: { id: string; startedAt: number };
+
+  private finishThinking(): void {
+    if (!this.thinking) return;
+    const { id, startedAt } = this.thinking;
+    this.positions.set(id, { ...this.update(id), durationMs: Math.max(0, this.now() - startedAt) });
+    this.thinking = undefined;
+  }
 
   position(id: string, provisional = false): TimelinePosition {
     let position = this.positions.get(id);
@@ -41,6 +49,7 @@ export class TurnTimeline {
   }
 
   message(message: CanonicalMessage): void {
+    if (message.role === 'assistant') this.finishThinking();
     for (const block of message.content) {
       const id = (block.type === 'text' || block.type === 'thinking') ? block.blockId
         : block.type === 'tool_call' ? `tool:${block.id}`
@@ -53,6 +62,10 @@ export class TurnTimeline {
   }
 
   event(event: AgentEvent): AgentEvent {
+    if (event.type === 'model_request_started' || (event.type === 'model_event' && (
+      (event.event.type === 'thinking_delta' && event.blockId !== this.thinking?.id)
+      || ['text_delta', 'tool_call_start', 'tool_call_end', 'message_end', 'error'].includes(event.event.type)
+    ))) this.finishThinking();
     if (event.type === 'model_request_started') {
       for (const id of this.provisionalTools) this.positions.delete(id);
       this.provisionalTools.clear();
@@ -65,6 +78,11 @@ export class TurnTimeline {
     }
     if (event.type === 'model_event' && event.blockId &&
         (event.event.type === 'text_delta' || event.event.type === 'thinking_delta')) {
+      if (event.event.type === 'thinking_delta' && !this.thinking) {
+        const startedAt = this.now();
+        this.thinking = { id: event.blockId, startedAt };
+        this.positions.set(event.blockId, { ...this.position(event.blockId), startedAt: new Date(startedAt).toISOString() });
+      }
       const offset = this.offsets.get(event.blockId) ?? 0;
       this.offsets.set(event.blockId, offset + event.event.text.length);
       this.lastModelPosition = this.update(event.blockId);

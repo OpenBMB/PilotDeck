@@ -171,7 +171,7 @@ try {
       if (width === 76) await page.screenshot({ path: path.join(artifactDir, 'mac-compact-sidebar.png') });
     }
     await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    // The original compact logo still expands the sidebar below the controls.
+    // The compact expansion control stays below the native window controls.
     const resizer = await page.locator('.sidebar-resizer').boundingBox();
     await page.mouse.move(resizer.x, resizer.y + 180); await page.mouse.down();
     await page.mouse.move(resizer.x - 144, resizer.y + 180); await page.mouse.up();
@@ -208,21 +208,27 @@ try {
     expect(await app.evaluate(({ nativeTheme }) => nativeTheme.shouldUseDarkColors)).toBe(true);
     const caption = page.locator('#pilotdeck-window-caption');
     await expect(caption.locator('button')).toHaveCount(5);
-    await expect(caption).toHaveCSS('background-color', 'rgb(23, 23, 23)');
-    await expect(page.locator('.project-sidebar')).toHaveCSS('background-color', 'rgb(10, 10, 10)');
+    await expect(caption).toHaveCSS('background-color', 'rgb(43, 44, 46)');
+    await expect(page.locator('.project-sidebar')).toHaveCSS('background-color', 'rgb(43, 44, 46)');
     // Both platforms delegate popup rendering and keyboard navigation to Electron.
-    for (const [label, id] of [['File', 'menu-file'], ['Edit', 'menu-edit'], ['View', 'menu-view']]) {
+    const menuCycle = [['File', 'menu-file'], ['Edit', 'menu-edit'], ['View', 'menu-view']];
+    // Exercise repeated native teardown before reusing the same caption entries.
+    for (const [label, id] of [...menuCycle, ...menuCycle, ...menuCycle]) {
+      console.log(`[desktop-chrome] opening native ${id}`);
       await caption.getByRole('button', { name: label, exact: true }).click();
-      await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe(id);
       await expect(caption.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-expanded', 'true');
-      await app.evaluate(() => global.chromeTest.closeMenu());
+      // Avoid main-process debugger evaluation inside the native popup loop.
+      // Renderer IPC acknowledges closure after the native teardown completes.
+      await page.evaluate(() => window.pilotdeckChromeFixture.closeMenu());
       // Native closePopup completes asynchronously (notably GTK/X11). Wait for
       // the real close callback and renderer state before the next mouse click.
       await expect(caption.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-expanded', 'false');
+      await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe(id);
+      console.log(`[desktop-chrome] closed native ${id}`);
     }
     await page.keyboard.press('F10');
+    await page.evaluate(() => window.pilotdeckChromeFixture.closeMenu());
     await expect.poll(() => app.evaluate(() => global.chromeTest.menuRequests().at(-1)?.id)).toBe('all');
-    await app.evaluate(() => global.chromeTest.closeMenu());
     await expect(page.locator('#pilotdeck-linux-popup')).toHaveCount(0);
   }
   const command = async id => {
@@ -326,14 +332,16 @@ try {
     const logoGeometry = selector => page.locator(selector).evaluate(el => {
       const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
     });
-    const settingsLogo = await logoGeometry('.sidebar-brand-logo:visible');
-    expect(settingsLogo).toEqual({ x: 12, y: 60.5, width: 165, height: 36 });
+    const settingsLogo = await logoGeometry('.sidebar-brand .brand-wordmark');
+    expect(settingsLogo).toMatchObject({ x: 24, y: 66.5, height: 24 });
+    expect(settingsLogo.width).toBeLessThan(165);
+    await expect(page.locator('.sidebar-brand .brand-wordmark-image:visible')).toHaveCSS('width', '152px');
     await page.goto('http://127.0.0.1:5187/p/demo');
     await expect(page.locator('.sidebar-brand-row')).toBeVisible();
     expect(await logoGeometry('.brand-lockup')).toEqual(settingsLogo);
     await page.goto('http://127.0.0.1:5187/settings/about');
     await expect(page.getByText('AGPL-3.0-only', { exact: true })).toBeVisible();
-    console.log('PASS: workspace/settings logos share original 165x36 size and x/y alignment');
+    console.log('PASS: workspace/settings wordmarks share the smaller size and x/y alignment');
   }
   const previousChecks = await app.evaluate(() => global.chromeTest.checks());
   await command('check-updates');
@@ -362,7 +370,7 @@ try {
   expect(await pageIdentity()).toEqual(darkPageIdentity);
   await page.screenshot({ path: path.join(artifactDir, `${platformName}-light.png`) });
   if (!mac) {
-    await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', 'rgb(244, 244, 245)');
+    await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', process.platform === 'win32' ? 'rgba(0, 0, 0, 0)' : 'rgb(244, 244, 245)');
     await verifyOriginalContentStyle();
     await expect(page.locator('.project-sidebar')).toHaveCSS('background-image', 'linear-gradient(rgb(251, 250, 255), rgb(244, 243, 255) 58%, rgb(240, 244, 255))');
 

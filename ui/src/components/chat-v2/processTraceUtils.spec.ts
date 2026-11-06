@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { createTestI18n } from '../../i18n/testInstance';
 import { formatProcessDuration } from './processTraceUtils';
+
+const i18n = await createTestI18n();
 
 describe('formatProcessDuration', () => {
   it.each([
@@ -19,6 +22,13 @@ describe('formatProcessDuration', () => {
     { label: 'days omit second-level noise', ms: 98_159_000, expected: '1d 3h 15m' },
     { label: 'days omit zero-value hours', ms: 87_300_000, expected: '1d 15m' },
   ])('formats $label', ({ ms, expected }) => {
-    expect(formatProcessDuration(ms)).toBe(expected);
+    expect(formatProcessDuration(ms, i18n.getFixedT('en', 'chat'))).toBe(expected);
+  });
+
+  it.each([
+    [undefined, '0 秒'], [82_000, '1 分 22 秒'], [4_931_000, '1 小时 22 分 11 秒'],
+    [98_159_000, '1 天 3 小时 15 分'],
+  ])('localizes duration units in Chinese (%s)', (ms, expected) => {
+    expect(formatProcessDuration(ms, i18n.getFixedT('zh-CN', 'chat'))).toBe(expected);
   });
 });

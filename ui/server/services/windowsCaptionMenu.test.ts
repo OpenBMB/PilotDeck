@@ -40,6 +40,9 @@ it('switches on native cursor hover at zoomed coordinates without renderer event
   f.move(270, 170); // outside caption: do not switch
   expect(f.popups[1].closePopup).not.toHaveBeenCalled();
   f.popups[1].options.callback(); // Escape/outside click completes the session
+  expect(closed).toBe(false);
+  expect(f.owner.webContents.send).toHaveBeenLastCalledWith('pilotdeck:caption-menu', 'menu-edit');
+  await vi.advanceTimersByTimeAsync(1);
   await done;
   expect(closed).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
@@ -58,7 +61,10 @@ it('coalesces repeated click requests during native close and ignores stale call
   expect(f.owner.webContents.send).toHaveBeenLastCalledWith('pilotdeck:caption-menu', 'menu-view');
   f.controller.close();
   f.popups[1].options.callback();
+  expect(f.owner.webContents.send).toHaveBeenLastCalledWith('pilotdeck:caption-menu', 'menu-view');
+  await vi.advanceTimersByTimeAsync(1);
   await Promise.all([first, second, third]);
+  expect(f.owner.webContents.send).toHaveBeenLastCalledWith('pilotdeck:caption-menu', null);
   expect(vi.getTimerCount()).toBe(0);
 });
 
@@ -70,8 +76,26 @@ it('cancels pending transitions when navigating away and rejects unknown menus',
   const second = f.controller.show({ id: 'menu-edit', buttons: f.buttons });
   f.owner.webContents.emit('did-start-navigation', {}, 'https://example.test', false, true);
   f.popups[0].options.callback();
+  expect(f.owner.webContents.send).toHaveBeenLastCalledWith('pilotdeck:caption-menu', 'menu-file');
+  await vi.advanceTimersByTimeAsync(1);
   await Promise.all([first, second]);
   await vi.advanceTimersByTimeAsync(100);
+  expect(f.popups).toHaveLength(1);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('explicit close stops native hover tracking and acknowledges only deferred settlement', async () => {
+  const f = fixture();
+  const shown = f.controller.show({ id: 'menu-file', buttons: f.buttons });
+  let closed = false;
+  const closing = f.controller.close().then(() => { closed = true; });
+  f.move(185, 110);
+  expect(f.popups[0].closePopup).toHaveBeenCalledOnce();
+  f.popups[0].options.callback();
+  expect(closed).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);
+  await Promise.all([shown, closing]);
+  expect(closed).toBe(true);
   expect(f.popups).toHaveLength(1);
   expect(vi.getTimerCount()).toBe(0);
 });

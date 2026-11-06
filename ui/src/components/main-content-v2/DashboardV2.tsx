@@ -699,7 +699,7 @@ const TIER_COLORS: Record<string, string> = {
   SIMPLE: 'bg-emerald-400 dark:bg-emerald-500',
   MEDIUM: 'bg-blue-400 dark:bg-blue-500',
   COMPLEX: 'bg-amber-400 dark:bg-amber-500',
-  REASONING: 'bg-[var(--pd-accent,#c084fc)] dark:bg-purple-500',
+  REASONING: 'bg-purple-400 dark:bg-purple-500',
   HARD: 'bg-red-400 dark:bg-red-500',
 };
 
@@ -1042,17 +1042,17 @@ function RequestLogRow({ entry, variant }: { entry: RequestLogEntry; variant: 'm
   const bgClass = isTool
     ? 'bg-amber-50/40 dark:bg-amber-900/10'
     : isSub
-      ? 'bg-[var(--pd-accent-soft,#f5f3ff)]/40 dark:bg-violet-900/10'
+      ? 'bg-[var(--pd-accent-soft,#f5f3ff)] dark:bg-[var(--pd-accent-soft,#4c1d95)]'
       : 'bg-neutral-50 dark:bg-neutral-900/30';
   const tierClass = isTool
     ? 'bg-amber-100 text-amber-600 dark:bg-amber-800/40 dark:text-amber-400'
     : isSub
-      ? 'bg-[var(--pd-accent-soft,#ede9fe)] text-[var(--pd-accent-strong,#7c3aed)] dark:bg-violet-800/40 dark:text-violet-400'
+      ? 'bg-[var(--pd-accent-soft,#ede9fe)] text-[var(--pd-accent-strong,#7c3aed)] dark:bg-[var(--pd-accent-soft,#5b21b6)] dark:text-[var(--pd-accent-strong,#a78bfa)]'
       : 'bg-neutral-200/70 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400';
   const badgeClass = isTool
     ? 'bg-amber-50 text-amber-500 dark:bg-amber-900/20 dark:text-amber-400'
     : isSub
-      ? 'bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent,#8b5cf6)] dark:bg-violet-900/20 dark:text-violet-400'
+      ? 'bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#8b5cf6)] dark:bg-[var(--pd-accent-soft,#4c1d95)] dark:text-[var(--pd-accent-strong,#a78bfa)]'
       : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-500';
   const badgeLabel = isTool
     ? t('dashboard.session.toolShort', { defaultValue: 'tool' })
@@ -1148,7 +1148,7 @@ function SessionRow({ session }: { session: DashboardSession }) {
         {routing ? (
           <div className="flex shrink-0 items-center gap-2">
             {isOrchestrated && (
-              <span className="text-xxs rounded bg-[var(--pd-accent-soft,#ede9fe)] px-1.5 py-0.5 font-medium text-[var(--pd-accent-strong,#7c3aed)] dark:bg-violet-900/40 dark:text-violet-400">
+              <span className="text-xxs rounded bg-[var(--pd-accent-soft,#ede9fe)] px-1.5 py-0.5 font-medium text-[var(--pd-accent-strong,#7c3aed)] dark:bg-[var(--pd-accent-soft,#4c1d95)] dark:text-[var(--pd-accent-strong,#a78bfa)]">
                 {t('dashboard.session.orchestrated', { defaultValue: 'orchestrated' })}
               </span>
             )}
@@ -1216,11 +1216,11 @@ function SessionRow({ session }: { session: DashboardSession }) {
                     </div>
                   )}
                   {subRole && (
-                    <div className="rounded-lg border border-[var(--pd-accent-border,#ddd6fe)]/60 bg-[var(--pd-accent-soft,#f5f3ff)]/30 px-3 py-2 dark:border-violet-700/30 dark:bg-violet-900/10">
-                      <div className="text-xxs font-medium text-[var(--pd-accent-strong,#6d28d9)] dark:text-violet-300">
+                    <div className="rounded-lg border border-[var(--pd-accent-border,#ddd6fe)] bg-[var(--pd-accent-soft,#f5f3ff)] px-3 py-2 dark:border-[var(--pd-accent-border,#6d28d9)] dark:bg-[var(--pd-accent-soft,#4c1d95)]">
+                      <div className="text-xxs font-medium text-[var(--pd-accent-strong,#6d28d9)] dark:text-[var(--pd-accent-strong,#c4b5fd)]">
                         {t('dashboard.session.subagents', { defaultValue: 'Sub-agents' })}
                       </div>
-                      <div className="mt-0.5 text-xxs tabular-nums text-[var(--pd-accent-strong,#7c3aed)] dark:text-violet-400">
+                      <div className="mt-0.5 text-xxs tabular-nums text-[var(--pd-accent-strong,#7c3aed)] dark:text-[var(--pd-accent-strong,#a78bfa)]">
                         {t('dashboard.units.requestsShort', {
                           count: subRole.requestCount,
                           defaultValue: `${subRole.requestCount} req`,
@@ -1266,11 +1266,11 @@ function SessionRow({ session }: { session: DashboardSession }) {
                     </div>
                   )}
                   {subRole && (
-                    <div className="rounded-lg border border-[var(--pd-accent-border,#ddd6fe)]/60 bg-[var(--pd-accent-soft,#f5f3ff)]/30 px-3 py-2 dark:border-violet-700/30 dark:bg-violet-900/10">
-                      <div className="text-xxs font-medium text-[var(--pd-accent-strong,#6d28d9)] dark:text-violet-300">
+                    <div className="rounded-lg border border-[var(--pd-accent-border,#ddd6fe)] bg-[var(--pd-accent-soft,#f5f3ff)] px-3 py-2 dark:border-[var(--pd-accent-border,#6d28d9)] dark:bg-[var(--pd-accent-soft,#4c1d95)]">
+                      <div className="text-xxs font-medium text-[var(--pd-accent-strong,#6d28d9)] dark:text-[var(--pd-accent-strong,#c4b5fd)]">
                         {t('dashboard.session.subagents', { defaultValue: 'Sub-agents' })}
                       </div>
-                      <div className="mt-0.5 text-xxs tabular-nums text-[var(--pd-accent-strong,#7c3aed)] dark:text-violet-400">
+                      <div className="mt-0.5 text-xxs tabular-nums text-[var(--pd-accent-strong,#7c3aed)] dark:text-[var(--pd-accent-strong,#a78bfa)]">
                         {t('dashboard.units.requestsShort', {
                           count: subRole.requestCount,
                           defaultValue: `${subRole.requestCount} req`,

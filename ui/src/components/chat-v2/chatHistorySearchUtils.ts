@@ -244,7 +244,7 @@ export function scrollToMessageIndex(
 
   let offset = 0;
   for (let index = 0; index < messageIndex; index += 1) {
-    offset += Math.max(1, itemHeights[index] ?? 0);
+    offset += Math.max(0, itemHeights[index] ?? 0);
   }
 
   const targetTop = Math.max(0, offset - container.clientHeight * 0.25);

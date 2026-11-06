@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Check, Copy, GitBranch, Loader2, Pencil } from 'lucide-react';
 import { copyTextToClipboard } from '../../utils/clipboard';
-import TurnChangesCard from '../chat-review/TurnChangesCard';
 import { isImeEnterEvent } from '../../utils/ime.js';
 import { cn } from '../../lib/utils.js';
 import type { Project, SessionProvider } from '../../types/app';
@@ -29,12 +28,13 @@ import ConversationError from '../chat/view/subcomponents/ConversationError';
 import ImageLightbox, { type LightboxImage } from '../chat/view/subcomponents/ImageLightbox';
 import { Markdown } from '../chat/view/subcomponents/Markdown';
 import { formatUsageLimitText } from '../chat/utils/chatFormatting';
+import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
+import { useUploadedAttachmentPreviews } from '../chat/hooks/useUploadedAttachmentPreviews';
 import { ProcessTrace } from './ProcessTrace';
 import { isSingleToolProcess, processSummaryToTrace, type ProcessAttachment } from './processGrouping';
 import SubagentCard from './SubagentCard';
 import { useTypewriter } from './useTypewriter';
 import { ThinkingBlock } from './ThinkingBlock';
-import { useUploadedAttachmentPreviews } from '../chat/hooks/useUploadedAttachmentPreviews';
 import DocumentReferenceChip from './DocumentReferenceChip';
 import ReplyQuoteChip from './ReplyQuoteChip';
 import { UserAttachmentCards } from './MessageFileCards';
@@ -101,6 +101,8 @@ type MessageRowV2Props = {
   autoExpandTools?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
+  animateTextOnMount?: boolean;
+  presentedReplyKeys?: Set<string>;
   isProcessExpanded?: (processKey: string, defaultExpanded?: boolean) => boolean;
   onProcessExpandedChange?: (processKey: string, expanded: boolean) => void;
   isToolSectionExpanded?: (sectionKey: string, defaultExpanded?: boolean) => boolean;
@@ -146,6 +148,8 @@ function MessageRowV2({
   autoExpandTools,
   showThinking,
   inlineThinking,
+  animateTextOnMount = false,
+  presentedReplyKeys,
   isProcessExpanded,
   onProcessExpandedChange,
   isToolSectionExpanded,
@@ -169,7 +173,14 @@ function MessageRowV2({
     () => formatUsageLimitText(String(message.content ?? '')),
     [message.content],
   );
-  const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6);
+  const replyKey = getIntrinsicMessageKey(message);
+  const contentDisplayText = useTypewriter(formattedContent, !!message.isStreaming && !message.isThinking, 6,
+    animateTextOnMount, Boolean(replyKey && presentedReplyKeys?.has(replyKey)));
+  useEffect(() => {
+    // Virtual rows may unmount while the run continues. Their next mount must
+    // show the available text immediately instead of collapsing and replaying it.
+    if (replyKey && message.type === 'assistant' && !message.isThinking && !delegate) presentedReplyKeys?.add(replyKey);
+  }, [replyKey, message.type, message.isThinking, delegate, presentedReplyKeys]);
   const assistantArtifacts = useMemo(
     () => (Array.isArray(message.artifacts) ? message.artifacts : []),
     [message.artifacts],
@@ -331,7 +342,7 @@ function MessageRowV2({
 
   if (delegate) {
     return withProcessRows(
-      <div className="ui-v2-legacy-row min-w-0 w-full">
+      <div className="ui-v2-legacy-row w-full min-w-0">
         <MessageComponent
           message={message}
           prevMessage={prevMessage}
@@ -435,12 +446,12 @@ function MessageRowV2({
                       type="button"
                       key={index}
                       onClick={() => setUserImageLightbox(index)}
-                      className={cn('block max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900/40', visibleImages.length > 1 ? 'h-24 w-24' : 'w-72')}
-                      aria-label={image.name ? `Preview ${image.name}` : 'Preview image'}
+                      className={cn('block max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:border-neutral-700 dark:bg-neutral-900/40', visibleImages.length > 1 ? 'h-24 w-24' : 'w-72')}
+                      aria-label={image.name ? t('imagePreview.named', { name: image.name, defaultValue: `Preview ${image.name}` }) : t('imagePreview.label', { defaultValue: 'Preview image' })}
                     >
                       <img
                         src={image.data}
-                        alt={image.name || 'Uploaded image'}
+                        alt={image.name || t('imagePreview.uploaded', { defaultValue: 'Uploaded image' })}
                         className={cn('block w-full cursor-zoom-in object-contain hover:opacity-90', visibleImages.length > 1 ? 'h-full' : 'h-48')}
                         loading="lazy"
                       />
@@ -494,7 +505,7 @@ function MessageRowV2({
         {!isEditing ? (
           <div
             data-testid="user-message-actions"
-            className="pointer-events-none mt-1 flex h-6 items-center justify-end gap-1 pr-1 opacity-0 transition-opacity duration-150 group-hover/user-msg:pointer-events-auto group-hover/user-msg:opacity-100 group-focus-within/user-msg:pointer-events-auto group-focus-within/user-msg:opacity-100"
+            className="pointer-events-none mt-1 flex h-6 items-center justify-end gap-1 pr-1 opacity-0 transition-opacity duration-150 group-focus-within/user-msg:pointer-events-auto group-focus-within/user-msg:opacity-100 group-hover/user-msg:pointer-events-auto group-hover/user-msg:opacity-100"
           >
             {messageTime ? (
               <time
@@ -562,6 +573,8 @@ function MessageRowV2({
       <ThinkingBlock
         content={formattedContent}
         isStreaming={Boolean(message.isStreaming)}
+        startedAt={message.startedAt}
+        durationMs={message.durationMs}
         inline={inlineThinking}
         projectName={selectedProject?.name}
         onFileOpen={onFileOpen}
@@ -585,7 +598,7 @@ function MessageRowV2({
   const assistantForkDisabled = Boolean(
     forkDisabled || isSessionRunning || message.isStreaming || !message.entryId,
   );
-  const assistantBody = (hasAssistantProse || showStreamingCursor || isTextRenderingPending || assistantArtifacts.length > 0 || (showAssistantActions === true && Boolean(message.turnId || message.runId))) ? (
+  const assistantBody = (hasAssistantProse || showStreamingCursor || isTextRenderingPending) ? (
     <div
       data-chat-search-render-pending={isTextRenderingPending ? 'true' : undefined}
       className="group/assistant-msg min-w-0 text-[14px] leading-relaxed text-neutral-900 dark:text-neutral-100"
@@ -603,18 +616,10 @@ function MessageRowV2({
           onFileOpen={onFileOpen} isStreaming={Boolean(message.isStreaming) || contentDisplayText !== formattedContent} artifactFiles={assistantArtifacts}>{contentDisplayText}</Markdown>
         </div>
       )}
-      <TurnChangesCard
-        turnId={message.turnId || message.runId}
-        artifacts={assistantArtifacts}
-        project={selectedProject}
-        onBrowse={onFileOpen}
-        includeCheckpoint={showAssistantActions === true && !message.isStreaming}
-        streaming={Boolean(message.isStreaming)}
-      />
       {shouldRenderAssistantActions ? (
         <div
           data-testid="assistant-message-actions"
-          className="pointer-events-none mt-1.5 flex h-6 items-center justify-start gap-1 opacity-0 transition-opacity duration-150 group-hover/assistant-msg:pointer-events-auto group-hover/assistant-msg:opacity-100 group-focus-within/assistant-msg:pointer-events-auto group-focus-within/assistant-msg:opacity-100"
+          className="pointer-events-none mt-1.5 flex h-6 items-center justify-start gap-1 opacity-0 transition-opacity duration-150 group-focus-within/assistant-msg:pointer-events-auto group-focus-within/assistant-msg:opacity-100 group-hover/assistant-msg:pointer-events-auto group-hover/assistant-msg:opacity-100"
         >
           {message.model ? (
             <span data-testid="assistant-message-model" className="mr-1 truncate text-xs text-neutral-400 dark:text-neutral-500">
@@ -817,12 +822,12 @@ function ProcessAttachmentRow({
               type="button"
               key={`${attachment.inlineImages[idx].toolId || 'tool-image'}-${idx}`}
               onClick={() => setLightboxIndex(idx)}
-              className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900"
-              aria-label={image.name ? `Preview ${image.name}` : 'Preview image'}
+              className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:border-neutral-700 dark:bg-neutral-900"
+              aria-label={image.name ? t('imagePreview.named', { name: image.name, defaultValue: `Preview ${image.name}` }) : t('imagePreview.label', { defaultValue: 'Preview image' })}
             >
               <img
                 src={image.data}
-                alt={image.name || 'Tool result image'}
+                alt={image.name || t('imagePreview.toolResult', { defaultValue: 'Tool result image' })}
                 className="block h-auto max-h-72 max-w-xs cursor-zoom-in object-contain"
                 loading="lazy"
               />

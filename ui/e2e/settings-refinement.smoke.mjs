@@ -22,7 +22,8 @@ await page.addInitScript(() => {
 await page.route('**/api/**', async route => {
   const request = route.request(), url = new URL(request.url()).pathname;
   let body = {};
-  if (url === '/api/config') {
+  if (url === '/api/settings/general-workspace') body = { directory: '', effectiveDirectory: '/fixture/general', defaultDirectory: '/fixture/general' };
+  else if (url === '/api/config') {
     if (request.method() === 'PUT') { config = parse(request.postDataJSON().raw); revision++; }
     body = { exists: true, raw: JSON.stringify(config), path: '/fixture/settings.yaml', revision: String(revision), validation: { valid: true, errors: [], warnings: [] } };
   } else if (url.includes('onboarding-status')) body = { hasCompletedOnboarding: true };
@@ -37,7 +38,7 @@ await page.route('**/api/**', async route => {
 await page.routeWebSocket('**/ws**', socket => socket.onMessage(() => {}));
 async function verifyModeCardAlignment(width) {
   await expect(page.locator('.appearance-mode')).toHaveCount(3);
-  await expect(page.locator('.appearance-preset')).toHaveCount(7);
+  await expect(page.locator('.appearance-preset')).toHaveCount(6);
   await expect(page.locator('.appearance-preset').first()).toBeVisible();
   const rectangles = await page.locator('.appearance-mode, .appearance-preset').evaluateAll(elements => elements.map(element => {
     const r = element.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, width: r.width, height: r.height };
@@ -71,7 +72,7 @@ try {
   expect(routeFont).toBe('14px'); expect(memoryFont).toBe(routeFont);
   await page.goto('http://127.0.0.1:5187/settings/appearance');
   await expect(page.locator('#appearance-palette')).toBeVisible();
-  await expect(page.locator('#appearance-palette button')).toHaveCount(7);
+  await expect(page.locator('#appearance-palette button')).toHaveCount(6);
   const presetRects = await page.locator('#appearance-palette button').evaluateAll(elements => elements.map(element => {
     const r = element.getBoundingClientRect(); return { top: r.top, width: r.width, right: r.right };
   }));
@@ -101,7 +102,7 @@ try {
   expect(geometry[0].width).toBe(176); expect(geometry[0].height).toBe(36);
   measurements.push({ screen: 'appearance', geometry });
   await page.screenshot({ path: path.join(artifacts, 'appearance.png') });
-  await page.locator('#appearance-palette [data-preset=custom]').click();
+  await page.getByRole('button', { name: '自定义', exact: true }).click();
   const picker = page.getByRole('dialog', { name: '强调色', exact: true });
   await expect(picker).toBeVisible();
   const input = picker.getByRole('textbox');

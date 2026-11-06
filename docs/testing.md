@@ -11,6 +11,7 @@ Run from the repository root unless noted.
 | One UI/server module | `pnpm --dir ui exec vitest run <file-or-directory>` |
 | UI server / client suites | `pnpm --dir ui test:server` / `pnpm --dir ui test:client` |
 | Full UI/server regression | `pnpm --dir ui test` |
+| Checkpoint execution and restore | `pnpm test:checkpoints` (build Core first) |
 | Changed/related imports | `pnpm --dir ui test:changed` or `pnpm --dir ui test:related src/path/to/file.ts` |
 | Model protocol/streaming | `node --import tsx --test "tests/model/**/*.spec.ts"` |
 | Desktop helpers | `pnpm --filter pilotdeck-desktop test` |
@@ -19,6 +20,29 @@ Run from the repository root unless noted.
 | Desktop TypeScript | `pnpm --filter pilotdeck-desktop compile` |
 
 Changed/related selection follows import edges, not every dynamically read template, workflow, icon or plugin. Broaden checks for shared protocols, native resources, dependency locks and build inputs. Real browser acceptance belongs under ui/e2e/ and is separate from Vitest discovery.
+
+## Pull request CI selection
+
+Web Regression and Desktop use `apps/desktop/scripts/classify-ci-changes.mjs` to
+select complete suites from the PR merge-base diff, including deleted files and
+both sides of renames. The lightweight selection jobs always validate routing;
+job-level conditions retain existing check names for unrelated changes.
+
+| Changed boundary | PR validation |
+| --- | --- |
+| Chat/UI components and styles | Full Web/client suite and browser acceptance; no unrelated checkpoint matrix, desktop helpers or Docker rebuild |
+| Backend, workspace or checkpoint paths | Web regression and the existing three-platform checkpoint suite; Docker for runtime/image inputs |
+| Desktop, installer or release inputs | Desktop helper checks and the complete relevant native packaging matrix |
+| Dependency locks, shared package inputs or routing policy | All affected execution boundaries |
+| Maintained documentation | Routing checks; runtime skills/resources Markdown still selects builds |
+| OBS scripts/workflows | Credential-free OBS tests; no live OBS access from PRs |
+
+The Web browser job pins Ubuntu 24.04 for the locked Playwright version. New PR
+pushes cancel superseded Web runs. Web Regression owns the single Docker build,
+with GHA layer caching and isolated runtime-import verification. Main pushes
+still run full Web/browser and Docker checks; manual Desktop runs and formal
+releases retain all native targets. Production signing and publication gates
+are independent of PR selection and remain mandatory.
 
 ## Test quality and isolation
 
@@ -30,6 +54,14 @@ Changed/related selection follows import edges, not every dynamically read templ
 - Follow [CONTRIBUTING](../CONTRIBUTING.md) for placement, English documentation and artifact rules. New module tests remain visible to Git; only root test/ and test.ts drafts are ignored.
 
 ## Maintained diagnostic checks
+
+With Vite on port 5187, `node ui/e2e/form-controls.smoke.mjs` checks the shared form chrome in all six paired palettes: grouped/disabled options, keyboard and pointer selection, nested-dialog Escape, native form values, calendar/time selection and a 1,000-option menu in a narrow viewport. `node ui/e2e/settings-navigation-theme.smoke.mjs` exercises actual settings persistence and native desktop navigation. These use synthetic data and isolated profiles.
+
+Windows Web tests use at most four workers to limit concurrent Node/jsdom and Git processes. Real repository update tests have a separate 60-second integration budget; UI assertions retain the default timeout, with cold backend imports completed in setup hooks. Directory-link security fixtures use Windows junctions and run without elevation. File-symlink cases run when the host permits them; only an actual Windows `EPERM` skips that individual case with a Developer Mode/elevation explanation. POSIX CI continues to exercise the file-link assertions.
+
+Checkpoint execution cases use separate Python, subagent and background-task
+files with a shared isolated workspace fixture. Each keeps the runner's 60-second
+file deadline instead of sharing one cumulative budget across all execution modes.
 
 First build the relevant Core/Desktop/Web outputs when a command consumes compiled code.
 
@@ -44,6 +76,6 @@ First build the relevant Core/Desktop/Web outputs when a command consumes compil
 | TUI permissions | `node --import tsx --test tests/adapters/tui-permissions.spec.tsx`; automatic temporary profile, mocked Gateway, no model calls |
 | UI import/export analysis | `node scripts/audit-ui-reachability.mjs --exports`; read-only candidates, not automatic deletion authority |
 
-Appearance, native file selection and window chrome acceptance use ui/e2e/appearance.smoke.mjs, file-picker.smoke.mjs and desktop-chrome.smoke.mjs. Prepare their Vite/Desktop prerequisites and isolated profiles. Preview pages do not replace the real startup-flow regression. Native package installation, update, signing and OS permission acceptance remain platform-specific.
+Appearance, native file selection and window chrome acceptance use ui/e2e/appearance.smoke.mjs, file-picker.smoke.mjs and desktop-chrome.smoke.mjs. With Vite on port 5187, run `node ui/e2e/theme-components.smoke.mjs` for all six light/dark palettes on the real chat menus and skills screen, including warning semantics, selected states, placeholders and text contrast. `node ui/e2e/dialog-appearance.smoke.mjs` checks confirmation actions and image overlays. Prepare their Vite/Desktop prerequisites and isolated profiles. Preview pages do not replace the real startup-flow regression. Native package installation, update, signing and OS permission acceptance remain platform-specific.
 
 Record commands, outcomes and limits in the PR/CI artifacts. Put temporary screenshots, logs, request dumps and benchmark data in ignored artifacts/<topic>/ or outputs/<topic>/, never in a new tracked delivery report. The [session timeline](architecture/session-timeline.md) and [reasoning reference](reasoning-settings.md) are durable contracts, not test-run logs.

@@ -60,7 +60,7 @@ const ImageAttachment = ({
     <div className="group relative">
       <button type="button" onClick={onPreview} disabled={!onPreview}
         aria-label={t('attachmentPreview.open', { name: file.name })}
-        className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+        className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#8b5cf6)]">
       {isImage ? (
         <img src={preview?.url} alt={file.name} className="h-20 w-20 rounded object-cover" />
       ) : (

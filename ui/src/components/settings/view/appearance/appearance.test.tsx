@@ -76,16 +76,19 @@ it('controls the wallpaper with one interface transparency slider', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'lightAppearance.resetImageEffects' }));
   await waitFor(() => expect(saved()?.transparency).toBe(15));
 });
-it('keeps dark mode untouched, then restores the saved light palette', async () => {
+it('allows palette selection in dark mode and keeps it when returning to light', async () => {
   localStorage.setItem('themeMode', 'dark');
   localStorage.setItem(LIGHT_APPEARANCE_KEY, JSON.stringify(normalizeLightAppearance({ preset: 'mint' })));
   mount();
   expect(document.documentElement.classList.contains('dark')).toBe(true);
   expect(document.documentElement.hasAttribute('data-light-appearance')).toBe(false);
-  expect(screen.getByText('lightAppearance.lightOnly')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'lightAppearance.editLight' }));
+  expect(document.documentElement.hasAttribute('data-appearance')).toBe(true);
+  choosePalette('blue');
+  await waitFor(() => expect(saved()?.preset).toBe('blue'));
+  expect(document.querySelectorAll('.appearance-preset')).toHaveLength(6);
+  fireEvent.click(screen.getByRole('button', { name: 'settingsHome.appearanceMode.light' }));
   await waitFor(() => expect(document.documentElement.hasAttribute('data-light-appearance')).toBe(true));
-  expect(screen.getByRole('button', { name: 'lightAppearance.preset.mint' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('button', { name: 'lightAppearance.preset.blue' }).getAttribute('aria-pressed')).toBe('true');
 });
 it('rolls back a failed storage write and reports the failure', async () => {
   mount();

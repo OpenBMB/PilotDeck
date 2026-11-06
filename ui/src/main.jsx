@@ -3,16 +3,19 @@ import ReactDOM from 'react-dom/client'
 import '@fontsource-variable/inter'
 import './index.css'
 import './light-appearance.css'
+import './form-controls.css'
 import 'katex/dist/katex.min.css'
 
 // Initialize i18n
 import { registerUiDiagnostics, recordUiDiagnostic } from './lib/uiDiagnostics'
 import { registerDynamicImportReloadHandler } from './utils/reloadOnChunkError'
 import { installDesktopFilePicker } from './lib/desktopFilePicker'
+import { installFormControlEvents } from './lib/formControlEvents'
 
 registerDynamicImportReloadHandler();
 registerUiDiagnostics();
 installDesktopFilePicker();
+installFormControlEvents();
 
 // Register service worker for PWA + Web Push support
 if ('serviceWorker' in navigator) {

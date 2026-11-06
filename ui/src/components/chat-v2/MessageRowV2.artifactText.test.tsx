@@ -3,6 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../chat/types/types';
 import MessageRowV2 from './MessageRowV2';
+import { TurnFileFooter } from './TurnFileFooter';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -36,6 +37,7 @@ describe('MessageRowV2 generated file presentation', () => {
     };
 
     const { container } = render(
+      <>
       <MessageRowV2
         message={message}
         prevMessage={null}
@@ -48,7 +50,11 @@ describe('MessageRowV2 generated file presentation', () => {
         createDiff={() => []}
         onFileOpen={vi.fn()}
         showAssistantActions={false}
-      />,
+      />
+      <TurnFileFooter files={{ artifacts: message.artifacts!, visible: true }} project={{
+        name: 'office', displayName: 'office', fullPath: '/workspace/office',
+      }} onBrowse={vi.fn()} />
+      </>,
     );
 
     expect(screen.queryByRole('link', { name: fileName })).toBeNull();

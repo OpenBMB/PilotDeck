@@ -27,7 +27,7 @@ export default function ModelConfigurationErrorScreen({
   }, []);
   return (
     <StartupErrorPanel error={code} logPath={logPath} onRetry={() => window.pilotdeckDesktop?.retryRuntime ? window.pilotdeckDesktop.retryRuntime() : onRetry()}>
-      <Link className="mt-3 block text-sm text-primary underline" to="/settings/models">
+      <Link className="mt-3 block text-sm text-[var(--pd-accent-strong,#4948cf)] underline" to="/settings/models">
         {t('openModelSettings')}
       </Link>
     </StartupErrorPanel>

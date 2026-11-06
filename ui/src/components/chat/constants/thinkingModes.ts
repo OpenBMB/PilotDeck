@@ -1,4 +1,4 @@
-import { Atom, Brain, Sparkles, Zap } from 'lucide-react';
+import { Atom, Lightbulb, Sparkles, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export type ThinkingModeId = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -23,7 +23,7 @@ export const thinkingModes: ThinkingModeOption[] = [
     id: 'low',
     name: 'Low',
     description: 'Light reasoning effort',
-    icon: Brain,
+    icon: Lightbulb,
     color: 'text-blue-600',
   },
   {

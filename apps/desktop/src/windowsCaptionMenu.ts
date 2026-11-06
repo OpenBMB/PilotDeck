@@ -48,14 +48,16 @@ export class WindowsCaptionMenu {
     return result;
   }
 
-  close(): void {
+  close(): Promise<void> {
+    const result = new Promise<void>(resolve => this.completions.push(resolve));
     this.pending = undefined;
-    if (this.scheduled) clearImmediate(this.scheduled);
-    this.scheduled = undefined;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
     if (this.popup && !this.closing) {
       this.closing = true;
       this.popup.closePopup(this.owner);
     } else if (!this.popup) this.finish();
+    return result;
   }
 
   private switchTo(id: string | null): void {
@@ -89,12 +91,16 @@ export class WindowsCaptionMenu {
         y: this.owner.isFullScreen() ? 0 : WINDOWS_CAPTION_HEIGHT,
         callback: () => {
           if (this.popup !== menu) return;
-          this.popup = undefined;
-          this.current = undefined;
-          this.closing = false;
-          // Leave the native popup's close callback before creating its replacement.
-          if (this.pending !== undefined) this.scheduled = setImmediate(() => this.openPending());
-          else this.finish();
+          this.closing = true;
+          // Keep the native menu alive and IPC pending until teardown leaves
+          // the native close stack, including natural and explicit dismissal.
+          this.scheduled = setImmediate(() => {
+            if (this.popup !== menu) return;
+            this.popup = undefined;
+            this.current = undefined;
+            this.closing = false;
+            this.openPending();
+          });
         },
       });
     } catch (error) { this.finish(); throw error; }

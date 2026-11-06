@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Check, ChevronLeft, HelpCircle } from 'lucide-react';
+import { Check, ChevronLeft, MessageCircleQuestion } from 'lucide-react';
 import type { PermissionPanelProps } from '../../configs/permissionPanelRegistry';
 import type { Question } from '../../../types/types';
 import { Button } from '../../../../ui/button';
@@ -58,7 +58,8 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
   const otherInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    requestAnimationFrame(() => setMounted(true));
+    const frame = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   // Focus the container for keyboard events when step changes
@@ -108,13 +109,13 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
   }, []);
 
   const buildAnswers = useCallback(() => {
-    const answers: Record<string, string> = {};
+    const answers: Record<string, string | string[]> = {};
     questions.forEach((q, idx) => {
       const selected = Array.from(selections.get(idx) || []);
       const isOther = otherActive.get(idx) || false;
       const otherText = (otherTexts.get(idx) || '').trim();
       if (isOther && otherText) selected.push(otherText);
-      if (selected.length > 0) answers[q.question] = selected.join(', ');
+      if (selected.length > 0) answers[q.question] = q.multiSelect ? selected : selected[0];
     });
     return answers;
   }, [questions, selections, otherActive, otherTexts]);
@@ -201,29 +202,29 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
       tabIndex={-1}
       onKeyDown={handleKeyDown}
       className={cn(
-        'w-full outline-none transition-all duration-300 ease-out',
+        'w-full outline-none transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none',
         mounted ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0',
       )}
     >
-      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+      <div data-question-panel className="overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-sm">
         {/* Header */}
-        <div className="px-4 pb-2 pt-3">
+        <div className="px-3 pb-2.5 pt-3">
           <div className="mb-1.5 flex items-center gap-2">
-            <HelpCircle className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.75} />
+            <MessageCircleQuestion aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-muted-foreground" strokeWidth={1.8} />
 
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <span className="text-[12px] font-medium leading-5 text-muted-foreground">
                 {t('common:uiText.questionTitle')}
               </span>
               {q.header && (
-                <span className="inline-flex items-center rounded border border-border bg-muted px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="inline-flex max-w-full items-center truncate rounded-md bg-muted px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
                   {q.header}
                 </span>
               )}
             </div>
 
             {!isSingle && (
-              <span className="flex-shrink-0 text-[10px] tabular-nums text-muted-foreground">
+              <span className="flex-shrink-0 text-[12px] tabular-nums text-muted-foreground">
                 {currentStep + 1}/{total}
               </span>
             )}
@@ -239,7 +240,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                   onClick={() => setCurrentStep(i)}
                   aria-label={t("common:uiText.goToQuestion", { number: i + 1 })}
                   className={cn(
-                    'h-[3px] rounded-full transition-all duration-300',
+                    'h-[3px] rounded-full transition-all duration-200 motion-reduce:transition-none',
                     i === currentStep
                       ? 'w-5 bg-foreground'
                       : i < currentStep
@@ -252,21 +253,21 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
           )}
 
           {/* Question text */}
-          <p className="text-[14px] font-medium leading-snug text-foreground">
+          <p className="text-[14px] font-medium leading-[22px] text-foreground">
             {q.question}
           </p>
           {multi && (
-            <span className="text-[10px] text-muted-foreground">{t('common:uiText.selectMultiple')}</span>
+            <span className="text-[12px] leading-5 text-muted-foreground">{t('common:uiText.selectMultiple')}</span>
           )}
         </div>
 
         {/* Options */}
         <div
-          className="scrollbar-thin max-h-48 overflow-y-auto px-4 pb-2"
-          role={multi ? 'group' : 'radiogroup'}
+          className="scrollbar-thin max-h-[min(38vh,280px)] overflow-y-auto overscroll-contain px-3 pb-2.5"
+          role="group"
           aria-label={q.question}
         >
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {q.options.map((opt, optIdx) => {
               const isSelected = selected.has(opt.label);
               return (
@@ -276,17 +277,17 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                   onClick={() => toggleOption(currentStep, opt.label, multi)}
                   aria-pressed={isSelected}
                   className={cn(
-                    'group flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors duration-150',
+                    'group flex w-full items-start gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]',
                     isSelected
-                      ? 'border-foreground/40 bg-accent text-accent-foreground'
-                      : 'border-border hover:border-foreground/30 hover:bg-accent/50',
+                      ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-foreground'
+                      : 'border-border/60 hover:border-border hover:bg-muted/60',
                   )}
                 >
                   <kbd
                     className={cn(
-                      'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded font-mono text-[10px] transition-colors duration-150',
+                      'mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[11px] tabular-nums transition-colors duration-150',
                       isSelected
-                        ? 'bg-primary font-semibold text-primary-foreground'
+                        ? 'bg-[var(--brand)] font-medium text-white'
                         : 'border border-border bg-muted text-muted-foreground',
                     )}
                   >
@@ -296,14 +297,14 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                   <div className="min-w-0 flex-1">
                     <div
                       className={cn(
-                        'text-[13px] leading-tight',
+                        'text-[13px] leading-5',
                         isSelected ? 'font-medium text-foreground' : 'text-foreground/80',
                       )}
                     >
                       {opt.label}
                     </div>
                     {opt.description && (
-                      <div className="text-[11px] leading-snug text-muted-foreground">
+                      <div className="mt-0.5 text-[12px] leading-[18px] text-muted-foreground">
                         {opt.description}
                       </div>
                     )}
@@ -322,17 +323,17 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
               onClick={() => toggleOther(currentStep, multi)}
               aria-pressed={isOtherOn}
               className={cn(
-                'group flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors duration-150',
+                'group flex w-full items-start gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]',
                 isOtherOn
-                  ? 'border-foreground/40 bg-accent text-accent-foreground'
-                  : 'border-dashed border-border hover:border-foreground/30 hover:bg-accent/50',
+                  ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-foreground'
+                  : 'border-dashed border-border/60 hover:border-border hover:bg-muted/60',
               )}
             >
               <kbd
                 className={cn(
-                  'flex h-5 w-5 flex-shrink-0 items-center justify-center rounded font-mono text-[10px] transition-colors duration-150',
+                  'mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[11px] tabular-nums transition-colors duration-150',
                   isOtherOn
-                    ? 'bg-primary font-semibold text-primary-foreground'
+                    ? 'bg-[var(--brand)] font-medium text-white'
                     : 'border border-border bg-muted text-muted-foreground',
                 )}
               >
@@ -340,7 +341,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
               </kbd>
               <span
                 className={cn(
-                  'text-[13px] leading-tight',
+                  'text-[13px] leading-5',
                   isOtherOn ? 'font-medium text-foreground' : 'text-muted-foreground',
                 )}
               >
@@ -353,7 +354,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
 
             {/* Other text input */}
             {isOtherOn && (
-              <div className="pl-[30px] pr-0.5">
+              <div className="pl-8 pr-0.5">
                 <div className="relative">
                   <Input
                     ref={otherInputRef}
@@ -378,10 +379,10 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                       e.stopPropagation();
                     }}
                     placeholder={t("common:uiText.typeAnswer")}
-                    className="h-8 pr-14 text-[13px]"
+                    className="h-9 pr-14 text-[13px]"
                   />
-                  <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1 py-0.5 font-mono text-[9px] text-muted-foreground">
-                    Enter
+                  <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    {t('common:keyboard.enter')}
                   </kbd>
                 </div>
               </div>
@@ -396,10 +397,10 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleSkip}
-            className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+            className="h-8 px-2 text-[13px] text-muted-foreground hover:text-foreground"
           >
             {isSingle ? t('common:uiText.skip') : t('common:uiText.skipAll')}
-            <span className="ml-1 font-mono text-[9px] opacity-60">Esc</span>
+            <span className="ml-1 font-mono text-[11px] opacity-60">{t('common:keyboard.escape')}</span>
           </Button>
 
           <div className="flex items-center gap-1.5">
@@ -409,7 +410,7 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => setCurrentStep(s => s - 1)}
-                className="h-7 gap-0.5 px-2 text-[11px]"
+                className="h-8 gap-1 px-2 text-[13px]"
               >
                 <ChevronLeft className="!h-3 !w-3" />
                 {t('common:uiText.back')}
@@ -421,10 +422,10 @@ export const AskUserQuestionPanel: React.FC<PermissionPanelProps> = ({
               size="sm"
               onClick={isLast ? handleSubmit : () => setCurrentStep(s => s + 1)}
               disabled={!hasCurrentSelection || (isLast && !allQuestionsAnswered)}
-              className="h-7 gap-1 px-3 text-[11px] font-medium"
+              className="h-8 gap-2 px-3 text-[13px] font-medium"
             >
               {isLast ? t('common:uiText.submit') : t('common:uiText.next')}
-              <span className="font-mono text-[9px] opacity-60">Enter</span>
+              <span className="font-mono text-[11px] opacity-60">{t('common:keyboard.enter')}</span>
             </Button>
           </div>
         </div>

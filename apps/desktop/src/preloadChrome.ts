@@ -108,6 +108,7 @@ export function installWindowChrome(
         --desktop-top-inset:var(--desktop-caption-height); }
       html[data-desktop-dark] { --desktop-caption-bg:#0a0a0a; --desktop-caption-fg:#e5e5e5; --desktop-bg:#0a0a0a; --desktop-caption-border:#262626; }
       html[data-desktop-platform="win32"],html[data-desktop-platform="linux"] { --desktop-caption-height:env(titlebar-area-height,${WINDOWS_CAPTION_HEIGHT}px); --desktop-caption-bg:#f4f4f5; }
+      html[data-desktop-platform="win32"] { --desktop-caption-bg:transparent; }
       html[data-desktop-platform="win32"][data-desktop-dark],html[data-desktop-platform="linux"][data-desktop-dark] { --desktop-caption-bg:#171717; }
       html[data-desktop-fullscreen] { --desktop-caption-height:0px; }
       html[data-desktop-integrated] { --desktop-top-inset:0px; }

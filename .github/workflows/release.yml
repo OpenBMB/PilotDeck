@@ -89,7 +89,7 @@ jobs:
     with:
       release_date: ${{ needs.detect.outputs.release_date }}
       revision: ${{ needs.detect.outputs.revision }}
-      require_windows_signing: ${{ vars.PILOTDECK_WINDOWS_SIGNING_ENABLED == 'true' }}
+      require_windows_signing: true
 
   release:
     outputs:
@@ -125,6 +125,7 @@ jobs:
 
       - name: Create release manifest and checksums
         env:
+          PILOTDECK_DIFFERENTIAL_UPDATES: ${{ vars.PILOTDECK_DIFFERENTIAL_UPDATES }}
           PILOTDECK_RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
           PILOTDECK_RELEASE_TAG: ${{ steps.metadata.outputs.release_tag }}
           PILOTDECK_RELEASE_DATE: ${{ steps.metadata.outputs.release_date }}

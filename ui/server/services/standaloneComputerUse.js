@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { computerUseDirectory, computerUseMcpConfigPath } from './computerUsePaths.js';
-import { MAC_HOST_ID, resolveMacRuntime } from '../../../scripts/lib/mac-computer-use.mjs';
+import { MAC_HOST_ID, macAppForBinary, resolveMacRuntime } from '../../../scripts/lib/mac-computer-use.mjs';
 import { probeMacPermissions } from './macComputerUsePermissions.js';
 
 const executeFile = promisify(execFile);
@@ -49,9 +49,8 @@ export class StandaloneComputerUseController {
       this.state.permissionOwner = managed ? 'PilotDeck Computer Use' : 'CuaDriver';
       this.state.permissions = { accessibility: null, screenRecording: null };
       if (binary) {
-        const executable = fs.realpathSync(binary);
-        const bundleEnd = executable.indexOf('.app/Contents/MacOS/');
-        if (bundleEnd >= 0) this.state.permissionAppPath = executable.slice(0, bundleEnd + 4);
+        try { this.state.permissionAppPath = macAppForBinary(binary); }
+        catch { /* Borrowed command-line drivers need not be inside an app. */ }
       }
     }
     if (platform === 'linux') this.state.desktopSession = env.WAYLAND_DISPLAY || env.XDG_SESSION_TYPE === 'wayland'
@@ -306,8 +305,7 @@ export class StandaloneComputerUseController {
   async startNativeService() {
     if (this.platform === 'darwin') {
       const executable = fs.realpathSync(this.binary);
-      const bundle = executable.slice(0, executable.indexOf('.app/Contents/MacOS/') + 4);
-      if (!bundle.endsWith('.app')) throw new Error('The runtime is missing its native computer-use app bundle. Rebuild or redeploy PilotDeck.');
+      const bundle = macAppForBinary(executable);
       const args = ['-n', '-g', '-a', bundle];
       const serve = ['serve', '--no-permissions-gate', '--permission-mode', 'standard'];
       if (this.managed) {
@@ -381,8 +379,7 @@ export class StandaloneComputerUseController {
   async requestBundledPermissions(permission) {
     this.stopPermissionRequests();
     const executable = fs.realpathSync(this.binary);
-    const bundle = executable.slice(0, executable.indexOf('.app/Contents/MacOS/') + 4);
-    if (!bundle.endsWith('.app')) throw new Error('The native computer-use app bundle is missing.');
+    const bundle = macAppForBinary(executable);
     const resultFile = path.join(fs.realpathSync(os.tmpdir()), `pilotdeck-permissions-${process.pid}-${randomUUID()}.json`);
     fs.writeFileSync(resultFile, '', { mode: 0o600, flag: 'wx' });
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-cu-permissions-'));

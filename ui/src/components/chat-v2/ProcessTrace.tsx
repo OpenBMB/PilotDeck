@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Activity,
@@ -7,12 +7,10 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
-  Pencil,
-  Search,
-  Terminal,
-  Wrench,
   type LucideIcon,
 } from 'lucide-react';
+import { AnimatedDisclosure } from '../ui/AnimatedDisclosure';
+import { getActivityIcon } from '../chat/tools/toolIcons';
 import { AgentTimeline } from './AgentTimeline';
 import { StreamingScrollViewport } from './StreamingScrollViewport';
 
@@ -52,11 +50,13 @@ export function ProcessRunHeader({
   className = '',
   expanded,
   onExpandedChange,
+  controls,
 }: {
   label: string;
   className?: string;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  controls?: string;
 }) {
   return (
     <div
@@ -65,9 +65,9 @@ export function ProcessRunHeader({
       className={`mb-3 border-b border-neutral-200/70 pb-1.5 text-[14px] leading-relaxed text-neutral-500 dark:border-neutral-800/80 dark:text-neutral-400 ${className}`}
     >
       {onExpandedChange ? (
-        <button type="button" aria-expanded={expanded} onClick={() => onExpandedChange(!expanded)}
+        <button type="button" aria-expanded={expanded} aria-controls={controls || undefined} onClick={() => onExpandedChange(!expanded)}
           className="hover-brand-text flex items-center gap-1.5 text-left">
-          <ChevronRight className={`h-3.5 w-3.5 ${expanded ? 'rotate-90' : ''}`} />
+          <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
           <span className="tabular-nums">{label}</span>
         </button>
       ) : <span className="tabular-nums">{label}</span>}
@@ -95,7 +95,9 @@ export function ProcessLiveStatus({
   contentClassName?: string;
 }) {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
+  const { t } = useTranslation('chat');
   const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const contentId = useId();
   const setExpanded = (nextExpanded: boolean | ((value: boolean) => boolean)) => {
     const resolvedExpanded = typeof nextExpanded === 'function'
       ? nextExpanded(expanded)
@@ -106,14 +108,15 @@ export function ProcessLiveStatus({
     onExpandedChange?.(resolvedExpanded);
   };
   const Icon = getStepIcon(step);
-  const title = step.title || step.toolName || 'Working';
+  const title = step.title || step.toolName || t('process.group.running');
   const isRunning = !['failed', 'completed', 'cancelled', 'waiting'].includes(step.state || '');
   const hasDetails = Boolean(children);
   const statusContent = (
     <>
       <Icon
-        className={`mt-[0.28rem] h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
-          Icon === Loader2 && isRunning ? 'animate-spin' : ''
+        aria-hidden="true"
+        className={`h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
+          Icon === Loader2 && isRunning ? 'motion-safe:animate-spin' : ''
         }`}
         strokeWidth={1.8}
       />
@@ -127,9 +130,9 @@ export function ProcessLiveStatus({
       </div>
       {hasDetails ? (
         expanded ? (
-          <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" strokeWidth={1.8} />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
         ) : (
-          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" strokeWidth={1.8} />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
         )
       ) : null}
     </>
@@ -137,6 +140,7 @@ export function ProcessLiveStatus({
 
   return (
     <div
+      data-process-status={step.id}
       className={`process-live-status w-full min-w-0 ${compact ? 'py-0' : 'pb-1'} text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${className}`}
     >
       <div role="status" aria-live="polite">
@@ -144,46 +148,31 @@ export function ProcessLiveStatus({
           <button
             type="button"
             aria-expanded={expanded}
+            aria-controls={contentId}
             onClick={() => setExpanded((value) => !value)}
-            className={`hover-brand-text group inline-flex min-w-0 max-w-full items-start gap-2 text-left transition hover:text-neutral-600 dark:hover:text-neutral-300 ${
-              isRunning ? 'animate-pulse' : ''
-            }`}
+            className="chat-process-trigger hover-brand-text group"
           >
             {statusContent}
           </button>
         ) : (
-          <div className={`inline-flex min-w-0 max-w-full items-start gap-2 ${isRunning ? 'animate-pulse' : ''}`}>
+          <div className="chat-process-trigger">
             {statusContent}
           </div>
         )}
       </div>
-      {expanded && hasDetails ? (
-        <div className={`mt-1.5 space-y-1.5 ${contentClassName ?? ''}`}>
-          {children}
-        </div>
-      ) : null}
+      {hasDetails ? <AnimatedDisclosure id={contentId} expanded={expanded} contentClassName={`mt-1.5 space-y-1.5 ${contentClassName ?? ""}`}>
+        {children}
+      </AnimatedDisclosure> : null}
     </div>
   );
 }
 
 function getStepIcon(step: ProcessTraceStep): LucideIcon {
-  const haystack = `${step.phase || ''} ${step.toolName || ''} ${step.title || ''}`.toLowerCase();
-
   if (step.state === 'failed' || step.severity === 'error' || step.severity === 'warning') {
     return AlertCircle;
   }
-  if (step.phase === 'rag' || /search|grep|glob|find|检索|搜索/.test(haystack)) {
-    return Search;
-  }
-  if (/edit|write|patch|update|create|modify|修改|编辑|写入|创建/.test(haystack)) {
-    return Pencil;
-  }
-  if (/bash|shell|terminal|command|exec|run|命令|运行/.test(haystack)) {
-    return Terminal;
-  }
-  if (step.phase === 'tool' || step.phase === 'subtask' || step.toolName) {
-    return Wrench;
-  }
+  const icon = getActivityIcon(step.phase, step.toolName);
+  if (icon) return icon;
   if (step.state === 'completed') {
     return CheckCircle2;
   }
@@ -200,28 +189,27 @@ function getStepIconClass(step: ProcessTraceStep): string {
   if (step.severity === 'warning') {
     return 'text-amber-500 dark:text-amber-400';
   }
-  if (step.state === 'running') {
-    return 'text-neutral-400 dark:text-neutral-500';
-  }
-  return 'text-neutral-400 dark:text-neutral-500';
+  return '';
 }
 
 function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
+  const { t } = useTranslation('chat');
   const Icon = getStepIcon(step);
   const isRunning = step.state === 'running';
-  const title = step.title || step.toolName || 'Step';
+  const title = step.title || step.toolName || t('process.step');
 
   return (
     <div
       className={`inline-flex min-w-0 max-w-full items-start gap-2 text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${
-        isRunning ? 'animate-pulse' : ''
+        isRunning ? 'motion-safe:animate-pulse' : ''
       }`}
     >
       <Icon
+        aria-hidden="true"
         className={`mt-[0.28rem] h-3.5 w-3.5 shrink-0 ${getStepIconClass(step)} ${
-          Icon === Loader2 && isRunning ? 'animate-spin' : ''
+          Icon === Loader2 && isRunning ? 'motion-safe:animate-spin' : ''
         }`}
-        strokeWidth={1.9}
+        strokeWidth={1.8}
       />
       <div className="min-w-0">
         <div className="truncate">{title}</div>
@@ -238,9 +226,7 @@ function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
 export function ProcessTrace({
   label,
   collapsedDetail,
-  statusLabel,
   status = 'completed',
-  metrics = [],
   steps = [],
   children,
   defaultExpanded = false,
@@ -251,6 +237,7 @@ export function ProcessTrace({
 }: ProcessTraceProps) {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(defaultExpanded);
   const expanded = controlledExpanded ?? uncontrolledExpanded;
+  const contentId = useId();
   const setExpanded = (nextExpanded: boolean | ((value: boolean) => boolean)) => {
     const resolvedExpanded = typeof nextExpanded === 'function'
       ? nextExpanded(expanded)
@@ -276,19 +263,19 @@ export function ProcessTrace({
       <button
         type="button"
         aria-expanded={hasDetails ? expanded : undefined}
+        aria-controls={hasDetails ? contentId : undefined}
         onClick={() => {
           if (hasDetails) {
             setExpanded((value) => !value);
           }
         }}
         disabled={!hasDetails}
-        className={`hover-brand-text group inline-flex min-w-0 max-w-full items-center gap-2 text-left text-[14px] leading-relaxed text-neutral-400 transition hover:text-neutral-600 disabled:cursor-default disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-300 dark:disabled:hover:text-neutral-500 ${
-          isRunning ? 'animate-pulse' : ''
-        }`}
+        className="chat-process-trigger hover-brand-text group disabled:cursor-default"
       >
         <SummaryIcon
+          aria-hidden="true"
           className={`h-3.5 w-3.5 shrink-0 ${getStepIconClass(summaryIconStep)} ${
-            SummaryIcon === Loader2 && isRunning ? 'animate-spin' : ''
+            SummaryIcon === Loader2 && isRunning ? 'motion-safe:animate-spin' : ''
           }`}
           strokeWidth={1.8}
         />
@@ -300,15 +287,14 @@ export function ProcessTrace({
         ) : null}
         {hasDetails ? (
           expanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:text-neutral-500 dark:text-neutral-500 dark:group-hover:text-neutral-300" strokeWidth={1.8} />
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
           ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:text-neutral-500 dark:text-neutral-500 dark:group-hover:text-neutral-300" strokeWidth={1.8} />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
           )
         ) : null}
       </button>
 
-      {expanded ? (
-        <div className="mt-1.5 space-y-1.5">
+      <AnimatedDisclosure id={contentId} expanded={expanded} contentClassName="mt-1.5 space-y-1.5">
           {steps.length > 3 ? (
             <AgentTimeline steps={steps} />
           ) : (
@@ -317,8 +303,7 @@ export function ProcessTrace({
             ))
           )}
           {children ? <div className="space-y-1.5 pt-0.5">{children}</div> : null}
-        </div>
-      ) : null}
+      </AnimatedDisclosure>
     </div>
   );
 }

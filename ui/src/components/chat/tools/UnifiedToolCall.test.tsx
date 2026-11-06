@@ -4,15 +4,33 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { I18nextProvider } from 'react-i18next';
 import { createTestI18n } from '../../../i18n/testInstance';
 import { copyTextToClipboard } from '../../../utils/clipboard';
-import { UnifiedToolCall } from './UnifiedToolCall';
 import { calculateDiff } from '../utils/messageTransforms';
 import type { ChatMessage } from '../types/types';
+import { UnifiedToolCall } from './UnifiedToolCall';
 vi.mock('../../../utils/clipboard', () => ({ copyTextToClipboard: vi.fn(async () => true) }));
 let i18n: Awaited<ReturnType<typeof createTestI18n>>;
 beforeAll(async () => { i18n = await createTestI18n(); });
 afterEach(cleanup);
 const message: ChatMessage = { id: 'call', type: 'assistant', timestamp: '2026-09-15', isToolUse: true, toolName: 'bash', toolInput: { command: 'pnpm build', description: 'Build app' } };
 const view = (value: ChatMessage, running = false) => <I18nextProvider i18n={i18n}><UnifiedToolCall message={value} createDiff={calculateDiff} running={running} /></I18nextProvider>;
+
+it.each(['en', 'zh-CN'])('labels failed fetches as web failures instead of a generic pending tool (%s)', async language => {
+  await i18n.changeLanguage(language);
+  render(view({ ...message, toolName: 'web_fetch', toolInput: { url: 'https://example.com' }, toolResult: { content: 'HTTP 403', isError: true } }));
+  expect(screen.getByRole('button', { name: `${language === 'en' ? 'Fetch failed' : '网页读取失败'} https://example.com` })).toBeTruthy();
+  await i18n.changeLanguage('en');
+});
+
+it('avoids a large diff calculation even while the tool disclosure is closed', () => {
+  const createDiff = vi.fn(() => { throw new Error('Do not allocate a large LCS matrix'); });
+  const result = render(<I18nextProvider i18n={i18n}><UnifiedToolCall message={{ ...message, toolId: 'call', toolName: 'edit_file',
+    toolInput: { file_path: 'large.ts', old_string: 'old\n'.repeat(1000), new_string: 'new\n'.repeat(1000) } }} createDiff={createDiff} /></I18nextProvider>);
+  expect(createDiff).not.toHaveBeenCalled();
+  expect(result.container.querySelectorAll('[data-file-preview-line]')).toHaveLength(0);
+  fireEvent.click(result.container.querySelector('[data-tool-id] button')!);
+  expect(createDiff).not.toHaveBeenCalled();
+  expect(result.container.querySelectorAll('[data-file-preview-line]')).toHaveLength(200);
+});
 describe('UnifiedToolCall', () => {
   it('keeps a manually opened call expanded while it runs and completes', () => {
     const { rerender } = render(view(message, true));
@@ -23,7 +41,7 @@ describe('UnifiedToolCall', () => {
     expect(screen.getByText('built')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Ran Build app' }));
     rerender(view({ ...message, toolResult: { content: 'built again' } }));
-    expect(screen.queryByText('built again')).toBeNull();
+    expect(screen.getByText('built again').closest('[aria-hidden]')?.getAttribute('aria-hidden')).toBe('true');
   });
   it('shows failures only inside details and does not claim the operation succeeded', () => {
     render(view({ ...message, toolResult: { isError: true, content: 'exit 1: test failed' } }));

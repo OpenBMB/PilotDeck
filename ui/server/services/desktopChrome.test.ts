@@ -21,12 +21,12 @@ it('reserves only plain editing shortcuts for the renderer, leaving macOS fullsc
   expect(isRendererEditingShortcut('win32', { ...input, control: true })).toBe(false);
 });
 
-it('uses native caption controls with an opaque matching background on each platform', () => {
-  expect(windowChromeOptions('darwin', true)).toMatchObject({ titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 }, backgroundColor: '#0a0a0a' });
-  expect(windowChromeOptions('win32', false)).toMatchObject({ titleBarStyle: 'hidden', titleBarOverlay: { height: 32, color: '#f4f4f5', symbolColor: '#262626' } });
-  expect(windowChromeOptions('win32', true)).toMatchObject({ titleBarOverlay: { color: '#171717', symbolColor: '#e5e5e5' } });
+it('uses transparent default Windows light chrome and the paired dark palette', () => {
+  expect(windowChromeOptions('darwin', true)).toMatchObject({ titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 }, backgroundColor: '#23252b' });
+  expect(windowChromeOptions('win32', false)).toMatchObject({ titleBarStyle: 'hidden', titleBarOverlay: { height: 32, color: '#00000000', symbolColor: '#262626' } });
+  expect(windowChromeOptions('win32', true)).toMatchObject({ titleBarOverlay: { color: '#2b2c2e', symbolColor: '#eeeef0' } });
   expect(windowChromeOptions('linux', false)).toMatchObject({ titleBarStyle: 'hidden', titleBarOverlay: { height: 32, color: '#f4f4f5', symbolColor: '#262626' } });
-  expect(windowChromeOptions('linux', true)).toMatchObject({ titleBarOverlay: { color: '#171717', symbolColor: '#e5e5e5' } });
+  expect(windowChromeOptions('linux', true)).toMatchObject({ titleBarOverlay: { color: '#2b2c2e', symbolColor: '#eeeef0' } });
 });
 it('Windows caption initializes its saved language, follows language/fullscreen changes and opens native menus', async () => {
   document.documentElement.lang = 'en';

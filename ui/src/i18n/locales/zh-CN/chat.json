@@ -1,4 +1,10 @@
 {
+  "turnNavigation": {
+    "label": "对话导航",
+    "jump": "跳转到第 {{number}} 轮对话",
+    "turn": "第 {{number}} 轮对话",
+    "loadEarlier": "加载更早的对话"
+  },
   "context": {
     "tokenUnit": "tokens",
     "title": "上下文预算",
@@ -186,6 +192,13 @@
     "waitingForWebFetch": "正在获取网页内容..."
   },
   "process": {
+    "group": { "details": "执行过程", "running": "执行过程" },
+    "duration": {
+      "day": "{{count}} 天",
+      "hour": "{{count}} 小时",
+      "minute": "{{count}} 分",
+      "second": "{{count}} 秒"
+    },
     "summary": {
       "processed": "已处理 {{duration}}",
       "completed": "过程已完成",
@@ -209,6 +222,9 @@
       "searches": "已搜索 {{count}} 次",
       "searches_one": "已搜索 {{count}} 次",
       "searches_other": "已搜索 {{count}} 次",
+      "webFetches": "已读取 {{count}} 个网页",
+      "webFetches_one": "已读取 {{count}} 个网页",
+      "webFetches_other": "已读取 {{count}} 个网页",
       "commands": "已运行 {{count}} 条命令",
       "commands_one": "已运行 {{count}} 条命令",
       "commands_other": "已运行 {{count}} 条命令",
@@ -272,9 +288,23 @@
     "selectedOption": "✓ PilotDeck 选择了选项 {{number}}",
     "instructionDetail": "在 CLI 中，您可以使用方向键或输入数字来交互式地选择此选项。"
   },
+  "filePreparation": {
+    "write": "正在生成文件内容",
+    "edit": "正在生成修改内容",
+    "received": "已接收 {{kilobytes}} KB"
+  },
+  "imagePreview": {
+    "label": "预览图片",
+    "named": "预览 {{name}}",
+    "uploaded": "已上传图片",
+    "toolResult": "工具结果图片"
+  },
   "thinking": {
     "title": "思考中...",
     "completed": "思考过程",
+    "finished": "已思考",
+    "runningDuration": "正在思考 {{count}} 秒",
+    "completedDuration": "已思考 {{count}} 秒",
     "emoji": "💭 思考中...",
     "liveContentLabel": "实时思考内容"
   },
@@ -547,6 +577,7 @@
       "sessionMessages": "正在加载会话消息..."
     },
     "messages": {
+      "loadFailed": "无法加载更早的消息。",
       "showingOf": "显示 {{shown}} / {{total}} 条消息",
       "scrollToLoad": "向上滚动以加载更多",
       "showingLast": "显示最近 {{visibleCount}} / {{total}} 条消息",
@@ -745,6 +776,12 @@
   },
   "toolDisplay": {
     "copyCommand": "复制命令",
+    "previewLines": "已显示 {{count}}/{{total}} 行",
+    "moreLines": "显示更多行",
+    "largeChangePreview": "改动较大，当前显示内容预览，可复制完整文件内容。",
+    "longLinePreview": "预览中的超长行已缩短，复制时会保留完整内容。",
+    "tool": "工具",
+    "duration": "{{seconds}} 秒",
     "collapse": "收起完整内容",
     "full": "展开完整内容",
     "copy": "复制",
@@ -752,6 +789,7 @@
     "output": "输出",
     "success": "成功",
     "failed": "失败",
+    "fetchFailed": "网页读取失败",
     "exitCode": "退出码 {{code}}",
     "executing": "正在运行…",
     "actionRequired": "需要处理",
@@ -767,6 +805,7 @@
       "read": "正在读取",
       "search": "正在搜索",
       "tool": "正在使用",
+      "fetch": "正在读取网页",
       "skill": "正在读取技能"
     },
     "pending": {
@@ -776,6 +815,7 @@
       "read": "读取",
       "search": "搜索",
       "tool": "工具",
+      "fetch": "读取网页",
       "skill": "读取技能"
     },
     "done": {
@@ -785,6 +825,7 @@
       "read": "已读取",
       "search": "已搜索",
       "tool": "已使用",
+      "fetch": "已读取网页",
       "skill": "已读取技能"
     }
   },

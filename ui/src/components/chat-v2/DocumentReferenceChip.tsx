@@ -34,6 +34,7 @@ function getDocumentReferenceFileMeta(fileName: string): DocumentReferenceFileMe
   }
 
   const category = getFileVisualCategory(fileName);
+  // File-type colors are stable identifiers, independent of the app accent.
   const metaByCategory: Record<FileVisualCategory, DocumentReferenceFileMeta> = {
     document: {
       label: ['doc', 'docx', 'docm', 'odt'].includes(extension)
@@ -43,23 +44,23 @@ function getDocumentReferenceFileMeta(fileName: string): DocumentReferenceFileMe
     },
     spreadsheet: {
       label: 'XLS',
-      className: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+      className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
     },
     presentation: {
       label: 'PPT',
-      className: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-300',
+      className: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
     },
     code: {
       label: 'CODE',
-      className: 'bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#7c3aed)] dark:bg-violet-950/40 dark:text-violet-300',
+      className: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
     },
     data: {
       label: 'DATA',
-      className: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-300',
+      className: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300',
     },
     archive: {
       label: 'ZIP',
-      className: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300',
+      className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
     },
     audio: {
       label: 'AUDIO',
@@ -67,7 +68,7 @@ function getDocumentReferenceFileMeta(fileName: string): DocumentReferenceFileMe
     },
     image: {
       label: 'IMG',
-      className: 'bg-[var(--pd-accent-soft,#f5f3ff)] text-[var(--pd-accent-strong,#7c3aed)] dark:bg-violet-950/40 dark:text-violet-300',
+      className: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
     },
     video: {
       label: 'VIDEO',

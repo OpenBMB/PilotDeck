@@ -5,6 +5,12 @@ export class ActiveTimeline {
   private blocks = new Map<string, GatewayEvent>();
 
   record(event: GatewayEvent): boolean {
+    if (event.type === 'agent_status' && event.event === 'file_input_progress') {
+      const id = `file-input:${event.detail?.activityId}`;
+      if (event.detail?.state === 'running') this.blocks.set(id, event);
+      else this.blocks.delete(id);
+      return true;
+    }
     const child = event.type === 'agent_status' ? event.detail?.subagentId : undefined;
     const ending = event.type === 'assistant_stream_end'
       || (event.type === 'agent_status' && event.event === 'subagent_stream_end');

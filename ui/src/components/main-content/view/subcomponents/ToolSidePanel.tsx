@@ -52,7 +52,7 @@ export default function ToolSidePanel({
           aria-valuenow={Math.round(width)}
           onMouseDown={onResizeStart}
           onKeyDown={handleResizeKeyDown}
-          className="group relative z-30 w-px shrink-0 cursor-col-resize bg-neutral-200 outline-none transition-colors hover:bg-neutral-400 focus:bg-blue-500 dark:bg-neutral-800 dark:hover:bg-neutral-600 dark:focus:bg-blue-400"
+          className="group relative z-30 w-px shrink-0 cursor-col-resize bg-neutral-200 outline-none transition-colors hover:bg-neutral-400 focus:bg-[var(--pd-focus,#3b82f6)] dark:bg-neutral-800 dark:hover:bg-neutral-600 dark:focus:bg-[var(--pd-focus,#60a5fa)]"
         >
           <div className="absolute inset-y-0 left-1/2 w-3 -translate-x-1/2" />
           <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100 dark:bg-neutral-600" />
@@ -76,7 +76,7 @@ export default function ToolSidePanel({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
             aria-label={closeLabel}
             title={closeLabel}
           >

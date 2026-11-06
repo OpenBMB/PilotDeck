@@ -62,7 +62,7 @@ describe('native computer use for Web and macOS desktop', () => {
       await service.initialize();
       const status = await service.setEnabled(true);
       expect(status).toMatchObject({ phase: 'ready', permissionOwner: 'PilotDeck Computer Use',
-        permissionAppPath: fs.realpathSync(binary).split('/Contents/')[0], permissions: { accessibility: true, screenRecording: true } });
+        permissionAppPath: fs.realpathSync(binary).split(path.sep + 'Contents' + path.sep)[0], permissions: { accessibility: true, screenRecording: true } });
       expect(execute.mock.calls.some(([command, args]) => command === 'open' && args.includes('permissions'))).toBe(false);
       expect(spawn).not.toHaveBeenCalled();
       expect(descriptor()['pilotdeck-computer-use'].args).toContain(controller.endpoint);
@@ -80,7 +80,7 @@ describe('native computer use for Web and macOS desktop', () => {
   });
   it('exposes and reveals its actual permission app without starting a Driver or requesting grants', async () => {
     const { controller, execute, binary, descriptor } = setup({ managed: true, running: false, grants: true });
-    const app = fs.realpathSync(binary).split('/Contents/')[0];
+    const app = fs.realpathSync(binary).split(path.sep + 'Contents' + path.sep)[0];
     expect(await controller.initialize()).toMatchObject({ permissionAppPath: app });
     execute.mockClear();
     expect(await controller.revealPermissionApp()).toMatchObject({ permissionAppPath: app, enabled: false });
@@ -116,7 +116,7 @@ describe('native computer use for Web and macOS desktop', () => {
     expect(await controller.initialize()).toMatchObject({ enabled: false, available: true });
     expect(await controller.setEnabled(true)).toMatchObject({ phase: 'ready', permissionOwner: 'PilotDeck Computer Use' });
     const open = execute.mock.calls.find(([command, args]) => command === 'open' && args.includes('serve'));
-    expect(open[1]).toContain(fs.realpathSync(binary).split('/Contents/')[0]);
+    expect(open[1]).toContain(fs.realpathSync(binary).split(path.sep + 'Contents' + path.sep)[0]);
     expect(open[1]).toContain('--stdin'); expect(open[1]).toContain(controller.endpoint);
     expect(descriptor()['pilotdeck-computer-use']).toBeTruthy(); await controller.stop(); expect(controller.livenessFd).toBeNull();
     expect(execute.mock.calls.some(([, args]) => args[0] === 'stop' && !args.includes(controller.endpoint))).toBe(false);
@@ -125,7 +125,7 @@ describe('native computer use for Web and macOS desktop', () => {
     const { controller, execute, binary } = setup({ managed: true, running: false, grants: false });
     await controller.requestPermission('screenRecording');
     const request = execute.mock.calls.find(([command, args]) => command === 'open' && args.includes('permissions'));
-    expect(request[1]).toContain(fs.realpathSync(binary).split('/Contents/')[0]); expect(request[1]).toContain('screenRecording');
+    expect(request[1]).toContain(fs.realpathSync(binary).split(path.sep + 'Contents' + path.sep)[0]); expect(request[1]).toContain('screenRecording');
     expect(request[1]).not.toContain('-W');
     expect(request[1]).toContain('--stdin'); expect(request[1]).toContain('--parent-liveness-stdio');
     const fifo = request[1][request[1].indexOf('--stdin') + 1];

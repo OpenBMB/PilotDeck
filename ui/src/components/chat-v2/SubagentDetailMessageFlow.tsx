@@ -4,18 +4,26 @@ import { ArrowDown } from 'lucide-react';
 import type { ChatMessage, ChatRunMode } from '../chat/types/types';
 import { useScrollFollow } from '../chat/hooks/useScrollFollow';
 import type { Project, SessionProvider } from '../../types/app';
+import { getIntrinsicMessageKey } from '../chat/utils/messageKeys';
+import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
+import { expandingDisclosure } from '../chat/utils/disclosureInteraction';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRowV2 from './MessageRowV2';
-import GeneratedMediaCard from '../chat/tools/GeneratedMediaCard';
+import { disclosureAncestorKeys } from './disclosureState';
+import { TurnFileFooter } from './TurnFileFooter';
+import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
+import { FileInputStatus } from './FileInputStatus';
+import { pendingFileInputs } from './fileInputStatusUtils';
+import { useLiveReplyKeys } from './useLiveReplyKeys';
+import { CompactProcessRow, ProcessBlock } from './ProcessBlock';
 import { ProcessLiveStatus, type ProcessTraceStep } from './ProcessTrace';
 import {
   buildRenderableMessageItems,
-  getLiveProcessGroups,
-  getLiveProcessGroupStep,
-  shouldRenderLiveProcessGroup,
-  splitLiveProcessGroupDetailMessages,
-  type LiveProcessGroup,
-  type ProcessAttachment,
+  groupProcessIntervals,
+  getTurnProcessMemberId,
+  isPendingProcessMessage,
+  turnProcessKey,
+  type TurnProcessGroup,
   type RenderableMessageItem,
 } from './processGrouping';
 import { useChatHistorySearch } from './useChatHistorySearch';
@@ -41,7 +49,7 @@ type KeyedRenderableMessageItem = RenderableMessageItem & {
 
 function getMessageKey(message: ChatMessage, index: number): string {
   return String(
-    message.renderKey || message.id ||
+    message.renderKey || (message.isCompactBoundary && message.compactionId) || message.id ||
       message.toolId ||
       message.activityId ||
       message.runId ||
@@ -53,32 +61,6 @@ function isStreamingSubagentThinkingMessage(message: ChatMessage): boolean {
   return Boolean(message.isThinking && message.isStreaming);
 }
 
-function processAttachmentOverlapsLiveGroup(
-  attachment: ProcessAttachment,
-  liveGroups: LiveProcessGroup[],
-): boolean {
-  return liveGroups.some((group) => (
-    attachment.startIndex <= group.endIndex && attachment.endIndex >= group.startIndex
-  ));
-}
-
-function removeLiveOverlappingProcessAttachments(
-  item: RenderableMessageItem,
-  liveGroups: LiveProcessGroup[],
-): RenderableMessageItem {
-  if (liveGroups.length === 0) return item;
-
-  return {
-    ...item,
-    beforeProcessAttachments: item.beforeProcessAttachments.filter(
-      (attachment) => !processAttachmentOverlapsLiveGroup(attachment, liveGroups),
-    ),
-    afterProcessAttachments: item.afterProcessAttachments.filter(
-      (attachment) => !processAttachmentOverlapsLiveGroup(attachment, liveGroups),
-    ),
-  };
-}
-
 export default function SubagentDetailMessageFlow({
   messages,
   provider,
@@ -87,18 +69,23 @@ export default function SubagentDetailMessageFlow({
   onFileOpen,
   showThinking = true,
   isRunning = false,
-  runMode = 'agent',
 }: SubagentDetailMessageFlowProps) {
   const { t } = useTranslation('chat');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const follow = useScrollFollow({ containerRef: scrollContainerRef, enabled: true, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
   const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, boolean>>(() => new Map());
   const [expandedToolSections, setExpandedToolSections] = useState<Map<string, boolean>>(() => new Map());
+  const currentTurnMessages = useMemo(() => {
+    const userIndex = messages.reduce((last, message, index) => message.type === 'user' ? index : last, -1);
+    return messages.slice(Math.max(0, userIndex));
+  }, [messages]);
+  const hasStreamingAssistantContent = currentTurnMessages.some(message => message.type === 'assistant'
+    && !message.isThinking && !message.isToolUse && message.isStreaming && Boolean(message.content?.trim()));
 
   const streamingThinkingContent = useMemo(() => {
     if (!showThinking || !isRunning) return null;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
+    for (let index = currentTurnMessages.length - 1; index >= 0; index -= 1) {
+      const message = currentTurnMessages[index];
       if (
         isStreamingSubagentThinkingMessage(message) &&
         typeof message.content === 'string' &&
@@ -108,13 +95,13 @@ export default function SubagentDetailMessageFlow({
       }
     }
     return null;
-  }, [isRunning, messages, showThinking]);
+  }, [isRunning, currentTurnMessages, showThinking]);
 
-  const thinkingStatusStep = useMemo<ProcessTraceStep>(() => {
+  const modelStatusStep = useMemo<ProcessTraceStep>(() => {
     return {
-      id: 'subagent-detail-thinking',
-      title: t('subagent.status.thinking', { defaultValue: 'Thinking' }),
-      phase: 'thinking',
+      id: 'subagent-model-call',
+      title: t('working.callingModel', { defaultValue: 'Calling model...' }),
+      phase: 'generation',
       state: 'running' as const,
     };
   }, [t]);
@@ -134,20 +121,10 @@ export default function SubagentDetailMessageFlow({
     },
     [messages, showThinking],
   );
-  const baseRenderableItems = useMemo(
-    () => buildRenderableMessageItems(renderableMessages, { isAssistantWorking: true })
-      .filter((item) => !item.message.isAgentActivitySummary),
-    [renderableMessages],
-  );
-  const liveProcessGroups = useMemo(
-    () => getLiveProcessGroups(renderableMessages, { isAssistantWorking: true })
-        .filter((group) => shouldRenderLiveProcessGroup(group, runMode))
-        .map((group) => isRunning ? group : { ...group, isRunning: false }),
-    [isRunning, renderableMessages, runMode],
-  );
+  const liveReplyKeys = useLiveReplyKeys(renderableMessages, isRunning);
   const renderableItems = useMemo(
-    () => baseRenderableItems.map((item) => removeLiveOverlappingProcessAttachments(item, liveProcessGroups)),
-    [baseRenderableItems, liveProcessGroups],
+    () => groupProcessIntervals(renderableMessages, buildRenderableMessageItems(renderableMessages, { isAssistantWorking: isRunning }), isRunning),
+    [renderableMessages, isRunning],
   );
   const keyedItems = useMemo<KeyedRenderableMessageItem[]>(
     () => renderableItems.map((item, index) => ({
@@ -157,52 +134,16 @@ export default function SubagentDetailMessageFlow({
     })),
     [renderableItems],
   );
-  const visibleOriginalIndices = useMemo(
-    () => new Set(keyedItems.map((item) => item.originalIndex)),
-    [keyedItems],
-  );
-  const liveProcessGroupsByAnchor = useMemo(() => {
-    const groupsByAnchor = new Map<number, LiveProcessGroup[]>();
-    for (const group of liveProcessGroups) {
-      const groups = groupsByAnchor.get(group.afterOriginalIndex) || [];
-      groups.push(group);
-      groupsByAnchor.set(group.afterOriginalIndex, groups);
-    }
-    return groupsByAnchor;
-  }, [liveProcessGroups]);
-  const unanchoredLiveProcessGroups = useMemo(
-    () => liveProcessGroups.filter((group) => !visibleOriginalIndices.has(group.afterOriginalIndex)),
-    [liveProcessGroups, visibleOriginalIndices],
-  );
-  const unanchoredLiveProcessGroupsByBeforeIndex = useMemo(() => {
-    const groupsByBeforeIndex = new Map<number, LiveProcessGroup[]>();
-    for (const group of unanchoredLiveProcessGroups) {
-      if (group.beforeOriginalIndex == null) continue;
-      const insertionItem = keyedItems.find((item) => item.originalIndex >= group.beforeOriginalIndex!);
-      if (!insertionItem) continue;
-      const groups = groupsByBeforeIndex.get(insertionItem.originalIndex) || [];
-      groups.push(group);
-      groupsByBeforeIndex.set(insertionItem.originalIndex, groups);
-    }
-    return groupsByBeforeIndex;
-  }, [keyedItems, unanchoredLiveProcessGroups]);
-  const bottomUnanchoredLiveProcessGroups = useMemo(
-    () => unanchoredLiveProcessGroups.filter((group) => {
-      if (group.beforeOriginalIndex == null) return true;
-      return !keyedItems.some((item) => item.originalIndex >= group.beforeOriginalIndex!);
-    }),
-    [keyedItems, unanchoredLiveProcessGroups],
-  );
-  const hasOpenEndedLiveProcessGroup = liveProcessGroups.some((group) => group.isRunning);
-  const shouldRenderBottomLiveStatus = isRunning && !hasOpenEndedLiveProcessGroup && !streamingThinkingContent;
+  const filePreparations = useMemo(() => isRunning ? pendingFileInputs(messages, messages) : [], [isRunning, messages]);
+  const hasLiveGroup = renderableItems.some(item => item.turnTrace?.isLive);
+  const hasPendingProcessWork = currentTurnMessages.some(isPendingProcessMessage);
+  const hasPendingInteraction = currentTurnMessages.some(message => message.isInteractivePrompt && !message.toolResult);
+  const shouldRenderBottomLiveStatus = isRunning && !streamingThinkingContent && !hasStreamingAssistantContent
+    && !hasPendingInteraction && !filePreparations.length && (!hasLiveGroup || !hasPendingProcessWork);
   const keyedMessagesForSearch = useMemo<SearchableChatMessageInput[]>(() => {
-    return keyedItems.filter(item => !item.mediaArtifact).map((item) => (
-      {
-        message: item.message,
-        messageKey: item.itemKey,
-        messageIndex: item.renderIndex,
-      }
-    ));
+    return keyedItems.filter(item => !item.mediaArtifact).flatMap(item => item.turnTrace
+      ? item.turnTrace.items.map(child => ({ message: child.message, messageKey: getMessageKey(child.message, child.originalIndex), messageIndex: item.renderIndex }))
+      : [{ message: item.message, messageKey: item.itemKey, messageIndex: item.renderIndex }]);
   }, [keyedItems]);
   const measuredItemHeights = useMemo(
     () => keyedItems.map(() => 96),
@@ -244,13 +185,19 @@ export default function SubagentDetailMessageFlow({
     loadAllMessages: loadAllSearchMessages,
     sessionId: null,
     captureFindShortcutInModal: true,
-    onNavigate: follow.pause,
+    onNavigate: match => {
+      follow.pause();
+      const item = keyedItems[match.messageIndex];
+      if (item?.processRun) handleProcessExpandedChange(turnProcessKey("subagent", item.processRun), true);
+      const trace = item?.turnTrace;
+      if (trace) handleProcessExpandedChange(`subagent:${trace.id}`, true);
+    },
   });
 
-  const renderLiveProcessDetailMessages = useCallback((detailMessages: ChatMessage[], groupId: string) => {
+  const renderLiveProcessDetailMessages = useCallback((detailMessages: ChatMessage[]) => {
     return detailMessages.map((message, index) => (
-      <MessageRowV2
-        key={`${groupId}-${index}-${getMessageKey(message, index)}`}
+      <div key={getMessageKey(message, index)} className="chat-message" data-message-key={getMessageKey(message, index)}>
+      {message.isCompactBoundary ? <CompactProcessRow message={message} running={isRunning} /> : <MessageRowV2
         message={message}
         prevMessage={index > 0 ? detailMessages[index - 1] : null}
         nextMessage={index < detailMessages.length - 1 ? detailMessages[index + 1] : null}
@@ -264,7 +211,8 @@ export default function SubagentDetailMessageFlow({
         onProcessExpandedChange={handleProcessExpandedChange}
         isToolSectionExpanded={isToolSectionExpanded}
         onToolSectionExpandedChange={handleToolSectionExpandedChange}
-      />
+      />}
+      </div>
     ));
   }, [
     createDiff,
@@ -279,44 +227,7 @@ export default function SubagentDetailMessageFlow({
     showThinking,
   ]);
 
-  const renderLiveProcessGroup = useCallback((group: LiveProcessGroup, index: number) => {
-    const step = getLiveProcessGroupStep(group, t, null);
-    const expanded = isProcessExpanded(group.id);
-    const { beforeStatusMessages, statusDetailMessages } = splitLiveProcessGroupDetailMessages(group);
-    return (
-      <Fragment key={group.id || `${group.afterOriginalIndex}-${index}`}>
-        {expanded && beforeStatusMessages.length > 0 ? (
-          <div className="pl-5">
-            {renderLiveProcessDetailMessages(beforeStatusMessages, `${group.id}-before-status`)}
-          </div>
-        ) : null}
-        <ProcessLiveStatus
-          step={step}
-          compact
-          expanded={expanded}
-          onExpandedChange={(expanded) => handleProcessExpandedChange(group.id, expanded)}
-        >
-          {statusDetailMessages.length > 0
-            ? renderLiveProcessDetailMessages(statusDetailMessages, group.id)
-            : null}
-        </ProcessLiveStatus>
-      </Fragment>
-    );
-  }, [
-    handleProcessExpandedChange,
-    isProcessExpanded,
-    renderLiveProcessDetailMessages,
-    t,
-  ]);
-
-  if (
-    keyedItems.length === 0 &&
-    bottomUnanchoredLiveProcessGroups.length === 0 &&
-    unanchoredLiveProcessGroupsByBeforeIndex.size === 0 &&
-    !shouldRenderBottomLiveStatus
-  ) {
-    return null;
-  }
+  if (!keyedItems.length && !shouldRenderBottomLiveStatus && !filePreparations.length) return null;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -332,32 +243,29 @@ export default function SubagentDetailMessageFlow({
           inputRef={chatHistorySearch.inputRef}
         />
       ) : null}
-      <div ref={scrollContainerRef} data-stream-scroll-viewport className="min-h-0 flex-1 overflow-y-auto" style={{ overflowAnchor: 'none' }}>
-        <div data-chat-scroll-content className="flex min-w-0 flex-col gap-3 px-6 py-4">
+      <div ref={scrollContainerRef} data-stream-scroll-viewport className="chat-panel-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden" style={{ overflowAnchor: 'none' }}>
+        <div data-chat-scroll-content className="flex min-w-0 flex-col px-6 py-4" onClickCapture={event => {
+          const trigger = expandingDisclosure(event.target);
+          if (!trigger) return;
+          follow.pauseAt(trigger.closest<HTMLElement>('[data-message-key]')?.dataset.messageKey);
+          disclosureAncestorKeys(trigger, 'subagent').forEach(key => handleProcessExpandedChange(key, true));
+        }}>
           {keyedItems.map((item) => {
             const previousMessage = item.renderIndex > 0 ? keyedItems[item.renderIndex - 1].message : null;
             const nextMessage = item.renderIndex < keyedItems.length - 1
               ? keyedItems[item.renderIndex + 1].message
               : null;
-            const anchoredLiveGroups = liveProcessGroupsByAnchor.get(item.originalIndex) || [];
-            const beforeLiveGroups = unanchoredLiveProcessGroupsByBeforeIndex.get(item.originalIndex) || [];
 
-            return (
-              <Fragment key={item.itemKey}>
-                {beforeLiveGroups.length > 0 ? (
-                  <div className="flex min-w-0 flex-col gap-2">
-                    {beforeLiveGroups.map(renderLiveProcessGroup)}
-                  </div>
-                ) : null}
-                <div
-                  className="chat-message"
-                  data-message-key={item.itemKey}
-                  data-message-timestamp={item.message.timestamp ? String(item.message.timestamp) : undefined}
-                >
-                  {item.mediaArtifact ? (
-                    <GeneratedMediaCard message={item.message} running={isRunning} />
+            const rowContent = item.turnTrace ? <ProcessBlock trace={item.turnTrace}
+                    expanded={isProcessExpanded(`subagent:${item.turnTrace.id}`, item.turnTrace.defaultExpanded)}
+                    onExpandedChange={expanded => handleProcessExpandedChange(`subagent:${item.turnTrace!.id}`, expanded)}>
+                    {renderLiveProcessDetailMessages(item.turnTrace.items.map(child => child.message))}
+                    {item.turnTrace.isLive && filePreparations.map(activity => <FileInputStatus key={activity.activityId} activity={activity} />)}
+                  </ProcessBlock> : item.mediaArtifact ? (
+                    <GeneratedMediaCard message={item.message} running={isRunning} visible={item.mediaExpanded} />
                   ) : <MessageRowV2
                     message={item.message}
+                    animateTextOnMount={liveReplyKeys.has(getIntrinsicMessageKey(item.message) || "")}
                     prevMessage={previousMessage}
                     nextMessage={nextMessage}
                     beforeProcessAttachments={item.beforeProcessAttachments}
@@ -372,22 +280,34 @@ export default function SubagentDetailMessageFlow({
                     onProcessExpandedChange={handleProcessExpandedChange}
                     isToolSectionExpanded={isToolSectionExpanded}
                     onToolSectionExpandedChange={handleToolSectionExpandedChange}
-                  />}
+                  />;
+            const renderTurnHeader = (group: TurnProcessGroup) => group.memberIds.length ? <TurnProcessHeader
+              group={group} scope="subagent" showWhileRunning={false}
+              expanded={isProcessExpanded(turnProcessKey('subagent', group), group.defaultExpanded)}
+              onExpandedChange={expanded => handleProcessExpandedChange(turnProcessKey('subagent', group), expanded)} /> : null;
+
+            return (
+              <Fragment key={item.itemKey}>
+                <div
+                  className={item.processRun || item.mediaArtifact ? "chat-message" : "chat-message pb-2"}
+                  data-message-key={item.itemKey}
+                  data-message-timestamp={item.message.timestamp ? String(item.message.timestamp) : undefined}
+                >
+                  {item.beforeTurnProcess ? renderTurnHeader(item.beforeTurnProcess) : null}
+                  {item.processRun ? <TurnProcessRegion group={item.processRun} scope="subagent"
+                    member={getTurnProcessMemberId(item)} output={item.processOutput}
+                    prose={item.message.type === 'assistant' && !item.turnTrace && !item.message.isToolUse}
+                    expanded={Boolean(item.processOutput || isProcessExpanded(turnProcessKey('subagent', item.processRun), item.processRun.defaultExpanded))}>
+                    {rowContent}
+                  </TurnProcessRegion> : rowContent}
+                  {item.afterTurnProcess ? renderTurnHeader(item.afterTurnProcess) : null}
+                  {item.turnFiles ? <TurnFileFooter files={item.turnFiles} project={selectedProject} onBrowse={onFileOpen} /> : null}
                 </div>
-                {anchoredLiveGroups.length > 0 ? (
-                  <div className="flex min-w-0 flex-col gap-2">
-                    {anchoredLiveGroups.map(renderLiveProcessGroup)}
-                  </div>
-                ) : null}
               </Fragment>
             );
           })}
-          {bottomUnanchoredLiveProcessGroups.length > 0 ? (
-            <div className="flex min-w-0 flex-col gap-2">
-              {bottomUnanchoredLiveProcessGroups.map(renderLiveProcessGroup)}
-            </div>
-          ) : null}
-          {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={thinkingStatusStep} /> : null}
+          {!hasLiveGroup && filePreparations.map(activity => <div key={activity.activityId} className="pb-2"><FileInputStatus activity={activity} /></div>)}
+          {shouldRenderBottomLiveStatus ? <ProcessLiveStatus step={modelStatusStep} /> : null}
         </div>
       </div>
       {follow.canReturnToLatest ? (

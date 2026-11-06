@@ -16,7 +16,7 @@
 .pd-context-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; letter-spacing: -.015em; }
 .pd-context-title { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; white-space: nowrap; }
 .pd-context-title svg { color: var(--brand); flex-shrink: 0; }
-.pd-context-status { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 7px; border-radius: 6px; background: color-mix(in srgb, var(--brand) 9%, transparent); color: var(--brand); font-size: 11px; white-space: nowrap; }
+.pd-context-status { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 7px; border-radius: 6px; background: color-mix(in srgb, var(--brand) 9%, transparent); color: var(--brand-strong); font-size: 11px; white-space: nowrap; }
 .pd-context-status strong { font-weight: 600; }
 .pd-context-total { display: flex; align-items: baseline; gap: 4px; margin-top: 3px; font-size: 11px; color: var(--context-muted); white-space: nowrap; }
 .pd-context-unit { font-size: 11px; opacity: .8; }

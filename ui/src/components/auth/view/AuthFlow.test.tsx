@@ -9,10 +9,11 @@ import { AuthProvider } from '../context/AuthContext';
 import ProtectedRoute from './ProtectedRoute';
 
 const mocks = vi.hoisted(() => ({
+  disableLocalAuth: false,
   status: vi.fn(), user: vi.fn(), login: vi.fn(), register: vi.fn(),
   onboardingStatus: vi.fn(), runtimeStatus: vi.fn(),
 }));
-vi.mock('../../../constants/config', () => ({ IS_PLATFORM: false, DISABLE_LOCAL_AUTH: false }));
+vi.mock('../../../constants/config', () => ({ IS_PLATFORM: false, get DISABLE_LOCAL_AUTH() { return mocks.disableLocalAuth; } }));
 vi.mock('../../../utils/api', () => ({
   api: {
     auth: { status: mocks.status, user: mocks.user, login: mocks.login, register: mocks.register },
@@ -36,6 +37,7 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.disableLocalAuth = false;
   localStorage.clear();
   mocks.status.mockImplementation(async () => response({ needsSetup: false }));
   mocks.user.mockImplementation(async () => response({ user: session.user }));
@@ -46,6 +48,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear(); });
 
 describe('active authentication entry points', () => {
+  it('opens the workspace without account setup or login in the default single-user mode', async () => {
+    mocks.disableLocalAuth = true;
+    await mount();
+    expect(await screen.findByText('workspace')).toBeTruthy();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(mocks.status).not.toHaveBeenCalled();
+    expect(mocks.user).not.toHaveBeenCalled();
+    expect(mocks.login).not.toHaveBeenCalled();
+    expect(mocks.register).not.toHaveBeenCalled();
+    expect(localStorage.getItem('auth-token')).toBeNull();
+  });
+
+  it('keeps model onboarding reachable without creating an account', async () => {
+    mocks.disableLocalAuth = true;
+    mocks.onboardingStatus.mockImplementation(async () => response({ configuration: { state: 'needs_configuration' } }));
+    await mount();
+    expect(await screen.findByText('onboarding')).toBeTruthy();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
   it('logs in through the self-hosted account form before mounting the workspace', async () => {
     await mount();
     fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'owner' } });

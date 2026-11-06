@@ -1617,6 +1617,7 @@ app.get('/api/office-preview/status', authenticateToken, officePreviewStatusRate
         ]);
         res.json({
             service: configuredPreview.service,
+            platform: process.platform,
             configuredBinaryPath: configuredPreview.binaryPath,
             libreOffice: {
                 ...libreOffice,
@@ -3664,7 +3665,7 @@ async function ensureLocalUserWhenAuthDisabled() {
     }
     const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
     userDb.createUser('local', passwordHash);
-    console.log(`${c.info('[INFO]')} Web UI login is explicitly disabled. Using built-in user. Set PILOTDECK_DISABLE_LOCAL_AUTH=0 to require username/password.`);
+    console.log(`${c.info('[INFO]')} Web UI login is disabled. Using built-in user. Set PILOTDECK_DISABLE_LOCAL_AUTH=0 to require username/password.`);
 }
 
 // Initialize database and start server

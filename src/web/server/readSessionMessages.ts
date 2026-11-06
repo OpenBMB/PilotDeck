@@ -11,9 +11,9 @@
  *     -> CanonicalMessage[]
  *     -> WebMessage[]
  *
- * Pagination is offset-based (`cursor` is a stringified integer). We do
- * NOT slice individual content blocks within a message — paging cuts at
- * `WebMessage` boundaries.
+ * Forward pagination retains numeric cursors. Backward pages use a stable
+ * before-message identity and extend to the start of the oldest included turn,
+ * so a long process is never severed from its user prompt.
  */
 
 import {
@@ -112,16 +112,48 @@ export async function readWebSessionMessages(
   if (incompleteTurnIds.length > 0) {
     allMessages.push(createIncompleteTurnStatusMessage(input, incompleteTurnIds, options));
   }
+  // Keep timing on an existing anchor instead of adding history rows or using
+  // a text block's first-token timestamp as the execution end.
+  const completedTurns = new Map(entries.filter(entry => entry.type === 'turn_result')
+    .map(entry => [entry.turnId, entry.result]));
+  const timedTurns = new Set<string>();
+  for (const message of allMessages) {
+    if (!message.turnId || timedTurns.has(message.turnId)) continue;
+    const result = completedTurns.get(message.turnId);
+    if (!result || !Number.isFinite(Date.parse(result.startedAt)) || !Number.isFinite(Date.parse(result.completedAt))
+      || Date.parse(result.completedAt) < Date.parse(result.startedAt)) continue;
+    message.turnTiming = { startedAt: result.startedAt, completedAt: result.completedAt, finishReason: result.stopReason };
+    timedTurns.add(message.turnId);
+  }
 
   const offset = parseCursor(input.cursor);
   const limit = input.limit ?? allMessages.length;
-  const sliceEnd = limit === 0 ? allMessages.length : offset + limit;
-  const slice = allMessages.slice(offset, sliceEnd);
+  const backward = input.direction === 'backward';
+  const beforeId = backward && input.cursor?.startsWith('before:') ? input.cursor.slice(7) : undefined;
+  const boundary = beforeId === undefined ? undefined : allMessages.findIndex(message => message.id === beforeId);
+  const includeFrom = backward && input.cursor === undefined && input.includeFromId
+    ? allMessages.findIndex(message => message.id === input.includeFromId) : undefined;
+  const historyReset = boundary === -1 || includeFrom === -1;
+  const sliceEnd = backward ? boundary !== undefined && boundary >= 0 ? boundary
+    : Math.min(allMessages.length, input.cursor === undefined || historyReset ? allMessages.length : offset)
+    : limit === 0 ? allMessages.length : offset + limit;
+  let sliceStart = backward ? Math.max(0, sliceEnd - (limit || sliceEnd)) : offset;
+  if (backward) {
+    if (includeFrom !== undefined && includeFrom >= 0) sliceStart = Math.min(sliceStart, includeFrom);
+    // A page is a suffix of complete turns. The head identity remains stable
+    // when live events or delayed artifacts are inserted around the window.
+    // Mid-turn guidance is also a user message, but belongs to the same turn.
+    const oldestTurnId = allMessages[sliceStart]?.turnId;
+    if (oldestTurnId) sliceStart = allMessages.findIndex(message => message.turnId === oldestTurnId);
+    else while (sliceStart > 0 && !(allMessages[sliceStart]?.kind === 'text' && allMessages[sliceStart]?.role === 'user')) sliceStart--;
+  }
+  const slice = allMessages.slice(sliceStart, sliceEnd);
 
   return {
     ...(input.includeModelContext ? { modelContext } : {}),
     messages: slice,
-    nextCursor:
+    ...(historyReset ? { historyReset: true } : {}),
+    nextCursor: backward ? sliceStart > 0 ? `before:${slice[0]!.id}` : undefined :
       input.limit && offset + slice.length < allMessages.length
         ? String(offset + slice.length)
         : undefined,
@@ -1296,7 +1328,7 @@ function readPlanData(raw: unknown): Record<string, unknown> | undefined {
 function readToolPresentationData(raw: unknown): Record<string, unknown> | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const record = raw as { toolName?: unknown; data?: unknown };
-  if (!isSearchToolName(record.toolName) && !["generate_image", "edit_image", "save_generated_image", "generate_video", "save_generated_video"].includes(String(record.toolName))) return undefined;
+  if (!isSearchToolName(record.toolName) && !["ask_user_question", "AskUserQuestion", "generate_image", "edit_image", "save_generated_image", "generate_video", "save_generated_video"].includes(String(record.toolName))) return undefined;
   return record.data && typeof record.data === "object"
     ? record.data as Record<string, unknown>
     : undefined;

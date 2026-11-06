@@ -29,7 +29,7 @@ export const CollapsibleDisplay: React.FC<CollapsibleDisplayProps> = ({
   autoExpandable = true
 }) => {
   return (
-    <div className={`my-1 min-w-0 py-0.5 ${className}`}>
+    <div className={`min-w-0 ${className}`}>
       <CollapsibleSection
         title={title}
         toolName={toolName}

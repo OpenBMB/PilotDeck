@@ -22,6 +22,7 @@ const assets = files.map(record);
 const manifest = {
   schemaVersion: 1,
   artifactSchemaVersion: 1,
+  differentialUpdates: process.env.PILOTDECK_DIFFERENTIAL_UPDATES !== '0',
   version: requiredEnv("PILOTDECK_RELEASE_VERSION"),
   tag: requiredEnv("PILOTDECK_RELEASE_TAG"),
   date: requiredEnv("PILOTDECK_RELEASE_DATE"),
