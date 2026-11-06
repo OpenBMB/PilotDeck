@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { useTaskMaster } from '../../../contexts/TaskMasterContext';
 import type { TaskMasterTask, TaskStatus } from '../types';
 import { authenticatedFetch } from '../../../utils/api';
@@ -106,7 +106,7 @@ export default function TasksPanel({ isVisible }: TasksPanelProps) {
             onClick={() => void refreshTasks()}
             className="text-xxs inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-2.5 text-white transition hover:opacity-90 dark:bg-neutral-50 dark:text-neutral-900"
           >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+            <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
             <span>Refresh</span>
           </button>
         </div>
@@ -118,7 +118,7 @@ export default function TasksPanel({ isVisible }: TasksPanelProps) {
           </div>
         ) : flat.length === 0 ? (
           <div className="rounded-xl border border-neutral-200 p-10 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-            No tasks yet. Initialize Task Master from the legacy tasks panel to get started.
+            {t('tasks:emptyWorkspaceHint')}
           </div>
         ) : (
           <div className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
