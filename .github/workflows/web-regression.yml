@@ -63,6 +63,11 @@ jobs:
       - name: Build Gateway and Web UI
         run: pnpm run build:web
 
+      - name: Verify deferred editor dependencies
+        run: |
+          node --test tests/scripts/ui-build-graph.test.mjs
+          node scripts/check-ui-build-graph.mjs
+
       - name: Test CI and release workflow boundaries
         run: node --test apps/desktop/scripts/workflow-boundaries.test.mjs
 
@@ -114,12 +119,24 @@ jobs:
         if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
         run: pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs
 
+      - name: Test production editor loading and state
+        if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
+        run: pnpm --dir ui exec playwright test -c e2e/editor-loading.config.mjs
+
       - name: Upload chat scrolling failure evidence
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: chat-scrolling-failure
           path: artifacts/stream-playwright
+          if-no-files-found: ignore
+
+      - name: Upload editor loading failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-loading-failure
+          path: artifacts/editor-loading-playwright
           if-no-files-found: ignore
 
   docker:
