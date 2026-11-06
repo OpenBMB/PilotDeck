@@ -30,6 +30,7 @@ Desktop includes Python 3.12, uv/uvx and a curated set of agent, data, statistic
 Closing the window keeps background work running when a supported tray is available. Explicit Quit stops owned processes; updater failure must restore a working runtime. Do not terminate unrelated user processes.
 
 Runtime readiness owns its probe sockets, retry timers and process listeners. Success, process failure, cancellation and the startup deadline release them before a replacement attempt begins; failed starts do not leave background polling behind.
+Quit, update installation and runtime replacement cancel pending readiness before awaiting startup settlement. Each runtime coalesces launch and cleanup, prevents late startup stages from launching processes after shutdown, and retains failed cleanup for an explicit retry.
 
 Caption menus retain each native popup through deferred close completion. `close()` stops hover tracking and returns a promise that resolves after native teardown. Renderer acknowledgements and queued menu switches resume after the native close callback exits; repeated close requests do not cancel that settlement. Native acceptance controls popup closure through renderer IPC and reads main-process debugger state after dismissal.
 
