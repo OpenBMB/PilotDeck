@@ -113,24 +113,40 @@ async function exercise(page, platform, resize) {
     await expect.poll(()=>new URL(page.url()).pathname).toBe(`/settings/${expected}`);
     expect(new URL(page.url()).searchParams.get('reference')).toBe(reference);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.locator('[data-reference-highlight]')).toHaveAttribute('data-model-reference',reference);
-    expect(await page.locator('[data-reference-highlight]').evaluate(e=>e.getBoundingClientRect().height)).toBeGreaterThan(30);
+    if (reference === 'agent.model') {
+      // The legacy reference still routes to the pool; primary-agent controls were retired.
+      await expect(page.locator('.model-pool-workspace')).toBeVisible();
+      await expect(page.locator('[data-model-reference="agent.model"]')).toHaveCount(0);
+    } else {
+      await expect(page.locator('[data-reference-highlight]')).toHaveAttribute('data-model-reference',reference);
+      expect(await page.locator('[data-reference-highlight]').evaluate(e=>e.getBoundingClientRect().height)).toBeGreaterThan(30);
+    }
     expect(mutations).toHaveLength(0);
     await page.screenshot({path:path.join(artifacts,`${platform}-reference-${reference.replace(/[^a-zA-Z0-9]/g,'_')}.png`)});
   }
   await page.goto('http://127.0.0.1:5187/settings/models');
-  const contextLimit=page.getByLabel('主智能体上下文上限',{exact:true});
-  await expect(contextLimit).toHaveValue('128000');
-  await contextLimit.fill('64000');await contextLimit.press('Tab');
-  await expect.poll(()=>config.agent.maxContextTokens).toBe(64000);
-  await page.reload();await expect(contextLimit).toHaveValue('64000');
-  await contextLimit.fill('');await contextLimit.press('Tab');
+  await expect(page.getByLabel('主智能体上下文上限',{exact:true})).toHaveCount(0);
+  expect(config.agent.maxContextTokens).toBe(128000);
+  const openModelSettings = async () => {
+    await page.locator('.provider-row').filter({hasText:'HX API'}).click();
+    await page.locator('.model-settings-trigger').filter({hasText:'qwen3.6/27b'}).click();
+  };
+  await openModelSettings();
+  const contextLimit=page.getByLabel('最大上下文 Token',{exact:true});
+  await contextLimit.fill('64000');
+  await page.getByRole('dialog').getByRole('button',{name:'保存',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(()=>config.model.providers['HX API'].models['qwen3.6/27b'].capabilities.maxContextTokens).toBe(64000);
   await expect.poll(()=>config.agent.maxContextTokens).toBeUndefined();
+  await page.reload();await openModelSettings();
+  await expect(contextLimit).toHaveValue('64000');
   for(const width of [960,1600,1320]) {
     await resize(width,900);
     await expect(contextLimit).toBeVisible();
-    await expect.poll(()=>page.locator('.model-pool-default').evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
+    await expect.poll(()=>page.locator('.model-pool-workspace').evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
+    await expect.poll(()=>page.getByRole('dialog').evaluate(e=>e.scrollWidth-e.clientWidth)).toBeLessThanOrEqual(1);
   }
+  await page.getByRole('dialog').getByRole('button',{name:'取消',exact:true}).click();
   await page.goto('http://127.0.0.1:5187/settings/models');
   await page.locator('.provider-row').filter({hasText:'HX API'}).click();
   await page.locator('.button.destructive-outline').click();
@@ -160,8 +176,8 @@ async function exercise(page, platform, resize) {
   await expect(page.locator('html')).toHaveAttribute('data-light-appearance');
   await page.reload();await expect(page.locator('#appearance-palette [data-preset=blue]')).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
-  await fs.writeFile(path.join(artifacts,`${platform}-checks.json`),JSON.stringify({pages:report,references,contextOverride:'saved/reloaded/cleared',resizeWidths:[960,1600,1320],mutations},null,2));
-  console.log(`PASS ${platform}: 10 reference links, retired route redirect, context override save/clear, resize, conflict/re-preview/atomic removal, last-model block and dark/reload`);
+  await fs.writeFile(path.join(artifacts,`${platform}-checks.json`),JSON.stringify({pages:report,references,modelContext:'saved/reloaded; legacy agent override retired on save',resizeWidths:[960,1600,1320],mutations},null,2));
+  console.log(`PASS ${platform}: 10 reference links, retired route redirect, model context save/reload and legacy migration, resize, conflict/re-preview/atomic removal, last-model block and dark/reload`);
 }
 if(!process.env.PILOTDECK_SKIP_BROWSER) {
  const browser=await chromium.launch({channel:process.env.PILOTDECK_TEST_BROWSER_CHANNEL||'chrome',headless:true});
@@ -172,5 +188,9 @@ if(!process.env.PILOTDECK_SKIP_ELECTRON) {
  await fs.writeFile(path.join(profile,'appearance.json'),JSON.stringify({language:'zh-CN',themeMode:'light'}));
  const app=await electron.launch({executablePath:createRequire(import.meta.url)(path.join(root,'apps/desktop/node_modules/electron')),
   args:[path.join(root,'apps/desktop/scripts/fixtures/appearance.cjs')],env:{...Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='ELECTRON_RUN_AS_NODE')),PILOTDECK_APPEARANCE_PROFILE:profile}});
- try{await exercise(await app.firstWindow(),'desktop',(width,height)=>app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(size.width,size.height),{width,height}));}finally{await app.close();}
+ try{
+  // A hidden native window can stop producing frames for Playwright screenshots.
+  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].showInactive());
+  await exercise(await app.firstWindow(),'desktop',(width,height)=>app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(size.width,size.height),{width,height}));
+ }finally{await app.close();}
 }
