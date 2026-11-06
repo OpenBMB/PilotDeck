@@ -221,3 +221,5 @@ CLAUDE.md
 # Native dependencies prepared for both Web and desktop runtimes
 resources/cua-driver/
 resources/.cua-driver-download-*/
+apps/desktop/resources/python-runtime/
+apps/desktop/resources/.python-download-*/
