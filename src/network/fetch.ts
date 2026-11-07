@@ -69,6 +69,11 @@ export async function networkFetch(
     if (timeout && typeof timeout === "object" && "unref" in timeout) {
       (timeout as NodeJS.Timeout).unref();
     }
+    const cleanup = () => {
+      if (timeout) clearTimeout(timeout);
+      detachAbort?.();
+    };
+    let bodyOwnsCleanup = false;
 
     try {
       const response = await performFetch(input, {
@@ -82,25 +87,105 @@ export async function networkFetch(
         shouldRetryStatus(response.status, retry.retryStatuses)
       ) {
         await response.body?.cancel().catch(() => undefined);
+        cleanup();
         await delay(resolveRetryDelay(attempt, retry, response.headers.get("retry-after")), parentSignal);
         continue;
       }
 
-      return response;
+      if (!response.body || (!parentSignal && !timeout)) return response;
+      const result = trackResponseBody(response, controller.signal, parentSignal, cleanup);
+      bodyOwnsCleanup = true;
+      return result;
     } catch (error) {
       lastError = error;
       const normalized = normalizeNetworkError(error, controller.signal, parentSignal);
       if (!canRetryMethod || attempt >= maxRetries || !isRetryableNetworkCode(normalized.code)) {
         throw normalized;
       }
+      cleanup();
       await delay(resolveRetryDelay(attempt, retry), parentSignal);
     } finally {
-      if (timeout) clearTimeout(timeout);
-      detachAbort?.();
+      if (!bodyOwnsCleanup) cleanup();
     }
   }
 
   throw normalizeNetworkError(lastError);
+}
+
+// Fetch resolves at headers. Keep the attempt's cancellation scope alive until
+// the body completes, fails, or is cancelled, without buffering streaming data.
+function trackResponseBody(
+  response: Response,
+  signal: AbortSignal,
+  parentSignal: AbortSignal | undefined,
+  cleanup: () => void,
+): Response {
+  const reader = response.body!.getReader();
+  let finished = false;
+  let streamController: ReadableStreamDefaultController<Uint8Array>;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    signal.removeEventListener("abort", onAbort);
+    cleanup();
+  };
+  const onAbort = () => {
+    if (finished) return;
+    const error = normalizeNetworkError(signal.reason, signal, parentSignal);
+    streamController.error(error);
+    finish();
+    void reader.cancel(error).catch(() => undefined).then(() => reader.releaseLock());
+  };
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    },
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (finished) return;
+        if (done) {
+          controller.close();
+          finish();
+          reader.releaseLock();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        if (finished) return;
+        controller.error(normalizeNetworkError(error, signal, parentSignal));
+        finish();
+        reader.releaseLock();
+      }
+    },
+    async cancel(reason) {
+      finish();
+      try { await reader.cancel(reason); }
+      finally { reader.releaseLock(); }
+    },
+  });
+  const ResponseClass = response.constructor as typeof Response;
+  return preserveResponseMetadata(new ResponseClass(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  }), response);
+}
+
+function preserveResponseMetadata(response: Response, source: Response): Response {
+  const clone = response.clone.bind(response);
+  // Replacing the body must not discard redirect metadata or make immutable
+  // fetch headers writable. Keep this metadata on clones as well.
+  Object.defineProperties(response, {
+    url: { value: source.url },
+    redirected: { value: source.redirected },
+    type: { value: source.type },
+    headers: { value: source.headers },
+    clone: { value: () => preserveResponseMetadata(clone(), source) },
+  });
+  return response;
 }
 
 export async function networkFetchJson<T = unknown>(
