@@ -1575,6 +1575,7 @@
           "baidu": "Baidu AI Search",
           "bocha": "Bocha Web Search",
           "exa": "Exa",
+          "keenable": "Keenable",
           "serpapi": "SerpAPI",
           "docs": "API documentation and keys",
           "docsHint": "View {{provider}} documentation and key setup (opens a new window)",
