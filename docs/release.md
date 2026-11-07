@@ -86,8 +86,8 @@ guidance on keeping regression coverage focused.
 the latest unified release tag:
 
 - no production change: skip the release;
-- production change: build signed and notarized macOS arm64 and x64 installers,
-  an unsigned Windows installer, and Ubuntu x64 and arm64 DEBs and RHEL-family x64 and arm64 RPMs, then publish one
+- production change: build signed and notarized macOS installers, signed Windows
+  installers, Ubuntu DEBs, and RHEL-family RPMs for x64 and arm64, then publish one
   dated GitHub Release;
 - repeated manual release on the same date: use `-r2`, `-r3`, and so on.
 
@@ -597,8 +597,8 @@ Repository administrator setup:
    small real signature/verification probe, then run the **Windows** workflow
    with `require_windows_signing=true`. It builds both native architectures, signs
    each EXE before generating updater hashes, and fails on invalid signatures.
-5. Daily Release always passes `require_windows_signing=true`; the legacy
-   `PILOTDECK_WINDOWS_SIGNING_ENABLED` variable is no longer used. Missing or
+5. Daily Release passes `require_windows_signing=true` and `secrets: inherit` so
+   the reusable Windows job can resolve secrets from `windows-signing`. Missing or
    invalid credentials, signatures or timestamps stop the Windows job before
    artifact upload and block the entire release. PR checks retain the reusable
    workflow's unsigned default. Manual Desktop Build exposes

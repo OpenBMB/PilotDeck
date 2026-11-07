@@ -90,6 +90,8 @@ jobs:
       release_date: ${{ needs.detect.outputs.release_date }}
       revision: ${{ needs.detect.outputs.revision }}
       require_windows_signing: true
+    # The reusable job resolves Certum secrets from its windows-signing environment.
+    secrets: inherit
 
   release:
     outputs:
