@@ -1129,6 +1129,7 @@ describe('MessagesPane render behavior', () => {
       {
         ...liveMessages[0],
         id: 'persisted-user-entry',
+        timestamp: new Date(Date.parse(now) + 2000).toISOString(),
       },
       {
         ...liveMessages[1],

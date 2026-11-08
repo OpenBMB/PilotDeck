@@ -455,9 +455,16 @@ function MessagesPane({
   const latestInputKey = useMemo(() => {
     for (let index = chatMessages.length - 1; index >= 0; index--) {
       const message = chatMessages[index];
-      if (message.type === 'user') return message.turnId || message.runId
-        ? JSON.stringify([message.turnId || message.runId, message.timestamp, message.content])
-        : getMessageKey(message, index);
+      if (message.type !== 'user') continue;
+      const turnId = message.turnId || message.runId;
+      if (!turnId) return getMessageKey(message, index);
+      // Persistence can replace the optimistic id, timestamp and attachment
+      // text. The turn and user-input ordinal survive that reconciliation,
+      // while a new steering message in the same run advances the ordinal.
+      const inputCount = chatMessages.reduce((count, candidate) => count + Number(
+        candidate.type === 'user' && (candidate.turnId || candidate.runId) === turnId,
+      ), 0);
+      return JSON.stringify([turnId, inputCount]);
     }
     return 'no-input';
   }, [chatMessages, getMessageKey]);
