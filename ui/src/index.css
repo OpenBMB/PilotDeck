@@ -71,6 +71,20 @@
     outline-offset: 3px;
   }
 
+  .chat-process-shimmer {
+    color: transparent;
+    background-image: linear-gradient(100deg, hsl(var(--muted-foreground)) 30%, #b8b8b8 48%, hsl(var(--muted-foreground)) 66%);
+    background-size: 250% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: chat-process-shimmer 3.2s linear infinite;
+  }
+
+  @keyframes chat-process-shimmer {
+    from { background-position: 160% 0; }
+    to { background-position: -100% 0; }
+  }
+
   .chat-process-disclosure {
     display: grid;
     min-width: 0;
@@ -90,6 +104,7 @@
   [data-turn-process-prose] .prose > :last-child { margin-bottom: 0; }
 
   @media (prefers-reduced-motion: reduce) {
+    .chat-process-shimmer { animation: none; background: none; color: hsl(var(--muted-foreground)); }
     .chat-process-disclosure { transition: none; }
     .conversation-turn-mark::before, .conversation-turn-preview { transition: none; animation: none; }
   }

@@ -969,6 +969,7 @@ export function groupProcessIntervals(
     beforeProcessAttachments: [], afterProcessAttachments: [],
   });
   let pending: RenderableMessageItem[] = [];
+  let pendingToolCalls = 0;
   let turnKey = 'history';
   const flush = (closed: boolean, live = false) => {
     if (!pending.length) return;
@@ -977,13 +978,21 @@ export function groupProcessIntervals(
     result.push({ ...clean({ id, renderKey: id, type: 'assistant', content: '', timestamp: first.message.timestamp }, first.originalIndex),
       turnTrace: { id, isLive: live, defaultExpanded: !closed, items: pending } });
     pending = [];
+    pendingToolCalls = 0;
   };
   messages.forEach((message, index) => {
     if (message.isAgentActivity || message.isAgentActivitySummary || isEmptyAssistantShell(message)) return;
     const work = message.isThinking || isProcessMessage(message)
       || (message.isToolUse && !isUserVisibleTool(message) && isPermissionToolError(message));
     if (work) {
+      // Keep bounded, stable seats during long runs. Completed batches fold;
+      // parallel calls that are still executing remain visible and live.
+      if (pendingToolCalls >= 10) {
+        const active = pending.some(item => isPendingProcessMessage(item.message) || item.message.isStreaming);
+        flush(!active, active && isAssistantWorking);
+      }
       pending.push(clean(message, index));
+      if (message.isToolUse || message.type === 'tool') pendingToolCalls++;
       // Delivered media stays visible even when the surrounding work closes.
       result.push(...(mediaByIndex.get(index) ?? []));
       return;
@@ -999,6 +1008,7 @@ export function groupProcessIntervals(
   // Media may have arrived while a group was still accumulating. Preserve chronology.
   const grouped = attachTurnProcessGroups(messages, result.sort((a, b) => a.originalIndex - b.originalIndex), isAssistantWorking);
   for (const item of grouped) {
+    if (item.turnTrace && !item.processRun?.isRunning) item.turnTrace.isLive = false;
     if (item.turnTrace && item.processRun?.defaultExpanded && item.turnTrace.items.some(child => isPermissionToolError(child.message))) {
       item.turnTrace.defaultExpanded = true;
     }
