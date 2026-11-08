@@ -39,7 +39,9 @@ export function useSessionRequestScope(project: Project | null, session: Project
         const isCurrent = capture();
         const epoch = lifetime.current.epoch;
         const requestSequence = ++sequence;
+        // Definite assignment is required for the self-reference in finally.
         let request!: Promise<HistoryRequestResult>;
+        // eslint-disable-next-line prefer-const
         request = (async (): Promise<HistoryRequestResult> => {
           try {
             const slot = await Promise.resolve().then(() => isCurrent() ? load() : undefined);
