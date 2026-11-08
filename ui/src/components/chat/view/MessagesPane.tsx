@@ -472,35 +472,37 @@ function MessagesPane({
   }
 
   const isProcessExpanded = useCallback((processKey: string, defaultExpanded = false) => (
-    expandedProcessRows.get(processKey) ?? (sendingInputs.length ? false : defaultExpanded)
-  ), [expandedProcessRows, sendingInputs.length]);
+    expandedProcessRows.get(`${disclosureEpoch}:${processKey}`) ?? (sendingInputs.length ? false : defaultExpanded)
+  ), [expandedProcessRows, sendingInputs.length, disclosureEpoch]);
 
   const handleProcessExpandedChange = useCallback((processKey: string, expanded: boolean) => {
+    const key = `${disclosureEpoch}:${processKey}`;
     setExpandedProcessRows((currentRows) => {
-      if (currentRows.get(processKey) === expanded) {
+      if (currentRows.get(key) === expanded) {
         return currentRows;
       }
 
       const nextRows = new Map(currentRows);
-      nextRows.set(processKey, expanded);
+      nextRows.set(key, expanded);
       return nextRows;
     });
-  }, []);
+  }, [disclosureEpoch]);
 
   const isToolSectionExpanded = useCallback((sectionKey: string, defaultExpanded = false) => (
-    expandedToolSections.get(sectionKey) ?? defaultExpanded
-  ), [expandedToolSections]);
+    expandedToolSections.get(`${disclosureEpoch}:${sectionKey}`) ?? defaultExpanded
+  ), [expandedToolSections, disclosureEpoch]);
 
   const handleToolSectionExpandedChange = useCallback((sectionKey: string, expanded: boolean) => {
+    const key = `${disclosureEpoch}:${sectionKey}`;
     setExpandedToolSections((currentSections) => {
-      if (currentSections.get(sectionKey) === expanded) {
+      if (currentSections.get(key) === expanded) {
         return currentSections;
       }
       const nextSections = new Map(currentSections);
-      nextSections.set(sectionKey, expanded);
+      nextSections.set(key, expanded);
       return nextSections;
     });
-  }, []);
+  }, [disclosureEpoch]);
 
   const suggestedPrompts: string[] = [
     t('emptyChat.prompts.plan', { defaultValue: 'Plan a refactor for this project' }),
@@ -1016,7 +1018,7 @@ function MessagesPane({
         onFileOpen={onFileOpen}
         onShowSettings={onShowSettings}
         onGrantSessionToolPermission={onGrantSessionToolPermission}
-        autoExpandTools={autoExpandTools}
+        autoExpandTools={Boolean(autoExpandTools && item.renderIndex > latestUserRenderIndex && !sendingInputs.length)}
         showThinking={showThinking}
         inlineThinking={inlineThinking}
         isProcessExpanded={isProcessExpanded}
@@ -1086,6 +1088,7 @@ function MessagesPane({
     messageWindowScope,
     disclosureEpoch,
     sendingInputs.length,
+    latestUserRenderIndex,
     getMessageKey,
     autoExpandTools,
     activeRunId,

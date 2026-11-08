@@ -59,9 +59,9 @@ function Fixture() {
         ];
       }).flat());
     },
-    beginTurn(id = 'current-user') {
+    beginTurn(id = 'current-user', content = 'Inspect the implementation') {
       const at = new Date().toISOString();
-      store.appendRealtime(sid, { ...base, id, kind: 'text', role: 'user', content: 'Inspect the implementation', timestamp: at });
+      store.appendRealtime(sid, { ...base, id, kind: 'text', role: 'user', content, timestamp: at });
       setWorking(true);
     },
     prepareFile(id, receivedBytes, filePath) {

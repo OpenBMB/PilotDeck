@@ -15,7 +15,8 @@ async function watchHeight(page, selector) {
 }
 
 async function expectSmoothClose(page) {
-  await expect.poll(() => page.evaluate(() => window.transitionSamples.at(-1))).toBe(0);
+  // Chromium can retain a fractional layout unit at the end of a grid close.
+  await expect.poll(() => page.evaluate(() => window.transitionSamples.at(-1))).toBeLessThan(0.5);
   const heights = await page.evaluate(() => window.transitionSamples);
   expect(heights.some(height => height > 0 && height < Math.max(...heights) - 1)).toBe(true);
 }
@@ -155,7 +156,7 @@ test('completion smoothly folds every intermediate process into the single measu
   await expect(page.getByText('Visible progress reply.', { exact: true })).toBeVisible();
   expect(await regions.evaluateAll(nodes => nodes.map(node => node.hasAttribute('data-turn-process-prose') ? 'prose' : 'work'))).toEqual(['work', 'prose', 'work']);
   await page.evaluate(() => window.streamFixture.beginTurn('next-user'));
-  await expect(header.first()).toHaveAttribute('aria-expanded', 'true');
+  await expect(header.first()).toHaveAttribute('aria-expanded', 'false');
 });
 
 test('nested work and tool details animate both ways without changing conversation width', async ({ page }) => {

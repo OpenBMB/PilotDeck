@@ -31,6 +31,12 @@ beforeAll(() => {
   }
 
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(private callback: IntersectionObserverCallback) {}
+    observe(target: Element) { this.callback([{ target, isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+    unobserve() {}
+    disconnect() {}
+  });
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     return window.setTimeout(() => callback(performance.now()), 0);
   });
@@ -139,6 +145,7 @@ function createPaneElement({
   planModeActive = false,
   showThinking = true,
   inlineThinking = false,
+  autoExpandTools = false,
   workingStatus,
   onRegenerate,
 }: {
@@ -153,6 +160,7 @@ function createPaneElement({
   planModeActive?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
+  autoExpandTools?: boolean;
   workingStatus?: import('../types/types').PilotDeckWorkStatus;
   onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 }) {
@@ -188,6 +196,7 @@ function createPaneElement({
         planModeActive={planModeActive}
         showThinking={showThinking}
         inlineThinking={inlineThinking}
+        autoExpandTools={autoExpandTools}
         workingStatus={workingStatus}
         onRegenerate={onRegenerate}
       />
@@ -207,6 +216,7 @@ function renderPane(options: {
   planModeActive?: boolean;
   showThinking?: boolean;
   inlineThinking?: boolean;
+  autoExpandTools?: boolean;
   workingStatus?: import('../types/types').PilotDeckWorkStatus;
   onRegenerate?: (message: ChatMessage, editedText: string) => Promise<void>;
 }) {
@@ -1610,11 +1620,11 @@ describe('MessagesPane render behavior', () => {
     const compact: ChatMessage = { id: 'compact-start', type: 'system', content: '', timestamp,
       isCompactBoundary: true, compactionId: 'c1', compactState: 'running' };
     const view = renderPane({ messages: [user, compact], isAssistantWorking: true });
-    const row = screen.getByText('Compacting context...');
+    const row = within(view.container.querySelector('[data-turn-trace]')!).getByText('Compacting context...');
     expect(screen.queryByText('Compacted context')).toBeNull();
     view.rerender(createPaneElement({ messages: [user, { ...compact, id: 'compact-history', compactState: 'completed' }], isAssistantWorking: true }));
     expect(screen.queryByText('Compacting context...')).toBeNull();
-    expect(screen.getByText('Compacted context')).toBe(row);
+    expect(within(view.container.querySelector('[data-turn-trace]')!).getByText('Compacted context')).toBe(row);
   });
 
   it('keeps thinking before mid-turn compaction inside the completed trace', () => {
@@ -2148,19 +2158,20 @@ it('retains manually inspected tools and their ancestors after new prose and com
   expect(tool.getAttribute('aria-expanded')).toBe('false');
 });
 
-it('clears deliberate tool and thinking openings when the next user message arrives', () => {
+it.each([false, true])('clears tool and thinking openings on the next message (auto-expand=%s)', autoExpandTools => {
   const messages = toolRegressionMessages();
   const thought: ChatMessage = { id: 'previous-thought', type: 'assistant', isThinking: true,
     content: 'Reasoning from the previous turn.', timestamp: messages[0].timestamp };
   const finished: ChatMessage[] = [...messages, thought, { id: 'previous-final', type: 'assistant',
     content: 'The previous result.', timestamp: messages[0].timestamp }];
-  const view = renderPane({ messages: finished });
+  const view = renderPane({ messages: finished, autoExpandTools });
   fireEvent.click(view.container.querySelector('[data-turn-process-header] button')!);
   fireEvent.click(view.container.querySelector('[data-process-block] > button')!);
-  fireEvent.click(view.container.querySelector('.tool-call button')!);
+  const toolToggle = view.container.querySelector('.tool-call button')!;
+  if (toolToggle.getAttribute('aria-expanded') === 'false') fireEvent.click(toolToggle);
   fireEvent.click(view.container.querySelector('[data-thinking-state] > button')!);
   view.rerender(createPaneElement({ messages: [...finished, { id: 'next-input', type: 'user',
-    content: 'Continue with a new task.', timestamp: messages[0].timestamp }], isAssistantWorking: true }));
+    content: 'Continue with a new task.', timestamp: messages[0].timestamp }], isAssistantWorking: true, autoExpandTools }));
   const oldTurn = view.container.querySelector('[data-turn-process-header] button')!;
   expect(oldTurn.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(oldTurn);
