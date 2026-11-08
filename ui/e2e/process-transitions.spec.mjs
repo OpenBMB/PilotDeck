@@ -5,26 +5,27 @@ async function watchHeight(page, selector) {
     const node = document.querySelector(selector);
     window.transitionSamples = [];
     window.originalTransitionNode = node;
-    const end = performance.now() + 500;
+    const token = (window.transitionSamplingToken ?? 0) + 1;
+    window.transitionSamplingToken = token;
     const sample = () => {
+      if (window.transitionSamplingToken !== token) return;
       window.transitionSamples.push(node?.getBoundingClientRect().height ?? 0);
-      if (performance.now() < end) requestAnimationFrame(sample);
+      requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
   }, selector);
 }
 
 async function expectSmoothClose(page) {
-  // Chromium can retain a fractional layout unit at the end of a grid close.
-  await expect.poll(() => page.evaluate(() => window.transitionSamples.at(-1))).toBeLessThan(0.5);
-  const heights = await page.evaluate(() => window.transitionSamples);
+  await expect.poll(() => page.evaluate(() => window.originalTransitionNode?.getBoundingClientRect().height ?? 0)).toBe(0);
+  const heights = await page.evaluate(() => { window.transitionSamplingToken++; return window.transitionSamples; });
   expect(heights.some(height => height > 0 && height < Math.max(...heights) - 1)).toBe(true);
 }
 
 async function expectSmoothOpen(page) {
   await expect.poll(() => page.evaluate(() => window.transitionSamples.at(-1))).toBeGreaterThan(0);
   await page.waitForTimeout(520);
-  const heights = await page.evaluate(() => window.transitionSamples);
+  const heights = await page.evaluate(() => { window.transitionSamplingToken++; return window.transitionSamples; });
   expect(heights.some(height => height > 0 && height < Math.max(...heights) - 1)).toBe(true);
 }
 
