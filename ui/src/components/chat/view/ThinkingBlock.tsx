@@ -55,8 +55,8 @@ export function ThinkingBlock({ content, isStreaming, startedAt, durationMs, inl
         onClick={() => setView({ ...phase, expanded: !expanded, pinnedOpen: !expanded })}
         className="chat-process-trigger hover-brand-text"
       >
-        <Lightbulb aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${isStreaming ? 'motion-safe:animate-pulse' : ''}`} strokeWidth={1.8} />
-        <span className="min-w-0 truncate tabular-nums">{label}</span>
+        <Lightbulb aria-hidden="true" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+        <span className={`min-w-0 truncate tabular-nums ${isStreaming ? 'chat-process-shimmer' : ''}`}>{label}</span>
         <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} strokeWidth={1.8} />
       </button>
       {/* Keep the viewport mounted when collapsed so reopening retains its position. */}

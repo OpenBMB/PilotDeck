@@ -167,7 +167,11 @@ export function useScrollFollow({
     if (!node || !input) return false;
     if (!input.dragging && Date.now() > input.expiresAt) { userScrollRef.current = null; return false; }
     const delta = node.scrollTop - input.top;
-    if (!delta || (input.direction && Math.sign(delta) !== input.direction)) return false;
+    // Wheel/touch intent can reverse before the compositor has delivered the
+    // previous gesture's final frames. Both directions still belong to the
+    // reader; rejecting the old momentum makes anchor restoration undo it on
+    // every streaming resize, producing a visible back-and-forth jump.
+    if (!delta) return false;
     const previous = metricsRef.current;
     const layoutChanged = node.scrollHeight !== previous.height || node.clientHeight !== previous.viewport;
     if (layoutChanged && anchorRef.current) {
@@ -330,6 +334,7 @@ export function useScrollFollow({
     const scroll = () => {
       const previous = metricsRef.current;
       const top = node.scrollTop;
+      const direction = userScrollRef.current?.direction;
       const userMoved = acceptUserDisplacement();
       if (!userMoved && programmaticTopRef.current !== null && Math.abs(top - programmaticTopRef.current) < 0.5) {
         programmaticTopRef.current = null;
@@ -340,7 +345,7 @@ export function useScrollFollow({
       programmaticTopRef.current = null;
       // Layout clamping, focus and our own writes also emit scroll events.
       // Only an actual gesture can hand ownership back to automatic following.
-      if (userMoved && top > previous.top && atBottom()) scrollToBottom();
+      if (userMoved && direction !== undefined && direction >= 0 && top > previous.top && atBottom()) scrollToBottom();
       // acceptUserDisplacement already captured the new reading position.
       // Measurement writes must not replace it before its virtual row settles.
       if (!pausedRef.current && !atBottom()) scheduleFollow();

@@ -452,36 +452,64 @@ function MessagesPane({
     return candidateKey;
   }, []);
 
+  const latestInputKey = useMemo(() => {
+    for (let index = chatMessages.length - 1; index >= 0; index--) {
+      const message = chatMessages[index];
+      if (message.type !== 'user') continue;
+      const turnId = message.turnId || message.runId;
+      if (!turnId) return getMessageKey(message, index);
+      // Persistence can replace the optimistic id, timestamp and attachment
+      // text. The turn and user-input ordinal survive that reconciliation,
+      // while a new steering message in the same run advances the ordinal.
+      const inputCount = chatMessages.reduce((count, candidate) => count + Number(
+        candidate.type === 'user' && (candidate.turnId || candidate.runId) === turnId,
+      ), 0);
+      return JSON.stringify([turnId, inputCount]);
+    }
+    return 'no-input';
+  }, [chatMessages, getMessageKey]);
+  // A new submission ends deliberate openings from the preceding turn. Reset
+  // before committing children so no stale expanded frame flashes on screen.
+  const disclosureEpoch = `${messageWindowScope}:${latestInputKey}:${sendingInputs.at(-1)?.id ?? ''}`;
+  const [expansionEpoch, setExpansionEpoch] = useState(disclosureEpoch);
+  if (expansionEpoch !== disclosureEpoch) {
+    setExpansionEpoch(disclosureEpoch);
+    setExpandedProcessRows(new Map());
+    setExpandedToolSections(new Map());
+  }
+
   const isProcessExpanded = useCallback((processKey: string, defaultExpanded = false) => (
-    expandedProcessRows.get(processKey) ?? defaultExpanded
-  ), [expandedProcessRows]);
+    expandedProcessRows.get(`${disclosureEpoch}:${processKey}`) ?? (sendingInputs.length ? false : defaultExpanded)
+  ), [expandedProcessRows, sendingInputs.length, disclosureEpoch]);
 
   const handleProcessExpandedChange = useCallback((processKey: string, expanded: boolean) => {
+    const key = `${disclosureEpoch}:${processKey}`;
     setExpandedProcessRows((currentRows) => {
-      if (currentRows.get(processKey) === expanded) {
+      if (currentRows.get(key) === expanded) {
         return currentRows;
       }
 
       const nextRows = new Map(currentRows);
-      nextRows.set(processKey, expanded);
+      nextRows.set(key, expanded);
       return nextRows;
     });
-  }, []);
+  }, [disclosureEpoch]);
 
   const isToolSectionExpanded = useCallback((sectionKey: string, defaultExpanded = false) => (
-    expandedToolSections.get(sectionKey) ?? defaultExpanded
-  ), [expandedToolSections]);
+    expandedToolSections.get(`${disclosureEpoch}:${sectionKey}`) ?? defaultExpanded
+  ), [expandedToolSections, disclosureEpoch]);
 
   const handleToolSectionExpandedChange = useCallback((sectionKey: string, expanded: boolean) => {
+    const key = `${disclosureEpoch}:${sectionKey}`;
     setExpandedToolSections((currentSections) => {
-      if (currentSections.get(sectionKey) === expanded) {
+      if (currentSections.get(key) === expanded) {
         return currentSections;
       }
       const nextSections = new Map(currentSections);
-      nextSections.set(sectionKey, expanded);
+      nextSections.set(key, expanded);
       return nextSections;
     });
-  }, []);
+  }, [disclosureEpoch]);
 
   const suggestedPrompts: string[] = [
     t('emptyChat.prompts.plan', { defaultValue: 'Plan a refactor for this project' }),
@@ -983,6 +1011,7 @@ function MessagesPane({
       <GeneratedMediaCard message={rowItem.message} running={isAssistantWorking} visible={rowItem.mediaExpanded} />
     ) : (
       <MessageRow
+        key={rowItem.message.isThinking || rowItem.message.isToolUse || rowItem.message.isSubagentContainer ? disclosureEpoch : undefined}
         message={rowItem.message}
         animateTextOnMount={liveReplyKeys.has(getIntrinsicMessageKey(rowItem.message) || "")}
         presentedReplyKeys={presentedReplyKeys}
@@ -996,7 +1025,7 @@ function MessagesPane({
         onFileOpen={onFileOpen}
         onShowSettings={onShowSettings}
         onGrantSessionToolPermission={onGrantSessionToolPermission}
-        autoExpandTools={autoExpandTools}
+        autoExpandTools={Boolean(autoExpandTools && item.renderIndex > latestUserRenderIndex && !sendingInputs.length)}
         showThinking={showThinking}
         inlineThinking={inlineThinking}
         isProcessExpanded={isProcessExpanded}
@@ -1058,12 +1087,15 @@ function MessagesPane({
             {rowContent}
           </TurnProcessRegion> : rowContent}
           {item.afterTurnProcess ? renderTurnHeader(item.afterTurnProcess) : null}
-          {item.turnFiles ? <TurnFileFooter files={item.turnFiles} project={selectedProject} onBrowse={onFileOpen} /> : null}
+          {item.turnFiles && !sendingInputs.length ? <TurnFileFooter files={item.turnFiles} project={selectedProject} onBrowse={onFileOpen} /> : null}
         </MeasuredMessageItem>
       </Fragment>
     );
   }, [
     messageWindowScope,
+    disclosureEpoch,
+    sendingInputs.length,
+    latestUserRenderIndex,
     getMessageKey,
     autoExpandTools,
     activeRunId,

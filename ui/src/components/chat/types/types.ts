@@ -148,6 +148,13 @@ export interface ChatMessage {
   webFetchCount?: number;
   editedFileCount?: number;
   exploredFileCount?: number;
+  viewedImageCount?: number;
+  generatedImageCount?: number;
+  editedImageCount?: number;
+  generatedVideoCount?: number;
+  openedPageCount?: number;
+  browserActionCount?: number;
+  loadedSkillCount?: number;
   commandCount?: number;
   subagentCount?: number;
   compactCount?: number;

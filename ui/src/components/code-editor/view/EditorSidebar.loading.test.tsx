@@ -18,7 +18,7 @@ vi.mock('./CodeEditor', async () => {
   load.requests++;
   load.started();
   await load.ready;
-  return { default: ({ file, headerPrefix }: { file: { name: string }; headerPrefix: ReactNode }) => {
+  return { default: function MockCodeEditor({ file, headerPrefix }: { file: { name: string }; headerPrefix: ReactNode }) {
     const [draft, setDraft] = useState(file.name);
     useEffect(() => { load.mounts.push(file.name); }, []);
     return <>{headerPrefix}<input aria-label={`Draft ${file.name}`} value={draft} onChange={event => setDraft(event.target.value)} /></>;

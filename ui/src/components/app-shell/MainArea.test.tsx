@@ -296,7 +296,7 @@ describe('MainArea dashboard switcher', () => {
     render(<Harness initialTab="cron" withSession />);
 
     expect(await screen.findByRole('heading', { name: 'Scheduled Tasks' })).toBeTruthy();
-    expect(screen.getByTestId('cron-page')).toBeTruthy();
+    expect(await screen.findByTestId('cron-page')).toBeTruthy();
     expect(screen.queryByTitle('Searchable chat')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Search current conversation' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'tabs.files' })).toBeNull();

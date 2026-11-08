@@ -92,10 +92,13 @@ test('live and completed tools keep semantic icons in every palette', async ({ p
   });
   const writeIcon = page.locator('[data-tool-id="new-file"] > div > button > svg').first();
   await expect(writeIcon).toHaveClass(/lucide-file-plus-2/);
-  await expect(writeIcon).toHaveCSS('animation-name', 'pulse');
+  await expect(writeIcon).toHaveCSS('animation-name', 'none');
+  const writeText = page.locator('[data-tool-id="new-file"] .chat-process-shimmer');
+  await expect(writeText).toHaveCSS('animation-name', 'chat-process-shimmer');
   await expect(page.locator('[data-process-block] > button > svg').first()).toHaveClass(/lucide-file-plus-2/);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(writeIcon).toHaveCSS('animation-name', 'none');
+  await expect(writeText).toHaveCSS('animation-name', 'none');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.evaluate(() => {
     window.streamFixture.finishTool('new-file', 'Written');

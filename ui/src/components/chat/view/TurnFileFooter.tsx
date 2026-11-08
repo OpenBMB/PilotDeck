@@ -9,7 +9,8 @@ export function TurnFileFooter({ files, project, onBrowse }: {
   project: Project | null;
   onBrowse?: (path: string) => void;
 }) {
-  return <AnimatedDisclosure expanded={files.visible} data-turn-file-footer>
+  if (!files.visible) return null;
+  return <AnimatedDisclosure expanded data-turn-file-footer contentClassName="[&>section]:mb-4">
     <TurnChangesCard turnId={files.turnId} artifacts={files.artifacts} project={project} onBrowse={onBrowse} />
   </AnimatedDisclosure>;
 }

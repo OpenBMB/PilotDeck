@@ -121,7 +121,7 @@ export function ProcessLiveStatus({
         strokeWidth={1.8}
       />
       <div className="min-w-0">
-        <div className="truncate">{title}</div>
+        <div className={`truncate ${isRunning ? 'chat-process-shimmer' : ''}`}>{title}</div>
         {step.detail ? (
           <div className="truncate text-[12px] leading-5 text-neutral-400/80 dark:text-neutral-500/80">
             {step.detail}
@@ -200,9 +200,7 @@ function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
 
   return (
     <div
-      className={`inline-flex min-w-0 max-w-full items-start gap-2 text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500 ${
-        isRunning ? 'motion-safe:animate-pulse' : ''
-      }`}
+      className="inline-flex min-w-0 max-w-full items-start gap-2 text-[14px] leading-relaxed text-neutral-400 dark:text-neutral-500"
     >
       <Icon
         aria-hidden="true"
@@ -212,7 +210,7 @@ function ProcessTraceLine({ step }: { step: ProcessTraceStep }) {
         strokeWidth={1.8}
       />
       <div className="min-w-0">
-        <div className="truncate">{title}</div>
+        <div className={`truncate ${isRunning ? 'chat-process-shimmer' : ''}`}>{title}</div>
         {step.detail ? (
           <div className="truncate text-[12px] leading-5 text-neutral-400/80 dark:text-neutral-500/80">
             {step.detail}
@@ -279,7 +277,7 @@ export function ProcessTrace({
           }`}
           strokeWidth={1.8}
         />
-        <span className="min-w-0 truncate tabular-nums">{label}</span>
+        <span className={`min-w-0 truncate tabular-nums ${isRunning ? 'chat-process-shimmer' : ''}`}>{label}</span>
         {visibleCollapsedDetail ? (
           <span className="min-w-0 shrink truncate text-neutral-400/75 dark:text-neutral-500/75">
             {visibleCollapsedDetail}

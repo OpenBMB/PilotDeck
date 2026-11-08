@@ -5,25 +5,27 @@ async function watchHeight(page, selector) {
     const node = document.querySelector(selector);
     window.transitionSamples = [];
     window.originalTransitionNode = node;
-    const end = performance.now() + 500;
+    const token = (window.transitionSamplingToken ?? 0) + 1;
+    window.transitionSamplingToken = token;
     const sample = () => {
+      if (window.transitionSamplingToken !== token) return;
       window.transitionSamples.push(node?.getBoundingClientRect().height ?? 0);
-      if (performance.now() < end) requestAnimationFrame(sample);
+      requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
   }, selector);
 }
 
 async function expectSmoothClose(page) {
-  await expect.poll(() => page.evaluate(() => window.transitionSamples.at(-1))).toBe(0);
-  const heights = await page.evaluate(() => window.transitionSamples);
+  await expect.poll(() => page.evaluate(() => window.originalTransitionNode?.getBoundingClientRect().height ?? 0)).toBe(0);
+  const heights = await page.evaluate(() => { window.transitionSamplingToken++; return window.transitionSamples; });
   expect(heights.some(height => height > 0 && height < Math.max(...heights) - 1)).toBe(true);
 }
 
 async function expectSmoothOpen(page) {
   await expect.poll(() => page.evaluate(() => window.transitionSamples.at(-1))).toBeGreaterThan(0);
   await page.waitForTimeout(520);
-  const heights = await page.evaluate(() => window.transitionSamples);
+  const heights = await page.evaluate(() => { window.transitionSamplingToken++; return window.transitionSamples; });
   expect(heights.some(height => height > 0 && height < Math.max(...heights) - 1)).toBe(true);
 }
 
@@ -155,7 +157,7 @@ test('completion smoothly folds every intermediate process into the single measu
   await expect(page.getByText('Visible progress reply.', { exact: true })).toBeVisible();
   expect(await regions.evaluateAll(nodes => nodes.map(node => node.hasAttribute('data-turn-process-prose') ? 'prose' : 'work'))).toEqual(['work', 'prose', 'work']);
   await page.evaluate(() => window.streamFixture.beginTurn('next-user'));
-  await expect(header.first()).toHaveAttribute('aria-expanded', 'true');
+  await expect(header.first()).toHaveAttribute('aria-expanded', 'false');
 });
 
 test('nested work and tool details animate both ways without changing conversation width', async ({ page }) => {

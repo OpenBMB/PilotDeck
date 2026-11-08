@@ -31,7 +31,7 @@ describe('turn file result placement', () => {
     expect(stopped.at(-1)?.turnFiles).toEqual({ turnId: 'turn-1', artifacts, visible: true });
     const completed = project([...messages, { ...assistant('final', 'Done'), turnId: 'turn-1-resumed' },
       user('u2'), { ...assistant('next', 'Another turn'), turnId: 'turn-2' }], true);
-    expect(completed.find(item => item.message.id === 'final')?.turnFiles).toEqual({ turnId: 'turn-1-resumed', artifacts, visible: true });
+    expect(completed.find(item => item.message.id === 'final')?.turnFiles).toEqual({ turnId: 'turn-1-resumed', artifacts, visible: false });
     expect(completed.at(-1)?.turnFiles).toEqual({ turnId: 'turn-2', artifacts: [], visible: false });
     expect(messages[1].artifacts).toBe(artifacts);
   });
