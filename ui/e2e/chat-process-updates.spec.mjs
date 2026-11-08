@@ -31,7 +31,7 @@ test('a new message folds inspected work and removes the previous file card', as
   await page.screenshot({ path: test.info().outputPath('new-turn-folding.png') });
 });
 
-test('long work folds ten calls at a time and shows the latest action without indentation', async ({ page }) => {
+test('long work folds bounded batches and shows the latest action without indentation', async ({ page }) => {
   await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
   await page.evaluate(() => {
     window.streamFixture.beginTurn();
@@ -42,8 +42,10 @@ test('long work folds ten calls at a time and shows the latest action without in
     window.streamFixture.tool('current', 'run_command', { command: 'verify latest output' });
   });
   const blocks = page.locator('[data-process-block]');
-  await expect(blocks).toHaveCount(11);
-  await expect(page.locator('[data-process-block] > button[aria-expanded="false"]')).toHaveCount(10);
+  await expect.poll(() => blocks.count()).toBeGreaterThan(1);
+  const batchCount = await blocks.count();
+  expect(batchCount).toBeLessThan(20);
+  await expect(page.locator('[data-process-block] > button[aria-expanded="false"]')).toHaveCount(batchCount - 1);
   const live = blocks.last();
   await expect(live.locator(':scope > button')).toContainText('verify latest output');
   await expect(live.locator(':scope > button')).toHaveAttribute('aria-expanded', 'true');
@@ -71,7 +73,9 @@ test('long work folds ten calls at a time and shows the latest action without in
   await expect(live.locator(':scope > button')).toContainText('思考');
   // Old batch details remain available, including the first command.
   await blocks.first().locator(':scope > button').click();
-  await expect(blocks.first().locator('[data-tool-id]')).toHaveCount(10);
+  const firstBatchCalls = await blocks.first().locator('[data-tool-id]').count();
+  expect(firstBatchCalls).toBeGreaterThan(1);
+  expect(firstBatchCalls).toBeLessThanOrEqual(16);
 });
 
 test('reverse momentum frames remain reader-owned while a response streams', async ({ page }) => {
@@ -134,4 +138,28 @@ test('image views, file edits and other actions share the batch limit and keep s
   await page.screenshot({ path: test.info().outputPath('mixed-actions-summary.png') });
   await summary.click();
   await expect(batches.first().locator('[data-tool-id]')).toHaveCount(10);
+});
+
+test('dense file changes fold earlier than short commands', async ({ page }) => {
+  const measure = async dense => {
+    await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+    await page.evaluate(dense => {
+      window.streamFixture.beginTurn();
+      for (let index = 0; index < 30; index++) {
+        window.streamFixture.tool(`density-${index}`, dense ? 'write_file' : 'bash', dense
+          ? { file_path: `file-${index}.ts`, content: 'large input\n'.repeat(1000) }
+          : { command: 'check' });
+        window.streamFixture.finishTool(`density-${index}`, 'ok');
+      }
+    }, dense);
+    const batches = page.locator('[data-process-block]');
+    await expect.poll(() => batches.count()).toBeGreaterThan(1);
+    await batches.first().locator(':scope > button').click();
+    return { groups: await batches.count(), firstCalls: await batches.first().locator('[data-tool-id]').count() };
+  };
+  const simple = await measure(false);
+  const dense = await measure(true);
+  expect(dense.groups).toBeGreaterThan(simple.groups);
+  expect(dense.firstCalls).toBeLessThan(simple.firstCalls);
+  expect(dense.firstCalls).toBeGreaterThan(1);
 });

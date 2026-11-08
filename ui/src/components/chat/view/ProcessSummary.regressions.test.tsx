@@ -14,7 +14,7 @@ const user: ChatMessage = { id: 'u', type: 'user', content: 'Inspect', timestamp
 const project = (messages: ChatMessage[], running = false) => groupProcessIntervals(messages,
   buildRenderableMessageItems(messages, { isAssistantWorking: running }), running);
 
-it('folds long sequential tool runs into stable batches of ten without dropping details', () => {
+it('folds long sequential tool runs into stable bounded batches without dropping details', () => {
   const tools: ChatMessage[] = Array.from({ length: 101 }, (_, index) => ({
     id: `batch-${index}`, toolId: `batch-${index}`, toolName: 'run_command', type: 'assistant',
     timestamp: start, content: '', isToolUse: true, toolInput: { command: `check ${index}` },
@@ -22,12 +22,31 @@ it('folds long sequential tool runs into stable batches of ten without dropping 
   }));
   const previous = project([user, ...tools.slice(0, 10)], true).find(item => item.turnTrace)!.turnTrace!;
   const groups = project([user, ...tools], true).flatMap(item => item.turnTrace ? [item.turnTrace] : []);
-  expect(groups.map(group => group.items.length)).toEqual([...Array(10).fill(10), 1]);
+  expect(groups.length).toBeGreaterThan(1);
+  expect(groups.every(group => group.items.length <= 16)).toBe(true);
   expect(groups[0].id).toBe(previous.id);
   expect(groups.slice(0, -1).every(group => !group.defaultExpanded && !group.isLive)).toBe(true);
   expect(groups.at(-1)?.isLive).toBe(true);
   expect(groups.at(-1)?.defaultExpanded).toBe(true);
   expect(groups.flatMap(group => group.items.map(item => item.message.id))).toEqual(tools.map(tool => tool.id));
+});
+
+it('folds dense edits earlier than short calls and never repartitions on result growth', () => {
+  const makeTools = (dense: boolean): ChatMessage[] => Array.from({ length: 30 }, (_, index) => ({
+    id: `adaptive-${index}`, toolId: `adaptive-${index}`, toolName: dense ? 'write_file' : 'bash',
+    toolInput: dense ? { file_path: `file-${index}.ts`, content: 'large input\n'.repeat(1000) } : { command: 'check' },
+    type: 'assistant', timestamp: start, isToolUse: true, content: '', toolResult: { content: 'ok' },
+  }));
+  const traces = (tools: ChatMessage[]) => project([user, ...tools], true).flatMap(item => item.turnTrace ? [item.turnTrace] : []);
+  const simple = traces(makeTools(false));
+  const denseTools = makeTools(true);
+  const dense = traces(denseTools);
+  expect(dense[0].items.length).toBeLessThan(simple[0].items.length);
+  expect(dense[0].items.length).toBeGreaterThan(1);
+  const membership = (groups: typeof dense) => groups.map(group => [group.id, group.items.map(item => item.message.id)]);
+  expect(membership(traces(denseTools.map(tool => ({ ...tool, toolResult: { content: 'result growth\n'.repeat(5000) } })))))
+    .toEqual(membership(dense));
+  expect(traces(makeTools(false).slice(0, 20))[0].id).toBe(simple[0].id);
 });
 
 it('batches all kinds of tool actions together and describes the mixed work in both languages', async () => {
@@ -45,9 +64,10 @@ it('batches all kinds of tool actions together and describes the mixed work in b
     isToolUse: true, content: '', toolResult: index < 10 ? { content: 'ok' } : undefined,
   }));
   const groups = project([user, ...tools], true).flatMap(item => item.turnTrace ? [item.turnTrace] : []);
-  expect(groups.map(group => group.items.length)).toEqual([10, 1]);
+  expect(groups.length).toBeGreaterThan(1);
+  expect(groups.flatMap(group => group.items)).toHaveLength(11);
   expect(groups[0].defaultExpanded).toBe(false);
-  const batch = groups[0].items.map(item => item.message);
+  const batch = tools.slice(0, 10);
   expect(formatCompletedProcessTitle(batch, i18n.getFixedT('en', 'chat'))).toBe(
     'Edited 2 files Explored 1 file Viewed 2 images Generated 1 image Opened 1 page Searched 1 time Fetched 1 page Ran 1 command');
   expect(formatCompletedProcessTitle(batch, i18n.getFixedT('zh-CN', 'chat'))).toBe(
@@ -79,7 +99,9 @@ it('keeps pending parallel calls active and accessible across batch boundaries',
     timestamp: start, content: '', isToolUse: true,
   }));
   const groups = project([user, ...tools], true).flatMap(item => item.turnTrace ? [item.turnTrace] : []);
-  expect(groups.map(group => group.items.length)).toEqual([10, 10, 1]);
+  expect(groups.length).toBeGreaterThan(1);
+  expect(groups.every(group => group.items.length <= 16)).toBe(true);
+  expect(groups.flatMap(group => group.items)).toHaveLength(21);
   expect(groups.every(group => group.isLive && group.defaultExpanded)).toBe(true);
   const stopped = project([user, ...tools]).flatMap(item => item.turnTrace ? [item.turnTrace] : []);
   expect(stopped.every(group => !group.isLive)).toBe(true);

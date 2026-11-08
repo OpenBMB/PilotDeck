@@ -988,6 +988,20 @@ export function buildRenderableMessageItems(
     .sort((a, b) => a.originalIndex - b.originalIndex);
 }
 
+// Approximate visible work rather than imposing the same call count on every
+// run. Inputs are settled when a call is dispatched; result growth must never
+// repartition an already-visible prefix and move the reader's scroll anchor.
+function processPresentationCost(message: ChatMessage): number {
+  if (message.isThinking) return 0.5 + Math.min(2.5, Math.floor((message.content?.length ?? 0) / 1600));
+  if (message.isCompactBoundary) return 2;
+  const kind = getProcessToolKind({ ...message, toolResult: undefined });
+  const base = ['edit', 'image', 'image-generation', 'image-edit', 'video-generation', 'interaction'].includes(kind) ? 1.5 : 1;
+  const input = message.toolInput;
+  const inputLength = typeof input === 'string' ? input.length
+    : input && typeof input === 'object' ? Object.values(input).reduce<number>((sum, value) => sum + (typeof value === 'string' ? value.length : 0), 0) : 0;
+  return base + Math.min(2, Math.floor(inputLength / 4000));
+}
+
 /** Preserve interleaved seats; the enclosing turn disclosure hides intermediate work and prose together. */
 export function groupProcessIntervals(
   messages: ChatMessage[],
@@ -1011,6 +1025,7 @@ export function groupProcessIntervals(
   });
   let pending: RenderableMessageItem[] = [];
   let pendingToolCalls = 0;
+  let pendingCost = 0;
   let turnKey = 'history';
   const flush = (closed: boolean, live = false) => {
     if (!pending.length) return;
@@ -1020,6 +1035,7 @@ export function groupProcessIntervals(
       turnTrace: { id, isLive: live, defaultExpanded: !closed, items: pending } });
     pending = [];
     pendingToolCalls = 0;
+    pendingCost = 0;
   };
   messages.forEach((message, index) => {
     if (message.isAgentActivity || message.isAgentActivitySummary || isEmptyAssistantShell(message)) return;
@@ -1028,11 +1044,12 @@ export function groupProcessIntervals(
     if (work) {
       // Keep bounded, stable seats during long runs. Completed batches fold;
       // parallel calls that are still executing remain visible and live.
-      if (pendingToolCalls >= 10) {
+      if (pendingCost >= 12 || pendingToolCalls >= 16 || pending.length >= 20) {
         const active = pending.some(item => isPendingProcessMessage(item.message) || item.message.isStreaming);
         flush(!active, active && isAssistantWorking);
       }
       pending.push(clean(message, index));
+      pendingCost += processPresentationCost(message);
       if (message.isToolUse || message.type === 'tool') pendingToolCalls++;
       // Delivered media stays visible even when the surrounding work closes.
       result.push(...(mediaByIndex.get(index) ?? []));
