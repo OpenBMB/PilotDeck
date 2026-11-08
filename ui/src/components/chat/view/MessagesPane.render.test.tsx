@@ -544,6 +544,8 @@ describe('MessagesPane render behavior', () => {
       activeRunId: 'run-new',
     });
 
+    // Older turns fold when a newer user message arrives; inspect its details.
+    fireEvent.click(document.querySelector('[data-turn-process-header] button')!);
     const card = screen.getByText('Historical subagent').closest('[role="button"]');
     expect(card).not.toBeNull();
     expect(within(card as HTMLElement).getByText('subagent.status.stopped')).toBeTruthy();
@@ -671,6 +673,7 @@ describe('MessagesPane render behavior', () => {
       sessionRuntimeState: 'synchronizing',
       activeRunId: null,
     });
+    fireEvent.click(document.querySelector('[data-turn-process-header] button')!);
     let card = screen.getByText('Legacy subagent').closest('[role="button"]');
     expect(card).not.toBeNull();
     expect(within(card as HTMLElement).getByText('subagent.status.thinking')).toBeTruthy();
@@ -1781,7 +1784,7 @@ it('folds all intermediate prose and work in order while preserving the final ou
   expect(header.getAttribute('aria-expanded')).toBe('true');
   expect(screen.getByText('First progress reply.')).toBe(prose);
   view.rerender(createPaneElement({ messages: [...finished, { ...user, id: 'next-user', content: 'Continue' }], isAssistantWorking: true }));
-  expect(header.getAttribute('aria-expanded')).toBe('true');
+  expect(header.getAttribute('aria-expanded')).toBe('false');
   expect(view.container.querySelectorAll('[data-turn-process-header]')).toHaveLength(2);
 });
 
@@ -2143,4 +2146,47 @@ it('retains manually inspected tools and their ancestors after new prose and com
   view.rerender(createPaneElement({ messages: [...messages, { id: 'inspection-reply', type: 'assistant',
     content: 'The file is ready. Another update.', timestamp: '2026-09-15T09:00:02Z' }] }));
   expect(tool.getAttribute('aria-expanded')).toBe('false');
+});
+
+it('clears deliberate tool and thinking openings when the next user message arrives', () => {
+  const messages = toolRegressionMessages();
+  const thought: ChatMessage = { id: 'previous-thought', type: 'assistant', isThinking: true,
+    content: 'Reasoning from the previous turn.', timestamp: messages[0].timestamp };
+  const finished: ChatMessage[] = [...messages, thought, { id: 'previous-final', type: 'assistant',
+    content: 'The previous result.', timestamp: messages[0].timestamp }];
+  const view = renderPane({ messages: finished });
+  fireEvent.click(view.container.querySelector('[data-turn-process-header] button')!);
+  fireEvent.click(view.container.querySelector('[data-process-block] > button')!);
+  fireEvent.click(view.container.querySelector('.tool-call button')!);
+  fireEvent.click(view.container.querySelector('[data-thinking-state] > button')!);
+  view.rerender(createPaneElement({ messages: [...finished, { id: 'next-input', type: 'user',
+    content: 'Continue with a new task.', timestamp: messages[0].timestamp }], isAssistantWorking: true }));
+  const oldTurn = view.container.querySelector('[data-turn-process-header] button')!;
+  expect(oldTurn.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(oldTurn);
+  const oldProcess = view.container.querySelector('[data-process-block] > button')!;
+  expect(oldProcess.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(oldProcess);
+  expect(view.container.querySelector('.tool-call button')!.getAttribute('aria-expanded')).toBe('false');
+  expect(view.container.querySelector('[data-thinking-state] > button')!.getAttribute('aria-expanded')).toBe('false');
+});
+
+it('removes the previous file card on submission and shows only the latest completed turn files', () => {
+  const artifacts: NonNullable<ChatMessage['artifacts']> = [{ id: 'old-file', name: 'old.txt', path: 'old.txt',
+    operation: 'created', source: 'workspace_diff', status: 'complete', size: 42,
+    sha256: 'a'.repeat(64), createdAt: '2026-11-01T00:00:00Z' }];
+  const messages: ChatMessage[] = [makeMessage(0), { ...makeMessage(1), turnId: 'old-turn', artifacts }];
+  const view = renderPane({ messages });
+  expect(screen.getAllByTestId('turn-changes-card')).toHaveLength(1);
+  view.rerender(createPaneElement({ messages, sendingInputs: [{ id: 'sending', displayText: 'Continue',
+    createdAt: '2026-11-01T00:01:00Z', status: 'submitting' }] }));
+  expect(screen.queryByTestId('turn-changes-card')).toBeNull();
+  const next: ChatMessage[] = [...messages, { ...makeMessage(2), id: 'next-turn-user' }];
+  view.rerender(createPaneElement({ messages: next, isAssistantWorking: true }));
+  expect(screen.queryByTestId('turn-changes-card')).toBeNull();
+  view.rerender(createPaneElement({ messages: [...next, { ...makeMessage(3), turnId: 'new-turn',
+    artifacts: [{ ...artifacts[0], id: 'new-file', name: 'new.txt', path: 'new.txt' }] }] }));
+  expect(screen.getAllByTestId('turn-changes-card')).toHaveLength(1);
+  expect(screen.getByTestId('turn-changes-card').textContent).toContain('new.txt');
+  expect(screen.getByTestId('turn-changes-card').textContent).not.toContain('old.txt');
 });

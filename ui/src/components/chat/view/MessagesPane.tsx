@@ -452,9 +452,28 @@ function MessagesPane({
     return candidateKey;
   }, []);
 
+  const latestInputKey = useMemo(() => {
+    for (let index = chatMessages.length - 1; index >= 0; index--) {
+      const message = chatMessages[index];
+      if (message.type === 'user') return message.turnId || message.runId
+        ? JSON.stringify([message.turnId || message.runId, message.timestamp, message.content])
+        : getMessageKey(message, index);
+    }
+    return 'no-input';
+  }, [chatMessages, getMessageKey]);
+  // A new submission ends deliberate openings from the preceding turn. Reset
+  // before committing children so no stale expanded frame flashes on screen.
+  const disclosureEpoch = `${messageWindowScope}:${latestInputKey}:${sendingInputs.at(-1)?.id ?? ''}`;
+  const [expansionEpoch, setExpansionEpoch] = useState(disclosureEpoch);
+  if (expansionEpoch !== disclosureEpoch) {
+    setExpansionEpoch(disclosureEpoch);
+    setExpandedProcessRows(new Map());
+    setExpandedToolSections(new Map());
+  }
+
   const isProcessExpanded = useCallback((processKey: string, defaultExpanded = false) => (
-    expandedProcessRows.get(processKey) ?? defaultExpanded
-  ), [expandedProcessRows]);
+    expandedProcessRows.get(processKey) ?? (sendingInputs.length ? false : defaultExpanded)
+  ), [expandedProcessRows, sendingInputs.length]);
 
   const handleProcessExpandedChange = useCallback((processKey: string, expanded: boolean) => {
     setExpandedProcessRows((currentRows) => {
@@ -983,6 +1002,7 @@ function MessagesPane({
       <GeneratedMediaCard message={rowItem.message} running={isAssistantWorking} visible={rowItem.mediaExpanded} />
     ) : (
       <MessageRow
+        key={rowItem.message.isThinking || rowItem.message.isToolUse || rowItem.message.isSubagentContainer ? disclosureEpoch : undefined}
         message={rowItem.message}
         animateTextOnMount={liveReplyKeys.has(getIntrinsicMessageKey(rowItem.message) || "")}
         presentedReplyKeys={presentedReplyKeys}
@@ -1058,12 +1078,14 @@ function MessagesPane({
             {rowContent}
           </TurnProcessRegion> : rowContent}
           {item.afterTurnProcess ? renderTurnHeader(item.afterTurnProcess) : null}
-          {item.turnFiles ? <TurnFileFooter files={item.turnFiles} project={selectedProject} onBrowse={onFileOpen} /> : null}
+          {item.turnFiles && !sendingInputs.length ? <TurnFileFooter files={item.turnFiles} project={selectedProject} onBrowse={onFileOpen} /> : null}
         </MeasuredMessageItem>
       </Fragment>
     );
   }, [
     messageWindowScope,
+    disclosureEpoch,
+    sendingInputs.length,
     getMessageKey,
     autoExpandTools,
     activeRunId,

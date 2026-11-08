@@ -1036,7 +1036,7 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
       || reversed.find(message => message.turnId || message.runId);
     const turnId = fileHost?.turnId || fileHost?.runId;
     if (turnId || artifacts.length) {
-      turnItems[turnItems.length - 1].turnFiles = { turnId, artifacts, visible: !running };
+      turnItems[turnItems.length - 1].turnFiles = { turnId, artifacts, visible: !running && turnIndex === turns.length - 1 };
     }
     const last = reversed.find(message => !message.isAgentActivity && !message.isAgentActivitySummary
       && !message.isCompactBoundary && !isEmptyAssistantShell(message));
@@ -1076,7 +1076,7 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
     const startedAtMs = parseMessageTime(anchor.timestamp);
     const group: TurnProcessGroup = {
       id: `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}`,
-      isRunning: running, defaultExpanded: !completed, durationMs,
+      isRunning: running, defaultExpanded: !completed && turnIndex === turns.length - 1, durationMs,
       outcome,
       hasRecordedDuration: Boolean(timing) || (typeof turn.summary?.message.durationMs === 'number' && Number.isFinite(turn.summary.message.durationMs)),
       startedAt: timing ? new Date(timing.startedAt).toISOString() : turn.summary?.message.startedAt || (startedAtMs !== null ? new Date(startedAtMs).toISOString() : undefined),
