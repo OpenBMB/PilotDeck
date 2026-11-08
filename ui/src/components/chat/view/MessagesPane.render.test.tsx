@@ -260,14 +260,15 @@ it.each(['generate_image', 'edit_image'])('keeps the %s record in the completed 
     fireEvent.load(screen.getByRole('img', { name: 'imageGeneration.image' }));
     expect(view.container.querySelector('.generated-image-surface')).toBe(surface);
     fireEvent.click(processToggle());
-    const record = screen.getByRole('button', { name: `toolDisplay.done.tool ${toolName}` });
+    const recordName = `toolDisplay.done.${toolName === 'edit_image' ? 'editImage' : 'generateImage'} A blue house`;
+    const record = screen.getByRole('button', { name: recordName });
     fireEvent.click(record);
-    expect(screen.getByText(/A blue house/)).toBeTruthy();
+    expect(screen.getByText(/A blue house/, { selector: 'pre' })).toBeTruthy();
     expect(screen.getByText('image_id: image-1')).toBeTruthy();
     expect(view.container.querySelectorAll('.generated-image-card')).toHaveLength(1);
     view.rerender(createPaneElement({ messages: complete.map(message => ({ ...message })) }));
     expect(view.container.querySelectorAll('.generated-image-card')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: `toolDisplay.done.tool ${toolName}` })).toBeTruthy();
+    expect(screen.getByRole('button', { name: recordName })).toBeTruthy();
     expect(fetchImage).toHaveBeenCalledTimes(1);
   } finally {
     fetchImage.mockRestore();
@@ -1937,7 +1938,7 @@ it('shows a single read directly and renders its image only once', () => {
   ];
   renderPane({ messages });
   fireEvent.click(processToggle());
-  expect(screen.getByText('Explored 1 file')).toBeTruthy();
+  expect(screen.getByText('Viewed 1 image')).toBeTruthy();
   expect(screen.getAllByRole('img', { name: 'preview.png' })).toHaveLength(1);
   const toolButton = document.querySelector('.tool-call button[aria-expanded]') as HTMLButtonElement;
   expect(toolButton.getAttribute('aria-expanded')).toBe('false');

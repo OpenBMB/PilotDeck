@@ -109,7 +109,22 @@ type CompletedProcessSegment = {
   nextHostIndex: number | null;
 };
 
-type ProcessCounts = {
+const ACTIVITY_METRICS = [
+  { kind: 'image', field: 'viewedImageCount', label: 'viewedImages', verb: 'Viewed', noun: 'image' },
+  { kind: 'image-generation', field: 'generatedImageCount', label: 'generatedImages', verb: 'Generated', noun: 'image' },
+  { kind: 'image-edit', field: 'editedImageCount', label: 'editedImages', verb: 'Edited', noun: 'image' },
+  { kind: 'video-generation', field: 'generatedVideoCount', label: 'generatedVideos', verb: 'Generated', noun: 'video' },
+  { kind: 'browse', field: 'openedPageCount', label: 'openedPages', verb: 'Opened', noun: 'page' },
+  { kind: 'interaction', field: 'browserActionCount', label: 'browserActions', verb: 'Performed', noun: 'browser action' },
+  { kind: 'skill', field: 'loadedSkillCount', label: 'loadedSkills', verb: 'Loaded', noun: 'skill' },
+] as const;
+type ActivityCountField = typeof ACTIVITY_METRICS[number]['field'];
+
+function additionalActivityCounts(message?: ChatMessage): Record<ActivityCountField, number> {
+  return Object.fromEntries(ACTIVITY_METRICS.map(({ field }) => [field, message ? numberField(message, field) : 0])) as Record<ActivityCountField, number>;
+}
+
+type ProcessCounts = Record<ActivityCountField, number> & {
   editedTargets: string[];
   readTargets: string[];
   searchCount: number;
@@ -308,6 +323,10 @@ export function getToolTarget(message: ChatMessage): string {
   return (
     getToolInputString(message, 'file_path') ||
     getToolInputString(message, 'path') ||
+    getToolInputString(message, 'file') ||
+    getToolInputString(message, 'filepath') ||
+    getToolInputString(message, 'image_path') ||
+    getToolInputString(message, 'output_path') ||
     getToolInputString(message, 'pattern') ||
     getToolInputString(message, 'query') ||
     getToolInputString(message, 'command') ||
@@ -416,7 +435,7 @@ function isCollapsibleCompletedProcessMessage(message: ChatMessage): boolean {
 
 export function getProcessToolKind(
   message: ChatMessage,
-): 'edit' | 'read' | 'search' | 'fetch' | 'command' | 'subagent' | 'compact' | 'thinking' | 'tool' {
+): 'edit' | 'read' | 'search' | 'fetch' | 'command' | 'subagent' | 'compact' | 'thinking' | 'tool' | typeof ACTIVITY_METRICS[number]['kind'] {
   if (message.isCompactBoundary) return 'compact';
   if (message.isThinking) return 'thinking';
   if (message.isSubagentContainer || message.toolName === 'Task' || message.isTaskNotification) {
@@ -424,11 +443,27 @@ export function getProcessToolKind(
   }
 
   const toolName = String(message.toolName || '').toLowerCase();
+  // Semantic categories must precede broad file/tool fallbacks: edit_image
+  // does not edit a text file, and a browser screenshot does not open a page.
+  if (/(?:^|__)(view_image|open_image|read_image|image_view|vision_analyze|analyze_image)$/.test(toolName)) return 'image';
+  if (toolName === 'generate_image') return 'image-generation';
+  if (toolName === 'edit_image') return 'image-edit';
+  if (toolName === 'generate_video') return 'video-generation';
+  if (toolName === 'read_skill' || toolName === 'skill_view') return 'skill';
+  if (/(?:^|__)(?:browser_navigate|browser_open)$/.test(toolName)) return 'browse';
+  if (/(?:^|__)(?:browser|computer)_/.test(toolName)) return 'interaction';
+  if (toolName === 'save_generated_image' || toolName === 'save_generated_video') return 'edit';
+  if (/^(task_?(?:create|update|list|get|stop|output|wait)|todo_?(?:write|read))$/.test(toolName)) return 'tool';
   if (isWebFetchToolMessage(message)) return 'fetch';
+  if (toolName === 'str_replace_editor' && getToolInputString(message, 'command') === 'view') {
+    return /\.(png|jpe?g|gif|webp|bmp|tiff?|svg|avif|heic|ico)(?:[?#].*)?$/i.test(getToolTarget(message)) ? 'image' : 'read';
+  }
   if (/edit|write|applypatch|patch|update|create|modify|multi_edit|multiedit/.test(toolName)) {
     return 'edit';
   }
   if (/read|cat|view/.test(toolName)) {
+    if (/\.(png|jpe?g|gif|webp|bmp|tiff?|svg|avif|heic|ico)(?:[?#].*)?$/i.test(getToolTarget(message))
+      || (Array.isArray(message.toolResult?.images) && message.toolResult.images.length > 0)) return 'image';
     return 'read';
   }
   if (/grep|glob|search|websearch|rag|find|rg/.test(toolName) || message.phase === 'rag') {
@@ -447,6 +482,7 @@ function uniqueCount(values: string[]): number {
 
 function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
   const counts: ProcessCounts = {
+    ...additionalActivityCounts(),
     editedTargets: [],
     readTargets: [],
     searchCount: 0,
@@ -462,7 +498,8 @@ function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
 
   const seenCalls = new Set<string>();
   for (const message of messages) {
-    const identity = `${message.turnId || message.runId || ''}:${message.toolId || message.toolCallId || message.id || ''}`;
+    const callId = message.toolId || message.toolCallId || message.id;
+    const identity = callId ? `${message.turnId || message.runId || ''}:${callId}` : '';
     if ((message.isToolUse || message.toolName) && identity) {
       if (seenCalls.has(identity)) continue;
       seenCalls.add(identity);
@@ -492,6 +529,8 @@ function collectProcessCounts(messages: ChatMessage[]): ProcessCounts {
     } else if (kind === 'thinking') {
       counts.thinkingCount += 1;
     } else {
+      const metric = ACTIVITY_METRICS.find(metric => metric.kind === kind);
+      if (metric) { counts[metric.field] += 1; continue; }
       counts.otherToolCount += 1;
     }
   }
@@ -584,6 +623,7 @@ function hasAgentActivitySummaryDetails(message: ChatMessage): boolean {
     'compactCount',
     'thinkingCount',
     'otherToolCount',
+    ...ACTIVITY_METRICS.map(({ field }) => field),
   ];
   const hasMetrics = numericDetailFields.some((key) => {
     const value = message[key];
@@ -638,6 +678,7 @@ function createSyntheticProcessSummary(
       && (message.compactState === 'failed' || message.compactState === 'cancelled'))?.compactState,
     thinkingCount: counts.thinkingCount,
     otherToolCount: counts.otherToolCount,
+    ...Object.fromEntries(ACTIVITY_METRICS.map(({ field }) => [field, counts[field]])),
     keySteps: [],
   };
 }
@@ -1280,9 +1321,10 @@ export function formatCompletedProcessTitle(
   messageOrMessages: ChatMessage | ChatMessage[],
   t: TFunction<'chat'>,
 ): string {
-  const counts = Array.isArray(messageOrMessages)
+  const counts: ProcessCounts = Array.isArray(messageOrMessages)
     ? collectProcessCounts(messageOrMessages)
     : {
+        ...additionalActivityCounts(messageOrMessages),
         editedTargets: [],
         readTargets: [],
         searchCount: numberField(messageOrMessages, 'ragSearchCount'),
@@ -1315,6 +1357,11 @@ export function formatCompletedProcessTitle(
       count: readCount,
       defaultValue: `Explored ${readCount} ${readCount === 1 ? 'file' : 'files'}`,
     }));
+  }
+  for (const { field, label, verb, noun } of ACTIVITY_METRICS) {
+    const count = counts[field];
+    if (count > 0) labels.push(t(`process.live.${label}`, { count,
+      defaultValue: `${verb} ${count} ${noun}${count === 1 ? '' : 's'}` }));
   }
   if (counts.searchCount > 0) {
     labels.push(t('process.live.searches', {

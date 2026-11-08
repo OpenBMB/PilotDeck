@@ -57,7 +57,7 @@ describe('UnifiedToolCall', () => {
     expect(container.querySelector('.text-red-500')).toBeNull();
     expect(screen.queryByText('Failed')).toBeNull();
     expect(screen.queryByText(/TOOL_ERROR/)).toBeNull();
-    const toggle = screen.getByRole('button', { name: 'Tool generate_image' });
+    const toggle = screen.getByRole('button', { name: 'Generate image a cat' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
     expect(screen.getByText(/TOOL_ERROR/)).toBeTruthy();

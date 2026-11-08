@@ -206,6 +206,13 @@
       "errors": "{{count}} 个错误"
     },
     "live": {
+      "viewedImages": "已查看 {{count}} 张图片",
+      "generatedImages": "已生成 {{count}} 张图片",
+      "editedImages": "已编辑 {{count}} 张图片",
+      "generatedVideos": "已生成 {{count}} 个视频",
+      "openedPages": "已打开 {{count}} 个网页",
+      "browserActions": "已执行 {{count}} 次浏览器操作",
+      "loadedSkills": "已加载 {{count}} 个技能",
       "editedFiles": "已编辑 {{count}} 个文件",
       "editedFiles_one": "已编辑 {{count}} 个文件",
       "editedFiles_other": "已编辑 {{count}} 个文件",
@@ -792,6 +799,12 @@
     "changes": "变更",
     "noChanges": "无变更",
     "running": {
+      "viewImage": "正在查看图片",
+      "generateImage": "正在生成图片",
+      "editImage": "正在编辑图片",
+      "generateVideo": "正在生成视频",
+      "browse": "正在打开网页",
+      "interact": "正在操作浏览器",
       "command": "正在运行",
       "write": "正在写入",
       "edit": "正在编辑",
@@ -802,6 +815,12 @@
       "skill": "正在读取技能"
     },
     "pending": {
+      "viewImage": "查看图片",
+      "generateImage": "生成图片",
+      "editImage": "编辑图片",
+      "generateVideo": "生成视频",
+      "browse": "打开网页",
+      "interact": "浏览器操作",
       "command": "命令",
       "write": "写入",
       "edit": "编辑",
@@ -812,6 +831,12 @@
       "skill": "读取技能"
     },
     "done": {
+      "viewImage": "已查看图片",
+      "generateImage": "已生成图片",
+      "editImage": "已编辑图片",
+      "generateVideo": "已生成视频",
+      "browse": "已打开网页",
+      "interact": "已操作浏览器",
       "command": "已运行",
       "write": "已写入",
       "edit": "已编辑",
