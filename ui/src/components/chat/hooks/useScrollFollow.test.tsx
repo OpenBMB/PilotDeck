@@ -53,6 +53,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it.each([-1, 1])('retains compositor momentum while the wheel reverses direction (%s)', direction => {
+    const { node, metrics, view } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.wheel(node, { deltaY: direction * 60 });
+    node.scrollTop += direction * 30; fireEvent.scroll(node);
+    fireEvent.wheel(node, { deltaY: -direction * 60 });
+    // The compositor can deliver the previous gesture's final frame after
+    // the next wheel event, before adopting the new direction.
+    node.scrollTop += direction * 10;
+    metrics.height += 40;
+    view.rerender(<Harness version={1} />);
+    resize(); fireEvent.scroll(node); flush();
+    expect(node.scrollTop).toBe(500 + direction * 40);
+    node.scrollTop -= direction * 50;
+    fireEvent.scroll(node); resize(); flush();
+    expect(node.scrollTop).toBe(500 - direction * 10);
+  });
+
   it('reacquires a visible anchor when a large wheel outruns the virtual window', () => {
     const { node, metrics } = setup();
     const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
