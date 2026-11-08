@@ -17,6 +17,7 @@ for the same provider, endpoint and authentication settings.
 | Bocha Web Search | `BOCHA_API_KEY` | [Provider-maintained API reference](https://github.com/Bocha-Labs/bocha-skills/tree/main/bocha-web-search) |
 | Exa | `EXA_API_KEY` | [Search](https://exa.ai/docs/reference/search) |
 | SerpAPI | `SERPAPI_API_KEY` | [Search API](https://serpapi.com/search-api) |
+| Outcrawl | `OUTCRAWL_API_KEY` | [Search](https://outcrawl.ai/docs/search/overview) |
 | Custom | `CUSTOM_WEB_SEARCH_API_KEY` | Your endpoint's documentation |
 
 SerpAPI provides access to the selected engine with a **SerpAPI key**. It does
@@ -52,7 +53,9 @@ entry on the next edit. A saved provider entry takes precedence over legacy fiel
 Baidu uses the Qianfan `web_search` endpoint with Bearer authentication,
 `search_source: baidu_search_v2` and web resources. Bocha uses
 `https://api.bocha.cn/v1/web-search` with Bearer authentication. Exa uses
-`x-api-key` and requests highlights for snippets. The connection probe and actual
+`x-api-key` and requests highlights for snippets. Outcrawl uses
+`https://api.outcrawl.ai/v1/search` with Bearer authentication, sends `query`
+and `limit`, and reads title, URL and snippet from `hits`. The connection probe and actual
 search share these request/response adapters, including provider error detection.
 Query-authenticated errors redact the key before returning to the UI or model.
 

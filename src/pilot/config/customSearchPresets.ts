@@ -1,7 +1,7 @@
 import { WEB_SEARCH_ENDPOINTS, type WebSearchProvider } from './webSearchProviders.js';
 import type { WebSearchCustomProviderConfig } from './webSearchConfig.js';
 
-export const CUSTOM_SEARCH_PRESETS = ['deepseek', 'glm', 'tavily', 'serper', 'brave', 'baidu', 'bocha', 'exa', 'serpapi', 'searxng', 'openwebui'] as const;
+export const CUSTOM_SEARCH_PRESETS = ['deepseek', 'glm', 'tavily', 'serper', 'brave', 'baidu', 'bocha', 'exa', 'serpapi', 'outcrawl', 'searxng', 'openwebui'] as const;
 export function customSearchPreset(id: typeof CUSTOM_SEARCH_PRESETS[number]): { endpoint: string; customProvider: WebSearchCustomProviderConfig } {
   const base: WebSearchCustomProviderConfig = { method: 'POST', auth: 'bearer', titleField: 'title', urlField: 'url', snippetField: 'snippet' };
   const configs: Record<typeof id, WebSearchCustomProviderConfig> = {
@@ -14,6 +14,7 @@ export function customSearchPreset(id: typeof CUSTOM_SEARCH_PRESETS[number]): { 
     bocha: { requestBody: { query: '{{query}}', count: '{{limit}}', freshness: 'noLimit', summary: true }, resultsPath: 'data.webPages.value', titleField: 'name', snippetField: 'summary', sourceField: 'siteName', publishedAtField: 'datePublished' },
     exa: { auth: 'headerApiKey', apiKeyParam: 'x-api-key', requestBody: { query: '{{query}}', numResults: '{{limit}}', type: 'auto', contents: { highlights: true, text: false } }, resultsPath: 'results', snippetField: 'highlights', publishedAtField: 'publishedDate' },
     serpapi: { method: 'GET', auth: 'queryApiKey', queryParams: { engine: 'google', q: '{{query}}', gl: '{{gl}}' }, resultsPath: 'organic_results', urlField: 'link' },
+    outcrawl: { requestBody: { query: '{{query}}', limit: '{{limit}}' }, resultsPath: 'hits' },
     searxng: { method: 'GET', auth: 'none', queryParams: { q: '{{query}}', format: 'json' }, resultsPath: 'results', snippetField: 'content' },
     openwebui: { requestBody: { query: '{{query}}', count: '{{limit}}' }, resultsPath: '$', urlField: 'link' },
   };

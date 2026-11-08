@@ -7,7 +7,7 @@ Search settings live at tools.webSearch. GET/PUT `/api/config` and POST `/api/co
 | Field | Contract |
 | --- | --- |
 | enabled | Explicit false disables the tool and skips validation of inactive search subfields |
-| provider | deepseek, glm, tavily, serper, brave, baidu, bocha, exa, serpapi or custom |
+| provider | deepseek, glm, tavily, serper, brave, baidu, bocha, exa, serpapi, outcrawl or custom |
 | providers.<provider> | Separate saved apiKey, endpoint, searchEngine and customProvider per provider |
 | searchEngine | SerpAPI engine, default google, with bing, baidu, duckduckgo, yahoo and yandex also supported |
 | apiKey | Legacy/current provider key, masked on read; environment injection remains supported |

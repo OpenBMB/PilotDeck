@@ -53,7 +53,7 @@ test("web search enabled remains optional for backwards compatibility", () => {
 });
 
 test("web search accepts all configured providers", () => {
-  for (const provider of ["glm", "tavily", "custom", "serper", "brave", "baidu", "bocha", "exa", "serpapi"] as const) {
+  for (const provider of ["glm", "tavily", "custom", "serper", "brave", "baidu", "bocha", "exa", "serpapi", "outcrawl"] as const) {
     const diagnostics: PilotConfigDiagnostic[] = [];
     const config = parseToolsConfig({ webSearch: { provider, apiKey: "test-key" } }, diagnostics);
     assert.deepEqual(config, { webSearch: { provider, apiKey: "test-key" } });
