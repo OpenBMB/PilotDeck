@@ -47,6 +47,10 @@ it('folds dense edits earlier than short calls and never repartitions on result 
   expect(membership(traces(denseTools.map(tool => ({ ...tool, toolResult: { content: 'result growth\n'.repeat(5000) } })))))
     .toEqual(membership(dense));
   expect(traces(makeTools(false).slice(0, 20))[0].id).toBe(simple[0].id);
+  const boundaryTools = denseTools.map((tool, index) => ({ ...tool,
+    toolInput: { file_path: `file-${index}.ts`, content: 'x'.repeat(3980) } }));
+  expect(membership(traces(boundaryTools.map(tool => ({ ...tool, toolInput: JSON.stringify(tool.toolInput) })))))
+    .toEqual(membership(traces(boundaryTools)));
 });
 
 it('batches all kinds of tool actions together and describes the mixed work in both languages', async () => {

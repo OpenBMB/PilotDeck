@@ -997,8 +997,11 @@ function processPresentationCost(message: ChatMessage): number {
   const kind = getProcessToolKind({ ...message, toolResult: undefined });
   const base = ['edit', 'image', 'image-generation', 'image-edit', 'video-generation', 'interaction'].includes(kind) ? 1.5 : 1;
   const input = message.toolInput;
-  const inputLength = typeof input === 'string' ? input.length
-    : input && typeof input === 'object' ? Object.values(input).reduce<number>((sum, value) => sum + (typeof value === 'string' ? value.length : 0), 0) : 0;
+  const values = Object.values(parseToolInput(input));
+  // Live calls and restored history may encode the same arguments as an
+  // object or JSON string. Syntax/escaping must not change batch boundaries.
+  const inputLength = values.length ? values.reduce<number>((sum, value) => sum + (typeof value === 'string' ? value.length : 0), 0)
+    : typeof input === 'string' ? input.length : 0;
   return base + Math.min(2, Math.floor(inputLength / 4000));
 }
 
