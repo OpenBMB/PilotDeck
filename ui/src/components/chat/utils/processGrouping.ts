@@ -1045,17 +1045,17 @@ export function groupProcessIntervals(
     const work = message.isThinking || isProcessMessage(message)
       || (message.isToolUse && !isUserVisibleTool(message) && isPermissionToolError(message));
     if (work) {
-      // Keep bounded, stable seats during long runs. Completed batches fold;
-      // parallel calls that are still executing remain visible and live.
-      if (pendingCost >= 12 || pendingToolCalls >= 16 || pending.length >= 20) {
-        const active = pending.some(item => isPendingProcessMessage(item.message) || item.message.isStreaming);
-        flush(!active, active && isAssistantWorking);
-      }
       pending.push(clean(message, index));
       pendingCost += processPresentationCost(message);
       if (message.isToolUse || message.type === 'tool') pendingToolCalls++;
       // Delivered media stays visible even when the surrounding work closes.
       result.push(...(mediaByIndex.get(index) ?? []));
+      // Close a full, settled batch immediately, even with no following event.
+      // Parallel calls that are still executing remain visible and live.
+      if (pendingCost >= 12 || pendingToolCalls >= 16 || pending.length >= 20) {
+        const active = pending.some(item => isPendingProcessMessage(item.message) || item.message.isStreaming);
+        flush(!active, active && isAssistantWorking);
+      }
       return;
     }
     flush(message.type !== 'error' && !message.isInterruptedNotice);

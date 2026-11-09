@@ -31,6 +31,27 @@ it('folds long sequential tool runs into stable bounded batches without dropping
   expect(groups.flatMap(group => group.items.map(item => item.message.id))).toEqual(tools.map(tool => tool.id));
 });
 
+it('folds a full batch as soon as its last call settles without waiting for another event', () => {
+  const tools: ChatMessage[] = Array.from({ length: 12 }, (_, index) => ({
+    id: `threshold-${index}`, toolId: `threshold-${index}`, toolName: 'bash', type: 'assistant',
+    timestamp: start, content: '', isToolUse: true, toolInput: { command: `check ${index}` },
+    toolResult: { content: 'ok' },
+  }));
+  const traces = (calls: ChatMessage[]) => project([user, ...calls], true).flatMap(item => item.turnTrace ? [item.turnTrace] : []);
+  const short = traces(tools.slice(0, -1));
+  expect(short).toHaveLength(1);
+  expect(short[0].defaultExpanded).toBe(true);
+  const pending = traces([...tools.slice(0, -1), { ...tools.at(-1)!, toolResult: undefined }]);
+  expect(pending[0].defaultExpanded).toBe(true);
+  expect(pending[0].isLive).toBe(true);
+  const settled = traces(tools);
+  expect(settled).toHaveLength(1);
+  expect(settled[0].id).toBe(short[0].id);
+  expect(settled[0].defaultExpanded).toBe(false);
+  expect(settled[0].isLive).toBe(false);
+  expect(settled[0].items.map(item => item.message.id)).toEqual(tools.map(tool => tool.id));
+});
+
 it('folds dense edits earlier than short calls and never repartitions on result growth', () => {
   const makeTools = (dense: boolean): ChatMessage[] => Array.from({ length: 30 }, (_, index) => ({
     id: `adaptive-${index}`, toolId: `adaptive-${index}`, toolName: dense ? 'write_file' : 'bash',

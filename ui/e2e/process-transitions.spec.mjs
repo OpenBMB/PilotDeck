@@ -320,8 +320,14 @@ test('file generation shows live path and size before writing, then opens a boun
   await expect(tool.locator('[data-file-preview-line]')).toHaveCount(400);
   await page.evaluate(() => { window.streamFixture.finishTool('write-large', 'Saved');
     window.streamFixture.text('File written successfully.'); window.streamFixture.complete(); });
-  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'true');
+  const turn = page.locator('[data-turn-process-header] button');
+  await expect(turn).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('File written successfully.', { exact: true })).toBeVisible();
+  await turn.click();
+  const process = page.locator('[data-process-block] > button');
+  await expect(process).toHaveAttribute('aria-expanded', 'false');
+  await process.click();
+  await expect(tool.locator('[data-file-preview-line]')).toHaveCount(400);
 });
 
 test('file results wait for execution to stop and remain last when work is reopened', async ({ page }) => {

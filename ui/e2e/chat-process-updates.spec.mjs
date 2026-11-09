@@ -1,5 +1,72 @@
 import { test, expect } from '@playwright/test';
 
+test('an inspected batch closes at the limit while a short tail stays open', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+  const appendCalls = async (start, end) => page.evaluate(({ start, end }) => {
+    for (let index = start; index < end; index++) {
+      window.streamFixture.tool(`fold-${index}`, 'bash', { command: `check ${index}` });
+      window.streamFixture.finishTool(`fold-${index}`, `Result ${index}`);
+    }
+  }, { start, end });
+  await page.evaluate(() => window.streamFixture.beginTurn());
+  await appendCalls(0, 2);
+  const batches = page.locator('[data-process-block]');
+  const first = batches.first().locator(':scope > button');
+  const tool = page.locator('[data-tool-id="fold-0"] button[aria-expanded]').first();
+  await tool.click();
+  await expect(tool).toHaveAttribute('aria-expanded', 'true');
+  await appendCalls(2, 12);
+  await expect(batches).toHaveCount(1);
+  await expect(first).toHaveAttribute('aria-expanded', 'false');
+  const body = batches.first().locator(':scope > .chat-process-disclosure');
+  await expect(body).toHaveAttribute('aria-hidden', 'true');
+  await expect(body).toHaveAttribute('inert', '');
+  await expect.poll(() => body.evaluate(node => node.getBoundingClientRect().height)).toBeLessThan(1);
+  await appendCalls(12, 25);
+  await expect(batches).toHaveCount(3);
+  await expect(batches.nth(1).locator(':scope > button')).toHaveAttribute('aria-expanded', 'false');
+  await expect(batches.last().locator(':scope > button')).toHaveAttribute('aria-expanded', 'true');
+  await first.click();
+  await expect(tool).toBeVisible();
+  await expect(tool).toHaveAttribute('aria-expanded', 'true');
+  await page.screenshot({ path: test.info().outputPath('inspected-batch-folding.png') });
+});
+
+test('a streaming reply closes inspected mixed work before the turn completes', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+  await page.evaluate(() => {
+    window.streamFixture.beginTurn();
+    window.streamFixture.tool('todos', 'TodoWrite', { todos: [{ content: 'Update the page', status: 'pending' }] });
+    window.streamFixture.finishTool('todos', 'ok');
+    window.streamFixture.tool('write-page', 'write_file', { file_path: 'index.html', content: '<main>Example</main>' });
+    window.streamFixture.finishTool('write-page', 'Written');
+    window.streamFixture.think('Checking the page.');
+    window.streamFixture.tool('check-page', 'bash', { command: 'verify page' });
+    window.streamFixture.finishTool('check-page', 'Verified');
+  });
+  const process = page.locator('[data-process-block] > button').last();
+  const tool = page.locator('[data-tool-id="write-page"] button[aria-expanded]').first();
+  await tool.click();
+  await expect(process).toHaveAttribute('aria-expanded', 'true');
+  await page.evaluate(() => window.streamFixture.text('The page is ready.'));
+  await expect(process).toHaveAttribute('aria-expanded', 'false');
+  const body = page.locator('[data-process-block] > .chat-process-disclosure').last();
+  await expect(body).toHaveAttribute('aria-hidden', 'true');
+  await expect(body).toHaveAttribute('inert', '');
+  await expect.poll(() => body.evaluate(node => node.getBoundingClientRect().height)).toBeLessThan(1);
+  const turn = page.locator('[data-turn-process-header] button');
+  await expect(turn).toHaveAttribute('aria-expanded', 'true');
+  await process.click();
+  await expect(tool).toBeVisible();
+  await page.evaluate(() => window.streamFixture.text('The page is ready. Checks passed.'));
+  await expect(process).toHaveAttribute('aria-expanded', 'true');
+  await page.evaluate(() => window.streamFixture.complete(5000));
+  await expect(turn).toHaveAttribute('aria-expanded', 'false');
+  await turn.click();
+  await expect(tool).toBeVisible();
+  await expect(tool).toHaveAttribute('aria-expanded', 'true');
+});
+
 test('a new message folds inspected work and removes the previous file card', async ({ page }) => {
   await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
   await page.evaluate(() => {

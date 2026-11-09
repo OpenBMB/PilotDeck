@@ -424,7 +424,7 @@ function MessagesPane({
   const heightVersionRafRef = useRef<number | null>(null);
   const [heightVersion, setHeightVersion] = useState(0);
   const [scrollViewport, setScrollViewport] = useState({ scrollTop: 0, height: 0 });
-  const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, boolean>>(() => new Map());
+  const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, { expanded: boolean; defaultExpanded: boolean }>>(() => new Map());
   const [expandedToolSections, setExpandedToolSections] = useState<Map<string, boolean>>(() => new Map());
   const [openSubagentId, setOpenSubagentId] = useState<string | null>(null);
 
@@ -477,23 +477,6 @@ function MessagesPane({
     setExpandedProcessRows(new Map());
     setExpandedToolSections(new Map());
   }
-
-  const isProcessExpanded = useCallback((processKey: string, defaultExpanded = false) => (
-    expandedProcessRows.get(`${disclosureEpoch}:${processKey}`) ?? (sendingInputs.length ? false : defaultExpanded)
-  ), [expandedProcessRows, sendingInputs.length, disclosureEpoch]);
-
-  const handleProcessExpandedChange = useCallback((processKey: string, expanded: boolean) => {
-    const key = `${disclosureEpoch}:${processKey}`;
-    setExpandedProcessRows((currentRows) => {
-      if (currentRows.get(key) === expanded) {
-        return currentRows;
-      }
-
-      const nextRows = new Map(currentRows);
-      nextRows.set(key, expanded);
-      return nextRows;
-    });
-  }, [disclosureEpoch]);
 
   const isToolSectionExpanded = useCallback((sectionKey: string, defaultExpanded = false) => (
     expandedToolSections.get(`${disclosureEpoch}:${sectionKey}`) ?? defaultExpanded
@@ -606,6 +589,33 @@ function MessagesPane({
       buildRenderableMessageItems(renderableMessages, { isAssistantWorking }), isAssistantWorking),
     [isAssistantWorking, renderableMessages],
   );
+  const processDefaults = useMemo(() => {
+    const defaults = new Map<string, boolean>();
+    for (const item of renderableMessageItems) {
+      if (item.turnTrace) defaults.set(`${messageWindowScope}:${item.turnTrace.id}`, item.turnTrace.defaultExpanded);
+      const group = item.processRun || item.beforeTurnProcess || item.afterTurnProcess;
+      if (group) defaults.set(turnProcessKey(messageWindowScope, group), group.defaultExpanded);
+    }
+    return defaults;
+  }, [renderableMessageItems, messageWindowScope]);
+  const isProcessExpanded = useCallback((processKey: string, defaultExpanded = false) => {
+    const choice = expandedProcessRows.get(`${disclosureEpoch}:${processKey}`);
+    // A reply or settled batch closes openings made while work was live.
+    // Reopening the closed group is a new choice and survives later deltas.
+    if (choice?.expanded && choice.defaultExpanded && !defaultExpanded) return false;
+    return choice?.expanded ?? (sendingInputs.length ? false : defaultExpanded);
+  }, [expandedProcessRows, sendingInputs.length, disclosureEpoch]);
+  const handleProcessExpandedChange = useCallback((processKey: string, expanded: boolean) => {
+    const key = `${disclosureEpoch}:${processKey}`;
+    const defaultExpanded = processDefaults.get(processKey) ?? false;
+    setExpandedProcessRows(currentRows => {
+      const current = currentRows.get(key);
+      if (current?.expanded === expanded && current.defaultExpanded === defaultExpanded) return currentRows;
+      const nextRows = new Map(currentRows);
+      nextRows.set(key, { expanded, defaultExpanded });
+      return nextRows;
+    });
+  }, [disclosureEpoch, processDefaults]);
   const keyedMessageItems = useMemo<KeyedRenderableMessageItem[]>(
     () => renderableMessageItems.map((item, index) => {
       const turnOpen = !item.processRun || item.processOutput || isProcessExpanded(turnProcessKey(messageWindowScope, item.processRun), item.processRun.defaultExpanded);
