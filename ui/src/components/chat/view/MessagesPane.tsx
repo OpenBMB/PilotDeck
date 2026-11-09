@@ -21,7 +21,7 @@ import GeneratedMediaCard from '../tools/GeneratedMediaCard';
 import type { QueuedInputSummary } from '../types/queuedInput';
 import { expandingDisclosure } from '../utils/disclosureInteraction';
 import MessageRow from './MessageRow';
-import { disclosureAncestorKeys } from '../utils/disclosureState';
+import { disclosureAncestorKeys, processDisclosureDefaults, resolveProcessExpansion, type ProcessExpansionChoice } from '../utils/disclosureState';
 import { TurnFileFooter } from './TurnFileFooter';
 import { useLiveReplyKeys } from '../hooks/useLiveReplyKeys';
 import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
@@ -424,7 +424,7 @@ function MessagesPane({
   const heightVersionRafRef = useRef<number | null>(null);
   const [heightVersion, setHeightVersion] = useState(0);
   const [scrollViewport, setScrollViewport] = useState({ scrollTop: 0, height: 0 });
-  const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, { expanded: boolean; defaultExpanded: boolean }>>(() => new Map());
+  const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, ProcessExpansionChoice>>(() => new Map());
   const [expandedToolSections, setExpandedToolSections] = useState<Map<string, boolean>>(() => new Map());
   const [openSubagentId, setOpenSubagentId] = useState<string | null>(null);
 
@@ -589,21 +589,11 @@ function MessagesPane({
       buildRenderableMessageItems(renderableMessages, { isAssistantWorking }), isAssistantWorking),
     [isAssistantWorking, renderableMessages],
   );
-  const processDefaults = useMemo(() => {
-    const defaults = new Map<string, boolean>();
-    for (const item of renderableMessageItems) {
-      if (item.turnTrace) defaults.set(`${messageWindowScope}:${item.turnTrace.id}`, item.turnTrace.defaultExpanded);
-      const group = item.processRun || item.beforeTurnProcess || item.afterTurnProcess;
-      if (group) defaults.set(turnProcessKey(messageWindowScope, group), group.defaultExpanded);
-    }
-    return defaults;
-  }, [renderableMessageItems, messageWindowScope]);
+  const processDefaults = useMemo(() => processDisclosureDefaults(renderableMessageItems, messageWindowScope),
+    [renderableMessageItems, messageWindowScope]);
   const isProcessExpanded = useCallback((processKey: string, defaultExpanded = false) => {
     const choice = expandedProcessRows.get(`${disclosureEpoch}:${processKey}`);
-    // A reply or settled batch closes openings made while work was live.
-    // Reopening the closed group is a new choice and survives later deltas.
-    if (choice?.expanded && choice.defaultExpanded && !defaultExpanded) return false;
-    return choice?.expanded ?? (sendingInputs.length ? false : defaultExpanded);
+    return choice ? resolveProcessExpansion(choice, defaultExpanded) : sendingInputs.length ? false : defaultExpanded;
   }, [expandedProcessRows, sendingInputs.length, disclosureEpoch]);
   const handleProcessExpandedChange = useCallback((processKey: string, expanded: boolean) => {
     const key = `${disclosureEpoch}:${processKey}`;

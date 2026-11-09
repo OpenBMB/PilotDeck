@@ -293,7 +293,7 @@ it('shows the model-call spinner after a child tool finishes and hides it during
   expect(status()).toBeNull();
 });
 
-it('keeps manually expanded child tool details visible after the child replies', () => {
+it('folds inspected child work on a streaming reply and retains details when reopened', () => {
   const call = { ...tool('child-inspect', 'Read'), toolResult: { content: 'Inspectable file contents' } };
   const element = (messages: ChatMessage[], running: boolean) => <FindShortcutProvider activeScope="chat">
     <SubagentDetailMessageFlow messages={messages} provider="pilotdeck" selectedProject={null} createDiff={() => []} isRunning={running} />
@@ -301,8 +301,38 @@ it('keeps manually expanded child tool details visible after the child replies',
   const view = render(element([call], true));
   const toolToggle = view.container.querySelector('.tool-call > div > button')!;
   fireEvent.click(toolToggle);
-  view.rerender(element([call, assistant('child-finished-inspection', 'Inspection complete.')], false));
+  const reply = { ...assistant('child-finished-inspection', 'Inspection complete.'), isStreaming: true };
+  view.rerender(element([call, reply], true));
+  const process = view.container.querySelector('[data-process-block] > button')!;
+  expect(process.getAttribute('aria-expanded')).toBe('false');
+  expect(toolToggle.closest('[aria-hidden="true"]')).not.toBeNull();
+  fireEvent.click(process);
+  view.rerender(element([call, { ...reply, content: 'Inspection complete. Verified.' }], true));
   expect(toolToggle.getAttribute('aria-expanded')).toBe('true');
-  expect(view.container.querySelector('[data-process-block] > button')?.getAttribute('aria-expanded')).toBe('true');
-  expect(view.container.querySelector('[data-turn-process-header] button')?.getAttribute('aria-expanded')).toBe('true');
+  expect(process.getAttribute('aria-expanded')).toBe('true');
+  view.rerender(element([call, { ...reply, isStreaming: false }], false));
+  const turn = view.container.querySelector('[data-turn-process-header] button')!;
+  expect(turn.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(turn);
+  expect(process.getAttribute('aria-expanded')).toBe('true');
+  expect(toolToggle.getAttribute('aria-expanded')).toBe('true');
+});
+
+it('folds inspected child batches at the limit and keeps a short live tail expanded', () => {
+  const calls = Array.from({ length: 13 }, (_, index) => ({ ...tool(`child-batch-${index}`, 'bash'),
+    toolInput: { command: `check ${index}` }, toolResult: { content: 'ok' } }));
+  const element = (count: number) => <FindShortcutProvider activeScope="chat">
+    <SubagentDetailMessageFlow messages={calls.slice(0, count)} provider="pilotdeck" selectedProject={null}
+      createDiff={() => []} isRunning />
+  </FindShortcutProvider>;
+  const view = render(element(2));
+  fireEvent.click(view.container.querySelector('.tool-call > div > button')!);
+  view.rerender(element(12));
+  const first = view.container.querySelector('[data-process-block] > button')!;
+  expect(first.getAttribute('aria-expanded')).toBe('false');
+  view.rerender(element(13));
+  expect(Array.from(view.container.querySelectorAll('[data-process-block] > button'),
+    button => button.getAttribute('aria-expanded'))).toEqual(['false', 'true']);
+  fireEvent.click(first);
+  expect(view.container.querySelector('[data-tool-id="child-batch-0"] button')!.getAttribute('aria-expanded')).toBe('true');
 });

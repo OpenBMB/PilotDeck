@@ -9,7 +9,7 @@ import GeneratedMediaCard from '../tools/GeneratedMediaCard';
 import { expandingDisclosure } from '../utils/disclosureInteraction';
 import ChatHistorySearchBar from './ChatHistorySearchBar';
 import MessageRow from './MessageRow';
-import { disclosureAncestorKeys } from '../utils/disclosureState';
+import { disclosureAncestorKeys, processDisclosureDefaults, resolveProcessExpansion, type ProcessExpansionChoice } from '../utils/disclosureState';
 import { TurnFileFooter } from './TurnFileFooter';
 import { TurnProcessHeader, TurnProcessRegion } from './TurnProcessDisclosure';
 import { FileInputStatus } from './FileInputStatus';
@@ -73,7 +73,7 @@ export default function SubagentDetailMessageFlow({
   const { t } = useTranslation('chat');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const follow = useScrollFollow({ containerRef: scrollContainerRef, enabled: true, contentKey: messages.length > 0, contentSelector: '[data-chat-scroll-content]' });
-  const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, boolean>>(() => new Map());
+  const [expandedProcessRows, setExpandedProcessRows] = useState<Map<string, ProcessExpansionChoice>>(() => new Map());
   const [expandedToolSections, setExpandedToolSections] = useState<Map<string, boolean>>(() => new Map());
   const currentTurnMessages = useMemo(() => {
     const userIndex = messages.reduce((last, message, index) => message.type === 'user' ? index : last, -1);
@@ -150,18 +150,22 @@ export default function SubagentDetailMessageFlow({
     [keyedItems],
   );
 
+  const processDefaults = useMemo(() => processDisclosureDefaults(renderableItems, 'subagent'), [renderableItems]);
   const isProcessExpanded = useCallback((processKey: string, defaultExpanded = false) => (
-    expandedProcessRows.get(processKey) ?? defaultExpanded
+    resolveProcessExpansion(expandedProcessRows.get(processKey), defaultExpanded)
   ), [expandedProcessRows]);
 
   const loadAllSearchMessages = useCallback(() => {}, []);
   const handleProcessExpandedChange = useCallback((processKey: string, expanded: boolean) => {
+    const defaultExpanded = processDefaults.get(processKey) ?? false;
     setExpandedProcessRows((prev) => {
+      const current = prev.get(processKey);
+      if (current?.expanded === expanded && current.defaultExpanded === defaultExpanded) return prev;
       const next = new Map(prev);
-      next.set(processKey, expanded);
+      next.set(processKey, { expanded, defaultExpanded });
       return next;
     });
-  }, []);
+  }, [processDefaults]);
 
   const isToolSectionExpanded = useCallback((sectionKey: string, defaultExpanded = false) => (
     expandedToolSections.get(sectionKey) ?? defaultExpanded
