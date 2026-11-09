@@ -7,6 +7,8 @@ for (const language of ['en', 'zh-CN']) test(`Git and Python status, manual chec
   const text = JSON.parse(await readFile(new URL(`../src/i18n/locales/${language}/settings.json`, import.meta.url), 'utf8'));
   await context.addInitScript(language => localStorage.setItem('userLanguage', language), language);
   let reads = 0, checks = 0;
+  const browserErrors = [];
+  page.on('pageerror', error => browserErrors.push(error.message));
   let release;
   const config = { agent: { model: 'test/model' } };
   await context.routeWebSocket('**/ws**', socket => socket.onMessage(() => {}));
@@ -34,6 +36,7 @@ for (const language of ['en', 'zh-CN']) test(`Git and Python status, manual chec
   try {
     await page.goto('/settings/advanced');
     await expect(page.getByText('/fixture/base/python', { exact: true })).toBeVisible({ timeout: 60000 });
+    expect(browserErrors).toEqual([]);
     await expect(page.getByText('/fixture/git/cmd/git.exe', { exact: true })).toBeVisible();
     await expect(page.getByText(text.gitRuntime.sources.bundled, { exact: true })).toBeVisible();
     const python = page.getByRole('region', { name: text.pythonRuntime.title, exact: true });
@@ -51,5 +54,8 @@ for (const language of ['en', 'zh-CN']) test(`Git and Python status, manual chec
     await expect(page.getByText('/fixture/verified/python', { exact: true })).toBeVisible();
     expect(checks).toBe(2);
     await page.screenshot({ path: info.outputPath(`runtime-settings-${language}.png`), fullPage: true });
+  } catch (error) {
+    await info.attach('runtime-settings-errors', { body: JSON.stringify({ browserErrors, reads, checks }), contentType: 'application/json' });
+    throw error;
   } finally { release?.(); }
 });
