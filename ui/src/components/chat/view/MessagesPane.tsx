@@ -859,10 +859,12 @@ function MessagesPane({
     if (mounted) mountedItemKeys.current.add(itemKey); else mountedItemKeys.current.delete(itemKey);
   }, []);
   const handleMeasuredItemHeight = useCallback((itemKey: string, height: number, signature: string, toolLayout: Map<string, boolean>) => {
-    const normalizedHeight = Math.max(0, Math.ceil(height));
+    // Preserve fractional CSS pixels at Windows display scales. Rounding each
+    // row independently accumulates visible drift across virtual windows.
+    const normalizedHeight = Math.max(0, height);
     const current = measuredHeightsRef.current.get(itemKey);
     const currentHeight = current?.height;
-    if (current?.signature === signature && current.toolLayout === toolLayout && currentHeight !== undefined && (currentHeight === normalizedHeight || (currentHeight > 0 && normalizedHeight > 0 && Math.abs(currentHeight - normalizedHeight) < 2))) {
+    if (current?.signature === signature && current.toolLayout === toolLayout && currentHeight !== undefined && Math.abs(currentHeight - normalizedHeight) < 0.01) {
       return;
     }
 

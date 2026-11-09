@@ -1,29 +1,4 @@
-import { test as browserTest, expect, _electron } from '@playwright/test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const test = process.env.PILOTDECK_SCROLL_ELECTRON === '1' ? browserTest.extend({
-  page: async ({}, use) => {
-    const profile = await mkdtemp(path.join(tmpdir(), 'pilotdeck-scroll-'));
-    let app;
-    try {
-      const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|SYSTEMROOT|WINDIR|TEMP|TMP|DISPLAY|XAUTHORITY|HOME|LANG)$/i.test(key)));
-      app = await _electron.launch({
-        executablePath: createRequire(import.meta.url)(path.join(root, 'apps/desktop/node_modules/electron')),
-        args: [path.join(root, 'ui/e2e/fixtures/scroll-electron.cjs')],
-        env: { ...env, PILOTDECK_SCROLL_PROFILE: profile },
-      });
-      await use(await app.firstWindow());
-    } finally {
-      await app?.close();
-      await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-    }
-  },
-}) : browserTest;
+import { test, expect } from './fixtures/scroll-test.mjs';
 
 test.beforeEach(async ({ page, baseURL }) => {
   await page.route('**/api/config', route => route.fulfill({ json: {} }));
@@ -41,16 +16,23 @@ async function syntheticVideo(browser) {
   try { return Buffer.from(await page.evaluate(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 180; canvas.height = 320;
     const context = canvas.getContext('2d'); context.fillStyle = '#386c91'; context.fillRect(0, 0, 180, 320);
-    const stream = canvas.captureStream(10);
+    document.body.append(canvas);
+    const stream = canvas.captureStream(0);
     const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
     const chunks = [];
     recorder.ondataavailable = event => chunks.push(event.data);
     const stopped = new Promise(resolve => { recorder.onstop = resolve; });
+    const started = new Promise(resolve => { recorder.onstart = resolve; });
     recorder.start();
-    // Draw after the encoder subscribes so the clip contains a video frame.
-    context.fillStyle = '#41769a'; context.fillRect(0, 0, 180, 320);
-    stream.getVideoTracks()[0].requestFrame();
-    await new Promise(resolve => setTimeout(resolve, 250)); recorder.stop();
+    await started;
+    // Chrome can subscribe to canvas frames after start() returns. Produce
+    // distinct frames after the start event instead of racing one initial draw.
+    for (let frame = 0; frame < 6; frame++) {
+      context.fillStyle = frame % 2 ? '#41769a' : '#386c91'; context.fillRect(0, 0, 180, 320);
+      stream.getVideoTracks()[0].requestFrame();
+      await new Promise(resolve => setTimeout(resolve, 60));
+    }
+    recorder.stop();
     await stopped; stream.getTracks().forEach(track => track.stop());
     return Array.from(new Uint8Array(await new Blob(chunks).arrayBuffer()));
   })); } finally { await page.close(); }
@@ -95,6 +77,9 @@ test('bidirectional wheels through virtualized delayed media retain each reading
   test.setTimeout(60_000);
   await mediaFixture(page, browser, 100);
   await expect(page.locator('[data-virtualized-messages="true"]')).toHaveCount(1);
+  // scrollTop is quantized to device pixels, while DOM rectangles retain
+  // fractional CSS pixels (including on Windows 125/150/175% displays).
+  const pixel = await page.evaluate(() => 1 / devicePixelRatio + 1 / 64);
   await viewport(page).hover({ position: { x: 200, y: 300 } });
   for (const delta of [...Array(35).fill(-480), ...Array(24).fill(480), ...Array(20).fill(-480)]) {
     await viewport(page).evaluate(node => node.addEventListener('wheel', () => {
@@ -103,11 +88,21 @@ test('bidirectional wheels through virtualized delayed media retain each reading
       window.mediaReading = { key: row.dataset.messageKey, y: row.getBoundingClientRect().top };
     }, { once: true, capture: true }));
     await page.mouse.wheel(0, delta);
-    await expect.poll(() => viewport(page).evaluate(node => {
+    await expect.poll(() => viewport(page).evaluate((node, delta) => {
       const anchor = window.mediaReading;
       const row = [...node.querySelectorAll('.chat-message[data-message-key]')].find(row => row.dataset.messageKey === anchor.key);
-      return row ? row.getBoundingClientRect().top - anchor.y : -100000;
-    }), { timeout: 3000 }).toBeCloseTo(-delta, 0);
+      return row ? Math.abs(row.getBoundingClientRect().top - anchor.y + delta) : Infinity;
+    }, delta), { timeout: 3000 }).toBeLessThanOrEqual(pixel);
+    const settled = await viewport(page).evaluate(async node => {
+      const positions = [];
+      for (let frame = 0; frame < 4; frame++) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const row = [...node.querySelectorAll('.chat-message[data-message-key]')].find(row => row.dataset.messageKey === window.mediaReading.key);
+        positions.push(row?.getBoundingClientRect().top ?? NaN);
+      }
+      return positions;
+    });
+    expect(Math.max(...settled) - Math.min(...settled)).toBeLessThanOrEqual(pixel);
     await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
   }
   await page.getByRole('button', { name: 'Back to latest' }).click();

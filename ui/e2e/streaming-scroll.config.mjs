@@ -8,7 +8,7 @@ export default defineConfig({
   testMatch: ['streaming-scroll.spec.mjs', 'chat-media-scroll.spec.mjs', 'streaming-lifecycle.spec.mjs', 'streaming-search.spec.mjs', 'reasoning-status.spec.mjs', 'process-transitions.spec.mjs', 'chat-process-updates.spec.mjs', 'conversation-turn-nav.spec.mjs', 'history-loading.spec.mjs', 'settings-consistency.spec.mjs', 'runtime-settings.spec.mjs'],
   outputDir: path.join(uiRoot, '../artifacts/stream-playwright'),
   workers: 1,
-  use: { baseURL: 'http://127.0.0.1:5179', viewport: { width: 1100, height: 800 }, screenshot: 'only-on-failure' },
+  use: { channel: process.env.PILOTDECK_TEST_BROWSER_CHANNEL || undefined, baseURL: 'http://127.0.0.1:5179', viewport: { width: 1100, height: 800 }, screenshot: 'only-on-failure' },
   webServer: {
     command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5179 --strictPort',
     cwd: uiRoot,

@@ -203,6 +203,40 @@ describe('reader-owned scroll following', () => {
     expect(result.getBoundingClientRect().top).toBe(50);
   });
 
+  it('automatically anchors the visible child while retaining its virtual parent key', () => {
+    const { node, metrics } = setup();
+    const process = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    const child = document.createElement('div');
+    child.dataset.messageKey = 'visible-child';
+    const closed = document.createElement('div');
+    closed.setAttribute('inert', '');
+    const hidden = document.createElement('div');
+    hidden.dataset.messageKey = 'closed-child';
+    hidden.getBoundingClientRect = () => ({ top: -30, bottom: 300 }) as DOMRect;
+    closed.appendChild(hidden);
+    process.appendChild(closed);
+    process.appendChild(child);
+    let inserted = 0;
+    process.getBoundingClientRect = () => ({ top: 100 - metrics.top, bottom: 1200 + inserted - metrics.top }) as DOMRect;
+    child.getBoundingClientRect = () => ({ top: 480 + inserted - metrics.top, bottom: 800 + inserted - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pause());
+    expect(api.getReadingAnchor()).toEqual({ key: 'visible-child', offset: -20 });
+    expect(node.dataset.readingAnchorKey).toBe('reading');
+    for (const height of [180, 60, 0]) {
+      metrics.height += height - inserted;
+      inserted = height;
+      resize(); flush();
+      expect(child.getBoundingClientRect().top).toBe(-20);
+      expect(node.scrollTop).toBe(500 + inserted);
+    }
+    child.setAttribute('inert', '');
+    inserted = -100; metrics.height -= 100;
+    resize(); flush();
+    expect(node.scrollTop).toBe(500);
+    expect(api.getReadingAnchor()?.key).toBe('reading');
+  });
+
   it('cancels a queued follow on a small upward gesture, before React commits', () => {
     const { node, metrics, view } = setup();
     resize();
@@ -383,7 +417,7 @@ it('ignores non-user upward scroll events after layout measurements have settled
   expect(node.scrollTop).toBe(metrics.height - metrics.viewport);
 });
 
-it('preserves an anchor when virtual measurements redistribute rows without resizing the content', () => {
+it.each([4, 0.5, 0.25])('preserves an anchor when virtual measurements redistribute rows by %s px without resizing the content', shift => {
   const { node, metrics } = setup();
   node.scrollTop = 500;
   let shifted = 0;
@@ -391,7 +425,7 @@ it('preserves an anchor when virtual measurements redistribute rows without resi
   row.getBoundingClientRect = () => ({ top: 750 + shifted - metrics.top, bottom: 1000 + shifted - metrics.top }) as DOMRect;
   act(() => api.pauseAt('reading'));
   const offset = row.getBoundingClientRect().top;
-  shifted = 4;
+  shifted = shift;
   act(() => notifyScrollLayout(node));
   expect(row.getBoundingClientRect().top).toBe(offset);
   expect(api.isPaused).toBe(true);

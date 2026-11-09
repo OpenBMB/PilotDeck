@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/scroll-test.mjs';
 
 const lines = (count) => Array.from({ length: count }, (_, i) => `Thinking line ${i + 1}: inspect and compare the implementation.`).join('\n\n');
 const viewport = (page) => page.locator('[data-chat-search-surface]');
@@ -6,7 +6,7 @@ const top = (locator) => locator.evaluate((node) => node.scrollTop);
 const distance = (locator) => locator.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop);
 
 async function open(page) {
-  await page.goto('/e2e/fixtures/streaming-scroll.html');
+  await page.goto(new URL('/e2e/fixtures/streaming-scroll.html', test.info().project.use.baseURL).href);
   await expect(page.getByText('Question 23', { exact: true })).toBeVisible();
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
 }
@@ -65,7 +65,8 @@ test('scrolling back through a live turn never replays already presented reply t
   expect(samples.every(Boolean)).toBe(true);
 });
 
-test('continuous upward wheels retain their visual displacement during a long live turn', async ({ page }) => {
+test('bidirectional wheels retain their visual displacement during a long live turn', async ({ page }) => {
+  test.setTimeout(60_000);
   await open(page);
   await page.evaluate(() => {
     window.streamFixture.beginTurn();
@@ -83,7 +84,7 @@ test('continuous upward wheels retain their visual displacement during a long li
     window.streamingScrollTimer = setInterval(() => window.streamFixture.text('Current output.\n\n'.repeat(++paragraphs)), 50);
   });
   try {
-    for (let step = 0; step < 30; step++) {
+    for (const delta of [...Array(20).fill(-250), ...Array(12).fill(250), ...Array(12).fill(-250)]) {
       await viewport(page).evaluate(node => {
         window.wheelReadingPosition = undefined;
         node.addEventListener('wheel', () => {
@@ -92,7 +93,7 @@ test('continuous upward wheels retain their visual displacement during a long li
           window.wheelReadingPosition = { key: row.dataset.messageKey, top: row.getBoundingClientRect().top };
         }, { once: true, capture: true });
       });
-      await page.mouse.wheel(0, -250);
+      await page.mouse.wheel(0, delta);
       await expect.poll(() => page.evaluate(() => Boolean(window.wheelReadingPosition))).toBe(true);
       // Check the visual position, not scrollTop: measuring rows above the
       // viewport legitimately changes scrollTop while preserving what is read.
@@ -100,7 +101,7 @@ test('continuous upward wheels retain their visual displacement during a long li
         const { key, top } = window.wheelReadingPosition;
         const row = [...node.querySelectorAll('[data-message-key]')].find(item => item.dataset.messageKey === key);
         return row ? row.getBoundingClientRect().top - top : -10000;
-      })).toBeCloseTo(250, 0);
+      })).toBeCloseTo(-delta, 0);
       const settledOffsets = await viewport(page).evaluate(async node => {
         const offsets = [];
         for (let frame = 0; frame < 3; frame++) {
@@ -111,13 +112,61 @@ test('continuous upward wheels retain their visual displacement during a long li
         }
         return offsets;
       });
-      expect(settledOffsets.every(offset => Math.abs(offset - 250) < 1)).toBe(true);
+      expect(settledOffsets.every(offset => Math.abs(offset + delta) < 1)).toBe(true);
       await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
     }
   } finally {
     await page.evaluate(() => clearInterval(window.streamingScrollTimer));
   }
   expect(Number(await page.locator('[data-rendered-message-count]').getAttribute('data-rendered-message-count'))).toBeLessThanOrEqual(60);
+});
+
+test('nested process messages stay visually anchored through reflow in both reading directions', async ({ page }) => {
+  await page.route('**/api/config', route => route.fulfill({ json: {} }));
+  await open(page);
+  await page.evaluate(() => {
+    window.streamFixture.prepend(200);
+    window.streamFixture.beginTurn();
+    for (let index = 0; index < 8; index++) {
+      window.streamFixture.tool(`nested-${index}`, 'read_file', { file_path: `example-${index}.ts` });
+      window.streamFixture.finishTool(`nested-${index}`, 'Synthetic file contents.\n'.repeat(20));
+    }
+  });
+  await expect(page.locator('[data-virtualized-messages="true"]')).toHaveCount(1);
+  await page.locator('[data-tool-id^="nested-"] > div > button[aria-expanded="false"]').evaluateAll(nodes => nodes.forEach(node => node.click()));
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: 'Back to latest' }).click();
+  await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+  await viewport(page).hover({ position: { x: 60, y: 300 } });
+  for (const delta of [-240, 120, -120]) {
+    await page.mouse.wheel(0, delta);
+    await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+    await page.waitForTimeout(350);
+    const anchor = await viewport(page).evaluate(node => {
+      const edge = node.getBoundingClientRect().top;
+      const rows = [...node.querySelectorAll('.chat-message .chat-message[data-message-key]')]
+        .filter(item => item.getBoundingClientRect().height > 0 && !item.closest('[inert]'));
+      const row = rows.find(item => item.getBoundingClientRect().bottom > edge);
+      if (!row) throw new Error('Expected a visible nested process message');
+      const earlier = rows.find(item => item.getBoundingClientRect().bottom < edge);
+      if (!earlier) throw new Error('Expected an earlier process message above the viewport');
+      const spacer = document.createElement('div');
+      spacer.dataset.reflowProbe = '';
+      earlier.append(spacer);
+      return { key: row.dataset.messageKey, y: row.getBoundingClientRect().top };
+    });
+    for (const height of [180, 60, 0]) {
+      // A delayed tool body/media measurement can change a sibling's height
+      // inside the same virtual row while the reader is inspecting another.
+      await page.locator('[data-reflow-probe]').last().evaluate((node, height) => { node.style.height = `${height}px`; }, height);
+      await page.waitForTimeout(200);
+      expect(await page.locator('[data-reflow-probe]').evaluate(node => node.getBoundingClientRect().height)).toBeCloseTo(height, 3);
+      const y = await viewport(page).evaluate((node, key) => [...node.querySelectorAll('[data-message-key]')]
+        .find(item => item.dataset.messageKey === key)?.getBoundingClientRect().top, anchor.key);
+      expect(y).toBeCloseTo(anchor.y, 0);
+    }
+    await page.locator('[data-reflow-probe]').evaluate(node => node.remove());
+  }
 });
 
 test('thinking keeps its reading position through tools and remains available in the completed process', async ({ page }) => {
@@ -273,4 +322,91 @@ test('tool groups fold on new replies and retain inspected details and reader po
   await page.getByRole('button', { name: 'Back to latest' }).click();
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
   await expect(tool).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('ongoing generation permits bidirectional wheels and repeated middle-step disclosures without jumps', async ({ page }) => {
+  await page.route('**/api/config', route => route.fulfill({ json: {} }));
+  await open(page);
+  await page.evaluate(() => {
+    window.streamFixture.prepend(200);
+    window.streamFixture.beginTurn();
+    for (let index = 0; index < 8; index++) {
+      window.streamFixture.tool(`live-step-${index}`, 'read_file', { file_path: `example-${index}.ts` });
+      window.streamFixture.finishTool(`live-step-${index}`, 'Synthetic step output.\n'.repeat(20));
+    }
+    window.streamFixture.text('Current streamed paragraph.\n\n'.repeat(20));
+  });
+  const group = page.locator('[data-process-block] > button');
+  await expect(group).toHaveAttribute('aria-expanded', 'false');
+  await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+  await page.evaluate(() => {
+    let tokens = 0;
+    window.streamingScrollTimer = setInterval(() => window.streamFixture.text(
+      'Current streamed paragraph.\n\n'.repeat(20) + 'New token '.repeat(++tokens)), 30);
+  });
+  const holdTrigger = async (button, action) => {
+    await expect(button).toBeInViewport();
+    await button.evaluate(node => {
+      window.triggerPositions = [];
+      window.sampleTrigger = true;
+      const sample = () => {
+        if (!window.sampleTrigger) return;
+        const viewport = document.querySelector('[data-chat-search-surface]');
+        window.triggerPositions.push({ y: node.getBoundingClientRect().top, top: viewport.scrollTop, height: viewport.scrollHeight, key: viewport.dataset.readingAnchorKey });
+        requestAnimationFrame(sample);
+      };
+      sample();
+    });
+    await action();
+    await page.waitForTimeout(600);
+    const positions = await page.evaluate(() => { window.sampleTrigger = false; return window.triggerPositions; });
+    expect(positions.length).toBeGreaterThan(5);
+    const ys = positions.map(position => position.y);
+    expect(Math.max(...ys) - Math.min(...ys), JSON.stringify({ first: positions.slice(0, 6), last: positions.slice(-6) })).toBeLessThan(2);
+  };
+  const wheel = async delta => {
+    await viewport(page).hover({ position: { x: 60, y: 300 } });
+    await viewport(page).evaluate(node => { window.liveReadingPosition = null; node.addEventListener('wheel', () => {
+      const row = [...node.querySelectorAll('.chat-message[data-message-key]')]
+        .find(item => item.getBoundingClientRect().bottom > node.getBoundingClientRect().top);
+      window.liveReadingPosition = { key: row.dataset.messageKey, y: row.getBoundingClientRect().top };
+    }, { once: true, capture: true }); });
+    await page.mouse.wheel(0, delta);
+    await expect.poll(() => viewport(page).evaluate(node => {
+      const anchor = window.liveReadingPosition;
+      const row = [...node.querySelectorAll('[data-message-key]')].find(item => item.dataset.messageKey === anchor?.key);
+      return row ? row.getBoundingClientRect().top - anchor.y : NaN;
+    })).toBeCloseTo(-delta, 0);
+    await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+  };
+  const revealTrigger = async button => {
+    const delta = await button.evaluate(node => node.getBoundingClientRect().top
+      - document.querySelector('[data-chat-search-surface]').getBoundingClientRect().top - 250);
+    // Integral wheel notches also map to integral device pixels at Windows'
+    // common 125/150/175% display scales. The target need only be near center.
+    if (Math.abs(delta) > 20) await wheel(Math.round(delta / 40) * 40);
+  };
+  try {
+    await wheel(-520);
+    await revealTrigger(group);
+    await holdTrigger(group, () => group.click());
+    const middle = page.locator('[data-tool-id="live-step-3"] > div > button');
+    await expect(middle).toHaveAttribute('aria-expanded', 'false');
+    await revealTrigger(middle);
+    await holdTrigger(middle, () => middle.click());
+    for (const delta of [-80, 160, -120, 80]) await wheel(delta);
+    await revealTrigger(middle);
+    await holdTrigger(middle, () => middle.click());
+    const next = page.locator('[data-tool-id="live-step-4"] > div > button');
+    await revealTrigger(next);
+    await holdTrigger(next, () => next.click());
+    for (const delta of [120, -160, 80]) await wheel(delta);
+    expect(await viewport(page).locator('.chat-message').evaluateAll(nodes => nodes.every(node => getComputedStyle(node).contentVisibility === 'visible'))).toBe(true);
+    await page.getByRole('button', { name: 'Back to latest' }).click();
+    await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+    await page.waitForTimeout(200);
+    await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+  } finally {
+    await page.evaluate(() => { window.sampleTrigger = false; clearInterval(window.streamingScrollTimer); });
+  }
 });

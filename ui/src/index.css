@@ -640,8 +640,9 @@
     word-wrap: break-word;
     overflow-wrap: break-word;
     hyphens: auto;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 120px;
+    /* The message virtualizer owns offscreen estimates. Native content-visibility
+       adds a second estimate (also to nested process messages), causing height
+       changes as the reader scrolls into an expanded step. */
   }
 
   /* Force wrap long URLs and code */
