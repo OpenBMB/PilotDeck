@@ -317,8 +317,10 @@ test('tool groups fold on new replies and retain inspected details and reader po
   const turn = page.locator('[data-turn-process-header] button');
   await expect(turn).toHaveAttribute('aria-expanded', 'false');
   await turn.click();
-  await expect(group).toHaveAttribute('aria-expanded', 'true');
-  await expect(tool).toHaveAttribute('aria-expanded', 'true');
+  await expect(group).toHaveAttribute('aria-expanded', 'false');
+  await group.click();
+  await expect(tool).toHaveAttribute('aria-expanded', 'false');
+  await tool.click();
   await page.getByRole('button', { name: 'Back to latest' }).click();
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
   await expect(tool).toHaveAttribute('aria-expanded', 'true');
@@ -409,4 +411,55 @@ test('ongoing generation permits bidirectional wheels and repeated middle-step d
   } finally {
     await page.evaluate(() => { window.sampleTrigger = false; clearInterval(window.streamingScrollTimer); });
   }
+});
+
+test('completion closes all inspected historical and current processes once', async ({ page }) => {
+  await page.route('**/api/config', route => route.fulfill({ json: {} }));
+  await open(page);
+  await page.evaluate(() => {
+    window.streamFixture.beginTurn('previous-user');
+    window.streamFixture.tool('history-step', 'read_file', { file_path: 'previous.ts' });
+    window.streamFixture.finishTool('history-step', 'Previous step details.');
+    window.streamFixture.text('Previous answer.');
+    window.streamFixture.complete(2000);
+  });
+  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => {
+    window.streamFixture.beginTurn('next-user');
+    window.streamFixture.tool('current-step', 'read_file', { file_path: 'current.ts' });
+    window.streamFixture.finishTool('current-step', 'Current step details.');
+    window.streamFixture.text('Current visible answer.\n\n'.repeat(20));
+    let tokens = 0;
+    window.streamingScrollTimer = setInterval(() => window.streamFixture.text(
+      'Current visible answer.\n\n'.repeat(20) + 'New token '.repeat(++tokens)), 30);
+  });
+  try {
+    const headers = page.locator('[data-turn-process-header] button');
+    const groups = page.locator('[data-process-block] > button');
+    await page.locator('[data-turn-index="24"]').click();
+    await headers.first().click(); await groups.first().click();
+    const oldTool = page.locator('[data-tool-id="history-step"] > div > button');
+    await oldTool.click();
+    await page.locator('[data-turn-index="25"]').click();
+    await groups.last().click();
+    await page.locator('[data-tool-id="current-step"] > div > button').click();
+    await expect(headers).toHaveCount(2);
+    await expect(page.locator('[data-turn-process-header] button[aria-expanded="true"]')).toHaveCount(2);
+    await expect(page.locator('[data-process-block] > button[aria-expanded="true"]')).toHaveCount(2);
+    await page.waitForTimeout(350);
+    await page.evaluate(() => { clearInterval(window.streamingScrollTimer); window.streamFixture.complete(5000); });
+    await expect(page.locator('[data-turn-process-header] button[aria-expanded="true"]')).toHaveCount(0);
+    await expect(page.locator('[data-process-block] > button[aria-expanded="true"]')).toHaveCount(0);
+    await expect(viewport(page)).toContainText('Current visible answer.');
+    await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+    await page.locator('[data-turn-index="24"]').click();
+    await headers.first().click();
+    await expect(groups.first()).toHaveAttribute('aria-expanded', 'false');
+    await groups.first().click();
+    await expect(oldTool).toHaveAttribute('aria-expanded', 'false');
+    await oldTool.click();
+    await page.evaluate(() => window.streamFixture.complete(5000));
+    await expect(headers.first()).toHaveAttribute('aria-expanded', 'true');
+    await expect(oldTool).toHaveAttribute('aria-expanded', 'true');
+  } finally { await page.evaluate(() => clearInterval(window.streamingScrollTimer)); }
 });

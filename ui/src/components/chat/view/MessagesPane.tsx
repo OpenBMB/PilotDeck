@@ -468,14 +468,16 @@ function MessagesPane({
     }
     return 'no-input';
   }, [chatMessages, getMessageKey]);
-  // A new submission ends deliberate openings from the preceding turn. Reset
-  // before committing children so no stale expanded frame flashes on screen.
+  // A new submission or generation completion closes inspected history too.
+  // Reset before committing children so no stale expanded frame flashes.
   const disclosureEpoch = `${messageWindowScope}:${latestInputKey}:${sendingInputs.at(-1)?.id ?? ''}`;
-  const [expansionEpoch, setExpansionEpoch] = useState(disclosureEpoch);
-  if (expansionEpoch !== disclosureEpoch) {
-    setExpansionEpoch(disclosureEpoch);
-    setExpandedProcessRows(new Map());
-    setExpandedToolSections(new Map());
+  const [expansionPhase, setExpansionPhase] = useState({ epoch: disclosureEpoch, working: isAssistantWorking });
+  if (expansionPhase.epoch !== disclosureEpoch || expansionPhase.working !== isAssistantWorking) {
+    setExpansionPhase({ epoch: disclosureEpoch, working: isAssistantWorking });
+    if (expansionPhase.epoch !== disclosureEpoch || (expansionPhase.working && !isAssistantWorking)) {
+      setExpandedProcessRows(new Map());
+      setExpandedToolSections(new Map());
+    }
   }
 
   const isToolSectionExpanded = useCallback((sectionKey: string, defaultExpanded = false) => (

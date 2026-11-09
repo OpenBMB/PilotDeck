@@ -1025,7 +1025,7 @@ describe('MessagesPane render behavior', () => {
     expect(screen.getByText('ReadHidden.tsx')).toBeTruthy();
   });
 
-  it('closes the process on completion and restores inspected tool details when reopened', () => {
+  it('closes process and tool details on completion and allows reopening', () => {
     const now = new Date().toISOString();
     const baseMessages: ChatMessage[] = [
       {
@@ -1083,11 +1083,13 @@ describe('MessagesPane render behavior', () => {
 
     expect(screen.getByText('Explored 1 file')).toBeTruthy();
     const completedButton = screen.getByText('ReadHidden.tsx').closest('button');
+    expect(completedButton?.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(completedButton as HTMLButtonElement);
     expect(completedButton?.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('ReadHidden.tsx')).toBeTruthy();
   });
 
-  it('preserves expanded tool parameters when live ids are replaced by persisted ids', async () => {
+  it('preserves expanded parameters across active id reconciliation and closes them on completion', async () => {
     const now = new Date().toISOString();
     const liveMessages: ChatMessage[] = [
       {
@@ -1150,7 +1152,7 @@ describe('MessagesPane render behavior', () => {
         timestamp: now,
       },
     ];
-    rerender(createPaneElement({ messages: persistedMessages }));
+    rerender(createPaneElement({ messages: persistedMessages, isAssistantWorking: true }));
     const turnToggle = processToggle();
     expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(turnToggle);
@@ -1159,6 +1161,8 @@ describe('MessagesPane render behavior', () => {
     const persistedParameters = container.querySelector('.tool-call button[aria-expanded]');
     expect(persistedParameters?.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText(/print\(1\)/)).toBeTruthy();
+    rerender(createPaneElement({ messages: persistedMessages }));
+    expect(persistedParameters?.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('does not search hidden completed process detail content', async () => {
@@ -1717,10 +1721,13 @@ describe('MessagesPane render behavior', () => {
     fireEvent.click(processToggle());
     view.rerender(createPaneElement({ messages: [user, { ...thought, isStreaming: false }, { ...interim },
       { ...makeMessage(5), content: 'Final answer.' }] }));
-    expect(processToggle().getAttribute('aria-expanded')).toBe('true');
+    expect(processToggle().getAttribute('aria-expanded')).toBe('false');
     expect(screen.getByText('Intermediate inspection.')).toBe(prose);
     expect(await screen.findByText('Final answer.')).toBeTruthy();
     fireEvent.click(processToggle());
+    view.rerender(createPaneElement({ messages: [user, { ...thought, isStreaming: false }, { ...interim },
+      { ...makeMessage(5), content: 'Final answer.' }] }));
+    expect(processToggle().getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('Intermediate inspection.')).toBe(prose);
   });
 
@@ -2143,6 +2150,40 @@ it('shows a model-call spinner between completed tools and the next model output
   expect(status()).toBeNull();
 });
 
+it('folds all inspected history and current work once when generation finishes', async () => {
+  const base = toolRegressionMessages();
+  const previous: ChatMessage[] = [...base, { id: 'old-final', type: 'assistant', content: 'Previous answer.', timestamp: base[0].timestamp }];
+  const current: ChatMessage[] = [
+    { ...base[0], id: 'current-user' },
+    { ...base[1], id: 'current-tool', toolId: 'current-tool', toolInput: { file_path: 'current.ts' } },
+    { id: 'current-final', type: 'assistant', content: 'Current answer.', isStreaming: true, timestamp: base[0].timestamp },
+  ];
+  const messages = [...previous, ...current];
+  const view = renderPane({ messages, isAssistantWorking: true });
+  const headers = () => [...view.container.querySelectorAll<HTMLButtonElement>('[data-turn-process-header] button')];
+  const groups = () => [...view.container.querySelectorAll<HTMLButtonElement>('[data-process-block] > button')];
+  fireEvent.click(headers()[0]);
+  groups().forEach(button => { if (button.getAttribute('aria-expanded') === 'false') fireEvent.click(button); });
+  view.container.querySelectorAll<HTMLButtonElement>('.tool-call button[aria-expanded="false"]').forEach(button => fireEvent.click(button));
+  expect(headers().every(button => button.getAttribute('aria-expanded') === 'true')).toBe(true);
+  expect(groups().every(button => button.getAttribute('aria-expanded') === 'true')).toBe(true);
+  view.rerender(createPaneElement({ messages: [...messages], isAssistantWorking: true }));
+  expect(groups().every(button => button.getAttribute('aria-expanded') === 'true')).toBe(true);
+  const completed = [...previous, ...current.map(message => ({ ...message, isStreaming: false }))];
+  view.rerender(createPaneElement({ messages: completed }));
+  expect(headers().every(button => button.getAttribute('aria-expanded') === 'false')).toBe(true);
+  expect(groups().every(button => button.getAttribute('aria-expanded') === 'false')).toBe(true);
+  expect(await screen.findByText('Current answer.')).toBeTruthy();
+  fireEvent.click(headers()[0]); fireEvent.click(groups()[0]);
+  const tool = view.container.querySelector<HTMLButtonElement>('.tool-call button')!;
+  expect(tool.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(tool);
+  view.rerender(createPaneElement({ messages: [...completed] }));
+  expect(headers()[0].getAttribute('aria-expanded')).toBe('true');
+  expect(groups()[0].getAttribute('aria-expanded')).toBe('true');
+  expect(tool.getAttribute('aria-expanded')).toBe('true');
+});
+
 it('folds inspected work when a reply starts and allows reopening it during streaming', () => {
   const messages = toolRegressionMessages();
   const view = renderPane({ messages, isAssistantWorking: true });
@@ -2165,7 +2206,10 @@ it('folds inspected work when a reply starts and allows reopening it during stre
   view.rerender(createPaneElement({ messages: [...messages, { ...reply, isStreaming: false }] }));
   expect(turn.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(turn);
-  expect(group.getAttribute('aria-expanded')).toBe('true');
+  expect(group.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(group);
+  expect(tool.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(tool);
   expect(tool.getAttribute('aria-expanded')).toBe('true');
 });
 
