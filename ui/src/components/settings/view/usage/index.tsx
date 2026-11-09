@@ -98,6 +98,7 @@ export default function UsageSections() {
         </button>
       </div>
     </header>
+    <div className="usage-body">
     {error ? <div className="usage-error" role="alert">{t('usage.error')}</div> : null}
     {!data || !metrics || !series ? <div className="usage-loading" role="status">{loading ? t('usage.loading') : t('usage.unavailable')}</div> : <>
       <section className="usage-summary" aria-label={t('usage.overview')}>
@@ -139,5 +140,6 @@ export default function UsageSections() {
         </div>
       </section>
     </>}
+    </div>
   </div>;
 }
