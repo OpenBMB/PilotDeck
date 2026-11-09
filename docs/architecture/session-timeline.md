@@ -71,16 +71,20 @@ There is deliberately no client reconstruction of a provider response from its
 text. Legacy records/frames use the old adapter at the boundary. Runtime status
 rows do not place new-protocol content. Thinking renders received content
 without an additional typewriter. Reasoning opens automatically while streaming and collapses smoothly when its
-phase ends, unless the user deliberately keeps it open. Manual choices survive
-new output and completion. Opening a child also retains its process/turn ancestors.
+phase ends, unless the user deliberately keeps it open. Opening a child also opens
+its process/turn ancestors while that phase remains active.
 Continuous reasoning and tool
 calls share a stable process seat between visible assistant replies; the next
-reply closes that seat by default. On successful turn completion, one measured process
+reply closes that seat, including openings inherited from inspected children.
+Full batches also close as soon as they reach the adaptive limit, without waiting
+for another event; their headers retain live status while calls run. A short tail
+stays expanded. A group reopened after closing retains
+that choice through subsequent output. On successful turn completion, one measured process
 header folds all intermediate prose, reasoning, tool calls and answered questions
 in their original order. Only the final assistant reply and delivered media stay
 visible. Reopening restores the same seats and their disclosure state without
-reparenting content or replaying its text animation. Explicitly inspected work
-stays open until the user closes it.
+reparenting content or replaying its text animation. Tool details retain their
+individual disclosure state when their enclosing group closes and reopens.
 Interrupted work and pending interactive prompts remain accessible. Disclosures
 retain mounted content after opening, use inert hidden subtrees, and respect
 reduced motion. Conversation scrollbars reserve their gutter, and disclosure

@@ -1025,7 +1025,7 @@ describe('MessagesPane render behavior', () => {
     expect(screen.getByText('ReadHidden.tsx')).toBeTruthy();
   });
 
-  it('preserves process row expansion when a live turn completes', () => {
+  it('closes the process on completion and restores inspected tool details when reopened', () => {
     const now = new Date().toISOString();
     const baseMessages: ChatMessage[] = [
       {
@@ -1078,7 +1078,8 @@ describe('MessagesPane render behavior', () => {
     ];
     rerender(createPaneElement({ messages: completedMessages }));
     const turnToggle = processToggle();
-    expect(turnToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(turnToggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(turnToggle);
 
     expect(screen.getByText('Explored 1 file')).toBeTruthy();
     const completedButton = screen.getByText('ReadHidden.tsx').closest('button');
@@ -1970,7 +1971,7 @@ it.each([true, false])('retains compaction next to a single tool (live=%s)', (li
   expect(within(document.querySelector('[data-turn-trace]') as HTMLElement).getByText(live ? 'Compacting context...' : /Compacted context/)).toBeTruthy();
 });
 
-it.each([false, true])('preserves an inherited group toggle independently through completion (close parent=%s)', (closeParent) => {
+it.each([false, true])('respects a live group toggle and folds it on completion (close parent=%s)', (closeParent) => {
   const base = toolRegressionMessages();
   const view = renderPane({ messages: base, isAssistantWorking: true });
   fireEvent.click(screen.getByRole('button', { name: /first\.ts$/ }));
@@ -1991,8 +1992,8 @@ it.each([false, true])('preserves an inherited group toggle independently throug
   view.rerender(createPaneElement({ messages: [...grouped, {
     id: 'reg-answer', type: 'assistant', content: 'Inspection complete', timestamp: '2026-09-15T09:00:02.000Z',
   }] }));
-  expect(processToggle().getAttribute('aria-expanded')).toBe(String(!closeParent));
-  if (closeParent) fireEvent.click(processToggle());
+  expect(processToggle().getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(processToggle());
   expect(processToggle().getAttribute('aria-expanded')).toBe('true');
   {
     expect(screen.getByRole('button', { name: /first\.ts$/ }).getAttribute('aria-expanded')).toBe('false');
@@ -2142,22 +2143,50 @@ it('shows a model-call spinner between completed tools and the next model output
   expect(status()).toBeNull();
 });
 
-it('retains manually inspected tools and their ancestors after new prose and completion', () => {
+it('folds inspected work when a reply starts and allows reopening it during streaming', () => {
   const messages = toolRegressionMessages();
   const view = renderPane({ messages, isAssistantWorking: true });
   const tool = screen.getByRole('button', { name: /first\.ts$/ });
   fireEvent.click(tool);
   const group = view.container.querySelector('[data-process-block] > button')!;
   const turn = view.container.querySelector('[data-turn-process-header] button')!;
-  view.rerender(createPaneElement({ messages: [...messages, { id: 'inspection-reply', type: 'assistant',
-    content: 'The file is ready.', timestamp: '2026-09-15T09:00:02Z' }] }));
+  const reply: ChatMessage = { id: 'inspection-reply', type: 'assistant', isStreaming: true,
+    content: 'The file is ready.', timestamp: '2026-09-15T09:00:02Z' };
+  view.rerender(createPaneElement({ messages: [...messages, reply], isAssistantWorking: true }));
+  expect(group.getAttribute('aria-expanded')).toBe('false');
+  expect(turn.getAttribute('aria-expanded')).toBe('true');
+  expect(tool.closest('[aria-hidden="true"]')).not.toBeNull();
+  fireEvent.click(group);
+  view.rerender(createPaneElement({ messages: [...messages, { ...reply, content: 'The file is ready. Another update.' }],
+    isAssistantWorking: true }));
   expect(tool.getAttribute('aria-expanded')).toBe('true');
   expect(group.getAttribute('aria-expanded')).toBe('true');
   expect(turn.getAttribute('aria-expanded')).toBe('true');
-  fireEvent.click(tool);
-  view.rerender(createPaneElement({ messages: [...messages, { id: 'inspection-reply', type: 'assistant',
-    content: 'The file is ready. Another update.', timestamp: '2026-09-15T09:00:02Z' }] }));
-  expect(tool.getAttribute('aria-expanded')).toBe('false');
+  view.rerender(createPaneElement({ messages: [...messages, { ...reply, isStreaming: false }] }));
+  expect(turn.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(turn);
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  expect(tool.getAttribute('aria-expanded')).toBe('true');
+});
+
+it('folds an inspected full batch while later batches and the unfinished tail stay independent', () => {
+  const base = toolRegressionMessages();
+  const tools: ChatMessage[] = Array.from({ length: 25 }, (_, index) => ({ ...base[1],
+    id: `batch-call-${index}`, toolId: `batch-call-${index}`, toolName: 'bash',
+    toolInput: { command: `check ${index}` }, toolResult: { content: `Result ${index}` } }));
+  const messages = (count: number) => [base[0], ...tools.slice(0, count)];
+  const view = renderPane({ messages: messages(2), isAssistantWorking: true });
+  const group = view.container.querySelector('[data-process-block] > button')!;
+  fireEvent.click(view.container.querySelector('.tool-call button[aria-expanded]')!);
+  view.rerender(createPaneElement({ messages: messages(12), isAssistantWorking: true }));
+  expect(group.getAttribute('aria-expanded')).toBe('false');
+  view.rerender(createPaneElement({ messages: messages(25), isAssistantWorking: true }));
+  const groups = view.container.querySelectorAll('[data-process-block] > button');
+  expect(Array.from(groups, button => button.getAttribute('aria-expanded'))).toEqual(['false', 'false', 'true']);
+  fireEvent.click(group);
+  view.rerender(createPaneElement({ messages: messages(25), isAssistantWorking: true }));
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  expect(view.container.querySelector('[data-tool-id="batch-call-0"] button')!.getAttribute('aria-expanded')).toBe('true');
 });
 
 it.each([false, true])('clears tool and thinking openings on the next message (auto-expand=%s)', autoExpandTools => {

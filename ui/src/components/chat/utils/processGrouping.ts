@@ -1045,17 +1045,17 @@ export function groupProcessIntervals(
     const work = message.isThinking || isProcessMessage(message)
       || (message.isToolUse && !isUserVisibleTool(message) && isPermissionToolError(message));
     if (work) {
-      // Keep bounded, stable seats during long runs. Completed batches fold;
-      // parallel calls that are still executing remain visible and live.
-      if (pendingCost >= 12 || pendingToolCalls >= 16 || pending.length >= 20) {
-        const active = pending.some(item => isPendingProcessMessage(item.message) || item.message.isStreaming);
-        flush(!active, active && isAssistantWorking);
-      }
       pending.push(clean(message, index));
       pendingCost += processPresentationCost(message);
       if (message.isToolUse || message.type === 'tool') pendingToolCalls++;
       // Delivered media stays visible even when the surrounding work closes.
       result.push(...(mediaByIndex.get(index) ?? []));
+      // Fold a full batch immediately; its header still reports running calls.
+      // Pending permission controls are reopened below after turn ownership is known.
+      if (pendingCost >= 12 || pendingToolCalls >= 16 || pending.length >= 20) {
+        const active = pending.some(item => isPendingProcessMessage(item.message) || item.message.isStreaming);
+        flush(true, active && isAssistantWorking);
+      }
       return;
     }
     flush(message.type !== 'error' && !message.isInterruptedNotice);
