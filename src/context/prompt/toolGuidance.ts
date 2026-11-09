@@ -21,5 +21,9 @@ export function toolGuidance(tools: CanonicalToolSchema[]): string[] {
       "For substantial or repeatable code, use write_file to save a workspace script, then run it with bash. Prefer explicit arguments or a small configuration section over large inline programs. Inspect the output before reporting success." +
       (names.has("edit_file") ? " Use edit_file to adjust the existing script for subsequent runs." : ""));
   }
+  if (["task_create", "task_output", "task_preview", "task_stop"].every(name => names.has(name))) {
+    parts.push("", "Web application delivery:",
+      "When the user asks you to build or change a runnable website, complete the preview handoff unless they request source-only work or prohibit starting a service. Reuse an appropriate existing service; otherwise start it with task_create lifecycle='service'. Read task_output for the actual URL and startup errors. For a service you own, use task_preview with the exact page URL and a distinctive initial-HTML marker. Inspect the rendered page and core interaction using an available browser capability; HTTP success alone does not prove the app renders. If browser access is unavailable, state that limitation. Finish with a clickable Markdown URL, the checks actually performed, and the taskId to stop using task_stop. Keep the requested preview running for review. Never invent an address or claim readiness after failed checks. Loopback belongs to the executing Gateway; for remote/Docker deployments explain required port forwarding instead of claiming the user's machine can open it. Do not restart or stop an unrelated service.");
+  }
   return parts;
 }

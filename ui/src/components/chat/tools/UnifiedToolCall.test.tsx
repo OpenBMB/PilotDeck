@@ -118,3 +118,23 @@ it.each(['pnpm build', 'printf "hello\\n"\npnpm build'])('copies the original sh
   fireEvent.click(screen.getByRole('button', { name: 'Copy command' }));
   expect(copyTextToClipboard).toHaveBeenCalledExactlyOnceWith(command);
 });
+
+it.each(['live', 'history'])('renders a checked preview as a clickable web URL with its stop identity (%s)', source => {
+  const content = '[Open preview](<http://127.0.0.1:43127/demo?mode=review>)\n\nHTTP HTML verified; browser rendering has not been verified. Stop with task_stop({ taskId: "preview-task" }).';
+  const toolResult = { content: source === 'live' ? [{ type: 'text', text: content }] : content };
+  const onFileOpen = vi.fn();
+  render(<I18nextProvider i18n={i18n}><UnifiedToolCall message={{ ...message, toolName: 'task_preview', toolInput: { taskId: 'preview-task', url: 'http://127.0.0.1:43127/demo?mode=review', expectedText: 'Example' }, toolResult }} createDiff={calculateDiff} onFileOpen={onFileOpen} defaultOpen /></I18nextProvider>);
+  const link = screen.getByRole('link', { name: 'Open preview' });
+  expect(link.getAttribute('href')).toBe('http://127.0.0.1:43127/demo?mode=review');
+  expect(link.getAttribute('target')).toBe('_blank');
+  expect(screen.getByText(/browser rendering has not been verified/)).toBeTruthy();
+  expect(screen.getByText(/task_stop/)).toBeTruthy();
+  fireEvent.click(link);
+  expect(onFileOpen).not.toHaveBeenCalled();
+});
+
+it('keeps failed preview results as errors without a clickable success link', () => {
+  render(<I18nextProvider i18n={i18n}><UnifiedToolCall message={{ ...message, toolName: 'task_preview', toolInput: { url: 'http://127.0.0.1:43127' }, toolResult: { isError: true, content: 'Preview is not ready: HTTP 500' } }} createDiff={calculateDiff} defaultOpen /></I18nextProvider>);
+  expect(screen.queryByRole('link', { name: 'Open preview' })).toBeNull();
+  expect(screen.getByText('Preview is not ready: HTTP 500')).toBeTruthy();
+});

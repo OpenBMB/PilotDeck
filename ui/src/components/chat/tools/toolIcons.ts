@@ -10,7 +10,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   bash: Terminal, shell: Terminal, run_command: Terminal, exec_command: Terminal,
   read: FileText, write: FilePlus2, edit: FilePenLine, applypatch: FilePenLine, apply_patch: FilePenLine,
   grep: Search, glob: FileSearch, web_search: Search, web_fetch: Globe,
-  read_skill: BookOpen,
+  read_skill: BookOpen, task_preview: Globe,
   generate_image: Image, edit_image: Image, save_generated_image: Image,
   generate_video: Clapperboard, save_generated_video: Clapperboard,
   send_attachment: Paperclip,

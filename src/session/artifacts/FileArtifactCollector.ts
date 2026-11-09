@@ -415,6 +415,7 @@ const READ_ONLY_TOOL_NAMES = new Set([
   "structured_output",
   "task_list",
   "task_output",
+  "task_preview",
   "task_stop",
   "task_wait",
   "todo_write",

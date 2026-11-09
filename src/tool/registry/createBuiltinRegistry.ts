@@ -10,6 +10,7 @@ import { createExecuteCodeTool } from "../builtin/executeCode.js";
 import { createGlobTool } from "../builtin/glob.js";
 import { createGrepTool } from "../builtin/grep.js";
 import { createGetCurrentTimeTool } from "../builtin/getCurrentTime.js";
+import { createTaskPreviewTool } from "../builtin/taskPreview.js";
 import { createReadFileTool } from "../builtin/readFile.js";
 import { createSendAttachmentTool } from "../builtin/sendAttachment.js";
 import { createEnterPlanModeTool, createExitPlanModeTool } from "../builtin/planMode.js";
@@ -57,7 +58,7 @@ export type CreateBuiltinRegistryOptions = {
   webFetch?: CreateWebFetchToolOptions | false;
   /**
    * Background task tools (`task_create` / `task_list` / `task_output` /
-   * `task_wait` / `task_stop`). **Opt-in** — pass `{ runtime }` to register; absent or
+   * `task_wait` / `task_stop` / `task_preview`). **Opt-in** — pass `{ runtime }` to register; absent or
    * `false` keeps them out of the registry. Stand-alone runtimes that do
    * not provide a `BackgroundTaskRuntime` would otherwise see every call
    * fail with `unsupported_tool`.
@@ -141,6 +142,7 @@ export function createBuiltinRegistry(options?: CreateBuiltinRegistryOptions): T
     registry.register(createTaskOutputTool(runtime));
     registry.register(createTaskWaitTool(runtime));
     registry.register(createTaskStopTool(runtime));
+    registry.register(createTaskPreviewTool(runtime));
   }
   if (options?.structuredOutput !== false) {
     registry.register(createStructuredOutputTool());
