@@ -181,6 +181,21 @@ describe('native computer use for Web and macOS desktop', () => {
       expect(f.descriptor()).toEqual({});
     } finally { await f.controller.stop(); }
   });
+  it('stops a live Windows child when the startup deadline expires without a probe error', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const f = setup({ platform: 'win32', managed: true, running: false });
+    f.spawn.mockImplementation(() => f.child);
+    const execute = f.execute.getMockImplementation();
+    f.execute.mockImplementation(async (...args) => {
+      if (args[1][0] === 'status' && f.spawn.mock.calls.length) vi.setSystemTime(Date.now() + 16_000);
+      return execute(...args);
+    });
+    try {
+      expect(await f.controller.setEnabled(true)).toMatchObject({ phase: 'error' });
+      expect(f.child.exitCode).toBe(0);
+      expect(f.descriptor()).toEqual({});
+    } finally { await f.controller.stop(); vi.useRealTimers(); }
+  });
   it('launches its bundled macOS app with a private socket and liveness FIFO, and closes only that daemon', async () => {
     const { controller, execute, binary, descriptor } = setup({ managed: true, running: false, grants: true });
     expect(await controller.initialize()).toMatchObject({ enabled: false, available: true });

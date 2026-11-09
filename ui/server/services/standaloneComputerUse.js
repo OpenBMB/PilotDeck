@@ -280,6 +280,7 @@ export class StandaloneComputerUseController {
           if (running) break;
           await delay(150, undefined, { signal: startup?.signal });
         }
+        if (!running && this.platform !== 'darwin') throw new Error('Driver startup timed out. Recheck to reconnect.');
       }
       if (this.platform === 'darwin') {
         if (running || !this.managed) {
