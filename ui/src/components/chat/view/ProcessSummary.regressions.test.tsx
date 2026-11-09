@@ -31,7 +31,7 @@ it('folds long sequential tool runs into stable bounded batches without dropping
   expect(groups.flatMap(group => group.items.map(item => item.message.id))).toEqual(tools.map(tool => tool.id));
 });
 
-it('folds a full batch as soon as its last call settles without waiting for another event', () => {
+it('folds a full batch at the limit and retains live status until its last call settles', () => {
   const tools: ChatMessage[] = Array.from({ length: 12 }, (_, index) => ({
     id: `threshold-${index}`, toolId: `threshold-${index}`, toolName: 'bash', type: 'assistant',
     timestamp: start, content: '', isToolUse: true, toolInput: { command: `check ${index}` },
@@ -42,7 +42,7 @@ it('folds a full batch as soon as its last call settles without waiting for anot
   expect(short).toHaveLength(1);
   expect(short[0].defaultExpanded).toBe(true);
   const pending = traces([...tools.slice(0, -1), { ...tools.at(-1)!, toolResult: undefined }]);
-  expect(pending[0].defaultExpanded).toBe(true);
+  expect(pending[0].defaultExpanded).toBe(false);
   expect(pending[0].isLive).toBe(true);
   const settled = traces(tools);
   expect(settled).toHaveLength(1);
@@ -118,7 +118,7 @@ it('retains anonymous legacy actions and deduplicates only calls with actual ide
     i18n.getFixedT('en', 'chat'))).toBe('Viewed 1 image');
 });
 
-it('keeps pending parallel calls active and accessible across batch boundaries', () => {
+it('keeps pending parallel calls live in folded batches and leaves the short tail open', () => {
   const tools: ChatMessage[] = Array.from({ length: 21 }, (_, index) => ({
     id: `parallel-${index}`, toolId: `parallel-${index}`, toolName: 'run_command', type: 'assistant',
     timestamp: start, content: '', isToolUse: true,
@@ -127,7 +127,9 @@ it('keeps pending parallel calls active and accessible across batch boundaries',
   expect(groups.length).toBeGreaterThan(1);
   expect(groups.every(group => group.items.length <= 16)).toBe(true);
   expect(groups.flatMap(group => group.items)).toHaveLength(21);
-  expect(groups.every(group => group.isLive && group.defaultExpanded)).toBe(true);
+  expect(groups.every(group => group.isLive)).toBe(true);
+  expect(groups.slice(0, -1).every(group => !group.defaultExpanded)).toBe(true);
+  expect(groups.at(-1)?.defaultExpanded).toBe(true);
   const stopped = project([user, ...tools]).flatMap(item => item.turnTrace ? [item.turnTrace] : []);
   expect(stopped.every(group => !group.isLive)).toBe(true);
 });
@@ -197,11 +199,13 @@ it.each([undefined, 'tool_execution_failed', 'permission_denied'])('folds a sing
   expect(formatCompletedProcessTitle([fetch], i18n.getFixedT('en', 'chat'))).toBe('Fetched 1 page');
 });
 
-it('keeps genuine pending permission controls expanded while work is active or stopped without a reply', () => {
+it.each([0, 11])('keeps pending permission controls expanded with %s preceding calls, active or stopped', precedingCount => {
   const fetch: ChatMessage = { id: 'fetch', toolId: 'fetch', toolName: 'web_fetch', type: 'assistant', timestamp: start,
     content: '', isToolUse: true, toolResult: { isError: true, errorCode: 'permission_required', content: 'Network fetch requires permission.' } };
+  const preceding: ChatMessage[] = Array.from({ length: precedingCount }, (_, index) => ({ ...fetch,
+    id: `permission-prefix-${index}`, toolId: `permission-prefix-${index}`, toolName: 'bash', toolResult: { content: 'ok' } }));
   for (const running of [true, false]) {
-    const trace = project([user, fetch], running).find(item => item.turnTrace)!;
+    const trace = project([user, ...preceding, fetch], running).find(item => item.turnTrace)!;
     expect(trace.turnTrace?.defaultExpanded).toBe(true);
     expect(trace.processRun?.defaultExpanded).toBe(true);
   }

@@ -76,8 +76,9 @@ its process/turn ancestors while that phase remains active.
 Continuous reasoning and tool
 calls share a stable process seat between visible assistant replies; the next
 reply closes that seat, including openings inherited from inspected children.
-Full batches also close as soon as their calls settle, without waiting for another
-event; an unfinished batch stays expanded. A group reopened after closing retains
+Full batches also close as soon as they reach the adaptive limit, without waiting
+for another event; their headers retain live status while calls run. A short tail
+stays expanded. A group reopened after closing retains
 that choice through subsequent output. On successful turn completion, one measured process
 header folds all intermediate prose, reasoning, tool calls and answered questions
 in their original order. Only the final assistant reply and delivered media stay

@@ -1050,11 +1050,11 @@ export function groupProcessIntervals(
       if (message.isToolUse || message.type === 'tool') pendingToolCalls++;
       // Delivered media stays visible even when the surrounding work closes.
       result.push(...(mediaByIndex.get(index) ?? []));
-      // Close a full, settled batch immediately, even with no following event.
-      // Parallel calls that are still executing remain visible and live.
+      // Fold a full batch immediately; its header still reports running calls.
+      // Pending permission controls are reopened below after turn ownership is known.
       if (pendingCost >= 12 || pendingToolCalls >= 16 || pending.length >= 20) {
         const active = pending.some(item => isPendingProcessMessage(item.message) || item.message.isStreaming);
-        flush(!active, active && isAssistantWorking);
+        flush(true, active && isAssistantWorking);
       }
       return;
     }
