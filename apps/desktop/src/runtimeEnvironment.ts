@@ -37,6 +37,7 @@ export function withRuntimeCommandPath(
   if (bundledGit) {
     nextEnv.PILOTDECK_GIT_BASH_PATH = bundledGit.bash;
     nextEnv.PILOTDECK_GIT_PATH = bundledGit.git;
+    nextEnv.PILOTDECK_BUNDLED_GIT = '1';
     nextEnv.CHERE_INVOKING ||= '1';
     nextEnv.MSYSTEM ||= 'MINGW64';
   }

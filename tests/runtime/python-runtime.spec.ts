@@ -47,6 +47,37 @@ test('default-on initialization is coalesced, isolated, immutable and retained w
   assert.ok(!JSON.stringify(on.status).includes('never-publish'));
 });
 
+test('settings inspection reads installed metadata without creating or probing an environment', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.manager.inspect()).state, 'available');
+  assert.equal((await f.manager.inspect()).version, f.manifest.version);
+  assert.equal(f.calls.length, 0);
+  assert.equal((await f.manager.inspect(false)).state, 'disabled');
+  const prepared = await f.manager.resolve();
+  const calls = f.calls.length;
+  assert.equal(await f.manager.inspect(), prepared.status);
+  assert.equal(f.calls.length, calls);
+  await rm(prepared.status.executable!);
+  assert.equal((await f.manager.inspect()).state, 'unavailable');
+  assert.equal(f.calls.length, calls);
+});
+
+test('settings reports initialization in progress without waiting or starting another probe', async t => {
+  const f = await fixture(t);
+  let release!: () => void, entered!: () => void;
+  const waiting = new Promise<void>(done => { release = done; });
+  const started = new Promise<void>(done => { entered = done; });
+  const manager = new PythonRuntimeManager({ pilotHome: f.home, env: f.env, run: async (...args) => {
+    if (args[1].includes('venv')) { entered(); await waiting; }
+    return f.run(args[0], args[1]);
+  } });
+  const preparing = manager.resolve();
+  await started;
+  try { assert.equal((await manager.inspect()).state, 'initializing'); }
+  finally { release(); await preparing; }
+  assert.equal((await manager.inspect()).state, 'ready');
+});
+
 test('concurrent Gateway instances share one completed virtual environment', async t => {
   const f = await fixture(t);
   const other = new PythonRuntimeManager({ pilotHome: f.home, env: f.env, run: f.run });

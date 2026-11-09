@@ -284,8 +284,11 @@ export class GatewayWsConnection {
         }
         return Promise.resolve({ reloaded: false, reason: "unsupported" });
       case 'python_runtime_status':
-        return this.options.gateway.getPythonRuntimeStatus?.()
+        return this.options.gateway.getPythonRuntimeStatus?.((frame.params as { initialize?: unknown })?.initialize === false ? { initialize: false } : undefined)
           ?? Promise.resolve({ enabled: true, state: 'unavailable', reason: 'not-installed' });
+      case 'git_runtime_status':
+        return this.options.gateway.getGitRuntimeStatus?.()
+          ?? Promise.resolve({ state: 'unavailable', source: 'system' });
       case "prepare_weixin_login":
         if (this.options.gateway.prepareWeixinLogin) {
           return this.options.gateway.prepareWeixinLogin();

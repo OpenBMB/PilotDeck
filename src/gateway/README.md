@@ -12,6 +12,8 @@ Execution retains the session reservation until its pump drains. Returning the e
 
 `python_runtime_status` reports the executing host's verified Python capability through both local and remote Gateways. `runtime.python.enabled` defaults to true. Python preference changes retire project runtimes without closing their sessions, MCP connections or tasks; disposal follows the final session/turn lease and background-task completion. New turns recreate dirty sessions against the new preference, including changes received during session initialization. The Web UI never probes its browser host for this status.
 
+Settings requests `python_runtime_status` with `{ initialize: false }` to read metadata or the last verified result without creating a virtual environment or importing libraries. An installed but unused runtime is `available`; an active preparation is `initializing`. Omitting the option retains the full-check contract for manual checks and older clients. `git_runtime_status` reports the executing host's Git source, version and executable; its version probe has a five-second deadline. These status results contain no environment values or repository contents.
+
 Config and extension reloads use the same retirement boundary. A project-scoped reload leaves other projects untouched; active turns retain their runtime until their session, turn and background-task leases finish. Per-session MCP connections close on session eviction, while shared connections close after the retired project runtime loses its owners. Gateway shutdown has a separate force-cleanup path.
 
 Tests: [tests/gateway](../../tests/gateway). See the [test guide](../../docs/testing.md) for runner selection.

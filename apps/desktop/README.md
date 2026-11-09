@@ -17,6 +17,8 @@ Development and packaging prepare an architecture-matched runtime and pinned nat
 
 Desktop includes Python 3.12, uv/uvx and a curated set of agent, data, statistics, plotting and document libraries on all six Windows/macOS/Linux x64/ARM64 targets. Settings > Advanced > Python environment enables it by default. The Gateway creates an offline, writable virtual environment under `PILOT_HOME/runtimes/python`, sharing the immutable bundled base libraries. Preference changes apply to subsequent turns and retain running tasks and MCP connections. See [bundled Python release inputs](../../docs/release.md#bundled-python).
 
+Settings > Advanced shows Git beside Python, including the executing host's source, version and path. Windows desktop already bundles Portable Git/Git Bash and puts it on the runtime PATH; other hosts use their configured/system Git. Opening settings reads Python installation metadata without preparing an environment. Status reads time out after 20 seconds; explicit full Python checks allow 90 seconds for environment creation and library imports. Both can be retried and are cancelled when the page closes.
+
 ## Entry points and boundaries
 
 - [main.ts](src/main.ts): application lifecycle, IPC and supervised Web/Gateway processes.
