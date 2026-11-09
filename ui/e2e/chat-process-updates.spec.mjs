@@ -68,6 +68,8 @@ test('a streaming reply closes inspected mixed work before the turn completes', 
   await page.evaluate(() => window.streamFixture.complete(5000));
   await expect(turn).toHaveAttribute('aria-expanded', 'false');
   await turn.click();
+  await expect(process).toHaveAttribute('aria-expanded', 'false');
+  await process.click();
   await expect(tool).toBeVisible();
   await expect(tool).toHaveAttribute('aria-expanded', 'false');
   await tool.click();
