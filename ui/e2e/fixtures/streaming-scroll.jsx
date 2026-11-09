@@ -135,7 +135,7 @@ function Fixture() {
       scrollContainerRef={ref}
       showReturnToLatest={follow.canReturnToLatest}
       onResumeScroll={follow.scrollToBottom}
-      onPauseScroll={() => follow.setPaused(true)}
+      onPauseScroll={follow.pauseAt}
       chatMessages={messages} visibleMessages={messages} activityMessages={activities} visibleMessageCount={100}
       isLoadingSessionMessages={false} isLoadingMoreMessages={false}
       hasMoreMessages={false} totalMessages={messages.length}

@@ -3,6 +3,7 @@ import type { RefObject } from 'react';
 import { expandingDisclosure } from '../utils/disclosureInteraction';
 
 const BOTTOM_EPSILON = 2;
+const ANCHOR_EPSILON = 0.01;
 const VIEWPORT_SELECTOR = '[data-stream-scroll-viewport]';
 const FOLLOW_CHANGE = 'stream-scroll-follow-change';
 const LAYOUT_CHANGE = 'stream-scroll-layout-change';
@@ -45,6 +46,20 @@ export function useScrollFollow({
   const metricsRef = useRef({ top: 0, height: 0, viewport: 0 });
   const programmaticTopRef = useRef<number | null>(null);
   const userScrollRef = useRef<UserScroll | null>(null);
+
+  const publishAnchorKey = useCallback((row: HTMLElement | null) => {
+    const node = containerRef.current;
+    if (!node) return;
+    // The virtualizer owns top-level rows; the reading anchor may be a child
+    // deep inside one process row. Keep both identities at their own boundary.
+    let virtualRow = row;
+    for (let parent = row?.parentElement?.closest<HTMLElement>('[data-message-key]');
+      parent && node.contains(parent); parent = parent.parentElement?.closest<HTMLElement>('[data-message-key]')) {
+      virtualRow = parent;
+    }
+    if (virtualRow) node.dataset.readingAnchorKey = virtualRow.dataset.messageKey;
+    else delete node.dataset.readingAnchorKey;
+  }, [containerRef]);
 
   const cancelFollow = useCallback(() => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -94,8 +109,11 @@ export function useScrollFollow({
     if (typeof messageKey === 'string') row = Array.from(rows).find(item => item.dataset.messageKey === messageKey);
     if (row) rect = row.getBoundingClientRect();
     else for (const candidate of rows) {
+      if (row && !row.contains(candidate)) break;
+      if (candidate.closest('[inert]')) continue;
       const bounds = candidate.getBoundingClientRect();
-      if (bounds.bottom > top) { row = candidate; rect = bounds; break; }
+      if (bounds.bottom <= top || bounds.top >= top + node.clientHeight || bounds.bottom <= bounds.top) continue;
+      if (!row || row.contains(candidate)) { row = candidate; rect = bounds; }
     }
     anchorElementRef.current = row ?? null;
     anchorRef.current = row && rect ? { key: row.dataset.messageKey!, offset: rect.top - top } : null;
@@ -104,9 +122,16 @@ export function useScrollFollow({
     // that offscreen row as the reading anchor would steer later measurements
     // toward a row the reader has already left.
     anchorAwaitingRowsRef.current = !messageKey && (!rect || rect.top >= top + node.clientHeight);
-    if (row) node.dataset.readingAnchorKey = row.dataset.messageKey;
-    else delete node.dataset.readingAnchorKey;
-  }, [containerRef, contentSelector]);
+    // Retain an offscreen row only as a signal to reacquire the virtual window.
+    if (!row && !messageKey) {
+      row = Array.from(rows).find(item => !item.closest('[inert]') && item.getBoundingClientRect().bottom > top);
+      rect = row?.getBoundingClientRect();
+      anchorElementRef.current = row ?? null;
+      anchorRef.current = row && rect ? { key: row.dataset.messageKey!, offset: rect.top - top } : null;
+      anchorAwaitingRowsRef.current = true;
+    }
+    publishAnchorKey(row ?? null);
+  }, [containerRef, contentSelector, publishAnchorKey]);
 
   const restoreAnchor = useCallback(() => {
     const node = containerRef.current;
@@ -124,16 +149,20 @@ export function useScrollFollow({
       anchorElementRef.current = row;
     }
     if (!row) return;
+    // Retained disclosure contents still have geometry while closing, but
+    // cannot remain the reading anchor once they are hidden from the reader.
+    if (row.closest('[inert]')) { captureAnchor(); rememberMetrics(); return; }
+    publishAnchorKey(row);
     const delta = row.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.offset;
-    if (Math.abs(delta) > 0.5) {
+    if (Math.abs(delta) > ANCHOR_EPSILON) {
       const targetTop = node.scrollTop + delta;
       writePosition(targetTop);
       // Shrinking content can make the old offset unreachable. Adopt the
       // clamped position so later growth cannot replay that stale correction.
-      if (Math.abs(node.scrollTop - targetTop) > 0.5) captureAnchor();
+      if (Math.abs(node.scrollTop - targetTop) > ANCHOR_EPSILON) captureAnchor();
     }
     rememberMetrics();
-  }, [containerRef, rememberMetrics, captureAnchor, writePosition]);
+  }, [containerRef, rememberMetrics, captureAnchor, writePosition, publishAnchorKey]);
 
   const getReadingAnchor = useCallback(() => !anchorAwaitingRowsRef.current && anchorRef.current ? { ...anchorRef.current } : null, []);
   const restoreReadingAnchor = useCallback((anchor: ReadingAnchor) => {

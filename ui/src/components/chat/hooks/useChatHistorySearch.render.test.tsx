@@ -14,11 +14,11 @@ const loadAllMessages = () => {};
 let frames: Map<number, FrameRequestCallback>;
 let frameId: number;
 let search: ReturnType<typeof useChatHistorySearch>;
-function Harness({ pending }: { pending: boolean }) {
+function Harness({ pending, onNavigate }: { pending: boolean; onNavigate?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   search = useChatHistorySearch({
     scrollContainerRef: ref, keyedMessages: messages, measuredItemHeights: heights,
-    allMessagesLoaded: true, hasMoreMessages: false, loadAllMessages, sessionId: 'session',
+    allMessagesLoaded: true, hasMoreMessages: false, loadAllMessages, sessionId: 'session', onNavigate,
   });
   return <div ref={ref} data-testid="viewport">
     <div className="chat-message" data-message-key="target">
@@ -42,6 +42,24 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('search fallback rendering readiness', () => {
+  it('lands before recording the reading anchor so streaming cannot undo an unfinished animation', async () => {
+    const positions: number[] = [];
+    let viewport: HTMLElement;
+    const view = render(<Harness pending={false} onNavigate={() => positions.push(viewport.scrollTop)} />);
+    viewport = view.getByTestId('viewport');
+    Object.defineProperty(viewport, 'clientHeight', { value: 200 });
+    viewport.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+    viewport.querySelector<HTMLElement>('[data-message-key]')!.getBoundingClientRect = () => ({ top: 1000, height: 40 }) as DOMRect;
+    viewport.scrollTo = vi.fn((options?: ScrollToOptions | number) => {
+      // A compositor animation has not moved yet when navigation returns.
+      if (typeof options === 'object' && options.behavior === 'auto') viewport.scrollTop = options.top ?? 0;
+    });
+    act(() => { search.openSearch(); search.setQuery('unique-reference'); });
+    await flushFrame();
+    expect(viewport.scrollTop).toBe(920);
+    expect(positions.at(-1)).toBe(920);
+  });
+
   it.each([false, true])('reacts to completion with no text-node change (cancelled: %s)', async (cancelled) => {
     const { getByTestId, rerender } = render(<Harness pending />);
     const viewport = getByTestId('viewport');

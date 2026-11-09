@@ -33,6 +33,7 @@ export class ComputerUseController {
   private serial: Promise<unknown> = Promise.resolve();
   private state: ComputerUseStatus;
   private shuttingDown = false;
+  private startupAbort: AbortController | null = null;
 
   constructor(private readonly options: Options) {
     fs.mkdirSync(options.directory, { recursive: true, mode: 0o700 });
@@ -62,6 +63,7 @@ export class ComputerUseController {
 
   setEnabled(enabled: unknown): Promise<ComputerUseStatus> {
     if (typeof enabled !== 'boolean') return Promise.reject(new Error('enabled must be a boolean'));
+    if (!enabled) this.startupAbort?.abort();
     return this.enqueue(async () => {
       this.writeJson(this.settingsPath, { enabled });
       this.state.enabled = enabled;
@@ -96,6 +98,7 @@ export class ComputerUseController {
 
   async stop(): Promise<void> {
     this.shuttingDown = true;
+    this.startupAbort?.abort();
     await this.serial.catch(() => undefined);
     await this.stopChild();
   }
@@ -168,8 +171,16 @@ export class ComputerUseController {
   }
 
   private async startChild(): Promise<void> {
+    const startup = new AbortController();
+    this.startupAbort = startup;
+    try { await this.launchChild(startup.signal); }
+    finally { if (this.startupAbort === startup) this.startupAbort = null; }
+  }
+
+  private async launchChild(signal: AbortSignal): Promise<void> {
     this.state.phase = 'starting';
-    const version = await execute(this.binary, ['--version'], { env: this.environment(), timeout: 10_000, windowsHide: true });
+    const version = await execute(this.binary, ['--version'], { env: this.environment(), timeout: 10_000, signal, windowsHide: true });
+    signal.throwIfAborted();
     if (version.stdout.trim().split(/\s+/)[1] !== this.state.version) throw new Error('Bundled Driver version does not match its manifest.');
     this.endpointDirectory = process.platform === 'win32' ? null : fs.mkdtempSync(path.join(os.tmpdir(), 'pd-cua-'));
     this.endpoint = process.platform === 'win32' ? `\\\\.\\pipe\\pilotdeck-cua-${process.pid}-${randomUUID()}`
@@ -194,9 +205,13 @@ export class ComputerUseController {
     });
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
+      signal.throwIfAborted();
       if (failure) throw failure;
       if (this.child !== child || child.exitCode !== null) throw new Error(this.state.error || 'Driver exited during startup');
-      if (await endpointReady(this.endpoint)) return;
+      const ready = await endpointReady(this.endpoint);
+      signal.throwIfAborted();
+      if (this.child !== child || child.exitCode !== null) throw new Error(this.state.error || 'Driver exited during startup');
+      if (ready) return;
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     throw new Error('Driver startup timed out.');

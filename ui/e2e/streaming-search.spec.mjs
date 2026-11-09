@@ -3,6 +3,21 @@ import { test, expect } from '@playwright/test';
 const conversation = (page) => page.locator('[data-chat-search-surface]');
 const top = (locator) => locator.evaluate((node) => node.scrollTop);
 const pendingText = '[data-chat-search-render-pending="true"]';
+async function settledRowY(hit) {
+  return hit.evaluate(async node => {
+    await document.fonts.ready;
+    let previous;
+    let stable = 0;
+    for (let frame = 0; frame < 180; frame++) {
+      await new Promise(requestAnimationFrame);
+      const y = node.closest('[data-message-key]').getBoundingClientRect().top;
+      stable = previous !== undefined && Math.abs(y - previous) < 0.01 ? stable + 1 : 0;
+      if (stable >= 4) return y;
+      previous = y;
+    }
+    throw new Error('Search result did not settle');
+  });
+}
 const history = (count) => Array.from({ length: count }, (_, index) => ({
   id: `history-${index}`, type: index % 2 ? 'assistant' : 'user',
   content: `Historical message ${index}.\n\nAnother paragraph for reading.`,
@@ -24,17 +39,30 @@ for (const scenario of [
       ...messages, { id: 'target', type: 'assistant', content },
     ] }), { messages: history(scenario.count), content: scenario.content });
     await search(page, conversation(page), scenario.query);
-    await expect(page.getByRole('link', { name: scenario.link, exact: true })).toBeInViewport();
+    const hit = page.getByRole('link', { name: scenario.link, exact: true });
+    await expect(hit).toBeInViewport();
     await expect(page.locator('mark[aria-current="true"]')).toHaveCount(0);
     await conversation(page).hover({ position: { x: 60, y: 100 } });
+    const hitY = () => hit.evaluate(node => node.closest('[data-message-key]').getBoundingClientRect().top);
+    const beforeWheel = await settledRowY(hit);
     await page.mouse.wheel(0, -160);
-    await expect.poll(() => conversation(page).evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeGreaterThan(50);
-    const reading = await top(conversation(page));
+    // Merely being away from the bottom can already be true during search
+    // navigation. Wait for the compositor to deliver this reader's wheel.
+    // Virtualized predecessors may also be measured as the window moves.
+    await expect.poll(hitY).toBeGreaterThan(beforeWheel + 100);
+    await settledRowY(hit);
+    const reading = await conversation(page).evaluate(node => {
+      const row = [...node.querySelectorAll('[data-message-key]')]
+        .find(item => item.getBoundingClientRect().bottom > node.getBoundingClientRect().top);
+      return { key: row.dataset.messageKey, y: row.getBoundingClientRect().top };
+    });
     await page.evaluate(() => window.streamLifecycle.set({ messages: [
       ...window.streamLifecycle.messages, { id: 'later', type: 'assistant', content: 'Another response.\n\n'.repeat(20) },
     ] }));
     await page.waitForTimeout(250);
-    expect(Math.abs(await top(conversation(page)) - reading)).toBeLessThan(2);
+    const finalY = await conversation(page).evaluate((node, key) => [...node.querySelectorAll('[data-message-key]')]
+      .find(item => item.dataset.messageKey === key)?.getBoundingClientRect().top, reading.key);
+    expect(Math.abs(finalY - reading.y)).toBeLessThan(2);
   });
 }
 

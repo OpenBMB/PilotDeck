@@ -5,6 +5,9 @@
     "enable": "使用内置 Python",
     "toggleHint": "默认开启。切换对后续轮次生效，正在运行的任务继续使用原环境。后续安装的包保存在用户目录中。",
     "checking": "正在检查执行主机的 Python 环境…",
+    "available": "已安装内置 Python。任务需要时自动准备环境，也可手动检查。",
+    "initializing": "正在准备 Python 环境，可稍后重新检查结果。",
+    "statusTimedOut": "环境检查耗时过长，可重新检查；正在进行的初始化仍可在后台完成。",
     "ready": "执行主机上的环境已就绪",
     "disabled": "后续轮次已停用内置 Python",
     "external": "优先使用已显式激活的虚拟环境",
@@ -15,6 +18,18 @@
     "refresh": "重新检查",
     "saved": "已保存，正在运行的任务继续使用原环境。",
     "saveFailed": "Python 设置保存失败，请重试。"
+  },
+  "gitRuntime": {
+    "title": "Git 环境",
+    "description": "Windows 桌面版自带 Git 和 Git Bash，其他部署使用执行主机上的 Git。",
+    "checking": "正在检查执行主机上的 Git…",
+    "ready": "执行主机上的 Git 已就绪",
+    "unavailable": "执行主机上的 Git 不可用，请修复 Windows 桌面版安装或在执行主机上安装 Git，然后重新检查。",
+    "statusFailed": "无法检查执行主机，请在 Gateway 连接后重试。",
+    "statusTimedOut": "Git 检查耗时过长，请重试。",
+    "sources": { "bundled": "由 PilotDeck 提供", "configured": "已显式指定的 Git", "system": "系统 Git" },
+    "executable": "可执行文件",
+    "refresh": "重新检查"
   },
   "generalWorkspace": {
     "title": "通用对话",

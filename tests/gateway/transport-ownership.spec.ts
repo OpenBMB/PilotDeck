@@ -7,6 +7,7 @@ import { GatewayWsConnection } from '../../src/gateway/server/GatewayWsConnectio
 import { TextWebSocketConnection } from '../../src/gateway/server/websocket.js';
 import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from '../../src/gateway/protocol/version.js';
 import type { Gateway, GatewayEvent } from '../../src/gateway/protocol/types.js';
+import { RemoteGateway } from '../../src/gateway/client/RemoteGateway.js';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 class SocketDouble extends EventEmitter { write() {} end() { this.emit('close'); } }
@@ -36,6 +37,30 @@ async function connection(gateway: Partial<Gateway>) {
   ws.dispatch({ type: 'hello', protocolVersion: PILOTDECK_GATEWAY_PROTOCOL_VERSION, token: 'synthetic', clientName: 'test', clientVersion: 'test' });
   await tick(); return ws;
 }
+
+test('runtime status preserves lightweight Python reads and executing-host Git across remote RPC', async () => {
+  const inputs: unknown[] = [];
+  const git = { state: 'ready' as const, source: 'bundled' as const, executable: '/executing-host/git', version: '2.51.2' };
+  const ws = await connection({
+    getPythonRuntimeStatus: async input => { inputs.push(input); return { enabled: true, state: input?.initialize === false ? 'available' : 'ready' }; },
+    getGitRuntimeStatus: async () => git,
+  });
+  const client = new GatewayWsClient({ url: 'ws://synthetic.invalid', token: 'synthetic' });
+  const internals = client as unknown as { ws: unknown; handleMessage(text: string): void; closePending(error: Error): void };
+  internals.ws = { readyState: WebSocket.OPEN, send: (text: string) => {
+    ws.dispatch(JSON.parse(text));
+    void tick().then(() => {
+      for (const frame of ws.sent.splice(0)) if (frame.type === 'response') internals.handleMessage(JSON.stringify(frame));
+    });
+  } };
+  const remote = new RemoteGateway(client);
+  try {
+    assert.equal((await remote.getPythonRuntimeStatus({ initialize: false })).state, 'available');
+    assert.equal((await remote.getPythonRuntimeStatus()).state, 'ready');
+    assert.deepEqual(inputs, [{ initialize: false }, undefined]);
+    assert.deepEqual(await remote.getGitRuntimeStatus(), git);
+  } finally { internals.closePending(new Error('test cleanup')); ws.close(); }
+});
 test('a rejected duplicate cannot discard the original request disconnect ownership', async () => {
   let release!: () => void; const gate = new Promise<void>(r => { release = r; }); const aborted: unknown[] = []; let calls = 0;
   const ws = await connection({ submitTurn: async function* (input, options) {

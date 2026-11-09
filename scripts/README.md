@@ -16,6 +16,8 @@ Maintained build, development and diagnostic commands. Run from the repository r
 
 Driver preparation retries transient HTTP and connection/stream failures up to four attempts, with bounded exponential backoff and a five-minute timeout per attempt. Partial archives are removed before retrying. Permanent HTTP failures and checksum mismatches still fail the build; version and SHA-256 pins remain mandatory. Regression coverage lives in `apps/desktop/scripts/computer-use-download.test.mjs`.
 
+Downloads honor `PILOTDECK_PROXY`, then `https_proxy`/`HTTPS_PROXY`, then `http_proxy`/`HTTP_PROXY`, with `no_proxy`/`NO_PROXY` exclusions. Export these before starting a Web deployment: native resource preparation runs before the server configures networking. The download owns and releases its proxy dispatcher without changing other requests.
+
 The protocol check requires `PILOTDECK_RUN_LIVE_LLM_CENTER=1`, `PILOTDECK_LLM_CENTER_BASE_URL`, `PILOTDECK_LLM_CENTER_API_KEY`, and at least one `PILOTDECK_LLM_CENTER_{OPENAI,ANTHROPIC,RESPONSES,GEMINI}_MODEL`. It uses synthetic prompts and makes billable provider requests. `PILOTDECK_LLM_CENTER_CONTEXT_PROBE_CHARS=0` disables its large-context probe. Supply credentials through the environment and keep output in ignored artifacts.
 
 The import audit is reusable tooling; its output is not a maintained architecture report and is not an automatic deletion list. Keep ad hoc probes, screenshots and logs in ignored artifacts/ or outputs/. Put durable assertions in [tests](../tests/README.md), not temporary scripts. Desktop packaging tools live in [apps/desktop/scripts](../apps/desktop/scripts).

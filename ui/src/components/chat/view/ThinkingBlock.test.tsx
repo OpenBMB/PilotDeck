@@ -10,8 +10,8 @@ vi.mock('./StreamingScrollViewport', () => ({ StreamingScrollViewport: ({ childr
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 it.each([
-  ['en', 'Thinking for 0s', 'Thinking for 3s', 'Thought for 3s'],
-  ['zh-CN', '正在思考 0 秒', '正在思考 3 秒', '已思考 3 秒'],
+  ['en', 'Thinking for 1s', 'Thinking for 3s', 'Thought for 3s'],
+  ['zh-CN', '正在思考 1 秒', '正在思考 3 秒', '已思考 3 秒'],
 ])('opens live reasoning with a localized clock and closes it on completion (%s)', async (language, initial, running, completed) => {
   const i18n = await createTestI18n(language);
   vi.useFakeTimers();
@@ -72,7 +72,22 @@ it('does not invent a duration for old history and clamps future timestamps', ()
   const view = render(<ThinkingBlock content="Old thought" isStreaming={false} durationMs={NaN} />);
   expect(screen.getByRole('button').textContent).toBe('Finished thinking');
   view.rerender(<ThinkingBlock content="New thought" isStreaming startedAt="2999-01-01T00:00:00Z" />);
-  expect(screen.getByRole('button').textContent).toBe('Thinking for 0s');
+  expect(screen.getByRole('button').textContent).toBe('Thinking for 1s');
+});
+
+it.each([0, 25, 999, -100])('shows at least one second for a persisted short thought (%s ms)', durationMs => {
+  render(<ThinkingBlock content="Short thought" isStreaming={false} durationMs={durationMs} />);
+  expect(screen.getByRole('button').textContent).toBe('Thought for 1s');
+});
+
+it('finishes a subsecond live thought without displaying zero or delaying completion', () => {
+  vi.useFakeTimers();
+  const view = render(<ThinkingBlock content="Short thought" isStreaming />);
+  act(() => vi.advanceTimersByTime(25));
+  view.rerender(<ThinkingBlock content="Short thought" isStreaming={false} />);
+  expect(screen.getByRole('button').textContent).toBe('Thought for 1s');
+  expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false');
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 it('retains a deliberately opened live thought when the model moves to its next step', () => {

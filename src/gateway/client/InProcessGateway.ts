@@ -173,7 +173,8 @@ export type InProcessGatewayOptions = {
    * the PilotConfigStore + ProjectRuntimeRegistry lifecycle.
    */
   reloadConfig?: () => Promise<ReloadConfigResult>;
-  getPythonRuntimeStatus?: () => Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus>;
+  getPythonRuntimeStatus?: (input?: import('../../runtime/pythonRuntime.js').PythonRuntimeStatusInput) => Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus>;
+  getGitRuntimeStatus?: () => Promise<import('../../runtime/gitRuntime.js').GitRuntimeStatus>;
   prepareWeixinLogin?: () => Promise<PrepareWeixinLoginResult>;
   /**
    * Pluggable extension/MCP reload handler wired by `createLocalGateway`.
@@ -1365,8 +1366,12 @@ export class InProcessGateway implements Gateway {
     return this.options.reloadConfig();
   }
 
-  async getPythonRuntimeStatus(): Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus> {
-    return this.options.getPythonRuntimeStatus?.() ?? { enabled: true, state: 'unavailable', reason: 'not-installed' };
+  async getPythonRuntimeStatus(input?: import('../../runtime/pythonRuntime.js').PythonRuntimeStatusInput): Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus> {
+    return this.options.getPythonRuntimeStatus?.(input) ?? { enabled: true, state: 'unavailable', reason: 'not-installed' };
+  }
+
+  async getGitRuntimeStatus(): Promise<import('../../runtime/gitRuntime.js').GitRuntimeStatus> {
+    return this.options.getGitRuntimeStatus?.() ?? { state: 'unavailable', source: 'system' };
   }
 
   async prepareWeixinLogin(): Promise<PrepareWeixinLoginResult> {

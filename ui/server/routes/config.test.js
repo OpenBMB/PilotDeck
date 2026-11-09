@@ -19,7 +19,19 @@ it('returns Python capability from the executing Gateway and handles disconnecte
   const pythonStatus = vi.fn().mockResolvedValueOnce(status).mockRejectedValueOnce(new Error('offline'));
   const { requestStatus } = await createConfigApp({ pythonStatus });
   expect((await requestStatus('/api/config/python-runtime')).body).toEqual(status);
+  expect(pythonStatus).toHaveBeenLastCalledWith({ initialize: false });
   expect((await requestStatus('/api/config/python-runtime')).status).toBe(503);
+});
+
+it('performs a full Python check only on explicit POST and reports Gateway Git', async () => {
+  const pythonStatus = vi.fn().mockResolvedValue({ enabled: true, state: 'ready' });
+  const git = { state: 'ready', source: 'bundled', executable: '/host/git', version: '2.51.2' };
+  const gitStatus = vi.fn().mockResolvedValue(git);
+  const { requestStatus } = await createConfigApp({ pythonStatus, gitStatus });
+  expect((await requestStatus('/api/config/python-runtime/check', { method: 'POST' })).status).toBe(200);
+  expect(pythonStatus).toHaveBeenLastCalledWith();
+  expect((await requestStatus('/api/config/git-runtime')).body).toEqual(git);
+  expect(gitStatus).toHaveBeenCalledTimes(1);
 });
 
 it('normalizes the Python preference to true and rejects non-boolean values', () => {
@@ -2675,7 +2687,7 @@ describe('config routes invalid YAML fallback', () => {
   });
 });
 
-async function createConfigApp({ config = {}, probe, pythonStatus } = {}) {
+async function createConfigApp({ config = {}, probe, pythonStatus, gitStatus } = {}) {
   const writePilotDeckConfig = vi.fn(async (nextConfig) => ({
     config: nextConfig,
     raw: stringifyYaml(nextConfig),
@@ -2705,7 +2717,7 @@ async function createConfigApp({ config = {}, probe, pythonStatus } = {}) {
     };
   });
   vi.doMock('../pilotdeck-bridge.js', () => ({
-    getPilotDeckGateway: vi.fn(async () => ({ reloadConfig: vi.fn(async () => undefined), getPythonRuntimeStatus: pythonStatus })),
+    getPilotDeckGateway: vi.fn(async () => ({ reloadConfig: vi.fn(async () => undefined), getPythonRuntimeStatus: pythonStatus, getGitRuntimeStatus: gitStatus })),
   }));
 
   const { default: configRoutes } = await import('./config.js');

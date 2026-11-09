@@ -8,7 +8,7 @@ import type { PilotDeckMcpServerSpec } from '../mcp/protocol/types.js';
 /** Public, secret-free capabilities of the executing Gateway host. */
 export type PythonRuntimeStatus = {
   enabled: boolean;
-  state: 'disabled' | 'ready' | 'unavailable' | 'external';
+  state: 'disabled' | 'ready' | 'unavailable' | 'external' | 'available' | 'initializing';
   reason?: 'not-installed' | 'initialization-failed' | 'active-virtualenv';
   version?: string;
   executable?: string;
@@ -16,6 +16,7 @@ export type PythonRuntimeStatus = {
   packages?: Readonly<Record<string, string>>;
 };
 export type PythonRuntimeSnapshot = { readonly env: NodeJS.ProcessEnv; readonly status: Readonly<PythonRuntimeStatus> };
+export type PythonRuntimeStatusInput = { initialize?: boolean };
 type Manifest = { schemaVersion: number; id: string; platform: string; arch: string; version: string; python: string; uv: string; packages: Record<string, string>; modules: string[] };
 type Run = (command: string, args: string[], env: NodeJS.ProcessEnv) => Promise<string>;
 const exec = promisify(execFile);
@@ -40,12 +41,26 @@ function snapshot(env: NodeJS.ProcessEnv, status: PythonRuntimeStatus): PythonRu
 /** Owns only versioned user environments. Never modifies process.env or the application payload. */
 export class PythonRuntimeManager {
   private ready?: Promise<PythonRuntimeSnapshot>;
+  private status?: Readonly<PythonRuntimeStatus>;
   private baseFiles: string[] = [];
   private readonly env: NodeJS.ProcessEnv;
   private readonly home: string;
   constructor(private readonly options: { pilotHome: string; env: NodeJS.ProcessEnv; onError?: (error: unknown) => void; /** @internal Native process seam for regression tests. */ run?: Run }) {
     this.env = { ...options.env };
     this.home = resolve(options.pilotHome);
+  }
+  /** Settings reads metadata without creating a venv or importing every library. */
+  async inspect(enabled = true): Promise<Readonly<PythonRuntimeStatus>> {
+    if (!enabled || getEnv(this.env, 'VIRTUAL_ENV') || !this.env.PILOTDECK_PYTHON_ROOT) return (await this.resolve(enabled)).status;
+    if (this.status) {
+      if (this.status.state !== 'ready' || (await Promise.all([this.status.executable!, ...this.baseFiles].map(exists))).every(Boolean)) return this.status;
+      return { enabled: true, state: 'unavailable', reason: 'not-installed' };
+    }
+    if (this.ready) return { enabled: true, state: 'initializing' };
+    try {
+      const { manifest, basePython } = await this.installation();
+      return { enabled: true, state: 'available', version: manifest.version, executable: basePython, packages: { ...manifest.packages } };
+    } catch { return { enabled: true, state: 'unavailable', reason: 'not-installed' }; }
   }
   async resolve(enabled = true): Promise<PythonRuntimeSnapshot> {
     if (!enabled) return snapshot(this.env, { enabled: false, state: 'disabled' });
@@ -56,15 +71,19 @@ export class PythonRuntimeManager {
       const cached = await this.ready;
       if (cached.status.executable && (await Promise.all([cached.status.executable, ...this.baseFiles].map(exists))).every(Boolean)) return cached;
       this.ready = undefined;
+      this.status = undefined;
     }
-    if (!this.ready) this.ready = this.prepare().catch(error => {
-      this.ready = undefined; // Repair/reinstall can be retried without restarting the Gateway.
-      this.options.onError?.(error);
-      return snapshot(this.env, { enabled: true, state: 'unavailable', reason: 'initialization-failed' });
-    });
+    if (!this.ready) {
+      this.status = undefined;
+      this.ready = this.prepare().catch(error => {
+        this.ready = undefined; // Repair/reinstall can be retried without restarting the Gateway.
+        this.options.onError?.(error);
+        return snapshot(this.env, { enabled: true, state: 'unavailable', reason: 'initialization-failed' });
+      }).then(result => { this.status = result.status; return result; });
+    }
     return this.ready;
   }
-  private async prepare(): Promise<PythonRuntimeSnapshot> {
+  private async installation(): Promise<{ root: string; manifest: Manifest; basePython: string; uv: string }> {
     const root = resolve(this.env.PILOTDECK_PYTHON_ROOT!);
     const manifest: Manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
     if (manifest.schemaVersion !== 1 || !/^[a-f0-9]{64}$/.test(manifest.id) || !/^3\.12\.\d+$/.test(manifest.version)
@@ -74,6 +93,10 @@ export class PythonRuntimeManager {
       || !Object.keys(manifest.packages).length || Object.values(manifest.packages).some(v => typeof v !== 'string')) throw new Error('Invalid Python manifest');
     const basePython = child(root, manifest.python), uv = child(root, manifest.uv);
     await Promise.all([access(basePython), access(uv)]);
+    return { root, manifest, basePython, uv };
+  }
+  private async prepare(): Promise<PythonRuntimeSnapshot> {
+    const { root, manifest, basePython, uv } = await this.installation();
     this.baseFiles = [basePython, uv];
     // Relocatable activation scripts permit atomic publication without a persistent lock.
     const key = createHash('sha256').update('uv-relocatable-v1').update(root).update(manifest.id).digest('hex').slice(0, 24);

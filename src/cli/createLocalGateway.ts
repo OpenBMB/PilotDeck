@@ -1,5 +1,6 @@
 import { VideoStore } from "../tool/builtin/videos/VideoStore.js";
 import { PythonRuntimeManager, withPythonMcpEnvironment, type PythonRuntimeSnapshot } from '../runtime/pythonRuntime.js';
+import { getGitRuntimeStatus } from '../runtime/gitRuntime.js';
 import { VideoJobManager } from "../tool/builtin/videos/VideoJobManager.js";
 import { createSubagentVideoPreparation, createSubagentVideoInheritance } from "./subagentVideoInheritance.js";
 import { ImageStore } from "../tool/builtin/images/ImageStore.js";
@@ -638,7 +639,9 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       }
       return { reloaded: true, changedPaths };
     },
-    async getPythonRuntimeStatus() {
+    getGitRuntimeStatus: () => getGitRuntimeStatus({ env }),
+    async getPythonRuntimeStatus(input) {
+      if (input?.initialize === false) return registry.inspectPython(configStore.getSnapshot().config.runtime?.python.enabled ?? true);
       await configStore.reload('python-status');
       const enabled = configStore.getSnapshot().config.runtime?.python.enabled ?? true;
       const result = await registry.refreshPython(enabled);
@@ -898,6 +901,8 @@ class ProjectRuntimeRegistry {
     if (changed) this.retire();
     return { snapshot, changed };
   }
+
+  inspectPython(enabled: boolean) { return this.python.inspect(enabled); }
 
   private collectRetired(): void {
     for (const runtime of this.retired) {

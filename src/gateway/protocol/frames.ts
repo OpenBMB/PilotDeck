@@ -55,6 +55,7 @@ export type WsGatewayMethod =
   | "describe_project"
   | "reload_config"
   | "python_runtime_status"
+  | "git_runtime_status"
   | "prepare_weixin_login"
   | "reload_extensions"
   | "skill_list"
