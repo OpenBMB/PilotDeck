@@ -8,7 +8,7 @@ import { listProcesses, spawnManaged, stopProcessTree, runManagedCommand } from 
 const KEY = Symbol.for('pilotdeck.processScope');
 const id = (pid, birth = 'original', group = pid, parent = 1) => ({ pid, birth, group, parent });
 const simulation = (entries, inspect, extra = {}) => ({ scope: {}, records: () => entries, inspect,
-  closeScope: vi.fn(), cleanup: vi.fn(), signal: vi.fn(), graceMs: 1, forceMs: 1, ...extra });
+  platform: 'linux', closeScope: vi.fn(), cleanup: vi.fn(), signal: vi.fn(), graceMs: 1, forceMs: 1, ...extra });
 function command(script, ipc = false) {
   const child = spawnManaged(process.execPath, ['-e', script], { stdio: ipc ? ['ignore', 'pipe', 'pipe', 'ipc'] : ['ignore', 'pipe', 'pipe'] });
   child.stderr?.on('data', () => {}); return child;
@@ -101,4 +101,24 @@ describe.skipIf(process.platform === 'win32')('real supervised lifetimes', () =>
   it('preserves successful command output and completion', async () => {
     let text = ''; await runManagedCommand(process.execPath, ['-e', 'console.log("done")'], { progress: chunk => { text += chunk; } }); expect(text.trim()).toBe('done');
   });
+});
+
+describe.skipIf(process.platform !== 'win32')('Windows native Job lifetimes', () => {
+  it.each(['1', '0'])('preserves IPC and confirms descendant cleanup with native host=%s', async native => {
+    const previous = process.env.PILOTDECK_NATIVE_PROCESS_HOST;
+    process.env.PILOTDECK_NATIVE_PROCESS_HOST = native;
+    let child;
+    try {
+      child = command(`const orphan=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});process.on('message',message=>process.send({echo:message,orphan:orphan.pid}));`, true);
+      const response = once(child, 'message'); child.send('hello'); const message = (await response)[0];
+      expect(message.echo).toBe('hello');
+      expect((await listProcesses()).some(row => row.pid === message.orphan)).toBe(true);
+      await stopProcessTree(child, { graceMs: 1500, forceMs: 3000 });
+      expect((await listProcesses()).some(row => row.pid === message.orphan)).toBe(false);
+      expect(existsSync(child[KEY].directory)).toBe(false);
+    } finally {
+      if (child) await cleanup(child);
+      if (previous === undefined) delete process.env.PILOTDECK_NATIVE_PROCESS_HOST; else process.env.PILOTDECK_NATIVE_PROCESS_HOST = previous;
+    }
+  }, 30000);
 });

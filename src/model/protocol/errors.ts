@@ -1,4 +1,6 @@
 export type CanonicalModelErrorCode =
+  | "transport_error"
+  | "aborted"
   | "prompt_too_long"
   | "request_too_large"
   | "max_output_reached"

@@ -5,7 +5,7 @@ import { desktopUpdates } from "../../utils/desktopUpdates";
 import { authenticatedFetch } from "../../utils/api";
 import type { SettingsProps } from "./shared/types";
 import type { SettingsMenuKey } from "./types";
-import { getSettingsPath, mapSettingsSectionToMenuKey } from "./navigation";
+import { getSettingsPath, getSettingsPathFromTab, mapSettingsSectionToMenuKey } from "./navigation";
 import {
   normalizeDesktopVersionResult,
   normalizeWebVersionResult,
@@ -56,6 +56,9 @@ function SettingsInner({
 
   useEffect(() => {
     if (section === 'agent-model') navigate(`${getSettingsPath('modelPool')}${search}`, { replace: true });
+    if (section === 'image-generation' || section === 'video-generation') {
+      navigate(getSettingsPathFromTab(section + search), { replace: true });
+    }
   }, [section, search, navigate]);
 
   const checkVersion = useCallback(async () => {

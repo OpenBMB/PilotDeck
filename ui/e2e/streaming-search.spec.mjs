@@ -8,7 +8,7 @@ const history = (count) => Array.from({ length: count }, (_, index) => ({
   content: `Historical message ${index}.\n\nAnother paragraph for reading.`,
 }));
 async function search(page, viewport, query) {
-  await viewport.click({ position: { x: 20, y: 100 } });
+  await viewport.click({ position: { x: 60, y: 100 } });
   await page.keyboard.press('Meta+f');
   await page.getByRole('searchbox').fill(query);
 }
@@ -26,7 +26,7 @@ for (const scenario of [
     await search(page, conversation(page), scenario.query);
     await expect(page.getByRole('link', { name: scenario.link, exact: true })).toBeInViewport();
     await expect(page.locator('mark[aria-current="true"]')).toHaveCount(0);
-    await conversation(page).hover({ position: { x: 20, y: 100 } });
+    await conversation(page).hover({ position: { x: 60, y: 100 } });
     await page.mouse.wheel(0, -160);
     await expect.poll(() => conversation(page).evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeGreaterThan(50);
     const reading = await top(conversation(page));

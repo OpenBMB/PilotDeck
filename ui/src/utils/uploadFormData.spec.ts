@@ -18,6 +18,22 @@ class FakeXhr {
 beforeEach(() => { vi.stubGlobal('XMLHttpRequest', FakeXhr); localStorage.clear(); });
 afterEach(() => { vi.unstubAllGlobals(); });
 describe('shared upload transport', () => {
+  it('does not restore the previous login when an upload finishes after switching users', async () => {
+    localStorage.setItem('auth-token', 'old-user');
+    const result = postFormDataWithProgress({ url: '/api/uploads', formData: new FormData(), signal: new AbortController().signal, onProgress: vi.fn() });
+    localStorage.setItem('auth-token', 'new-user');
+    FakeXhr.latest.onload();
+    await result;
+    expect(localStorage.getItem('auth-token')).toBe('new-user');
+  });
+  it('adds first-party diagnostics without setting a multipart content type', async () => {
+    const result = postFormDataWithProgress({ url: '/api/uploads', formData: new FormData(), signal: new AbortController().signal, onProgress: vi.fn() });
+    const xhr = FakeXhr.latest;
+    expect(xhr.setRequestHeader).toHaveBeenCalledWith('x-pilotdeck-request-id', expect.any(String));
+    expect(xhr.setRequestHeader.mock.calls.some(([name]) => name.toLowerCase() === 'content-type')).toBe(false);
+    xhr.onload();
+    await result;
+  });
   it('reports transfer progress, waits for response, and preserves auth refresh', async () => {
     localStorage.setItem('auth-token', 'token');
     const progress = vi.fn(); const transferred = vi.fn(); const complete = vi.fn();

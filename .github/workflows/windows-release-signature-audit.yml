@@ -1,0 +1,76 @@
+name: Audit Published Windows Signatures
+
+on:
+  # Releases published with GITHUB_TOKEN do not trigger release workflows.
+  # workflow_run also covers the automated Daily Release path.
+  workflow_run:
+    workflows: [Daily Release]
+    types: [completed]
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to audit (empty selects the latest release)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  # A published Release still needs auditing if a later OBS sync job fails.
+  # The download step checks for a matching published release on every result.
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download published installers and checksums
+        id: download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if ($env:SOURCE_SHA) {
+            $releases = gh api "repos/$env:GH_REPO/releases?per_page=30" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the completed release.' }
+            $release = $releases | Where-Object { -not $_.draft -and $_.target_commitish -eq $env:SOURCE_SHA } | Sort-Object published_at -Descending | Select-Object -First 1
+            if (-not $release) { 'This run did not publish a release.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY; exit 0 }
+            $env:RELEASE_TAG = $release.tag_name
+          }
+          $releaseArgs = @()
+          if ($env:RELEASE_TAG) { $releaseArgs = @($env:RELEASE_TAG) }
+          gh release download @releaseArgs --pattern '*-win-*-setup.exe' --pattern SHA256SUMS.txt --dir audit
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download published Windows installers.' }
+          'downloaded=true' | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+
+      - name: Verify actual published bytes and Authenticode signatures
+        if: steps.download.outputs.downloaded == 'true'
+        shell: pwsh
+        run: |
+          $checksums = Get-Content -LiteralPath audit/SHA256SUMS.txt
+          $reports = foreach ($arch in @('x64', 'arm64')) {
+            $files = @(Get-ChildItem "audit/*-win-$arch-setup.exe")
+            if ($files.Count -ne 1) { throw "Expected one $arch installer." }
+            $file = $files[0]
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expected = @($checksums | Where-Object { $_ -match ('^[a-fA-F0-9]{64}\s+\*?' + [regex]::Escape($file.Name) + '$') })
+            if ($expected.Count -ne 1 -or $expected[0].Substring(0, 64).ToLowerInvariant() -ne $hash) { throw "Checksum mismatch: $($file.Name)" }
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            [PSCustomObject]@{ file = $file.Name; sha256 = $hash; status = "$($signature.Status)";
+              publisher = $signature.SignerCertificate.Subject; thumbprint = $signature.SignerCertificate.Thumbprint;
+              timestamp = $signature.TimeStamperCertificate.Subject }
+          }
+          $reports | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath audit/signatures.json -Encoding utf8
+          $reports | Format-Table | Out-String | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          if (@($reports | Where-Object { $_.status -ne 'Valid' -or -not $_.timestamp }).Count) { throw 'Published installer is unsigned, invalid, or lacks a trusted timestamp.' }
+
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.download.outputs.downloaded == 'true'
+        with:
+          name: published-windows-signature-audit
+          path: audit/signatures.json

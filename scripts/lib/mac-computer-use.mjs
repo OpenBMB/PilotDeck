@@ -16,7 +16,7 @@ export const macRuntimeRoot = () => path.join(os.homedir(), 'Library/Application
 
 export function macAppForBinary(binary) {
   const executable = fs.realpathSync(binary);
-  const end = executable.lastIndexOf('.app/Contents/MacOS/');
+  const end = executable.lastIndexOf(`.app${path.sep}Contents${path.sep}MacOS${path.sep}`);
   if (end < 0) throw new Error('The native computer-use application is missing.');
   return executable.slice(0, end + 4);
 }
@@ -96,7 +96,11 @@ export async function resolveMacRuntime({ binary, version, root = macRuntimeRoot
       fs.cpSync(selected, path.join(stage, appName), { recursive: true, preserveTimestamps: true });
       await inspect(path.join(stage, appName), version, { allowDevelopment: !metadata.production });
       try { fs.renameSync(stage, directory); }
-      catch (error) { if (!['EEXIST', 'ENOTEMPTY'].includes(error.code)) throw error; }
+      catch (error) {
+        const destinationExists = ['EEXIST', 'ENOTEMPTY'].includes(error.code)
+          || (process.platform === 'win32' && error.code === 'EPERM' && fs.existsSync(directory));
+        if (!destinationExists) throw error;
+      }
     } finally { fs.rmSync(stage, { recursive: true, force: true }); }
   }
   if (payloadHash(app) !== hash) throw new Error('Installed Computer Use component failed its integrity check.');

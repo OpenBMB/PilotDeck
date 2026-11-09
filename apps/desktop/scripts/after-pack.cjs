@@ -1,6 +1,5 @@
 const {
   chmodSync,
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -8,6 +7,7 @@ const {
   realpathSync,
   rmSync,
 } = require("node:fs");
+const { copyFilesSync: cpSync } = require('./copy-files.cjs');
 const { execFileSync } = require("node:child_process");
 const { dirname, join, resolve } = require("node:path");
 
@@ -179,6 +179,7 @@ module.exports = async function afterPack(context) {
   );
 
   verifyPackagedRuntime(target, context, "runtime");
+  require('./verify-python-runtime.cjs').verifyPythonRuntime(join(resourcesDir, 'python-runtime'), context.electronPlatformName);
   if (context.electronPlatformName === "linux") {
     // electron-builder creates the Linux package launcher after this hook. Do not let a
     // restrictive build-shell umask make it unreadable to desktop users.

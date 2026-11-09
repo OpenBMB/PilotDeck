@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import {
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -11,15 +10,18 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import fileCopy from './copy-files.cjs';
 import { dirname, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import {
   resolvePlaywrightBrowserSet,
   resolvePlaywrightInstallMode,
   resolvePlaywrightMirrorMode,
 } from "./download-playwright-browsers.mjs";
 
+const { copyFilesSync: cpSync } = fileCopy;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, "..");
 const repoRoot = resolve(desktopRoot, "..", "..");
@@ -201,7 +203,7 @@ function createRuntimeDependencies(rootPackage, uiPackage) {
     if (!name.startsWith("@types/")) {
       dependencies[name] = name === "edgeclaw-memory-core"
         ? "file:../../../src/context/memory/edgeclaw-memory-core"
-        : version;
+        : name === '@pilotdeck/config' ? 'file:../../../packages/config' : version;
     }
   }
   for (const name of uiServerDependencies) {
@@ -261,6 +263,12 @@ function prepareRuntimeTree(installEnv = process.env) {
     skipBuildArtifact,
   );
   copyFiltered(resolve(repoRoot, "ui", "server"), resolve(runtimeRoot, "ui", "server"), skipBuildArtifact);
+  if (process.platform === "win32") {
+    const require = createRequire(import.meta.url);
+    const helper = require(resolve(repoRoot, "ui/server/utils/nativeProcessHost.cjs")).nativeProcessHost();
+    if (!helper) throw new Error("Windows desktop builds require the native process host compiler.");
+    cpSync(helper, resolve(runtimeRoot, "ui/server/utils", helper.split(/[\\/]/).pop()));
+  }
   copyFiltered(resolve(repoRoot, "ui", "shared"), resolve(runtimeRoot, "ui", "shared"), skipBuildArtifact);
   copyFiltered(resolve(repoRoot, "ui", "public"), resolve(runtimeRoot, "ui", "public"), () => true);
   copyFiltered(resolve(repoRoot, "ui", "dist"), resolve(runtimeRoot, "ui", "dist"), () => true);
@@ -499,6 +507,7 @@ function rewriteUiServerSourceImports(serverRoot) {
 }
 
 run(process.execPath, [resolve(desktopRoot, "scripts", "download-node.mjs")], desktopRoot);
+run(process.execPath, [resolve(desktopRoot, "scripts", "prepare-python.mjs")], desktopRoot);
 if (process.platform === "linux") {
   run(process.execPath, [resolve(desktopRoot, "scripts", "prepare-electron.mjs")], desktopRoot);
 }

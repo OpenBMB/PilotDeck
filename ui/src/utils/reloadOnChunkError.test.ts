@@ -8,7 +8,7 @@ import {
 describe('dynamic import reload recovery', () => {
   it('detects browser dynamic import fetch failures', () => {
     expect(isDynamicImportLoadError(new TypeError('Failed to fetch dynamically imported module: http://127.0.0.1:3001/assets/index-51NXb8Tj.js'))).toBe(true);
-    expect(isDynamicImportLoadError(new Error('Loading chunk DashboardV2 failed.'))).toBe(true);
+    expect(isDynamicImportLoadError(new Error('Loading chunk Dashboard failed.'))).toBe(true);
     expect(isDynamicImportLoadError(new Error('ordinary application error'))).toBe(false);
   });
 

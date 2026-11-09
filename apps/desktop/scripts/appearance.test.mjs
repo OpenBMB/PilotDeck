@@ -11,8 +11,12 @@ const lightSource = fs.readFileSync(new URL('../src/lightAppearance.ts', import.
 const lightMod = { exports: {} };
 new Function('module', 'exports', ts.transpileModule(lightSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(lightMod, lightMod.exports);
 const preferencesMod = { exports: {} };
+const styleMod = { exports: {} };
+new Function('module', 'exports', ts.transpileModule(fs.readFileSync(new URL('../src/startupStyle.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(styleMod, styleMod.exports);
+const startupMod = { exports: {} };
+new Function('module', 'exports', ts.transpileModule(fs.readFileSync(new URL('../src/startupPresentation.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(startupMod, startupMod.exports);
 new Function('module', 'exports', ts.transpileModule(fs.readFileSync(new URL('../src/interfacePreferences.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(preferencesMod, preferencesMod.exports);
-new Function('module', 'exports', 'require', compiled)(mod, mod.exports, id => id === './lightAppearance' ? lightMod.exports : id === './interfacePreferences' ? preferencesMod.exports : require(id));
+new Function('module', 'exports', 'require', compiled)(mod, mod.exports, id => id === './startupStyle' ? styleMod.exports : id === './startupPresentation' ? startupMod.exports : id === './lightAppearance' ? lightMod.exports : id === './interfacePreferences' ? preferencesMod.exports : require(id));
 const { normalizeAppearance, renderLoadingHtml, startupText } = mod.exports;
 
 test('missing and malformed appearance uses system theme and OS language', () => {
@@ -20,23 +24,23 @@ test('missing and malformed appearance uses system theme and OS language', () =>
   assert.deepEqual(normalizeAppearance({ language: '<script>', themeMode: 'bad' }, 'en-US'), { language: 'en', themeMode: 'system' });
   assert.deepEqual(normalizeAppearance({ language: 'en', themeMode: 'light' }, 'zh-CN'), { language: 'en', themeMode: 'light' });
 });
-test('startup UI translates controls and statuses while preserving diagnostic details', () => {
+test('startup UI translates controls without exposing technical details while loading', () => {
   const html = renderLoadingHtml({ language: 'zh-CN', themeMode: 'dark' });
   assert.match(html, /lang="zh-CN" data-theme="dark"/);
-  assert.match(html, />重试<\/button>/);
-  assert.match(html, />打开日志<\/button>/);
+  assert.match(html, />重新启动<\/button>/);
+  assert.match(html, />下载运行日志<\/button>/);
   assert.equal(startupText('Checking local configuration...', 'zh-CN'), '正在检查本地配置…');
   assert.equal(startupText('EACCES: /custom/path', 'zh-CN'), 'EACCES: /custom/path');
   const light = renderLoadingHtml({ language: 'en', themeMode: 'light' });
   assert.match(light, /data-theme="light"/);
-  assert.match(light, />Retry<\/button>/);
-  assert.match(light, /prefers-color-scheme: dark/);
+  assert.match(light, />Restart<\/button>/);
+  assert.match(light, /prefers-color-scheme:\s*dark/);
 });
-test('custom startup canvas is validated and dark palette retains its original values', () => {
+test('custom startup canvas is validated and dark startup uses the shared charcoal canvas', () => {
   const appearance = normalizeAppearance({ language: 'en', themeMode: 'light', lightAppearance: { preset: 'rose' } });
   assert.equal(appearance.lightAppearance.version, 2);
-  assert.match(renderLoadingHtml(appearance), /--bg: #faedf2/);
-  assert.match(renderLoadingHtml(appearance), /--bg: #0a0a0a/);
+  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#fbf8f9/);
+  assert.match(renderLoadingHtml(appearance), /--startup-bg:\s*#23252b/);
 });
 
 test('legacy solid panels migrate without losing desktop background assets or custom colors', () => {
@@ -49,4 +53,30 @@ test('legacy solid panels migrate without losing desktop background assets or cu
   assert.equal(appearance.lightAppearance.background.imageId, '12345678-1234-1234-1234-123456789012.png');
   assert.deepEqual(appearance.lightAppearance.custom, { accent: '#126d71', background: '#b9dfce' });
   assert.deepEqual(normalizeAppearance(appearance), appearance);
+});
+
+test('native startup script preserves progress and presents the classified cause instead of a stack', () => {
+  const html = renderLoadingHtml({ language: 'zh-CN', themeMode: 'light' });
+  assert.doesNotMatch(html, /\x08/);
+  const nodes = new Map();
+  const get = id => {
+    if (!nodes.has(id)) nodes.set(id, { textContent: '', style: { setProperty() {} }, dataset: {}, classList: { toggle() {} }, parentElement: { setAttribute() {} }, addEventListener() {}, getBoundingClientRect() {} });
+    return nodes.get(id);
+  };
+  let update;
+  const desktop = { onRuntimeStatus(callback) { update = callback; }, getRuntimeStatus() { return { phase: 'gateway', progress: 78 }; } };
+  const browser = { pilotdeckDesktop: desktop };
+  // This is our generated template's script, not an HTML sanitization routine.
+  const start = html.indexOf('<script>');
+  const end = html.lastIndexOf('</script>');
+  assert.ok(start >= 0 && end > start);
+  new Function('window', 'document', html.slice(start + '<script>'.length, end))(browser, { getElementById: get, querySelector: () => get('heading') });
+  assert.ok(parseFloat(get('bar').style.width) >= 78 && parseFloat(get('bar').style.width) < 79);
+  update({ phase: 'server', progress: 45 }); assert.ok(parseFloat(get('bar').style.width) >= 78);
+  update({ phase: 'error', error: 'Error code: PD_RUNTIME_OUT_OF_MEMORY\nnative-private-stack', logPath: 'C:/logs/runtime.log' });
+  assert.equal(get('code').textContent, 'PD_RUNTIME_OUT_OF_MEMORY');
+  assert.match(get('reason').textContent, /内存不足/);
+  assert.equal(get('log').textContent, '运行日志: C:/logs/runtime.log');
+  assert.ok([...nodes.values()].every(node => !node.textContent.includes('native-private-stack')));
+  browser.__pilotdeckStartupCleanup();
 });

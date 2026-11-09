@@ -116,11 +116,17 @@ function parseProvider(providerId: string, rawProvider: unknown, env?: Credentia
     ),
     timeoutMs: readOptionalPositiveNumber(provider.timeoutMs, "timeoutMs"),
     headers: readStringRecord(provider.headers, "headers"),
+    requestHeadersMode: parseRequestHeadersMode(provider.requestHeadersMode),
     extraBody: isRecord(provider.extraBody) ? sanitizeProviderBody(provider.extraBody as Record<string, unknown>) : undefined,
     speedMapping: parseSpeedMapping(provider.speedMapping, providerId, protocol, catalogProvider !== undefined),
     retry: parseRetryConfig(provider.retry),
     models,
   };
+}
+
+function parseRequestHeadersMode(value: unknown): "full" | "basic" | "off" | undefined {
+  if (value === undefined || value === "full" || value === "basic" || value === "off") return value;
+  throw new ModelConfigError("invalid_config_value", "requestHeadersMode must be full, basic, or off.");
 }
 
 function parseSpeedMapping(
@@ -334,23 +340,30 @@ function parseMultimodal(
     return value;
   });
 
-  return {
-    ...defaults,
-    input,
-    maxImagesPerRequest: readOptionalPositiveNumber(
-      multimodal.maxImagesPerRequest,
-      "maxImagesPerRequest",
-    ),
-    maxImageBytes: readOptionalPositiveNumber(multimodal.maxImageBytes, "maxImageBytes"),
-    supportedImageMimeTypes: readStringArray(
-      multimodal.supportedImageMimeTypes,
-      "supportedImageMimeTypes",
-    ),
-    maxPdfPages: readOptionalPositiveNumber(multimodal.maxPdfPages, "maxPdfPages"),
-    maxPdfBytes: readOptionalPositiveNumber(multimodal.maxPdfBytes, "maxPdfBytes"),
-    maxAudioSeconds: readOptionalPositiveNumber(multimodal.maxAudioSeconds, "maxAudioSeconds"),
-    imageDetail: parseImageDetail(multimodal.imageDetail),
-  };
+  const overrides: Partial<MultimodalConstraints> = {};
+  if (multimodal.maxImagesPerRequest !== undefined) {
+    overrides.maxImagesPerRequest = readOptionalPositiveNumber(multimodal.maxImagesPerRequest, "maxImagesPerRequest");
+  }
+  if (multimodal.maxImageBytes !== undefined) {
+    overrides.maxImageBytes = readOptionalPositiveNumber(multimodal.maxImageBytes, "maxImageBytes");
+  }
+  if (multimodal.supportedImageMimeTypes !== undefined) {
+    overrides.supportedImageMimeTypes = readStringArray(multimodal.supportedImageMimeTypes, "supportedImageMimeTypes");
+  }
+  if (multimodal.maxPdfPages !== undefined) {
+    overrides.maxPdfPages = readOptionalPositiveNumber(multimodal.maxPdfPages, "maxPdfPages");
+  }
+  if (multimodal.maxPdfBytes !== undefined) {
+    overrides.maxPdfBytes = readOptionalPositiveNumber(multimodal.maxPdfBytes, "maxPdfBytes");
+  }
+  if (multimodal.maxAudioSeconds !== undefined) {
+    overrides.maxAudioSeconds = readOptionalPositiveNumber(multimodal.maxAudioSeconds, "maxAudioSeconds");
+  }
+  if (multimodal.imageDetail !== undefined) {
+    overrides.imageDetail = parseImageDetail(multimodal.imageDetail);
+  }
+
+  return { ...defaults, input, ...overrides };
 }
 
 function readRequiredString(value: unknown, key: string): string {

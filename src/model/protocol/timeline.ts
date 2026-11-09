@@ -12,6 +12,10 @@ export type TimelinePosition = {
   revision: number;
   /** UTF-16 offset for a delta; omitted on a complete snapshot. */
   offset?: number;
+  /** First received reasoning delta; presentation metadata, not provider latency. */
+  startedAt?: string;
+  /** Frozen reasoning duration, present once the block finishes. */
+  durationMs?: number;
 };
 
 export type StreamBoundary = { turnId: string; through: number; revision: number };

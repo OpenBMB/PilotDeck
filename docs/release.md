@@ -23,13 +23,61 @@ and pending-run migration behavior.
 - Desktop runtime production dependencies use the dedicated manifest and frozen
   lockfile under `apps/desktop/runtime`; Web installs do not include this package.
 
+## Bundled Python
+
+`apps/desktop/scripts/prepare-python.mjs` builds the native `resources/python-runtime`
+payload on matching Windows, macOS and Linux x64/ARM64 hosts. `scripts/python/runtime.json`
+pins CPython 3.12 and uv release archives by SHA-256. Per-target `requirements-*.txt`
+lock wheel versions and hashes; source builds and runtime downloads are not used.
+`requirements.in` defines the curated direct dependencies; `packages.json` defines the
+imports and package versions validated before packaging. Keep CPython, uv and wheel
+license notices in the payload. The after-pack hook executes the copied interpreter,
+imports every library and checks platform, architecture and versions.
+
+To update locks, first prepare a bootstrap interpreter with
+`node apps/desktop/scripts/prepare-python.mjs --bootstrap`, then use its uv executable
+to run `uv pip compile scripts/python/requirements.in --python <bootstrap-python>
+--python-version 3.12 --python-platform <target-triple> --only-binary :all:
+--generate-hashes --no-header --no-annotate --output-file
+scripts/python/requirements-<platform>-<arch>.txt --index-url https://pypi.org/simple`
+for each target in `runtime.json`. Run the preparation script again without `--bootstrap`.
+`PILOTDECK_PYTHON_ARCHIVE` and `PILOTDECK_UV_ARCHIVE` accept local archives, and
+`PILOTDECK_PYTHON_BASE_URL` / `PILOTDECK_UV_BASE_URL` support mirrors; checksum checks
+still apply. `PILOTDECK_PYTHON_DESTINATION` selects an isolated build output.
+
+The installed base is immutable. A version-and-location keyed venv under
+`PILOT_HOME/runtimes/python` provides `python`, `python3`, pip and writable additions,
+with bundled uv/uvx on PATH. `python -m pip install` and `uv pip install` target that
+venv; uncached additions require network access. Existing explicitly activated venvs
+and explicit MCP executables/environment selections take precedence. Disabling
+`runtime.python.enabled` removes the bundled capability from later turns, without
+deleting environments or interrupting old tasks. It is a preference, not an execution
+sandbox. An application upgrade creates a new venv; user additions are retained in
+the previous directory but are not copied automatically between Python payloads.
+
+Browser clients use the same Gateway capability and setting. Standalone Web/CLI
+deployments can prepare a matching payload and set `PILOTDECK_PYTHON_ROOT` to its
+absolute directory on the execution host. Without that payload they report
+unavailable and preserve the host's existing tools; browser-side Python is not used.
+External programs such as LibreOffice and Poppler remain separate dependencies.
+
+Run `pnpm run test:python` after preparing a native payload. Override
+`PILOTDECK_PYTHON_TEST_ROOT` to test an installed/copied payload; native checks are
+skipped only when no bundle is available in an ordinary source checkout. Desktop CI
+sets that path to the actual packaged payload on all six targets and additionally
+checks DEB and RPM installations. Tests cover offline documents/data/plots, writable
+package isolation, real shell and MCP execution, model context, and preference changes
+during a live Gateway turn. UI checks live beside the Advanced settings component.
+
 Pull requests that touch shared, UI, Docker, or desktop code run the Web
 regression workflow. Desktop-related pull requests also compile and test the
 desktop shell.
 
-The Web test job temporarily excludes `ui/e2e/**` (Playwright tests are not
-Vitest tests) and the upstream `streamSmoother.test.ts` fake-timer test. Both are
-known baseline failures; all other UI/server tests remain in the merge gate.
+The Web test job uses separate client/jsdom and server/Node Vitest projects.
+They collect `ui/src` and `ui/server`; Playwright E2E tests use their own runner.
+Desktop updater tests run in the Desktop checks job with desktop dependencies.
+See [test selection and maintenance](testing.md) for local commands and
+guidance on keeping regression coverage focused.
 
 ## Daily release policy
 
@@ -38,8 +86,8 @@ known baseline failures; all other UI/server tests remain in the merge gate.
 the latest unified release tag:
 
 - no production change: skip the release;
-- production change: build signed and notarized macOS arm64 and x64 installers,
-  an unsigned Windows installer, and Ubuntu x64 and arm64 DEBs and RHEL-family x64 and arm64 RPMs, then publish one
+- production change: build signed and notarized macOS installers, signed Windows
+  installers, Ubuntu DEBs, and RHEL-family RPMs for x64 and arm64, then publish one
   dated GitHub Release;
 - repeated manual release on the same date: use `-r2`, `-r3`, and so on.
 
@@ -124,28 +172,94 @@ largest existing revision for the date plus one, including manually skipped
 revisions, and rejects a manually requested version below any published version. Historical `desktop-v` tags
 and filename-based version guessing are not supported.
 
-Automatic update selection requires an exact platform and running-client architecture:
+`release.json` is the canonical release configuration. Its `schemaVersion` remains
+`1` for installed clients; additive `artifactSchemaVersion: 1`, `format` and
+`roles` fields distinguish initial installers (`install`), updater payloads
+(`update`) and generated legacy metadata (`compatibility`). Older JSON manifests
+without these fields remain readable. The release job hashes payloads first,
+derives all eight YML feeds from those records, then records the feeds' hashes in
+the same JSON and checksum file. Builder-generated feeds are replaced, not merged
+as a second source of release metadata.
+
+Automatic update selection requires an exact platform and running-client architecture.
+New clients read JSON directly; the feed column documents compatibility for older clients:
 
 | Client | Update payload | Feed |
 | --- | --- | --- |
 | macOS arm64 | arm64 ZIP | `latest-arm64-mac.yml` |
 | macOS x64 (including Rosetta) | x64 ZIP | `latest-x64-mac.yml` |
 | Windows x64 | x64 setup EXE | `latest-x64.yml` |
+| Windows arm64 | arm64 setup EXE | `latest-arm64.yml` |
 | Ubuntu x64 | x64 DEB | `latest-linux.yml` |
 | Ubuntu arm64 | arm64 DEB | `latest-linux-arm64.yml` |
 | RHEL-family x64 | x64 RPM | `latest-rpm-linux.yml` |
 | RHEL-family arm64 | arm64 RPM | `latest-rpm-linux-arm64.yml` |
 
-DMGs remain available for initial Mac installation. Each Mac build produces its
-own feed, renamed before artifact upload so the matrix jobs cannot overwrite one
-another's metadata. Each feed contains only its own architecture. CI verifies all
-five feeds, both ZIPs and both DEBs before publishing. Full downloads are used initially;
-blockmaps and differential updates are not required.
+The release download table and OBS website pointer list DMGs for Mac users.
+ZIPs remain in the full release assets for native automatic updates, including
+old clients; GitHub's raw Assets list still exposes them. CI verifies all ten
+payloads and eight generated feeds before publication and again before OBS sync.
+New releases also publish the four external `.exe.blockmap` and `.zip.blockmap`
+files. They are checksummed compatibility assets, not installer choices; the
+eight legacy YML feeds retain their existing shape. Release verification requires
+nonempty gzip v2 maps with valid block sizes covering the corresponding payload.
+GitHub publication and OBS synchronization include these files before promoting
+the release pointer. Older manifests without differential metadata remain valid
+for repair and installed-client compatibility.
+
+### Differential downloads and recovery
+
+The additive `release.json` boolean `differentialUpdates: true` enables best-effort
+block reuse on Windows NSIS and macOS ZIP updates when the selected architecture
+has a checksummed blockmap. Missing/false/unknown capability values, incompatible
+maps and Linux DEB/RPM targets retain full downloads. The client still reconstructs
+one complete package, verifies SHA-512 and SHA-256, and uses the same native
+installer and signature policy. This reduces network transfer, not the staging
+space or necessarily the extraction/install time. Shell and runtime versions
+remain one release; running files are never patched in place by the downloader.
+
+The pinned electron-updater uses a cached installer (`installer.exe` on Windows,
+`update.zip` on macOS) and an old blockmap. Historical map addresses use the same
+route's old release tag, including same-day revisions; no remote-supplied host is
+accepted. Single Range requests avoid reliance on multipart proxy/CDN support.
+Responses must honor the exact range and length. Unsupported Range, unavailable
+or malformed maps, missing/corrupt caches, reconstruction checksum failures and
+connection deadlines fall back to the full package. An unsuccessful attempt
+forces subsequent routes/retries to full download, with version and hashes still
+pinned. Cancellation aborts the operation instead of starting fallback downloads.
+Download failures do not stop services or install partial packages.
+
+Pause and cancellation cover blockmaps, full transfers and Range requests.
+Blockmaps have an 8 MiB compressed/32 MiB expanded limit and a 15-second request
+budget; active download connections have a 15-second inactivity deadline.
+Pausing suspends those download deadlines. Local block copying is excluded from
+the network stall watchdog; verification/installation still waits for Resume.
+Local copying may continue while network consumption is paused. Differential
+progress reports downloaded bytes, not bytes reused from disk.
+
+The existing OBS retention policy remains unchanged. If a historical map has
+expired and is absent from the local cache, full download remains supported.
+First updates after enabling this feature may be full, especially on macOS,
+where clients that disabled differential downloads did not retain `update.zip`.
+Real transfer savings depend on the changed artifacts and must be measured.
+
+To disable differential use for a release, set the repository Actions variable
+`PILOTDECK_DIFFERENTIAL_UPDATES=0` before publication (the same environment variable
+works for local manifest generation). Maps remain required so disabling the
+optimization cannot hide an incomplete build. Publish a new revision to change
+this policy; never mutate an immutable release or its checksums. An installed
+client can immediately use the full path with
+`PILOTDECK_DISABLE_DIFFERENTIAL_UPDATES=1` in its launch environment. These controls
+do not downgrade installed applications or roll back user data. Native installer
+file rollback and runtime recovery retain their existing platform-specific limits.
+
+### Download and installation lifecycle
 
 **Update and restart** is one explicit user action. The Electron main process
-uses the shared release discovery module, then pins electron-updater's generic
-feed to that exact release tag across every route. It checks the feed version, file names,
-architecture, sizes and SHA-512 hashes against `release.json` before downloading.
+uses the shared release discovery module, then gives electron-updater a custom
+provider containing the exact selected JSON payload and release tag. New clients
+never fetch a YML update feed. The same version, file name, architecture, size and
+SHA-512 hash stay pinned across every route and retry.
 Electron-updater verifies the downloaded payload; the client also verifies its
 SHA-256 before stopping the gateway and Web server. Finally it invokes the
 updater to install and relaunch the application. macOS performs native signature
@@ -158,7 +272,7 @@ updates automatically on quit.
 Before installation, runtime shutdown confirms that managed descendants exited;
 a failed stop aborts installation and retains process records for recovery.
 
-Release checks, manifests, update feeds and payload downloads share the
+Release checks, manifests and payload downloads share the
 `electron-updater` network session. It reads the user's `proxy.url` and
 `proxy.noProxy`; proxy environment variables (`PILOTDECK_PROXY`, `https_proxy`,
 `HTTPS_PROXY`, `http_proxy`, `HTTP_PROXY`, in that order) take precedence.
@@ -166,16 +280,39 @@ Loopback traffic always bypasses the proxy for the local Mac updater. Proxy
 settings refresh before checking and remain fixed during an active update.
 Without an application or environment proxy, Electron uses system proxy settings.
 
+Before offering an update, the client samples the selected payload on both
+routes, stopping as soon as one works. If neither works within eight seconds,
+the new version stays visible with a temporary-unavailability message and a
+Check again action. Starting an update rechecks readiness. HTML/error responses,
+empty bodies and known size mismatches are rejected. This is a reachability
+check, not a guarantee against a later outage; full-download hashes remain required.
+
 Before downloading, the client samples up to 256 KiB of the selected installer
-from both routes concurrently, with a 5-second deadline and no disk writes.
+from both routes concurrently, with a 5-second deadline per request and no disk writes.
 After the first successful sample, it gives the competitor 150 ms to finish,
 then aborts outstanding sampling instead of waiting for the slow route's timeout.
 It also aborts the sample if a host ignores Range. Elapsed sample time determines
 order. A remembered successful route gets a 100 ms preference when speeds are
 similar; without history an exact tie prefers OBS. Failed or unfinished probes
-remain fallbacks because some servers reject Range.
+remain fallbacks for transient network failures. A server rejecting Range with
+400/405/416 gets one bounded plain GET attempt; it still stops after 256 KiB.
 There is no IP geolocation or language-based region assumption: actual network
 conditions, including the configured proxy, determine the choice each time.
+
+Daily Release calls the reusable OBS synchronization workflow immediately after
+GitHub publication, passing the exact tag rather than rediscovering Latest.
+Manual and scheduled repair runs remain available. OBS uploads and verifies all
+assets (including YML and ZIP), then promotes `latest.json` last. A delayed older
+job cannot move the pointer backwards; conflicting bytes under an existing tag
+require a new revision. GitHub can become visible before OBS finishes; clients
+fall back to GitHub for that same version. Sync failure leaves the old OBS pointer
+intact unless publication itself failed ambiguously, in which case the saved
+pointer and readback evidence support manual recovery.
+
+Keep generating YML while supported installed clients need it. Once those clients
+are retired, remove compatibility generation and its publication gate together;
+new clients require no protocol change. The builder's local `app-update.yml`
+is library/cache configuration, not a second remote release manifest, and stays.
 
 Only a fully downloaded and verified package records route success. The client
 atomically saves the repository, official route ID and success timestamp in
@@ -234,9 +371,13 @@ work on those systems.
 
 ## Required GitHub Secrets
 
-Release builds deliberately fail when macOS code signing or notarization is
-unavailable. Windows packaging remains explicitly unsigned, matching the
-existing `desktopdev` release behavior.
+Release builds deliberately fail when macOS code signing/notarization or Windows
+code signing is unavailable. Daily Release always requires the signed Windows
+job to succeed before publication; there is no unsigned release fallback.
+Configure and validate the [Windows signing environment](#windows-signing)
+before releasing. PR CI remains unsigned and does not receive signing secrets.
+Passing helper tests or checksum checks does not establish
+that a published installer has a valid publisher signature.
 
 macOS:
 
@@ -253,8 +394,9 @@ does not match its installer, and verifies the Electron executable, bundled
 Node.js, and native runtime modules before uploading the DMG.
 
 The macOS certificate must be a Developer ID Application certificate. The
-Windows installer does not require a signing certificate. GitHub's automatic
-`GITHUB_TOKEN` is used to publish the Release.
+Windows certificate requirements depend on the signing mode above. GitHub's
+automatic `GITHUB_TOKEN` is used to publish the Release. The published-Windows
+signature audit checks the actual release payloads independently of build tests.
 
 ## Manual builds
 
@@ -301,12 +443,23 @@ check with the installed development Electron binary:
 pnpm --filter pilotdeck-desktop compile
 pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-network.cjs
 pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-download.cjs
+pnpm --filter pilotdeck-desktop exec electron scripts/verify-differential-update.cjs
 node apps/desktop/scripts/verify-installer.cjs
 ```
 
 The download check also runs in Windows CI. It uses local HTTP fixtures to test
 pause/resume, cancellation, retry and a chunked transfer lasting more than 30 seconds
 without Content-Length or upstream progress events; installation is stubbed.
+
+The differential check runs in Windows and macOS CI. It generates blockmaps with
+the installed builder and uses real Electron requests and NSIS/Mac updater download
+paths against an isolated loopback origin. It requires actual reduced transfer,
+byte-identical reconstruction, full fallback for cache/map/Range failures, bounded
+stalls and trickling maps, pause/resume, cancellation without installation or
+fallback, route switching, kill switches, SHA rejection, injected publisher
+rejection and injected `ENOSPC`. The Mac native handoff and installer execution
+are intercepted; these tests do not certify Authenticode, macOS signatures,
+production CDN/proxies, actual volume exhaustion, or signed installed upgrades.
 
 The network check requires OpenSSL and uses a temporary local HTTPS origin and
 proxy, without contacting GitHub or installing anything. It covers both config
@@ -380,3 +533,99 @@ RPM builds and validation are documented in [RPM desktop support](redhat-desktop
 The reusable Desktop Smoke / RPM workflow builds both architectures in Rocky Linux 9,
 checks installation and native modules on that baseline, and starts the installed
 RPM under X11 and Wayland in the same job. Both installers and feeds are release gates.
+
+## Windows signing
+
+Windows packaging loads `electron-builder.config.cjs`. On a configured Windows
+machine, `pack` and every `dist:win*` command automatically sign the PilotDeck
+application, installer payload helper, NSIS uninstaller, and final installer or
+portable EXE. Bundled third-party executables retain their original signatures.
+Every signature uses SHA-256 and an RFC3161 timestamp, then passes SignTool
+`verify /pa /all` and a certificate thumbprint/publisher/timestamp check.
+Signing errors stop packaging. The updater receives the expected publisher name.
+
+For local Certum SimplySign signing, log in to SimplySign Desktop under the same
+Windows account that runs the build. DSignTool is an optional manual UI; automated
+builds call Microsoft's Windows SDK SignTool directly. No PFX export is needed.
+Create `%LOCALAPPDATA%\PilotDeck\build-signing.json` with public metadata only:
+
+```json
+{
+  "certificateSha1": "YOUR_40_CHARACTER_CERTIFICATE_THUMBPRINT",
+  "publisherName": "EXACT_CERTIFICATE_COMMON_NAME",
+  "signToolPath": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\SDK_VERSION\\x64\\signtool.exe",
+  "timestampServer": "http://time.certum.pl"
+}
+```
+
+Do not put a PIN, OTP seed or private key in this file or the repository.
+`PILOTDECK_WINDOWS_SIGNING_CONFIG` selects another local config file.
+`PILOTDECK_WINDOWS_CERT_SHA1`, `PILOTDECK_WINDOWS_PUBLISHER` and `SIGNTOOL_PATH`
+override individual values. `PILOTDECK_WINDOWS_SIGNING=required` rejects missing
+configuration; `off` explicitly produces an unsigned development build. Without
+configuration, `auto` keeps the existing unsigned build behavior. A present but
+invalid config fails rather than silently producing unsigned output. These
+settings do not change macOS/Linux packaging. SimplySign may require a fresh login
+before a later build; signing does not make its desktop session permanent.
+
+```powershell
+pnpm --filter pilotdeck-desktop run dist:win:x64
+node apps/desktop/scripts/windows-signing.cjs verify PATH_TO_SETUP_EXE
+```
+
+### GitHub hosted runner option
+
+The Windows workflow uses a cloud backend for signed builds using the independent
+[ssign client](https://github.com/Le-Syl21/ssign). It does not need a self-hosted
+runner or an online desktop PC. `setup-cloud-signing.ps1` pins v0.1.8 and the ZIP's
+SHA-256 digest; this version includes the Certum EV intermediate certificate fix.
+This is not a Certum-supported integration. A successful local SignTool test does
+not validate the cloud client; complete a real cloud build before releasing.
+
+Repository administrator setup:
+
+1. Create the GitHub Environment `windows-signing`, restrict its deployment
+   branches to `main`, and add required reviewers if each signature needs approval.
+2. Add environment secrets `CERTUM_EMAIL` (SimplySign login) and `CERTUM_OTP`
+   (the long-lived base32 TOTP seed or complete `otpauth://` URI from the activation
+   QR backup, **not** a current six-digit code). Enter these directly in GitHub;
+   never put them in chat, workflow inputs, command arguments or build artifacts.
+3. Add environment variables `WINDOWS_CERT_SHA1` and `WINDOWS_PUBLISHER` matching
+   the certificate. Both are public metadata. For certificate renewal, update the
+   thumbprint and repeat the cloud test; retain the publisher if its CN is unchanged.
+4. After the workflow changes are on `main`, run **Windows Signing Check** for a
+   small real signature/verification probe, then run the **Windows** workflow
+   with `require_windows_signing=true`. It builds both native architectures, signs
+   each EXE before generating updater hashes, and fails on invalid signatures.
+5. Daily Release passes `require_windows_signing=true` and `secrets: inherit` so
+   the reusable Windows job can resolve secrets from `windows-signing`. Missing or
+   invalid credentials, signatures or timestamps stop the Windows job before
+   artifact upload and block the entire release. PR checks retain the reusable
+   workflow's unsigned default. Manual Desktop Build exposes
+   `require_windows_signing` and only uploads build artifacts, never a Release.
+
+The independent published-signature audit remains a second check after release;
+it is not a substitute for the build-time signing and verification gate. Sign
+the final installer before generating its blockmap and updater checksums; do not
+sign or replace immutable release assets after publication.
+
+An activation QR backup must contain the actual TOTP seed/`otpauth://` URI for
+this client. An activation URL alone is not sufficient; do not upload the QR image
+to an online decoder. Confirm the backup format locally before configuring CI.
+
+Only trusted `main` runs in `OpenBMB/PilotDeck` may request signing. Dependencies,
+tests and runtime compilation run before signing secrets are injected. The two
+architecture jobs are serialized when signing to avoid consuming one TOTP twice.
+Credentials are scoped to the packaging step, and its temporary session cache is
+removed even on failure; it must never be cached/uploaded. Signatures are checked
+with Microsoft's verifier and must match the configured certificate. ssign v0.1.8
+selects the first cloud card; accounts with several cards require a client with
+explicit certificate selection before use. The TOTP seed grants signing authority,
+so GitHub access to the environment must be controlled accordingly.
+
+Linux package signing is separate: RPM and APT repository signing use OpenPGP/GPG
+keys. This Authenticode certificate cannot be substituted for those keys. Running
+ssign on Linux signs Windows PE files, not Linux DEB/RPM packages. See
+[Certum's SignTool instructions](https://files.certum.eu/documents/manual_en/CS-Code_Signing_in_the_Cloud_Signtool_jarsigner_signing.pdf),
+[RPM signing](https://rpm.org/docs/6.1.x/man/rpmsign.1) and
+[APT authentication](https://manpages.debian.org/unstable/apt/apt-secure.8.en.html).

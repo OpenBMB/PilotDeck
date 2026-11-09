@@ -1,0 +1,981 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { parse as parseYaml } from 'yaml';
+import useLlmSetup from '../hooks/useLlmSetup';
+import ConnectionStep from './ConnectionStep';
+import ProviderStep from './ProviderStep';
+import '../Onboarding.css';
+
+// Exercise the real setup hook and steps together without shipping a test-only
+// composition as a production component.
+function LlmConfigurationStep({ onSaved }: { onSaved: () => void | Promise<void> }) {
+  const llm = useLlmSetup({ onSaved });
+  return (
+    <div className="onboarding-shell">
+      <ProviderStep llm={llm} onBack={() => undefined} onContinue={() => undefined} />
+      <ConnectionStep llm={llm} onBack={() => undefined} onContinue={llm.handleSave} />
+    </div>
+  );
+}
+
+const mocks = vi.hoisted(() => ({
+  authenticatedFetch: vi.fn(),
+  fetchProviderModels: vi.fn(),
+  fetchRemoteDefaultModels: vi.fn(),
+  language: 'en',
+}));
+
+const connectionTestResult = (modelId: string, imageInput: 'supported' | 'unsupported' | 'unknown' = 'unsupported') => ({
+  testId: 'test-123',
+  status: imageInput === 'unknown' ? 'manual_input_required' : 'passed',
+  models: [{ modelId, textInput: 'supported', imageInput, error: null }],
+  error: imageInput === 'unknown'
+    ? { code: 'IMAGE_CAPABILITY_UNKNOWN', message: 'Manual input required.' }
+    : null,
+});
+
+vi.mock('react-i18next', async () => {
+  const enOnboarding = (await import('../../../../i18n/locales/en/onboarding.json')).default as Record<string, unknown>;
+  const lookupTranslation = (key: string) => {
+    const value = key.split('.').reduce<unknown>(
+      (current, segment) => (current && typeof current === 'object' ? (current as Record<string, unknown>)[segment] : undefined),
+      enOnboarding,
+    );
+    return typeof value === 'string' ? value : key;
+  };
+
+  return {
+    useTranslation: () => ({
+      t: lookupTranslation,
+      i18n: { language: mocks.language, changeLanguage: vi.fn() },
+    }),
+  };
+});
+
+vi.mock('../../../../utils/api', () => ({
+  authenticatedFetch: mocks.authenticatedFetch,
+}));
+
+vi.mock('../../../../shared/modelListApi', () => ({
+  fetchProviderModels: mocks.fetchProviderModels,
+  fetchRemoteDefaultModels: mocks.fetchRemoteDefaultModels,
+}));
+
+describe('LlmConfigurationStep', () => {
+  beforeEach(() => {
+    mocks.language = 'en';
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null, environmentCredentialProviderIds: ['openrouter', 'deepseek', 'moonshot'] }) };
+      }
+      if (url === '/api/v1/providers') {
+        return {
+          ok: true,
+          json: async () => ({
+            providers: [
+              { id: 'anthropic', displayName: 'Anthropic', protocol: 'anthropic', endpoint: 'https://api.anthropic.com', logoUrl: '/onboarding/providers/anthropic.svg', requiresApiKey: true },
+              { id: 'openai', displayName: 'OpenAI', protocol: 'openai', endpoint: 'https://api.openai.com/v1', logoUrl: '/onboarding/providers/openai.svg', requiresApiKey: true },
+              { id: 'openai-responses', displayName: 'OpenAI (Responses API)', protocol: 'openai-responses', endpoint: 'https://api.openai.com/v1', logoUrl: '/onboarding/providers/openai.svg', requiresApiKey: true },
+              { id: 'dashscope', displayName: '阿里云百炼 (DashScope)', protocol: 'openai', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', logoUrl: '/onboarding/providers/bailian-color.svg', requiresApiKey: true },
+              { id: 'deepseek', displayName: 'DeepSeek', protocol: 'openai', endpoint: 'https://api.deepseek.com/v1', logoUrl: '/onboarding/providers/deepseek-color.svg', requiresApiKey: true },
+              { id: 'google', displayName: 'Google AI (Gemini)', protocol: 'google', endpoint: 'https://generativelanguage.googleapis.com', logoUrl: '/onboarding/providers/gemini-color.svg', requiresApiKey: true },
+              { id: 'openrouter', displayName: 'OpenRouter', protocol: 'openai', endpoint: 'https://openrouter.ai/api/v1', logoUrl: '/onboarding/providers/openrouter-color.svg', requiresApiKey: true },
+              { id: 'ollama', displayName: 'Ollama', protocol: 'openai', endpoint: 'http://localhost:11434/v1', logoUrl: '/onboarding/providers/ollama.svg', requiresApiKey: false },
+              { id: 'minimax', displayName: 'MiniMax', protocol: 'openai', endpoint: 'https://api.minimaxi.com/v1', logoUrl: '/onboarding/providers/minimax-color.svg', requiresApiKey: true },
+              { id: 'moonshot', displayName: 'Moonshot AI (Kimi)', protocol: 'openai', endpoint: 'https://api.moonshot.cn/v1', logoUrl: '/onboarding/providers/kimi.svg', requiresApiKey: true },
+              { id: 'volc_ark', displayName: '火山方舟 (Volcano Ark)', protocol: 'openai', endpoint: 'https://ark.cn-beijing.volces.com/api/v3', logoUrl: '/onboarding/providers/volcengine-color.svg', requiresApiKey: true },
+              { id: 'zhipu', displayName: '智谱 Z.AI', protocol: 'openai', endpoint: 'https://api.z.ai/api/paas/v4', logoUrl: '/onboarding/providers/zhipu-color.svg', requiresApiKey: true },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    mocks.fetchRemoteDefaultModels.mockResolvedValue([]);
+    mocks.fetchProviderModels.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ['OpenAI', 'openai', 'gpt-4.1', 1047576, 32768],
+    ['Custom', 'private-proxy', 'vendor/claude-sonnet-4.5', 200000, 8192],
+  ] as const)('preserves known model limits when onboarding %s', async (providerName, providerId, modelId, context, output) => {
+    let savedRaw = '';
+    const onSaved = vi.fn();
+    const originalFetch = mocks.authenticatedFetch.getMockImplementation()!;
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config') {
+        if (init?.method === 'PUT') savedRaw = JSON.parse(String(init.body)).raw;
+        return { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return originalFetch(url, init);
+    });
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(await screen.findByRole('button', { name: providerName }));
+    if (providerName === 'Custom') {
+      fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: providerId } });
+      fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://proxy.test/v1' } });
+    }
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'test-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: modelId } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(parseYaml(savedRaw).model.providers[providerId].models[modelId].capabilities).toEqual({
+      maxContextTokens: context, maxOutputTokens: output,
+    });
+  });
+
+  it('fetches Ollama models through the no-key provider path without also running catalog fallback', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Ollama$/ }).querySelector('img')?.getAttribute('src'))
+        .toBe('/onboarding/providers/ollama.svg');
+    });
+
+    mocks.fetchRemoteDefaultModels.mockClear();
+    mocks.fetchProviderModels.mockClear();
+    mocks.fetchProviderModels.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    fireEvent.click(screen.getByRole('button', { name: /^Ollama$/ }));
+
+    await waitFor(() => {
+      expect(mocks.fetchProviderModels).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mocks.fetchProviderModels).toHaveBeenCalledWith(expect.objectContaining({
+      providerId: 'ollama',
+      protocol: 'openai',
+      baseUrl: 'http://localhost:11434/v1',
+      apiKey: '',
+    }));
+    expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'qwen3:0.6b' })).toBeTruthy();
+    });
+    expect(screen.queryByText(/Using bundled model list/)).toBeNull();
+    expect(screen.getByText('None')).toBeTruthy();
+  });
+
+  it('fetches DeepSeek models through its environment API key before falling back to bundled models', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
+    });
+    mocks.fetchRemoteDefaultModels.mockClear();
+    mocks.fetchProviderModels.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+
+    await waitFor(() => {
+      expect(mocks.fetchProviderModels).toHaveBeenCalledWith(expect.objectContaining({
+        providerId: 'deepseek',
+        apiKey: '',
+      }));
+    });
+    expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Fetch model list' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'deepseek-v4-pro' })).toBeTruthy();
+    expect(screen.getByText('None')).toBeTruthy();
+  });
+
+  it('fetches Kimi models through its environment API key before falling back to bundled models', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
+    });
+    mocks.fetchRemoteDefaultModels.mockClear();
+    mocks.fetchProviderModels.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Moonshot AI \(Kimi\)$/ }));
+
+    await waitFor(() => {
+      expect(mocks.fetchProviderModels).toHaveBeenCalledWith(expect.objectContaining({
+        providerId: 'moonshot',
+        apiKey: '',
+      }));
+    });
+    expect(mocks.fetchRemoteDefaultModels).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Fetch model list' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'kimi-k2.6' })).toBeTruthy();
+    expect(screen.getByText('None')).toBeTruthy();
+  });
+
+  it('tests a catalog provider with an empty form key so the server can use its environment key', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /^OpenRouter$/ }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'anthropic/claude-sonnet-4.6' })).toBeTruthy();
+    });
+
+    expect(screen.queryByRole('button', { name: /Test connection/i })).toBeNull();
+    expect(mocks.authenticatedFetch).not.toHaveBeenCalledWith(
+      '/api/config/test-connections',
+      expect.anything(),
+    );
+
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/test-connections') {
+        return {
+          ok: true,
+          json: async () => connectionTestResult('anthropic/claude-sonnet-4.6', 'supported'),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'anthropic/claude-sonnet-4.6' }));
+    const button = screen.getByRole('button', { name: 'Test connection anthropic/claude-sonnet-4.6' });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button);
+
+    expect(await screen.findByRole('button', { name: 'Retest anthropic/claude-sonnet-4.6' })).toBeTruthy();
+    const testCall = calls.find((call) => call.url === '/api/config/test-connections');
+    expect(JSON.parse(String(testCall?.init?.body))).toMatchObject({
+      providerId: 'openrouter',
+      apiKey: '',
+      models: ['anthropic/claude-sonnet-4.6'],
+    });
+  });
+
+  it('restores an existing environment-backed provider even when its saved key is blank', async () => {
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/config/provider') {
+        return {
+          ok: true,
+          json: async () => ({
+            exists: true,
+            environmentCredentialProviderIds: ['moonshot'],
+            provider: {
+              type: 'openai',
+              baseUrl: 'https://api.moonshot.cn/v1',
+              apiKey: '',
+              model: 'kimi-k2.6',
+            },
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Uses MOONSHOT_API_KEY when empty')).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: 'Test connection kimi-k2.6' })).toHaveProperty('disabled', false);
+  });
+
+  it('requires a model but not a connection test to continue', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+
+    const available = await screen.findByRole('button', { name: 'deepseek-v4-pro' });
+    expect(screen.getByText('None')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).some(
+      (button) => (button as HTMLButtonElement).disabled,
+    )).toBe(true);
+
+    fireEvent.click(available);
+
+    expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
+    expect(screen.getByText('deepseek-v4-pro')).toBeTruthy();
+    expect(screen.queryByText('None')).toBeNull();
+    expect(screen.getByText('Not tested')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
+    )).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove model ID' }));
+
+    expect(screen.getByRole('button', { name: 'deepseek-v4-pro' })).toBeTruthy();
+    expect(screen.getByText('None')).toBeTruthy();
+  });
+
+  it('requires an API key when the catalog environment variable is unavailable', async () => {
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null, environmentCredentialProviderIds: [] }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /^DeepSeek$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'deepseek-v4-pro' }));
+
+    expect(screen.getByLabelText(/API key/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).some(
+      (button) => (button as HTMLButtonElement).disabled,
+    )).toBe(true);
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
+    )).toBe(true);
+  });
+
+  it('tests only the clicked model ID and keeps other selected models untested', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'deepseek-v4-pro' }));
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'deepseek-v4-flash' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/config/test-connections') {
+        return {
+          ok: true,
+          json: async () => connectionTestResult('deepseek-v4-pro'),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection deepseek-v4-pro' }));
+
+    await waitFor(() => {
+      const testCalls = mocks.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/config/test-connections');
+      expect(testCalls).toHaveLength(1);
+      expect(JSON.parse(String(testCalls[0]?.[1]?.body))).toEqual(expect.objectContaining({
+        models: ['deepseek-v4-pro'],
+      }));
+    });
+
+    expect(await screen.findByRole('button', { name: 'Retest deepseek-v4-pro' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Test connection deepseek-v4-flash' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
+    )).toBe(true);
+    expect(screen.getByText('deepseek-v4-flash')).toBeTruthy();
+  });
+
+  it('places a typed model ID into the selected list on enter', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+
+    const input = screen.getByPlaceholderText('model-id');
+    fireEvent.change(input, { target: { value: 'my-custom-model' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(screen.queryByPlaceholderText('model-id')).toBeNull();
+    expect(screen.getByText('my-custom-model')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'my-custom-model' })).toBeNull();
+    expect(screen.queryByText('None')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove model ID' }));
+    expect(screen.getByRole('button', { name: 'my-custom-model' })).toBeTruthy();
+  });
+
+  it('places add model first, filters available models, and can hide a candidate', async () => {
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^DeepSeek$/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^DeepSeek$/ }));
+
+    const addButton = await screen.findByRole('button', { name: 'Add model ID' });
+    expect(addButton.parentElement?.firstElementChild).toBe(addButton);
+
+    fireEvent.change(screen.getByPlaceholderText('Search model ID'), { target: { value: 'flash' } });
+    expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText('Search model ID'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from available deepseek-v4-pro' }));
+    expect(screen.queryByRole('button', { name: 'deepseek-v4-pro' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'deepseek-v4-flash' })).toBeTruthy();
+  });
+
+  it('creates a passing connection-test record and binds it when saving', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      }
+      if (url === '/api/config/test-connections') {
+        return {
+          ok: true,
+          json: async () => connectionTestResult('gpt-5.6-luna', 'supported'),
+        };
+      }
+      if (url === '/api/config') {
+        if (init?.method === 'PUT') return { ok: true, json: async () => ({ raw: '' }) };
+        return { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://llm-center.modelbest.co/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+    expect(await screen.findByRole('button', { name: 'Retest gpt-5.6-luna' })).toBeTruthy();
+
+    const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
+    fireEvent.click(continueButtons[continueButtons.length - 1]!);
+
+    await waitFor(() => {
+      const testCall = calls.find((call) => call.url === '/api/config/test-connections');
+      expect(testCall).toBeTruthy();
+      expect(JSON.parse(String(testCall?.init?.body))).toMatchObject({
+        providerId: 'modelbest',
+        protocol: 'openai',
+        endpoint: 'https://llm-center.modelbest.co/v1',
+        models: ['gpt-5.6-luna'],
+      });
+      const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+      const saveBody = JSON.parse(String(saveCall?.init?.body));
+      expect(saveBody.raw).toContain('modelbest:');
+      expect(saveBody.raw).toContain('gpt-5.6-luna');
+      expect(saveBody.modelTestBindings).toEqual([{ testId: 'test-123' }]);
+    });
+  });
+
+  it.each(['en', 'zh-CN'])('saves a complete custom model with the selected %s language without a connection test', async (language) => {
+    mocks.language = language;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config') return { ok: true, json: async () => ({ raw: '' }) };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'invalid-url' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    expect(screen.getAllByRole('button', { name: 'Continue' }).some((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+    const body = JSON.parse(String(saveCall?.init?.body));
+    const saved = parseYaml(body.raw) as {
+      model: { providers: Record<string, { models: Record<string, unknown> }> };
+      alwaysOn: { language: string };
+    };
+    expect(body.modelTestBindings).toBeUndefined();
+    expect(saved.model.providers.modelbest.models['gpt-5.6-luna']).toEqual({capabilities:{maxContextTokens:262144,maxOutputTokens:32768}});
+    expect(saved.alwaysOn.language).toBe(language);
+    expect(calls.some((call) => call.url === '/api/config/test-connections')).toBe(false);
+  });
+
+  it('allows saving after a failed single-model test', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        return { ok: false, json: async () => ({ error: { message: 'Invalid credential' }, status: 'failed' }) };
+      }
+      if (url === '/api/config') return { ok: true, json: async () => ({ raw: '' }) };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+
+    expect(await screen.findByText('Invalid credential')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+    expect(JSON.parse(String(saveCall?.init?.body)).modelTestBindings).toBeUndefined();
+  });
+
+  it('binds only the independently passed model tests', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        const modelId = JSON.parse(String(init?.body)).models[0] as string;
+        return { ok: true, json: async () => ({ ...connectionTestResult(modelId), testId: `test-${modelId}` }) };
+      }
+      if (url === '/api/config') return { ok: true, json: async () => ({ raw: '' }) };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    for (const modelId of ['model-a', 'model-b']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+      fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: modelId } });
+      fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection model-a' }));
+    expect(await screen.findByRole('button', { name: 'Retest model-a' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Test connection model-b' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection model-b' }));
+    expect(await screen.findByRole('button', { name: 'Retest model-b' })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const tests = calls.filter((call) => call.url === '/api/config/test-connections');
+    expect(tests.map((call) => JSON.parse(String(call.init?.body)).models)).toEqual([['model-a'], ['model-b']]);
+    const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+    expect(JSON.parse(String(saveCall?.init?.body)).modelTestBindings).toEqual([
+      { testId: 'test-model-a' }, { testId: 'test-model-b' },
+    ]);
+  });
+
+  it('saves without test bindings when a passing test has expired', async () => {
+    const saves: Array<{ raw: string; modelTestBindings?: Array<{ testId: string }> }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        return { ok: true, json: async () => connectionTestResult('model-a') };
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        saves.push(JSON.parse(String(init.body)));
+        return saves.length === 1
+          ? { ok: false, json: async () => ({ code: 'TEST_EXPIRED', error: 'Connection test has expired.', testId: 'test-123' }) }
+          : { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'model-a' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection model-a' }));
+    expect(await screen.findByRole('button', { name: 'Retest model-a' })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(saves).toHaveLength(2);
+    expect(saves[0].modelTestBindings).toEqual([{ testId: 'test-123' }]);
+    expect(saves[1].modelTestBindings).toBeUndefined();
+  });
+
+  it('preserves other passed model bindings when one test expires', async () => {
+    const saves: Array<{ raw: string; modelTestBindings?: Array<{ testId: string }> }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        const modelId = JSON.parse(String(init?.body)).models[0] as string;
+        return { ok: true, json: async () => ({ ...connectionTestResult(modelId), testId: `test-${modelId}` }) };
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        saves.push(JSON.parse(String(init.body)));
+        return saves.length === 1
+          ? { ok: false, json: async () => ({ code: 'TEST_EXPIRED', error: 'Connection test has expired.', testId: 'test-model-a' }) }
+          : { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    for (const modelId of ['model-a', 'model-b']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+      fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: modelId } });
+      fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+      fireEvent.click(screen.getByRole('button', { name: `Test connection ${modelId}` }));
+      expect(await screen.findByRole('button', { name: `Retest ${modelId}` })).toBeTruthy();
+    }
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(saves.map((save) => save.modelTestBindings)).toEqual([
+      [{ testId: 'test-model-a' }, { testId: 'test-model-b' }],
+      [{ testId: 'test-model-b' }],
+    ]);
+    expect(screen.getByRole('button', { name: 'Test connection model-a' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retest model-b' })).toBeTruthy();
+  });
+
+  it('cancels an unfinished model test when continuing without blocking the save', async () => {
+    const saves: Array<{ modelTestBindings?: Array<{ testId: string }> }> = [];
+    let testSignal: AbortSignal | undefined;
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        testSignal = init?.signal as AbortSignal;
+        return new Promise((_resolve, reject) => {
+          testSignal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+        });
+      }
+      if (url === '/api/config' && init?.method === 'PUT') {
+        saves.push(JSON.parse(String(init.body)));
+        return { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'model-a' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection model-a' }));
+    await waitFor(() => expect(testSignal).toBeDefined());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Continue' }).at(-1)!);
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(testSignal?.aborted).toBe(true);
+    expect(saves).toHaveLength(1);
+    expect(saves[0]?.modelTestBindings).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Test connection model-a' })).toBeTruthy();
+  });
+
+  it('preserves provider models that are not selected during onboarding', async () => {
+    const existingRaw = `
+schemaVersion: 1
+model:
+  providers:
+    modelbest:
+      protocol: openai
+      url: https://old.example/v1
+      apiKey: old-key
+      models:
+        legacy-model:
+          multimodal:
+            input: [text]
+        gpt-5.6-luna:
+          maxTokens: 2048
+          capabilities:
+            maxContextTokens: 180000
+            maxOutputTokens: 8192
+agent:
+  model: modelbest/gpt-5.6-luna
+`;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      }
+      if (url === '/api/config/test-connections') {
+        return {
+          ok: true,
+          json: async () => connectionTestResult('gpt-5.6-luna', 'supported'),
+        };
+      }
+      if (url === '/api/config') {
+        if (init?.method === 'PUT') return { ok: true, json: async () => ({ raw: '' }) };
+        return { ok: true, json: async () => ({ raw: existingRaw }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://new.example/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'new-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+
+    expect(await screen.findByRole('button', { name: 'Retest gpt-5.6-luna' })).toBeTruthy();
+    const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
+    fireEvent.click(continueButtons[continueButtons.length - 1]!);
+
+    await waitFor(() => {
+      const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+      expect(saveCall).toBeTruthy();
+      const savedBody = JSON.parse(String(saveCall?.init?.body));
+      const savedConfig = parseYaml(savedBody.raw) as {
+        model: { providers: Record<string, { models: Record<string, unknown> }> };
+      };
+      const models = savedConfig.model.providers.modelbest.models;
+      expect(models['legacy-model']).toEqual({
+        multimodal: { input: ['text'] },
+      });
+      expect(models['gpt-5.6-luna']).toMatchObject({
+        maxTokens: 2048,
+        capabilities: { maxContextTokens: 180000, maxOutputTokens: 8192 },
+        multimodal: { input: ['text', 'image'] },
+      });
+    });
+  });
+
+  it('ignores a connection result when the form changes while testing', async () => {
+    let resolveTest!: (response: Response) => void;
+    const pendingTest = new Promise<Response>((resolve) => { resolveTest = resolve; });
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      }
+      if (url === '/api/config/test-connections') return pendingTest;
+      if (url === '/api/config') return { ok: true, json: async () => ({ raw: '' }) };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-old' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Testing... gpt-5.6-luna' })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-new' } });
+    resolveTest({
+      ok: true,
+      json: async () => connectionTestResult('gpt-5.6-luna', 'supported'),
+    } as Response);
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retest gpt-5.6-luna' })).toBeNull());
+    expect(screen.getByText('Not tested')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
+    )).toBe(true);
+  });
+
+  it('normalizes custom provider IDs to lowercase for testing and saving', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      }
+      if (url === '/api/config/test-connections') {
+        return {
+          ok: true,
+          json: async () => connectionTestResult('gpt-5.6-luna'),
+        };
+      }
+      if (url === '/api/config') {
+        if (init?.method === 'PUT') return { ok: true, json: async () => ({ raw: '' }) };
+        return { ok: true, json: async () => ({ raw: '' }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'ModelBest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+
+    expect(await screen.findByRole('button', { name: 'Retest gpt-5.6-luna' })).toBeTruthy();
+    const testCall = calls.find((call) => call.url === '/api/config/test-connections');
+    expect(JSON.parse(String(testCall?.init?.body))).toMatchObject({ providerId: 'modelbest' });
+    const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
+    fireEvent.click(continueButtons[continueButtons.length - 1]!);
+    await waitFor(() => {
+      const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+      const body = JSON.parse(String(saveCall?.init?.body));
+      expect(body.raw).toContain('modelbest:');
+      expect(body.raw).not.toContain('ModelBest:');
+    });
+  });
+
+  it('keeps the test failed when manual image capability input is cancelled', async () => {
+    const calls: string[] = [];
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      calls.push(url);
+      if (url === '/api/config/provider') {
+        return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      }
+      if (url === '/api/config/test-connections') {
+        return {
+          ok: true,
+          json: async () => connectionTestResult('gpt-5.6-luna', 'unknown'),
+        };
+      }
+      if (url === '/api/config/test-connections/test-123/image-capabilities') {
+        return { ok: true, json: async () => connectionTestResult('gpt-5.6-luna') };
+      }
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    const cancelButtons = screen.getAllByRole('button', { name: 'Cancel' });
+    fireEvent.click(cancelButtons[cancelButtons.length - 1]!);
+    expect(await screen.findByText(/cancelled/i)).toBeTruthy();
+    expect(calls.filter((url) => url.includes('image-capabilities'))).toHaveLength(0);
+    expect(screen.getAllByRole('button', { name: 'Continue' }).every(
+      (button) => !(button as HTMLButtonElement).disabled,
+    )).toBe(true);
+  });
+
+  it('locks the form controls while save is in flight', async () => {
+    let resolveSave!: (response: { ok: boolean; json: () => Promise<{ raw: string }> }) => void;
+    const pendingSave = new Promise<{ ok: boolean; json: () => Promise<{ raw: string }> }>((resolve) => { resolveSave = resolve; });
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const onSaved = vi.fn();
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        return { ok: true, json: async () => connectionTestResult('gpt-5.6-luna') };
+      }
+      if (url === '/api/config' && init?.method === 'PUT') return pendingSave;
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-old' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'model-b' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove model ID' }).at(-1)!);
+    expect(screen.getByRole('button', { name: 'model-b' })).toBeTruthy();
+    const continueButtons = screen.getAllByRole('button', { name: 'Continue' });
+    fireEvent.click(continueButtons[continueButtons.length - 1]!);
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/config' && call.init?.method === 'PUT')).toBe(true));
+    expect(screen.getByLabelText('Provider ID')).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText('Endpoint')).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText(/API key/)).toHaveProperty('disabled', true);
+    const addModelButton = screen.getByRole('button', { name: 'Add model ID' });
+    expect(addModelButton).toHaveProperty('disabled', true);
+    const availableModel = screen.getByRole('button', { name: 'model-b' });
+    expect(availableModel).toHaveProperty('disabled', true);
+    fireEvent.click(availableModel);
+    fireEvent.click(addModelButton);
+    expect(screen.queryByPlaceholderText('model-id')).toBeNull();
+    expect(onSaved).not.toHaveBeenCalled();
+    resolveSave({ ok: true, json: async () => ({ raw: '' }) });
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const saveCall = calls.find((call) => call.url === '/api/config' && call.init?.method === 'PUT');
+    expect(JSON.parse(String(saveCall?.init?.body)).raw).toContain('modelbest:');
+    expect(JSON.parse(String(saveCall?.init?.body)).raw).not.toContain('model-b');
+  });
+
+  it('aborts an in-flight connection test when the form changes', async () => {
+    let rejectTest!: (error: Error) => void;
+    const pendingTest = new Promise<never>((_, reject) => { rejectTest = reject; });
+    const signals: AbortSignal[] = [];
+    mocks.authenticatedFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      if (url === '/api/config/test-connections') {
+        if (init?.signal) signals.push(init.signal);
+        return pendingTest;
+      }
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'modelbest' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-old' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection gpt-5.6-luna' }));
+    await waitFor(() => expect(signals).toHaveLength(1));
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-new' } });
+    await waitFor(() => expect(signals[0]?.aborted).toBe(true));
+    rejectTest(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+  });
+
+  it('rejects custom provider IDs reserved for catalog aliases', async () => {
+    const calls: string[] = [];
+    mocks.authenticatedFetch.mockImplementation(async (url: string) => {
+      calls.push(url);
+      if (url === '/api/config/provider') return { ok: true, json: async () => ({ exists: false, provider: null }) };
+      return { ok: true, json: async () => ({ raw: '' }) };
+    });
+
+    render(<LlmConfigurationStep onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/ }));
+    fireEvent.change(screen.getByLabelText('Provider ID'), { target: { value: 'gemini' } });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://example.com/v1' } });
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'sk-test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add model ID' }));
+    fireEvent.change(screen.getByPlaceholderText('model-id'), { target: { value: 'gpt-5.6-luna' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('model-id'), { key: 'Enter' });
+
+    expect(screen.getByText(/reserved/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Test connection/i }));
+    expect(calls).not.toContain('/api/config/test-connections');
+  });
+});

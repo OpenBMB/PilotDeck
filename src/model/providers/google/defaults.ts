@@ -9,7 +9,7 @@ export const GOOGLE_DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsJsonSchema: true,
   supportsSystemPrompt: true,
   supportsPromptCache: false,
-  maxContextTokens: 1_048_576,
+  maxContextTokens: 262_144,
   maxOutputTokens: 32_768,
 };
 

@@ -126,7 +126,7 @@ describe('CodeEditorBinaryFile', () => {
     expect(container.querySelector('.absolute.right-2.top-1')).toBeNull();
   });
 
-  it('enables page navigation and workspace expansion for PDF files', () => {
+  it('enables page navigation and workspace expansion for PDF files', async () => {
     const onToggleExpand = vi.fn();
     render(
       <CodeEditorBinaryFile
@@ -140,7 +140,7 @@ describe('CodeEditorBinaryFile', () => {
       />,
     );
 
-    const preview = screen.getByRole('button', { name: 'PDF preview' });
+    const preview = await screen.findByRole('button', { name: 'PDF preview' });
     expect(preview.getAttribute('data-navigation-mode')).toBe('pages');
     expect(preview.getAttribute('data-page-controls')).toBe('true');
     preview.click();
@@ -491,4 +491,14 @@ describe('CodeEditorBinaryFile', () => {
     expect(await screen.findByText('officePreview.unsupportedBuiltinTitle')).not.toBeNull();
     expect(screen.getByText('officePreview.configureService')).not.toBeNull();
   });
+});
+
+it.each(['mp4', 'webm', 'mov'])('opens project %s files as streaming video without loading a blob or falling back to binary text', extension => {
+  const readBlob = vi.spyOn(api, 'readFileBlob');
+  const file = { ...baseProps.file, name: `movie.${extension}`, path: `/workspace/hundouluo/movie.${extension}` };
+  const { container } = render(<CodeEditorBinaryFile {...baseProps} file={file} />);
+  const video = container.querySelector('video')!;
+  expect(video).not.toBeNull(); expect(video.getAttribute('src')).toBe(api.fileContentUrl('hundouluo', file.path));
+  expect(video.hasAttribute('controls')).toBe(true); expect(video.getAttribute('preload')).toBe('metadata');
+  expect(screen.queryByText('Preview unavailable')).toBeNull(); expect(readBlob).not.toHaveBeenCalled();
 });

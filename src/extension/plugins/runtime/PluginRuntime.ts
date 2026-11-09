@@ -1,3 +1,5 @@
+import { dirname, resolve } from "node:path";
+import { isSkillEnabled, readSkillPreferences } from "../../skills/skillPreferences.js";
 import { resolvePluginDirectories } from "../discovery/PluginDirectoryResolver.js";
 import { discoverPluginPaths, discoverSkillPaths } from "../discovery/discoverLocalPlugins.js";
 import { loadPluginFromPath, loadSkillFromPath } from "../loading/PluginLoader.js";
@@ -9,6 +11,8 @@ import { truncateMcpInstructionString } from "./truncateMcpString.js";
 import type { PilotDeckHooksSettings } from "../../hooks/protocol/settings.js";
 import type { PilotDeckCustomRouter } from "../../../router/customRouter/customRouter.js";
 import { renderSkillContent } from "../../skills/renderSkillContent.js";
+import type { PluginCommandContribution, PluginSkillContribution, PluginMcpInstruction, PluginPromptContributions } from "../protocol/promptContributions.js";
+export type { PluginCommandContribution, PluginSkillContribution, PluginMcpInstruction, PluginPromptContributions } from "../protocol/promptContributions.js";
 
 /**
  * Static MCP server contribution shape callers can rely on. Manifests load
@@ -45,26 +49,6 @@ export type PluginRefreshResult = {
   next: PilotDeckLoadedPlugin[];
   added: PilotDeckLoadedPlugin[];
   removed: PilotDeckLoadedPlugin[];
-};
-
-export type PluginCommandContribution = {
-  name: string;
-  description?: string;
-  argumentHint?: string;
-  namespace?: string;
-};
-
-export type PluginSkillContribution = {
-  name: string;
-  description?: string;
-  /** Absolute path to the resolved SKILL.md. */
-  path: string;
-  namespace?: string;
-};
-
-export type PluginMcpInstruction = {
-  serverName: string;
-  instructions?: string;
 };
 
 export type PluginContributionSnapshot = {
@@ -131,7 +115,7 @@ export class PluginRuntime {
   }
 
   snapshotContributions(): PluginContributionSnapshot {
-    const plugins = this.registry.list();
+    const plugins = this.enabledPlugins();
     return {
       plugins,
       commands: plugins.flatMap((plugin) => (plugin.commands ?? []).map((command) => toCommandContribution(plugin, command))),
@@ -145,11 +129,22 @@ export class PluginRuntime {
   }
 
   getAllCommands(): PluginCommandContribution[] {
-    return this.snapshotContributions().commands;
+    return this.enabledPlugins().flatMap(plugin => (plugin.commands ?? []).map(command => toCommandContribution(plugin, command)));
   }
 
   getAllSkills(): PluginSkillContribution[] {
-    return this.snapshotContributions().skills;
+    return collectSkillContributions(this.enabledPlugins());
+  }
+
+  getPromptContributions(): PluginPromptContributions {
+    // Read preferences once for a consistent request view. Do not cache across
+    // requests: existing sessions must observe skill switches immediately.
+    const plugins = this.enabledPlugins();
+    return {
+      commands: plugins.flatMap(plugin => (plugin.commands ?? []).map(command => toCommandContribution(plugin, command))),
+      skills: collectSkillContributions(plugins),
+      mcpInstructions: this.getAllMcpInstructions(),
+    };
   }
 
   lookupRouter(extensionId: string): PilotDeckCustomRouter | undefined {
@@ -165,7 +160,7 @@ export class PluginRuntime {
   }
 
   async loadSkillPrompt(extensionId: string): Promise<string | undefined> {
-    const plugins = sortByResolutionPriority(this.registry.list());
+    const plugins = sortByResolutionPriority(this.enabledPlugins());
 
     for (const plugin of plugins) {
       const prompt = plugin.promptContributions?.find((contribution) => contribution.name === extensionId);
@@ -197,6 +192,19 @@ export class PluginRuntime {
       }
     }
     return undefined;
+  }
+
+  /** Existing sessions honor switches immediately, without waiting for a watcher. */
+  private enabledPlugins(): PilotDeckLoadedPlugin[] {
+    const preferences = readSkillPreferences(this.options.pilotHome);
+    const paths = resolvePluginDirectories(this.options);
+    return this.registry.list().filter(plugin => {
+      const parent = dirname(resolve(plugin.path));
+      const scope = this.options.builtinSkillsRoot && parent === resolve(this.options.builtinSkillsRoot) ? "builtin"
+        : parent === resolve(paths.globalSkillsDir) ? "user"
+          : parent === resolve(paths.projectSkillsDir) ? "project" : null;
+      return !scope || isSkillEnabled(preferences, { scope, slug: plugin.name, projectKey: this.options.projectRoot });
+    });
   }
 
   async refresh(): Promise<PilotDeckLoadedPlugin[]> {

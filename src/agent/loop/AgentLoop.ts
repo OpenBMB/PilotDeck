@@ -1,11 +1,11 @@
 import { TurnTimeline } from "../stream/TurnTimeline.js";
+import { createModelContextSnapshot, type ModelContextSnapshot } from '../../session/context/ModelContextSnapshot.js';
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   applyModelEventToAssembler,
   assembleAssistantMessage,
-  cloneMessages,
   createModelMessageAssemblerState,
   getModelStreamBlockId,
   messageContent,
@@ -17,12 +17,9 @@ import {
   type CanonicalModelError,
   ModelProviderError,
   type CanonicalModelRequest,
-  type CanonicalToolSchema,
   type CanonicalUsage,
-  materializeMediaReferences,
 } from "../../model/index.js";
 import type {
-  PilotDeckToolDefinition,
   PilotDeckReadFileStateMap,
   PilotDeckSubagentForkApi,
   PilotDeckToolErrorResult,
@@ -41,8 +38,6 @@ import type { AgentRuntimeConfig } from "../runtime/AgentRuntimeConfig.js";
 import type { AgentRuntimeDependencies } from "../runtime/AgentRuntimeDependencies.js";
 import type { LifecycleDispatchResult } from "../../lifecycle/index.js";
 import type { PilotDeckHookEvent } from "../../extension/hooks/protocol/events.js";
-import { NullContextRuntime } from "../../context/NullContextRuntime.js";
-import { buildCachePlan } from "../../context/cache/CachePlan.js";
 import { truncateHeadPreservingCheckpoint } from "../../context/compaction/CompactionEngine.js";
 import type { AgentContextRuntime } from "../../context/ContextRuntime.js";
 import type {
@@ -56,19 +51,16 @@ import { actualInputTokensFromUsage } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
 import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import type { AgentSteerMessage } from "../session/SteerMailbox.js";
+import { prepareModelRequest, prepareModelRequestAttempt, type ModelRequestPreparationDependencies } from "./prepareModelRequest.js";
+import type { RouterDecision } from "../../router/protocol/decision.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
 import { resolveOutputTokenRetryBump } from "./outputTokenRetry.js";
 import { projectToolResults } from "./projectToolResults.js";
-import { requiresPromptCapability } from "../../tool/userInteractionConstraints.js";
 import type { AgentRunMode } from "../protocol/input.js";
-import {
-  ASK_MODE_DESCRIPTION_SUFFIX,
-  isAskModeAllowedTool,
-} from "../../tool/askModeConstraints.js";
-import { buildAskModeAgentToolSchema } from "../../tool/builtin/agent.js";
 import { requestFingerprint } from "../../model/streaming/requestFingerprint.js";
+import { awaitWithAbort } from "../../runtime/abort.js";
 import {
   createAgentStatusDetail,
   createVisibleErrorStatusDetail,
@@ -85,18 +77,6 @@ const CIRCUIT_BREAKER_GRACE_PROMPT = [
   "(2) explain the situation in text without calling tools,",
   "(3) if you believe the tool should work, try once more with corrected input.",
 ].join(" ");
-function planModeReminderMessage(planDirectory?: string): string {
-  return [
-    "Plan mode is active.",
-    planDirectory
-      ? `Read first using read-only tools, then use write_file/edit_file to write plan markdown ONLY under this absolute plan directory: ${planDirectory}`
-      : "Read first using read-only tools, then write or refine plan markdown only under `.pilotdeck/plans/`.",
-    ...(planDirectory ? ["Use that absolute directory for file paths and exit_plan_mode; do not assume cwd/.pilotdeck/plans is the plan directory."] : []),
-    "Do not make implementation changes while planning.",
-    "When the plan is ready for user review, call `exit_plan_mode` with the plan file path.",
-  ].join("\n");
-}
-
 function logAutoCompactFailure(
   stage: string,
   input: { sessionId: string; turnId: string },
@@ -141,6 +121,7 @@ export type AgentLoopInput = {
   modelOverride?: import("../protocol/input.js").AgentModelOverride;
   abortSignal?: AbortSignal;
   onDurableMessage?: (message: CanonicalMessage) => void | Promise<void>;
+  onModelContext?: (snapshot: ModelContextSnapshot) => void | Promise<void>;
   onAgentStatusMessage?: (status: AgentStatusMessage) => void | Promise<void>;
   onCompactPersisted?: (input: {
     boundary: AgentControlBoundaryTranscriptEntry["boundary"];
@@ -369,7 +350,7 @@ export class AgentLoop {
     ): Promise<{ error: ReturnType<typeof agentError>; result: AgentTurnResult }> => {
       const error = agentError(
         "agent_context_recovery_failed",
-        compact.error ?? "context_overflow_after_emergency_compaction",
+        describeContextOverflowAfterEmergency(compact.snapshot),
         {
           code: compact.error,
           snapshot: compact.snapshot,
@@ -472,8 +453,19 @@ export class AgentLoop {
         yield event;
       }
 
+      if (this.dependencies.refreshToolCatalog) {
+        try {
+          await awaitWithAbort(input.abortSignal, () => this.dependencies.refreshToolCatalog!(this.dependencies.tools.registry, input.abortSignal));
+        } catch {
+          if (input.abortSignal?.aborted) continue;
+          // Failed discovery leaves the last complete catalog available.
+          console.warn("[pilotdeck] Tool catalog refresh failed; retaining the previous tool contracts.");
+        }
+      }
+
       let pendingContextBudget: TokenBudgetSnapshot | undefined;
       const ctx = this.dependencies.context;
+      const prepareCandidate = this.createCandidatePreparation(input);
       const preRoutingMaxContextTokens = this.preRoutingMaxContextTokens();
       if (ctx?.tryAutoCompact) {
         try {
@@ -485,6 +477,7 @@ export class AgentLoop {
             abortSignal: input.abortSignal,
             reservedOutputTokens,
             budgetEvaluator: this.createBudgetEvaluator(input, {
+              prepareRequest: prepareCandidate ? async candidate => (await prepareCandidate(candidate)).request : undefined,
               maxContextTokens: preRoutingMaxContextTokens,
               reservedOutputTokens,
             }),
@@ -511,6 +504,7 @@ export class AgentLoop {
           }
           pendingContextBudget = compact.snapshot;
         } catch (error: unknown) {
+          if (input.abortSignal?.aborted) continue;
           logAutoCompactFailure("pre-routing", input, error);
           // Auto-compaction must never block the model call — proceed with
           // the original messages if evaluation or summarization fails.
@@ -518,7 +512,13 @@ export class AgentLoop {
         yield* this.drainEventBuffer();
       }
 
-      let request = await this.createModelRequest(messages, input);
+      let request: CanonicalModelRequest;
+      try {
+        request = prepareCandidate ? (await prepareCandidate(messages)).request : await this.createModelRequest(messages, input);
+      } catch (error) {
+        if (input.abortSignal?.aborted) continue;
+        throw error;
+      }
       if (input.abortSignal?.aborted) {
         const result = this.createTurnResult(input, {
           type: "aborted",
@@ -537,41 +537,34 @@ export class AgentLoop {
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages };
       }
-      this.dispatchLifecycle(input, "PreModelRequest", {
-        provider: request.provider,
-        model: request.model,
-      }).catch(() => {});
-      yield {
-        type: "model_request_started",
-        sessionId: input.sessionId,
-        turnId: input.turnId,
-        model: request.model,
-        provider: request.provider,
-      };
-
       // Split decide + execute so we can insert a post-routing compact pass
       // when the routed model's context window differs from the agent's
       // default model (the window used by the first tryAutoCompact above).
-      const decision = input.modelOverride ? {
-        provider: input.modelOverride.provider,
-        model: input.modelOverride.model,
-        scenarioType: "explicit" as const,
-        isSubagent: Boolean(this.config.isSubagent),
-        orchestrating: false,
-        resolvedFrom: "explicit" as const,
-        mutations: {},
-      } : await this.dependencies.router.decide({
-        request,
-        sessionId: input.sessionId,
-        isMainAgent: !this.config.isSubagent,
-        metadata: stickyInfo
-          ? {
-            previousTier,
-            previousProvider: stickyInfo.previousProvider,
-            previousModel: stickyInfo.previousModel,
-          }
-          : previousTier ? { previousTier } : undefined,
-      });
+      let decision: RouterDecision;
+      try {
+        decision = input.modelOverride ? {
+          provider: input.modelOverride.provider,
+          model: input.modelOverride.model,
+          scenarioType: "explicit" as const,
+          isSubagent: Boolean(this.config.isSubagent),
+          orchestrating: false,
+          resolvedFrom: "explicit" as const,
+          mutations: {},
+        } : await awaitWithAbort(input.abortSignal, () => this.dependencies.router.decide({
+          request,
+          sessionId: input.sessionId,
+          abortSignal: input.abortSignal,
+          isMainAgent: !this.config.isSubagent,
+          metadata: stickyInfo
+            ? { previousTier, previousProvider: stickyInfo.previousProvider, previousModel: stickyInfo.previousModel }
+            : previousTier ? { previousTier } : undefined,
+        }));
+        input.abortSignal?.throwIfAborted();
+        if (prepareCandidate) request = (await prepareCandidate(messages, decision)).request;
+      } catch (error) {
+        if (input.abortSignal?.aborted) continue;
+        throw error;
+      }
       const routedLimits = this.getModelTokenLimits(decision.provider, decision.model);
       const routedMaxOutputTokens = routedLimits?.maxOutputTokens;
 
@@ -579,7 +572,9 @@ export class AgentLoop {
       if (ctx?.tryAutoCompact) {
         const routedMaxCtx = this.currentMaxContextTokens(decision.provider, decision.model);
         const currentBudgetMaxCtx = preRoutingMaxContextTokens;
-        if (routedMaxCtx !== undefined && routedMaxCtx !== currentBudgetMaxCtx) {
+        const routeChanged = prepareCandidate && (decision.provider !== (input.modelOverride?.provider ?? this.config.provider)
+          || decision.model !== (input.modelOverride?.model ?? this.config.model) || decision.requestPatch !== undefined);
+        if (routedMaxCtx !== undefined && (routedMaxCtx !== currentBudgetMaxCtx || routeChanged)) {
           try {
             const reservedOutputTokens = this.getReservedOutputTokens(decision.provider, decision.model);
             const recompact = yield* this.awaitCompactionWithEvents(ctx.tryAutoCompact({
@@ -590,6 +585,7 @@ export class AgentLoop {
               maxContextTokens: routedMaxCtx,
               reservedOutputTokens,
               budgetEvaluator: this.createBudgetEvaluator(input, {
+                prepareRequest: prepareCandidate ? async candidate => (await prepareCandidate(candidate, decision)).request : undefined,
                 decision,
                 baseRequest: request,
                 maxContextTokens: routedMaxCtx,
@@ -599,7 +595,7 @@ export class AgentLoop {
             if (recompact.type === "compacted") {
               messages = recompact.messages;
               this.tokenCalibrationByRoute.clear();
-              request = await this.createModelRequest(messages, input);
+              request = prepareCandidate ? (await prepareCandidate(messages, decision)).request : await this.createModelRequest(messages, input);
               request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
               await this.persistCompactSnapshot(input, recompact);
               yield {
@@ -632,13 +628,14 @@ export class AgentLoop {
             };
             emittedContextBudget = true;
           } catch (error: unknown) {
+            if (input.abortSignal?.aborted) continue;
             logAutoCompactFailure("post-routing", input, error);
             // Post-routing compaction must never block the model call.
           }
         }
       }
       request = this.applyTokenCapsToRequest(request, decision.provider, decision.model);
-      this.clearAttemptOutputTokenCap(decision.provider, decision.model);
+      if (input.abortSignal?.aborted) continue;
       if (pendingContextBudget && !emittedContextBudget) {
         yield {
           type: "context_budget",
@@ -651,17 +648,49 @@ export class AgentLoop {
       const calibrationRequest = this.dependencies.router.materializeRequest
         ? this.dependencies.router.materializeRequest(decision, request)
         : { ...request, provider: decision.provider, model: decision.model };
+      this.dispatchLifecycle(input, "PreModelRequest", { provider: decision.provider, model: decision.model }).catch(() => {});
+      yield { type: "model_request_started", sessionId: input.sessionId, turnId: input.turnId,
+        model: decision.model, provider: decision.provider };
       const requestInputEstimate = this.dependencies.tokenAccounting?.estimateRequestInput?.(calibrationRequest);
-      const calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
+      if (input.onModelContext && !prepareCandidate) {
+        try {
+          await input.onModelContext(createModelContextSnapshot(calibrationRequest, input.turnId,
+            this.dependencies.tokenAccounting?.estimateRequestBreakdown?.(calibrationRequest)));
+        } catch (error) { console.warn('[pilotdeck] Could not save context inspection snapshot:', error); }
+      }
+      let calibrationRequestFingerprint = requestFingerprint(calibrationRequest);
       const assembler = createModelMessageAssemblerState(randomUUID());
       let executedRequest: { provider: string; model: string; fingerprint?: string } | undefined;
+      let contextCommitted = false;
+      const dispatchedTargets = new Map([[this.tokenCapKey(decision.provider, decision.model), decision]]);
+      const commitRequest = prepareCandidate ? async (actual: CanonicalModelRequest) => {
+        // Assigning a cache generation is bookkeeping, not a change to the
+        // tokenized request. Content/media/fallback changes still disqualify it.
+        const matchesCalibration = requestFingerprint({ ...calibrationRequest, cachePlan: actual.cachePlan }) === requestFingerprint(actual);
+        (await prepareCandidate(messages, actual)).commit(actual);
+        if (matchesCalibration) calibrationRequestFingerprint = requestFingerprint(actual);
+        contextCommitted = true;
+        if (input.onModelContext) {
+          try { await input.onModelContext(createModelContextSnapshot(actual, input.turnId,
+            this.dependencies.tokenAccounting?.estimateRequestBreakdown?.(actual))); }
+          catch (error) { console.warn('[pilotdeck] Could not save context inspection snapshot:', error); }
+        }
+      } : undefined;
       try {
         for await (const event of this.dependencies.router.execute(decision, request, {
           sessionId: input.sessionId,
           turnId: input.turnId,
           projectPath: this.config.cwd,
           abortSignal: input.abortSignal,
+          requestForTarget: prepareCandidate ? async target => {
+            dispatchedTargets.set(this.tokenCapKey(target.provider, target.model), { ...decision, ...target });
+            const prepared = await prepareCandidate(messages, target);
+            return this.applyTokenCapsToRequest(prepared.request, target.provider, target.model);
+          } : undefined,
+          onRequestPrepared: commitRequest,
         })) {
+          // Custom routers may not implement the optional preparation callback.
+          if (commitRequest && !contextCommitted) await commitRequest(calibrationRequest);
           if (event.type === "request_started") {
             executedRequest = {
               provider: event.provider,
@@ -734,6 +763,10 @@ export class AgentLoop {
         await captureTurn(result.type === "error");
         yield { type: "turn_completed", sessionId: input.sessionId, turnId: input.turnId, result };
         return { result, messages };
+      } finally {
+        // Route projection and fallback are part of this dispatch. Consume
+        // one-attempt caps only after all requests in it have been prepared.
+        for (const target of dispatchedTargets.values()) this.clearAttemptOutputTokenCap(target.provider, target.model);
       }
 
       if (input.abortSignal?.aborted) {
@@ -938,28 +971,34 @@ export class AgentLoop {
           continue;
         }
 
-        // Phase A: token doubling (if not yet attempted)
-          if (!hasAttemptedOutputRetry) {
+        // Phase A: token doubling (if not yet attempted). Only mark the
+        // single-shot guard as consumed when we actually changed the cap; if
+        // `nextMaxOutputTokens` is undefined (already at model cap, or no
+        // model cap known), Phase A did nothing and Phase B must still be
+        // allowed to run, *and* a future recovery attempt should still be
+        // able to retry Phase A (e.g. transient state where the bump would
+        // succeed later).
+        if (!hasAttemptedOutputRetry) {
+          const nextMaxOutputTokens = resolveOutputTokenRetryBump({
+            currentMaxOutputTokens: this.currentMaxOutputTokens(decision.provider, decision.model),
+            modelMaxOutputTokens: routedMaxOutputTokens,
+          });
+          if (nextMaxOutputTokens !== undefined) {
             hasAttemptedOutputRetry = true;
-            const nextMaxOutputTokens = resolveOutputTokenRetryBump({
-              currentMaxOutputTokens: this.currentMaxOutputTokens(decision.provider, decision.model),
-              modelMaxOutputTokens: routedMaxOutputTokens,
-            });
-            if (nextMaxOutputTokens !== undefined) {
-              const previousOutput = this.currentMaxOutputTokens(decision.provider, decision.model);
-              this.setTransientTokenCap(decision.provider, decision.model, { requestedMaxOutputTokens: nextMaxOutputTokens });
-              yield {
-                type: "token_cap_adjusted",
-                sessionId: input.sessionId,
-                turnId: input.turnId,
-                provider: decision.provider,
-                model: decision.model,
-                cap: "output",
-                previous: previousOutput,
-                next: nextMaxOutputTokens,
-                reason: "max-output-retry-bump",
-              };
-              yield {
+            const previousOutput = this.currentMaxOutputTokens(decision.provider, decision.model);
+            this.setTransientTokenCap(decision.provider, decision.model, { requestedMaxOutputTokens: nextMaxOutputTokens });
+            yield {
+              type: "token_cap_adjusted",
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              provider: decision.provider,
+              model: decision.model,
+              cap: "output",
+              previous: previousOutput,
+              next: nextMaxOutputTokens,
+              reason: "max-output-retry-bump",
+            };
+            yield {
               type: "turn_continued",
               sessionId: input.sessionId,
               turnId: input.turnId,
@@ -1995,101 +2034,48 @@ export class AgentLoop {
     input: AgentLoopInput,
     options: { emitInstructionEvents?: boolean; previewOnly?: boolean } = {},
   ): Promise<CanonicalModelRequest> {
-    const contextRuntime = this.dependencies.context ?? new NullContextRuntime();
-    const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
-    const canPrompt = input.canPrompt ?? this.config.permissionContext.canPrompt;
-    const promptBlockedToolNames = canPrompt
-      ? new Set<string>()
-      : new Set(
-          this.dependencies.tools.registry.list()
-            .filter((tool) => requiresPromptCapability(tool, {}))
-            .map((tool) => tool.name),
-        );
-    let toolDefinitions = this.dependencies.tools.registry.list()
-      .filter((tool) => !promptBlockedToolNames.has(tool.name));
-    if (input.allowPlanModeTools !== true) {
-      toolDefinitions = toolDefinitions.filter(
-        (tool) => tool.name !== "enter_plan_mode" && tool.name !== "exit_plan_mode",
-      );
-    }
-    const requestMessages = normalizeMessagesForModelRequest(messages);
-    let tools = toolDefinitions.map(toolToCanonicalSchema);
-    if (this.config.runMode === "ask") {
-      tools = filterAskModeTools(toolDefinitions);
-    }
-    const requestProvider = input.modelOverride?.provider ?? this.config.provider;
-    const requestModel = input.modelOverride?.model ?? this.config.model;
-    const prepared = await contextRuntime.prepareForModel({
-      previewOnly: options.previewOnly,
-      sessionId: input.sessionId,
-      turnId: input.turnId,
-      cwd: this.config.cwd,
-      provider: requestProvider,
-      model: requestModel,
-      protocol: this.dependencies.getModelProtocol?.(requestProvider),
-      supportsPromptCache: this.dependencies.getModelSupportsPromptCache?.(requestProvider, requestModel),
-      permissionMode: this.config.permissionMode,
-      runMode: this.config.runMode ?? "agent",
-      additionalWorkingDirectories: this.config.permissionContext.additionalWorkingDirectories,
-      messages: cloneMessages(requestMessages),
-      tools,
-      maxMessages: this.config.maxContextMessages,
-      customSystemPrompt: this.config.systemPrompt,
-      appendSystemPrompt: planTodo?.buildPromptAddendum(),
-      abortSignal: input.abortSignal,
+    return prepareModelRequest(this.config, this.modelRequestDependencies(input, options.emitInstructionEvents), {
+      sessionId: input.sessionId, turnId: input.turnId, messages, canPrompt: input.canPrompt,
+      allowPlanModeTools: input.allowPlanModeTools, modelOverride: input.modelOverride,
+      abortSignal: input.abortSignal, previewOnly: options.previewOnly,
     });
+  }
 
-    if (options.emitInstructionEvents !== false) {
-      this.dispatchLifecycle(input, "InstructionsLoaded", {
-        hasSystemPrompt: !!prepared.systemPrompt,
-      }).catch(() => {});
-      this.dependencies.eventEmitter?.({
-        type: "instructions_loaded",
-        sessionId: input.sessionId,
-        turnId: input.turnId,
-        hasSystemPrompt: !!prepared.systemPrompt,
-      });
-    }
+  private createCandidatePreparation(input: AgentLoopInput) {
+    if (!this.dependencies.context?.prepareForModelAttempt) return undefined;
+    const candidates = new Map<string, ReturnType<typeof prepareModelRequestAttempt>>();
+    return async (messages: CanonicalMessage[], target?: { provider: string; model: string }) => {
+      // Default compactors return new arrays; custom implementations may edit
+      // a candidate in place. Hash content instead of trusting array identity.
+      const key = requestFingerprint({ provider: this.config.provider, model: this.config.model, messages });
+      let candidate = candidates.get(key);
+      if (!candidate) {
+        candidate = prepareModelRequestAttempt(this.config, this.modelRequestDependencies(input), {
+          sessionId: input.sessionId, turnId: input.turnId, messages, canPrompt: input.canPrompt,
+          allowPlanModeTools: input.allowPlanModeTools, modelOverride: input.modelOverride,
+          abortSignal: input.abortSignal, previewOnly: true,
+        });
+        candidates.set(key, candidate);
+      }
+      return (await candidate).project(target);
+    };
+  }
 
-    const materialized = await materializeMediaReferences(prepared.messages);
-    for (const diagnostic of materialized.diagnostics) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[pilotdeck] ${diagnostic.code}: ${diagnostic.message} (${diagnostic.mediaType}, ${diagnostic.path})`,
-      );
-    }
-
-    const finalMessages = this.config.permissionMode === "plan"
-      ? appendPlanModeReminder(materialized.messages, this.dependencies.planFileManager?.getPlanDirectoryPath())
-      : materialized.messages;
-    const finalCachePlan = prepared.cachePlan
-      ? buildCachePlan({
-          provider: requestProvider,
-          model: requestModel,
-          systemPrompt: prepared.systemPrompt,
-          tools: prepared.tools,
-          messages: finalMessages,
-          enabled: true,
-        }, prepared.cachePlan.generation)
-      : undefined;
-    const finalCacheBreakpoints = finalCachePlan?.messages ?? (
-      this.config.permissionMode === "plan" ? undefined : prepared.cacheBreakpoints
-    );
-
+  private modelRequestDependencies(input: AgentLoopInput, emitInstructionEvents?: boolean): ModelRequestPreparationDependencies {
+    const planTodo = this.dependencies.planTodoManager?.forSession(input.sessionId);
     return {
-      provider: requestProvider,
-      model: requestModel,
-      messages: finalMessages,
-      systemPrompt: prepared.systemPrompt ?? this.config.systemPrompt,
-      tools: prepared.tools,
-      toolChoice: this.config.toolChoice,
-      maxOutputTokens: this.config.maxOutputTokens,
-      speed: input.modelOverride?.speed,
-      thinking: input.modelOverride?.thinking ?? this.config.thinking,
-      stream: true,
-      metadata: this.config.metadata,
-      cacheBreakpoints: finalCacheBreakpoints,
-      cachePlan: finalCachePlan,
+      toolRegistry: this.dependencies.tools.registry,
+      context: this.dependencies.context,
+      getModelProtocol: (provider) => this.dependencies.getModelProtocol?.(provider),
+      getModelSupportsPromptCache: (provider, model) => this.dependencies.getModelSupportsPromptCache?.(provider, model),
+      getPromptAddendum: () => planTodo?.buildPromptAddendum(),
+      getPlanDirectoryPath: () => this.dependencies.planFileManager?.getPlanDirectoryPath(),
+      onInstructionsLoaded: emitInstructionEvents === false ? undefined : (hasSystemPrompt) => {
+        this.dispatchLifecycle(input, "InstructionsLoaded", { hasSystemPrompt }).catch(() => {});
+        this.dependencies.eventEmitter?.({
+          type: "instructions_loaded", sessionId: input.sessionId, turnId: input.turnId, hasSystemPrompt,
+        });
+      },
     };
   }
 
@@ -2100,6 +2086,7 @@ export class AgentLoop {
       baseRequest?: CanonicalModelRequest;
       maxContextTokens?: number;
       reservedOutputTokens: number;
+      prepareRequest?: (messages: CanonicalMessage[]) => Promise<CanonicalModelRequest>;
     },
   ): ((candidateMessages: CanonicalMessage[]) => Promise<TokenBudgetSnapshot>) | undefined {
     const tokenAccounting = this.dependencies.tokenAccounting;
@@ -2108,7 +2095,7 @@ export class AgentLoop {
       return undefined;
     }
     return async (candidateMessages) => {
-      let candidateRequest = await this.createModelRequest(candidateMessages, input, {
+      let candidateRequest = options.prepareRequest ? await options.prepareRequest(candidateMessages) : await this.createModelRequest(candidateMessages, input, {
         emitInstructionEvents: false,
         previewOnly: true,
       });
@@ -2620,16 +2607,13 @@ export class AgentLoop {
     input: AgentLoopInput,
   ): AsyncGenerator<AgentEvent, PilotDeckToolResult[], unknown> {
     const activeSubagents = new Map<string, ActiveSubagentStatus>();
-    let results: PilotDeckToolResult[] | undefined;
-    let error: unknown;
     let settled = false;
 
     const execution = this.dependencies.tools.scheduler.executeAll(toolCalls, context)
-      .then((value) => {
-        results = value;
-      }, (err) => {
-        error = err;
-      })
+      .then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
       .finally(() => {
         settled = true;
       });
@@ -2643,8 +2627,9 @@ export class AgentLoop {
     }
 
     yield* this.drainToolEventBufferForSubagentStatus(input, activeSubagents);
-    if (error) throw error;
-    return results ?? [];
+    const result = await execution;
+    if (!result.ok) throw result.error;
+    return result.value;
   }
 
   private *drainToolEventBufferForSubagentStatus(
@@ -2816,28 +2801,6 @@ function mergeUserRules(target: PermissionRule[], userRules: PermissionRule[] | 
   target.splice(0, target.length, ...nonUserRules, ...(userRules ?? []));
 }
 
-function filterAskModeTools(tools: PilotDeckToolDefinition[]): CanonicalToolSchema[] {
-  const agentOverride = buildAskModeAgentToolSchema();
-  return tools
-    .filter(isAskModeAllowedTool)
-    .map((tool) => {
-      if (tool.name === "agent") {
-        return { ...toolToCanonicalSchema(tool), description: agentOverride.description, inputSchema: agentOverride.inputSchema };
-      }
-      const suffix = ASK_MODE_DESCRIPTION_SUFFIX[tool.name];
-      const schema = toolToCanonicalSchema(tool);
-      return suffix ? { ...schema, description: schema.description + suffix } : schema;
-    });
-}
-
-function toolToCanonicalSchema(tool: PilotDeckToolDefinition): CanonicalToolSchema {
-  return {
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-  };
-}
-
 function findLifecycleBlock(result: LifecycleDispatchResult): { reason: string; stopReason?: string } | undefined {
   return result.effects.find(
     (effect): effect is { type: "block"; reason: string; stopReason?: string } => effect.type === "block",
@@ -2943,17 +2906,6 @@ function hasReplayableReasoningContent(message: CanonicalMessage): boolean {
     block.type === "thinking" &&
     ((block.reasoningContent ?? block.text).length > 0 || block.reasoningContent === "")
   );
-}
-
-function appendPlanModeReminder(messages: CanonicalMessage[], planDirectory?: string): CanonicalMessage[] {
-  return [
-    ...messages,
-    {
-      role: "user",
-      content: [{ type: "text", text: planModeReminderMessage(planDirectory) }],
-      metadata: { synthetic: true, purpose: "plan_mode_reminder" },
-    },
-  ];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -3068,55 +3020,6 @@ function removeTransientPromptsById(
       transientIds.has(transientId)
     );
   });
-}
-
-function normalizeMessagesForModelRequest(messages: CanonicalMessage[]): CanonicalMessage[] {
-  const out: CanonicalMessage[] = [];
-  for (const rawMessage of messages) {
-    const message: CanonicalMessage = {
-      ...rawMessage,
-      content: messageContent(rawMessage),
-    };
-    const last = out[out.length - 1];
-    if (
-      last?.role === "assistant" &&
-      message.role === "assistant" &&
-      canMergeAssistantMessages(last, message)
-    ) {
-      out[out.length - 1] = {
-        role: "assistant",
-        content: [...messageContent(last), ...messageContent(message)],
-        metadata: mergeMessageMetadata(last.metadata, message.metadata),
-      };
-      continue;
-    }
-    if (message.role === "assistant" && message.content.length === 0) {
-      continue;
-    }
-    out.push(message);
-  }
-  return out;
-}
-
-function canMergeAssistantMessages(first: CanonicalMessage, second: CanonicalMessage): boolean {
-  return !hasToolCallBlock(first) && !hasToolCallBlock(second);
-}
-
-function hasToolCallBlock(message: CanonicalMessage): boolean {
-  return messageContent(message).some((block) => block.type === "tool_call");
-}
-
-function mergeMessageMetadata(
-  first: CanonicalMessage["metadata"],
-  second: CanonicalMessage["metadata"],
-): CanonicalMessage["metadata"] {
-  if (!first && !second) {
-    return undefined;
-  }
-  return {
-    ...(first ?? {}),
-    ...(second ?? {}),
-  };
 }
 
 function detectRepeatedToolFailure(
@@ -3332,8 +3235,12 @@ function createModelRequestFailedStatus(args: {
   modelError?: CanonicalModelError;
 }): AgentStatusMessage {
   const providerMessage = args.error.message || args.modelError?.message || "The model request failed, so this turn has stopped.";
-  const text = formatModelRequestFailureMessage(providerMessage, args.modelError);
-  const action = modelFailureAction(args.modelError);
+  // Context recovery failures have no provider error attached; without this
+  // they would fall through to the generic provider-settings advice (#678).
+  const action = !args.modelError && args.error.code === "agent_context_recovery_failed"
+    ? contextOverflowFailureAction()
+    : modelFailureAction(args.modelError);
+  const text = formatModelRequestFailureMessage(providerMessage, args.modelError, action);
   return {
     event: "model_request_failed",
     kind: "error",
@@ -3361,10 +3268,18 @@ function createModelRequestFailedStatus(args: {
   };
 }
 
-export function formatModelRequestFailureMessage(providerMessage: string, error: CanonicalModelError | undefined): string {
+export function formatModelRequestFailureMessage(
+  providerMessage: string,
+  error: CanonicalModelError | undefined,
+  action: { shortAction: string } = modelFailureAction(error),
+): string {
   const cleanMessage = providerMessage.trim() || "The model request failed.";
-  const action = modelFailureAction(error);
   return `${cleanMessage}\n\n${action.shortAction}`;
+}
+
+function describeContextOverflowAfterEmergency(snapshot: TokenBudgetSnapshot): string {
+  const limit = snapshot.effectiveContextTokens ?? snapshot.maxContextTokens;
+  return `The context is still over the input budget after emergency compaction (tokens=${snapshot.tokens}, limit=${limit}).`;
 }
 
 export function modelFailureAction(error: CanonicalModelError | undefined): {
@@ -3410,8 +3325,7 @@ export function modelFailureAction(error: CanonicalModelError | undefined): {
     || error.code === "context_overflow"
     || error.code === "context_overflow_after_emergency_compaction"
   ) {
-    const hint = "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.";
-    return modelFailureActionResult(hint, "prompt", "contextOverflow");
+    return contextOverflowFailureAction();
   }
   if (error.code === "payload_too_large" || error.code === "request_too_large") {
     const hint = "Reduce attachments/context size, run /compact, or start a new session before retrying.";
@@ -3432,6 +3346,11 @@ export function modelFailureAction(error: CanonicalModelError | undefined): {
 
   const hint = `Check Settings → Model Provider for base URL/API key/model and timeoutMs. If settings look correct, check local network/proxy and provider API status/logs.`;
   return modelFailureActionResult(hint, "settings", "settingsDefault");
+}
+
+function contextOverflowFailureAction(): ReturnType<typeof modelFailureActionResult> {
+  const hint = "Run /compact, start a new session, remove large attachments, or switch to a larger-context model in Settings.";
+  return modelFailureActionResult(hint, "prompt", "contextOverflow");
 }
 
 function modelFailureActionResult(

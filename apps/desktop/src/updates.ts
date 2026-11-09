@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import type { AppUpdater } from "electron-updater";
+import { JsonReleaseProvider, type JsonReleaseProviderOptions } from "./JsonReleaseProvider";
 
-export type ReleaseAsset = { name: string; size: number; sha256: string; sha512?: string; platform: string; arch: string };
-export type Release = { version: string; tagName: string; publishedAt?: string; assets: ReleaseAsset[] };
+export type ReleaseAsset = { name: string; size: number; sha256: string; sha512?: string; platform: string; arch: string; format?: string; roles?: string[] };
+export type Release = { version: string; tagName: string; publishedAt?: string; assets: ReleaseAsset[]; differentialUpdates?: boolean };
 export type UpdateState = {
   state: "idle" | "checking" | "downloading" | "paused" | "cancelling" | "verifying" | "installing" | "recovering" | "failed" | "cancelled";
   progress: number;
@@ -22,15 +23,15 @@ export function selectUpdateAssets(release: Release, platform: string, arch: str
   if (platform === "linux" && !["deb", "rpm"].includes(linuxPackageType)) return null;
   const extension = platform === "darwin" ? ".zip" : platform === "linux" ? `.${linuxPackageType}` : "-setup.exe";
   const packages = release.assets.filter((asset) => asset.platform === platform && asset.arch === arch && asset.name.endsWith(extension)
+    && (!asset.roles || asset.roles.includes("update"))
     && (platform !== "linux" || asset.name.endsWith(`-linux-${arch}.${linuxPackageType}`))
     && /^[a-f0-9]{64}$/.test(asset.sha256) && /^[A-Za-z0-9+/]{86}==$/.test(asset.sha512 || "") && asset.size > 0);
   const feed = platform === "linux" ? `latest${linuxPackageType === "rpm" ? "-rpm" : ""}-linux${arch === "arm64" ? "-arm64" : ""}.yml`
     : `latest-${arch}${platform === "darwin" ? "-mac" : ""}.yml`;
-  return packages.length === 1 && release.assets.some((asset) => asset.name === feed) ? { asset: packages[0], feed } : null;
+  return packages.length === 1 ? { asset: packages[0], feed } : null;
 }
 
-// Feed files are generated separately per architecture. Validate every referenced
-// payload against the unified manifest before electron-updater downloads anything.
+// Validate the adapter's result against the pinned JSON before downloading.
 export function validateUpdateInfo(info: { version: string; files: Array<{ url: string; sha512: string; size?: number }>; packages?: unknown }, release: Release, platform: string, arch: string, linuxPackageType = "deb") {
   const selected = selectUpdateAssets(release, platform, arch, linuxPackageType);
   if (info.packages || !selected || info.version !== release.version || !info.files?.length) throw new Error("invalidUpdateMetadata");
@@ -58,8 +59,10 @@ export function createUpdateController(options: {
   version: string;
   packaged: boolean;
   linuxPackageType?: string;
+  disableDifferentialUpdates?: boolean;
   latestRelease: () => Promise<Release>;
   downloadBases?: (release: Release, asset: ReleaseAsset, signal: AbortSignal) => Promise<string[]>;
+  downloadAvailable: (release: Release, asset: ReleaseAsset, signal?: AbortSignal) => Promise<boolean>;
   downloadSucceeded?: (base: string, release: Release) => void;
   downloadFailed?: (base: string, release: Release) => void;
   prepareNetwork?: () => Promise<void>;
@@ -67,7 +70,7 @@ export function createUpdateController(options: {
   prepareToInstall: () => Promise<void>;
   recoverRuntime: () => Promise<void>;
   verifyFile?: typeof verifyDownloadedFile;
-  downloadControl?: { pause: () => void; resume: () => void; cancel?: () => void; receivedBytes?: () => number };
+  downloadControl?: { pause: () => void; resume: () => void; cancel?: () => void; receivedBytes?: () => number; networkActive?: () => boolean };
 }) {
   const { updater } = options;
   updater.autoDownload = false;
@@ -88,7 +91,7 @@ export function createUpdateController(options: {
   const status = () => ({ ...state });
   const failure = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
-    state = { ...state, bytesPerSecond: 0, state: cancelled ? "cancelled" : "failed", reason: cancelled ? "cancelled" : ["checksumMismatch", "invalidUpdateMetadata", "noCompatibleInstaller", "upToDate"].includes(message) ? message : "updateFailed" };
+    state = { ...state, bytesPerSecond: 0, state: cancelled ? "cancelled" : "failed", reason: cancelled ? "cancelled" : ["checksumMismatch", "invalidUpdateMetadata", "noCompatibleInstaller", "downloadUnavailable", "upToDate"].includes(message) ? message : "updateFailed" };
   };
   updater.on("download-progress", (progress) => {
     if (state.state !== "downloading") return;
@@ -124,9 +127,16 @@ export function createUpdateController(options: {
       await options.prepareNetwork?.();
       const latest = await options.latestRelease();
       const hasUpdate = options.compareVersions(options.version, latest.version) < 0;
-      const canDownload = hasUpdate && Boolean(selectUpdateAssets(latest, options.platform, options.arch, options.linuxPackageType));
+      const selected = hasUpdate ? selectUpdateAssets(latest, options.platform, options.arch, options.linuxPackageType) : null;
+      // Availability is transient: recheck on every explicit check/start. Keep
+      // the discovered version visible when both mirrors are temporarily down.
+      let canDownload = false;
+      if (selected) {
+        try { canDownload = await options.downloadAvailable(latest, selected.asset, probeAbort?.signal); }
+        catch { /* discovery succeeded, but payload readiness is unknown */ }
+      }
       return { current: { version: options.version }, latest, hasUpdate, canDownload,
-        checkUnavailable: false, reason: hasUpdate && !canDownload ? "noCompatibleInstaller" : null };
+        checkUnavailable: false, reason: hasUpdate && !selected ? "noCompatibleInstaller" : hasUpdate && !canDownload ? "downloadUnavailable" : null };
     } catch (error) {
       return { current: { version: options.version }, latest: null, hasUpdate: false, canDownload: false,
         checkUnavailable: true, reason: !options.packaged ? "development" : "checkFailed" };
@@ -158,12 +168,14 @@ export function createUpdateController(options: {
     const release = checked.latest;
     state = { ...state, version: release.tagName };
     const selected = selectUpdateAssets(release, options.platform, options.arch, options.linuxPackageType)!;
-    probeAbort = new AbortController();
+    probeAbort ??= new AbortController();
     const bases = options.downloadBases
       ? await options.downloadBases(release, selected.asset, probeAbort.signal)
       : [`https://github.com/${options.repository}/releases/download/${release.tagName}/`];
     let lastError: unknown = new Error("updateFailed");
     let verified = false;
+    // Once an attempt fails, subsequent routes/retries use the proven full path.
+    let forceFull = false;
     // Try every route before retrying any one route. The release and hashes are
     // pinned for this whole operation, including retries after mirror sync lag.
     for (let round = 0; round < (options.downloadBases ? 2 : 1) && !verified; round++) {
@@ -172,7 +184,7 @@ export function createUpdateController(options: {
         state = { state: "checking", progress: 0, version: release.tagName };
         options.downloadControl?.resume();
         try {
-          await downloadAndVerify(base, release, round === 0 && bases.length > 1);
+          await downloadAndVerify(base, release, round === 0 && bases.length > 1, forceFull);
           try { options.downloadSucceeded?.(base, release); } catch { /* Route history is optional. */ }
           verified = true;
           break;
@@ -181,6 +193,7 @@ export function createUpdateController(options: {
           if (cancelled) throw new Error("cancelled");
           try { options.downloadFailed?.(base, release); } catch { /* Route history is optional. */ }
           lastError = error;
+          forceFull = true;
         } finally { cancellationToken = undefined; }
       }
     }
@@ -194,9 +207,21 @@ export function createUpdateController(options: {
     }
   }
 
-  async function downloadAndVerify(base: string, release: Release, allowSlowSwitch: boolean) {
-    // Linux's provider appends -linux[-arm64] to the channel itself.
-    updater.setFeedURL({ provider: "generic", url: base, channel: options.platform === "linux" ? (options.linuxPackageType === "rpm" ? "latest-rpm" : "latest") : `latest-${options.arch}`, useMultipleRangeRequest: false });
+  async function downloadAndVerify(base: string, release: Release, allowSlowSwitch: boolean, forceFull: boolean) {
+    const selected = selectUpdateAssets(release, options.platform, options.arch, options.linuxPackageType)!.asset;
+    const blockmap = release.assets.find(asset => asset.name === `${selected.name}.blockmap`);
+    updater.disableDifferentialDownload = forceFull || options.disableDifferentialUpdates === true
+      || process.env.PILOTDECK_DISABLE_DIFFERENTIAL_UPDATES === '1'
+      || release.differentialUpdates !== true || !['win32', 'darwin'].includes(options.platform)
+      || !blockmap || blockmap.platform !== options.platform || blockmap.arch !== options.arch
+      || !Number.isSafeInteger(blockmap.size) || blockmap.size <= 0
+      || !/^[a-f0-9]{64}$/.test(blockmap.sha256) || !/^[A-Za-z0-9+/]{86}==$/.test(blockmap.sha512 || '');
+    const provider: JsonReleaseProviderOptions = {
+      provider: "custom", updateProvider: JsonReleaseProvider, url: base,
+      updateInfo: { version: release.version, releaseDate: release.publishedAt ?? release.tagName.slice(1, 11).replaceAll('.', '-'), path: selected.name, sha512: selected.sha512!,
+        files: [{ url: selected.name, sha512: selected.sha512!, size: selected.size }] },
+    };
+    updater.setFeedURL(provider);
     const result = await updater.checkForUpdates();
     if (cancelled) throw new Error("cancelled");
     if (!result || !result.isUpdateAvailable) throw new Error("invalidUpdateMetadata");
@@ -215,7 +240,9 @@ export function createUpdateController(options: {
       const transferred = options.downloadControl?.receivedBytes?.();
       // Adapters without transport telemetry cannot establish a stall safely.
       if (transferred === undefined) return;
-      if (state.state !== "downloading") { windowStarted = now; windowBytes = transferred; return; }
+      // Reusing local blocks can take time on slow disks. No network request
+      // means there is no connection to classify as stalled or slow.
+      if (state.state !== "downloading" || options.downloadControl?.networkActive?.() === false) { windowStarted = now; windowBytes = transferred; return; }
       if (now - windowStarted < 30_000) return;
       const bytes = transferred - windowBytes;
       if (bytes <= 0 || (allowSlowSwitch && bytes * 1000 / (now - windowStarted) < 32 * 1024)) result.cancellationToken?.cancel();
@@ -229,7 +256,7 @@ export function createUpdateController(options: {
     if (state.state === "paused") await new Promise<void>(resolve => { resumeWaiting = resolve; });
     if (cancelled) throw new Error("cancelled");
     if (files.length !== 1) throw new Error("invalidUpdateMetadata");
-    state = { ...state, state: "verifying", progress: 1, transferred: asset.size, bytesPerSecond: 0 };
+    state = { ...state, state: "verifying", progress: 1, bytesPerSecond: 0 };
     try {
       await (options.verifyFile || verifyDownloadedFile)(files[0], asset);
     } catch (error) {
@@ -244,6 +271,7 @@ export function createUpdateController(options: {
       if (task || busyStates.has(state.state) || installFailed) return status();
       lastCheck = null;
       cancelled = false;
+      probeAbort = new AbortController();
       cancellationToken = undefined;
       options.downloadControl?.resume();
       speedSample = undefined;

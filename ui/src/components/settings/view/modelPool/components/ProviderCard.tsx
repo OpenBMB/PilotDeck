@@ -10,9 +10,7 @@ import {
   type CatalogProvider,
   type CatalogProviderProtocol,
 } from "../../../../../shared/catalogProviders";
-import {
-  DEFAULT_MODEL_TOKEN_LIMITS,
-} from "../../../../../shared/catalogProviders";
+import { resolveModelTokenLimits } from "../../../../../shared/modelTokenLimits";
 import {
   fetchProviderModels,
   type ApiModelListItem,
@@ -146,7 +144,6 @@ export default function ProviderCard({
   const task = tests.tasks.find(item => item.providerId === providerId && item.modelId === modelSettingsId);
   const activeTask = tests.tasks.find(isTestTaskBusy);
   const ownBusy = tests.tasks.some(item => item.providerId === providerId && isTestTaskBusy(item));
-  const testDisabled = tests.checking || tests.pending || !!activeTask || saving || editing;
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const displayName = providerDisplayName(
     providerIdDraft || providerId,
@@ -193,54 +190,66 @@ export default function ProviderCard({
     setEditing(false);
   };
 
-  const saveEditing = async () => {
-    if (savingRef.current) return;
+  const validateProvider = (next: V2Provider) => {
     const nextId = trimmedProviderId;
     // Existing configs can use legacy names; validate IDs when adding or renaming.
     if ((isNew || nextId !== providerId) && !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(nextId)) {
-      setProviderIdError(t("pilotDeckConfig.panels.models.providerIdInvalid"));
-      return;
+      return t("pilotDeckConfig.panels.models.providerIdInvalid");
     }
     if (!effectiveUrl.trim()) {
-      setProviderIdError(t("pilotDeckConfig.panels.models.providerUrlRequired"));
-      return;
+      return t("pilotDeckConfig.panels.models.providerUrlRequired");
     }
     if (!isProviderUrlValid(effectiveUrl)) {
-      setProviderIdError(t("pilotDeckConfig.panels.models.providerUrlInvalid"));
-      return;
+      return t("pilotDeckConfig.panels.models.providerUrlInvalid");
     }
-    if (providerRequiresApiKeyInForm && !draftProvider.apiKey?.trim()) {
-      setProviderIdError(t("pilotDeckConfig.panels.models.providerApiKeyRequired"));
-      return;
+    if (providerRequiresApiKeyInForm && !next.apiKey?.trim()) {
+      return t("pilotDeckConfig.panels.models.providerApiKeyRequired");
     }
+    return '';
+  };
+
+  const persistProvider = async (next: V2Provider) => {
+    if (savingRef.current) return { ok: false, error: t('pilotDeckConfig.panels.models.modelSettings.saveFailed') };
+    const validationError = validateProvider(next);
+    if (validationError) {
+      setProviderIdError(validationError);
+      return { ok: false, error: validationError };
+    }
+    const savedProvider = { ...next, protocol, url: effectiveUrl };
     savingRef.current = true;
     setSaving(true);
     setProviderIdError("");
     try {
-      const result = await onSave(nextId, {
-        ...draftProvider,
-        protocol,
-        url: effectiveUrl,
-      });
+      const result = await onSave(trimmedProviderId, savedProvider);
       if (!result.ok) {
-        setProviderIdError(
-          result.error || t("pilotDeckConfig.panels.models.providerIdDuplicate"),
-        );
-        return;
+        const error = result.error || t('pilotDeckConfig.panels.models.modelSettings.saveFailed');
+        setProviderIdError(error);
+        return { ok: false, error };
       }
+      setDraftProvider(savedProvider);
       setEditing(false);
       setDraftCustomModelId(null);
+      return { ok: true };
+    } catch {
+      const error = t('pilotDeckConfig.panels.models.modelSettings.saveFailed');
+      setProviderIdError(error);
+      return { ok: false, error };
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
   };
 
+  const saveEditing = () => persistProvider(draftProvider);
+
   const addModel = (mid: string) => {
     const id = mid.trim();
     if (!id) return;
     if (draftProvider.models && id in draftProvider.models) return;
-    update({ models: { ...(draftProvider.models ?? {}), [id]: {} } });
+    const catalog = catalogModelFor(effectiveCatalogEntry, id);
+    update({ models: { ...(draftProvider.models ?? {}), [id]: {
+      capabilities: resolveModelTokenLimits(trimmedProviderId, id, protocol, catalog),
+    } } });
     setDraftCustomModelId(null);
   };
 
@@ -269,28 +278,44 @@ export default function ProviderCard({
     return multimodal?.input ? multimodal.input.includes('image') : catalogModelFor(effectiveCatalogEntry, modelId)?.supportsImage === true;
   };
 
-  const saveModelSettings = async (modelId: string, values: ModelSettingsPatch) => {
-    const source = editing ? draftProvider : provider;
-    if (!Object.prototype.hasOwnProperty.call(source.models || {}, modelId)) return { ok: false, error: t('pilotDeckConfig.panels.models.modelSettings.saveFailed') };
+  const withModelSettings = (source: V2Provider, modelId: string, values: ModelSettingsPatch): V2Provider | null => {
+    if (!Object.prototype.hasOwnProperty.call(source.models || {}, modelId)) return null;
     const current = asModelRecord(source.models?.[modelId]);
     const multimodal = asModelRecord(current.multimodal as Record<string, unknown>);
     const input = Array.isArray(multimodal.input) ? multimodal.input.filter(value => typeof value === 'string' && value !== 'image') : ['text'];
     if (values.supportsImage) input.push('image');
     const nextModel: Record<string, unknown> = { ...current, thinking: values.thinking, capabilities: { ...readCapabilities(current), maxOutputTokens: values.maxOutputTokens, maxContextTokens: values.maxContextTokens }, multimodal: { ...multimodal, input } };
     delete nextModel.connectionTest;
-    const next = { ...source, models: { ...source.models, [modelId]: nextModel } };
+    return { ...source, models: { ...source.models, [modelId]: nextModel } };
+  };
+
+  const saveModelSettings = async (modelId: string, values: ModelSettingsPatch) => {
+    const next = withModelSettings(editing ? draftProvider : provider, modelId, values);
+    if (!next) return { ok: false, error: t('pilotDeckConfig.panels.models.modelSettings.saveFailed') };
     if (editing) { update({ models: next.models }); return { ok: true }; }
     const result = await onSave(providerId, next);
     if (result.ok) setDraftProvider(next);
     return result;
   };
 
+  const startModelTest = async (modelId: string, values?: ModelSettingsPatch) => {
+    // The task endpoint reads saved configuration. Commit drafts first so new
+    // providers, renamed IDs and updated credentials are tested correctly.
+    if (values) {
+      const next = withModelSettings(editing ? draftProvider : provider, modelId, values);
+      if (!next) return { ok: false, error: t('pilotDeckConfig.panels.models.modelSettings.saveFailed') };
+      const saved = await persistProvider(next);
+      if (!saved.ok) return saved;
+    }
+    await tests.start(trimmedProviderId, modelId);
+    return { ok: true };
+  };
+
   const tokenValue = (modelId: string, key: "maxOutputTokens" | "maxContextTokens") => {
     const stored = readCapabilities(draftProvider.models?.[modelId])[key];
     if (typeof stored === "number" && stored > 0) return stored;
     const catalog = catalogModelFor(effectiveCatalogEntry, modelId);
-    if (typeof catalog?.[key] === "number") return catalog[key];
-    return DEFAULT_MODEL_TOKEN_LIMITS[protocol][key];
+    return resolveModelTokenLimits(trimmedProviderId, modelId, protocol, catalog)[key];
   };
 
   const modelLabel = (modelId: string) =>
@@ -380,6 +405,12 @@ export default function ProviderCard({
   };
 
   const apiKeyInputValue = isMaskedKey ? MASK : (draftProvider.apiKey ?? "");
+  const providerValidationError = validateProvider(draftProvider);
+  const testDisabled = tests.checking || tests.pending || !!activeTask || saving || !!providerValidationError;
+  const blockingTask = activeTask && activeTask.id !== task?.id ? activeTask : undefined;
+  const testDisabledReason = providerValidationError || (tests.checking && !tests.errorCode
+    ? t('pilotDeckConfig.panels.models.checkingTestStatus')
+    : blockingTask ? t('pilotDeckConfig.panels.models.modelSettings.otherTestRunning', { provider: blockingTask.providerId, model: blockingTask.modelId || '' }) : undefined);
 
   return (
     <section className="provider-detail" aria-label={t("pilotDeckConfig.panels.models.providerAria", { name: displayName })}>
@@ -631,9 +662,14 @@ export default function ProviderCard({
         protocol={protocol}
         task={task}
         applyTestResult={!task || (!task.acknowledged && !handledTests.current.has(task.id))}
-        testDisabled={testDisabled || !configured}
+        testDisabled={testDisabled}
+        testDisabledReason={testDisabledReason}
+        saveBeforeTest={editing}
+        blockingTask={blockingTask}
+        cancellingBlockedTest={tests.pending}
+        onCancelBlockingTest={() => { if (blockingTask) void tests.cancel(blockingTask.id); }}
         testError={tests.errorCode ? t(`pilotDeckConfig.panels.models.${tests.errorCode === 'TEST_BUSY' ? 'testBusy' : tests.errorCode === 'STATUS_UNAVAILABLE' ? 'testStatusUnavailable' : 'testRequestFailed'}`) : undefined}
-        onTest={() => void tests.start(providerId, modelSettingsId)}
+        onTest={values => startModelTest(modelSettingsId, values)}
         onCancelTest={() => { if (task) void tests.cancel(task.id); }}
         onSave={values => saveModelSettings(modelSettingsId, values)}
         onClose={() => { if (task && !isTestTaskBusy(task)) { handledTests.current.add(task.id); void tests.acknowledge(task.id); } setModelSettingsId(null); }}

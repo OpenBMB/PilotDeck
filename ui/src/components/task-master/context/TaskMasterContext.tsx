@@ -57,7 +57,7 @@ export function useTaskMaster() {
 }
 
 export function TaskMasterProvider({ children }: { children: React.ReactNode }) {
-  const { latestMessage } = useWebSocket();
+  const { subscribe } = useWebSocket();
   const { user, token, isLoading: isAuthLoading } = useAuth();
 
   const [projects, setProjects] = useState<TaskMasterProject[]>([]);
@@ -209,8 +209,7 @@ export function TaskMasterProvider({ children }: { children: React.ReactNode }) 
     }
   }, [currentProject?.name, refreshTasks, token, user]);
 
-  useEffect(() => {
-    const message = latestMessage as TaskMasterWebSocketMessage | null;
+  useEffect(() => subscribe((message: TaskMasterWebSocketMessage | null) => {
     if (!isTaskMasterMessage(message)) {
       return;
     }
@@ -228,7 +227,7 @@ export function TaskMasterProvider({ children }: { children: React.ReactNode }) 
     if (message.type === 'taskmaster-mcp-status-changed') {
       void refreshMCPStatus();
     }
-  }, [currentProject?.name, latestMessage, refreshMCPStatus, refreshProjects, refreshTasks]);
+  }), [currentProject?.name, subscribe, refreshMCPStatus, refreshProjects, refreshTasks]);
 
   const contextValue = useMemo<TaskMasterContextValue>(
     () => ({

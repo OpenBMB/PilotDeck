@@ -4,9 +4,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { gzipSync } from 'node:zlib';
 import { verifyReleaseAssets } from './verify-release-assets.mjs';
 
-function fixture() {
+function fixture(differentialUpdates) {
   const directory = mkdtempSync(join(tmpdir(), 'pilotdeck-complete-release-'));
   const prefix = 'PilotDeck-2026.1004.0';
   const assets = [];
@@ -32,7 +33,14 @@ function fixture() {
     }
   }
   for (const feed of feeds) add(feed.name, feed.contents, feed.platform, feed.arch);
-  writeFileSync(join(directory, 'release.json'), JSON.stringify({ version: '2026.1004.0', assets }));
+  if (differentialUpdates !== undefined) {
+    for (const payload of [...assets].filter(a => /\.(zip|exe)$/.test(a.name))) {
+      add(`${payload.name}.blockmap`, gzipSync(JSON.stringify({ version: '2', files: [
+        { name: 'file', offset: 0, sizes: [payload.size], checksums: ['synthetic-block'] },
+      ] })), payload.platform, payload.arch);
+    }
+  }
+  writeFileSync(join(directory, 'release.json'), JSON.stringify({ version: '2026.1004.0', assets, differentialUpdates }));
   writeFileSync(join(directory, 'SHA256SUMS.txt'), assets.map(asset => `${asset.sha256}  ${asset.name}\n`).join(''));
   return { directory, prefix, cleanup: () => rmSync(directory, { recursive: true, force: true }) };
 }
@@ -57,7 +65,36 @@ test('accepts all 10 installers and 8 feeds without changing existing filenames'
   finally { f.cleanup(); }
 });
 
-for (const name of ['PilotDeck-2026.1004.0-win-arm64-setup.exe', 'PilotDeck-2026.1004.0-linux-arm64.rpm', 'PilotDeck-2026.1004.0-linux-x64.rpm', 'latest-arm64.yml']) {
+for (const enabled of [true, false]) {
+  test(`validates maps even with differentialUpdates=${enabled}`, () => {
+    const f = fixture(enabled);
+    try {
+      assert.deepEqual(verifyReleaseAssets(f.directory), { installers: 10, feeds: 8 });
+      const file = `${f.prefix}-win-x64-setup.exe.blockmap`;
+      rmSync(join(f.directory, file));
+      assert.throws(() => verifyReleaseAssets(f.directory));
+    } finally { f.cleanup(); }
+  });
+}
+for (const [reason, contents] of [
+  ['not gzip', Buffer.from('bad')],
+  ['unknown version', gzipSync(JSON.stringify({ version: '3', files: [] }))],
+  ['wrong total size', gzipSync(JSON.stringify({ version: '2', files: [{ name: 'file', offset: 0, checksums: ['x'], sizes: [1] }] }))],
+  ['negative size', gzipSync(JSON.stringify({ version: '2', files: [{ name: 'file', offset: 0, checksums: ['x'], sizes: [-1] }] }))],
+  ['mismatched block counts', gzipSync(JSON.stringify({ version: '2', files: [{ name: 'file', offset: 0, checksums: [], sizes: [1] }] }))],
+]) {
+  test(`refuses a checksummed blockmap with ${reason}`, () => {
+    const f = fixture(true);
+    try {
+      replaceFeed(f.directory, `${f.prefix}-win-x64-setup.exe.blockmap`, contents);
+      assert.throws(() => verifyReleaseAssets(f.directory));
+    } finally { f.cleanup(); }
+  });
+}
+
+for (const name of ['PilotDeck-2026.1004.0-win-arm64-setup.exe', 'PilotDeck-2026.1004.0-linux-arm64.rpm', 'PilotDeck-2026.1004.0-linux-x64.rpm',
+  'latest-arm64.yml', 'latest-x64.yml', 'latest-arm64-mac.yml', 'latest-x64-mac.yml',
+  'latest-linux.yml', 'latest-linux-arm64.yml', 'latest-rpm-linux.yml', 'latest-rpm-linux-arm64.yml']) {
   test(`refuses publication when ${name} is absent`, () => {
     const f = fixture();
     try {
@@ -88,6 +125,6 @@ test('refuses a stale installer even when the current packages are present', () 
   const f = fixture();
   try {
     writeFileSync(join(f.directory, 'PilotDeck-2026.1003.0-win-x64-setup.exe'), 'stale');
-    assert.throws(() => verifyReleaseAssets(f.directory), /Unexpected installer/);
+    assert.throws(() => verifyReleaseAssets(f.directory), /Unexpected (installer|release files)/);
   } finally { f.cleanup(); }
 });

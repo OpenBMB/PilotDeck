@@ -1,4 +1,5 @@
 import type { Gateway, GatewayEvent } from "../protocol/types.js";
+import { randomUUID } from "node:crypto";
 import type { WsHelloFrame, WsRequestFrame } from "../protocol/frames.js";
 import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "../protocol/version.js";
 import { TextWebSocketConnection } from "./websocket.js";
@@ -13,7 +14,8 @@ export type GatewayWsConnectionOptions = {
 
 export class GatewayWsConnection {
   private authed = false;
-  private readonly inFlightSessions = new Set<string>();
+  private closed = false;
+  private readonly inFlightRequests = new Map<string, { controller: AbortController; done: Promise<void> }>();
 
   constructor(
     private readonly ws: TextWebSocketConnection,
@@ -24,12 +26,9 @@ export class GatewayWsConnection {
   }
 
   private abortInFlightTurns(): void {
-    for (const sessionKey of this.inFlightSessions) {
-      this.options.gateway
-        .abortTurn({ sessionKey })
-        .catch(() => undefined);
-    }
-    this.inFlightSessions.clear();
+    this.closed = true;
+    for (const turn of this.inFlightRequests.values()) turn.controller.abort("transport_closed");
+    this.inFlightRequests.clear();
   }
 
   sendNotification(name: string, payload?: unknown): void {
@@ -42,6 +41,7 @@ export class GatewayWsConnection {
   }
 
   private async handleMessage(message: string): Promise<void> {
+    if (this.closed) return;
     let frame: unknown;
     try {
       frame = JSON.parse(message);
@@ -89,19 +89,27 @@ export class GatewayWsConnection {
   private async handleRequest(frame: WsRequestFrame): Promise<void> {
     try {
       if (frame.method === "submit_turn") {
-        const sessionKey = (frame.params as { sessionKey?: string } | undefined)?.sessionKey;
-        if (sessionKey) this.inFlightSessions.add(sessionKey);
+        const params = frame.params as Parameters<Gateway["submitTurn"]>[0];
+        const runId = params?.runId ?? randomUUID();
+        // Keep every request's identity: a busy duplicate must not release the
+        // original request, and disconnect must never abort a later run.
+        if (this.inFlightRequests.has(frame.id)) throw new Error("A stream with this request id is already active.");
+        const controller = new AbortController();
+        let resolveDone!: () => void;
+        const done = new Promise<void>(resolve => { resolveDone = resolve; });
+        this.inFlightRequests.set(frame.id, { controller, done });
         let seq = 0;
         let lastCompleted: GatewayEvent | undefined;
         try {
-          for await (const event of this.options.gateway.submitTurn(frame.params as never)) {
+          for await (const event of this.options.gateway.submitTurn({ ...params, runId }, { signal: controller.signal })) {
             if (event.type === "turn_completed") {
               lastCompleted = event;
             }
             this.ws.sendText(JSON.stringify({ type: "event", id: frame.id, seq: seq++, final: false, event }));
           }
         } finally {
-          if (sessionKey) this.inFlightSessions.delete(sessionKey);
+          this.inFlightRequests.delete(frame.id);
+          resolveDone();
         }
         const usage = lastCompleted?.type === "turn_completed" ? lastCompleted.usage : {};
         const finishReason = lastCompleted?.type === "turn_completed" ? lastCompleted.finishReason : "completed";
@@ -111,7 +119,7 @@ export class GatewayWsConnection {
             id: frame.id,
             seq,
             final: true,
-            event: { type: "turn_completed", usage, finishReason },
+            event: lastCompleted ?? { type: "turn_completed", usage, finishReason },
           }),
         );
         return;
@@ -190,6 +198,11 @@ export class GatewayWsConnection {
       case "cancel_steer":
         return this.options.gateway.cancelSteer(frame.params as never);
       case "abort_turn":
+        if (typeof (frame.params as { requestId?: unknown })?.requestId === "string") {
+          const turn = this.inFlightRequests.get((frame.params as { requestId: string }).requestId);
+          turn?.controller.abort("consumer_closed");
+          return (turn?.done ?? Promise.resolve()).then(() => ({ ok: true }));
+        }
         return this.options.gateway.abortTurn(frame.params as never).then(() => ({ ok: true }));
       case "list_sessions":
         return this.options.gateway.listSessions(frame.params as never);
@@ -270,6 +283,9 @@ export class GatewayWsConnection {
           return this.options.gateway.reloadConfig();
         }
         return Promise.resolve({ reloaded: false, reason: "unsupported" });
+      case 'python_runtime_status':
+        return this.options.gateway.getPythonRuntimeStatus?.()
+          ?? Promise.resolve({ enabled: true, state: 'unavailable', reason: 'not-installed' });
       case "prepare_weixin_login":
         if (this.options.gateway.prepareWeixinLogin) {
           return this.options.gateway.prepareWeixinLogin();
@@ -292,6 +308,8 @@ export class GatewayWsConnection {
         return requireSkillMethod(this.options.gateway.skillWrite, this.options.gateway)(frame.params as never);
       case "skill_create":
         return requireSkillMethod(this.options.gateway.skillCreate, this.options.gateway)(frame.params as never);
+      case "skill_set_enabled":
+        return requireSkillMethod(this.options.gateway.skillSetEnabled, this.options.gateway)(frame.params as never);
       case "skill_delete":
         return requireSkillMethod(this.options.gateway.skillDelete, this.options.gateway)(frame.params as never);
       case "skill_import":

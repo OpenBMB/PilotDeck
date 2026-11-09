@@ -1,6 +1,6 @@
 /**
  * Skills HTTP shim — translates the existing `/api/skills/*` REST
- * contract that `ui/src/components/main-content-v2/SkillsV2.tsx` was
+ * contract that `ui/src/components/skills/view/SkillsPanel.tsx` was
  * built against into the gateway's `skill_*` RPCs. The gateway is the
  * authoritative skill manager (see `src/extension/skills/SkillManager.ts`)
  * backed by release-bundled skills, `~/.pilotdeck/skills/`, and
@@ -265,6 +265,15 @@ router.post('/list', async (req, res) => {
     });
   } catch (e) {
     sendGatewayError(res, e);
+  }
+});
+
+router.post('/set-enabled', async (req, res) => {
+  try {
+    const address = await resolveSkillAddress(req.body);
+    res.json(await callGateway('skillSetEnabled', { ...address, enabled: req.body.enabled }));
+  } catch (error) {
+    sendGatewayError(res, error);
   }
 });
 

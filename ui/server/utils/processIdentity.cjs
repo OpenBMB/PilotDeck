@@ -1,5 +1,6 @@
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
+const { nativeProcessHost, windowsPowerShellPath } = require('./nativeProcessHost.cjs');
 // Includes PowerShell cold startup. Query failures remain explicit; no PID-only fallback.
 const WINDOWS_QUERY_TIMEOUT_MS = 30_000;
 // The guardian and Job holder each need a query on a cold CI host.
@@ -12,8 +13,11 @@ function windowsProcesses(pids, run = execFileSync) {
     : '[System.Diagnostics.Process]::GetProcesses()';
   const onError = pids ? 'if (!$item.HasExited) { throw }' : '';
   const command = `$ErrorActionPreference='Stop'; $items=@(${source}); $result=@(foreach($item in $items) { try { [pscustomobject]@{ ProcessId=$item.Id; Birth=$item.StartTime.ToUniversalTime().ToString('o') } } catch { ${onError} } finally { $item.Dispose() } }); ConvertTo-Json -InputObject $result -Compress`;
+  let backend;
   try {
-    const stdout = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command],
+    const native = run === execFileSync ? nativeProcessHost() : null;
+    backend = native ? 'native process helper' : 'PowerShell fallback';
+    const stdout = run(native || windowsPowerShellPath(), native ? ['identity', ...(pids || []).map(String)] : ['-NoProfile', '-NonInteractive', '-Command', command],
       { timeout: WINDOWS_QUERY_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, windowsHide: true, encoding: 'utf8' });
     const parsed = JSON.parse(stdout || '[]');
     return (Array.isArray(parsed) ? parsed : [parsed]).map(row => {
@@ -21,7 +25,10 @@ function windowsProcesses(pids, run = execFileSync) {
       return { pid: row.ProcessId, birth: row.Birth };
     });
   } catch (error) {
-    const detail = error.code === 'ETIMEDOUT' ? `timed out after ${WINDOWS_QUERY_TIMEOUT_MS} ms` : error.message;
+    const detail = error.code === 'ETIMEDOUT' ? `timed out after ${WINDOWS_QUERY_TIMEOUT_MS} ms`
+      : backend && ['EPERM', 'EACCES'].includes(error.code)
+        ? `could not start the ${backend} (${error.code}). Check the installation and Windows application-control permissions.${backend === 'PowerShell fallback' ? ' The native process helper is not in use; install a current complete desktop package.' : ''}`
+        : error.message;
     throw Object.assign(new Error(`Windows process identity query ${detail}`), { code: error.code, cause: error });
   }
 }

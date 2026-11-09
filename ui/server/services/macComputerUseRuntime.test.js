@@ -29,7 +29,7 @@ it('web and desktop resolve the same production payload outside their source app
   const desktop = await resolveMacRuntime({ ...opts, binary: production.binary });
   const web = await resolveMacRuntime({ ...opts, binary: development.binary });
   expect(web.binary).toBe(desktop.binary); expect(web.bundleId).toBe(MAC_HOST_ID);
-  expect(web.app).not.toContain('Desktop.app/');
+  expect(web.app).not.toContain('Desktop.app' + path.sep);
   expect(fs.readFileSync(web.binary, 'utf8')).toBe(fs.readFileSync(production.binary, 'utf8'));
   expect(JSON.parse(fs.readFileSync(development.binary)).production).toBe(false);
 });
@@ -55,7 +55,7 @@ it('keeps development identities separate and refuses signed candidates with a d
   await resolveMacRuntime({ ...opts, binary: prod.binary, version: '0.34.2' });
   const dev = f.make('dev', { version: '0.34.1', production: false });
   const runtime = await resolveMacRuntime({ ...opts, binary: dev.binary, version: '0.34.1' });
-  expect(runtime.bundleId).toBe(MAC_DEV_HOST_ID); expect(runtime.app).toContain('/development/');
+  expect(runtime.bundleId).toBe(MAC_DEV_HOST_ID); expect(runtime.app).toContain(path.sep + 'development' + path.sep);
   const invalid = f.make('invalid', { version: '0.34.1', production: true, invalid: true });
   await expect(resolveMacRuntime({ ...opts, binary: invalid.binary, version: '0.34.1' })).rejects.toThrow('Signature');
 });

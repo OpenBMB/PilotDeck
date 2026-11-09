@@ -179,11 +179,12 @@ function createSubagentForkHarness(router: AgentRouterRuntime): {
 function sessionFor(
   definition: SubagentDefinition,
   registry: ToolRegistry,
+  config: AgentRuntimeConfig = parentConfig(),
 ): TestableSubAgentSession {
   const options: SubAgentSessionOptions = {
     definition,
     directive: "Inspect the workspace.",
-    parentConfig: parentConfig(),
+    parentConfig: config,
     parentDependencies: {
       router: {} as AgentRuntimeDependencies["router"],
       tools: {
@@ -198,6 +199,47 @@ function sessionFor(
   };
   return new SubAgentSession(options) as unknown as TestableSubAgentSession;
 }
+
+test('subagents retain the parent Python execution snapshot with their custom system prompt', () => {
+  const config = parentConfig();
+  config.env = Object.freeze({ PATH: '/managed/bin', UV_PYTHON: '/managed/bin/python' });
+  config.pythonRuntime = Object.freeze({ enabled: true, state: 'ready', version: '3.12.16', executable: '/managed/bin/python' });
+  const definition = Object.values(SUBAGENT_DEFINITIONS)[0]!;
+  const child = sessionFor(definition, new ToolRegistry(), config).buildConfig();
+  assert.equal(child.env, config.env);
+  assert.equal(child.pythonRuntime, config.pythonRuntime);
+  assert.ok(child.systemPrompt);
+});
+
+test("subagent catalog refresh uses its child registry and preserves its tool allowlist", async () => {
+  const parent = new ToolRegistry();
+  const existing = createNoopTool("existing", () => true);
+  parent.register(existing);
+  const emitted: string[][] = [];
+  const router = createRouter();
+  const originalExecute = router.execute;
+  router.execute = async function* (decision, request, context) {
+    emitted.push((request.tools ?? []).map(tool => tool.name));
+    yield* originalExecute(decision, request, context);
+  };
+  const child = new SubAgentSession({
+    definition: { ...Object.values(SUBAGENT_DEFINITIONS)[0]!, allowedTools: ["existing", "allowed", "agent"] },
+    directive: "Synthetic request", parentConfig: parentConfig(),
+    parentDependencies: { router, tools: { registry: parent, scheduler: {} as never },
+      async refreshToolCatalog(registry, _signal, include) {
+        assert.notEqual(registry, parent);
+        for (const name of ["allowed", "excluded", "agent"]) {
+          const tool = createNoopTool(name, () => true);
+          if (include?.(tool)) registry.register(tool);
+        }
+      },
+    },
+    parentSessionId: "parent", parentTurnId: "turn", subagentSessionId: "child", subagentId: "synthetic-child",
+  });
+  await child.run();
+  assert.deepEqual(emitted, [["allowed", "existing"]]);
+  assert.deepEqual(parent.list(), [existing]);
+});
 
 function runtimeContext(config: AgentRuntimeConfig): PilotDeckToolRuntimeContext {
   return {

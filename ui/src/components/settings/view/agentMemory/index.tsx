@@ -1,5 +1,7 @@
 import { isOptionalFeatureEnabled } from "../../../../../../src/pilot/config/optionalFeature.js";
 import { useMemo, useState } from "react";
+import { Brain, Pencil } from "lucide-react";
+import { GeneralSelectControl, GeneralSettingRow, GeneralSettingsIcon } from "../../shared/view/GeneralSettingsPrimitives";
 import { useTranslation } from "react-i18next";
 import { usePilotDeckConfig } from "../../../../hooks/usePilotDeckConfig";
 import { findCatalogProviderById } from "../../../../shared/catalogProviders";
@@ -43,38 +45,6 @@ function ChevronIcon() {
       aria-hidden="true"
     >
       <path d="M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z" />
-    </svg>
-  );
-}
-
-function MemoryEnableIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="20"
-      fill="currentColor"
-      viewBox="0 0 256 256"
-    >
-      <path
-        d="M240,124a48,48,0,0,1-32,45.27h0V176a40,40,0,0,1-80,0,40,40,0,0,1-80,0v-6.73h0a48,48,0,0,1,0-90.54V72a40,40,0,0,1,80,0,40,40,0,0,1,80,0v6.73A48,48,0,0,1,240,124Z"
-        opacity="0.2"
-      />
-      <path d="M248,124a56.11,56.11,0,0,0-32-50.61V72a48,48,0,0,0-88-26.49A48,48,0,0,0,40,72v1.39a56,56,0,0,0,0,101.2V176a48,48,0,0,0,88,26.49A48,48,0,0,0,216,176v-1.41A56.09,56.09,0,0,0,248,124ZM88,208a32,32,0,0,1-31.81-28.56A55.87,55.87,0,0,0,64,180h8a8,8,0,0,0,0-16H64A40,40,0,0,1,50.67,86.27,8,8,0,0,0,56,78.73V72a32,32,0,0,1,64,0v68.26A47.8,47.8,0,0,0,88,128a8,8,0,0,0,0,16,32,32,0,0,1,0,64Zm104-44h-8a8,8,0,0,0,0,16h8a55.87,55.87,0,0,0,7.81-.56A32,32,0,1,1,168,144a8,8,0,0,0,0-16,47.8,47.8,0,0,0-32,12.26V72a32,32,0,0,1,64,0v6.73a8,8,0,0,0,5.33,7.54A40,40,0,0,1,192,164Zm16-52a8,8,0,0,1-8,8h-4a36,36,0,0,1-36-36V80a8,8,0,0,1,16,0v4a20,20,0,0,0,20,20h4A8,8,0,0,1,208,112ZM60,120H56a8,8,0,0,1,0-16h4A20,20,0,0,0,80,84V80a8,8,0,0,1,16,0v4A36,36,0,0,1,60,120Z" />
-    </svg>
-  );
-}
-
-function EditIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      fill="currentColor"
-      viewBox="0 0 256 256"
-    >
-      <path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" />
     </svg>
   );
 }
@@ -275,14 +245,11 @@ function MemorySection({
     const controlsDisabled = !enabled || !editing;
     const canSave = Number.isFinite(Number(draftValue)) && Number(draftValue) >= 0;
     return (
-      <div className="memory-setting-row">
-        <div className="memory-setting-copy">
-          <label htmlFor={id}>{label}</label>
-          <p>{description}</p>
-        </div>
+      <GeneralSettingRow htmlFor={id} title={label} detail={description}>
         <div className="memory-interval-control">
           <input
             id={id}
+            className="general-input"
             min={0}
             type="number"
             disabled={controlsDisabled}
@@ -303,37 +270,24 @@ function MemorySection({
               }
             }}
           />
-          <div className="memory-select-wrap compact">
-            <select
-              id={unitId}
-              disabled={controlsDisabled}
-              aria-label={label}
-              value={editing ? draftUnit : unit}
-              onChange={(event) => {
-                if (!editing) return;
-                onDraftUnit(parseIntervalUnit(event.target.value, units));
-              }}
-            >
-              {units.map((option) => (
-                <option key={option} value={option}>
-                  {t(`pilotDeckConfig.panels.memory.intervalUnits.${option}`)}
-                </option>
-              ))}
-            </select>
-            <ChevronIcon />
-          </div>
+          <GeneralSelectControl
+            compact id={unitId} disabled={controlsDisabled} ariaLabel={label}
+            value={editing ? draftUnit : unit}
+            onChange={value => { if (editing) onDraftUnit(parseIntervalUnit(value, units)); }}
+            options={units.map(value => ({ value, label: t(`pilotDeckConfig.panels.memory.intervalUnits.${value}`) }))}
+          />
           <div className="memory-interval-actions">
             {editing ? (
               <>
                 <button
-                  className="memory-edit-button"
+                  className="button secondary compact"
                   type="button"
                   onClick={onCancel}
                 >
                   {t("settingsPage.actions.cancel")}
                 </button>
                 <button
-                  className="memory-edit-button editing"
+                  className="button primary compact"
                   type="button"
                   disabled={!canSave}
                   onClick={onCommit}
@@ -343,56 +297,40 @@ function MemorySection({
               </>
             ) : (
               <button
-                className="memory-edit-button"
+                className="button secondary compact"
                 type="button"
                 disabled={!enabled || editLocked}
                 onClick={onEdit}
               >
-                <EditIcon /> {t("settingsPage.actions.edit")}
+                <GeneralSettingsIcon icon={Pencil} /> {t("settingsPage.actions.edit")}
               </button>
             )}
           </div>
         </div>
-      </div>
+      </GeneralSettingRow>
     );
   };
 
   return (
     <>
-      <section
-        className="route-card route-enable-card memory-enable-card"
-        aria-label={t("pilotDeckConfig.panels.memory.enabled.label")}
-      >
-        <div className="route-card-heading">
-          <span className="route-heading-icon">
-            <MemoryEnableIcon />
-          </span>
-          <div>
-            <h2>{t("pilotDeckConfig.panels.memory.enabled.label")}</h2>
-            <p>{t("pilotDeckConfig.panels.memory.enabled.description")}</p>
-          </div>
-        </div>
-        <SettingsToggle
-          checked={enabled}
-          ariaLabel={t("pilotDeckConfig.panels.memory.enabled.label")}
-          onChange={handleMemoryEnabled}
-          suppressNextSaveToast
-        />
+      <section className="general-card">
+        <GeneralSettingRow icon={<GeneralSettingsIcon icon={Brain} />}
+          title={t("pilotDeckConfig.panels.memory.enabled.label")}
+          detail={t("pilotDeckConfig.panels.memory.enabled.description")}>
+          <SettingsToggle checked={enabled} ariaLabel={t("pilotDeckConfig.panels.memory.enabled.label")}
+            onChange={handleMemoryEnabled} suppressNextSaveToast />
+        </GeneralSettingRow>
       </section>
 
       <section
-        className="memory-card memory-config-card"
+        className="general-card memory-config-card"
         aria-label={t("pilotDeckConfig.panels.memory.title")}
       >
         <div className={`memory-config-body${enabled ? "" : " disabled"}`}>
-          <div className="memory-setting-row">
-            <div className="memory-setting-copy">
-              <label htmlFor="memory-model">
-                {t("pilotDeckConfig.panels.memory.model.label")}
-              </label>
-              <p>{t("pilotDeckConfig.panels.memory.model.description")}</p>
-            </div>
-            <div className="memory-select-wrap memory-model-select">
+          <GeneralSettingRow htmlFor="memory-model"
+            title={t("pilotDeckConfig.panels.memory.model.label")}
+            detail={t("pilotDeckConfig.panels.memory.model.description")}>
+            <div className="general-select-wrap">
               <select
                 id="memory-model"
                 data-model-reference="memory.model"
@@ -436,7 +374,7 @@ function MemorySection({
               </select>
               <ChevronIcon />
             </div>
-          </div>
+          </GeneralSettingRow>
 
           {renderIntervalRow({
             id: "memory-indexing-value",
@@ -514,7 +452,7 @@ export default function AgentMemorySections({
   if (!parsedConfig) {
     return (
       <div className="memory-page-content">
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-[var(--pd-danger-ink)]">
           {t("settingsPage.invalidYaml.agentMemory")}
         </div>
       </div>

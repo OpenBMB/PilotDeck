@@ -112,7 +112,7 @@ it('defaults to restoring recorded internal work files without exposing their pa
   const dialog = await screen.findByRole('dialog');
   expect(dialog.textContent).not.toContain('.pilotdeck');
   expect((within(dialog).getByLabelText('同时回退本轮内部工作文件') as HTMLInputElement).checked).toBe(true);
-  expect(within(dialog).getByText('部分内部工作文件存在后续修改或缺少备份，将保留。')).toBeTruthy();
+  expect(within(dialog).getByText('部分内部工作文件无法安全恢复，将保留。')).toBeTruthy();
   fireEvent.click(within(dialog).getByText('确认恢复 1 个文件'));
   await waitFor(() => expect(mocks.fetch.mock.calls.some(([, options]) => options?.body && JSON.parse(options.body).action === 'restore')).toBe(true));
   const [, request] = mocks.fetch.mock.calls.find(([, options]) => options?.body && JSON.parse(options.body).action === 'restore')!;

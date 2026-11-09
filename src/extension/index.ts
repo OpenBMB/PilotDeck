@@ -65,6 +65,7 @@ export type { CommandContribution } from "./contributions/CommandContribution.js
 export type { HookContribution } from "./contributions/HookContribution.js";
 export type { ToolContribution } from "./contributions/ToolContribution.js";
 export type { PromptContribution } from "./contributions/PromptContribution.js";
+export type { PluginPromptContributions, PluginCommandContribution, PluginSkillContribution, PluginMcpInstruction } from "./plugins/protocol/promptContributions.js";
 export type { McpContribution } from "./contributions/McpContribution.js";
 export type { PermissionRuleContribution } from "./contributions/PermissionRuleContribution.js";
 export type { RouterContribution } from "./contributions/RouterContribution.js";

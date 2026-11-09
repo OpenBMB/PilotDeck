@@ -4,7 +4,8 @@ import test from "node:test";
 import { parseModelConfig } from "../../../src/model/config/parseModelConfig.js";
 import type { CanonicalModelEvent, CanonicalModelRequest, ProviderConfig } from "../../../src/model/protocol/canonical.js";
 import type { GoogleClientFactory } from "../../../src/model/providers/google/client.js";
-import { resolveStreamIdleTimeout, streamModel } from "../../../src/model/streaming/streamModel.js";
+import { complete, resolveStreamIdleTimeout, streamModel, type ModelStreamRetryProgress } from "../../../src/model/streaming/streamModel.js";
+import { ModelProviderError } from "../../../src/model/protocol/errors.js";
 
 function createConfig(input: { timeoutMs?: number; streamMaxRetries?: number; streamIdleTimeoutMs?: number } = {}) {
   return parseModelConfig({
@@ -73,6 +74,109 @@ test("stream idle timeout defaults independently from provider request timeout",
   assert.equal(resolveStreamIdleTimeout(provider), 600_000);
   assert.equal(resolveStreamIdleTimeout(provider, { streamTimeoutMs: 1234 }), 1234);
   assert.equal(resolveStreamIdleTimeout({ ...provider, retry: { streamIdleTimeoutMs: 5678 } }), 5678);
+});
+
+test("default retry budget survives five transient failures with bounded exponential backoff", async () => {
+  const config = createConfig();
+  config.providers.test!.retry = { baseDelayMs: 1, maxDelayMs: 8, jitter: 0 };
+  let requests = 0;
+  const progress: ModelStreamRetryProgress[] = [];
+  const events = await collect(streamModel(createRequest(), config, {
+    onRetryProgress: item => progress.push(item),
+    fetch: async () => {
+      if (++requests <= 5) throw new TypeError("Connection lost", { cause: { code: "ECONNRESET" } });
+      return sse('data: {"choices":[{"delta":{"content":"recovered"},"finish_reason":"stop"}]}\n\n');
+    },
+  }));
+  assert.equal(requests, 6);
+  assert.deepEqual(progress.map(item => item.delayMs), [1, 2, 4, 8, 8]);
+  assert.deepEqual(progress.map(item => [item.attempt, item.maxAttempts]), [[1, 5], [2, 5], [3, 5], [4, 5], [5, 5]]);
+  assert.equal(events.filter(event => event.type === "text_delta").length, 1);
+  assert.equal(events.some(event => event.type === "error"), false);
+});
+
+test("retries a first-token timeout and reports retry progress before recovering", async () => {
+  const progress: ModelStreamRetryProgress[] = [];
+  let requests = 0;
+  const events = await collect(streamModel(createRequest(), createConfig(), {
+    streamTimeoutMs: 10,
+    onRetryProgress: item => progress.push(item),
+    fetch: async (_input, init) => {
+      if (++requests > 1) return sse("data: [DONE]\n\n");
+      return new Promise<Response>((_resolve, reject) => {
+        init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason), { once: true });
+      });
+    },
+  }));
+  assert.equal(requests, 2);
+  assert.equal(progress.length, 1);
+  assert.equal(events.some(event => event.type === "error"), false);
+});
+
+test("retries Undici body termination before output and continues partial text without duplication", async () => {
+  for (const partial of ["", "prefix"]) {
+    let requests = 0;
+    const events = await collect(streamModel(createRequest(), createConfig(), {
+      fetch: async () => {
+        if (++requests > 1) return sse('data: {"choices":[{"delta":{"content":"suffix"},"finish_reason":"stop"}]}\n\n');
+        let sent = false;
+        return new Response(new ReadableStream({
+          pull(controller) {
+            if (!sent && partial) {
+              sent = true;
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: partial } }] })}\n\n`));
+            } else controller.error(new TypeError("terminated", { cause: { code: "UND_ERR_SOCKET" } }));
+          },
+        }));
+      },
+    }));
+    assert.equal(requests, 2);
+    assert.equal(events.filter(event => event.type === "text_delta").map(event => event.text).join(""), partial + "suffix");
+    assert.equal(events.some(event => event.type === "error"), false);
+  }
+});
+
+test("cancellation interrupts backoff without another provider request", async () => {
+  const abort = new AbortController();
+  let requests = 0;
+  await assert.rejects(collect(streamModel(createRequest(), createConfig(), {
+    signal: abort.signal,
+    onRetryProgress: () => abort.abort(),
+    fetch: async () => { requests++; throw new Error("fetch failed"); },
+  })), { name: "AbortError" });
+  assert.equal(requests, 1);
+});
+
+test("completion retries HTTP transient errors and honors capped Retry-After", async () => {
+  for (const status of [408, 429, 503]) {
+    const config = createConfig();
+    config.providers.test!.retry = { requestMaxRetries: 1, baseDelayMs: 1, maxDelayMs: 5, jitter: 0 };
+    let requests = 0;
+    const progress: ModelStreamRetryProgress[] = [];
+    await complete(createRequest(), config, {
+      onRetryProgress: item => progress.push(item),
+      fetch: async () => ++requests === 1
+        ? new Response(JSON.stringify({ error: { message: "temporarily unavailable" } }), { status, headers: { "retry-after": "30" } })
+        : Response.json({ choices: [{ message: { role: "assistant", content: "recovered" }, finish_reason: "stop" }] }),
+    });
+    assert.equal(requests, 2);
+    assert.equal(progress[0]?.delayMs, 5);
+  }
+});
+
+test("does not retry permanent HTTP failures or ignore an explicit zero retry budget", async () => {
+  for (const [status, retries] of [[401, 5], [402, 5], [400, 5], [503, 0]]) {
+    const config = createConfig({ streamMaxRetries: retries });
+    config.providers.test!.retry!.requestMaxRetries = retries;
+    const response = () => new Response(JSON.stringify({ error: { message: "request rejected" } }), { status });
+    let requests = 0;
+    await assert.rejects(complete(createRequest(), config, { fetch: async () => { requests++; return response(); } }), ModelProviderError);
+    assert.equal(requests, 1);
+    requests = 0;
+    const events = await collect(streamModel(createRequest(), config, { fetch: async () => { requests++; return response(); } }));
+    assert.equal(requests, 1);
+    assert.equal(events.some(event => event.type === "error"), true);
+  }
 });
 
 test("stream request setup uses the stream timeout instead of provider timeout", async () => {
@@ -234,7 +338,14 @@ test("does not replay a stream after reasoning or tool-call output", async () =>
   }
 });
 
-test("Google streaming uses an idle watchdog instead of an absolute SDK timeout", async () => {
+test("Google streaming uses an idle watchdog instead of an absolute SDK timeout", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let firstWaiting!: () => void, secondWaiting!: () => void;
+  let resumeFirst!: () => void, resumeSecond!: () => void;
+  const firstRead = new Promise<void>(resolve => { firstWaiting = resolve; });
+  const secondRead = new Promise<void>(resolve => { secondWaiting = resolve; });
+  const firstGate = new Promise<void>(resolve => { resumeFirst = resolve; });
+  const secondGate = new Promise<void>(resolve => { resumeSecond = resolve; });
   const config = createGoogleConfig({ timeoutMs: 1 });
   const clientTimeouts: Array<number | undefined> = [];
   const googleClientFactory: GoogleClientFactory = (provider: ProviderConfig) => {
@@ -244,19 +355,24 @@ test("Google streaming uses an idle watchdog instead of an absolute SDK timeout"
         generateContent: async () => ({} as never),
         generateContentStream: async () => (async function* () {
           yield { candidates: [{ content: { parts: [{ text: "a" }] } }] } as never;
-          await sleep(8);
+          firstWaiting(); await firstGate;
           yield { candidates: [{ content: { parts: [{ text: "b" }] } }] } as never;
-          await sleep(8);
+          secondWaiting(); await secondGate;
           yield { candidates: [{ finishReason: "STOP", content: { parts: [] } }] } as never;
         })(),
       },
     };
   };
 
-  const events = await collect(streamModel(createRequest(), config, {
+  const pending = collect(streamModel(createRequest(), config, {
     streamTimeoutMs: 10,
     googleClientFactory,
   }));
+  await firstRead;
+  t.mock.timers.tick(8); resumeFirst();
+  await secondRead;
+  t.mock.timers.tick(8); resumeSecond();
+  const events = await pending;
 
   assert.deepEqual(clientTimeouts, [undefined]);
   assert.equal(events.some((event) => event.type === "error"), false);
@@ -282,6 +398,22 @@ test("Google idle watchdog interrupts a stalled iterator", async () => {
   const error = events.find((event): event is Extract<CanonicalModelEvent, { type: "error" }> => event.type === "error");
   assert.equal(error?.error.code, "timeout");
   assert.equal(error?.error.settingsFix?.configPath, "model.providers.<id>.retry.streamIdleTimeoutMs");
+});
+
+test("Google does not retry a TLS failure hidden behind a generic fetch message", async () => {
+  let requests = 0;
+  const events = await collect(streamModel(createRequest(), createGoogleConfig({ streamMaxRetries: 2 }), {
+    googleClientFactory: () => ({ models: {
+      generateContent: async () => ({} as never),
+      generateContentStream: async () => {
+        requests++;
+        throw new TypeError('fetch failed', { cause: { code: 'CERT_HAS_EXPIRED' } });
+      },
+    } }),
+  }));
+  assert.equal(requests, 1);
+  const error = events.find((event): event is Extract<CanonicalModelEvent, { type: 'error' }> => event.type === 'error');
+  assert.equal(error?.error.code, 'tls_error');
 });
 
 test("Google recovers a stream ending without a finish event", async () => {

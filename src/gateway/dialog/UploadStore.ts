@@ -267,16 +267,21 @@ export class UploadStore {
     if (record.projectKey !== canonicalProject) throw new DialogGatewayError("PROJECT_PATH_FORBIDDEN", "Upload belongs to another project.");
     if (record.status === "expired") throw new DialogGatewayError("ATTACHMENT_EXPIRED", "Upload expired.");
     if (record.status !== "completed") throw new DialogGatewayError("UPLOAD_NOT_COMPLETED", `Upload is ${record.status}.`);
-    const wanted = attachmentIds ? new Set(attachmentIds) : undefined;
-    const attachments = (record.attachments ?? []).filter((item) => !wanted || wanted.has(item.attachmentId));
-    if (wanted && attachments.length !== wanted.size) throw new DialogGatewayError("ATTACHMENT_NOT_FOUND", "Unknown attachmentId.");
-    for (const attachment of attachments) {
+    const byId = new Map((record.attachments ?? []).map(item => [item.attachmentId, item]));
+    // Disk writes finish independently; preserve prompt order, not completion order.
+    const wanted = [...new Set(attachmentIds ?? record.manifest.map(item => item.clientFileId))];
+    const verified = wanted.map(id => {
+      const attachment = byId.get(id);
+      if (!attachment) throw new DialogGatewayError("ATTACHMENT_NOT_FOUND", "Unknown attachmentId.");
+      return attachment;
+    });
+    for (const attachment of verified) {
       const info = await stat(attachment.path).catch(() => undefined);
       if (!info || info.size !== attachment.bytes || await sha256File(attachment.path) !== attachment.sha256) {
         throw new DialogGatewayError("ATTACHMENT_TAMPERED", `Attachment integrity check failed: ${attachment.attachmentId}`);
       }
     }
-    return attachments;
+    return verified;
   }
 
   private async mutate(record: UploadRecord, mutate: (record: UploadRecord) => void): Promise<UploadRecord> {

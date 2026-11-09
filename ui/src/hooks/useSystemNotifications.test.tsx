@@ -29,6 +29,22 @@ function setup(viewedSessionId: string | null = 's1') {
 const event = (sessionId = 's1', id = 'r1') => ({ type: 'session-notification', notification: {
   id, sessionId, scope: '1', kind: 'completed', preview: 'Private summary', createdAt: '2026-10-27T03:00:00Z',
 } });
+it('notifies once for a background question, suppresses the focused question, and honors preview settings', () => {
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  mocks.preferences.preview = false;
+  const { store, emit } = setup();
+  const question = (sessionId: string) => ({ ...event(sessionId, 'question:q1'), notification: {
+    ...event(sessionId, 'question:q1').notification, kind: 'question', preview: 'A private question',
+  } });
+  emit(question('s1'));
+  expect(mocks.show).not.toHaveBeenCalled();
+  emit(question('s2'));
+  emit(question('s2'));
+  expect(mocks.show).toHaveBeenCalledTimes(1);
+  expect(mocks.show.mock.calls[0][0].body).toContain('Answer');
+  expect(mocks.show.mock.calls[0][0].body).not.toContain('A private question');
+  expect(store.getSnapshot().unreadSessionIds.has('s2')).toBe(true);
+});
 it('does not display or count delayed reminders after a newer reminder was read', () => {
   vi.spyOn(document, 'hasFocus').mockReturnValue(false);
   const { store, emit } = setup();

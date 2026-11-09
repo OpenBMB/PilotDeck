@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fileSymlinkOrSkip } from '../test-support/symlink.js';
 
 let watcherModule;
 let tempDir;
@@ -24,16 +25,18 @@ afterEach(() => {
 });
 
 describe('pilotdeck config watcher', () => {
-  it('reloads when a symlink target is atomically replaced', async () => {
+  it.for(['directory', 'file'])('reloads when a config through a %s link is atomically replaced', async (type, context) => {
     tempDir = mkdtempSync(join(tmpdir(), 'pilotdeck-config-watcher-'));
     const linkDir = join(tempDir, 'link');
     const targetDir = join(tempDir, 'managed');
-    mkdirSync(linkDir);
     mkdirSync(targetDir);
     const configPath = join(linkDir, 'pilotdeck.yaml');
     const targetPath = join(targetDir, 'pilotdeck.yaml');
     writeFileSync(targetPath, 'schemaVersion: 1\ncustomEnv:\n  VALUE: before\n', 'utf8');
-    symlinkSync(targetPath, configPath);
+    if (type === 'file') {
+      mkdirSync(linkDir);
+      if (!fileSymlinkOrSkip(context, targetPath, configPath)) return;
+    } else symlinkSync(targetDir, linkDir, process.platform === 'win32' ? 'junction' : 'dir');
     process.env.PILOTDECK_CONFIG_PATH = configPath;
 
     const reloadPilotDeckConfig = vi.fn(async () => ({ reloaded: true }));

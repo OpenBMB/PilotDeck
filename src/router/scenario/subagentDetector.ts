@@ -1,4 +1,5 @@
 import type { CanonicalMessage, CanonicalToolSchema } from "../../model/index.js";
+import { isRealUserRequestMessage } from "../../model/protocol/userRequest.js";
 
 const SUBAGENT_TAG_PATTERN =
   /<(?:pilotdeck|ccr)-subagent-model>([\s\S]+?)<\/(?:pilotdeck|ccr)-subagent-model>/i;
@@ -23,7 +24,7 @@ export function detectSubagent(
   let taggedInUserMessage = false;
 
   for (const message of messages) {
-    if (message.role !== "user") {
+    if (!isRealUserRequestMessage(message)) {
       continue;
     }
     for (const block of message.content) {
@@ -42,8 +43,14 @@ export function detectSubagent(
     !!tools &&
     !tools.some((tool) => AGENT_TOOL_NAME_PATTERN.test(tool.name));
 
+  // `missingAgentTool` is a weak heuristic: a main agent that has customized
+  // its tool set to omit `agent`/`task` should NEVER be reclassified as a
+  // subagent on that basis alone — doing so changes model selection, the
+  // fallback chain, and (via RouterRuntime) may terminate the request under
+  // the subagent token budget check. Only the explicit tag in a user message
+  // is strong enough to override the caller's `isMainAgent` flag.
   return {
-    isSubagent: !isMainAgent || taggedInUserMessage || missingAgentTool,
+    isSubagent: !isMainAgent || taggedInUserMessage,
     modelHint,
     missingAgentTool,
     taggedInUserMessage,
@@ -54,7 +61,7 @@ export function stripSubagentTagFromMessages(
   messages: CanonicalMessage[],
 ): CanonicalMessage[] {
   return messages.map((message) => {
-    if (message.role !== "user") {
+    if (!isRealUserRequestMessage(message)) {
       return message;
     }
     let mutated = false;

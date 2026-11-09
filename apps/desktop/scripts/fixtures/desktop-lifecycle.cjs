@@ -41,6 +41,13 @@ if (process.argv.includes('--tray-second-instance')) {
   const api = new Proxy(electron, {
     get(target, key) {
       if (key === 'dialog') return nativeDialog;
+      if (key === 'BrowserWindow' && scenario === 'startup-quit') return new Proxy(target.BrowserWindow, {
+        construct(Window, args) {
+          const window = new Window(...args);
+          window.show = () => {}; // This scenario tests process cleanup, not native visibility.
+          return window;
+        },
+      });
       if (key === 'Tray') return function (icon) {
         if (process.platform === 'darwin') {
           assert.equal(icon.isTemplateImage(), true);
@@ -105,7 +112,7 @@ if (process.argv.includes('--tray-second-instance')) {
     fs.writeFileSync(path.join(__dirname, 'step'), description);
     console.log(`[${scenario}] ${description}`);
     const deadline = Date.now() + 20_000;
-    while (!predicate()) {
+    while (!await predicate()) {
       assert.ok(Date.now() < deadline, `${description}; windows=${JSON.stringify(BrowserWindow.getAllWindows().map(window => ({
         visible: window.isVisible(), focused: window.isFocused(), minimized: window.isMinimized(),
       })))}; badge=${badgeCount}`);
@@ -117,6 +124,11 @@ if (process.argv.includes('--tray-second-instance')) {
     assert.equal(completedAssertions, true, 'app must not exit before the checks finish');
     assert.equal(tray.isDestroyed(), true);
     if (scenario === 'slow-quit') assert.ok(slowStopChecks > 0, 'delayed cleanup was exercised');
+    if (scenario === 'startup-quit') {
+      const latency = Date.now() - quitConfirmedAt;
+      assert.ok(latency < 10_000, `Quit must cancel startup rather than wait for its 90s timeout (${latency}ms)`);
+      console.log(`[startup-quit] Stalled startup and its owned processes stopped in ${latency}ms`);
+    }
     assert.equal(alive(runtimePid), false, 'quit must stop the real runtime process');
     for (const suffix of ['.task', '.gateway']) {
       const file = process.env.PILOTDECK_TRAY_TEST_PID + suffix;
@@ -133,10 +145,9 @@ if (process.argv.includes('--tray-second-instance')) {
       await until(() => fs.existsSync(process.env.PILOTDECK_TRAY_TEST_PID), 'server starts before its readiness delay');
       runtimePid = Number(fs.readFileSync(process.env.PILOTDECK_TRAY_TEST_PID, 'utf8'));
       assert.ok(!window.webContents.getURL().startsWith('http:'), 'quit during startup, not after readiness');
-      app.quit();
-      await until(() => dialogs.length === 1, 'early quit confirmation');
       completedAssertions = true;
-      dialogs[0].resolve({ response: 1 });
+      quitConfirmedAt = Date.now();
+      app.quit();
       return;
     }
     window.close();
@@ -148,6 +159,14 @@ if (process.argv.includes('--tray-second-instance')) {
     await until(() => window.isVisible(), 'restore after background startup');
     const url = window.webContents.getURL();
     runtimePid = Number(fs.readFileSync(process.env.PILOTDECK_TRAY_TEST_PID, 'utf8'));
+    if (scenario === 'idle-quit') {
+      await until(async () => (await window.webContents.executeJavaScript('window.pilotdeckDesktop.getRuntimeInfo()'))?.gateway?.state === 'ready', 'idle gateway is ready');
+      completedAssertions = true;
+      menu.items[2].click();
+      await pause(200);
+      assert.equal(dialogs.length, 0, 'idle quit never opens a confirmation');
+      return;
+    }
     await window.webContents.executeJavaScript('window.unsentDraft = "preserve this"');
     assert.ok(tray && !tray.isDestroyed());
     if (scenario === 'notification-badge') {

@@ -110,6 +110,14 @@ jobs:
       - name: Verify Windows tray and quit confirmation
         run: node --test apps/desktop/scripts/desktop-lifecycle.test.mjs
 
+      - name: Verify Windows startup environments, local ports and Unicode paths
+        run: >-
+          node --test
+          apps/desktop/scripts/runtime-environment.test.mjs
+          apps/desktop/scripts/windows-node-options.test.mjs
+          apps/desktop/scripts/startup-network.test.mjs
+          apps/desktop/scripts/copy-files.test.mjs
+
       - name: Verify Windows signing policy
         run: node --test apps/desktop/scripts/windows-signing.test.mjs
 
@@ -150,6 +158,10 @@ jobs:
       - name: Verify updater transport and chunked downloads
         timeout-minutes: 3
         run: pnpm --filter pilotdeck-desktop exec electron scripts/verify-update-download.cjs
+
+      - name: Verify differential updates and full-download recovery
+        timeout-minutes: 4
+        run: pnpm --filter pilotdeck-desktop exec electron scripts/verify-differential-update.cjs
 
       - name: Build signed Windows ${{ matrix.arch }} installer
         if: ${{ inputs.require_windows_signing }}
@@ -198,6 +210,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Packaged updater validation failed.' }
           Remove-Item Env:ELECTRON_RUN_AS_NODE
 
+      - name: Verify packaged Python and Gateway environment lifecycle
+        shell: pwsh
+        env:
+          PILOTDECK_PYTHON_TEST_ROOT: apps/desktop/dist-electron/${{ matrix.unpacked_dir }}/resources/python-runtime
+        run: pnpm run test:python
+
       - name: Prepare Windows update feed
         shell: pwsh
         run: |
@@ -216,6 +234,7 @@ jobs:
           overwrite: true
           path: |
             apps/desktop/dist-electron/*-win-${{ matrix.arch }}-setup.exe
+            apps/desktop/dist-electron/*-win-${{ matrix.arch }}-setup.exe.blockmap
             apps/desktop/dist-electron/latest-${{ matrix.arch }}.yml
           if-no-files-found: error
           retention-days: 14

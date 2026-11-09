@@ -1,18 +1,19 @@
-import { SessionTimeline, isTimelineMessage, mergeTimeline, type TimelinePosition } from './sessionTimeline';
 /**
  * Session-keyed message store.
  *
  * Holds per-session state in a Map keyed by sessionId.
- * Session switch = change activeSessionId pointer. No clearing. Old data stays.
+ * Session switches retain live data and at most eight inactive history-only snapshots.
  * WebSocket handler = store.appendRealtime(msg.sessionId, msg). One line.
  * No localStorage for messages. Backend JSONL is the source of truth.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionProvider } from '../types/app';
 import { authenticatedFetch, readAgentStatusErrorFromResponse } from '../utils/api';
 import { parseUserAttachmentNote } from '../components/chat/utils/attachmentNotes';
 import type { ChatAttachment } from '../components/chat/types/types';
+import { SessionTimeline, isTimelineMessage, mergeTimeline, type TimelinePosition } from './sessionTimeline';
+import { SessionHistoryCache } from './SessionHistoryCache';
 
 // ─── NormalizedMessage (mirrors server/adapters/types.js) ────────────────────
 
@@ -89,7 +90,11 @@ export interface NormalizedMessage {
   }>;
   toolName?: string;
   toolInput?: unknown;
+  /** Ephemeral metadata while the model generates mutation arguments; never file contents. */
+  fileInputProgress?: { receivedBytes: number; filePath?: string };
   toolId?: string;
+  /** Structured presentation data on tool_result frames, shared by parent and child streams. */
+  toolUseResult?: unknown;
   toolResult?: { content: string; isError: boolean; toolUseResult?: unknown } | null;
   /**
    * Inline image payloads attached to a `tool_result` frame (e.g. `read_file`
@@ -145,6 +150,8 @@ export interface NormalizedMessage {
   parentRunId?: string;
   /** Stable transcript turn identity; history maps this to runId as well. */
   turnId?: string;
+  turnTiming?: { startedAt: string; completedAt: string; finishReason?: string };
+  finishReason?: string;
   activityId?: string;
   phase?: string;
   state?: string;
@@ -157,6 +164,7 @@ export interface NormalizedMessage {
   toolCallCount?: number;
   toolErrorCount?: number;
   ragSearchCount?: number;
+  webFetchCount?: number;
   compactCount?: number;
   editedFileCount?: number;
   exploredFileCount?: number;
@@ -214,6 +222,8 @@ export interface SessionSlot {
   total: number;
   hasMore: boolean;
   offset: number;
+  historyDirection?: 'forward' | 'backward';
+  historyCursor?: string;
   tokenUsage: unknown;
   /** Monotonic id assigned when a server-history request starts. */
   _serverRequestGeneration: number;
@@ -291,6 +301,9 @@ function normalizeRealtimeText(value?: string): string {
 function getUserAttachmentIdentity(
   attachment: NonNullable<NormalizedMessage['attachments']>[number],
 ): string {
+  if (attachment.uploadId && attachment.attachmentId) {
+    return JSON.stringify(['upload', attachment.uploadId, attachment.attachmentId]);
+  }
   const kind = attachment.kind || 'file';
   const path = attachment.path || attachment.filePath || attachment.name;
 
@@ -1335,6 +1348,9 @@ export function upsertRealtimeMessages(
   const indexByKey = new Map(updated.map((message, index) => [getUpsertKey(message), index]));
   for (let message of incoming) {
     message = normalizeCompactionMessage(message);
+    if (isUnconfirmedUserMessage(message) && !message.renderKey) {
+      message = { ...message, renderKey: message.id };
+    }
     if (message.kind === 'tool_result' && message.toolId && message.resultPath) {
       const existingToolResultIndex = findLatestToolResultIndex(updated, message.toolId);
       if (existingToolResultIndex >= 0) {
@@ -1419,6 +1435,7 @@ export function inheritMessageRenderKeys(previous: NormalizedMessage[], next: No
     const match = candidates.find((candidate) => {
       if (!candidate.renderKey || used.has(candidate.renderKey)) return false;
       if (candidate.id === message.id) return true;
+      if (findConfirmedUserMessageDuplicateIndex(candidate, [message]) === 0) return true;
       const turn = getMessageTurnId(candidate);
       if (!turn || turn !== getMessageTurnId(message)) return false;
       if (candidate.blockId || message.blockId) return candidate.blockId === message.blockId;
@@ -1505,9 +1522,8 @@ function applyTimelineFrames(slot: SessionSlot, frames: NormalizedMessage[]): bo
 }
 
 function reconcileTimelineHistory(slot: SessionSlot, messages: NormalizedMessage[], complete: boolean): void {
-  if (!complete) return;
   const timeline = slot.timeline ??= new SessionTimeline();
-  const removed = timeline.reconcileHistory(slot.serverMessages, messages);
+  const removed = timeline.reconcileHistory(slot.serverMessages, messages, complete);
   const keep = (message: NormalizedMessage) => !removed.has(message.runId || '')
     && !removed.has(message.turnId || '') && !removed.has(message.parentRunId || '');
   slot.realtimeMessages = slot.realtimeMessages.filter(keep);
@@ -1631,11 +1647,20 @@ const MAX_REALTIME_MESSAGES = 500;
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useSessionStore() {
-  const storeRef = useRef(new Map<string, SessionSlot>());
+  const [historyCache] = useState(() => new SessionHistoryCache());
+  const storeRef = useRef(historyCache.slots);
   const activeSessionIdRef = useRef<string | null>(null);
   // Bump to force re-render — only when the active session's data changes
   const [, setTick] = useState(0);
   const notifySchedulerRef = useRef<RafScheduler | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      notifySchedulerRef.current?.cancelAll();
+    };
+  }, []);
   const getNotifyScheduler = (): RafScheduler => {
     if (notifySchedulerRef.current == null) {
       notifySchedulerRef.current = createRafNotifyScheduler(
@@ -1645,25 +1670,31 @@ export function useSessionStore() {
     }
     return notifySchedulerRef.current;
   };
-  const notify = useCallback((sessionId: string) => {
+  const notify = useCallback((sessionId: string, source: 'live' | 'history' = 'live') => {
+    if (source === 'live') historyCache.markLive(sessionId);
+    // History requests can settle after the view has unmounted. They must not
+    // retain a new animation callback after cleanup cancelled the old one.
+    if (!mountedRef.current) return;
     getNotifyScheduler().schedule(sessionId);
-  }, []);
+  }, [historyCache]);
 
   const setActiveSession = useCallback((sessionId: string | null) => {
     const changed = activeSessionIdRef.current !== sessionId;
     activeSessionIdRef.current = sessionId;
+    historyCache.setActiveSession(sessionId);
     if (changed) {
       setTick(n => n + 1);
     }
-  }, []);
+  }, [historyCache]);
 
-  const getSlot = useCallback((sessionId: string): SessionSlot => {
+  const getSlot = useCallback((sessionId: string, source: 'live' | 'history' = 'live'): SessionSlot => {
     const store = storeRef.current;
     if (!store.has(sessionId)) {
       store.set(sessionId, createEmptySlot());
     }
+    if (source === 'live') historyCache.markLive(sessionId);
     return store.get(sessionId)!;
-  }, []);
+  }, [historyCache]);
 
   const has = useCallback((sessionId: string) => storeRef.current.has(sessionId), []);
 
@@ -1681,14 +1712,17 @@ export function useSessionStore() {
       relativeTranscriptPath?: string;
       limit?: number | null;
       offset?: number;
+      direction?: 'forward' | 'backward';
+      includeFromId?: string;
     } = {},
   ) => {
-    const slot = getSlot(sessionId);
+    const slot = getSlot(sessionId, 'history');
+    historyCache.beginHistory(sessionId);
     const requestGeneration = slot._serverRequestGeneration + 1;
     slot._serverRequestGeneration = requestGeneration;
     slot._serverLoadingGeneration = requestGeneration;
     slot.status = 'loading';
-    notify(sessionId);
+    notify(sessionId, 'history');
 
     try {
       const params = new URLSearchParams();
@@ -1704,6 +1738,8 @@ export function useSessionStore() {
         params.append('limit', String(opts.limit));
         params.append('offset', String(opts.offset ?? 0));
       }
+      if (opts.direction) params.append('direction', opts.direction);
+      if (opts.includeFromId) params.append('includeFromId', opts.includeFromId);
 
       const qs = params.toString();
       const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
@@ -1732,6 +1768,8 @@ export function useSessionStore() {
       slot.total = data.total ?? messages.length;
       slot.hasMore = Boolean(data.hasMore);
       slot.offset = (opts.offset ?? 0) + messages.length;
+      slot.historyDirection = opts.direction;
+      slot.historyCursor = data.nextCursor;
       slot.fetchedAt = Date.now();
       if (slot._serverLoadingGeneration === requestGeneration) {
         slot._serverLoadingGeneration = null;
@@ -1753,7 +1791,8 @@ export function useSessionStore() {
         slot.tokenUsage = data.tokenUsage;
       }
 
-      notify(sessionId);
+      notify(sessionId, 'history');
+      historyCache.confirmHistory(sessionId, slot, Boolean(data.stream?.messages?.length));
       return slot;
     } catch (error) {
       if (slot._serverLoadingGeneration !== requestGeneration) return slot;
@@ -1761,14 +1800,17 @@ export function useSessionStore() {
       console.error(`[SessionStore] fetch failed for ${sessionId}:`, error);
       slot.status = 'error';
       slot.lastError = error instanceof Error ? error.message : 'Unknown error';
-      notify(sessionId);
+      notify(sessionId, 'history');
       return slot;
+    } finally {
+      historyCache.endHistory(sessionId);
     }
-  }, [getSlot, notify]);
+  }, [getSlot, notify, historyCache]);
 
   /**
    * Load older (paginated) messages and prepend to serverMessages.
    */
+  const historyRequestsRef = useRef(new Map<string, Promise<SessionSlot | null>>());
   const fetchMore = useCallback(async (
     sessionId: string,
     opts: {
@@ -1781,51 +1823,83 @@ export function useSessionStore() {
       limit?: number;
     } = {},
   ) => {
-    const slot = getSlot(sessionId);
+    const slot = getSlot(sessionId, 'history');
     if (!slot.hasMore) return slot;
+    const pending = historyRequestsRef.current.get(sessionId);
+    if (pending) return pending;
+    historyCache.beginHistory(sessionId);
+    const request = (async () => {
+      const appliedGeneration = slot._serverAppliedGeneration;
+      const requestedCursor = slot.historyCursor;
 
-    const params = new URLSearchParams();
-    if (opts.provider) params.append('provider', opts.provider);
-    if (opts.projectName) params.append('projectName', opts.projectName);
-    if (opts.projectPath) params.append('projectPath', opts.projectPath);
-    if (opts.sessionKind) params.append('sessionKind', opts.sessionKind);
-    if (opts.parentSessionId) params.append('parentSessionId', opts.parentSessionId);
-    if (opts.relativeTranscriptPath) {
-      params.append('relativeTranscriptPath', opts.relativeTranscriptPath);
-    }
-    const limit = opts.limit ?? 20;
-    params.append('limit', String(limit));
-    params.append('offset', String(slot.offset));
-
-    const qs = params.toString();
-    const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
-
-    try {
-      const response = await authenticatedFetch(url, { suppressServerErrorToast: true });
-      if (!response.ok) {
-        const statusError = await readAgentStatusErrorFromResponse(response, {
-          event: 'web_http_request_failed',
-          code: 'session_messages_load_failed',
-          message: `Unable to load conversation messages (HTTP ${response.status}).`,
-          scope: 'session',
-        });
-        throw new Error(statusError.message);
+      const params = new URLSearchParams();
+      if (opts.provider) params.append('provider', opts.provider);
+      if (opts.projectName) params.append('projectName', opts.projectName);
+      if (opts.projectPath) params.append('projectPath', opts.projectPath);
+      if (opts.sessionKind) params.append('sessionKind', opts.sessionKind);
+      if (opts.parentSessionId) params.append('parentSessionId', opts.parentSessionId);
+      if (opts.relativeTranscriptPath) {
+        params.append('relativeTranscriptPath', opts.relativeTranscriptPath);
       }
-      const data = await response.json();
-      const olderMessages: NormalizedMessage[] = data.messages || [];
+      const limit = opts.limit ?? 20;
+      params.append('limit', String(limit));
+      if (slot.historyDirection === 'backward') {
+        params.append('direction', 'backward');
+        if (requestedCursor !== undefined) params.append('cursor', requestedCursor);
+      } else params.append('offset', String(slot.offset));
 
-      // Prepend older messages (they're earlier in the conversation)
-      slot.serverMessages = [...olderMessages, ...slot.serverMessages];
-      slot.hasMore = Boolean(data.hasMore);
-      slot.offset = slot.offset + olderMessages.length;
-      recomputeMergedIfNeeded(slot);
-      notify(sessionId);
-      return slot;
-    } catch (error) {
-      console.error(`[SessionStore] fetchMore failed for ${sessionId}:`, error);
-      return slot;
+      const qs = params.toString();
+      const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`;
+
+      try {
+        const response = await authenticatedFetch(url, { suppressServerErrorToast: true });
+        if (!response.ok) {
+          const statusError = await readAgentStatusErrorFromResponse(response, {
+            event: 'web_http_request_failed',
+            code: 'session_messages_load_failed',
+            message: `Unable to load conversation messages (HTTP ${response.status}).`,
+            scope: 'session',
+          });
+          throw new Error(statusError.message);
+        }
+        const data = await response.json();
+        const olderMessages: NormalizedMessage[] = data.messages || [];
+        if (slot._serverAppliedGeneration !== appliedGeneration || slot.historyCursor !== requestedCursor) return slot;
+
+        // Prepend older messages (they're earlier in the conversation)
+        const existing = new Set(slot.serverMessages.map(message => message.id));
+        const additions = olderMessages.filter(message => {
+          if (existing.has(message.id)) return false;
+          existing.add(message.id);
+          return true;
+        });
+        if (data.historyReset) {
+          reconcileTimelineHistory(slot, olderMessages, !data.hasMore);
+          if (Array.isArray(data.stream?.messages)) applyTimelineFrames(slot, data.stream.messages);
+          slot.serverMessages = enrichConfirmedUsers(olderMessages, slot.realtimeMessages);
+          slot.realtimeMessages = getRealtimeMessagesToKeepAfterServerRefresh(slot.realtimeMessages, olderMessages);
+        } else slot.serverMessages = [...additions, ...slot.serverMessages];
+        slot.hasMore = Boolean(data.hasMore) && (data.historyReset ? olderMessages.length : additions.length) > 0
+          && (slot.historyDirection !== 'backward' || (typeof data.nextCursor === 'string' && data.nextCursor !== requestedCursor));
+        slot.historyCursor = data.nextCursor;
+        slot.total = data.total ?? slot.total;
+        slot.offset = slot.offset + olderMessages.length;
+        recomputeMergedIfNeeded(slot);
+        notify(sessionId, 'history');
+        historyCache.confirmHistory(sessionId, slot, Boolean(data.stream?.messages?.length));
+        return slot;
+      } catch (error) {
+        console.error(`[SessionStore] fetchMore failed for ${sessionId}:`, error);
+        return null;
+      }
+    })();
+    historyRequestsRef.current.set(sessionId, request);
+    try { return await request; }
+    finally {
+      if (historyRequestsRef.current.get(sessionId) === request) historyRequestsRef.current.delete(sessionId);
+      historyCache.endHistory(sessionId);
     }
-  }, [getSlot, notify]);
+  }, [getSlot, notify, historyCache]);
 
   /**
    * Append a realtime (WebSocket) message to the correct session slot.
@@ -2109,6 +2183,8 @@ export function useSessionStore() {
     updated[existingIndex] = {
       ...stream,
       id: getFinalizedSubagentThinkingId(sessionId, subagentId, stream.timestamp),
+      startedAt: stream.timestamp,
+      durationMs: Math.max(0, Date.now() - Date.parse(stream.timestamp)),
     };
     const nextMap = new Map(slot.subagentDetailMessages);
     nextMap.set(subagentId, updated);
@@ -2124,6 +2200,10 @@ export function useSessionStore() {
   }, []);
 
   const setActivities = useCallback((sessionId: string, msgs: NormalizedMessage[]) => {
+    // Idle status polls carry empty snapshots. They do not mutate a clean
+    // history slot and must not pin it as live state or schedule a render.
+    if (!msgs.some(message => message.kind === 'agent_activity')
+      && !storeRef.current.get(sessionId)?.activityMessages.length) return;
     const slot = getSlot(sessionId);
     const byKey = new Map<string, NormalizedMessage>();
     const existingByKey = new Map(
@@ -2192,7 +2272,8 @@ export function useSessionStore() {
       afterRestore?: boolean;
     } = {},
   ) => {
-    const slot = getSlot(sessionId);
+    const slot = getSlot(sessionId, 'history');
+    historyCache.beginHistory(sessionId);
     const requestGeneration = slot._serverRequestGeneration + 1;
     slot._serverRequestGeneration = requestGeneration;
     try {
@@ -2275,12 +2356,17 @@ export function useSessionStore() {
         slot.status = 'idle';
         slot.lastError = null;
       }
-      notify(sessionId);
+      notify(sessionId, 'history');
+      historyCache.confirmHistory(sessionId, slot, Boolean(data.stream?.messages?.length));
+      return slot;
     } catch (error) {
       if (requestGeneration < slot._serverAppliedGeneration) return;
       console.error(`[SessionStore] refresh failed for ${sessionId}:`, error);
+      return null;
+    } finally {
+      historyCache.endHistory(sessionId);
     }
-  }, [getSlot, notify]);
+  }, [getSlot, notify, historyCache]);
 
   /**
    * Update session status.
@@ -2451,6 +2537,8 @@ export function useSessionStore() {
         ...stream,
         id: newId,
         isFinal: true,
+        startedAt: stream.timestamp,
+        durationMs: Math.max(0, Date.now() - Date.parse(stream.timestamp)),
       };
       recomputeMergedIfNeeded(slot);
       notify(sessionId);

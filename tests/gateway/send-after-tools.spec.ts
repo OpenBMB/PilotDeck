@@ -12,6 +12,7 @@ import { InProcessGateway } from '../../src/gateway/client/InProcessGateway.js';
 import { SessionRouter } from '../../src/gateway/SessionRouter.js';
 import { createRegisteredWebProjectResolver } from '../../src/web/server/listProjects.js';
 import { createProjectId } from '../../src/pilot/index.js';
+import { currentRequestContext } from '../../src/network/requestContext.js';
 
 test('tool task followed by explicit models and Auto accepts each turn once and releases the session', async () => {
   const root = await mkdtemp(join(tmpdir(), 'pilotdeck-fast-send-'));
@@ -28,6 +29,12 @@ test('tool task followed by explicit models and Auto accepts each turn once and 
     const resolver = createRegisteredWebProjectResolver({pilotHome});
     const loop = {
       async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+        const context = currentRequestContext();
+        assert.equal(context.sessionId, input.sessionId);
+        assert.equal(context.turnId, input.turnId);
+        assert.equal(context.projectPath, project);
+        assert.equal(context.userId, 'a'.repeat(32));
+        assert.equal(context.parentRequestId, `request-${input.turnId}`);
         requestedModels.push(input.modelOverride?.model);
         if (input.turnId === 'tools') {
           await writeFile(join(project, 'game.html'), '<h1>Game</h1>');
@@ -53,6 +60,7 @@ test('tool task followed by explicit models and Auto accepts each turn once and 
       const runId = index === 0 ? 'tools' : `follow-${index}`;
       const events = [];
       for await (const event of gateway.submitTurn({sessionKey:'test-session',projectKey:project,channelKey:'web',runId,message:'Continue',
+        requestContext: { userId: 'a'.repeat(32), parentRequestId: `request-${runId}` },
         modelSelection:model ? {mode:'model',provider:'test',model} : {mode:'auto'},
       })) events.push(event);
       assert.equal(events.filter(e => e.type === 'input_accepted').length, 1);

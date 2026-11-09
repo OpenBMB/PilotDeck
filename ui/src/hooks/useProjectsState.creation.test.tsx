@@ -27,9 +27,15 @@ function deferred<T>() {
 function renderProjects() {
   const navigate = vi.fn();
   const activeSessions = new Set<string>();
-  return renderHook(({ latestMessage }: { latestMessage: AppSocketMessage | null }) => useProjectsState({
-    navigate, activeSessions, isMobile: false, latestMessage,
-  }), { initialProps: { latestMessage: null } as { latestMessage: AppSocketMessage | null } });
+  const subscribers = new Set<(message: AppSocketMessage) => void>();
+  const subscribe = (handler: (message: AppSocketMessage) => void) => {
+    subscribers.add(handler);
+    return () => { subscribers.delete(handler); };
+  };
+  const hook = renderHook(() => useProjectsState({ navigate, activeSessions, isMobile: false, subscribe }));
+  return { ...hook, publish: (message: AppSocketMessage) => act(() => {
+    subscribers.forEach(handler => handler(message));
+  }) };
 }
 
 describe('new project visibility', () => {
@@ -68,34 +74,34 @@ describe('new project visibility', () => {
 
   it('retains a registration across older snapshots, accepts enrichment, and allows later deletion', async () => {
     vi.mocked(api.projects).mockResolvedValue(response([], 10));
-    const { result, rerender } = renderProjects();
+    const { result, publish } = renderProjects();
     await waitFor(() => expect(result.current.isLoadingProjects).toBe(false));
     act(() => result.current.addCreatedProject(project('new', 20)));
 
-    rerender({ latestMessage: { type: 'projects_updated', projects: [], projectListRevision: 15 } });
+    publish({ type: 'projects_updated', projects: [], projectListRevision: 15 });
     expect(result.current.projects).toHaveLength(1);
 
     const enriched = { ...project('new'), sessions: [{ id: 'real-session', title: 'Hello' }] };
-    rerender({ latestMessage: { type: 'projects_updated', projects: [enriched], projectListRevision: 30 } });
+    publish({ type: 'projects_updated', projects: [enriched], projectListRevision: 30 });
     expect(result.current.projects[0].sessions?.[0].id).toBe('real-session');
 
-    rerender({ latestMessage: { type: 'projects_updated', projects: [], projectListRevision: 25 } });
+    publish({ type: 'projects_updated', projects: [], projectListRevision: 25 });
     expect(result.current.projects).toHaveLength(1);
 
-    rerender({ latestMessage: { type: 'projects_updated', projects: [], projectListRevision: 40 } });
+    publish({ type: 'projects_updated', projects: [], projectListRevision: 40 });
     expect(result.current.projects).toEqual([]);
   });
 
   it('does not let a delayed HTTP response undo an acknowledged socket update', async () => {
     vi.mocked(api.projects).mockResolvedValueOnce(response([], 10));
-    const { result, rerender } = renderProjects();
+    const { result, publish } = renderProjects();
     await waitFor(() => expect(result.current.isLoadingProjects).toBe(false));
     const pending = deferred<Response>();
     vi.mocked(api.projects).mockReturnValueOnce(pending.promise);
     let refresh!: Promise<Project[] | null>;
     act(() => { refresh = result.current.fetchProjects({ showLoadingState: false }); });
     act(() => result.current.addCreatedProject(project('new', 20)));
-    rerender({ latestMessage: { type: 'projects_updated', projects: [project('new')], projectListRevision: 30 } });
+    publish({ type: 'projects_updated', projects: [project('new')], projectListRevision: 30 });
 
     await act(async () => {
       pending.resolve(response([], 15));
@@ -125,18 +131,19 @@ describe('new project visibility', () => {
   it('still delivers transcript changes when their accompanying list is outdated', async () => {
     const existing = { ...project('existing'), sessions: [{ id: 'session-1', title: 'Hello' }] };
     vi.mocked(api.projects).mockResolvedValue(response([existing], 30));
-    const { result, rerender } = renderProjects();
+    const { result, publish } = renderProjects();
     await waitFor(() => expect(result.current.projects).toHaveLength(1));
     act(() => {
       result.current.setSelectedProject(existing);
       result.current.handleSessionSelect(existing.sessions[0]);
     });
     const previousUpdates = result.current.externalMessageUpdate;
-    rerender({ latestMessage: {
+    publish({
       type: 'projects_updated', projects: [], projectListRevision: 20,
       changedFile: 'existing/session-1.jsonl',
-    } });
+    });
     expect(result.current.externalMessageUpdate).toBe(previousUpdates + 1);
+    expect(result.current.externalMessageUpdateTarget).toEqual({ projectName: 'existing', sessionId: 'session-1' });
     expect(result.current.projects).toHaveLength(1);
   });
 
@@ -147,15 +154,15 @@ describe('new project visibility', () => {
     const existing = [project('existing'), project('general')];
     vi.mocked(api.projects).mockReturnValueOnce(initialLoad
       ? initial.promise : Promise.resolve(response(existing, 10)));
-    const { result, rerender } = renderProjects();
+    const { result, publish } = renderProjects();
     if (!initialLoad) await waitFor(() => expect(result.current.projects).toHaveLength(2));
     vi.useFakeTimers();
     const scan = vi.fn().mockReturnValueOnce(firstScan.promise).mockReturnValueOnce(followupScan.promise);
     const scheduler = createProjectUpdateScheduler({
       scan,
-      publish: (snapshot: { projects: Project[]; revision: number }) => rerender({ latestMessage: {
+      publish: (snapshot: { projects: Project[]; revision: number }) => publish({
         type: 'projects_updated', projects: snapshot.projects, projectListRevision: snapshot.revision,
-      } }),
+      }),
       onError: (error: unknown) => { throw error; },
     });
     try {
@@ -191,27 +198,27 @@ describe('new project visibility', () => {
 
   it('protects multiple registrations independently and releases protection for authoritative deletions', async () => {
     vi.mocked(api.projects).mockResolvedValue(response([project('general')], 10));
-    const { result, rerender } = renderProjects();
+    const { result, publish } = renderProjects();
     await waitFor(() => expect(result.current.isLoadingProjects).toBe(false));
     act(() => {
       result.current.addCreatedProject(project('first', 20));
       result.current.addCreatedProject(project('second', 40));
     });
-    rerender({ latestMessage: { type: 'projects_updated', projects: [project('general'), project('first')], projectListRevision: 30 } });
+    publish({ type: 'projects_updated', projects: [project('general'), project('first')], projectListRevision: 30 });
     expect(result.current.projects.map((p) => p.name).sort()).toEqual(['first', 'general', 'second']);
-    rerender({ latestMessage: { type: 'projects_updated', projects: [project('general')], projectListRevision: 35 } });
+    publish({ type: 'projects_updated', projects: [project('general')], projectListRevision: 35 });
     expect(result.current.projects.map((p) => p.name).sort()).toEqual(['general', 'second']);
-    rerender({ latestMessage: { type: 'projects_updated', projects: [project('general')], projectListRevision: 50 } });
+    publish({ type: 'projects_updated', projects: [project('general')], projectListRevision: 50 });
     expect(result.current.projects.map((p) => p.name)).toEqual(['general']);
   });
 
   it('does not resurrect a locally deleted registration when an older scan arrives', async () => {
     vi.mocked(api.projects).mockResolvedValue(response([project('general')], 10));
-    const { result, rerender } = renderProjects();
+    const { result, publish } = renderProjects();
     await waitFor(() => expect(result.current.isLoadingProjects).toBe(false));
     act(() => result.current.addCreatedProject(project('new', 20)));
     act(() => result.current.handleProjectDelete('new'));
-    rerender({ latestMessage: { type: 'projects_updated', projects: [project('general')], projectListRevision: 15 } });
+    publish({ type: 'projects_updated', projects: [project('general')], projectListRevision: 15 });
     expect(result.current.projects.map((p) => p.name)).toEqual(['general']);
   });
 });

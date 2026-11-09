@@ -1,5 +1,10 @@
 export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini' | 'pilotdeck';
 export type ProjectSessionKind = 'background_task';
+export type SessionMessagesUpdateTarget = {
+  projectName: string;
+  sessionId: string;
+  relativeTranscriptPath?: string;
+};
 
 export type AppTab = 'home' | 'chat' | 'always-on' | 'cron' | 'files' | 'shell' | 'git' | 'tasks' | 'memory' | 'skills' | 'preview' | 'dashboard' | `plugin:${string}`;
 
@@ -182,6 +187,7 @@ export interface ProjectDiscoveryContextResponse {
 }
 
 export interface ProjectSession {
+  cwd?: string;
   id: string;
   title?: string;
   summary?: string;
@@ -267,6 +273,8 @@ export interface Project {
   projectListRevision?: number;
   kind?: 'project' | 'general';
   workspaceCwd?: string;
+  workspaceNotice?: { directory: string; originalDirectory: string } | null;
+  workspaceUnavailable?: boolean;
   capabilities?: {
     files?: boolean;
     explore?: boolean;

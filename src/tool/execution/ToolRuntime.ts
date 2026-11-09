@@ -17,7 +17,7 @@ import {
   type PilotDeckToolResult,
   type PilotDeckToolSuccessResult,
 } from "../protocol/result.js";
-import type { PilotDeckToolCall, PilotDeckToolRuntimeContext } from "../protocol/types.js";
+import type { PilotDeckToolCall, PilotDeckToolDefinition, PilotDeckToolRuntimeContext } from "../protocol/types.js";
 import type { ToolRegistry } from "../registry/ToolRegistry.js";
 import { validateToolInput } from "./validateToolInput.js";
 import { formatValidationError } from "./formatValidationError.js";
@@ -35,7 +35,11 @@ export class ToolRuntime {
     private readonly eventEmitter?: AgentEventEmitter,
   ) {}
 
-  async execute(call: PilotDeckToolCall, context: PilotDeckToolRuntimeContext): Promise<PilotDeckToolResult> {
+  async execute(
+    call: PilotDeckToolCall,
+    context: PilotDeckToolRuntimeContext,
+    options: { requireConcurrencySafe?: boolean } = {},
+  ): Promise<PilotDeckToolResult> {
     context = withPlanDirectoryWorkspaceRoot(context);
     const startedAtDate = now(context);
     const runtimeContext: PilotDeckToolRuntimeContext = context.executeTool
@@ -111,58 +115,8 @@ export class ToolRuntime {
 
     // Shell permission checks below are sync and need the bash grammar loaded.
     await preloadBashParser();
-    const planModeViolation = getPlanModeViolation(tool.name, call.input, runtimeContext);
-    if (planModeViolation) {
-      return this.errorResult(
-        call.id,
-        tool.name,
-        "plan_mode_violation",
-        planModeViolation,
-        startedAt,
-        runtimeContext,
-      );
-    }
-
-    const askModeViolation = runtimeContext.runMode === "ask"
-      ? getAskModeViolation(tool, call.input)
-      : undefined;
-    if (askModeViolation) {
-      return this.errorResult(
-        call.id,
-        tool.name,
-        "ask_mode_violation",
-        askModeViolation,
-        startedAt,
-        runtimeContext,
-      );
-    }
-
-    const validation = validateToolInput(call.input, tool.inputSchema);
-    if (!validation.ok) {
-      return this.errorResult(
-        call.id,
-        tool.name,
-        "invalid_tool_input",
-        formatValidationError(tool.name, validation.issues, {
-          maxOutputTokens: runtimeContext.maxOutputTokens,
-          outputTruncated: runtimeContext.outputTruncated,
-        }),
-        startedAt,
-        runtimeContext,
-        { issues: validation.issues },
-      );
-    }
-
-    if (runtimeContext.permissionContext.canPrompt === false && requiresPromptCapability(tool, call.input)) {
-      return this.errorResult(
-        call.id,
-        tool.name,
-        "unsupported_tool",
-        `${tool.name} requires user interaction, but this session is running with prompts disabled.`,
-        startedAt,
-        runtimeContext,
-      );
-    }
+    const inputError = await this.checkInput(tool, call.input, call.id, startedAt, context);
+    if (inputError) return inputError;
 
     let executeInput = call.input;
     const preToolResult = await this.dispatchLifecycle("PreToolUse", tool.name, call.id, executeInput, context);
@@ -183,23 +137,9 @@ export class ToolRuntime {
     const updatedInput = findEffect(preToolResult.effects, "updated_tool_input");
     if (updatedInput) {
       executeInput = updatedInput.input;
-      const updatedValidation = validateToolInput(executeInput, tool.inputSchema);
-      if (!updatedValidation.ok) {
-        return this.errorResult(
-          call.id,
-          tool.name,
-          "invalid_tool_input",
-          `PreToolUse hook produced invalid input for ${tool.name}.
-
-${formatValidationError(tool.name, updatedValidation.issues, {
-            maxOutputTokens: runtimeContext.maxOutputTokens,
-            outputTruncated: runtimeContext.outputTruncated,
-          })}`,
-          startedAt,
-          context,
-          { issues: updatedValidation.issues },
-        );
-      }
+      const updatedError = await this.checkInput(tool, executeInput, call.id, startedAt, context,
+        `PreToolUse hook produced invalid input for ${tool.name}.\n\n`);
+      if (updatedError) return updatedError;
     }
 
     const toolValidation = await tool.validateInput?.(executeInput, context);
@@ -294,7 +234,39 @@ ${formatValidationError(tool.name, updatedValidation.issues, {
       );
     }
 
-    executeInput = decision.updatedInput ?? executeInput;
+    if (decision.updatedInput !== undefined) {
+      executeInput = decision.updatedInput;
+    }
+    const finalInputError = await this.checkInput(tool, executeInput, call.id, startedAt, context);
+    if (finalInputError) return finalInputError;
+    if (decision.updatedInput !== undefined) {
+      // A permission callback can change paths or commands after validation.
+      const finalValidation = await tool.validateInput?.(executeInput, context);
+      if (finalValidation && !finalValidation.ok) {
+        return this.errorResult(call.id, tool.name, "invalid_tool_input",
+          formatValidationError(tool.name, finalValidation.issues, context), startedAt, context,
+          { issues: finalValidation.issues });
+      }
+    }
+    const finalTodoGate = context.planTodo?.blockingMessageFor(tool.name, tool.isReadOnly(executeInput));
+    if (finalTodoGate) {
+      return this.errorResult(call.id, tool.name, "tool_execution_failed", finalTodoGate, startedAt, context);
+    }
+    if (options.requireConcurrencySafe) {
+      try {
+        if (!tool.isConcurrencySafe(executeInput)) {
+          return this.errorResult(call.id, tool.name, "tool_execution_failed",
+            "Tool input changed from concurrency-safe to exclusive during preparation. Retry this tool call alone.", startedAt, context);
+        }
+      } catch (error) {
+        return this.errorResult(call.id, tool.name, "tool_execution_failed",
+          `Could not verify tool concurrency safety: ${normalizeToolError(error).message}`, startedAt, context);
+      }
+    }
+    // Validation and permission/audit hooks may yield while the turn is cancelled.
+    if (context.abortSignal?.aborted) {
+      return this.errorResult(call.id, tool.name, "tool_aborted", "Tool execution was aborted.", startedAt, context);
+    }
     const baseContext: PilotDeckToolRuntimeContext = {
       ...context,
       currentToolCallId: call.id,
@@ -358,6 +330,38 @@ ${formatValidationError(tool.name, updatedValidation.issues, {
       await this.recordToolAudit(result, context, startedAtDate);
       return result;
     }
+  }
+
+  private async checkInput(
+    tool: PilotDeckToolDefinition,
+    input: unknown,
+    toolCallId: string,
+    startedAt: string,
+    context: PilotDeckToolRuntimeContext,
+    invalidPrefix = "",
+  ): Promise<PilotDeckToolErrorResult | undefined> {
+    if (context.abortSignal?.aborted) {
+      return this.errorResult(toolCallId, tool.name, "tool_aborted", "Tool execution was aborted.", startedAt, context);
+    }
+    const planViolation = getPlanModeViolation(tool.name, input, context);
+    if (planViolation) {
+      return this.errorResult(toolCallId, tool.name, "plan_mode_violation", planViolation, startedAt, context);
+    }
+    const askViolation = context.runMode === "ask" ? getAskModeViolation(tool, input) : undefined;
+    if (askViolation) {
+      return this.errorResult(toolCallId, tool.name, "ask_mode_violation", askViolation, startedAt, context);
+    }
+    const validation = validateToolInput(input, tool.inputSchema);
+    if (!validation.ok) {
+      return this.errorResult(toolCallId, tool.name, "invalid_tool_input",
+        invalidPrefix + formatValidationError(tool.name, validation.issues, context), startedAt, context,
+        { issues: validation.issues });
+    }
+    if (context.permissionContext.canPrompt === false && requiresPromptCapability(tool, input)) {
+      return this.errorResult(toolCallId, tool.name, "unsupported_tool",
+        `${tool.name} requires user interaction, but this session is running with prompts disabled.`, startedAt, context);
+    }
+    return undefined;
   }
 
   private async errorResult(

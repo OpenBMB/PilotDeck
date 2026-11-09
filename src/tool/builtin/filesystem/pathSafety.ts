@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { readlinkSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -64,7 +65,7 @@ export function resolvePilotDeckWorkspacePath(
         const allowedReal = safeRealpath(allowedPath) ?? path.resolve(allowedPath);
         return real === allowedReal;
       });
-      if (allowed || isManagedImAttachmentFile(real, context)) {
+      if (allowed || isManagedImAttachmentFile(real, context) || isManagedGeneratedImageFile(real, context)) {
         const relativePath = path.relative(context.cwd, absolutePath) || ".";
         return { ok: true, absolutePath, relativePath, root: context.cwd };
       }
@@ -231,4 +232,12 @@ function isRegularFile(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isManagedGeneratedImageFile(realPath: string, context: PilotDeckToolRuntimeContext): boolean {
+  if (!/^[0-9a-f-]{36}\.(png|jpg|webp)$/.test(path.basename(realPath))) return false;
+  const pilotHome = path.resolve(context.env?.PILOT_HOME ?? path.join(homedir(), ".pilotdeck"));
+  const root = path.join(pilotHome, "generated-images", createHash("sha256").update(context.sessionId).digest("hex"));
+  const realRoot = safeRealpath(root);
+  return Boolean(realRoot && isPathWithinRoot(realPath, realRoot) && isRegularFile(realPath));
 }

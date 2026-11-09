@@ -126,6 +126,11 @@ jobs:
           /opt/PilotDeck/resources/node/bin/node \
             apps/desktop/scripts/verify-linux-package.cjs "$EXPECTED_ARCH"
 
+      - name: Verify installed Python and Gateway environment lifecycle
+        env:
+          PILOTDECK_PYTHON_TEST_ROOT: /opt/PilotDeck/resources/python-runtime
+        run: pnpm run test:python
+
       - name: Smoke installed app under X11
         run: bash apps/desktop/scripts/run-linux-display-smoke.sh x11
 
@@ -220,6 +225,10 @@ jobs:
           desktop-file-validate /usr/share/applications/pilotdeck-desktop.desktop
           /opt/PilotDeck/resources/node/bin/node apps/desktop/scripts/verify-linux-package.cjs '${{ matrix.arch }}' rpm
           ELECTRON_RUN_AS_NODE=1 /opt/PilotDeck/pilotdeck-desktop apps/desktop/scripts/verify-updater.cjs /opt/PilotDeck/resources/app.asar
+      - name: Verify installed Python and Gateway environment lifecycle
+        env:
+          PILOTDECK_PYTHON_TEST_ROOT: /opt/PilotDeck/resources/python-runtime
+        run: pnpm run test:python
       - name: Install headless display tools
         # Weston is a test-only EPEL dependency; verify the RPM baseline first.
         run: |

@@ -39,7 +39,7 @@ import {
 import { mapCronRunOutcome } from '../../src/cron/protocol/types.js';
 import sessionManager from './sessionManager.js';
 import { applyCustomSessionNames } from './database/db.js';
-import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
+import { ensureGeneralWorkspaceDirectory, generalWorkspaceNotice } from './utils/generalWorkspace.js';
 
 // Optional taskmaster detection. Read once per project; lightweight.
 async function detectTaskMaster(projectPath) {
@@ -176,7 +176,7 @@ async function getProjects(progressCallback = null) {
     // The gateway's heuristic decoder for project ids (which collapses
     // `-` back into `/`) may produce a path that differs from the
     // verbatim path stored in `.cwd`, yet both encode to the same id —
-    // and the SidebarV2 keys rows by that id. A raw-path Set would let
+    // and the Sidebar keys rows by that id. A raw-path Set would let
     // both rows through and produce a visible duplicate that share an
     // expand-state.
     //
@@ -212,68 +212,72 @@ async function getProjects(progressCallback = null) {
     const dedupedProjects = [...byId.values()];
     const total = dedupedProjects.length;
 
-    const result = [];
-    for (let index = 0; index < dedupedProjects.length; index += 1) {
-        const project = dedupedProjects[index];
-        const fullPath = project.fullPath || project.projectKey;
-        const name = project.__projectId || createProjectId(fullPath);
-        rememberProjectDirectory(name, fullPath);
+    const result = new Array(total);
+    let nextProject = 0;
+    await Promise.all(Array.from({ length: Math.min(4, total) }, async () => {
+        while (nextProject < total) {
+            const index = nextProject++;
+            const project = dedupedProjects[index];
+            const fullPath = project.fullPath || project.projectKey;
+            const name = project.__projectId || createProjectId(fullPath);
+            rememberProjectDirectory(name, fullPath);
 
-        if (progressCallback) {
-            progressCallback({
-                phase: 'loading',
-                processed: index,
-                total,
-                current: name,
-            });
-        }
+            if (progressCallback) {
+                progressCallback({
+                    phase: 'loading',
+                    processed: index,
+                    total,
+                    current: name,
+                });
+            }
 
-        let sessionsResult;
-        let sessionPreviewSucceeded = true;
-        try {
-            sessionsResult = await withPilotDeckGatewayReadRetry(
-                (gateway) => gateway.listSessions({ projectKey: fullPath, limit: 5 }),
+            let sessionsResult;
+            let sessionPreviewSucceeded = true;
+            try {
+                sessionsResult = await withPilotDeckGatewayReadRetry(
+                    (gateway) => gateway.listSessions({ projectKey: fullPath, limit: 5 }),
+                );
+            } catch (error) {
+                if (isGatewayUnavailableError(error)) throw error;
+                sessionsResult = { sessions: [] };
+                sessionPreviewSucceeded = false;
+            }
+            const sessions = (sessionsResult.sessions || []).map((session) =>
+                toLegacySession(session, name),
             );
-        } catch (error) {
-            if (isGatewayUnavailableError(error)) throw error;
-            sessionsResult = { sessions: [] };
-            sessionPreviewSucceeded = false;
+            applyCustomSessionNames(sessions, 'claude');
+            const latestSessionActivity = (sessionsResult.sessions || []).reduce(
+                (latest, session) => Math.max(latest, Number(session.lastModified) || 0),
+                0,
+            );
+            const projectCreatedAt = project.createdAt ?? await readProjectCreatedAt(name);
+
+            const taskmaster = await detectTaskMaster(fullPath).catch(() => ({
+                hasTaskmaster: false,
+            }));
+
+            result[index] = {
+                name,
+                displayName: projectDisplayName(fullPath),
+                fullPath,
+                path: fullPath,
+                // A project's activity is the newest interaction in one of its
+                // sessions. For an untouched project, use its registration
+                // directory creation time instead of a mutable summary time.
+                lastActivity: latestSessionActivity > 0
+                    ? latestSessionActivity
+                    : sessionPreviewSucceeded && (project.sessionCount ?? sessions.length) === 0
+                        ? projectCreatedAt
+                        : project.lastActivity,
+                sessions,
+                sessionMeta: {
+                    total: project.sessionCount ?? sessions.length,
+                    hasMore: (project.sessionCount ?? sessions.length) > sessions.length,
+                },
+                taskmaster,
+            };
         }
-        const sessions = (sessionsResult.sessions || []).map((session) =>
-            toLegacySession(session, name),
-        );
-        applyCustomSessionNames(sessions, 'claude');
-        const latestSessionActivity = (sessionsResult.sessions || []).reduce(
-            (latest, session) => Math.max(latest, Number(session.lastModified) || 0),
-            0,
-        );
-        const projectCreatedAt = project.createdAt ?? await readProjectCreatedAt(name);
-
-        const taskmaster = await detectTaskMaster(fullPath).catch(() => ({
-            hasTaskmaster: false,
-        }));
-
-        result.push({
-            name,
-            displayName: projectDisplayName(fullPath),
-            fullPath,
-            path: fullPath,
-            // A project's activity is the newest interaction in one of its
-            // sessions. For an untouched project, use its registration
-            // directory creation time instead of a mutable summary time.
-            lastActivity: latestSessionActivity > 0
-                ? latestSessionActivity
-                : sessionPreviewSucceeded && (project.sessionCount ?? sessions.length) === 0
-                    ? projectCreatedAt
-                    : project.lastActivity,
-            sessions,
-            sessionMeta: {
-                total: project.sessionCount ?? sessions.length,
-                hasMore: (project.sessionCount ?? sessions.length) > sessions.length,
-            },
-            taskmaster,
-        });
-    }
+    }));
 
     if (progressCallback) {
         progressCallback({ phase: 'done', processed: total, total });
@@ -282,7 +286,7 @@ async function getProjects(progressCallback = null) {
     // Virtual "general" conversation space. Its session identity remains
     // rooted at PILOT_HOME for backwards-compatible transcript discovery,
     // while agent execution uses a separate managed workspace directory.
-    // SidebarV2 looks for a project whose `name` or
+    // Sidebar looks for a project whose `name` or
     // `displayName` equals 'general' to populate the dedicated "General"
     // toggle section. PilotDeck's gateway.listProjects() only returns
     // real project directories, so we synthesize one here. New chats
@@ -290,6 +294,7 @@ async function getProjects(progressCallback = null) {
     // sourced from the same backend as any other project.
     const generalHome = resolvePilotHome(process.env);
     let generalWorkspaceCwd;
+    let generalWorkspaceUnavailable = false;
     try {
         generalWorkspaceCwd = await ensureGeneralWorkspaceDirectory(process.env);
     } catch (error) {
@@ -297,6 +302,7 @@ async function getProjects(progressCallback = null) {
         // workspace root is temporarily unavailable. Sending a turn will
         // retry the same safety check and surface the failure to the user.
         console.warn('[projects] failed to prepare General workspace:', error?.message || error);
+        generalWorkspaceUnavailable = true;
     }
     let generalSessions = [];
     let generalTotal = 0;
@@ -358,6 +364,8 @@ async function getProjects(progressCallback = null) {
         fullPath: generalHome,
         path: generalHome,
         ...(generalWorkspaceCwd ? { workspaceCwd: generalWorkspaceCwd } : {}),
+        ...(generalWorkspaceCwd ? { workspaceNotice: generalWorkspaceNotice(process.env) } : {}),
+        ...(generalWorkspaceUnavailable ? { workspaceUnavailable: true } : {}),
         capabilities: {
             files: false,
             explore: false,
@@ -542,15 +550,13 @@ async function deleteSession(projectName, sessionId, _options = {}) {
         // raw form (legacy files written before the sanitize fix).
         const safeId = sanitizeSessionIdForPath(sessionId);
         const filenames = safeId === sessionId ? [sessionId] : [safeId, sessionId];
+        const projectsRoot = path.resolve(pilotHome, 'projects');
+        const chatDirectory = path.resolve(projectsRoot, projectId, 'chats');
+        if (!chatDirectory.startsWith(`${projectsRoot}${path.sep}`)) throw new Error('Invalid session storage directory.');
         let removed = false;
         for (const name of filenames) {
-            const transcript = path.join(
-                pilotHome,
-                'projects',
-                projectId,
-                'chats',
-                `${name}.jsonl`,
-            );
+            const transcript = path.resolve(chatDirectory, `${name}.jsonl`);
+            if (!transcript.startsWith(`${chatDirectory}${path.sep}`)) continue;
             try {
                 await fs.unlink(transcript);
                 removed = true;
@@ -559,6 +565,9 @@ async function deleteSession(projectName, sessionId, _options = {}) {
                     throw error;
                 }
             }
+            const snapshot = path.resolve(`${transcript}.context.json`);
+            if (!snapshot.startsWith(`${projectsRoot}${path.sep}`)) throw new Error('Invalid context snapshot path.');
+            await fs.rm(snapshot, { force: true });
         }
         await fs.rm(path.join(pilotHome, 'projects', projectId, 'pending-inputs', `${safeId}.json`), { force: true });
         deleted = true;

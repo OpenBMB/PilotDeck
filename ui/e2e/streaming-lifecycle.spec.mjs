@@ -30,7 +30,10 @@ test('history refresh preserves thinking and compaction order and a single image
   await page.evaluate(() => window.streamLifecycle.store.refreshFromServer('s', { provider: 'pilotdeck' }));
   const order = () => page.evaluate(() => window.streamLifecycle.store.getMessages('s').map(m => m.kind));
   await expect.poll(order).toEqual(['text', 'thinking', 'compact_boundary', 'text']);
-  await page.getByRole('button', { name: 'Thought process' }).click();
+  const runHeader = page.locator('[data-turn-process-header] button');
+  if (await runHeader.getAttribute('aria-expanded') === 'false') await runHeader.click();
+  await page.locator('[data-process-block] > button').click();
+  await page.locator('[data-thinking-state] > button').click();
   await expect(page.getByText('Inspect the screenshot carefully.', { exact: true })).toBeVisible();
   await expect(page.getByText('Review this image', { exact: true })).toHaveCount(1);
   await expect(page.locator('img[src^="data:image/gif"]')).toHaveCount(1);
@@ -98,7 +101,7 @@ for (const cancel of [false, true]) {
       { id: 'question', type: 'user', content: 'Read a long response' },
       { id: 'answer', type: 'assistant', content: 'Starting.', isStreaming: true },
     ] }));
-    await outer(page).click({ position: { x: 20, y: 100 } });
+    await outer(page).click({ position: { x: 60, y: 100 } });
     await page.keyboard.press('Meta+f');
     await page.getByRole('searchbox').fill('TAIL_NEEDLE');
     await page.evaluate(() => window.streamLifecycle.set({ messages: [
@@ -107,7 +110,7 @@ for (const cancel of [false, true]) {
     ] }));
     await expect(page.locator('mark[aria-current="true"]')).toHaveCount(0);
     if (cancel) {
-      await outer(page).hover({ position: { x: 20, y: 100 } });
+      await outer(page).hover({ position: { x: 60, y: 100 } });
       await page.mouse.wheel(0, -30);
     }
     await expect(page.locator('mark[aria-current="true"]')).toHaveText('TAIL_NEEDLE');
@@ -134,8 +137,12 @@ test('historical sessions open at the bottom with auto follow disabled and prese
     const row = [...node.querySelectorAll('[data-message-key]')].find((item) => item.dataset.messageKey === key);
     return row ? row.getBoundingClientRect().top - node.getBoundingClientRect().top : -100000;
   }, anchor.key)).toBeCloseTo(anchor.offset, 0);
-  await outer(page).hover({ position: { x: 20, y: 300 } });
+  await outer(page).hover({ position: { x: 60, y: 300 } });
+  const beforeWheel = await top(outer(page));
   await page.mouse.wheel(0, -150);
+  // wheel() dispatches input without waiting for Chromium to scroll. Capture
+  // the revisit anchor after that displacement, not the previous visible row.
+  await expect.poll(() => top(outer(page))).toBeLessThan(beforeWheel - 100);
   await expect(latest(page)).toBeVisible();
   const reading = await outer(page).evaluate((node) => {
     const edge = node.getBoundingClientRect().top;
@@ -158,7 +165,7 @@ for (const paused of [false, true]) {
     await expect.poll(() => gap(childOuter(page))).toBeLessThan(3);
     await expect.poll(() => top(childOuter(page))).toBeGreaterThan(200);
     if (paused) {
-      await childOuter(page).hover({ position: { x: 20, y: 200 } });
+      await childOuter(page).hover({ position: { x: 60, y: 200 } });
       await page.mouse.wheel(0, -100);
       await expect(latest(page)).toBeVisible();
     }
@@ -195,11 +202,14 @@ test('completion snapshot refresh preserves the mounted thinking viewport and it
   await inner.evaluate((node) => { window.originalThinkingViewport = node; });
   await page.evaluate(() => window.streamLifecycle.finish());
   await expect.poll(() => requests).toBe(2);
+  const completedThinking = page.getByRole('button', { name: /^Thought for \d+s$/ });
+  await expect(completedThinking).toHaveAttribute('aria-expanded', 'false');
+  await completedThinking.click();
   await expect(inner).toBeVisible();
   expect(await inner.evaluate((node) => node === window.originalThinkingViewport)).toBe(true);
   finishFetch();
   await expect.poll(() => page.evaluate(() => window.streamLifecycle.detail.isLoading)).toBe(false);
-  await expect(page.getByRole('button', { name: 'Thought process' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: /^Thought for \d+s$|^Finished thinking$/ })).toHaveAttribute('aria-expanded', 'true');
   expect(await inner.evaluate((node) => node === window.originalThinkingViewport)).toBe(true);
   expect(Math.abs(await top(inner) - reading)).toBeLessThan(2);
 });

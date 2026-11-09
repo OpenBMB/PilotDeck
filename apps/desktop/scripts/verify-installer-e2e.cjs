@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { build, Platform, Arch } = require('electron-builder');
 const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
+const { installerLanguages } = require('../package.json').build.nsis;
 
 (async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-nsis-e2e-'));
@@ -30,7 +31,7 @@ const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
   try {
     fs.mkdirSync(resources, { recursive: true });
     fs.mkdirSync(path.join(payload, 'resources', 'git'), { recursive: true });
-    for (const file of ['installer.nsh', 'installer-start-app.nsh', 'installer-payload.nsh'])
+    for (const file of ['installer.nsh', 'installer-pages.nsh', 'installer-start-app.nsh', 'installer-payload.nsh'])
       fs.copyFileSync(path.join(__dirname, '..', 'resources', file), path.join(resources, file));
     // Launch paths have their own compiler test. The fixture executable is data;
     // never dispatch it to Explorer from the interactive finish page.
@@ -56,6 +57,9 @@ const { prepareWindowsInstaller } = require('./prepare-windows-installer.cjs');
       win: { signAndEditExecutable: false },
       nsis: {
         oneClick: false, perMachine: false, allowElevation: false,
+        // Use the production language set. Defaulting to every NSIS language
+        // makes the bilingual custom strings fail compilation with warning 6040.
+        installerLanguages,
         allowToChangeInstallationDirectory: true,
         createDesktopShortcut: false, createStartMenuShortcut: false,
         include: 'resources/installer.nsh',

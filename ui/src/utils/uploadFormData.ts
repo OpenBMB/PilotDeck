@@ -1,4 +1,5 @@
 import { IS_PLATFORM } from '../constants/config';
+import { clientRequestHeaders, rememberRequestHeadersMode, requestAuthToken } from './requestContext';
 
 /** Shared transport for chat and workspace uploads; completion awaits the HTTP response. */
 export function postFormDataWithProgress({
@@ -17,6 +18,7 @@ export function postFormDataWithProgress({
       return;
     }
     const xhr = new XMLHttpRequest();
+    const dispatchedToken = requestAuthToken();
     const abort = () => xhr.abort();
     const cleanup = () => signal.removeEventListener('abort', abort);
     xhr.upload.onprogress = (event) => {
@@ -31,8 +33,9 @@ export function postFormDataWithProgress({
     };
     xhr.onload = () => {
       cleanup();
+      rememberRequestHeadersMode(xhr.getResponseHeader('x-pilotdeck-request-headers-mode'));
       const token = xhr.getResponseHeader('X-Refreshed-Token');
-      if (token) localStorage.setItem('auth-token', token);
+      if (token && dispatchedToken === requestAuthToken()) localStorage.setItem('auth-token', token);
       let body: Record<string, any> = {};
       try { body = JSON.parse(xhr.responseText || '{}'); } catch { /* HTTP status still identifies failure. */ }
       resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, body });
@@ -41,6 +44,7 @@ export function postFormDataWithProgress({
     xhr.ontimeout = () => { cleanup(); reject(Object.assign(new Error('Upload timed out. Please retry.'), { code: 'UPLOAD_TIMEOUT' })); };
     xhr.onabort = () => { cleanup(); reject(new DOMException('Upload aborted', 'AbortError')); };
     xhr.open('POST', url);
+    for (const [name, value] of Object.entries(clientRequestHeaders(url))) xhr.setRequestHeader(name, value);
     const token = localStorage.getItem('auth-token');
     if (!IS_PLATFORM && token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     signal.addEventListener('abort', abort, { once: true });

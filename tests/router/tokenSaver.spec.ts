@@ -5,6 +5,89 @@ import type { CanonicalModelRequest, ModelRuntime } from "../../src/model/index.
 import { ModelProviderError } from "../../src/model/index.js";
 import { classifyAndRoute } from "../../src/router/index.js";
 import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
+import { setImmediate as tick } from "node:timers/promises";
+
+test("cancellation stops awaiting a judge that ignores its signal", async () => {
+  const abort = new AbortController();
+  let started!: () => void;
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  let signal: AbortSignal | undefined;
+  const judgeRuntime = { complete: async (_request, options) => {
+    signal = options?.signal;
+    started();
+    return new Promise(() => {});
+  } } as ModelRuntime;
+  const pending = classifyAndRoute({ config: config(), messages: [{ role: "user", content: [{ type: "text", text: "synthetic task" }] }],
+    judgeRuntime, abortSignal: abort.signal });
+  await entered;
+  const reason = new Error("synthetic stop");
+  abort.abort(reason);
+  await assert.rejects(pending, error => error === reason);
+  assert.equal(signal?.aborted, true);
+});
+
+test("cancellation during judge retry backoff starts no new provider request", async () => {
+  const abort = new AbortController();
+  let calls = 0;
+  const judgeRuntime = { complete: async () => {
+    calls++;
+    return { role: "assistant", content: [], finishReason: "stop" };
+  } } as unknown as ModelRuntime;
+  let settled = false;
+  const pending = classifyAndRoute({ config: config(), messages: [{ role: "user", content: [{ type: "text", text: "synthetic task" }] }],
+    judgeRuntime, abortSignal: abort.signal }).finally(() => { settled = true; });
+  await tick();
+  const reason = new Error("synthetic stop");
+  const rejection = assert.rejects(pending, error => error === reason);
+  abort.abort(reason);
+  await tick();
+  assert.equal(settled, true, "Cancellation must not await the one-second retry delay");
+  await rejection;
+  assert.equal(calls, 1);
+});
+
+test("classifies the latest real request after tool results, steering, artifacts and retrieved memory", async () => {
+  const task = "Find and repair the concurrent transaction failure.";
+  const context = new DefaultContextRuntime({
+    sessionArtifactContext: async () => "An earlier output is available as an attachment.",
+    memoryResolver: {
+      async retrieve() { return { systemContext: "An old task was a simple greeting.", diagnostics: [] }; },
+      async captureTurn() {},
+    },
+  });
+  const prepared = await context.prepareForModel({
+    sessionId: "memory-routing", turnId: "memory-routing", cwd: process.cwd(), provider: "main", model: "main-model",
+    permissionMode: "default", additionalWorkingDirectories: [], tools: [],
+    messages: [
+      { role: "user", content: [{ type: "text", text: "Inspect the project." }] },
+      { role: "assistant", content: [{ type: "tool_call", id: "read", name: "read_file", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", toolCallId: "read", content: [{ type: "text", text: "Source code" }] }] },
+      { role: "user", content: [{ type: "text", text: task }], metadata: { queueItemId: "user-steer" } },
+    ],
+  });
+  assert.equal(prepared.messages.at(-1)?.metadata?.purpose, "memory_context");
+  let prompt = "";
+  const judgeRuntime = { complete: async (request: CanonicalModelRequest) => {
+    prompt = JSON.stringify(request.messages);
+    return { role: "assistant", content: [{ type: "text", text: "<tier>medium</tier>" }], finishReason: "stop" };
+  } } as unknown as ModelRuntime;
+  await classifyAndRoute({ config: config(), messages: prepared.messages, judgeRuntime });
+  assert.ok(prompt.includes(task));
+  assert.doesNotMatch(prompt, /old task|earlier output|Source code|Inspect the project/);
+});
+
+test("request-only context without a real task does not invoke the routing judge", async () => {
+  let calls = 0;
+  const judgeRuntime = { complete: async () => {
+    calls++;
+    return { role: "assistant", content: [{ type: "text", text: "<tier>medium</tier>" }], finishReason: "stop" };
+  } } as unknown as ModelRuntime;
+  const result = await classifyAndRoute({ config: config(), judgeRuntime, messages: [
+    { role: "user", content: [{ type: "text", text: "Retrieved background." }], metadata: { synthetic: true, purpose: "memory_context" } },
+  ] });
+  assert.equal(result?.resolvedFrom, "default");
+  assert.equal(calls, 0);
+});
 
 test("classifies the real task after context appends a midnight date update", async () => {
   let now = new Date("2026-09-10T23:59:00Z");

@@ -9,6 +9,8 @@ Docker Compose 会持久化完整的 `PILOT_HOME` 目录，包括自动生成的
 
 English version: [README_DOCKER.md](./README_DOCKER.md)
 
+默认启用登录认证，REST 和 WebSocket（包括 `/shell` 终端）均需要有效登录凭证。首次启动请通过受信任的连接创建管理员账号，再开放访问。不要在可被他人访问的部署中设置 `PILOTDECK_DISABLE_LOCAL_AUTH=1/true` 或 `VITE_IS_PLATFORM=true`，这些选项会跳过本地认证。升级前已自动创建 `local` 用户的部署需先为该用户配置已知密码（或备份认证数据库后重新设置账号），否则无法登录。
+
 ## Docker Compose 快速开始
 
 ### 前置条件

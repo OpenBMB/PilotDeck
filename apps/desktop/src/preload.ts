@@ -13,10 +13,15 @@ type RuntimeStatus = {
   message: string;
   logPath?: string;
   error?: string;
+  progress?: number;
+  startedAt?: number;
+  phaseStartedAt?: number;
 };
 
 contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   platform: process.platform,
+  getUninstallStatus: () => ipcRenderer.invoke('pilotdeck:uninstall-status') as Promise<{ supported: boolean }>,
+  uninstall: () => ipcRenderer.invoke('pilotdeck:uninstall') as Promise<{ canceled: boolean }>,
   getNotificationStatus: () => ipcRenderer.invoke('pilotdeck:notification-status'),
   setNotificationPreferences: (value: NotificationPreferences) => ipcRenderer.invoke('pilotdeck:notification-preferences', value),
   showNotification: (value: SystemNotification) => ipcRenderer.invoke('pilotdeck:notification-show', value),
@@ -53,6 +58,8 @@ contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   pauseUpdate: () => ipcRenderer.invoke("pilotdeck:update-pause"),
   resumeUpdate: () => ipcRenderer.invoke("pilotdeck:update-resume"),
   getRuntimeInfo: () => ipcRenderer.invoke("pilotdeck:get-runtime-info"),
+  getRuntimeStatus: () => ipcRenderer.sendSync('pilotdeck:get-runtime-status') as RuntimeStatus | null,
+  saveRuntimeLogs: () => ipcRenderer.invoke('pilotdeck:save-runtime-logs') as Promise<{ canceled: boolean }>,
   getAboutInfo: () => ipcRenderer.invoke("pilotdeck:about-info"),
   onRuntimeStatus: (callback: (status: RuntimeStatus) => void) => {
     const listener = (_event: IpcRendererEvent, status: RuntimeStatus) => callback(status);
@@ -62,5 +69,6 @@ contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   retryRuntime: () => ipcRenderer.invoke("pilotdeck:retry-runtime"),
   openRuntimeLog: () => ipcRenderer.invoke("pilotdeck:open-runtime-log"),
   pickFolder: () => ipcRenderer.invoke("pilotdeck:pick-folder"),
+  openDirectory: (directory: string) => ipcRenderer.invoke('pilotdeck:open-directory', directory) as Promise<boolean>,
   pickFiles: (request: FilePickerRequest) => ipcRenderer.invoke('pilotdeck:pick-files', request) as Promise<FilePickerResult>,
 });

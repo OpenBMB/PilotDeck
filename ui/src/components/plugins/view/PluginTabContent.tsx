@@ -45,15 +45,14 @@ export default function PluginTabContent({
 }: PluginTabContentProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { isDarkMode } = useTheme();
-  const { plugins } = usePlugins();
+  const { plugins, pluginRevisions } = usePlugins();
 
   // Stable refs so effects don't need context values in their dep arrays
   const contextRef = useRef<PluginContext>(buildContext(isDarkMode, selectedProject, selectedSession));
   const contextCallbacksRef = useRef<Set<(ctx: PluginContext) => void>>(new Set());
 
-  const moduleRef = useRef<any>(null);
-
   const plugin = plugins.find(p => p.name === pluginName);
+  const pluginRevision = pluginRevisions?.[pluginName] ?? 0;
 
   // Keep contextRef current and notify the mounted plugin on every context change
   useEffect(() => {
@@ -69,40 +68,59 @@ export default function PluginTabContent({
     if (!containerRef.current || !plugin?.enabled) return;
 
     let active = true;
-    const container = containerRef.current;
+    const abort = new AbortController();
+    const host = containerRef.current;
+    // Each mount owns a detached-on-cleanup container. A late asynchronous
+    // mount/unmount can never mutate the next plugin's live DOM.
+    const container = document.createElement('div');
+    container.className = 'h-full w-full';
+    host.replaceChildren(container);
     const entryFile = plugin?.entry ?? 'index.js';
-    const contextCallbacks = contextCallbacksRef.current;
+    const contextCallbacks = new Set<(ctx: PluginContext) => void>();
+    contextCallbacksRef.current = contextCallbacks;
+    let unmount: (() => unknown) | null = null;
+    let errorElement: HTMLElement | null = null;
+    let mountSettled = false;
+    const dispose = () => {
+      if (!mountSettled || !unmount) return;
+      const cleanup = unmount;
+      unmount = null;
+      try { void Promise.resolve(cleanup()).catch(() => {}); } catch { /* plugin error — ignore */ }
+    };
 
     (async () => {
       try {
         // Fetch the plugin JS with auth headers (Cloudflare Worker requires auth on all routes).
         // Then import it via a Blob URL so the browser never makes an unauthenticated request.
         const assetUrl = `/api/plugins/${encodeURIComponent(pluginName)}/assets/${encodeURIComponent(entryFile)}`;
-        const res = await authenticatedFetch(assetUrl);
+        const res = await authenticatedFetch(assetUrl, { signal: abort.signal });
         if (!res.ok) throw new Error(`Failed to fetch plugin (HTTP ${res.status})`);
         const jsText = await res.text();
         const blob = new Blob([jsText], { type: 'application/javascript' });
         const blobUrl = URL.createObjectURL(blob);
         // @vite-ignore
         const mod = await import(/* @vite-ignore */ blobUrl).finally(() => URL.revokeObjectURL(blobUrl));
-        if (!active || !containerRef.current) return;
-
-        moduleRef.current = mod;
+        if (!active) return;
+        unmount = () => mod.unmount?.(container);
 
         const api = {
           get context(): PluginContext { return contextRef.current; },
+          signal: abort.signal,
 
           onContextChange(cb: (ctx: PluginContext) => void): () => void {
+            if (!active) return () => {};
             contextCallbacks.add(cb);
             return () => contextCallbacks.delete(cb);
           },
 
           async rpc(method: string, path: string, body?: unknown): Promise<unknown> {
+            abort.signal.throwIfAborted();
             const cleanPath = String(path).replace(/^\//, '');
             const res = await authenticatedFetch(
               `/api/plugins/${encodeURIComponent(pluginName)}/rpc/${cleanPath}`,
               {
                 method: method || 'GET',
+                signal: abort.signal,
                 ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
               },
             );
@@ -111,31 +129,35 @@ export default function PluginTabContent({
           },
         };
 
-        await mod.mount?.(container, api);
-        if (!active) {
-          try { mod.unmount?.(container); } catch { /* ignore */ }
-          moduleRef.current = null;
-          return;
-        }
+        try { await mod.mount?.(container, api); }
+        finally { mountSettled = true; if (!active) dispose(); }
       } catch (err) {
         if (!active) return;
+        active = false;
+        abort.abort();
+        container.remove();
+        dispose();
+        contextCallbacks.clear();
         console.error(`[Plugin:${pluginName}] Failed to load:`, err);
-        if (containerRef.current) {
-          const errDiv = document.createElement('div');
-          errDiv.style.cssText = 'padding:16px;font-size:13px;color:#dc2626';
-          errDiv.textContent = `Plugin failed to load: ${String(err)}`;
-          containerRef.current.replaceChildren(errDiv);
-        }
+        const errDiv = document.createElement('div');
+        errDiv.className = 'p-4 text-sm text-destructive';
+        errDiv.setAttribute('role', 'alert');
+        errDiv.textContent = `Plugin failed to load: ${String(err)}`;
+        errorElement = errDiv;
+        host.append(errDiv);
       }
     })();
 
     return () => {
       active = false;
-      try { moduleRef.current?.unmount?.(container); } catch { /* ignore */ }
+      abort.abort();
       contextCallbacks.clear();
-      moduleRef.current = null;
+      if (contextCallbacksRef.current === contextCallbacks) contextCallbacksRef.current = new Set();
+      container.remove();
+      errorElement?.remove();
+      dispose();
     };
-  }, [pluginName, plugin?.entry, plugin?.enabled]); // re-mount when plugin or enabled state changes
+  }, [pluginName, plugin?.entry, plugin?.enabled, plugin?.version, pluginRevision]);
 
   return <div ref={containerRef} className="h-full w-full overflow-auto" />;
 }

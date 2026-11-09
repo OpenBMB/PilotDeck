@@ -2,6 +2,8 @@ const IMAGE_EXTENSIONS = [
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif',
 ];
 
+const VIDEO_EXTENSIONS = ['mp4', 'm4v', 'webm', 'mov', 'mkv', 'avi', 'flv', 'wmv', 'ogv', 'mpeg', 'mpg'];
+
 const PDF_EXTENSIONS = ['pdf'];
 
 const OFFICE_EXTENSIONS = [
@@ -20,6 +22,7 @@ const BINARY_EXTENSIONS = [
   // Executables
   'exe', 'dll', 'so', 'dylib', 'app', 'dmg', 'msi',
   // Media
+  ...VIDEO_EXTENSIONS,
   'mp3', 'mp4', 'wav', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'm4a', 'ogg',
   // Documents
   ...PDF_EXTENSIONS, ...OFFICE_EXTENSIONS,
@@ -57,3 +60,5 @@ export const isPresentationFile = (filename: string): boolean =>
 
 export const isBuiltinOfficeFile = (filename: string): boolean =>
   ['docx', 'xlsx', 'pptx'].includes(getExtension(filename));
+
+export const isVideoFile = (filename: string): boolean => VIDEO_EXTENSIONS.includes(getExtension(filename));

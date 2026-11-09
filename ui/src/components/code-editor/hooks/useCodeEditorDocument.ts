@@ -25,6 +25,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
   // persist the placeholder text and overwrite the user's real file.
   const [content, setContent] = useState('');
   const [savedContent, setSavedContent] = useState('');
+  const savedHash = useRef<string | undefined>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -53,6 +54,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
     const loadFileContent = async () => {
       try {
         setLoading(true);
+        savedHash.current = undefined;
         setLoadError(null);
         setIsBinary(false);
 
@@ -88,6 +90,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
         const nextContent = data.content ?? '';
         setContent(nextContent);
         setSavedContent(nextContent);
+        savedHash.current = data.hash;
       } catch (error) {
         if (cancelled) return;
         const message = getErrorMessage(error);
@@ -137,7 +140,9 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
         throw new Error('Missing project identifier');
       }
 
-      const response = await api.saveFile(fileProjectName, filePath, content);
+      const response = savedHash.current
+        ? await api.saveFile(fileProjectName, filePath, content, savedHash.current)
+        : await api.saveFile(fileProjectName, filePath, content, undefined, savedContent);
 
       if (!response.ok) {
         const contentType = response.headers.get('content-type');
@@ -151,7 +156,8 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
         throw new Error(`Save failed: ${response.status} ${response.statusText}`);
       }
 
-      await response.json();
+      const saved = await response.json();
+      savedHash.current = saved.hash;
 
       setSavedContent(content);
       setSaveSuccess(true);
@@ -163,7 +169,7 @@ export const useCodeEditorDocument = ({ file, projectPath }: UseCodeEditorDocume
     } finally {
       setSaving(false);
     }
-  }, [content, filePath, fileProjectName, loadError, loading, t]);
+  }, [content, savedContent, filePath, fileProjectName, loadError, loading, t]);
 
   const handleDownload = useCallback(() => {
     const blob = new Blob([content], { type: 'text/plain' });

@@ -9,7 +9,7 @@ import { TasksSettingsProvider } from './contexts/TasksSettingsContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { PluginsProvider } from './contexts/PluginsContext';
 import { ToastProvider } from './contexts/ToastContext';
-import AppShellV2 from './components/app-shell/AppShellV2';
+import AppShell from './components/app-shell/AppShell';
 import ZoomIndicator from './components/desktop/ZoomIndicator';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import i18n from './i18n/config.js';
@@ -32,7 +32,7 @@ function DesktopAppearanceSync() {
 
 export default function App() {
   // Single wildcard so URL changes don't remount the shell. Params are
-  // resolved inside AppShellV2 via useMatch so navigation between
+  // resolved inside AppShell via useMatch so navigation between
   // /, /p/:name, /p/:name/c/:id, /session/:id, /cron, and /skills preserves all state.
   return (
     <I18nextProvider i18n={i18n}>
@@ -49,7 +49,7 @@ export default function App() {
                       <Router basename={window.__ROUTER_BASENAME__ || ''}>
                         <ProtectedRoute>
                           <Routes>
-                            <Route path="*" element={<AppShellV2 />} />
+                            <Route path="*" element={<AppShell />} />
                           </Routes>
                         </ProtectedRoute>
                       </Router>

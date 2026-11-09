@@ -67,7 +67,7 @@ export default function ShellMinimalView({
               value={displayAuthUrl}
               readOnly
               onClick={(event) => event.currentTarget.select()}
-              className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-100 focus:outline-none focus:ring-1 focus:ring-[var(--pd-focus,#3b82f6)]"
               aria-label="Authentication URL"
             />
 
@@ -77,7 +77,7 @@ export default function ShellMinimalView({
                 onClick={() => {
                   openAuthUrlInBrowser(displayAuthUrl);
                 }}
-                className="flex-1 rounded bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                className="flex-1 rounded bg-[var(--pd-accent,#2563eb)] px-3 py-2 text-xs font-medium text-white hover:bg-[var(--pd-button-hover,#1d4ed8)]"
               >
                 Open URL
               </button>

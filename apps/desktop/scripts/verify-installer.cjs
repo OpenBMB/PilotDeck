@@ -20,7 +20,7 @@ const { build } = require(path.join(projectDir, 'package.json'));
     const fixtureDir = path.join(root, 'desktop project');
     const fixtureResources = path.join(fixtureDir, 'resources');
     fs.mkdirSync(fixtureResources, { recursive: true });
-    for (const name of ['installer.nsh', 'installer-start-app.nsh']) {
+    for (const name of ['installer.nsh', 'installer-pages.nsh', 'installer-start-app.nsh']) {
       fs.copyFileSync(path.join(projectDir, 'resources', name), path.join(fixtureResources, name));
     }
     const buildResources = path.resolve(fixtureDir, build.directories.buildResources || 'build');
@@ -41,6 +41,7 @@ const { build } = require(path.join(projectDir, 'package.json'));
     assert.ok(launchSection);
     const script = "Unicode true\n" + generator.build() + `
 !define PRODUCT_NAME "PilotDeck"
+!define APP_ID "cn.pilotdeck.test"
 !define PRODUCT_FILENAME "PilotDeck"
 !define VERSION "2026.907.0"
 !define PROJECT_DIR "${fixtureDir}"
@@ -49,8 +50,12 @@ const { build } = require(path.join(projectDir, 'package.json'));
 !include "MUI2.nsh"
 !insertmacro customPageAfterChangeDir
 !insertmacro MUI_PAGE_INSTFILES
+!if "${'${MUI_INSTFILESPAGE_PROGRESSBAR}'}" != "smooth"
+  !error "Installation progress must retain the default Windows theme"
+!endif
 !insertmacro customFinishPage
 !insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro customHeader
 OutFile "${path.join(root, 'installer.exe')}"
 Section
@@ -63,6 +68,10 @@ SectionEnd
 
     assert.equal((compiledLog.match(/Exec: .*explorer\.exe/g) || []).length, 2, 'interactive and silent launches both use explorer');
     assert.ok(!/Plugin command: ExecShellAsUser/.test(compiledLog), 'no default user-launch call survives expansion');
+    assert.ok(compiledLog.includes('"MUI_FINISHPAGE_SHOWREADME_FUNCTION"="PilotDeckCreateDesktopShortcut"'), 'the native finish checkbox calls desktop shortcut creation');
+    assert.match(compiledLog, /LangString: "PD_DesktopShortcut" 2052/, 'desktop shortcut checkbox has a Chinese label');
+    assert.ok(!compiledLog.includes('MUI_FINISHPAGE_RUN_NOTCHECKED'), 'run checkbox keeps the native checked default');
+    assert.doesNotMatch(compiledLog, /SetWindowTheme/, 'no progress control opts out of Windows visual styles');
 
     assert.ok(fs.statSync(path.join(root, 'installer.exe')).size > 0);
     console.log('PASS: NSIS compiles; interactive and silent --force-run paths both expand to explorer.exe');

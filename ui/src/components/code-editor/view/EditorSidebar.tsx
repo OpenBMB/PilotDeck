@@ -1,10 +1,24 @@
 import { useConfirm } from '../../ui/ConfirmDialog';
-import { useState, useEffect, useRef } from 'react';
-import type { MouseEvent, MutableRefObject } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import type { MouseEvent, MutableRefObject, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useTheme } from '../../../contexts/ThemeContext';
 import type { CodeEditorTab } from '../types/types';
-import CodeEditor from './CodeEditor';
+import CodeEditorLoadingState from './subcomponents/CodeEditorLoadingState';
 import CodeEditorTabBar from './subcomponents/CodeEditorTabBar';
+
+const CodeEditor = lazy(() => import('./CodeEditor'));
+
+function EditorLoading({ fileName, isSidebar, headerPrefix }: {
+  fileName: string;
+  isSidebar: boolean;
+  headerPrefix: ReactNode;
+}) {
+  const { t } = useTranslation('codeEditor');
+  const { isDarkMode } = useTheme() as { isDarkMode: boolean };
+  return <CodeEditorLoadingState isDarkMode={isDarkMode} isSidebar={isSidebar}
+    loadingText={t('loading', { fileName })} headerPrefix={headerPrefix} />;
+}
 
 type EditorSidebarProps = {
   editorTabs: CodeEditorTab[];
@@ -183,23 +197,26 @@ export default function EditorSidebar({
         aria-hidden={!active}
         className={active ? 'h-full min-h-0 w-full' : 'hidden'}
       >
-        <CodeEditor
-          file={file}
-          projectPath={projectPath}
-          onPreviewFileOpen={onPreviewFileOpen}
-          canGoBack={canGoBack}
-          parentFileName={parentFile?.name ?? null}
-          onGoBack={active ? onGoBack : undefined}
-          onClose={() => requestCloseTab(tab.id)}
-          isSidebar={workspaceMode || (!isMobile && !poppedOut)}
-          isExpanded={editorExpanded}
-          onToggleExpand={onToggleEditorExpand}
-          onPopOut={() => setPoppedOut(true)}
-          headerPrefix={active ? tabBar : null}
-          compactHeader={workspaceMode}
-          isActive={active}
-          onDirtyChange={(dirty) => onTabDirtyChange(tab.id, dirty)}
-        />
+        <Suspense fallback={<EditorLoading fileName={file.name}
+          isSidebar={workspaceMode || (!isMobile && !poppedOut)} headerPrefix={active ? tabBar : null} />}>
+          <CodeEditor
+            file={file}
+            projectPath={projectPath}
+            onPreviewFileOpen={onPreviewFileOpen}
+            canGoBack={canGoBack}
+            parentFileName={parentFile?.name ?? null}
+            onGoBack={active ? onGoBack : undefined}
+            onClose={() => requestCloseTab(tab.id)}
+            isSidebar={workspaceMode || (!isMobile && !poppedOut)}
+            isExpanded={editorExpanded}
+            onToggleExpand={onToggleEditorExpand}
+            onPopOut={() => setPoppedOut(true)}
+            headerPrefix={active ? tabBar : null}
+            compactHeader={workspaceMode}
+            isActive={active}
+            onDirtyChange={(dirty) => onTabDirtyChange(tab.id, dirty)}
+          />
+        </Suspense>
       </div>
     );
   });

@@ -319,6 +319,21 @@ npm run start
 SERVER_PORT=3002 PILOTDECK_GATEWAY_PORT=18790 PILOTDECK_GATEWAY_URL=ws://127.0.0.1:18790/ws npm run start
 ```
 
+## API 限流
+
+Web 服务按进程、按一分钟窗口限制新请求。超额请求返回 HTTP 429、JSON `code: RATE_LIMITED` 和以秒计的 `Retry-After`；在受保护操作开始前拒绝请求，不会中断已接收的流式回复或下载。普通网页静态资源、健康检查和 WebSocket 聊天流量不占用这些 HTTP API 配额。原有文件预览和模型连接测试限额继续生效。
+
+| 环境变量 | 每分钟默认次数 | 范围 |
+| --- | ---: | --- |
+| `PILOTDECK_API_IP_LIMIT` | 6000 | `/api` 和受保护的 `/memory-dashboard`，按客户端 IP，在解析请求体和认证前执行 |
+| `PILOTDECK_API_USER_LIMIT` | 1200 | 按数据库用户计算认证请求，同一请求多次认证只计一次 |
+| `PILOTDECK_AUTH_ATTEMPT_LIMIT` | 20 | 登录和注册共享 IP 配额，成功响应返还额度 |
+| `PILOTDECK_HTTP_MODEL_LIMIT` | 30 | 外部 Agent、AI 提交信息生成和手动运行定时任务，按认证用户共享配额 |
+
+可在服务环境中设置正整数（最大 1,000,000）并重启；非法值或 0 使用默认值。普通 API 配额支持一次 500 张图片的预览批次及多标签页轮询；更换 API key、诊断用用户/设备请求头或会话不会重置用户额度。IPv6 地址按 /56 子网合并计数。
+
+IP 来源沿用 `PILOTDECK_TRUST_PROXY` 配置（默认信任回环代理，`false` 或 `0` 禁用信任）。仅填写可信代理 IP/CIDR，并让代理覆盖转发头；不可信直连客户端无法通过 `X-Forwarded-For` 选择计数桶。共享 NAT/代理部署可提高入口额度，认证后的用户额度仍相互独立。计数保存在内存中，重启重置，多副本间不共享；公网多副本部署还需在网关/代理增加共享限额，这些限制不能替代连接数、请求体大小和 WebSocket 保护。
+
 ## 常见问题
 
 - 出现 `Node.js >=22.13.0 and <23 is required`：切换到 Node.js 22.13.0 或更新的 Node.js 22 版本，并重新安装依赖。

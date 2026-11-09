@@ -50,6 +50,10 @@
   },
   "renamePlaceholder": "Rename - empty to reset",
   "contextMenu": {
+    "openInFinder": "Open in Finder",
+    "openInFileExplorer": "Open in File Explorer",
+    "openInFileManager": "Open in File Manager",
+    "openDirectoryFailed": "Could not open the working directory. It may have been moved or deleted.",
     "label": "Context menu"
   },
   "app": {

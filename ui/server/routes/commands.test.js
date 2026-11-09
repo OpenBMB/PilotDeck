@@ -48,6 +48,9 @@ describe('commands routes', () => {
 });
 
 async function createCommandsApp() {
+  vi.doMock('../pilotdeck-bridge.js', () => ({
+    getPilotDeckGateway: vi.fn(() => { throw new Error('A local Markdown command must not connect to Gateway'); }),
+  }));
   vi.doMock('../../shared/modelConstants.js', () => ({
     CODEX_MODELS: [],
     CURSOR_MODELS: [],

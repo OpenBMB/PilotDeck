@@ -1,5 +1,5 @@
 import type { ModelProtocol } from "../protocol/canonical.js";
-import { NetworkFetchError } from "../../network/fetch.js";
+import { NetworkFetchError, normalizeNetworkError } from "../../network/fetch.js";
 import {
   BILLING_PATTERN,
   CONTEXT_OVERFLOW_PATTERN,
@@ -102,8 +102,18 @@ function classifyNetworkError(error: unknown, message: string): CanonicalModelEr
         return "server_error";
       case "network_timeout":
         return "timeout";
+      case "network_fetch_failed":
+        return "transport_error";
+      case "network_abort":
+        return "aborted";
       default:
         return undefined;
+    }
+  }
+  if (error instanceof Error) {
+    const normalized = normalizeNetworkError(error);
+    if (normalized.code !== "network_fetch_failed" && normalized.code !== "network_abort") {
+      return classifyNetworkError(normalized, normalized.message);
     }
   }
   const text = message.toLowerCase();
@@ -218,6 +228,7 @@ function isRetryable(status: number | undefined, code: string): boolean {
     "connection_reset",
     "connection_refused",
     "proxy_error",
+    "transport_error",
   ].includes(code);
 }
 

@@ -1,3 +1,4 @@
+import { withFileMutation } from "./filesystem/coordinateMutation.js";
 import { stat } from "node:fs/promises";
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
@@ -153,56 +154,58 @@ export function createWriteFileTool(): PilotDeckToolDefinition<WriteFileInput, W
         throw new PilotDeckToolRuntimeError(resolved.error.code, resolved.error.message, resolved.error.details);
       }
 
-      const freshness = await ensureWriteSnapshotFresh(context, resolved.absolutePath);
-      if (context.fileHistory) {
-        await context.fileHistory.trackEdit(
-          resolved.absolutePath,
-          context.messageId ?? context.turnId,
-        );
-      }
+      return withFileMutation(context, resolved.absolutePath, async () => {
+        const freshness = await ensureWriteSnapshotFresh(context, resolved.absolutePath);
+        if (context.fileHistory) {
+          await context.fileHistory.trackEdit(
+            resolved.absolutePath,
+            context.messageId ?? context.turnId,
+          );
+        }
 
-      const action = await writeTextFile(resolved.absolutePath, input.content, { allowOverwrite: true });
-      await context.fileHistory?.recordEdit?.(resolved.absolutePath, context.messageId ?? context.turnId, input.content);
-      const fileStat = await stat(resolved.absolutePath);
-      invalidateReadFileState(context, resolved.absolutePath);
-      recordWriteSnapshot(context, resolved.absolutePath, input.content, Math.floor(fileStat.mtimeMs));
+        const action = await writeTextFile(resolved.absolutePath, input.content, { allowOverwrite: freshness.exists });
+        await context.fileHistory?.recordEdit?.(resolved.absolutePath, context.messageId ?? context.turnId, input.content);
+        const fileStat = await stat(resolved.absolutePath);
+        invalidateReadFileState(context, resolved.absolutePath);
+        await recordWriteSnapshot(context, resolved.absolutePath, input.content, Math.floor(fileStat.mtimeMs));
 
-      const type = action === "created" ? "create" : "update";
-      const structuredPatch = buildStructuredPatch(freshness.previousContent, input.content);
-      const gitDiffText = buildUnifiedDiff(resolved.relativePath, freshness.previousContent, input.content);
-      const data: WriteFileOutput = {
-        type,
-        filePath: resolved.absolutePath,
-        content: input.content,
-        structuredPatch,
-        originalFile: freshness.previousContent,
-        ...(gitDiffText ? { gitDiff: { path: resolved.relativePath, diff: gitDiffText } } : {}),
-      };
+        const type = action === "created" ? "create" : "update";
+        const structuredPatch = buildStructuredPatch(freshness.previousContent, input.content);
+        const gitDiffText = buildUnifiedDiff(resolved.relativePath, freshness.previousContent, input.content);
+        const data: WriteFileOutput = {
+          type,
+          filePath: resolved.absolutePath,
+          content: input.content,
+          structuredPatch,
+          originalFile: freshness.previousContent,
+          ...(gitDiffText ? { gitDiff: { path: resolved.relativePath, diff: gitDiffText } } : {}),
+        };
 
-      const update = {
-        absolutePath: resolved.absolutePath,
-        relativePath: resolved.relativePath,
-        root: resolved.root,
-        content: input.content,
-        previousContent: freshness.previousContent,
-      };
-      await context.fileUpdateNotifier?.didChange?.(update);
-      await context.fileUpdateNotifier?.didSave?.(update);
+        const update = {
+          absolutePath: resolved.absolutePath,
+          relativePath: resolved.relativePath,
+          root: resolved.root,
+          content: input.content,
+          previousContent: freshness.previousContent,
+        };
+        await context.fileUpdateNotifier?.didChange?.(update);
+        await context.fileUpdateNotifier?.didSave?.(update);
 
-      const successText = `${type === "create" ? "Created" : "Overwrote"} ${resolved.relativePath}.`;
-      const syntaxDiagnostics = await formatSyntaxDiagnostics(resolved.relativePath, input.content);
+        const successText = `${type === "create" ? "Created" : "Overwrote"} ${resolved.relativePath}.`;
+        const syntaxDiagnostics = await formatSyntaxDiagnostics(resolved.relativePath, input.content);
 
-      return {
-        content: [{
-          type: "text",
-          text: syntaxDiagnostics ? `${successText}\n\n${syntaxDiagnostics}` : successText,
-        }],
-        data,
-        metadata: {
-          bytesWritten: Buffer.byteLength(input.content, "utf8"),
-          mtimeMs: Math.floor(fileStat.mtimeMs),
-        },
-      };
+        return {
+          content: [{
+            type: "text",
+            text: syntaxDiagnostics ? `${successText}\n\n${syntaxDiagnostics}` : successText,
+          }],
+          data,
+          metadata: {
+            bytesWritten: Buffer.byteLength(input.content, "utf8"),
+            mtimeMs: Math.floor(fileStat.mtimeMs),
+          },
+        };
+      });
     },
   };
 }

@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
+import { promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
+import { runLegacyRepositoryOperation } from "./legacyRepositoryOperation.js";
 import { CheckpointError } from "./WorkspaceCheckpoints.js";
 import { ensurePilotProjectGitIgnore } from "../../pilot/paths.js";
 
@@ -11,6 +14,16 @@ export type { RepositoryOperation } from "./types.js";
 export async function repositoryRoot(workspace: string): Promise<string> {
   return (await execute("git", ["rev-parse", "--show-toplevel"], { cwd: workspace, timeout: 10_000 })).stdout.trim();
 }
+export async function repositoryCommonDirectory(workspace: string): Promise<string> {
+  return path.resolve(workspace, (await execute("git", ["rev-parse", "--git-common-dir"], { cwd: workspace, timeout: 10_000 })).stdout.trim());
+}
+export async function repositoryFileFingerprint(root: string, relative: string): Promise<string> {
+  try {
+    const info = await fs.lstat(path.resolve(root, relative));
+    return createHash("sha256").update(JSON.stringify([info.dev, info.ino, info.mode, info.size, info.mtimeMs, info.ctimeMs,
+      info.isSymbolicLink() ? await fs.readlink(path.resolve(root, relative)) : null])).digest("hex");
+  } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return "absent"; throw error; }
+}
 
 export async function runRepositoryOperation(workspace: string, input: RepositoryOperation) {
   const git = (args: string[], cwd = workspace) => execute("git", args, { cwd, timeout: 90_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
@@ -20,6 +33,7 @@ export async function runRepositoryOperation(workspace: string, input: Repositor
     return { success: true, output: result.stdout };
   }
   const root = (await git(["rev-parse", "--show-toplevel"])).stdout.trim();
+  if (input.operation === "legacy") return runLegacyRepositoryOperation(root, input, args => git(args, root));
   const files = () => {
     if (!Array.isArray(input.files) || !input.files.length || input.files.length > 5000) throw new CheckpointError("INVALID_FILES", "Select files to stage or unstage.");
     return input.files.map(file => {
@@ -32,7 +46,13 @@ export async function runRepositoryOperation(workspace: string, input: Repositor
   try {
     let args: string[];
     switch (input.operation) {
-      case "stage": args = ["--literal-pathspecs", "add", "--", ...files()]; break;
+      case "stage": {
+        const selected = files();
+        if (input.expectedFiles) for (const file of selected) {
+          if (input.expectedFiles[file] !== await repositoryFileFingerprint(root, file)) throw new CheckpointError("FILES_CHANGED", "Files changed after review. Refresh before staging.");
+        }
+        args = ["--literal-pathspecs", "add", "--", ...selected]; break;
+      }
       case "unstage": {
         const hasHead = await git(["rev-parse", "--verify", "HEAD"], root).then(() => true, () => false);
         args = hasHead ? ["--literal-pathspecs", "restore", "--staged", "--", ...files()] : ["--literal-pathspecs", "rm", "--cached", "-f", "--ignore-unmatch", "--", ...files()];

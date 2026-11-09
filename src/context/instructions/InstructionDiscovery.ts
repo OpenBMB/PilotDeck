@@ -40,29 +40,32 @@ export class InstructionDiscovery {
     private readonly pilotHome: string,
   ) {}
 
-  async discover(): Promise<InstructionLayer[]> {
+  async discover(signal?: AbortSignal): Promise<InstructionLayer[]> {
+    signal?.throwIfAborted();
     const layers: InstructionLayer[] = [];
     const seen = new Set<string>();
 
     // 1. Managed (administrator-level, e.g. /etc/pilotdeck/)
     const managedDir = process.env.PILOTDECK_MANAGED_CONFIG;
     if (managedDir) {
-      await this.tryAdd(layers, seen, "managed", join(managedDir, "PILOTDECK.md"));
+      await this.tryAdd(layers, seen, "managed", join(managedDir, "PILOTDECK.md"), signal);
     }
 
     // 2. User-level
-    await this.tryAdd(layers, seen, "user", join(this.pilotHome, "PILOTDECK.md"));
-    await this.tryAddRulesDir(layers, seen, "user", join(this.pilotHome, "rules"));
+    await this.tryAdd(layers, seen, "user", join(this.pilotHome, "PILOTDECK.md"), signal);
+    await this.tryAddRulesDir(layers, seen, "user", join(this.pilotHome, "rules"), signal);
 
     // 3–5. Project + Local — from root toward cwd (root first = lower priority)
     const dirs = this.collectDirectoryChain();
     for (const dir of dirs) {
-      await this.tryAdd(layers, seen, "project", join(dir, "PILOTDECK.md"));
-      await this.tryAdd(layers, seen, "project", join(dir, ".pilotdeck", "PILOTDECK.md"));
-      await this.tryAddRulesDir(layers, seen, "project-rules", join(dir, ".pilotdeck", "rules"));
-      await this.tryAdd(layers, seen, "local", join(dir, "PILOTDECK.local.md"));
+      signal?.throwIfAborted();
+      await this.tryAdd(layers, seen, "project", join(dir, "PILOTDECK.md"), signal);
+      await this.tryAdd(layers, seen, "project", join(dir, ".pilotdeck", "PILOTDECK.md"), signal);
+      await this.tryAddRulesDir(layers, seen, "project-rules", join(dir, ".pilotdeck", "rules"), signal);
+      await this.tryAdd(layers, seen, "local", join(dir, "PILOTDECK.local.md"), signal);
     }
 
+    signal?.throwIfAborted();
     return layers;
   }
 
@@ -95,17 +98,20 @@ export class InstructionDiscovery {
     seen: Set<string>,
     scope: InstructionScope,
     filePath: string,
+    signal?: AbortSignal,
   ): Promise<void> {
+    signal?.throwIfAborted();
     const resolved = resolve(filePath);
     if (seen.has(resolved)) return;
     seen.add(resolved);
     try {
-      const content = await readFile(resolved, "utf-8");
+      const content = await readFile(resolved, { encoding: "utf-8", signal });
       const trimmed = content.trim();
       if (trimmed.length > 0) {
         layers.push({ scope, path: resolved, content: trimmed });
       }
     } catch {
+      signal?.throwIfAborted();
       // ENOENT / EISDIR / EACCES — all expected when files don't exist
     }
   }
@@ -115,7 +121,9 @@ export class InstructionDiscovery {
     seen: Set<string>,
     scope: InstructionScope,
     dirPath: string,
+    signal?: AbortSignal,
   ): Promise<void> {
+    signal?.throwIfAborted();
     try {
       const entries = await readdir(dirPath, { withFileTypes: true });
       const mdFiles = entries
@@ -123,9 +131,10 @@ export class InstructionDiscovery {
         .map(e => e.name)
         .sort();
       for (const file of mdFiles) {
-        await this.tryAdd(layers, seen, scope, join(dirPath, file));
+        await this.tryAdd(layers, seen, scope, join(dirPath, file), signal);
       }
     } catch {
+      signal?.throwIfAborted();
       // Directory doesn't exist — normal
     }
   }

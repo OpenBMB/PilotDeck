@@ -1,3 +1,11 @@
+import { VideoStore } from "../tool/builtin/videos/VideoStore.js";
+import { PythonRuntimeManager, withPythonMcpEnvironment, type PythonRuntimeSnapshot } from '../runtime/pythonRuntime.js';
+import { VideoJobManager } from "../tool/builtin/videos/VideoJobManager.js";
+import { createSubagentVideoPreparation, createSubagentVideoInheritance } from "./subagentVideoInheritance.js";
+import { ImageStore } from "../tool/builtin/images/ImageStore.js";
+import { createSubagentImageInheritance, createSubagentImagePreparation } from "./subagentImageInheritance.js";
+import { acquireWorkspaceOperation, operationContext } from "../session/checkpoints/WorkspaceCoordinator.js";
+import { runWorkspaceFileOperation } from "../session/checkpoints/workspaceFileOperation.js";
 import type { ExplicitModelSelection } from "../gateway/protocol/types.js";
 import { isOptionalFeatureEnabled } from "../pilot/config/optionalFeature.js";
 import { resolveWebSearchConfig } from "../pilot/config/webSearchConfig.js";
@@ -34,7 +42,7 @@ import {
 } from "../context/index.js";
 import { WorkspaceCheckpoints, getCheckpointStore, CheckpointError } from "../session/checkpoints/WorkspaceCheckpoints.js";
 import { activeTranscriptEntries } from "../session/transcript/CompactSnapshot.js";
-import { runRepositoryOperation, repositoryRoot } from "../session/checkpoints/repositoryOperation.js";
+import { runRepositoryOperation, repositoryRoot, repositoryCommonDirectory } from "../session/checkpoints/repositoryOperation.js";
 import type { AgentSubagentTranscriptHooks } from "../agent/runtime/AgentRuntimeDependencies.js";
 import { createPlanTodoStateManager } from "../agent/runtime/PlanTodoState.js";
 import { HookRuntime, PluginRuntime } from "../extension/index.js";
@@ -104,6 +112,7 @@ import type { EdgeClawMemoryProvider } from "../context/index.js";
 import { loadBuiltinPlugins } from "../extension/plugins/builtin/loadBuiltinPlugins.js";
 import { SkillManager, migrateLegacyBundledSkillCopies } from "../extension/skills/index.js";
 import { getPilotDeckInstallCommand, patchProjectScopedMcpSpec } from "../mcp/runtime/projectMcpSpec.js";
+import { createMcpToolCatalogRefresher } from "../mcp/runtime/McpToolRegistryBinding.js";
 import { ExtensionWatchManager, type ExtensionWatchEvent } from "./ExtensionWatchManager.js";
 import { createTelemetryCollector, type TelemetryClient } from "../telemetry/index.js";
 import { UploadStore } from "../gateway/dialog/UploadStore.js";
@@ -391,6 +400,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     };
   };
   const gateway = new InProcessGateway(router, {
+    activeBackgroundTaskCount: () => registry.activeBackgroundTaskCount(),
     funasrInstallCommand: getPilotDeckInstallCommand(),
     now,
     serverInfo: { mode: "in_process", projectKey: projectRoot },
@@ -399,9 +409,10 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     cron: options.cron,
     skillManager,
     async manageCheckpoints(input) {
-      if (!input.sessionKey?.trim() || !["list", "diff", "preview", "restore", "undo", "git"].includes(input.action)) throw new CheckpointError("INVALID_ACTION", "A conversation and valid checkpoint action are required.");
+      if (!input.sessionKey?.trim() || !["list", "diff", "preview", "restore", "undo", "git", "filesystem"].includes(input.action)) throw new CheckpointError("INVALID_ACTION", "A conversation and valid checkpoint action are required.");
       const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
       const store = await getCheckpointStore(projectKey, pilotHome);
+      if (input.action === "filesystem") return runWorkspaceFileOperation(projectKey, pilotHome, input.fileOperation);
       if (input.action === "list" || input.action === "diff") {
         if (!store.busy && !router.hasActiveTurn(input.sessionKey)) {
           const release = await store.acquire();
@@ -419,22 +430,29 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
           sessionChanges: latest ? store.summary({ ...latest, changes: sessionChanges }).changes : [],
           sessionRevision: createHash("sha256").update(JSON.stringify(sessionChanges)).digest("hex"),
           operations: (await store.operations(input.sessionKey)).map(({ id, status, applied, skipped, createdAt, mode, checkpointId, undoOf }) => ({ id, status, applied, skipped, createdAt, mode, checkpointId, undoOf })),
-          busy: store.busy,
+          busy: store.busy, busyReason: store.busyReason,
         };
       }
-      if (store.busy || router.hasActiveTurn(input.sessionKey)) throw new CheckpointError("WORKSPACE_BUSY", "The directory is being modified. Stop active turns and background tasks before restoring files or operating Git.");
+      const requestedMode = input.mode ?? (input.action === "restore" && input.planId ? (await store.readPlan(input.sessionKey, input.planId)).mode
+        : input.action === "undo" ? (await store.operations(input.sessionKey)).find(item => item.id === input.operationId)?.mode : undefined);
+      const conversationOnly = requestedMode === "conversation";
+      if ((!conversationOnly && store.busy) || (input.action !== "git" && router.hasActiveTurn(input.sessionKey))) throw new CheckpointError("WORKSPACE_BUSY", store.busyReason ?? "The conversation is running. Stop this turn before restoring its history.");
       if (input.action === "git") {
         const root = input.repositoryOperation?.operation === "init" ? projectKey : await repositoryRoot(projectKey);
         const repositoryStore = await getCheckpointStore(root, pilotHome);
         if (repositoryStore.busy) throw new CheckpointError("WORKSPACE_BUSY", "The repository is being modified. Stop active turns and background tasks before operating Git.");
-        const release = await repositoryStore.acquire();
-        try { return await runRepositoryOperation(projectKey, input.repositoryOperation!); }
-        finally { release(); }
+        return repositoryStore.withExclusive(async () => {
+          const common = input.repositoryOperation?.operation === "init" ? undefined : await repositoryCommonDirectory(root);
+          const release = common ? await acquireWorkspaceOperation(common, { owner: operationContext.getStore()?.owner }) : () => {};
+          const action = input.repositoryOperation;
+          const invalidates = action?.operation === "checkout" || (action?.operation === "legacy" && ["checkout", "create-branch", "pull", "discard", "delete-untracked"].includes(action.legacyAction ?? ""));
+          try { return await runRepositoryOperation(projectKey, action!); }
+          finally { try { if (invalidates) await repositoryStore.invalidateWorkspace(); } finally { release(); } }
+        });
       }
       const runId = `checkpoint:${randomUUID()}`;
       if (!router.beginTurn(input.sessionKey, runId)) throw new CheckpointError("WORKSPACE_BUSY", "The conversation is busy.");
-      const release = await store.acquire();
-      try {
+      const perform = async () => {
         await router.close(input.sessionKey);
         const storage = createAgentProjectSessionStorage({ projectRoot: projectKey, pilotHome, sessionId: input.sessionKey, now });
         const { entries, diagnostics } = await readTranscript(storage.transcriptPath);
@@ -474,7 +492,12 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
           await storage.transcript.recordAgentStatusMessage(input.sessionKey, runId, { event: "files_restored", kind: "status", text: operation.mode === "conversation" ? "对话已回退，文件保持不变" : `已恢复 ${operation.applied.length} 个文件，保留 ${operation.skipped.length} 个文件`, detail: { operationId: operation.id, files: operation.applied, skipped: operation.skipped } });
         }
         return operation;
-      } finally { release(); router.endTurn(input.sessionKey, runId); }
+      };
+      try {
+        if (!conversationOnly) return await store.withExclusive(perform);
+        const unpin = await store.pin();
+        try { return await perform(); } finally { unpin(); }
+      } finally { router.endTurn(input.sessionKey, runId); }
     },
     async commandsList(input) {
       const projectKey = await dialogProjects.resolveProjectKey(input.projectKey);
@@ -615,6 +638,13 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       }
       return { reloaded: true, changedPaths };
     },
+    async getPythonRuntimeStatus() {
+      await configStore.reload('python-status');
+      const enabled = configStore.getSnapshot().config.runtime?.python.enabled ?? true;
+      const result = await registry.refreshPython(enabled);
+      if (result.changed) router?.markAllDirty('python_environment_changed');
+      return result.snapshot.status;
+    },
     async reloadExtensions(input) {
       const changedPaths = input?.changedPaths ?? [];
       if (input?.projectKey) {
@@ -646,6 +676,8 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     async refreshConfigBeforeTurn() {
       await configStore.reload("turn-start");
       refreshManagedMcp();
+      const result = await registry.refreshPython(configStore.getSnapshot().config.runtime?.python.enabled ?? true);
+      if (result.changed) router?.markAllDirty('python_environment_changed');
     },
     afterTurnCompleted: ({ sessionKey, projectKey, runId }) => {
       if (memoryDiagnosticsEnabled) {
@@ -673,7 +705,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     configStore,
     registry,
     dispose: () => {
-      registry.invalidate();
+      registry.shutdown();
       router?.shutdown();
       stopConfigWatching();
       stopExtensionWatching();
@@ -730,6 +762,8 @@ type ProjectRuntimeRegistryOptions = {
 };
 
 type ProjectRuntime = {
+  users: number;
+  python?: PythonRuntimeSnapshot;
   projectRoot: string;
   snapshot: ReturnType<typeof loadPilotConfig>;
   model: ModelRuntime;
@@ -769,7 +803,11 @@ const DEFAULT_BROWSER_ACTION_TIMEOUT_MS = 30_000;
 const DEFAULT_BROWSER_NAVIGATION_TIMEOUT_MS = 90_000;
 
 class ProjectRuntimeRegistry {
+  private readonly retired = new Set<ProjectRuntime>();
+  private readonly python: PythonRuntimeManager;
   private readonly runtimes = new Map<string, ProjectRuntime>();
+  private readonly taskRuntimes = new Set<BackgroundTaskRuntime>();
+  private readonly taskRuntimeUsers = new Map<BackgroundTaskRuntime, number>();
   private usageCounter?: UsageCounter;
   private gateway?: InProcessGateway;
   /**
@@ -805,6 +843,9 @@ class ProjectRuntimeRegistry {
   });
 
   constructor(private readonly options: ProjectRuntimeRegistryOptions) {
+    this.python = new PythonRuntimeManager({ pilotHome: options.pilotHome, env: options.env,
+      onError: error => console.warn('[pilotdeck] Bundled Python initialization failed:', error instanceof Error ? error.message : String(error)),
+    });
     this._extraTools = options.extraTools ? [...options.extraTools] : [];
     this._sessionOverrides = options.sessionOverrides;
   }
@@ -823,6 +864,50 @@ class ProjectRuntimeRegistry {
 
   setGateway(gateway: InProcessGateway): void {
     this.gateway = gateway;
+  }
+
+  activeBackgroundTaskCount(): number {
+    const current = new Set([...this.runtimes.values()].map(runtime => runtime.backgroundTasks));
+    let count = 0;
+    for (const runtime of this.taskRuntimes) {
+      const active = runtime.list({ status: ['pending', 'running'] }).length;
+      count += active;
+      // A retired runtime can still create tasks from an in-flight turn, even
+      // while its task list is temporarily empty (including after completion).
+      if (active === 0 && !current.has(runtime) && !this.taskRuntimeUsers.has(runtime)) this.taskRuntimes.delete(runtime);
+    }
+    this.collectRetired();
+    return count;
+  }
+
+  /** Retire cached runtimes while their sessions, turns and tasks retain ownership. */
+  private retire(projectRoot?: string): void {
+    const selected = projectRoot === undefined ? undefined : resolve(projectRoot);
+    for (const [root, runtime] of this.runtimes) {
+      if (selected !== undefined && root !== selected) continue;
+      this.retired.add(runtime);
+      this.runtimes.delete(root);
+    }
+    this.collectRetired();
+  }
+
+  async refreshPython(enabled: boolean): Promise<{ snapshot: PythonRuntimeSnapshot; changed: boolean }> {
+    const snapshot = await this.python.resolve(enabled);
+    const changed = [...this.runtimes.values()].some(runtime => runtime.python
+      && (runtime.python.status.state !== snapshot.status.state || runtime.python.status.executable !== snapshot.status.executable));
+    if (changed) this.retire();
+    return { snapshot, changed };
+  }
+
+  private collectRetired(): void {
+    for (const runtime of this.retired) {
+      if (runtime.users || this.taskRuntimeUsers.has(runtime.backgroundTasks)
+        || runtime.backgroundTasks.list({ status: ['pending', 'running'] }).length || runtime.memoryMaintenanceInFlight) continue;
+      this.retired.delete(runtime);
+      runtime.mcpRuntime?.stop().catch(() => {});
+      runtime.memoryService?.close();
+      runtime.router.shutdown().catch(() => {});
+    }
   }
 
   private emitBackgroundTaskCompletion(event: BackgroundTaskCompletionEvent): void {
@@ -899,36 +984,34 @@ class ProjectRuntimeRegistry {
     return auto;
   }
 
-  /**
-   * Drop cached runtimes so the next `resolve()` call rebuilds from
-   * a fresh `loadPilotConfig()` snapshot. Gracefully shuts down any
-   * active MCP connections (both shared and per-session) before
-   * discarding the entry.
-   */
+  /** Rebuild on the next session without disconnecting an existing owner. */
   invalidate(projectRoot?: string): void {
+    this.retire(projectRoot);
+    // Per-session MCP connections belong to the session eviction callback.
+    // A project reload must neither stop another project's browser nor sever
+    // a connection that an in-flight turn is still using.
+    this.activeBackgroundTaskCount();
+  }
+
+  /** Force resource cleanup only when the owning Gateway is shutting down. */
+  shutdown(): void {
+    for (const runtime of this.retired) {
+      runtime.mcpRuntime?.stop().catch(() => {});
+      runtime.memoryService?.close();
+      runtime.router.shutdown().catch(() => {});
+    }
+    this.retired.clear();
     for (const [, mcp] of this.sessionMcpRuntimes) {
       mcp.stop().catch(() => {});
     }
     this.sessionMcpRuntimes.clear();
-
-    if (projectRoot) {
-      const runtime = this.runtimes.get(projectRoot);
-      if (runtime?.mcpRuntime) {
-        runtime.mcpRuntime.stop().catch(() => {});
-      }
-      runtime?.memoryService?.close();
-      runtime?.router?.shutdown().catch(() => {});
-      this.runtimes.delete(projectRoot);
-    } else {
-      for (const [, runtime] of this.runtimes) {
-        if (runtime.mcpRuntime) {
-          runtime.mcpRuntime.stop().catch(() => {});
-        }
-        runtime.memoryService?.close();
-        runtime.router?.shutdown().catch(() => {});
-      }
-      this.runtimes.clear();
+    for (const runtime of this.runtimes.values()) {
+      runtime.mcpRuntime?.stop().catch(() => {});
+      runtime.memoryService?.close();
+      runtime.router.shutdown().catch(() => {});
     }
+    this.runtimes.clear();
+    this.activeBackgroundTaskCount();
   }
 
   /**
@@ -969,7 +1052,7 @@ class ProjectRuntimeRegistry {
     const snapshot = loadPilotConfig({ projectRoot, env: this.options.env });
     const baseModel = this.options.modelFactory
       ? this.options.modelFactory(snapshot)
-      : createModelRuntime(snapshot.config.model);
+      : createModelRuntime(snapshot.config.model, { requestContext: { projectPath: projectRoot } });
     this.usageCounter ??= new UsageCounter(this.options.pilotHome, this.options.now);
     const model = withUsageCounter(baseModel, this.usageCounter);
     const tokenAccounting = new TokenAccountingRuntime({
@@ -993,12 +1076,24 @@ class ProjectRuntimeRegistry {
     });
     const backgroundTasks = new BackgroundTaskRuntime({
       now: this.options.now,
-      onCompletion: (event) => this.emitBackgroundTaskCompletion(event),
+      onCompletion: (event) => {
+        this.activeBackgroundTaskCount();
+        this.emitBackgroundTaskCompletion(event);
+      },
     });
+    this.taskRuntimes.add(backgroundTasks);
     const webSearchConfig = snapshot.config.tools?.webSearch
       ? resolveWebSearchConfig(snapshot.config.tools.webSearch)
       : undefined;
     const tools = createBuiltinRegistry({
+      videoGeneration: {
+        store: new VideoStore(resolve(this.options.pilotHome, "generated-videos")),
+        getConfig: () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.videoGeneration,
+      },
+      imageGeneration: {
+        store: new ImageStore(resolve(this.options.pilotHome, "generated-images")),
+        getConfig: () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration,
+      },
       backgroundTasks: { runtime: backgroundTasks },
       readSkill: {
         loader: (name) => pluginRuntime.loadSkillPrompt(name),
@@ -1035,6 +1130,7 @@ class ProjectRuntimeRegistry {
     });
 
     const runtime: ProjectRuntime = {
+      users: 0,
       projectRoot,
       snapshot,
       model,
@@ -1095,6 +1191,7 @@ class ProjectRuntimeRegistry {
       }
     })().finally(() => {
       runtime.memoryMaintenanceInFlight = undefined;
+      this.collectRetired();
       if (runtime.memoryMaintenanceRequested) {
         this.scheduleMemoryMaintenance(projectKey);
       }
@@ -1125,11 +1222,11 @@ class ProjectRuntimeRegistry {
           if (managed) rawServers['pilotdeck-computer-use'] = managed;
         }
         const { servers: parsedServers } = parsePluginMcpServers(rawServers);
-        const servers = parsedServers.map((server) => patchProjectScopedMcpSpec(
+        const servers = parsedServers.map((server) => withPythonMcpEnvironment(patchProjectScopedMcpSpec(
           server,
           runtime.projectRoot,
           this.options.pilotHome,
-        ));
+        ), runtime.python!));
         if (servers.length === 0) return;
 
         const sharedServers = servers.filter((s) => s.transport !== "stdio" || !s.perSession);
@@ -1171,46 +1268,56 @@ class ProjectRuntimeRegistry {
 
   async createSession(context: GatewaySessionContext) {
     const prepared = await this.prepareSessionRuntime(context);
-    const resumed = await resumeAgentSession({
-      sessionId: context.sessionKey,
-      config: this.createAgentConfig(prepared.runtime, context.sessionKey),
-      dependencies: prepared.baseDependencies,
-      projectStorage: prepared.runtime.projectStorage,
-      extendDependencies: prepared.extendDependencies,
-      sessionTitleGenerator: prepared.sessionTitleGenerator,
-      collectFileArtifacts: this.shouldCollectFileArtifacts(prepared.runtime),
-    });
-    return resumed.session;
+    try {
+      const resumed = await resumeAgentSession({
+        sessionId: context.sessionKey,
+        config: this.createAgentConfig(prepared.runtime, context.sessionKey),
+        dependencies: prepared.baseDependencies,
+        projectStorage: prepared.runtime.projectStorage,
+        extendDependencies: prepared.extendDependencies,
+        sessionTitleGenerator: prepared.sessionTitleGenerator,
+        collectFileArtifacts: this.shouldCollectFileArtifacts(prepared.runtime),
+      });
+      return resumed.session;
+    } catch (error) {
+      prepared.baseDependencies.releaseSessionResources?.();
+      throw error;
+    }
   }
 
   async recreateSession(context: GatewaySessionContext, previousSession: AgentSession) {
     const prepared = await this.prepareSessionRuntime(context);
-    const previous = previousSession.snapshotForRuntimeReload();
-    const storage = createAgentProjectSessionStorage({
-      ...prepared.runtime.projectStorage,
-      sessionId: context.sessionKey,
-      now: prepared.baseDependencies.now,
-    });
-    if (previous.transcriptWriterState) {
-      storage.transcript.restoreState(
-        previous.transcriptWriterState.sequence,
-        previous.transcriptWriterState.lastEntryId,
-      );
+    try {
+      const previous = previousSession.snapshotForRuntimeReload();
+      const storage = createAgentProjectSessionStorage({
+        ...prepared.runtime.projectStorage,
+        sessionId: context.sessionKey,
+        now: prepared.baseDependencies.now,
+      });
+      if (previous.transcriptWriterState) {
+        storage.transcript.restoreState(
+          previous.transcriptWriterState.sequence,
+          previous.transcriptWriterState.lastEntryId,
+        );
+      }
+      const extensionDependencies = prepared.extendDependencies(storage);
+      const { session } = createAgentSessionWithStorage({
+        sessionId: context.sessionKey,
+        config: this.createAgentConfig(prepared.runtime, context.sessionKey),
+        dependencies: mergeSessionDependencies(prepared.baseDependencies, extensionDependencies),
+        storage,
+        transcript: storage.transcript,
+        initialState: previous.state,
+        seedState: previous.fileState,
+        initialMetadata: previous.metadata,
+        sessionTitleGenerator: prepared.sessionTitleGenerator,
+        collectFileArtifacts: this.shouldCollectFileArtifacts(prepared.runtime),
+      });
+      return session;
+    } catch (error) {
+      prepared.baseDependencies.releaseSessionResources?.();
+      throw error;
     }
-    const extensionDependencies = prepared.extendDependencies(storage);
-    const { session } = createAgentSessionWithStorage({
-      sessionId: context.sessionKey,
-      config: this.createAgentConfig(prepared.runtime, context.sessionKey),
-      dependencies: mergeSessionDependencies(prepared.baseDependencies, extensionDependencies),
-      storage,
-      transcript: storage.transcript,
-      initialState: previous.state,
-      seedState: previous.fileState,
-      initialMetadata: previous.metadata,
-      sessionTitleGenerator: prepared.sessionTitleGenerator,
-      collectFileArtifacts: this.shouldCollectFileArtifacts(prepared.runtime),
-    });
-    return session;
   }
 
   private shouldCollectFileArtifacts(runtime: ProjectRuntime): boolean {
@@ -1219,15 +1326,37 @@ class ProjectRuntimeRegistry {
 
   private async prepareSessionRuntime(context: GatewaySessionContext) {
     const runtime = this.resolve(context.projectKey);
+    runtime.users++;
+    let released = false;
+    const disposers: (() => void)[] = [];
+    const releaseSessionResources = () => {
+      if (released) return;
+      released = true;
+      for (const dispose of disposers) dispose();
+      runtime.users--;
+      this.collectRetired();
+    };
+    try {
+      return await this.prepareLeasedSessionRuntime(context, runtime, releaseSessionResources, dispose => disposers.push(dispose));
+    } catch (error) {
+      releaseSessionResources();
+      throw error;
+    }
+  }
+
+  private async prepareLeasedSessionRuntime(context: GatewaySessionContext, runtime: ProjectRuntime, releaseSessionResources: () => void,
+    ownResource: (dispose: () => void) => void) {
+    runtime.python ??= await this.python.resolve(runtime.snapshot.config.runtime?.python.enabled ?? true);
     await runtime.pluginRuntime.refresh();
     await this.ensureMcpReady(runtime);
     const contributions = runtime.pluginRuntime.snapshotContributions();
 
     // -- per-session MCP runtime (e.g. browser-use) --------------------
     let sessionTools: ToolRegistry = runtime.tools;
+    let sessionMcp: McpRuntime | undefined;
     const perSpecs = runtime.perSessionServerSpecs;
     const maxInstances = runtime.snapshot.config.gateway?.maxPerSessionMcpInstances ?? 5;
-    if (perSpecs && perSpecs.length > 0 && this.sessionMcpRuntimes.size < maxInstances) {
+    if (perSpecs && perSpecs.length > 0 && (this.sessionMcpRuntimes.has(context.sessionKey) || this.sessionMcpRuntimes.size < maxInstances)) {
       this.evictSessionMcp(context.sessionKey);
       const patchedPerSpecs = perSpecs.map((spec) => {
         if (spec.transport === "stdio" && spec.id === "browser-use") {
@@ -1245,8 +1374,13 @@ class ProjectRuntimeRegistry {
         }
         return spec;
       });
-      const sessionMcp = new McpRuntime(patchedPerSpecs);
+      sessionMcp = new McpRuntime(patchedPerSpecs);
       this.sessionMcpRuntimes.set(context.sessionKey, sessionMcp);
+      const ownedMcp = sessionMcp;
+      ownResource(() => {
+        if (this.sessionMcpRuntimes.get(context.sessionKey) === ownedMcp) this.sessionMcpRuntimes.delete(context.sessionKey);
+        ownedMcp.stop().catch(() => {});
+      });
       try {
         const statuses = await sessionMcp.start();
         for (const status of statuses) {
@@ -1315,10 +1449,15 @@ class ProjectRuntimeRegistry {
 
     const availability = await filterAvailableTools(sessionTools, {
       cwd: runtime.projectRoot,
-      env: this.options.env,
+      env: runtime.python.env,
     });
     sessionTools = availability.registry;
     runtime.unavailableTools = availability.unavailable;
+    const excludedTools = new Set(override?.excludeTools ?? []);
+    const catalog = createMcpToolCatalogRefresher([runtime.mcpRuntime, sessionMcp].filter((mcp): mcp is McpRuntime => mcp !== undefined),
+      tool => !excludedTools.has(tool.name) && !(tool.aliases ?? []).some(alias => excludedTools.has(alias))
+        && !/^mcp__pilotdeck-computer-use__(check_for_update|install_extension|install_ffmpeg|set_config|get_config|replay_trajectory)$/.test(tool.name));
+    ownResource(() => catalog.dispose());
 
     // Inject the gateway's interactive permission hook so the agent's
     // PermissionRequest lifecycle is round-tripped through whichever
@@ -1359,22 +1498,43 @@ class ProjectRuntimeRegistry {
       );
     }
     const lifecycle = new LifecycleRuntime(hookRuntime);
+    const sessionMcpInstructions = sessionMcp;
     const extension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime, () => [
       ...(runtime.mcpRuntime?.getInstructions() ?? []),
-      ...(this.sessionMcpRuntimes.get(context.sessionKey)?.getInstructions() ?? []),
+      ...(sessionMcpInstructions?.getInstructions() ?? []),
     ].map(({ serverId, instructions }) => ({ serverName: serverId, instructions })));
     const projectRoot = runtime.projectRoot;
     const memoryResolver = runtime.memory;
     const now = this.options.now;
     const eventBuf = createAgentEventBuffer();
+    const videoStore = new VideoStore(resolve(this.options.pilotHome, "generated-videos"));
+    const imageStore = new ImageStore(resolve(this.options.pilotHome, "generated-images"));
 
     const baseDependencies: CreateAgentSessionOptions["dependencies"] = {
+      releaseSessionResources,
+      refreshToolCatalog: catalog.refresh,
+      acquireTurnResources: () => {
+        const tasks = runtime.backgroundTasks;
+        this.taskRuntimes.add(tasks);
+        this.taskRuntimeUsers.set(tasks, (this.taskRuntimeUsers.get(tasks) ?? 0) + 1);
+        return () => {
+          const remaining = (this.taskRuntimeUsers.get(tasks) ?? 1) - 1;
+          if (remaining > 0) this.taskRuntimeUsers.set(tasks, remaining);
+          else this.taskRuntimeUsers.delete(tasks);
+          this.activeBackgroundTaskCount();
+        };
+      },
       router: runtime.router,
       tools: { registry: sessionTools },
       lifecycle,
       now: this.options.now,
       eventEmitter: eventBuf.emitter,
       drainEvents: eventBuf.drain,
+      inheritSubagentToolResult: async input => await createSubagentVideoInheritance(videoStore)(input) ?? await createSubagentImageInheritance(imageStore)(input),
+      prepareSubagentArtifacts: async input => [
+        ...await createSubagentImagePreparation(imageStore, () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration?.enabled === true)(input),
+        ...await createSubagentVideoPreparation(videoStore, () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.videoGeneration?.enabled === true)(input),
+      ],
       tokenAccounting: runtime.tokenAccounting,
       getModelMaxContextTokens: (provider, model) => resolveRoutedModelMaxContextTokens({
         modelRuntime: runtime.model,
@@ -1466,6 +1626,10 @@ class ProjectRuntimeRegistry {
         this.options.pilotHome,
       );
       const contextRuntime = new DefaultContextRuntime({
+        sessionArtifactContext: async sessionId => {
+          if (loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.videoGeneration?.enabled !== true) return;
+          return new VideoJobManager({ store: videoStore, getConfig: () => undefined }).contextForSession(sessionId);
+        },
         extension,
         projectRoot,
         memoryResolver,
@@ -1565,11 +1729,14 @@ class ProjectRuntimeRegistry {
   }
 
   async listSessions(input: ListSessionsInput): Promise<ListSessionsResult> {
-    const runtime = this.resolve(input.projectKey);
+    // Browsing history must not activate every project's model/plugins/tools.
+    // Build the agent runtime only when a session is actually used.
+    const projectRoot = resolve(input.projectKey ?? this.options.fallbackProjectRoot);
     const offset = input.cursor ? Number.parseInt(input.cursor, 10) : 0;
     const safeOffset = Number.isFinite(offset) ? offset : 0;
     const sessions = await listProjectSessions({
-      ...runtime.projectStorage,
+      projectRoot,
+      pilotHome: this.options.pilotHome,
       limit: input.limit,
       offset: safeOffset,
     });
@@ -1649,6 +1816,8 @@ class ProjectRuntimeRegistry {
     }
     return {
       provider: agent.model.provider,
+      env: runtime.python?.env,
+      pythonRuntime: runtime.python?.status,
       model: agent.model.model,
       modelMultimodal,
       cwd,

@@ -12,7 +12,7 @@ import { mergeUserAttachments, parseUserAttachmentNote } from '../utils/attachme
 // When patchMergedStreamingMessage creates a new object for the streaming
 // message, only THAT entry misses — all other messages hit the cache,
 // preventing expensive re-creation of ChatMessage objects that would bust
-// memo(MessageRowV2) for every message in the session.
+// memo(MessageRow) for every message in the session.
 const msgConversionCache = new WeakMap<NormalizedMessage, ChatMessage | null>();
 
 type ConvertSingleMessageOptions = {
@@ -79,6 +79,7 @@ function convertSingleMessage(
   options: ConvertSingleMessageOptions = {},
 ): ChatMessage | null {
   const turnIdentity = {
+    ...(msg.turnTiming ? { turnTiming: msg.turnTiming } : {}),
     ...(msg.renderKey ? { renderKey: msg.renderKey } : {}),
     ...(msg.runId ? { runId: msg.runId } : {}),
     ...(msg.turnId || msg.runId ? { turnId: msg.turnId || msg.runId } : {}),
@@ -179,7 +180,7 @@ function convertSingleMessage(
         ? {
             content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content),
             isError: Boolean(tr.isError),
-            toolUseResult: (tr as any).toolUseResult,
+            toolUseResult: tr.toolUseResult,
             errorCode: (tr as any).errorCode,
             resultPath: (tr as any).resultPath,
             ...(toolResultImages && toolResultImages.length > 0 ? { images: toolResultImages } : {}),
@@ -204,6 +205,8 @@ function convertSingleMessage(
         ...turnIdentity,
         isToolUse: true,
         toolName: msg.toolName,
+        sessionId: msg.sessionId,
+
         toolInput: typeof msg.toolInput === 'string' ? msg.toolInput : JSON.stringify(msg.toolInput ?? '', null, 2),
         toolId: msg.toolId,
         toolResult,
@@ -224,6 +227,7 @@ function convertSingleMessage(
       const thinkingContent = msg.content?.trim()
         ? msg.content
         : msg.reasoningContent || '';
+      const isStreaming = msg.timeline ? msg.streamState === 'open' : msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_');
       if (thinkingContent.trim()) {
         return {
           id: msg.id,
@@ -233,7 +237,9 @@ function convertSingleMessage(
           timestamp: msg.timestamp,
           ...turnIdentity,
           isThinking: true,
-          isStreaming: msg.timeline ? msg.streamState === 'open' : msg.id.startsWith('__streaming_thinking_') || msg.id.startsWith('__subagent_thinking_'),
+          isStreaming,
+          startedAt: msg.timeline?.startedAt ?? msg.startedAt ?? (isStreaming ? msg.timestamp : undefined),
+          durationMs: msg.timeline?.durationMs ?? msg.durationMs,
         };
       }
       return null;
@@ -311,6 +317,8 @@ function convertSingleMessage(
         runId: msg.runId,
         parentRunId: msg.parentRunId,
         activityId: msg.activityId,
+        subagentId: msg.subagentId,
+        fileInputProgress: msg.fileInputProgress,
         phase: msg.phase,
         state: msg.state,
         title: msg.title,
@@ -338,6 +346,7 @@ function convertSingleMessage(
         toolCallCount: msg.toolCallCount,
         toolErrorCount: msg.toolErrorCount,
         ragSearchCount: msg.ragSearchCount,
+        webFetchCount: msg.webFetchCount,
         editedFileCount: msg.editedFileCount,
         exploredFileCount: msg.exploredFileCount,
         commandCount: msg.commandCount,
@@ -362,8 +371,17 @@ function convertSingleMessage(
       }
       return null;
 
+    case 'complete': {
+      const timing = msg.turnTiming;
+      if (!timing) return null;
+      const durationMs = Date.parse(timing.completedAt) - Date.parse(timing.startedAt);
+      if (!Number.isFinite(durationMs) || durationMs < 0) return null;
+      const reason = String(msg.finishReason || timing.finishReason || 'completed');
+      return { id: msg.id, ...turnIdentity, type: 'system', content: '', timestamp: timing.completedAt,
+        isAgentActivitySummary: true, startedAt: timing.startedAt, endedAt: timing.completedAt, durationMs,
+        state: reason === 'completed' ? 'completed' : reason.startsWith('aborted') ? 'cancelled' : 'failed' };
+    }
     case 'stream_end':
-    case 'complete':
     case 'status':
     case 'permission_request':
     case 'permission_cancelled':

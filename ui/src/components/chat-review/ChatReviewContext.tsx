@@ -7,9 +7,9 @@ export type { CheckpointSummary, RestorePlan, RestoreOperation };
 export type ReviewTab = 'changes' | 'checkpoints' | 'git';
 export type ReviewOpenRequest = { tab: ReviewTab; sequence: number };
 export type OperationSummary = Pick<RestoreOperation, 'id' | 'status' | 'applied' | 'skipped' | 'createdAt' | 'mode' | 'checkpointId' | 'undoOf'>;
-type ReviewData = { checkpoints: CheckpointSummary[]; sessionChanges: CheckpointSummary['changes']; sessionRevision?: string; operations: OperationSummary[]; busy: boolean };
+type ReviewData = { checkpoints: CheckpointSummary[]; sessionChanges: CheckpointSummary['changes']; sessionRevision?: string; operations: OperationSummary[]; busy: boolean; busyReason?: string };
 export type GitEntry = { path: string; originalPath?: string; indexStatus: string; worktreeStatus: string; staged: boolean; unstaged: boolean; untracked: boolean; conflicted: boolean };
-export type GitStatus = { branch?: string; hasCommits?: boolean; isRepository?: boolean; code?: string; repositoryRoot?: string; indexTree?: string; entries?: GitEntry[]; error?: string };
+export type GitStatus = { branch?: string; hasCommits?: boolean; isRepository?: boolean; code?: string; repositoryRoot?: string; indexTree?: string; fileFingerprints?: Record<string, string>; entries?: GitEntry[]; error?: string };
 type ContextValue = {
   project: Project | null; sessionId: string | null; running: boolean; readOnly: boolean;
   panelOpen: boolean; tab: ReviewTab; checkpointId: string | null; filePath: string | null;

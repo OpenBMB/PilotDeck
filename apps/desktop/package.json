@@ -26,11 +26,12 @@
     "download-node": "node scripts/download-node.mjs",
     "download-cua-driver": "node scripts/download-cua-driver.mjs",
     "download-playwright-browsers": "node scripts/download-playwright-browsers.mjs",
-    "test": "node --test scripts/*.test.mjs",
+    "test": "node --test scripts/*.test.mjs scripts/*.spec.mjs",
     "dist:linux:rpm:arm64": "node scripts/check-linux-build-host.mjs arm64 rpm && umask 022 && PILOTDECK_DESKTOP_NODE_ARCH=arm64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --linux rpm --arm64 --config.electronDist=node_modules/electron/dist --publish never && node scripts/normalize-linux-rpm-artifact.mjs arm64",
     "dist:linux:rpm:x64": "node scripts/check-linux-build-host.mjs x64 rpm && umask 022 && PILOTDECK_DESKTOP_NODE_ARCH=x64 node scripts/build-runtime.mjs && tsc -p tsconfig.json && electron-builder --linux rpm --x64 --config.electronDist=node_modules/electron/dist --publish never && node scripts/normalize-linux-rpm-artifact.mjs x64"
   },
   "dependencies": {
+    "@pilotdeck/config": "workspace:*",
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
@@ -57,10 +58,21 @@
       }
     ],
     "asar": true,
+    "electronFuses": {
+      "enableNodeOptionsEnvironmentVariable": false
+    },
     "npmRebuild": false,
     "buildDependenciesFromSource": false,
     "afterPack": "scripts/after-pack.cjs",
     "extraResources": [
+      {
+        "from": "resources/python-runtime",
+        "to": "python-runtime"
+      },
+      {
+        "from": "resources/uninstall-data.cjs",
+        "to": "uninstall-data.cjs"
+      },
       {
         "from": "resources/node",
         "to": "node"
@@ -106,6 +118,7 @@
     },
     "win": {
       "icon": "resources/icons/icon.ico",
+      "extraFiles": [{ "from": "resources/PilotDeck.VisualElementsManifest.xml", "to": "PilotDeck.VisualElementsManifest.xml" }],
       "legalTrademarks": "Copyright \u00a9 OpenBMB",
       "target": [
         {
@@ -115,8 +128,20 @@
     },
     "linux": {
       "category": "Development",
-      "icon": "resources/icons/icon.png",
+      "icon": "resources/icons/linux",
       "maintainer": "OpenBMB <contact@openbmb.cn>",
+      "desktop": {
+        "entry": {
+          "Actions": "Uninstall;"
+        },
+        "desktopActions": {
+          "Uninstall": {
+            "Name": "Uninstall PilotDeck",
+            "Name[zh_CN]": "卸载 PilotDeck",
+            "Exec": "pilotdeck-desktop --uninstall"
+          }
+        }
+      },
       "syncDesktopName": true,
       "target": ["deb"]
     },
@@ -143,12 +168,15 @@
       ]
     },
     "nsis": {
+      "differentialPackage": true,
       "artifactName": "${productName}-${version}-${os}-${arch}-setup.${ext}",
       "oneClick": false,
       "perMachine": true,
       "installerIcon": "resources/icons/installer-icon.ico",
       "uninstallerIcon": "resources/icons/installer-icon.ico",
       "include": "resources/installer.nsh",
+      "installerLanguages": ["en_US", "zh_CN"],
+      "createDesktopShortcut": false,
       "allowToChangeInstallationDirectory": true
     },
     "portable": {

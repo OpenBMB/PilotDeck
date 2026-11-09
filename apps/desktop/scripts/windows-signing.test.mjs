@@ -3,11 +3,31 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import signing from './windows-signing.cjs';
 
 const { loadSigningConfig, applySigningConfig, isOwnedExecutable } = signing;
 const sha = 'A'.repeat(40);
 const env = { PILOTDECK_WINDOWS_CERT_SHA1: sha, PILOTDECK_WINDOWS_PUBLISHER: 'Example Publisher', SIGNTOOL_PATH: process.execPath };
+
+test('hosted signing probe compiles the real helper from an unrelated Unicode working directory', { skip: process.platform !== 'win32' }, () => {
+  const repository = fileURLToPath(new URL('../../../', import.meta.url));
+  const { parse } = createRequire(new URL('../../../package.json', import.meta.url))('yaml');
+  const workflow = parse(fs.readFileSync(path.join(repository, '.github/workflows/windows-signing-check.yml'), 'utf8'));
+  const step = workflow.jobs.sign.steps.find(step => step.name === 'Compile the project installer helper as a signing fixture');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-signing-测试 '));
+  try {
+    const result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', step.run], {
+      cwd: directory, env: { ...process.env, GITHUB_WORKSPACE: repository, RUNNER_TEMP: directory },
+      encoding: 'utf8', windowsHide: true, timeout: 30000,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const fixture = fs.readFileSync(path.join(directory, 'pilotdeck-signing-check.exe'));
+    assert.equal(fixture.subarray(0, 2).toString(), 'MZ');
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
 
 test('Windows store config does not affect Linux/macOS or unsigned CI builds', () => {
   assert.equal(loadSigningConfig(env, 'linux'), null);

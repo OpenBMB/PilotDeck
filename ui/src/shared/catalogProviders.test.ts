@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { findCatalogProviderById } from './catalogProviders';
+import { resolveModelTokenLimits } from './modelTokenLimits';
+import { parseModelConfig } from '../../../src/model/config/parseModelConfig.js';
 
 describe('catalogProviders maxOutputTokens', () => {
+  it.each(['gpt-4.1', 'gpt-4o-2024-11-20', 'vendor/claude-sonnet-4.5', 'claude-sonnet-4-5-20250929', 'unknown-model'])(
+    'keeps custom-provider token hints consistent with engine configuration for %s', modelId => {
+      const provider = { protocol: 'openai' as const, url: 'https://proxy.test/v1', apiKey: 'test-key', models: { [modelId]: {} } };
+      const actual = parseModelConfig({ providers: { proxy: provider } }, { env: {} }).providers.proxy.models[modelId].capabilities;
+      expect(resolveModelTokenLimits('proxy', modelId, 'openai')).toEqual({
+        maxContextTokens: actual.maxContextTokens, maxOutputTokens: actual.maxOutputTokens,
+      });
+    },
+  );
+
+  it('prefers engine token limits over stale picker hints for a known model', () => {
+    expect(resolveModelTokenLimits('proxy', 'gpt-4.1', 'openai', {
+      id: 'gpt-4.1', displayName: 'Old picker entry', maxContextTokens: 1000, maxOutputTokens: 500,
+    })).toEqual({ maxContextTokens: 1047576, maxOutputTokens: 32768 });
+  });
   it('exposes model output caps for settings placeholders', () => {
     const deepseek = findCatalogProviderById('deepseek');
     const openai = findCatalogProviderById('openai');

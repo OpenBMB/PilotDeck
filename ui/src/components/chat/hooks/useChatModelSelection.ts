@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
-import { normalizeModelSelection, modelSelectionId, capabilityIncludesValue } from '../../chat-v2/modelCapabilityOptions';
+import { normalizeModelSelection, modelSelectionId, capabilityIncludesValue } from '../utils/modelCapabilityOptions';
 import { globalModelSelectionStore, modelSelectionError, readSessionModelSelection } from '../utils/globalModelSelection';
 import type { ChatModelSelection } from './useChatProviderState';
 

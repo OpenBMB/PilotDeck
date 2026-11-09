@@ -328,6 +328,9 @@ export function parseUserAttachmentNote(content: unknown): {
 }
 
 function attachmentIdentity(attachment: ChatAttachment): string {
+  if (attachment.uploadId && attachment.attachmentId) {
+    return JSON.stringify(['upload', attachment.uploadId, attachment.attachmentId]);
+  }
   const kind = attachment.kind || 'file';
   const filePath = attachment.path || attachment.filePath || '';
 

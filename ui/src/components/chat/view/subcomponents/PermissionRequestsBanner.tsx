@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PendingPermissionRequest } from '../../types/types';
 import { buildPilotDeckToolPermissionEntry, formatToolInputForDisplay } from '../../utils/chatPermissions';
@@ -30,14 +30,29 @@ export default function PermissionRequestsBanner({
 }: PermissionRequestsBannerProps) {
   const { t } = useTranslation('chat');
 
-  if (!pendingPermissionRequests.length) {
-    return null;
+  // Keep answered questions in their original seat for the exit transition.
+  const [snapshot, setSnapshot] = useState(pendingPermissionRequests);
+  const [leaving, setLeaving] = useState<PendingPermissionRequest[]>([]);
+  if (snapshot !== pendingPermissionRequests) {
+    setSnapshot(pendingPermissionRequests);
+    setLeaving(previous => [...previous, ...snapshot.filter(request =>
+      /^(AskUserQuestion|ask_user_question)$/.test(request.toolName)
+      && !pendingPermissionRequests.some(next => next.requestId === request.requestId)
+      && !previous.some(next => next.requestId === request.requestId))]
+      .filter(request => !pendingPermissionRequests.some(next => next.requestId === request.requestId)));
   }
+  useEffect(() => {
+    if (!leaving.length) return;
+    const timer = window.setTimeout(() => setLeaving([]), 240);
+    return () => window.clearTimeout(timer);
+  }, [leaving]);
+  const requestsToRender = [...pendingPermissionRequests, ...leaving];
+  if (!requestsToRender.length) return null;
 
   const customPanelRequests: PendingPermissionRequest[] = [];
   const grouped = new Map<string, PendingPermissionRequest[]>();
 
-  for (const request of pendingPermissionRequests) {
+  for (const request of requestsToRender) {
     if (getPermissionPanel(request.toolName)) {
       customPanelRequests.push(request);
       continue;
@@ -53,17 +68,17 @@ export default function PermissionRequestsBanner({
   }
 
   return (
-    <div className="mb-3 space-y-2">
+    <div>
       {customPanelRequests.map((request) => {
         const CustomPanel = getPermissionPanel(request.toolName)!;
-        return (
-          <CustomPanel
-            key={request.requestId}
-            request={request}
-            onDecision={handlePermissionDecision}
-            onPlanExecutionApproved={onPlanExecutionApproved}
-          />
-        );
+        const active = pendingPermissionRequests.some(next => next.requestId === request.requestId);
+        return <div key={request.requestId} className="chat-process-disclosure" data-expanded={active}
+          data-question-seat={request.requestId} aria-hidden={!active} {...(!active ? { inert: '' } : {})}>
+          <div className="min-h-0 overflow-hidden"><div className="pb-3">
+            <CustomPanel request={request} onDecision={handlePermissionDecision}
+              onPlanExecutionApproved={onPlanExecutionApproved} />
+          </div></div>
+        </div>;
       })}
 
       {Array.from(grouped.entries()).map(([entry, requests]) => {
@@ -78,7 +93,7 @@ export default function PermissionRequestsBanner({
         return (
           <div
             key={entry}
-            className="rounded-lg border border-amber-200 bg-amber-50 p-3 shadow-sm dark:border-amber-800 dark:bg-amber-900/20"
+            className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 shadow-sm dark:border-amber-800 dark:bg-amber-900/20"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>

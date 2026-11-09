@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from './AuthContext';
 
@@ -37,6 +37,24 @@ describe('AuthContext model configuration state', () => {
 
   afterEach(() => {
     cleanup();
+    delete window.pilotdeckDesktop;
+  });
+
+  it('reveals desktop readiness from IPC without waiting for the next 500 ms HTTP poll', async () => {
+    let notify: (status: { phase: string; message: string }) => void = () => {};
+    Object.defineProperty(window, 'pilotdeckDesktop', { configurable: true, value: {
+      getRuntimeStatus: () => ({ phase: 'gateway', message: 'Starting' }),
+      onRuntimeStatus: (callback: typeof notify) => { notify = callback; return vi.fn(); },
+    } });
+    mocks.onboardingStatus.mockResolvedValueOnce({ ok: true, json: async () => ({
+      configuration: { state: 'ready', modelRef: 'test/model' }, gateway: { state: 'starting' },
+    }) });
+    function GatewayProbe() { return <div>{useAuth().gatewayRuntime.state}</div>; }
+    render(<AuthProvider><GatewayProbe /></AuthProvider>);
+    await waitFor(() => expect(screen.getByText('starting')).toBeTruthy());
+    act(() => notify({ phase: 'ready', message: 'Ready' }));
+    expect(screen.getByText('ready')).toBeTruthy();
+    expect(mocks.runtimeStatus).not.toHaveBeenCalled();
   });
 
   it('does not fail open when the configuration status request fails', async () => {
