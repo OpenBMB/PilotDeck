@@ -133,9 +133,11 @@ test('nested process messages stay visually anchored through reflow in both read
     }
   });
   await expect(page.locator('[data-virtualized-messages="true"]')).toHaveCount(1);
+  await expect(page.locator('[data-tool-id^="nested-"] > div > button')).toHaveCount(8);
   await page.locator('[data-tool-id^="nested-"] > div > button[aria-expanded="false"]').evaluateAll(nodes => nodes.forEach(node => node.click()));
   await page.waitForTimeout(500);
-  await page.getByRole('button', { name: 'Back to latest' }).click();
+  // Expansion may already leave the reader at the bottom, hiding the button.
+  await page.locator('[data-tool-id="nested-7"] > div > button').press('End');
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
   await viewport(page).hover({ position: { x: 60, y: 300 } });
   for (const delta of [-240, 120, -120]) {
