@@ -39,7 +39,7 @@ export function ProcessBlock({ trace, expanded, onExpandedChange, children }: {
         ? t('working.compacting', { defaultValue: 'Compacting context...' }) : formatCompletedProcessTitle([latest], t)
       : t('process.group.running', { defaultValue: 'Working' })
     : onlyThinking && expanded ? t('process.group.details', { defaultValue: 'Work details' })
-    : onlyThinking ? measured ? t('thinking.completedDuration', { count: seconds }) : t('thinking.finished')
+    : onlyThinking ? measured ? t('thinking.completedDuration', { count: Math.max(1, seconds) }) : t('thinking.finished')
     : formatCompletedProcessTitle(trace.items.map(item => item.message), t);
   return <div className="min-w-0" data-process-block={trace.id} data-process-live={trace.isLive}>
     <button type="button" className="chat-process-trigger hover-brand-text" aria-expanded={expanded}

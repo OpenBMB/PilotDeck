@@ -38,7 +38,7 @@ export function ThinkingBlock({ content, isStreaming, startedAt, durationMs, inl
   const elapsed = !isStreaming && typeof durationMs === 'number' && Number.isFinite(durationMs)
     ? Math.max(0, durationMs)
     : start !== undefined && end !== undefined ? Math.max(0, end - start) : undefined;
-  const seconds = elapsed === undefined ? undefined : Math.floor(elapsed / 1000);
+  const seconds = elapsed === undefined ? undefined : Math.max(1, Math.floor(elapsed / 1000));
   const contentId = useId();
   const { t } = useTranslation('chat');
   const label = seconds === undefined
