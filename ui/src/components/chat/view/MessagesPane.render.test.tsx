@@ -1288,7 +1288,7 @@ describe('MessagesPane render behavior', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next match' }));
 
     await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({
-      behavior: 'smooth',
+      behavior: 'auto',
     })));
     expect(document.querySelectorAll('mark.chat-history-search-highlight')).toHaveLength(2);
     expect(

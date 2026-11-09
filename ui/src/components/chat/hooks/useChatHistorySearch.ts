@@ -291,10 +291,9 @@ export function useChatHistorySearch({
       const canReveal = target && (target.matches('mark[aria-current="true"]')
         || !target.querySelector('[data-chat-search-render-pending="true"]'));
       if (canReveal) {
-        // Global navigation must settle before onNavigate captures the reading
-        // anchor; a smooth animation can be cancelled by process expansion.
-        const globalNavigation = globalTarget?.kind === 'chats' && globalTarget.matchType === 'content';
-        scrollSearchTargetIntoView(container, target, globalNavigation || pending.coarseJumped ? 'auto' : 'smooth');
+        // Land before onNavigate records the reading anchor. An unfinished
+        // animation races streaming layout corrections and reader gestures.
+        scrollSearchTargetIntoView(container, target, 'auto');
         onNavigate?.(pending.match);
         pendingRevealRef.current = null;
       } else if (!target && !pending.coarseJumped) {
@@ -318,7 +317,7 @@ export function useChatHistorySearch({
       if (frame !== null) cancelAnimationFrame(frame);
       refreshHighlightsRef.current = () => {};
     };
-  }, [activeMatch, applySearchHighlights, globalTarget, isOpen, query, renderWindowKey, matches, measuredItemHeights, onNavigate, scrollContainerRef]);
+  }, [activeMatch, applySearchHighlights, isOpen, query, renderWindowKey, matches, measuredItemHeights, onNavigate, scrollContainerRef]);
 
   useEffect(() => {
     if (matches.length === 0) {
